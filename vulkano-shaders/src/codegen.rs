@@ -24,10 +24,10 @@ use std::{
     io::Error as IoError,
 };
 use syn::Ident;
-use vulkano::spirv::Spirv;
-use vulkano::spirv::SpirvError;
-use vulkano::spirv::{Capability, Instruction, StorageClass};
-use vulkano::Version;
+use vulkano::{
+    spirv::{Capability, Instruction, Spirv, SpirvError, StorageClass},
+    Version,
+};
 
 pub(super) fn path_to_str(path: &Path) -> &str {
     path.to_str().expect(
@@ -208,7 +208,7 @@ pub fn compile(
 
 pub(super) fn reflect<'a, I>(
     prefix: &'a str,
-    spirv: &[u32],
+    words: &[u32],
     types_meta: &TypesMeta,
     input_paths: I,
     exact_entrypoint_interface: bool,
@@ -219,11 +219,11 @@ where
     I: Iterator<Item = &'a str>,
 {
     let struct_name = Ident::new(&format!("{}Shader", prefix), Span::call_site());
-    let doc = Spirv::new(spirv)?;
+    let spirv = Spirv::new(words)?;
 
     // checking whether each required capability is enabled in the Vulkan device
     let mut cap_checks: Vec<TokenStream> = vec![];
-    match doc.version() {
+    match spirv.version() {
         Version::V1_0 => {}
         Version::V1_1 | Version::V1_2 | Version::V1_3 => {
             cap_checks.push(quote! {
@@ -250,7 +250,7 @@ where
         _ => return Err(Error::UnsupportedSpirvVersion),
     }
 
-    for i in doc.instructions() {
+    for i in spirv.instructions() {
         let dev_req = {
             match i {
                 Instruction::Variable {
@@ -310,18 +310,19 @@ where
 
     // writing one method for each entry point of this module
     let mut entry_points_inside_impl: Vec<TokenStream> = vec![];
-    for instruction in doc.instructions() {
-        if let &Instruction::EntryPoint { .. } = instruction {
-            let entry_point = entry_point::write_entry_point(
-                prefix,
-                &doc,
-                instruction,
-                types_meta,
-                exact_entrypoint_interface,
-                shared_constants,
-            );
-            entry_points_inside_impl.push(entry_point);
-        }
+    for instruction in spirv
+        .iter_entry_point()
+        .filter(|instruction| matches!(instruction, Instruction::EntryPoint { .. }))
+    {
+        let entry_point = entry_point::write_entry_point(
+            prefix,
+            &spirv,
+            instruction,
+            types_meta,
+            exact_entrypoint_interface,
+            shared_constants,
+        );
+        entry_points_inside_impl.push(entry_point);
     }
 
     let include_bytes = input_paths.map(|s| {
@@ -332,10 +333,10 @@ where
         }
     });
 
-    let structs = structs::write_structs(prefix, &doc, types_meta, types_registry);
+    let structs = structs::write_structs(prefix, &spirv, types_meta, types_registry);
     let specialization_constants = spec_consts::write_specialization_constants(
         prefix,
-        &doc,
+        &spirv,
         types_meta,
         shared_constants,
         types_registry,
@@ -355,7 +356,7 @@ where
                 let _bytes = ( #( #include_bytes),* );
 
                 #( #cap_checks )*
-                static WORDS: &[u32] = &[ #( #spirv ),* ];
+                static WORDS: &[u32] = &[ #( #words ),* ];
 
                 unsafe {
                     Ok(#struct_name {
@@ -804,9 +805,9 @@ mod tests {
             None,
         )
         .unwrap();
-        let doc = Spirv::new(comp.as_binary()).unwrap();
+        let spirv = Spirv::new(comp.as_binary()).unwrap();
         let res = std::panic::catch_unwind(|| {
-            structs::write_structs("", &doc, &TypesMeta::default(), &mut HashMap::new())
+            structs::write_structs("", &spirv, &TypesMeta::default(), &mut HashMap::new())
         });
         assert!(res.is_err());
     }
@@ -834,8 +835,8 @@ mod tests {
             None,
         )
         .unwrap();
-        let doc = Spirv::new(comp.as_binary()).unwrap();
-        structs::write_structs("", &doc, &TypesMeta::default(), &mut HashMap::new());
+        let spirv = Spirv::new(comp.as_binary()).unwrap();
+        structs::write_structs("", &spirv, &TypesMeta::default(), &mut HashMap::new());
     }
     #[test]
     fn test_wrap_alignment() {
@@ -866,8 +867,8 @@ mod tests {
             None,
         )
         .unwrap();
-        let doc = Spirv::new(comp.as_binary()).unwrap();
-        structs::write_structs("", &doc, &TypesMeta::default(), &mut HashMap::new());
+        let spirv = Spirv::new(comp.as_binary()).unwrap();
+        structs::write_structs("", &spirv, &TypesMeta::default(), &mut HashMap::new());
     }
 
     #[test]

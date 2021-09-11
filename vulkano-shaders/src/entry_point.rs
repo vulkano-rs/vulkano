@@ -17,7 +17,7 @@ use vulkano::spirv::{
 
 pub(super) fn write_entry_point(
     shader: &str,
-    doc: &Spirv,
+    spirv: &Spirv,
     instruction: &Instruction,
     types_meta: &TypesMeta,
     exact_entrypoint_interface: bool,
@@ -46,7 +46,7 @@ pub(super) fn write_entry_point(
     };
 
     let (input_interface, output_interface) = write_interfaces(
-        doc,
+        spirv,
         interface,
         ignore_first_array_in,
         ignore_first_array_out,
@@ -84,11 +84,16 @@ pub(super) fn write_entry_point(
         }
     };
 
-    let descriptor_set_layout_descs =
-        write_descriptor_set_layout_descs(&doc, id, interface, exact_entrypoint_interface, &stage);
-    let push_constant_ranges = write_push_constant_ranges(shader, &doc, &stage, &types_meta);
+    let descriptor_set_layout_descs = write_descriptor_set_layout_descs(
+        &spirv,
+        id,
+        interface,
+        exact_entrypoint_interface,
+        &stage,
+    );
+    let push_constant_ranges = write_push_constant_ranges(shader, &spirv, &stage, &types_meta);
 
-    let spec_consts_struct = if crate::spec_consts::has_specialization_constants(doc) {
+    let spec_consts_struct = if crate::spec_consts::has_specialization_constants(spirv) {
         let spec_consts_struct_name = Ident::new(
             &format!(
                 "{}SpecializationConstants",
@@ -127,17 +132,15 @@ pub(super) fn write_entry_point(
                 }
 
                 ExecutionModel::Geometry => {
-                    let mut execution_mode = None;
-
-                    for instruction in doc.instructions() {
-                        if let &Instruction::ExecutionMode {
-                            entry_point,
-                            ref mode,
-                            ..
-                        } = instruction
-                        {
-                            if entry_point == id {
-                                execution_mode = match mode {
+                    let execution_mode =
+                        spirv
+                            .iter_execution_mode()
+                            .find_map(|instruction| match instruction {
+                                &Instruction::ExecutionMode {
+                                    entry_point,
+                                    ref mode,
+                                    ..
+                                } if entry_point == id => match mode {
                                     &ExecutionMode::InputPoints => Some(quote! { Points }),
                                     &ExecutionMode::InputLines => Some(quote! { Lines }),
                                     &ExecutionMode::InputLinesAdjacency => {
@@ -147,12 +150,10 @@ pub(super) fn write_entry_point(
                                     &ExecutionMode::InputTrianglesAdjacency => {
                                         Some(quote! { TrianglesWithAdjacency })
                                     }
-                                    _ => continue,
-                                };
-                                break;
-                            }
-                        }
-                    }
+                                    _ => None,
+                                },
+                                _ => None,
+                            });
 
                     quote! {
                         ::vulkano::pipeline::shader::GraphicsShaderType::Geometry(
@@ -228,7 +229,7 @@ struct Element {
 }
 
 fn write_interfaces(
-    doc: &Spirv,
+    spirv: &Spirv,
     interface: &[Id],
     ignore_first_array_in: bool,
     ignore_first_array_out: bool,
@@ -237,52 +238,64 @@ fn write_interfaces(
     let mut output_elements = vec![];
 
     // Filling `input_elements` and `output_elements`.
-    for interface in interface.iter() {
-        for i in doc.instructions() {
-            match i {
-                &Instruction::Variable {
-                    result_type_id,
-                    result_id,
-                    ref storage_class,
-                    ..
-                } if &result_id == interface => {
-                    if spirv_search::is_builtin(doc, result_id) {
-                        continue;
-                    }
+    for &interface in interface.iter() {
+        let interface_info = spirv.id(interface);
 
-                    let (to_write, ignore_first_array) = match storage_class {
-                        &StorageClass::Input => (&mut input_elements, ignore_first_array_in),
-                        &StorageClass::Output => (&mut output_elements, ignore_first_array_out),
-                        _ => continue,
-                    };
+        match interface_info.instruction() {
+            &Instruction::Variable {
+                result_type_id,
+                result_id,
+                ref storage_class,
+                ..
+            } => {
+                if spirv_search::is_builtin(spirv, result_id) {
+                    continue;
+                }
 
-                    let name = spirv_search::name_from_id(doc, result_id);
-                    if name == "__unnamed" {
-                        continue;
-                    } // FIXME: hack
+                let id_info = spirv.id(result_id);
 
-                    let location = match doc.get_decoration_params(result_id, |d| {
-                        matches!(d, Decoration::Location { .. })
+                let (to_write, ignore_first_array) = match storage_class {
+                    &StorageClass::Input => (&mut input_elements, ignore_first_array_in),
+                    &StorageClass::Output => (&mut output_elements, ignore_first_array_out),
+                    _ => continue,
+                };
+
+                let name = match id_info
+                    .iter_name()
+                    .find_map(|instruction| match instruction {
+                        Instruction::Name { name, .. } => Some(name.as_str()),
+                        _ => None,
                     }) {
-                        Some(Decoration::Location { location }) => *location,
-                        None => panic!(
+                    Some(name) => name,
+                    None => continue,
+                };
+
+                let location = id_info
+                    .iter_decoration()
+                    .find_map(|instruction| match instruction {
+                        Instruction::Decorate {
+                            decoration: Decoration::Location { location },
+                            ..
+                        } => Some(*location),
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| {
+                        panic!(
                             "Attribute `{}` (id {}) is missing a location",
                             name, result_id
-                        ),
-                        _ => unreachable!(),
-                    };
-
-                    let (format, location_len) =
-                        spirv_search::format_from_id(doc, result_type_id, ignore_first_array);
-                    to_write.push(Element {
-                        location,
-                        name,
-                        format,
-                        location_len,
+                        )
                     });
-                }
-                _ => (),
+
+                let (format, location_len) =
+                    spirv_search::format_from_id(spirv, result_type_id, ignore_first_array);
+                to_write.push(Element {
+                    location,
+                    name: name.to_owned(),
+                    format,
+                    location_len,
+                });
             }
+            _ => (),
         }
     }
 

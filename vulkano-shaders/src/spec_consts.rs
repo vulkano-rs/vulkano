@@ -7,18 +7,18 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::{spirv_search, TypesMeta};
+use crate::TypesMeta;
 use crate::{structs, RegisteredType};
 use proc_macro2::{Span, TokenStream};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::mem;
 use syn::Ident;
-use vulkano::spirv::{Decoration, Id, Instruction, Spirv};
+use vulkano::spirv::{Decoration, Instruction, Spirv};
 
 /// Returns true if the document has specialization constants.
-pub fn has_specialization_constants(doc: &Spirv) -> bool {
-    for instruction in doc.instructions() {
+pub fn has_specialization_constants(spirv: &Spirv) -> bool {
+    for instruction in spirv.iter_global() {
         match instruction {
             &Instruction::SpecConstantTrue { .. } => return true,
             &Instruction::SpecConstantFalse { .. } => return true,
@@ -35,7 +35,7 @@ pub fn has_specialization_constants(doc: &Spirv) -> bool {
 /// implements the `Default` and the `vulkano::pipeline::shader::SpecializationConstants` traits.
 pub(super) fn write_specialization_constants<'a>(
     shader: &'a str,
-    doc: &Spirv,
+    spirv: &Spirv,
     types_meta: &TypesMeta,
     shared_constants: bool,
     types_registry: &'a mut HashMap<String, RegisteredType>,
@@ -52,8 +52,8 @@ pub(super) fn write_specialization_constants<'a>(
 
     let mut spec_consts = Vec::new();
 
-    for instruction in doc.instructions() {
-        let (type_id, result_id, default_value) = match instruction {
+    for instruction in spirv.iter_global() {
+        let (result_type_id, result_id, default_value) = match instruction {
             &Instruction::SpecConstantTrue {
                 result_type_id,
                 result_id,
@@ -88,22 +88,44 @@ pub(super) fn write_specialization_constants<'a>(
             _ => continue,
         };
 
+        // Translate bool to u32
         let (rust_ty, rust_signature, rust_size, rust_alignment) =
-            spec_const_type_from_id(shader, doc, type_id, types_meta);
+            match spirv.id(result_type_id).instruction() {
+                Instruction::TypeBool { .. } => (
+                    quote! {u32},
+                    Cow::from("u32"),
+                    Some(mem::size_of::<u32>()),
+                    mem::align_of::<u32>(),
+                ),
+                _ => structs::type_from_id(shader, spirv, result_type_id, types_meta),
+            };
         let rust_size = rust_size.expect("Found runtime-sized specialization constant");
 
-        let constant_id =
-            doc.get_decoration_params(result_id, |d| matches!(d, Decoration::SpecId { .. }));
+        let id_info = spirv.id(result_id);
 
-        if let Some(&Decoration::SpecId {
-            specialization_constant_id: constant_id,
-        }) = constant_id
-        {
-            let mut name = spirv_search::name_from_id(doc, result_id);
+        let constant_id = id_info
+            .iter_decoration()
+            .find_map(|instruction| match instruction {
+                Instruction::Decorate {
+                    decoration:
+                        Decoration::SpecId {
+                            specialization_constant_id,
+                        },
+                    ..
+                } => Some(*specialization_constant_id),
+                _ => None,
+            });
 
-            if name == "__unnamed".to_owned() {
-                name = String::from(format!("constant_{}", constant_id));
-            }
+        if let Some(constant_id) = constant_id {
+            let name = match id_info
+                .iter_name()
+                .find_map(|instruction| match instruction {
+                    Instruction::Name { name, .. } => Some(name.as_str()),
+                    _ => None,
+                }) {
+                Some(name) => name.to_owned(),
+                None => format!("constant_{}", constant_id),
+            };
 
             spec_consts.push(SpecConst {
                 name,
@@ -208,28 +230,4 @@ pub(super) fn write_specialization_constants<'a>(
             }
         }
     }
-}
-
-// Wrapper around `type_from_id` that also handles booleans.
-fn spec_const_type_from_id(
-    shader: &str,
-    doc: &Spirv,
-    searched: Id,
-    types_meta: &TypesMeta,
-) -> (TokenStream, Cow<'static, str>, Option<usize>, usize) {
-    for instruction in doc.instructions() {
-        match instruction {
-            &Instruction::TypeBool { result_id } if result_id == searched => {
-                return (
-                    quote! {u32},
-                    Cow::from("u32"),
-                    Some(mem::size_of::<u32>()),
-                    mem::align_of::<u32>(),
-                );
-            }
-            _ => (),
-        }
-    }
-
-    structs::type_from_id(shader, doc, searched, types_meta)
 }

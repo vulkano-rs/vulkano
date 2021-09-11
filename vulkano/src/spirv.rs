@@ -7,10 +7,20 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+//! Parsing and analysis utilities for SPIR-V shader binaries.
+//!
+//! This can be used to inspect and validate a SPIR-V module at runtime. The `Spirv` type does some
+//! validation, but you should not assume that code that is read successfully is valid.
+//!
+//! For more information about SPIR-V modules, instructions and types, see the
+//! [SPIR-V specification](https://www.khronos.org/registry/SPIR-V/specs/unified1/SPIRV.html).
+
 use crate::Version;
 use std::{
+    collections::HashMap,
     error::Error,
     fmt::{self, Display, Formatter},
+    ops::Range,
     string::FromUtf8Error,
 };
 
@@ -23,6 +33,18 @@ pub struct Spirv {
     version: Version,
     bound: u32,
     instructions: Vec<Instruction>,
+    ids: HashMap<Id, IdDataIndices>,
+
+    // Items described in the spec section "Logical Layout of a Module"
+    range_capability: Range<usize>,
+    range_extension: Range<usize>,
+    range_ext_inst_import: Range<usize>,
+    memory_model: usize,
+    range_entry_point: Range<usize>,
+    range_execution_mode: Range<usize>,
+    range_name: Range<usize>,
+    range_decoration: Range<usize>,
+    range_global: Range<usize>,
 }
 
 impl Spirv {
@@ -74,11 +96,277 @@ impl Spirv {
             ret
         };
 
-        Ok(Spirv {
+        // It is impossible for a valid SPIR-V file to contain more Ids than instructions, so put
+        // a sane upper limit on the allocation. This prevents a malicious file from causing huge
+        // memory allocations.
+        let mut ids = HashMap::with_capacity(instructions.len().min(bound as usize));
+        let mut range_capability: Option<Range<usize>> = None;
+        let mut range_extension: Option<Range<usize>> = None;
+        let mut range_ext_inst_import: Option<Range<usize>> = None;
+        let mut range_memory_model: Option<Range<usize>> = None;
+        let mut range_entry_point: Option<Range<usize>> = None;
+        let mut range_execution_mode: Option<Range<usize>> = None;
+        let mut range_name: Option<Range<usize>> = None;
+        let mut range_decoration: Option<Range<usize>> = None;
+        let mut range_global: Option<Range<usize>> = None;
+        let mut in_function = false;
+
+        fn set_range(range: &mut Option<Range<usize>>, index: usize) -> Result<(), SpirvError> {
+            if let Some(range) = range {
+                if range.end != index {
+                    return Err(SpirvError::BadLayout { index });
+                }
+
+                range.end = index + 1;
+            } else {
+                *range = Some(Range {
+                    start: index,
+                    end: index + 1,
+                });
+            }
+
+            Ok(())
+        }
+
+        for (index, instruction) in instructions.iter().enumerate() {
+            if let Some(id) = instruction.result_id() {
+                if u32::from(id) >= bound {
+                    return Err(SpirvError::IdOutOfBounds { id, index, bound });
+                }
+
+                let members = if let Instruction::TypeStruct { member_types, .. } = instruction {
+                    member_types
+                        .iter()
+                        .map(|_| StructMemberDataIndices::default())
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+                let data = IdDataIndices {
+                    index,
+                    names: Vec::new(),
+                    decorations: Vec::new(),
+                    members,
+                };
+                if let Some(first) = ids.insert(id, data) {
+                    return Err(SpirvError::DuplicateId {
+                        id,
+                        first_index: first.index,
+                        second_index: index,
+                    });
+                }
+            }
+
+            match instruction {
+                Instruction::Capability { .. } => set_range(&mut range_capability, index)?,
+                Instruction::Extension { .. } => set_range(&mut range_extension, index)?,
+                Instruction::ExtInstImport { .. } => set_range(&mut range_ext_inst_import, index)?,
+                Instruction::MemoryModel { .. } => set_range(&mut range_memory_model, index)?,
+                Instruction::EntryPoint { .. } => set_range(&mut range_entry_point, index)?,
+                Instruction::ExecutionMode { .. } | Instruction::ExecutionModeId { .. } => {
+                    set_range(&mut range_execution_mode, index)?
+                }
+                Instruction::Name { .. } | Instruction::MemberName { .. } => {
+                    set_range(&mut range_name, index)?
+                }
+                Instruction::Decorate { .. }
+                | Instruction::MemberDecorate { .. }
+                | Instruction::DecorationGroup { .. }
+                | Instruction::GroupDecorate { .. }
+                | Instruction::GroupMemberDecorate { .. }
+                | Instruction::DecorateId { .. }
+                | Instruction::DecorateString { .. }
+                | Instruction::MemberDecorateString { .. } => {
+                    set_range(&mut range_decoration, index)?
+                }
+                Instruction::TypeVoid { .. }
+                | Instruction::TypeBool { .. }
+                | Instruction::TypeInt { .. }
+                | Instruction::TypeFloat { .. }
+                | Instruction::TypeVector { .. }
+                | Instruction::TypeMatrix { .. }
+                | Instruction::TypeImage { .. }
+                | Instruction::TypeSampler { .. }
+                | Instruction::TypeSampledImage { .. }
+                | Instruction::TypeArray { .. }
+                | Instruction::TypeRuntimeArray { .. }
+                | Instruction::TypeStruct { .. }
+                | Instruction::TypeOpaque { .. }
+                | Instruction::TypePointer { .. }
+                | Instruction::TypeFunction { .. }
+                | Instruction::TypeEvent { .. }
+                | Instruction::TypeDeviceEvent { .. }
+                | Instruction::TypeReserveId { .. }
+                | Instruction::TypeQueue { .. }
+                | Instruction::TypePipe { .. }
+                | Instruction::TypeForwardPointer { .. }
+                | Instruction::TypePipeStorage { .. }
+                | Instruction::TypeNamedBarrier { .. }
+                | Instruction::TypeRayQueryKHR { .. }
+                | Instruction::TypeAccelerationStructureKHR { .. }
+                | Instruction::TypeCooperativeMatrixNV { .. }
+                | Instruction::TypeVmeImageINTEL { .. }
+                | Instruction::TypeAvcImePayloadINTEL { .. }
+                | Instruction::TypeAvcRefPayloadINTEL { .. }
+                | Instruction::TypeAvcSicPayloadINTEL { .. }
+                | Instruction::TypeAvcMcePayloadINTEL { .. }
+                | Instruction::TypeAvcMceResultINTEL { .. }
+                | Instruction::TypeAvcImeResultINTEL { .. }
+                | Instruction::TypeAvcImeResultSingleReferenceStreamoutINTEL { .. }
+                | Instruction::TypeAvcImeResultDualReferenceStreamoutINTEL { .. }
+                | Instruction::TypeAvcImeSingleReferenceStreaminINTEL { .. }
+                | Instruction::TypeAvcImeDualReferenceStreaminINTEL { .. }
+                | Instruction::TypeAvcRefResultINTEL { .. }
+                | Instruction::TypeAvcSicResultINTEL { .. }
+                | Instruction::ConstantTrue { .. }
+                | Instruction::ConstantFalse { .. }
+                | Instruction::Constant { .. }
+                | Instruction::ConstantComposite { .. }
+                | Instruction::ConstantSampler { .. }
+                | Instruction::ConstantNull { .. }
+                | Instruction::ConstantPipeStorage { .. }
+                | Instruction::SpecConstantTrue { .. }
+                | Instruction::SpecConstantFalse { .. }
+                | Instruction::SpecConstant { .. }
+                | Instruction::SpecConstantComposite { .. }
+                | Instruction::SpecConstantOp { .. } => set_range(&mut range_global, index)?,
+                Instruction::Variable { storage_class, .. }
+                    if *storage_class != StorageClass::Function =>
+                {
+                    set_range(&mut range_global, index)?
+                }
+                Instruction::Function { .. } => {
+                    in_function = true;
+                }
+                Instruction::Line { .. } | Instruction::NoLine { .. } => {
+                    if !in_function {
+                        set_range(&mut range_global, index)?
+                    }
+                }
+                _ => (),
+            }
+        }
+
+        let mut spirv = Spirv {
             version,
             bound,
             instructions,
-        })
+            ids,
+
+            range_capability: range_capability.unwrap_or_default(),
+            range_extension: range_extension.unwrap_or_default(),
+            range_ext_inst_import: range_ext_inst_import.unwrap_or_default(),
+            memory_model: if let Some(range) = range_memory_model {
+                if range.end - range.start != 1 {
+                    return Err(SpirvError::MemoryModelInvalid);
+                }
+
+                range.start
+            } else {
+                return Err(SpirvError::MemoryModelInvalid);
+            },
+            range_entry_point: range_entry_point.unwrap_or_default(),
+            range_execution_mode: range_execution_mode.unwrap_or_default(),
+            range_name: range_name.unwrap_or_default(),
+            range_decoration: range_decoration.unwrap_or_default(),
+            range_global: range_global.unwrap_or_default(),
+        };
+
+        for index in spirv.range_name.clone() {
+            match &spirv.instructions[index] {
+                Instruction::Name { target, .. } => {
+                    spirv.ids.get_mut(target).unwrap().names.push(index);
+                }
+                Instruction::MemberName { ty, member, .. } => {
+                    spirv.ids.get_mut(ty).unwrap().members[*member as usize]
+                        .names
+                        .push(index);
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        // First handle all regular decorations, including those targeting decoration groups.
+        for index in spirv.range_decoration.clone() {
+            match &spirv.instructions[index] {
+                Instruction::Decorate { target, .. }
+                | Instruction::DecorateId { target, .. }
+                | Instruction::DecorateString { target, .. } => {
+                    spirv.ids.get_mut(target).unwrap().decorations.push(index);
+                }
+                Instruction::MemberDecorate {
+                    structure_type: target,
+                    member,
+                    ..
+                }
+                | Instruction::MemberDecorateString {
+                    struct_type: target,
+                    member,
+                    ..
+                } => {
+                    spirv.ids.get_mut(target).unwrap().members[*member as usize]
+                        .decorations
+                        .push(index);
+                }
+                _ => (),
+            }
+        }
+
+        // Then, with decoration groups having their lists complete, handle group decorates.
+        for index in spirv.range_decoration.clone() {
+            match &spirv.instructions[index] {
+                Instruction::GroupDecorate {
+                    decoration_group,
+                    targets,
+                    ..
+                } => {
+                    let indices = {
+                        let data = &spirv.ids[decoration_group];
+                        if !matches!(
+                            spirv.instructions[data.index],
+                            Instruction::DecorationGroup { .. }
+                        ) {
+                            return Err(SpirvError::GroupDecorateNotGroup { index });
+                        };
+                        data.decorations.clone()
+                    };
+
+                    for target in targets {
+                        spirv
+                            .ids
+                            .get_mut(target)
+                            .unwrap()
+                            .decorations
+                            .extend(&indices);
+                    }
+                }
+                Instruction::GroupMemberDecorate {
+                    decoration_group,
+                    targets,
+                    ..
+                } => {
+                    let indices = {
+                        let data = &spirv.ids[decoration_group];
+                        if !matches!(
+                            spirv.instructions[data.index],
+                            Instruction::DecorationGroup { .. }
+                        ) {
+                            return Err(SpirvError::GroupDecorateNotGroup { index });
+                        };
+                        data.decorations.clone()
+                    };
+
+                    for (target, member) in targets {
+                        spirv.ids.get_mut(target).unwrap().members[*member as usize]
+                            .decorations
+                            .extend(&indices);
+                    }
+                }
+                _ => (),
+            }
+        }
+
+        Ok(spirv)
     }
 
     /// Returns a reference to the instructions in the module.
@@ -87,25 +375,189 @@ impl Spirv {
         &self.instructions
     }
 
-    /// Returns the SPIR-V version that this module is compiled for.
+    /// Returns the SPIR-V version that the module is compiled for.
     #[inline]
     pub fn version(&self) -> Version {
         self.version
     }
 
-    /// Returns the upper bound of `Id`s in this module.
-    ///
-    /// All `Id`s should have a numeric value strictly less than this value. It can be used to
-    /// pre-allocate an array of the appropriate size to hold all `Id`s.
+    /// Returns the upper bound of `Id`s. All `Id`s should have a numeric value strictly less than
+    /// this value.
     #[inline]
     pub fn bound(&self) -> u32 {
         self.bound
+    }
+
+    /// Returns information about an `Id`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `id` is not defined in this module. This can in theory only happpen if you are
+    ///   mixing `Id`s from different modules.
+    #[inline]
+    pub fn id<'a>(&'a self, id: Id) -> IdInfo<'a> {
+        IdInfo {
+            data_indices: &self.ids[&id],
+            instructions: &self.instructions,
+        }
+    }
+
+    /// Returns an iterator over all `Capability` instructions.
+    #[inline]
+    pub fn iter_capability(&self) -> impl ExactSizeIterator<Item = &Instruction> {
+        self.instructions[self.range_capability.clone()].iter()
+    }
+
+    /// Returns an iterator over all `Extension` instructions.
+    #[inline]
+    pub fn iter_extension(&self) -> impl ExactSizeIterator<Item = &Instruction> {
+        self.instructions[self.range_extension.clone()].iter()
+    }
+
+    /// Returns an iterator over all `ExtInstImport` instructions.
+    #[inline]
+    pub fn iter_ext_inst_import(&self) -> impl ExactSizeIterator<Item = &Instruction> {
+        self.instructions[self.range_ext_inst_import.clone()].iter()
+    }
+
+    /// Returns the `MemoryModel` instruction.
+    #[inline]
+    pub fn memory_model(&self) -> &Instruction {
+        &self.instructions[self.memory_model]
+    }
+
+    /// Returns an iterator over all `EntryPoint` instructions.
+    #[inline]
+    pub fn iter_entry_point(&self) -> impl ExactSizeIterator<Item = &Instruction> {
+        self.instructions[self.range_entry_point.clone()].iter()
+    }
+
+    /// Returns an iterator over all execution mode instructions.
+    #[inline]
+    pub fn iter_execution_mode(&self) -> impl ExactSizeIterator<Item = &Instruction> {
+        self.instructions[self.range_execution_mode.clone()].iter()
+    }
+
+    /// Returns an iterator over all name debug instructions.
+    #[inline]
+    pub fn iter_name(&self) -> impl ExactSizeIterator<Item = &Instruction> {
+        self.instructions[self.range_name.clone()].iter()
+    }
+
+    /// Returns an iterator over all decoration instructions.
+    #[inline]
+    pub fn iter_decoration(&self) -> impl ExactSizeIterator<Item = &Instruction> {
+        self.instructions[self.range_decoration.clone()].iter()
+    }
+
+    /// Returns an iterator over all global declaration instructions: types,
+    /// constants and global variables.
+    ///
+    /// Note: This can also include `Line` and `NoLine` instructions.
+    #[inline]
+    pub fn iter_global(&self) -> impl ExactSizeIterator<Item = &Instruction> {
+        self.instructions[self.range_global.clone()].iter()
+    }
+}
+
+#[derive(Clone, Debug)]
+struct IdDataIndices {
+    index: usize,
+    names: Vec<usize>,
+    decorations: Vec<usize>,
+    members: Vec<StructMemberDataIndices>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct StructMemberDataIndices {
+    names: Vec<usize>,
+    decorations: Vec<usize>,
+}
+
+/// Information associated with an `Id`.
+#[derive(Clone, Debug)]
+pub struct IdInfo<'a> {
+    data_indices: &'a IdDataIndices,
+    instructions: &'a [Instruction],
+}
+
+impl<'a> IdInfo<'a> {
+    /// Returns the instruction that defines this `Id` with a `result_id` operand.
+    #[inline]
+    pub fn instruction(&self) -> &'a Instruction {
+        &self.instructions[self.data_indices.index]
+    }
+
+    /// Returns an iterator over all name debug instructions that target this `Id`.
+    #[inline]
+    pub fn iter_name(&self) -> impl ExactSizeIterator<Item = &'a Instruction> {
+        let instructions = self.instructions;
+        self.data_indices
+            .names
+            .iter()
+            .map(move |&index| &instructions[index])
+    }
+
+    /// Returns an iterator over all decorate instructions, that target this `Id`. This includes any
+    /// decorate instructions that target this `Id` indirectly via a `DecorationGroup`.
+    #[inline]
+    pub fn iter_decoration(&self) -> impl ExactSizeIterator<Item = &'a Instruction> {
+        let instructions = self.instructions;
+        self.data_indices
+            .decorations
+            .iter()
+            .map(move |&index| &instructions[index])
+    }
+
+    /// If this `Id` refers to a `TypeStruct`, returns an iterator of information about each member
+    /// of the struct. Empty otherwise.
+    #[inline]
+    pub fn iter_members(&self) -> impl ExactSizeIterator<Item = StructMemberInfo<'a>> {
+        let instructions = self.instructions;
+        self.data_indices
+            .members
+            .iter()
+            .map(move |data_indices| StructMemberInfo {
+                data_indices,
+                instructions,
+            })
+    }
+}
+
+/// Information associated with a member of a `TypeStruct` instruction.
+#[derive(Clone, Debug)]
+pub struct StructMemberInfo<'a> {
+    data_indices: &'a StructMemberDataIndices,
+    instructions: &'a [Instruction],
+}
+
+impl<'a> StructMemberInfo<'a> {
+    /// Returns an iterator over all name debug instructions that target this struct member.
+    #[inline]
+    pub fn iter_name(&self) -> impl ExactSizeIterator<Item = &'a Instruction> {
+        let instructions = self.instructions;
+        self.data_indices
+            .names
+            .iter()
+            .map(move |&index| &instructions[index])
+    }
+
+    /// Returns an iterator over all decorate instructions that target this struct member. This
+    /// includes any decorate instructions that target this member indirectly via a
+    /// `DecorationGroup`.
+    #[inline]
+    pub fn iter_decoration(&self) -> impl ExactSizeIterator<Item = &'a Instruction> {
+        let instructions = self.instructions;
+        self.data_indices
+            .decorations
+            .iter()
+            .map(move |&index| &instructions[index])
     }
 }
 
 /// Used in SPIR-V to refer to the result of another instruction.
 ///
-/// Ids are global across a module, and are immutable once assigned.
+/// Ids are global across a module, and are always assigned by exactly one instruction.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 pub struct Id(u32);
@@ -209,7 +661,24 @@ impl<'a> InstructionReader<'a> {
 /// Error that can happen when reading a SPIR-V module.
 #[derive(Clone, Debug)]
 pub enum SpirvError {
+    BadLayout {
+        index: usize,
+    },
+    DuplicateId {
+        id: Id,
+        first_index: usize,
+        second_index: usize,
+    },
+    GroupDecorateNotGroup {
+        index: usize,
+    },
+    IdOutOfBounds {
+        id: Id,
+        index: usize,
+        bound: u32,
+    },
     InvalidHeader,
+    MemoryModelInvalid,
     ParseError(ParseError),
 }
 
@@ -217,7 +686,26 @@ impl Display for SpirvError {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidHeader => write!(f, "the SPIR-V module header was invalid"),
+            Self::BadLayout { index } => write!(
+                f,
+                "the instruction at index {} does not follow the logical layout of a module",
+                index
+            ),
+            Self::DuplicateId {
+                id,
+                first_index,
+                second_index,
+            } => write!(
+                f,
+                "id {} is assigned more than once, by instructions {} and {}",
+                id, first_index, second_index
+            ),
+            Self::GroupDecorateNotGroup { index } => write!(f, "a GroupDecorate or GroupMemberDecorate instruction at index {} referred to an Id that was not a DecorationGroup", index),
+            Self::IdOutOfBounds { id, bound, index, } => write!(f, "id {}, assigned at instruction {}, is not below the maximum bound {}", id, index, bound),
+            Self::InvalidHeader => write!(f, "the SPIR-V module header is invalid"),
+            Self::MemoryModelInvalid => {
+                write!(f, "the MemoryModel instruction is not present exactly once")
+            }
             Self::ParseError(_) => write!(f, "parse error"),
         }
     }
@@ -266,6 +754,7 @@ impl Display for ParseError {
 
 impl Error for ParseError {}
 
+/// Individual types of parse error that can happen.
 #[derive(Clone, Debug)]
 pub enum ParseErrors {
     FromUtf8Error(FromUtf8Error),
@@ -289,204 +778,5 @@ impl Display for ParseErrors {
             Self::UnknownOpcode(opcode) => write!(f, "invalid instruction opcode {}", opcode),
             Self::UnknownSpecConstantOpcode(opcode) => write!(f, "invalid spec constant instruction opcode {}", opcode),
         }
-    }
-}
-
-pub struct FoundDecoration<'a> {
-    pub target_id: Id,
-    pub decoration: &'a Decoration,
-}
-
-impl Spirv {
-    /// Returns the params and the id of all decorations that match the passed Decoration type
-    ///
-    /// for each matching OpDecorate:
-    ///     if it points at a regular target:
-    ///         creates a FoundDecoration with its params and target_id
-    ///     if it points at a group:
-    ///         the OpDecorate's target_id is ignored and a seperate FoundDecoration is created only for each target_id given in matching OpGroupDecorate instructions.
-    pub fn get_decorations(
-        &self,
-        find_decoration: impl Fn(&Decoration) -> bool,
-    ) -> Vec<FoundDecoration> {
-        let mut decorations = vec![];
-        for instruction in &self.instructions {
-            if let Instruction::Decorate {
-                target,
-                ref decoration,
-            } = instruction
-            {
-                if find_decoration(decoration) {
-                    // assume by default it is just pointing at the target_id
-                    let mut target_ids = vec![*target];
-
-                    // however it might be pointing at a group, which can have multiple target_ids
-                    for inner_instruction in &self.instructions {
-                        if let Instruction::DecorationGroup { result_id } = inner_instruction {
-                            if *result_id == *target {
-                                target_ids.clear();
-
-                                for inner_instruction in &self.instructions {
-                                    if let Instruction::GroupDecorate {
-                                        decoration_group,
-                                        targets,
-                                    } = inner_instruction
-                                    {
-                                        if *decoration_group == *target {
-                                            target_ids.extend(targets);
-                                        }
-                                    }
-                                }
-
-                                // result_id must be unique so we can safely break here
-                                break;
-                            }
-                        }
-                    }
-
-                    // create for all target_ids found
-                    for target_id in target_ids {
-                        decorations.push(FoundDecoration {
-                            target_id,
-                            decoration,
-                        });
-                    }
-                }
-            }
-        }
-        decorations
-    }
-
-    /// Returns the params held by the decoration for the specified id and type
-    /// Searches OpDecorate and OpGroupMemberDecorate
-    /// Returns None if such a decoration does not exist
-    pub fn get_decoration_params(
-        &self,
-        id: Id,
-        find_decoration: impl Fn(&Decoration) -> bool,
-    ) -> Option<&Decoration> {
-        for instruction in &self.instructions {
-            match instruction {
-                Instruction::Decorate {
-                    target,
-                    ref decoration,
-                } if *target == id && find_decoration(decoration) => {
-                    return Some(decoration);
-                }
-                Instruction::GroupDecorate {
-                    decoration_group,
-                    ref targets,
-                } => {
-                    for group_target_id in targets {
-                        if *group_target_id == id {
-                            for instruction in &self.instructions {
-                                if let Instruction::Decorate {
-                                    target,
-                                    ref decoration,
-                                } = instruction
-                                {
-                                    if target == decoration_group && find_decoration(decoration) {
-                                        return Some(decoration);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                _ => (),
-            };
-        }
-        None
-    }
-
-    /// Returns the params held by the decoration for the member specified by id, member and type
-    /// Searches OpMemberDecorate and OpGroupMemberDecorate
-    /// Returns None if such a decoration does not exist
-    pub fn get_member_decoration_params(
-        &self,
-        struct_id: Id,
-        member_literal: u32,
-        find_decoration: impl Fn(&Decoration) -> bool,
-    ) -> Option<&Decoration> {
-        for instruction in &self.instructions {
-            match instruction {
-                Instruction::MemberDecorate {
-                    structure_type,
-                    member,
-                    ref decoration,
-                } if *structure_type == struct_id
-                    && *member == member_literal
-                    && find_decoration(decoration) =>
-                {
-                    return Some(decoration);
-                }
-                Instruction::GroupMemberDecorate {
-                    decoration_group,
-                    ref targets,
-                } => {
-                    for (group_target_struct_id, group_target_member_literal) in targets {
-                        if *group_target_struct_id == struct_id
-                            && *group_target_member_literal == member_literal
-                        {
-                            for instruction in &self.instructions {
-                                if let Instruction::Decorate {
-                                    target,
-                                    ref decoration,
-                                } = instruction
-                                {
-                                    if target == decoration_group && find_decoration(decoration) {
-                                        return Some(decoration);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                _ => (),
-            };
-        }
-        None
-    }
-
-    /// Returns the params held by the Decoration::BuiltIn for the specified struct id
-    /// Searches OpMemberDecorate and OpGroupMemberDecorate
-    /// Returns None if such a decoration does not exist
-    ///
-    /// This function does not need a member_literal argument because the spirv spec requires that a
-    /// struct must contain either all builtin or all non-builtin members.
-    pub fn get_member_decoration_builtin_params(&self, struct_id: Id) -> Option<&BuiltIn> {
-        for instruction in &self.instructions {
-            match instruction {
-                Instruction::MemberDecorate {
-                    structure_type,
-                    decoration: Decoration::BuiltIn { built_in },
-                    ..
-                } if *structure_type == struct_id => {
-                    return Some(built_in);
-                }
-                Instruction::GroupMemberDecorate {
-                    decoration_group,
-                    ref targets,
-                } => {
-                    for (group_target_struct_id, _) in targets {
-                        if *group_target_struct_id == struct_id {
-                            for instruction in &self.instructions {
-                                if let Instruction::Decorate {
-                                    target,
-                                    decoration: Decoration::BuiltIn { built_in },
-                                } = instruction
-                                {
-                                    if target == decoration_group {
-                                        return Some(built_in);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                _ => (),
-            };
-        }
-        None
     }
 }

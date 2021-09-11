@@ -177,6 +177,12 @@ fn instruction_output(members: &[InstructionMember], spec_constant: bool) -> Tok
         },
     );
 
+    let doc = if spec_constant {
+        "An instruction that is used as the operand of the `SpecConstantOp` instruction."
+    } else {
+        "A parsed SPIR-V instruction."
+    };
+
     let enum_name = if spec_constant {
         format_ident!("SpecConstantInstruction")
     } else {
@@ -199,31 +205,12 @@ fn instruction_output(members: &[InstructionMember], spec_constant: bool) -> Tok
                 }
             },
         );
-        let result_type_id_items = members.iter().filter_map(
-            |InstructionMember {
-                 name,
-                 has_result_type_id,
-                 ..
-             }| {
-                if *has_result_type_id {
-                    Some(quote! { Self::#name { result_type_id, .. } })
-                } else {
-                    None
-                }
-            },
-        );
 
         quote! {
+            /// Returns the `Id` that is assigned by this instruction, if any.
             pub fn result_id(&self) -> Option<Id> {
                 match self {
                     #(#result_id_items)|* => Some(*result_id),
-                    _ => None
-                }
-            }
-
-            pub fn result_type_id(&self) -> Option<Id> {
-                match self {
-                    #(#result_type_id_items)|* => Some(*result_type_id),
                     _ => None
                 }
             }
@@ -238,6 +225,7 @@ fn instruction_output(members: &[InstructionMember], spec_constant: bool) -> Tok
 
     quote! {
         #[derive(Clone, Debug, PartialEq)]
+        #[doc=#doc]
         pub enum #enum_name {
             #(#struct_items)*
         }
