@@ -169,7 +169,7 @@ impl UnsafeDescriptorPool {
                                  device"
                 );
 
-                variable_descriptor_counts.push(l.variable_descriptor_count().unwrap_or(0));
+                variable_descriptor_counts.push(l.variable_descriptor_count());
                 l.internal_object()
             })
             .collect();
