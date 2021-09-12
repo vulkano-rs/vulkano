@@ -22,3 +22,5 @@ png = "0.17"
 time = "0.3"
 serde = { version = "1.0", features = ["derive"] }
 ron = "0.6"
+rand = "0.8.4"
+
