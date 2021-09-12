@@ -75,6 +75,7 @@ Usage:
     Enter: Randomize color palette
     Equals/Minus: Increase/Decrease max iterations
     F: Toggle fullscreen
+    Right mouse: Stop movement in Julia (mouse position determines c)
     Esc: Quit\
         "
         );
