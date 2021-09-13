@@ -37,10 +37,32 @@ use crate::memory::pool::MemoryPool;
 use crate::memory::pool::MemoryPoolAlloc;
 use crate::memory::pool::PotentialDedicatedAllocation;
 use crate::memory::pool::StdMemoryPoolAlloc;
-use crate::memory::{DedicatedAlloc, DeviceMemoryAllocError, ExternalMemoryHandleType};
+use crate::memory::DedicatedAlloc;
+#[cfg(any(
+    target_os = "linux",
+    target_os = "dragonflybsd",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd"
+))]
+use crate::memory::{DeviceMemoryAllocError, ExternalMemoryHandleType};
 use crate::sync::AccessError;
 use crate::sync::Sharing;
+#[cfg(any(
+    target_os = "linux",
+    target_os = "dragonflybsd",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd"
+))]
 use crate::DeviceSize;
+#[cfg(any(
+    target_os = "linux",
+    target_os = "dragonflybsd",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd"
+))]
 use std::fs::File;
 use std::hash::Hash;
 use std::hash::Hasher;
