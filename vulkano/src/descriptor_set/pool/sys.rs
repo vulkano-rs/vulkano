@@ -157,6 +157,8 @@ impl UnsafeDescriptorPool {
     where
         I: IntoIterator<Item = &'l DescriptorSetLayout>,
     {
+        let mut variable_descriptor_counts: SmallVec<[_; 8]> = SmallVec::new();
+        
         let layouts: SmallVec<[_; 8]> = layouts
             .into_iter()
             .map(|l| {
@@ -166,17 +168,20 @@ impl UnsafeDescriptorPool {
                     "Tried to allocate from a pool with a set layout of a different \
                                  device"
                 );
+
+                variable_descriptor_counts.push(l.variable_descriptor_count());
                 l.internal_object()
             })
             .collect();
 
-        self.alloc_impl(&layouts)
+        self.alloc_impl(&layouts, &variable_descriptor_counts)
     }
 
     // Actual implementation of `alloc`. Separated so that it is not inlined.
     unsafe fn alloc_impl(
         &mut self,
         layouts: &SmallVec<[ash::vk::DescriptorSetLayout; 8]>,
+        variable_descriptor_counts: &SmallVec<[u32; 8]>,
     ) -> Result<UnsafeDescriptorPoolAllocIter, DescriptorPoolAllocError> {
         let num = layouts.len();
 
@@ -186,10 +191,25 @@ impl UnsafeDescriptorPool {
             });
         }
 
+        let variable_desc_count_alloc_info = if variable_descriptor_counts.iter().any(|c| *c != 0) {
+            Some(ash::vk::DescriptorSetVariableDescriptorCountAllocateInfo {
+                descriptor_set_count: layouts.len() as u32,
+                p_descriptor_counts: variable_descriptor_counts.as_ptr(),
+                .. Default::default()
+            })
+        } else {
+            None
+        };
+
         let infos = ash::vk::DescriptorSetAllocateInfo {
             descriptor_pool: self.pool,
             descriptor_set_count: layouts.len() as u32,
             p_set_layouts: layouts.as_ptr(),
+            p_next: if let Some(next) = variable_desc_count_alloc_info.as_ref() {
+                next as *const _ as *const _
+            } else {
+                ptr::null()
+            },
             ..Default::default()
         };
 
