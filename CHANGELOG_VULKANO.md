@@ -71,11 +71,11 @@
   - `add_image` can be used when building a descriptor set, to provide an image to a combined image sampler descriptor that has immutable samplers.
 - Updated dependencies:
   - png 0.16 > 0.17
-  - spirv_headers 1.5 > spirv 0.2 (crate was renamed and reversioned)
   - time 0.2 > 0.3
 - `AttachmentImage::current_layer_levels_access()` now returns the correct range which solves pipeline barriers only affecting the first layers of of a multi-layer `AttachmentImage`.
 - A new Vulkano-shaders macro option `shaders` to compile several shaders in a single macro invocation producing generated Rust structs common for all specified shaders without duplications. This feature improves type-safe interoperability between shaders.
 - Fixed CommandBufferExecFuture adding the command buffer to queue submission after being flushed.
+- Added a `spirv` module to the main crate, which contains an auto-generated parser for SPIR-V files, and various other utilities that can be used to analyze shaders at runtime.
 
 # Version 0.25.0 (2021-08-10)
 
