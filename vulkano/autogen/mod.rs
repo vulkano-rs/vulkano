@@ -7,8 +7,19 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use self::spirv_grammar::SpirvGrammar;
 use indexmap::IndexMap;
-use std::{collections::HashMap, env, fmt::Display, fs::File, io::{BufWriter, Write}, path::Path, process::Command};
+use lazy_static::lazy_static;
+use regex::Regex;
+use std::{
+    collections::HashMap,
+    env,
+    fmt::Display,
+    fs::File,
+    io::{BufWriter, Write},
+    path::Path,
+    process::Command,
+};
 use vk_parse::{
     EnumSpec, EnumsChild, Extension, ExtensionChild, Feature, InterfaceItem, Registry,
     RegistryChild, Type, TypeCodeMarkup, TypeSpec, TypesChild,
@@ -19,16 +30,20 @@ mod features;
 mod fns;
 mod formats;
 mod properties;
+mod spirv;
+mod spirv_grammar;
 
 pub fn autogen() {
-    let registry = get_registry("vk.xml");
-    let data = RegistryData::new(&registry);
+    let registry = get_vk_registry("vk.xml");
+    let vk_data = VkRegistryData::new(&registry);
+    let spirv_grammar = get_spirv_grammar("spirv.core.grammar.json");
 
-    extensions::write(&data);
-    features::write(&data);
-    formats::write(&data);
-    fns::write(&data);
-    properties::write(&data);
+    extensions::write(&vk_data);
+    features::write(&vk_data);
+    formats::write(&vk_data);
+    fns::write(&vk_data);
+    properties::write(&vk_data);
+    spirv::write(&spirv_grammar);
 }
 
 fn write_file(file: impl AsRef<Path>, source: impl AsRef<str>, content: impl Display) {
@@ -50,7 +65,7 @@ fn write_file(file: impl AsRef<Path>, source: impl AsRef<str>, content: impl Dis
     Command::new("rustfmt").arg(&path).status().ok();
 }
 
-fn get_registry<P: AsRef<Path> + ?Sized>(path: &P) -> Registry {
+fn get_vk_registry<P: AsRef<Path> + ?Sized>(path: &P) -> Registry {
     let (registry, errors) = vk_parse::parse_file(path.as_ref()).unwrap();
 
     if !errors.is_empty() {
@@ -64,7 +79,7 @@ fn get_registry<P: AsRef<Path> + ?Sized>(path: &P) -> Registry {
     registry
 }
 
-pub struct RegistryData<'r> {
+pub struct VkRegistryData<'r> {
     pub header_version: u16,
     pub extensions: IndexMap<&'r str, &'r Extension>,
     pub features: IndexMap<&'r str, &'r Feature>,
@@ -72,7 +87,7 @@ pub struct RegistryData<'r> {
     pub types: HashMap<&'r str, (&'r Type, Vec<&'r str>)>,
 }
 
-impl<'r> RegistryData<'r> {
+impl<'r> VkRegistryData<'r> {
     fn new(registry: &'r Registry) -> Self {
         let aliases = Self::get_aliases(&registry);
         let extensions = Self::get_extensions(&registry);
@@ -85,7 +100,7 @@ impl<'r> RegistryData<'r> {
         let types = Self::get_types(&registry, &aliases, &features, &extensions);
         let header_version = Self::get_header_version(&registry);
 
-        RegistryData {
+        VkRegistryData {
             header_version,
             extensions,
             features,
@@ -106,11 +121,9 @@ impl<'r> RegistryData<'r> {
                                 }
                             }
                         }
-    
                         None
                     });
                 }
-    
                 None
             })
             .unwrap()
@@ -136,7 +149,7 @@ impl<'r> RegistryData<'r> {
             .flatten()
             .collect()
     }
-    
+
     fn get_extensions(registry: &Registry) -> IndexMap<&str, &Extension> {
         let iter = registry
             .0
@@ -155,7 +168,7 @@ impl<'r> RegistryData<'r> {
                 None
             })
             .flatten();
-    
+
         let extensions: HashMap<&str, &Extension> =
             iter.clone().map(|ext| (ext.name.as_str(), ext)).collect();
         let mut names: Vec<_> = iter.map(|ext| ext.name.as_str()).collect();
@@ -168,10 +181,10 @@ impl<'r> RegistryData<'r> {
                 (2, name.to_owned())
             }
         });
-    
+
         names.iter().map(|&name| (name, extensions[name])).collect()
     }
-    
+
     fn get_features(registry: &Registry) -> IndexMap<&str, &Feature> {
         registry
             .0
@@ -180,12 +193,12 @@ impl<'r> RegistryData<'r> {
                 if let RegistryChild::Feature(feat) = child {
                     return Some((feat.name.as_str(), feat));
                 }
-    
+
                 None
             })
             .collect()
     }
-    
+
     fn get_formats<'a>(
         registry: &'a Registry,
         features: impl IntoIterator<Item = &'a ExtensionChild>,
@@ -233,7 +246,7 @@ impl<'r> RegistryData<'r> {
             )
             .collect()
     }
-    
+
     fn get_types<'a>(
         registry: &'a Registry,
         aliases: &HashMap<&'a str, &'a str>,
@@ -258,7 +271,7 @@ impl<'r> RegistryData<'r> {
             })
             .flatten()
             .collect();
-    
+
         features
             .iter()
             .map(|(name, feature)| (name, &feature.children))
@@ -288,10 +301,81 @@ impl<'r> RegistryData<'r> {
                         }
                     });
             });
-    
+
         types
             .into_iter()
             .filter(|(_key, val)| !val.1.is_empty())
             .collect()
+    }
+}
+
+pub fn get_spirv_grammar<P: AsRef<Path> + ?Sized>(path: &P) -> SpirvGrammar {
+    let mut grammar = SpirvGrammar::new(path);
+
+    // Remove duplicate opcodes and enum values, preferring "more official" suffixes
+    grammar
+        .instructions
+        .sort_by_key(|instruction| (instruction.opcode, suffix_key(&instruction.opname)));
+    grammar
+        .instructions
+        .dedup_by_key(|instruction| instruction.opcode);
+
+    grammar
+        .operand_kinds
+        .iter_mut()
+        .filter(|operand_kind| operand_kind.category == "BitEnum")
+        .for_each(|operand_kind| {
+            operand_kind.enumerants.sort_by_key(|enumerant| {
+                let value = enumerant
+                    .value
+                    .as_str()
+                    .unwrap()
+                    .strip_prefix("0x")
+                    .unwrap();
+                (
+                    u32::from_str_radix(value, 16).unwrap(),
+                    suffix_key(&enumerant.enumerant),
+                )
+            });
+            operand_kind.enumerants.dedup_by_key(|enumerant| {
+                let value = enumerant
+                    .value
+                    .as_str()
+                    .unwrap()
+                    .strip_prefix("0x")
+                    .unwrap();
+                u32::from_str_radix(value, 16).unwrap()
+            });
+        });
+
+    grammar
+        .operand_kinds
+        .iter_mut()
+        .filter(|operand_kind| operand_kind.category == "ValueEnum")
+        .for_each(|operand_kind| {
+            operand_kind.enumerants.sort_by_key(|enumerant| {
+                (enumerant.value.as_u64(), suffix_key(&enumerant.enumerant))
+            });
+            operand_kind
+                .enumerants
+                .dedup_by_key(|enumerant| enumerant.value.as_u64());
+        });
+
+    grammar
+}
+
+lazy_static! {
+    static ref VENDOR_SUFFIXES: Regex = Regex::new(r"(?:AMD|GOOGLE|INTEL|NV)$").unwrap();
+}
+
+fn suffix_key(name: &str) -> u32 {
+    if VENDOR_SUFFIXES.is_match(name) {
+        3
+    } else if name.ends_with("EXT") {
+        2
+    } else if name.ends_with("KHR") {
+        1
+    } else {
+        0
     }
 }

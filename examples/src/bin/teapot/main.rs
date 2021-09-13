@@ -227,15 +227,9 @@ fn main() {
                 let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
                 let mut set_builder = PersistentDescriptorSet::start(layout.clone());
 
-                set_builder
-                    .add_buffer(uniform_buffer_subbuffer)
-                    .unwrap();
+                set_builder.add_buffer(uniform_buffer_subbuffer).unwrap();
 
-                let set = Arc::new(
-                    set_builder
-                        .build()
-                        .unwrap()
-                );
+                let set = Arc::new(set_builder.build().unwrap());
 
                 let (image_num, suboptimal, acquire_future) =
                     match swapchain::acquire_next_image(swapchain.clone(), None) {

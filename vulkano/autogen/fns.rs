@@ -7,24 +7,26 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{write_file, RegistryData};
+use super::{write_file, VkRegistryData};
 use heck::{CamelCase, SnakeCase};
 use indexmap::IndexMap;
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
 use vk_parse::{Extension, ExtensionChild, InterfaceItem};
 
-pub fn write(data: &RegistryData) {
+pub fn write(vk_data: &VkRegistryData) {
     let entry_fns_output = fns_output(&[], "Entry");
     let instance_fns_output = fns_output(
-        &extension_fns_members("instance", &data.extensions),
+        &extension_fns_members("instance", &vk_data.extensions),
         "Instance",
     );
-    let device_fns_output =
-        fns_output(&extension_fns_members("device", &data.extensions), "Device");
+    let device_fns_output = fns_output(
+        &extension_fns_members("device", &vk_data.extensions),
+        "Device",
+    );
     write_file(
         "fns.rs",
-        format!("vk.xml header version {}", data.header_version),
+        format!("vk.xml header version {}", vk_data.header_version),
         quote! {
             #entry_fns_output
             #instance_fns_output
