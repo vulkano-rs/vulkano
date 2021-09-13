@@ -22,6 +22,14 @@ use crate::image::ImageInner;
 use crate::image::ImageLayout;
 use crate::image::ImageUsage;
 use crate::image::SampleCount;
+#[cfg(any(
+    target_os = "linux",
+    target_os = "dragonflybsd",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd"
+))]
+use crate::memory::pool::alloc_dedicated_with_exportable_fd;
 use crate::memory::pool::AllocFromRequirementsFilter;
 use crate::memory::pool::AllocLayout;
 use crate::memory::pool::MappingRequirement;
@@ -29,9 +37,11 @@ use crate::memory::pool::MemoryPool;
 use crate::memory::pool::MemoryPoolAlloc;
 use crate::memory::pool::PotentialDedicatedAllocation;
 use crate::memory::pool::StdMemoryPoolAlloc;
-use crate::memory::DedicatedAlloc;
+use crate::memory::{DedicatedAlloc, DeviceMemoryAllocError, ExternalMemoryHandleType};
 use crate::sync::AccessError;
 use crate::sync::Sharing;
+use crate::DeviceSize;
+use std::fs::File;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::iter::Empty;
@@ -474,6 +484,115 @@ impl AttachmentImage {
             initialized: AtomicBool::new(false),
             gpu_lock: AtomicUsize::new(0),
         }))
+    }
+
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "dragonflybsd",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    ))]
+    pub fn new_with_exportable_fd(
+        device: Arc<Device>,
+        dimensions: [u32; 2],
+        array_layers: u32,
+        format: Format,
+        base_usage: ImageUsage,
+        samples: SampleCount,
+    ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
+        // TODO: check dimensions against the max_framebuffer_width/height/layers limits
+
+        let aspects = format.aspects();
+        let is_depth = aspects.depth || aspects.stencil;
+
+        let usage = ImageUsage {
+            color_attachment: !is_depth,
+            depth_stencil_attachment: is_depth,
+            ..base_usage
+        };
+
+        let (image, mem_reqs) = unsafe {
+            let dims = ImageDimensions::Dim2d {
+                width: dimensions[0],
+                height: dimensions[1],
+                array_layers,
+            };
+
+            UnsafeImage::new(
+                device.clone(),
+                usage,
+                format,
+                ImageCreateFlags::none(),
+                dims,
+                samples,
+                1,
+                Sharing::Exclusive::<Empty<u32>>,
+                false,
+                false,
+            )?
+        };
+
+        let memory = alloc_dedicated_with_exportable_fd(
+            device.clone(),
+            &mem_reqs,
+            AllocLayout::Optimal,
+            MappingRequirement::DoNotMap,
+            DedicatedAlloc::Image(&image),
+            |t| {
+                if t.is_device_local() {
+                    AllocFromRequirementsFilter::Preferred
+                } else {
+                    AllocFromRequirementsFilter::Allowed
+                }
+            },
+        )?;
+
+        debug_assert!((memory.offset() % mem_reqs.alignment) == 0);
+        unsafe {
+            image.bind_memory(memory.memory(), memory.offset())?;
+        }
+
+        Ok(Arc::new(AttachmentImage {
+            image,
+            memory,
+            format,
+            attachment_layout: if is_depth {
+                ImageLayout::DepthStencilAttachmentOptimal
+            } else {
+                ImageLayout::ColorAttachmentOptimal
+            },
+            initialized: AtomicBool::new(false),
+            gpu_lock: AtomicUsize::new(0),
+        }))
+    }
+
+    /// Exports posix file descriptor for the allocated memory
+    /// requires `khr_external_memory_fd` and `khr_external_memory` extensions to be loaded.
+    /// Only works on Linux.
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "dragonflybsd",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    ))]
+    pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryAllocError> {
+        self.memory
+            .memory()
+            .export_fd(ExternalMemoryHandleType::posix())
+    }
+
+    /// Return the size of the allocated memory (used for e.g. with cuda)
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "dragonflybsd",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    ))]
+    pub fn mem_size(&self) -> DeviceSize {
+        self.memory.memory().size()
     }
 }
 

@@ -642,7 +642,8 @@ impl DeviceMemory {
 
         // VUID-VkMemoryGetFdInfoKHR-handleType-00671: "handleType must have been included in
         // VkExportMemoryAllocateInfo::handleTypes when memory was created".
-        if (bits & ash::vk::ExternalMemoryHandleTypeFlags::from(self.handle_types)).is_empty() {
+        let self_bits = ash::vk::ExternalMemoryHandleTypeFlags::from(self.handle_types);
+        if (bits & self_bits).is_empty() {
             return Err(DeviceMemoryAllocError::SpecViolation(671))?;
         }
 

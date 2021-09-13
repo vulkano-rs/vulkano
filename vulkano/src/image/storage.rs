@@ -23,6 +23,14 @@ use crate::image::ImageInner;
 use crate::image::ImageLayout;
 use crate::image::ImageUsage;
 use crate::image::SampleCount;
+#[cfg(any(
+    target_os = "linux",
+    target_os = "dragonflybsd",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd"
+))]
+use crate::memory::pool::alloc_dedicated_with_exportable_fd;
 use crate::memory::pool::AllocFromRequirementsFilter;
 use crate::memory::pool::AllocLayout;
 use crate::memory::pool::MappingRequirement;
@@ -30,10 +38,12 @@ use crate::memory::pool::MemoryPool;
 use crate::memory::pool::MemoryPoolAlloc;
 use crate::memory::pool::PotentialDedicatedAllocation;
 use crate::memory::pool::StdMemoryPool;
-use crate::memory::DedicatedAlloc;
+use crate::memory::{DedicatedAlloc, DeviceMemoryAllocError, ExternalMemoryHandleType};
 use crate::sync::AccessError;
 use crate::sync::Sharing;
+use crate::DeviceSize;
 use smallvec::SmallVec;
+use std::fs::File;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::sync::atomic::AtomicUsize;
@@ -165,6 +175,107 @@ impl StorageImage {
             queue_families,
             gpu_lock: AtomicUsize::new(0),
         }))
+    }
+
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "dragonflybsd",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    ))]
+    pub fn new_with_exportable_fd<'a, I>(
+        device: Arc<Device>,
+        dimensions: ImageDimensions,
+        format: Format,
+        usage: ImageUsage,
+        flags: ImageCreateFlags,
+        queue_families: I,
+    ) -> Result<Arc<StorageImage>, ImageCreationError>
+    where
+        I: IntoIterator<Item = QueueFamily<'a>>,
+    {
+        let queue_families = queue_families
+            .into_iter()
+            .map(|f| f.id())
+            .collect::<SmallVec<[u32; 4]>>();
+
+        let (image, mem_reqs) = unsafe {
+            let sharing = if queue_families.len() >= 2 {
+                Sharing::Concurrent(queue_families.iter().cloned())
+            } else {
+                Sharing::Exclusive
+            };
+
+            UnsafeImage::new(
+                device.clone(),
+                usage,
+                format,
+                flags,
+                dimensions,
+                SampleCount::Sample1,
+                1,
+                sharing,
+                false,
+                false,
+            )?
+        };
+
+        let memory = alloc_dedicated_with_exportable_fd(
+            device.clone(),
+            &mem_reqs,
+            AllocLayout::Optimal,
+            MappingRequirement::DoNotMap,
+            DedicatedAlloc::Image(&image),
+            |t| {
+                if t.is_device_local() {
+                    AllocFromRequirementsFilter::Preferred
+                } else {
+                    AllocFromRequirementsFilter::Allowed
+                }
+            },
+        )?;
+        debug_assert!((memory.offset() % mem_reqs.alignment) == 0);
+        unsafe {
+            image.bind_memory(memory.memory(), memory.offset())?;
+        }
+
+        Ok(Arc::new(StorageImage {
+            image,
+            memory,
+            dimensions,
+            format,
+            queue_families,
+            gpu_lock: AtomicUsize::new(0),
+        }))
+    }
+
+    /// Exports posix file descriptor for the allocated memory
+    /// requires `khr_external_memory_fd` and `khr_external_memory` extensions to be loaded.
+    /// Only works on Linux.
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "dragonflybsd",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    ))]
+    pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryAllocError> {
+        self.memory
+            .memory()
+            .export_fd(ExternalMemoryHandleType::posix())
+    }
+
+    /// Return the size of the allocated memory (used for e.g. with cuda)
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "dragonflybsd",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    ))]
+    pub fn mem_size(&self) -> DeviceSize {
+        self.memory.memory().size()
     }
 }
 
