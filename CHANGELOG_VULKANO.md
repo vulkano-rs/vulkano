@@ -42,6 +42,8 @@
   - The dynamic buffers parameter of `GraphicsPipelineBuilder::with_auto_layout` has been replaced with a closure that can be used to make tweaks to the descriptor set layouts as needed.
   - `ComputePipeline::new` has an additional closure parameter identical to the one described above.
 - **Breaking** `AttachmentImage::dimensions()` now returns `[u32; 3]` which includes the layer count.
+- **Breaking** Buffers and Images that have `with_exportable_fd` use dedicated allocation, thus requiring khr_get_memory_requirements2 and khr_dedicated_allocation on top of already needed khr_external_memory and khr_external_memory_fd.
+- Added `export_fd` and `with_exportable_fd` to `AttachmentImage` and `StorageImage` as well as `mem_size` which is needed when using those images with Cuda.
 - Vulkano-shaders: added extension/feature checks for more SPIR-V capabilities.
 - Added support for surface creation from a CAMetalLayer using VK_EXT_metal_surface.
 - Bug fixed. Image layout passed to SubImage is now being respected
