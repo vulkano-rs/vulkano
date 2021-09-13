@@ -14,6 +14,7 @@ use crate::format::Format;
 use crate::format::IncompatiblePixelsType;
 use crate::format::Pixel;
 use crate::image::ImageAccess;
+use crate::image::ImageDimensions;
 use crate::image::SampleCount;
 use crate::DeviceSize;
 use crate::VulkanObject;
@@ -104,6 +105,32 @@ where
 
     if image_offset[2] + image_size[2] > image_dimensions.depth() {
         return Err(CheckCopyBufferImageError::ImageCoordinatesOutOfRange);
+    }
+
+    match image.dimensions() {
+        ImageDimensions::Dim1d { .. } => {
+            // VUID-vkCmdCopyBufferToImage-srcImage-00199
+            if image_offset[1] != 0 || image_size[1] != 1 {
+                return Err(CheckCopyBufferImageError::ImageCoordinatesOutOfRange);
+            }
+
+            // VUID-vkCmdCopyBufferToImage-srcImage-00201
+            if image_offset[2] != 0 || image_size[2] != 1 {
+                return Err(CheckCopyBufferImageError::ImageCoordinatesOutOfRange);
+            }
+        }
+        ImageDimensions::Dim2d { .. } => {
+            // VUID-vkCmdCopyBufferToImage-srcImage-00201
+            if image_offset[2] != 0 || image_size[2] != 1 {
+                return Err(CheckCopyBufferImageError::ImageCoordinatesOutOfRange);
+            }
+        }
+        ImageDimensions::Dim3d { .. } => {
+            // VUID-vkCmdCopyBufferToImage-baseArrayLayer-00213
+            if image_first_layer != 0 || image_num_layers != 1 {
+                return Err(CheckCopyBufferImageError::ImageCoordinatesOutOfRange);
+            }
+        }
     }
 
     Px::ensure_accepts(image.format())?;
