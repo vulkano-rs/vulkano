@@ -384,7 +384,7 @@ impl DescriptorSetBuilder {
                     ));
                 }
 
-                if !image_view.can_be_sampled(&immutable_samplers[self.cur_binding as usize]) {
+                if !image_view.can_be_sampled(&immutable_samplers[descriptor.array_element as usize]) {
                     return Err(DescriptorSetError::IncompatibleImageViewSampler);
                 }
 

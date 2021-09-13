@@ -66,6 +66,53 @@ where
     mem_ty
 }
 
+/// Allocate dedicated memory with exportable fd.
+/// Memory pool memory always exports the same fd, thus dedicated is preferred.
+#[cfg(any(
+    target_os = "linux",
+    target_os = "dragonflybsd",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd"
+))]
+pub(crate) fn alloc_dedicated_with_exportable_fd<F>(
+    device: Arc<Device>,
+    requirements: &MemoryRequirements,
+    layout: AllocLayout,
+    map: MappingRequirement,
+    dedicated: DedicatedAlloc,
+    filter: F,
+) -> Result<PotentialDedicatedAllocation<StdMemoryPoolAlloc>, DeviceMemoryAllocError>
+where
+    F: FnMut(MemoryType) -> AllocFromRequirementsFilter,
+{
+    assert!(device.enabled_extensions().khr_external_memory_fd);
+    assert!(device.enabled_extensions().khr_external_memory);
+
+    let mem_ty = choose_allocation_memory_type(&device, requirements, filter, map);
+
+    match map {
+        MappingRequirement::Map => {
+            let mem = DeviceMemory::dedicated_alloc_and_map_with_exportable_fd(
+                device.clone(),
+                mem_ty,
+                requirements.size,
+                dedicated,
+            )?;
+            Ok(PotentialDedicatedAllocation::DedicatedMapped(mem))
+        }
+        MappingRequirement::DoNotMap => {
+            let mem = DeviceMemory::dedicated_alloc_with_exportable_fd(
+                device.clone(),
+                mem_ty,
+                requirements.size,
+                dedicated,
+            )?;
+            Ok(PotentialDedicatedAllocation::Dedicated(mem))
+        }
+    }
+}
+
 /// Pool of GPU-visible memory that can be allocated from.
 pub unsafe trait MemoryPool: DeviceOwned {
     /// Object that represents a single allocation. Its destructor should free the chunk.
@@ -93,23 +140,6 @@ pub unsafe trait MemoryPool: DeviceOwned {
     /// - Panics if `alignment` is 0.
     ///
     fn alloc_generic(
-        &self,
-        ty: MemoryType,
-        size: DeviceSize,
-        alignment: DeviceSize,
-        layout: AllocLayout,
-        map: MappingRequirement,
-    ) -> Result<Self::Alloc, DeviceMemoryAllocError>;
-
-    /// Same as `alloc_generic` but with exportable memory option.
-    #[cfg(any(
-        target_os = "linux",
-        target_os = "dragonflybsd",
-        target_os = "freebsd",
-        target_os = "netbsd",
-        target_os = "openbsd"
-    ))]
-    fn alloc_generic_with_exportable_fd(
         &self,
         ty: MemoryType,
         size: DeviceSize,
@@ -196,75 +226,6 @@ pub unsafe trait MemoryPool: DeviceOwned {
             }
             MappingRequirement::DoNotMap => {
                 let mem = DeviceMemory::dedicated_alloc(
-                    self.device().clone(),
-                    mem_ty,
-                    requirements.size,
-                    dedicated,
-                )?;
-                Ok(PotentialDedicatedAllocation::Dedicated(mem))
-            }
-        }
-    }
-
-    /// Same as `alloc_from_requirements` but with exportable fd option on Linux/BSD.
-    #[cfg(any(
-        target_os = "linux",
-        target_os = "dragonflybsd",
-        target_os = "freebsd",
-        target_os = "netbsd",
-        target_os = "openbsd"
-    ))]
-    fn alloc_from_requirements_with_exportable_fd<F>(
-        &self,
-        requirements: &MemoryRequirements,
-        layout: AllocLayout,
-        map: MappingRequirement,
-        dedicated: DedicatedAlloc,
-        filter: F,
-    ) -> Result<PotentialDedicatedAllocation<Self::Alloc>, DeviceMemoryAllocError>
-    where
-        F: FnMut(MemoryType) -> AllocFromRequirementsFilter,
-    {
-        assert!(self.device().enabled_extensions().khr_external_memory_fd);
-        assert!(self.device().enabled_extensions().khr_external_memory);
-
-        let mem_ty = choose_allocation_memory_type(self.device(), requirements, filter, map);
-
-        if !requirements.prefer_dedicated
-            || !self.device().enabled_extensions().khr_dedicated_allocation
-        {
-            let alloc = self.alloc_generic_with_exportable_fd(
-                mem_ty,
-                requirements.size,
-                requirements.alignment,
-                layout,
-                map,
-            )?;
-            return Ok(alloc.into());
-        }
-        if let DedicatedAlloc::None = dedicated {
-            let alloc = self.alloc_generic_with_exportable_fd(
-                mem_ty,
-                requirements.size,
-                requirements.alignment,
-                layout,
-                map,
-            )?;
-            return Ok(alloc.into());
-        }
-
-        match map {
-            MappingRequirement::Map => {
-                let mem = DeviceMemory::dedicated_alloc_and_map_with_exportable_fd(
-                    self.device().clone(),
-                    mem_ty,
-                    requirements.size,
-                    dedicated,
-                )?;
-                Ok(PotentialDedicatedAllocation::DedicatedMapped(mem))
-            }
-            MappingRequirement::DoNotMap => {
-                let mem = DeviceMemory::dedicated_alloc_with_exportable_fd(
                     self.device().clone(),
                     mem_ty,
                     requirements.size,

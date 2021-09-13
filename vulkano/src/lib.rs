@@ -90,6 +90,7 @@ pub mod memory;
 pub mod pipeline;
 pub mod query;
 pub mod sampler;
+pub mod spirv;
 pub mod swapchain;
 pub mod sync;
 

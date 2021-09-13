@@ -42,6 +42,8 @@
   - The dynamic buffers parameter of `GraphicsPipelineBuilder::with_auto_layout` has been replaced with a closure that can be used to make tweaks to the descriptor set layouts as needed.
   - `ComputePipeline::new` has an additional closure parameter identical to the one described above.
 - **Breaking** `AttachmentImage::dimensions()` now returns `[u32; 3]` which includes the layer count.
+- **Breaking** Buffers and Images that have `with_exportable_fd` use dedicated allocation, thus requiring khr_get_memory_requirements2 and khr_dedicated_allocation on top of already needed khr_external_memory and khr_external_memory_fd.
+- Added `export_fd` and `with_exportable_fd` to `AttachmentImage` and `StorageImage` as well as `mem_size` which is needed when using those images with Cuda.
 - Vulkano-shaders: added extension/feature checks for more SPIR-V capabilities.
 - Added support for surface creation from a CAMetalLayer using VK_EXT_metal_surface.
 - Bug fixed. Image layout passed to SubImage is now being respected
@@ -69,11 +71,13 @@
   - `add_image` can be used when building a descriptor set, to provide an image to a combined image sampler descriptor that has immutable samplers.
 - Updated dependencies:
   - png 0.16 > 0.17
-  - spirv_headers 1.5 > spirv 0.2 (crate was renamed and reversioned)
   - time 0.2 > 0.3
 - `AttachmentImage::current_layer_levels_access()` now returns the correct range which solves pipeline barriers only affecting the first layers of of a multi-layer `AttachmentImage`.
 - A new Vulkano-shaders macro option `shaders` to compile several shaders in a single macro invocation producing generated Rust structs common for all specified shaders without duplications. This feature improves type-safe interoperability between shaders.
 - Fixed CommandBufferExecFuture adding the command buffer to queue submission after being flushed.
+- Added a `spirv` module to the main crate, which contains an auto-generated parser for SPIR-V files, and various other utilities that can be used to analyze shaders at runtime.
+- `DescriptorSetLayout` now has `variable_descriptor_count` which returns the descriptor count in a variable count descriptor if present.
+- Additional copy buffer to image checks.
 
 # Version 0.25.0 (2021-08-10)
 

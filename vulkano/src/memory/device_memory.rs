@@ -358,11 +358,7 @@ impl<'a> DeviceMemoryBuilder<'a> {
                 .lock()
                 .expect("Poisoned mutex");
 
-            if *allocation_count
-                >= physical_device
-                    .properties()
-                    .max_memory_allocation_count
-            {
+            if *allocation_count >= physical_device.properties().max_memory_allocation_count {
                 return Err(DeviceMemoryAllocError::TooManyObjects);
             }
             let fns = self.device.fns();
@@ -642,7 +638,8 @@ impl DeviceMemory {
 
         // VUID-VkMemoryGetFdInfoKHR-handleType-00671: "handleType must have been included in
         // VkExportMemoryAllocateInfo::handleTypes when memory was created".
-        if (bits & ash::vk::ExternalMemoryHandleTypeFlags::from(self.handle_types)).is_empty() {
+        let self_bits = ash::vk::ExternalMemoryHandleTypeFlags::from(self.handle_types);
+        if (bits & self_bits).is_empty() {
             return Err(DeviceMemoryAllocError::SpecViolation(671))?;
         }
 

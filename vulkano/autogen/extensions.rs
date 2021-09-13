@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{write_file, RegistryData};
+use super::{write_file, VkRegistryData};
 use heck::SnakeCase;
 use indexmap::IndexMap;
 use proc_macro2::{Ident, Literal, TokenStream};
@@ -31,9 +31,9 @@ fn conflicts_extensions(name: &str) -> &'static [&'static str] {
     }
 }
 
-pub fn write(data: &RegistryData) {
-    write_device_extensions(data);
-    write_instance_extensions(data);
+pub fn write(vk_data: &VkRegistryData) {
+    write_device_extensions(vk_data);
+    write_instance_extensions(vk_data);
 }
 
 #[derive(Clone, Debug)]
@@ -62,19 +62,19 @@ enum ExtensionStatus {
     Deprecated(Option<Replacement>),
 }
 
-fn write_device_extensions(data: &RegistryData) {
+fn write_device_extensions(vk_data: &VkRegistryData) {
     write_file(
         "device_extensions.rs",
-        format!("vk.xml header version {}", data.header_version),
-        device_extensions_output(&extensions_members("device", &data.extensions)),
+        format!("vk.xml header version {}", vk_data.header_version),
+        device_extensions_output(&extensions_members("device", &vk_data.extensions)),
     );
 }
 
-fn write_instance_extensions(data: &RegistryData) {
+fn write_instance_extensions(vk_data: &VkRegistryData) {
     write_file(
         "instance_extensions.rs",
-        format!("vk.xml header version {}", data.header_version),
-        instance_extensions_output(&extensions_members("instance", &data.extensions)),
+        format!("vk.xml header version {}", vk_data.header_version),
+        instance_extensions_output(&extensions_members("instance", &vk_data.extensions)),
     );
 }
 

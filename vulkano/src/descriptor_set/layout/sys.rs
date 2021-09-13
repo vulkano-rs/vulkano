@@ -33,6 +33,8 @@ pub struct DescriptorSetLayout {
     desc: DescriptorSetDesc,
     // Number of descriptors.
     descriptors_count: DescriptorsCount,
+    // Number of descriptors in a variable count descriptor. Will be zero if no variable count descriptors are present.
+    variable_descriptor_count: u32,
 }
 
 impl DescriptorSetLayout {
@@ -50,6 +52,7 @@ impl DescriptorSetLayout {
     {
         let desc = desc.into();
         let mut descriptors_count = DescriptorsCount::zero();
+        let mut variable_descriptor_count = 0;
         let bindings = desc.bindings();
         let mut bindings_vk = Vec::with_capacity(bindings.len());
         let mut binding_flags_vk = Vec::with_capacity(bindings.len());
@@ -130,6 +133,7 @@ impl DescriptorSetLayout {
                     ));
                 }
 
+                variable_descriptor_count = desc.descriptor_count;
                 // TODO: should these be settable separately by the user?
                 binding_flags |= ash::vk::DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT;
                 binding_flags |= ash::vk::DescriptorBindingFlags::PARTIALLY_BOUND;
@@ -191,6 +195,7 @@ impl DescriptorSetLayout {
             device,
             desc,
             descriptors_count,
+            variable_descriptor_count,
         })
     }
 
@@ -202,6 +207,12 @@ impl DescriptorSetLayout {
     #[inline]
     pub fn descriptors_count(&self) -> &DescriptorsCount {
         &self.descriptors_count
+    }
+
+    /// Returns the number of descriptors in a variable count descriptor. This will return zero if there are no variable count descriptors present.
+    #[inline]
+    pub fn variable_descriptor_count(&self) -> u32 {
+        self.variable_descriptor_count
     }
 
     /// Returns the number of binding slots in the set.

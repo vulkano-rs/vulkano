@@ -304,8 +304,8 @@ impl From<OomError> for SemaphoreError {
 
 #[cfg(test)]
 mod tests {
-    use crate::VulkanObject;
     use crate::sync::Semaphore;
+    use crate::VulkanObject;
 
     #[test]
     fn semaphore_create() {

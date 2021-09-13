@@ -27,6 +27,9 @@ impl Version {
     pub const V1_0: Version = Version::major_minor(1, 0);
     pub const V1_1: Version = Version::major_minor(1, 1);
     pub const V1_2: Version = Version::major_minor(1, 2);
+    pub const V1_3: Version = Version::major_minor(1, 3);
+    pub const V1_4: Version = Version::major_minor(1, 4);
+    pub const V1_5: Version = Version::major_minor(1, 5);
 
     /// Constructs a `Version` from the given major and minor version numbers.
     #[inline]
