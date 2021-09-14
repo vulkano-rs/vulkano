@@ -18,7 +18,6 @@ use vulkano::device::{Device, DeviceExtensions, Features, Queue};
 use vulkano::format::Format;
 use vulkano::image::view::ImageView;
 use vulkano::image::{AttachmentImage, ImageUsage, ImageViewAbstract, SampleCount, SwapchainImage};
-use vulkano::instance::debug::DebugCallback;
 use vulkano::instance::Instance;
 use vulkano::instance::InstanceExtensions;
 use vulkano::swapchain::{
@@ -60,7 +59,6 @@ impl Default for RenderOptions {
 }
 
 pub struct Renderer {
-    _debug_callback: DebugCallback,
     _instance: Arc<Instance>,
     device: Arc<Device>,
     surface: Arc<Surface<Window>>,
@@ -83,27 +81,11 @@ impl Renderer {
         println!("Creating renderer for window size {:?}", opts.window_size);
         // Add instance extensions based on needs
         let instance_extensions = InstanceExtensions {
-            ext_debug_utils: true,
             ..vulkano_win::required_extensions()
         };
         // Create instance
-        #[cfg(not(target_os = "macos"))]
-        let layers = vec!["VK_LAYER_LUNARG_standard_validation"];
-        #[cfg(target_os = "macos")]
-        let layers = vec!["VK_LAYER_KHRONOS_validation"];
-        let _instance = Instance::new(None, Version::V1_2, &instance_extensions, layers)
+        let _instance = Instance::new(None, Version::V1_2, &instance_extensions, None)
             .expect("Failed to create instance");
-        // Create debug callback for printing vulkan errors and warnings
-        let _debug_callback = DebugCallback::errors_and_warnings(&_instance, |msg| {
-            println!(
-                "{} {:?} {:?}: {}",
-                msg.layer_prefix.unwrap_or("unknown"),
-                msg.ty,
-                msg.severity,
-                msg.description
-            );
-        })
-        .unwrap();
 
         // Get desired device
         let physical_device = PhysicalDevice::enumerate(&_instance)
@@ -150,7 +132,6 @@ impl Renderer {
         };
 
         Renderer {
-            _debug_callback,
             _instance,
             device,
             surface,
