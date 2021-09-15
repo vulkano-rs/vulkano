@@ -113,7 +113,7 @@
 //!  - How to perform the cycling between images in regard to vsync.
 //!
 //! You can query the supported values of all these properties with
-//! [`Surface::capabilities()]`](struct.Surface.html#method.capabilities).
+//! [`Surface::capabilities`](crate::swapchain::Surface::capabilities).
 //!
 //! ## Creating a swapchain
 //!
@@ -129,7 +129,7 @@
 //! ```
 //!
 //! Then, query the capabilities of the surface with
-//! [`Surface::capabilities()`](struct.Surface.html#method.capabilities)
+//! [`Surface::capabilities`](crate::swapchain::Surface::capabilities)
 //! and choose which values you are going to use.
 //!
 //! ```no_run
@@ -158,7 +158,7 @@
 //! # }
 //! ```
 //!
-//! Then, call [`Swapchain::new()`](struct.Swapchain.html#method.new).
+//! Then, call [`Swapchain::start`](crate::swapchain::Swapchain::start).
 //!
 //! ```no_run
 //! # use std::sync::Arc;

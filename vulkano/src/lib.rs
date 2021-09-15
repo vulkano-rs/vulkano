@@ -12,48 +12,48 @@
 //!
 //! # Brief summary of Vulkan
 //!
-//! - The [`Instance`](instance/struct.Instance.html) object is the API entry point. It is the
+//! - The [`Instance`](crate::instance::Instance) object is the API entry point. It is the
 //!   first object you must create before starting to use Vulkan.
 //!
-//! - The [`PhysicalDevice`](instance/struct.PhysicalDevice.html) object represents an
+//! - The [`PhysicalDevice`](crate::device::physical::PhysicalDevice) object represents an
 //!   implementation of Vulkan available on the system (eg. a graphics card, a software
 //!   implementation, etc.). Physical devices can be enumerated from an instance with
-//!   [`PhysicalDevice::enumerate()`](instance/struct.PhysicalDevice.html#method.enumerate).
+//!   [`PhysicalDevice::enumerate`](crate::device::physical::PhysicalDevice::enumerate).
 //!
 //! - Once you have chosen a physical device to use, you can create a
-//!   [`Device`](device/index.html) object from it. The `Device` is the most important
+//!   [`Device`](crate::device::Device) object from it. The `Device` is the most important
 //!   object of Vulkan, as it represents an open channel of communication with a physical device.
 //!   You always need to have one before you can do interesting things with Vulkan.
 //!
-//! - [*Buffers*](buffer/index.html) and [*images*](image/index.html) can be used to store data on
+//! - [*Buffers*](crate::buffer) and [*images*](crate::image) can be used to store data on
 //!   memory accessible by the GPU (or more generally by the Vulkan implementation). Buffers are
 //!   usually used to store information about vertices, lights, etc. or arbitrary data, while
 //!   images are used to store textures or multi-dimensional data.
 //!
-//! - In order to show something on the screen, you need a [`Swapchain`](swapchain/index.html).
+//! - In order to show something on the screen, you need a [`Swapchain`](crate::swapchain).
 //!   A `Swapchain` contains special `Image`s that correspond to the content of the window or the
 //!   monitor. When you *present* a swapchain, the content of one of these special images is shown
 //!   on the screen.
 //!
 //! - In order to ask the GPU to do something, you must create a
-//!   [*command buffer*](command_buffer/index.html). A command buffer contains a list of commands
+//!   [*command buffer*](crate::command_buffer). A command buffer contains a list of commands
 //!   that the GPU must perform. This can include copies between buffers and images, compute
 //!   operations, or graphics operations. For the work to start, the command buffer must then be
-//!   submitted to a [`Queue`](device/struct.Queue.html), which is obtained when you create the
+//!   submitted to a [`Queue`](crate::device::Queue), which is obtained when you create the
 //!   `Device`.
 //!
 //! - In order to be able to add a compute operation or a graphics operation to a command buffer,
 //!   you need to have created a [`ComputePipeline` or a `GraphicsPipeline`
-//!   object](pipeline/index.html) that describes the operation you want. These objects are usually
+//!   object](crate::pipeline) that describes the operation you want. These objects are usually
 //!   created during your program's initialization. `Shader`s are programs that the GPU will
-//!   execute as part of a pipeline. [*Descriptors*](descriptor/index.html) can be used to access
+//!   execute as part of a pipeline. [*Descriptor sets*](crate::descriptor_set) can be used to access
 //!   the content of buffers or images from within shaders.
 //!
-//! - For graphical operations, [`RenderPass`es and `Framebuffer`s](framebuffer/index.html)
+//! - For graphical operations, [`RenderPass`es and `Framebuffer`s](crate::render_pass)
 //!   describe on which images the implementation must draw upon.
 //!
 //! - Once you have built a *command buffer* that contains a list of commands, submitting it to the
-//!   GPU will return an object that implements [the `GpuFuture` trait](sync/index.html).
+//!   GPU will return an object that implements [the `GpuFuture` trait](crate::sync::GpuFuture).
 //!   `GpuFuture`s allow you to chain multiple submissions together and are essential to performing
 //!   multiple operations on multiple different GPU queues.
 //!

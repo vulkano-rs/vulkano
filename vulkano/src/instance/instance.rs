@@ -127,7 +127,7 @@ use std::sync::Arc;
 ///
 /// When creating an `Instance`, you have the possibility to pass a list of **layers** that will
 /// be activated on the newly-created instance. The list of available layers can be retrieved by
-/// calling [the `layers_list` function](fn.layers_list.html).
+/// calling [the `layers_list` function](crate::instance::layers_list).
 ///
 /// A layer is a component that will hook and potentially modify the Vulkan function calls.
 /// For example, activating a layer could add a frames-per-second counter on the screen, or it
@@ -194,7 +194,7 @@ impl ::std::panic::RefUnwindSafe for Instance {}
 impl Instance {
     /// Initializes a new instance of Vulkan.
     ///
-    /// See the documentation of `Instance` or of [the `instance` module](index.html) for more
+    /// See the documentation of `Instance` or of [the `instance` module](crate::instance) for more
     /// details.
     ///
     /// # Example

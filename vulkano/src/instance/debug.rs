@@ -30,7 +30,7 @@
 //! }).ok();
 //! ```
 //!
-//! The type of `msg` in the callback is [`Message`](struct.Message.html).
+//! The type of `msg` in the callback is [`Message`].
 //!
 //! Note that you must keep the `_callback` object alive for as long as you want your callback to
 //! be callable. If you don't store the return value of `DebugCallback`'s constructor in a

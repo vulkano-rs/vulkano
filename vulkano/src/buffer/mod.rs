@@ -16,24 +16,24 @@
 //!
 //! # Various kinds of buffers
 //!
-//! The low level implementation of a buffer is [`UnsafeBuffer`](sys/struct.UnsafeBuffer.html).
+//! The low level implementation of a buffer is [`UnsafeBuffer`](crate::buffer::sys::UnsafeBuffer).
 //! This type makes it possible to use all the features that Vulkan is capable of, but as its name
 //! tells it is unsafe to use.
 //!
 //! Instead you are encouraged to use one of the high-level wrappers that vulkano provides. Which
 //! wrapper to use depends on the way you are going to use the buffer:
 //!
-//! - A [`DeviceLocalBuffer`](device_local/struct.DeviceLocalBuffer.html) designates a buffer
+//! - A [`DeviceLocalBuffer`](crate::buffer::device_local::DeviceLocalBuffer) designates a buffer
 //!   usually located in video memory and whose content can't be directly accessed by your
 //!   application. Accessing this buffer from the GPU is generally faster compared to accessing a
 //!   CPU-accessible buffer.
-//! - An [`ImmutableBuffer`](immutable/struct.ImmutableBuffer.html) designates a buffer in video
+//! - An [`ImmutableBuffer`](crate::buffer::immutable::ImmutableBuffer) designates a buffer in video
 //!   memory and whose content can only be written at creation. Compared to `DeviceLocalBuffer`,
 //!   this buffer requires less CPU processing because we don't need to keep track of the reads
 //!   and writes.
-//! - A [`CpuBufferPool`](cpu_pool/struct.CpuBufferPool.html) is a ring buffer that can be used to
+//! - A [`CpuBufferPool`](crate::buffer::cpu_pool::CpuBufferPool) is a ring buffer that can be used to
 //!   transfer data between the CPU and the GPU at a high rate.
-//! - A [`CpuAccessibleBuffer`](cpu_access/struct.CpuAccessibleBuffer.html) is a simple buffer that
+//! - A [`CpuAccessibleBuffer`](crate::buffer::cpu_access::CpuAccessibleBuffer) is a simple buffer that
 //!   can be used to prototype. It may be removed from vulkano in the far future.
 //!
 //! Here is a quick way to choose which buffer to use. Do you often need to read or write
