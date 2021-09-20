@@ -37,11 +37,11 @@
 //! # The `AutoCommandBufferBuilder`
 //!
 //! The most basic (and recommended) way to create a command buffer is to create a
-//! [`AutoCommandBufferBuilder`](struct.AutoCommandBufferBuilder.html), then record commands to it.
+//! [`AutoCommandBufferBuilder`], then record commands to it.
 //! When you are done adding commands, build it to obtain either a `PrimaryAutoCommandBuffer` or
 //! `SecondAutoCommandBuffer`.
 //!
-//! Once built, use [the `PrimaryCommandBuffer` trait](trait.PrimaryCommandBuffer.html) to submit the
+//! Once built, use [the `PrimaryCommandBuffer` trait](crate::command_buffer::PrimaryCommandBuffer) to submit the
 //! command buffer. Submitting a command buffer returns an object that implements the `GpuFuture` trait
 //! and that represents the moment when the execution will end on the GPU.
 //!

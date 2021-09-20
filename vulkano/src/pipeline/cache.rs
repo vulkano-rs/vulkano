@@ -18,8 +18,8 @@
 //! doesn't exist.
 //!
 //! Once that is done, you can extract the data from the cache and store it. See the documentation
-//! of [`get_data`](struct.PipelineCache.html#method.get_data) for example of how to store the data
-//! on the disk, and [`with_data`](struct.PipelineCache.html#method.with_data) for how to reload it.
+//! of [`get_data`](crate::pipeline::cache::PipelineCache::get_data) for example of how to store the data
+//! on the disk, and [`with_data`](crate::pipeline::cache::PipelineCache::with_data) for how to reload it.
 
 use crate::check_errors;
 use crate::device::Device;
@@ -31,7 +31,7 @@ use std::sync::Arc;
 
 /// Opaque cache that contains pipeline objects.
 ///
-/// See [the documentation of the module](index.html) for more info.
+/// See [the documentation of the module](crate::pipeline::cache) for more info.
 pub struct PipelineCache {
     device: Arc<Device>,
     cache: ash::vk::PipelineCache,

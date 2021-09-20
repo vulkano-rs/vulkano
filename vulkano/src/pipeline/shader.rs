@@ -531,7 +531,7 @@ impl fmt::Display for ShaderInterfaceMismatchError {
 ///
 /// Note that it is the shader module that chooses which type that implements
 /// `SpecializationConstants` it is possible to pass when creating the pipeline, through [the
-/// `EntryPointAbstract` trait](trait.EntryPointAbstract.html). Therefore there is generally no
+/// `EntryPointAbstract` trait](crate::pipeline::shader::EntryPointAbstract). Therefore there is generally no
 /// point to implement this trait yourself, unless you are also writing your own implementation of
 /// `EntryPointAbstract`.
 ///

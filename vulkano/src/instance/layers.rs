@@ -23,9 +23,9 @@ use crate::Version;
 /// Queries the list of layers that are available when creating an instance.
 ///
 /// On success, this function returns an iterator that produces
-/// [`LayerProperties`](struct.LayerProperties.html) objects. In order to enable a layer, you need
+/// [`LayerProperties`](crate::instance::LayerProperties) objects. In order to enable a layer, you need
 /// to pass its name (returned by `LayerProperties::name()`) when creating the
-/// [`Instance`](struct.Instance.html).
+/// [`Instance`](crate::instance::Instance).
 ///
 /// This function returns an error if it failed to load the Vulkan library.
 ///

@@ -20,7 +20,7 @@
 //!
 //! Whenever you ask the GPU to start an operation by using a function of the vulkano library (for
 //! example executing a command buffer), this function will return a *future*. A future is an
-//! object that implements [the `GpuFuture` trait](trait.GpuFuture.html) and that represents the
+//! object that implements [the `GpuFuture` trait](crate::sync::GpuFuture) and that represents the
 //! point in time when this operation is over.
 //!
 //! No function in vulkano immediately sends an operation to the GPU (with the exception of some
