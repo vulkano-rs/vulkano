@@ -496,6 +496,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             .unwrap()
     }
 
+    /// Returns the inner `SyncCommandBufferBuilder`, which can be queried for the current state.
+    #[inline]
+    pub fn inner(&self) -> &SyncCommandBufferBuilder {
+        &self.inner
+    }
+
     /// Binds descriptor sets for future dispatch or draw calls.
     ///
     /// # Panics
