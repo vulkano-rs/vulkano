@@ -78,6 +78,7 @@
 - Added a `spirv` module to the main crate, which contains an auto-generated parser for SPIR-V files, and various other utilities that can be used to analyze shaders at runtime.
 - `DescriptorSetLayout` now has `variable_descriptor_count` which returns the descriptor count in a variable count descriptor if present.
 - Additional copy buffer to image checks.
+- Added an `inner` method to `AutoCommandBufferBuilder`, which returns the inner `SyncCommandBufferBuilder` and can be used to query the current state/bindings.
 
 # Version 0.25.0 (2021-08-10)
 
