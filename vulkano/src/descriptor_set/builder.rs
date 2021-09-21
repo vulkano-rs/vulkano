@@ -341,6 +341,7 @@ impl DescriptorSetBuilder {
         });
 
         self.resources.add_buffer_view(self.cur_binding, view);
+        descriptor.array_element += 1;
 
         if leave_array {
             self.leave_array()
