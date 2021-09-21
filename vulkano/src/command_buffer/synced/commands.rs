@@ -3121,7 +3121,8 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
                     // be disturbed.
                     let current_layouts = state.pipeline_layout.descriptor_set_layouts();
                     let new_layouts = pipeline_layout.descriptor_set_layouts();
-                    (0..first_set + num_descriptor_sets).find(|&num| {
+                    let max = (current_layouts.len() as u32).min(first_set + num_descriptor_sets);
+                    (0..max).find(|&num| {
                         let num = num as usize;
                         !current_layouts[num].is_compatible_with(&new_layouts[num])
                     })
