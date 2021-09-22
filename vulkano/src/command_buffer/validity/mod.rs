@@ -11,6 +11,9 @@
 
 pub use self::blit_image::{check_blit_image, CheckBlitImageError};
 pub use self::clear_color_image::{check_clear_color_image, CheckClearColorImageError};
+pub use self::clear_depth_stencil_image::{
+    check_clear_depth_stencil_image, CheckClearDepthStencilImageError,
+};
 pub use self::copy_buffer::{check_copy_buffer, CheckCopyBuffer, CheckCopyBufferError};
 pub use self::copy_image::{check_copy_image, CheckCopyImageError};
 pub use self::copy_image_buffer::{
@@ -39,6 +42,7 @@ pub(super) use {
 
 mod blit_image;
 mod clear_color_image;
+mod clear_depth_stencil_image;
 mod copy_buffer;
 mod copy_image;
 mod copy_image_buffer;
