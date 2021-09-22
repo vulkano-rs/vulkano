@@ -3135,7 +3135,7 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
                         .retain(|&num, _| num < invalidate_from);
                     state.pipeline_layout = pipeline_layout;
                 } else if (first_set + num_descriptor_sets) as usize
-                    > state.pipeline_layout.descriptor_set_layouts().len()
+                    >= state.pipeline_layout.descriptor_set_layouts().len()
                 {
                     // New layout is a superset of the old one.
                     state.pipeline_layout = pipeline_layout;
