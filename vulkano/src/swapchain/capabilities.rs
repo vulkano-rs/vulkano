@@ -156,37 +156,15 @@ impl SupportedPresentModes {
 
     /// Returns an iterator to the list of supported present modes.
     #[inline]
-    pub fn iter(&self) -> SupportedPresentModesIter {
-        SupportedPresentModesIter(self.clone())
-    }
-}
-
-/// Enumeration of the `PresentMode`s that are supported.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct SupportedPresentModesIter(SupportedPresentModes);
-
-impl Iterator for SupportedPresentModesIter {
-    type Item = PresentMode;
-
-    #[inline]
-    fn next(&mut self) -> Option<PresentMode> {
-        if self.0.immediate {
-            self.0.immediate = false;
-            return Some(PresentMode::Immediate);
-        }
-        if self.0.mailbox {
-            self.0.mailbox = false;
-            return Some(PresentMode::Mailbox);
-        }
-        if self.0.fifo {
-            self.0.fifo = false;
-            return Some(PresentMode::Fifo);
-        }
-        if self.0.relaxed {
-            self.0.relaxed = false;
-            return Some(PresentMode::Relaxed);
-        }
-        None
+    pub fn iter(&self) -> impl Iterator<Item = PresentMode> {
+        let moved = *self;
+        std::array::IntoIter::new([
+            PresentMode::Immediate,
+            PresentMode::Mailbox,
+            PresentMode::Fifo,
+            PresentMode::Relaxed,
+        ])
+        .filter(move |&mode| moved.supports(mode))
     }
 }
 
@@ -308,37 +286,15 @@ impl SupportedCompositeAlpha {
 
     /// Returns an iterator to the list of supported composite alpha.
     #[inline]
-    pub fn iter(&self) -> SupportedCompositeAlphaIter {
-        SupportedCompositeAlphaIter(self.clone())
-    }
-}
-
-/// Enumeration of the `CompositeAlpha` that are supported.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct SupportedCompositeAlphaIter(SupportedCompositeAlpha);
-
-impl Iterator for SupportedCompositeAlphaIter {
-    type Item = CompositeAlpha;
-
-    #[inline]
-    fn next(&mut self) -> Option<CompositeAlpha> {
-        if self.0.opaque {
-            self.0.opaque = false;
-            return Some(CompositeAlpha::Opaque);
-        }
-        if self.0.pre_multiplied {
-            self.0.pre_multiplied = false;
-            return Some(CompositeAlpha::PreMultiplied);
-        }
-        if self.0.post_multiplied {
-            self.0.post_multiplied = false;
-            return Some(CompositeAlpha::PostMultiplied);
-        }
-        if self.0.inherit {
-            self.0.inherit = false;
-            return Some(CompositeAlpha::Inherit);
-        }
-        None
+    pub fn iter(&self) -> impl Iterator<Item = CompositeAlpha> {
+        let moved = *self;
+        std::array::IntoIter::new([
+            CompositeAlpha::Opaque,
+            CompositeAlpha::PreMultiplied,
+            CompositeAlpha::PostMultiplied,
+            CompositeAlpha::Inherit,
+        ])
+        .filter(move |&mode| moved.supports(mode))
     }
 }
 
@@ -460,57 +416,20 @@ impl SupportedSurfaceTransforms {
 
     /// Returns an iterator to the list of supported composite alpha.
     #[inline]
-    pub fn iter(&self) -> SupportedSurfaceTransformsIter {
-        SupportedSurfaceTransformsIter(self.clone())
-    }
-}
-
-/// Enumeration of the `SurfaceTransform` that are supported.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct SupportedSurfaceTransformsIter(SupportedSurfaceTransforms);
-
-impl Iterator for SupportedSurfaceTransformsIter {
-    type Item = SurfaceTransform;
-
-    #[inline]
-    fn next(&mut self) -> Option<SurfaceTransform> {
-        if self.0.identity {
-            self.0.identity = false;
-            return Some(SurfaceTransform::Identity);
-        }
-        if self.0.rotate90 {
-            self.0.rotate90 = false;
-            return Some(SurfaceTransform::Rotate90);
-        }
-        if self.0.rotate180 {
-            self.0.rotate180 = false;
-            return Some(SurfaceTransform::Rotate180);
-        }
-        if self.0.rotate270 {
-            self.0.rotate270 = false;
-            return Some(SurfaceTransform::Rotate270);
-        }
-        if self.0.horizontal_mirror {
-            self.0.horizontal_mirror = false;
-            return Some(SurfaceTransform::HorizontalMirror);
-        }
-        if self.0.horizontal_mirror_rotate90 {
-            self.0.horizontal_mirror_rotate90 = false;
-            return Some(SurfaceTransform::HorizontalMirrorRotate90);
-        }
-        if self.0.horizontal_mirror_rotate180 {
-            self.0.horizontal_mirror_rotate180 = false;
-            return Some(SurfaceTransform::HorizontalMirrorRotate180);
-        }
-        if self.0.horizontal_mirror_rotate270 {
-            self.0.horizontal_mirror_rotate270 = false;
-            return Some(SurfaceTransform::HorizontalMirrorRotate270);
-        }
-        if self.0.inherit {
-            self.0.inherit = false;
-            return Some(SurfaceTransform::Inherit);
-        }
-        None
+    pub fn iter(&self) -> impl Iterator<Item = SurfaceTransform> {
+        let moved = *self;
+        std::array::IntoIter::new([
+            SurfaceTransform::Identity,
+            SurfaceTransform::Rotate90,
+            SurfaceTransform::Rotate180,
+            SurfaceTransform::Rotate270,
+            SurfaceTransform::HorizontalMirror,
+            SurfaceTransform::HorizontalMirrorRotate90,
+            SurfaceTransform::HorizontalMirrorRotate180,
+            SurfaceTransform::HorizontalMirrorRotate270,
+            SurfaceTransform::Inherit,
+        ])
+        .filter(move |&mode| moved.supports(mode))
     }
 }
 

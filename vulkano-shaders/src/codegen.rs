@@ -216,7 +216,7 @@ pub(super) fn reflect<'a, I>(
     types_registry: &'a mut HashMap<String, RegisteredType>,
 ) -> Result<(TokenStream, TokenStream), Error>
 where
-    I: Iterator<Item = &'a str>,
+    I: IntoIterator<Item = &'a str>,
 {
     let struct_name = Ident::new(&format!("{}Shader", prefix), Span::call_site());
     let spirv = Spirv::new(words)?;
@@ -325,7 +325,7 @@ where
         entry_points_inside_impl.push(entry_point);
     }
 
-    let include_bytes = input_paths.map(|s| {
+    let include_bytes = input_paths.into_iter().map(|s| {
         quote! {
             // using include_bytes here ensures that changing the shader will force recompilation.
             // The bytes themselves can be optimized out by the compiler as they are unused.

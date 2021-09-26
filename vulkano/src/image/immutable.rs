@@ -331,7 +331,8 @@ impl ImmutableImage {
     >
     where
         Px: Pixel + Send + Sync + Clone + 'static,
-        I: ExactSizeIterator<Item = Px>,
+        I: IntoIterator<Item = Px>,
+        I::IntoIter: ExactSizeIterator,
     {
         let source = CpuAccessibleBuffer::from_iter(
             queue.device().clone(),

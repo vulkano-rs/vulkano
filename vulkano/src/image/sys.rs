@@ -101,11 +101,13 @@ impl UnsafeImage {
     ) -> Result<(UnsafeImage, MemoryRequirements), ImageCreationError>
     where
         Mi: Into<MipmapsCount>,
-        I: Iterator<Item = u32>,
+        I: IntoIterator<Item = u32>,
     {
         let sharing = match sharing {
             Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, SmallVec::<[u32; 8]>::new()),
-            Sharing::Concurrent(ids) => (ash::vk::SharingMode::CONCURRENT, ids.collect()),
+            Sharing::Concurrent(ids) => {
+                (ash::vk::SharingMode::CONCURRENT, ids.into_iter().collect())
+            }
         };
 
         UnsafeImage::new_impl(
