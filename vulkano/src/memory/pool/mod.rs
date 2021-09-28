@@ -245,7 +245,7 @@ pub enum AllocFromRequirementsFilter {
 }
 
 /// Object that represents a single allocation. Its destructor should free the chunk.
-pub unsafe trait MemoryPoolAlloc {
+pub unsafe trait MemoryPoolAlloc: Send + Sync {
     /// Returns the memory object from which this is allocated. Returns `None` if the memory is
     /// not mapped.
     fn mapped_memory(&self) -> Option<&MappedDeviceMemory>;

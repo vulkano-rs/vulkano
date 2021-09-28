@@ -421,8 +421,8 @@ impl SyncCommandBufferBuilder {
         regions: R,
     ) -> Result<(), SyncCommandBufferBuilderError>
     where
-        S: ImageAccess + Send + Sync + 'static,
-        D: ImageAccess + Send + Sync + 'static,
+        S: ImageAccess + 'static,
+        D: ImageAccess + 'static,
         R: IntoIterator<Item = UnsafeCommandBufferBuilderImageCopy> + Send + Sync + 'static,
     {
         struct Cmd<S, D, R> {
@@ -435,8 +435,8 @@ impl SyncCommandBufferBuilder {
 
         impl<S, D, R> Command for Cmd<S, D, R>
         where
-            S: ImageAccess + Send + Sync + 'static,
-            D: ImageAccess + Send + Sync + 'static,
+            S: ImageAccess + 'static,
+            D: ImageAccess + 'static,
             R: IntoIterator<Item = UnsafeCommandBufferBuilderImageCopy>,
         {
             fn name(&self) -> &'static str {
@@ -542,8 +542,8 @@ impl SyncCommandBufferBuilder {
         filter: Filter,
     ) -> Result<(), SyncCommandBufferBuilderError>
     where
-        S: ImageAccess + Send + Sync + 'static,
-        D: ImageAccess + Send + Sync + 'static,
+        S: ImageAccess + 'static,
+        D: ImageAccess + 'static,
         R: IntoIterator<Item = UnsafeCommandBufferBuilderImageBlit> + Send + Sync + 'static,
     {
         struct Cmd<S, D, R> {
@@ -557,8 +557,8 @@ impl SyncCommandBufferBuilder {
 
         impl<S, D, R> Command for Cmd<S, D, R>
         where
-            S: ImageAccess + Send + Sync + 'static,
-            D: ImageAccess + Send + Sync + 'static,
+            S: ImageAccess + 'static,
+            D: ImageAccess + 'static,
             R: IntoIterator<Item = UnsafeCommandBufferBuilderImageBlit>,
         {
             fn name(&self) -> &'static str {
@@ -663,7 +663,7 @@ impl SyncCommandBufferBuilder {
         regions: R,
     ) -> Result<(), SyncCommandBufferBuilderError>
     where
-        I: ImageAccess + Send + Sync + 'static,
+        I: ImageAccess + 'static,
         R: IntoIterator<Item = UnsafeCommandBufferBuilderColorImageClear> + Send + Sync + 'static,
     {
         struct Cmd<I, R> {
@@ -675,7 +675,7 @@ impl SyncCommandBufferBuilder {
 
         impl<I, R> Command for Cmd<I, R>
         where
-            I: ImageAccess + Send + Sync + 'static,
+            I: ImageAccess + 'static,
             R: IntoIterator<Item = UnsafeCommandBufferBuilderColorImageClear>
                 + Send
                 + Sync
@@ -858,7 +858,7 @@ impl SyncCommandBufferBuilder {
     ) -> Result<(), SyncCommandBufferBuilderError>
     where
         S: BufferAccess + 'static,
-        D: ImageAccess + Send + Sync + 'static,
+        D: ImageAccess + 'static,
         R: IntoIterator<Item = UnsafeCommandBufferBuilderBufferImageCopy> + Send + Sync + 'static,
     {
         struct Cmd<S, D, R> {
@@ -871,7 +871,7 @@ impl SyncCommandBufferBuilder {
         impl<S, D, R> Command for Cmd<S, D, R>
         where
             S: BufferAccess + 'static,
-            D: ImageAccess + Send + Sync + 'static,
+            D: ImageAccess + 'static,
             R: IntoIterator<Item = UnsafeCommandBufferBuilderBufferImageCopy>,
         {
             fn name(&self) -> &'static str {
@@ -973,7 +973,7 @@ impl SyncCommandBufferBuilder {
         regions: R,
     ) -> Result<(), SyncCommandBufferBuilderError>
     where
-        S: ImageAccess + Send + Sync + 'static,
+        S: ImageAccess + 'static,
         D: BufferAccess + 'static,
         R: IntoIterator<Item = UnsafeCommandBufferBuilderBufferImageCopy> + Send + Sync + 'static,
     {
@@ -986,7 +986,7 @@ impl SyncCommandBufferBuilder {
 
         impl<S, D, R> Command for Cmd<S, D, R>
         where
-            S: ImageAccess + Send + Sync + 'static,
+            S: ImageAccess + 'static,
             D: BufferAccess + 'static,
             R: IntoIterator<Item = UnsafeCommandBufferBuilderBufferImageCopy>,
         {

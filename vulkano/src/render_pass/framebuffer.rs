@@ -48,7 +48,7 @@ use std::sync::Arc;
 /// use vulkano::render_pass::Framebuffer;
 ///
 /// # let render_pass: Arc<RenderPass> = return;
-/// # let view: Arc<vulkano::image::view::ImageView<Arc<vulkano::image::AttachmentImage<vulkano::format::Format>>>> = return;
+/// # let view: Arc<vulkano::image::view::ImageView<Arc<vulkano::image::AttachmentImage>>> = return;
 /// // let render_pass: Arc<_> = ...;
 /// let framebuffer = Framebuffer::start(render_pass.clone())
 ///     .add(view).unwrap()

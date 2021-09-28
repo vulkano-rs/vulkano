@@ -613,7 +613,7 @@ pub unsafe trait ImageViewAbstract: Send + Sync {
 
 unsafe impl<I> ImageViewAbstract for ImageView<I>
 where
-    I: ImageAccess + Send + Sync,
+    I: ImageAccess,
 {
     #[inline]
     fn image(&self) -> &dyn ImageAccess {

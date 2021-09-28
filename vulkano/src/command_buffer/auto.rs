@@ -830,8 +830,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         filter: Filter,
     ) -> Result<&mut Self, BlitImageError>
     where
-        S: ImageAccess + Send + Sync + 'static,
-        D: ImageAccess + Send + Sync + 'static,
+        S: ImageAccess + 'static,
+        D: ImageAccess + 'static,
     {
         unsafe {
             if !self.queue_family().supports_graphics() {
@@ -902,7 +902,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         color: ClearValue,
     ) -> Result<&mut Self, ClearColorImageError>
     where
-        I: ImageAccess + Send + Sync + 'static,
+        I: ImageAccess + 'static,
     {
         let layers = image.dimensions().array_layers();
         let levels = image.mipmap_levels();
@@ -926,7 +926,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         color: ClearValue,
     ) -> Result<&mut Self, ClearColorImageError>
     where
-        I: ImageAccess + Send + Sync + 'static,
+        I: ImageAccess + 'static,
     {
         unsafe {
             if !self.queue_family().supports_graphics() && !self.queue_family().supports_compute() {
@@ -977,8 +977,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         destination: D,
     ) -> Result<&mut Self, CopyBufferError>
     where
-        S: TypedBufferAccess<Content = T> + Send + Sync + 'static,
-        D: TypedBufferAccess<Content = T> + Send + Sync + 'static,
+        S: TypedBufferAccess<Content = T> + 'static,
+        D: TypedBufferAccess<Content = T> + 'static,
         T: ?Sized,
     {
         unsafe {
@@ -1002,8 +1002,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         count: DeviceSize,
     ) -> Result<&mut Self, CopyBufferError>
     where
-        S: TypedBufferAccess<Content = [T]> + Send + Sync + 'static,
-        D: TypedBufferAccess<Content = [T]> + Send + Sync + 'static,
+        S: TypedBufferAccess<Content = [T]> + 'static,
+        D: TypedBufferAccess<Content = [T]> + 'static,
     {
         self.ensure_outside_render_pass()?;
 
@@ -1033,8 +1033,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         destination: D,
     ) -> Result<&mut Self, CopyBufferImageError>
     where
-        S: TypedBufferAccess<Content = [Px]> + Send + Sync + 'static,
-        D: ImageAccess + Send + Sync + 'static,
+        S: TypedBufferAccess<Content = [Px]> + 'static,
+        D: ImageAccess + 'static,
         Px: Pixel,
     {
         self.ensure_outside_render_pass()?;
@@ -1055,8 +1055,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         mipmap: u32,
     ) -> Result<&mut Self, CopyBufferImageError>
     where
-        S: TypedBufferAccess<Content = [Px]> + Send + Sync + 'static,
-        D: ImageAccess + Send + Sync + 'static,
+        S: TypedBufferAccess<Content = [Px]> + 'static,
+        D: ImageAccess + 'static,
         Px: Pixel,
     {
         unsafe {
@@ -1136,8 +1136,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         layer_count: u32,
     ) -> Result<&mut Self, CopyImageError>
     where
-        S: ImageAccess + Send + Sync + 'static,
-        D: ImageAccess + Send + Sync + 'static,
+        S: ImageAccess + 'static,
+        D: ImageAccess + 'static,
     {
         unsafe {
             self.ensure_outside_render_pass()?;
@@ -1203,8 +1203,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         destination: D,
     ) -> Result<&mut Self, CopyBufferImageError>
     where
-        S: ImageAccess + Send + Sync + 'static,
-        D: TypedBufferAccess<Content = [Px]> + Send + Sync + 'static,
+        S: ImageAccess + 'static,
+        D: TypedBufferAccess<Content = [Px]> + 'static,
         Px: Pixel,
     {
         self.ensure_outside_render_pass()?;
@@ -1225,8 +1225,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         mipmap: u32,
     ) -> Result<&mut Self, CopyBufferImageError>
     where
-        S: ImageAccess + Send + Sync + 'static,
-        D: TypedBufferAccess<Content = [Px]> + Send + Sync + 'static,
+        S: ImageAccess + 'static,
+        D: TypedBufferAccess<Content = [Px]> + 'static,
         Px: Pixel,
     {
         unsafe {
@@ -1936,7 +1936,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         data: Dd,
     ) -> Result<&mut Self, UpdateBufferError>
     where
-        B: TypedBufferAccess<Content = D> + Send + Sync + 'static,
+        B: TypedBufferAccess<Content = D> + 'static,
         D: ?Sized,
         Dd: SafeDeref<Target = D> + Send + Sync + 'static,
     {

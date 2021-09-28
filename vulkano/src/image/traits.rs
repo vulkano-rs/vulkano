@@ -20,7 +20,7 @@ use std::hash::Hash;
 use std::hash::Hasher;
 
 /// Trait for types that represent the way a GPU can access an image.
-pub unsafe trait ImageAccess {
+pub unsafe trait ImageAccess: Send + Sync {
     /// Returns the inner unsafe image object used by this image.
     fn inner(&self) -> ImageInner;
 
@@ -222,7 +222,7 @@ pub struct ImageInner<'a> {
 
 unsafe impl<T> ImageAccess for T
 where
-    T: SafeDeref,
+    T: SafeDeref + Send + Sync,
     T::Target: ImageAccess,
 {
     #[inline]
@@ -289,16 +289,16 @@ where
     }
 }
 
-impl PartialEq for dyn ImageAccess + Send + Sync {
+impl PartialEq for dyn ImageAccess {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.inner() == other.inner()
     }
 }
 
-impl Eq for dyn ImageAccess + Send + Sync {}
+impl Eq for dyn ImageAccess {}
 
-impl Hash for dyn ImageAccess + Send + Sync {
+impl Hash for dyn ImageAccess {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);

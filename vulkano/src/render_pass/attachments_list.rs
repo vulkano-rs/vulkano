@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 /// A list of attachments.
 // TODO: rework this trait
-pub unsafe trait AttachmentsList {
+pub unsafe trait AttachmentsList: Send + Sync {
     fn num_attachments(&self) -> usize;
 
     fn as_image_view_access(&self, index: usize) -> Option<&dyn ImageViewAbstract>;
@@ -23,7 +23,7 @@ pub unsafe trait AttachmentsList {
 
 unsafe impl<T> AttachmentsList for T
 where
-    T: SafeDeref,
+    T: SafeDeref + Send + Sync,
     T::Target: AttachmentsList,
 {
     #[inline]

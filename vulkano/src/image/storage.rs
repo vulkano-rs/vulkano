@@ -427,7 +427,7 @@ where
 {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        ImageAccess::inner(self) == ImageAccess::inner(other)
+        self.inner() == other.inner()
     }
 }
 
@@ -439,7 +439,7 @@ where
 {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
-        ImageAccess::inner(self).hash(state);
+        self.inner().hash(state);
     }
 }
 
