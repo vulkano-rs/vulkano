@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::Command;
+use super::*;
 use crate::buffer::BufferAccess;
 use crate::buffer::TypedBufferAccess;
 use crate::command_buffer::synced::builder::KeyTy;
@@ -55,7 +55,6 @@ use crate::sync::PipelineStages;
 use crate::DeviceSize;
 use crate::SafeDeref;
 use crate::VulkanObject;
-use fnv::FnvHashMap;
 use smallvec::SmallVec;
 use std::borrow::Cow;
 use std::collections::hash_map::Entry;
@@ -64,46 +63,6 @@ use std::mem;
 use std::ops::Range;
 use std::ptr;
 use std::sync::{Arc, Mutex};
-
-/// Holds the current binding and setting state.
-#[derive(Debug, Default)]
-pub(super) struct CurrentState {
-    descriptor_sets: FnvHashMap<PipelineBindPoint, DescriptorSetState>,
-    index_buffer: Option<Arc<dyn Command + Send + Sync>>,
-    pipeline_compute: Option<Arc<dyn Command + Send + Sync>>,
-    pipeline_graphics: Option<Arc<dyn Command + Send + Sync>>,
-    vertex_buffers: FnvHashMap<u32, Arc<dyn Command + Send + Sync>>,
-
-    push_constants: Option<PushConstantState>,
-
-    blend_constants: Option<[f32; 4]>,
-    depth_bias: Option<(f32, f32, f32)>,
-    depth_bounds: Option<(f32, f32)>,
-    line_width: Option<f32>,
-    stencil_compare_mask: StencilState,
-    stencil_reference: StencilState,
-    stencil_write_mask: StencilState,
-    scissor: FnvHashMap<u32, Scissor>,
-    viewport: FnvHashMap<u32, Viewport>,
-}
-
-#[derive(Debug)]
-struct DescriptorSetState {
-    descriptor_sets: FnvHashMap<u32, Arc<dyn Command + Send + Sync>>,
-    pipeline_layout: Arc<PipelineLayout>,
-}
-
-#[derive(Debug)]
-struct PushConstantState {
-    pipeline_layout: Arc<PipelineLayout>,
-}
-
-/// Holds the current stencil state of a `SyncCommandBufferBuilder`.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct StencilState {
-    pub front: Option<u32>,
-    pub back: Option<u32>,
-}
 
 impl SyncCommandBufferBuilder {
     /// Calls `vkCmdBeginQuery` on the builder.
@@ -248,39 +207,6 @@ impl SyncCommandBufferBuilder {
         }
     }
 
-    /// Returns the descriptor set currently bound to a given set number, or `None` if nothing has
-    /// been bound yet.
-    pub fn bound_descriptor_set(
-        &self,
-        pipeline_bind_point: PipelineBindPoint,
-        set_num: u32,
-    ) -> Option<(&dyn DescriptorSet, &[u32])> {
-        self.current_state
-            .descriptor_sets
-            .get(&pipeline_bind_point)
-            .and_then(|state| {
-                state
-                    .descriptor_sets
-                    .get(&set_num)
-                    .map(|cmd| cmd.bound_descriptor_set(set_num))
-            })
-    }
-
-    /// Returns the pipeline layout that describes all currently bound descriptor sets.
-    ///
-    /// This can be the layout used to perform the last bind operation, but it can also be the
-    /// layout of an earlier bind if it was compatible with more recent binds.
-    #[inline]
-    pub fn bound_descriptor_sets_pipeline_layout(
-        &self,
-        pipeline_bind_point: PipelineBindPoint,
-    ) -> Option<&Arc<PipelineLayout>> {
-        self.current_state
-            .descriptor_sets
-            .get(&pipeline_bind_point)
-            .map(|state| &state.pipeline_layout)
-    }
-
     /// Calls `vkCmdBindIndexBuffer` on the builder.
     #[inline]
     pub unsafe fn bind_index_buffer<B>(&mut self, buffer: B, index_ty: IndexType)
@@ -313,14 +239,6 @@ impl SyncCommandBufferBuilder {
         self.current_state.index_buffer = self.commands.last().cloned();
     }
 
-    /// Returns the index buffer currently bound, or `None` if nothing has been bound yet.
-    pub fn bound_index_buffer(&self) -> Option<(&dyn BufferAccess, IndexType)> {
-        self.current_state
-            .index_buffer
-            .as_ref()
-            .map(|cmd| cmd.bound_index_buffer())
-    }
-
     /// Calls `vkCmdBindPipeline` on the builder with a compute pipeline.
     #[inline]
     pub unsafe fn bind_pipeline_compute(&mut self, pipeline: Arc<ComputePipeline>) {
@@ -344,14 +262,6 @@ impl SyncCommandBufferBuilder {
 
         self.append_command(Cmd { pipeline }, &[]).unwrap();
         self.current_state.pipeline_compute = self.commands.last().cloned();
-    }
-
-    /// Returns the compute pipeline currently bound, or `None` if nothing has been bound yet.
-    pub fn bound_pipeline_compute(&self) -> Option<&Arc<ComputePipeline>> {
-        self.current_state
-            .pipeline_compute
-            .as_ref()
-            .map(|cmd| cmd.bound_pipeline_compute())
     }
 
     /// Calls `vkCmdBindPipeline` on the builder with a graphics pipeline.
@@ -379,14 +289,6 @@ impl SyncCommandBufferBuilder {
         self.current_state.pipeline_graphics = self.commands.last().cloned();
     }
 
-    /// Returns the graphics pipeline currently bound, or `None` if nothing has been bound yet.
-    pub fn bound_pipeline_graphics(&self) -> Option<&Arc<GraphicsPipeline>> {
-        self.current_state
-            .pipeline_graphics
-            .as_ref()
-            .map(|cmd| cmd.bound_pipeline_graphics())
-    }
-
     /// Starts the process of binding vertex buffers. Returns an intermediate struct which can be
     /// used to add the buffers.
     #[inline]
@@ -396,15 +298,6 @@ impl SyncCommandBufferBuilder {
             inner: UnsafeCommandBufferBuilderBindVertexBuffer::new(),
             buffers: SmallVec::new(),
         }
-    }
-
-    /// Returns the vertex buffer currently bound to a given binding slot number, or `None` if
-    /// nothing has been bound yet.
-    pub fn bound_vertex_buffer(&self, binding_num: u32) -> Option<&dyn BufferAccess> {
-        self.current_state
-            .vertex_buffers
-            .get(&binding_num)
-            .map(|cmd| cmd.bound_vertex_buffer(binding_num))
     }
 
     /// Calls `vkCmdCopyImage` on the builder.
@@ -2289,17 +2182,6 @@ impl SyncCommandBufferBuilder {
         self.current_state.push_constants = Some(PushConstantState { pipeline_layout });
     }
 
-    /// Returns the pipeline layout that describes the current push constants.
-    ///
-    /// This is the layout used to perform the last push constant write operation.
-    #[inline]
-    pub fn current_push_constants_pipeline_layout(&self) -> Option<&Arc<PipelineLayout>> {
-        self.current_state
-            .push_constants
-            .as_ref()
-            .map(|state| &state.pipeline_layout)
-    }
-
     /// Calls `vkCmdResetEvent` on the builder.
     #[inline]
     pub unsafe fn reset_event(&mut self, event: Arc<Event>, stages: PipelineStages) {
@@ -2370,12 +2252,6 @@ impl SyncCommandBufferBuilder {
         self.current_state.blend_constants = Some(constants);
     }
 
-    /// Returns the current blend constants, or `None` if nothing has been set yet.
-    #[inline]
-    pub fn current_blend_constants(&self) -> Option<[f32; 4]> {
-        self.current_state.blend_constants
-    }
-
     /// Calls `vkCmdSetDepthBias` on the builder.
     #[inline]
     pub unsafe fn set_depth_bias(&mut self, constant_factor: f32, clamp: f32, slope_factor: f32) {
@@ -2407,12 +2283,6 @@ impl SyncCommandBufferBuilder {
         self.current_state.depth_bias = Some((constant_factor, clamp, slope_factor));
     }
 
-    /// Returns the current depth bias settings, or `None` if nothing has been set yet.
-    #[inline]
-    pub fn current_depth_bias(&self) -> Option<(f32, f32, f32)> {
-        self.current_state.depth_bias
-    }
-
     /// Calls `vkCmdSetDepthBounds` on the builder.
     #[inline]
     pub unsafe fn set_depth_bounds(&mut self, min: f32, max: f32) {
@@ -2433,12 +2303,6 @@ impl SyncCommandBufferBuilder {
 
         self.append_command(Cmd { min, max }, &[]).unwrap();
         self.current_state.depth_bounds = Some((min, max));
-    }
-
-    /// Returns the current depth bounds settings, or `None` if nothing has been set yet.
-    #[inline]
-    pub fn current_depth_bounds(&self) -> Option<(f32, f32)> {
-        self.current_state.depth_bounds
     }
 
     /// Calls `vkCmdSetEvent` on the builder.
@@ -2483,12 +2347,6 @@ impl SyncCommandBufferBuilder {
         self.current_state.line_width = Some(line_width);
     }
 
-    /// Returns the current line width, or `None` if nothing has been set yet.
-    #[inline]
-    pub fn current_line_width(&self) -> Option<f32> {
-        self.current_state.line_width
-    }
-
     /// Calls `vkCmdSetStencilCompareMask` on the builder.
     #[inline]
     pub unsafe fn set_stencil_compare_mask(&mut self, faces: StencilFaces, compare_mask: u32) {
@@ -2527,12 +2385,6 @@ impl SyncCommandBufferBuilder {
         }
     }
 
-    /// Returns the current stencil compare masks.
-    #[inline]
-    pub fn current_stencil_compare_mask(&self) -> StencilState {
-        self.current_state.stencil_compare_mask
-    }
-
     /// Calls `vkCmdSetStencilReference` on the builder.
     #[inline]
     pub unsafe fn set_stencil_reference(&mut self, faces: StencilFaces, reference: u32) {
@@ -2564,12 +2416,6 @@ impl SyncCommandBufferBuilder {
         }
     }
 
-    /// Returns the current stencil references.
-    #[inline]
-    pub fn current_stencil_reference(&self) -> StencilState {
-        self.current_state.stencil_reference
-    }
-
     /// Calls `vkCmdSetStencilWriteMask` on the builder.
     #[inline]
     pub unsafe fn set_stencil_write_mask(&mut self, faces: StencilFaces, write_mask: u32) {
@@ -2599,12 +2445,6 @@ impl SyncCommandBufferBuilder {
         if faces.intersects(ash::vk::StencilFaceFlags::BACK) {
             self.current_state.stencil_write_mask.back = Some(write_mask);
         }
-    }
-
-    /// Returns the current stencil write masks.
-    #[inline]
-    pub fn current_stencil_write_mask(&self) -> StencilState {
-        self.current_state.stencil_write_mask
     }
 
     /// Calls `vkCmdSetScissor` on the builder.
@@ -2645,12 +2485,6 @@ impl SyncCommandBufferBuilder {
             &[],
         )
         .unwrap();
-    }
-
-    /// Returns the current scissor for a given viewport slot, or `None` if nothing has been set yet.
-    #[inline]
-    pub fn current_scissor(&self, num: u32) -> Option<&Scissor> {
-        self.current_state.scissor.get(&num)
     }
 
     /// Calls `vkCmdSetViewport` on the builder.
@@ -2694,12 +2528,6 @@ impl SyncCommandBufferBuilder {
             &[],
         )
         .unwrap();
-    }
-
-    /// Returns the current viewport for a given viewport slot, or `None` if nothing has been set yet.
-    #[inline]
-    pub fn current_viewport(&self, num: u32) -> Option<&Viewport> {
-        self.current_state.viewport.get(&num)
     }
 
     /// Calls `vkCmdUpdateBuffer` on the builder.
