@@ -586,7 +586,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///   enabled on the device.
     pub fn bind_index_buffer<Ib, I>(&mut self, index_buffer: Ib) -> &mut Self
     where
-        Ib: BufferAccess + TypedBufferAccess<Content = [I]> + Send + Sync + 'static,
+        Ib: TypedBufferAccess<Content = [I]> + 'static,
         I: Index + 'static,
     {
         assert!(
@@ -1367,11 +1367,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         indirect_buffer: Inb,
     ) -> Result<&mut Self, DispatchIndirectError>
     where
-        Inb: BufferAccess
-            + TypedBufferAccess<Content = [DispatchIndirectCommand]>
-            + Send
-            + Sync
-            + 'static,
+        Inb: TypedBufferAccess<Content = [DispatchIndirectCommand]> + 'static,
     {
         if !self.queue_family().supports_compute() {
             return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
@@ -1560,11 +1556,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         indirect_buffer: Inb,
     ) -> Result<&mut Self, DrawIndexedIndirectError>
     where
-        Inb: BufferAccess
-            + TypedBufferAccess<Content = [DrawIndexedIndirectCommand]>
-            + Send
-            + Sync
-            + 'static,
+        Inb: TypedBufferAccess<Content = [DrawIndexedIndirectCommand]> + 'static,
     {
         let pipeline = check_pipeline_graphics(&self.inner)?;
         self.ensure_inside_render_pass_inline(pipeline)?;
@@ -2092,7 +2084,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         flags: QueryResultFlags,
     ) -> Result<&mut Self, CopyQueryPoolResultsError>
     where
-        D: BufferAccess + TypedBufferAccess<Content = [T]> + Send + Sync + 'static,
+        D: TypedBufferAccess<Content = [T]> + 'static,
         T: QueryResultElement,
     {
         unsafe {

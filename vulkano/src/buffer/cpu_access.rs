@@ -367,7 +367,7 @@ where
 
 unsafe impl<T: ?Sized, A> BufferAccess for CpuAccessibleBuffer<T, A>
 where
-    T: 'static + Send + Sync,
+    T: Send + Sync + 'static,
     A: Send + Sync,
 {
     #[inline]

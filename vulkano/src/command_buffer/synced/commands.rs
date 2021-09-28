@@ -1089,7 +1089,7 @@ impl SyncCommandBufferBuilder {
         flags: QueryResultFlags,
     ) -> Result<(), SyncCommandBufferBuilderError>
     where
-        D: BufferAccess + TypedBufferAccess<Content = [T]> + Send + Sync + 'static,
+        D: TypedBufferAccess<Content = [T]> + 'static,
         T: QueryResultElement,
     {
         struct Cmd<D> {
@@ -1102,7 +1102,7 @@ impl SyncCommandBufferBuilder {
 
         impl<D, T> Command for Cmd<D>
         where
-            D: BufferAccess + TypedBufferAccess<Content = [T]> + Send + Sync + 'static,
+            D: TypedBufferAccess<Content = [T]> + 'static,
             T: QueryResultElement,
         {
             fn name(&self) -> &'static str {

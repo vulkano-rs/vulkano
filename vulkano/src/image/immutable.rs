@@ -7,7 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::buffer::BufferAccess;
 use crate::buffer::BufferUsage;
 use crate::buffer::CpuAccessibleBuffer;
 use crate::buffer::TypedBufferAccess;
@@ -357,7 +356,7 @@ impl ImmutableImage {
         ImageCreationError,
     >
     where
-        B: BufferAccess + TypedBufferAccess<Content = [Px]> + 'static + Clone + Send + Sync,
+        B: TypedBufferAccess<Content = [Px]> + Clone + 'static,
         Px: Pixel + Send + Sync + Clone + 'static,
     {
         let need_to_generate_mipmaps = has_mipmaps(mipmaps);

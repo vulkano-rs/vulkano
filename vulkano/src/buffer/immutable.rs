@@ -119,8 +119,8 @@ impl<T: ?Sized> ImmutableBuffer<T> {
         queue: Arc<Queue>,
     ) -> Result<(Arc<ImmutableBuffer<T>>, ImmutableBufferFromBufferFuture), DeviceMemoryAllocError>
     where
-        B: BufferAccess + TypedBufferAccess<Content = T> + 'static + Clone + Send + Sync,
-        T: 'static + Send + Sync,
+        B: TypedBufferAccess<Content = T> + Clone + 'static,
+        T: Send + Sync + 'static,
     {
         unsafe {
             // We automatically set `transfer_destination` to true in order to avoid annoying errors.

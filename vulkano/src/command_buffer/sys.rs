@@ -977,7 +977,7 @@ impl UnsafeCommandBufferBuilder {
         stride: DeviceSize,
         flags: QueryResultFlags,
     ) where
-        D: BufferAccess + TypedBufferAccess<Content = [T]>,
+        D: TypedBufferAccess<Content = [T]>,
         T: QueryResultElement,
     {
         let destination = destination.inner();
