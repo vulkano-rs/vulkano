@@ -158,7 +158,7 @@ impl UnsafeDescriptorPool {
         I: IntoIterator<Item = &'l DescriptorSetLayout>,
     {
         let mut variable_descriptor_counts: SmallVec<[_; 8]> = SmallVec::new();
-        
+
         let layouts: SmallVec<[_; 8]> = layouts
             .into_iter()
             .map(|l| {
@@ -195,7 +195,7 @@ impl UnsafeDescriptorPool {
             Some(ash::vk::DescriptorSetVariableDescriptorCountAllocateInfo {
                 descriptor_set_count: layouts.len() as u32,
                 p_descriptor_counts: variable_descriptor_counts.as_ptr(),
-                .. Default::default()
+                ..Default::default()
             })
         } else {
             None
