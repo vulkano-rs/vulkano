@@ -439,7 +439,7 @@ impl<'f, 's: 'f> DrawPass<'f, 's> {
     #[inline]
     pub fn execute<C>(&mut self, command_buffer: C)
     where
-        C: SecondaryCommandBuffer + Send + Sync + 'static,
+        C: SecondaryCommandBuffer + 'static,
     {
         self.frame
             .command_buffer_builder

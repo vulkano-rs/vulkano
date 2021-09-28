@@ -94,7 +94,7 @@ pub unsafe trait CommandPoolBuilderAlloc: DeviceOwned {
 ///
 /// See `CommandPool` for information about safety.
 ///
-pub unsafe trait CommandPoolAlloc: DeviceOwned {
+pub unsafe trait CommandPoolAlloc: DeviceOwned + Send + Sync {
     /// Returns the internal object that contains the command buffer.
     fn inner(&self) -> &UnsafeCommandPoolAlloc;
 

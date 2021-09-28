@@ -3211,7 +3211,7 @@ impl<'a> SyncCommandBufferBuilderBindVertexBuffer<'a> {
 /// Prototype for a `vkCmdExecuteCommands`.
 pub struct SyncCommandBufferBuilderExecuteCommands<'a> {
     builder: &'a mut SyncCommandBufferBuilder,
-    inner: Vec<Box<dyn SecondaryCommandBuffer + Send + Sync>>,
+    inner: Vec<Box<dyn SecondaryCommandBuffer>>,
 }
 
 impl<'a> SyncCommandBufferBuilderExecuteCommands<'a> {
@@ -3219,16 +3219,16 @@ impl<'a> SyncCommandBufferBuilderExecuteCommands<'a> {
     #[inline]
     pub fn add<C>(&mut self, command_buffer: C)
     where
-        C: SecondaryCommandBuffer + Send + Sync + 'static,
+        C: SecondaryCommandBuffer + 'static,
     {
         self.inner.push(Box::new(command_buffer));
     }
 
     #[inline]
     pub unsafe fn submit(self) -> Result<(), SyncCommandBufferBuilderError> {
-        struct DropUnlock(Box<dyn SecondaryCommandBuffer + Send + Sync>);
+        struct DropUnlock(Box<dyn SecondaryCommandBuffer>);
         impl std::ops::Deref for DropUnlock {
-            type Target = Box<dyn SecondaryCommandBuffer + Send + Sync>;
+            type Target = Box<dyn SecondaryCommandBuffer>;
 
             fn deref(&self) -> &Self::Target {
                 &self.0

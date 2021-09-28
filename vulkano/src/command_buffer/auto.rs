@@ -12,6 +12,7 @@ use crate::buffer::TypedBufferAccess;
 use crate::command_buffer::pool::standard::StandardCommandPoolAlloc;
 use crate::command_buffer::pool::standard::StandardCommandPoolBuilder;
 use crate::command_buffer::pool::CommandPool;
+use crate::command_buffer::pool::CommandPoolAlloc;
 use crate::command_buffer::pool::CommandPoolBuilderAlloc;
 use crate::command_buffer::synced::SyncCommandBuffer;
 use crate::command_buffer::synced::SyncCommandBufferBuilder;
@@ -2338,7 +2339,7 @@ where
         command_buffer: C,
     ) -> Result<&mut Self, ExecuteCommandsError>
     where
-        C: SecondaryCommandBuffer + Send + Sync + 'static,
+        C: SecondaryCommandBuffer + 'static,
     {
         self.check_command_buffer(&command_buffer)?;
         let secondary_usage = command_buffer.inner().usage();
@@ -2369,7 +2370,7 @@ where
         command_buffers: Vec<C>,
     ) -> Result<&mut Self, ExecuteCommandsError>
     where
-        C: SecondaryCommandBuffer + Send + Sync + 'static,
+        C: SecondaryCommandBuffer + 'static,
     {
         for command_buffer in &command_buffers {
             self.check_command_buffer(command_buffer)?;
@@ -2400,7 +2401,7 @@ where
         command_buffer: &C,
     ) -> Result<(), AutoCommandBufferBuilderContextError>
     where
-        C: SecondaryCommandBuffer + Send + Sync + 'static,
+        C: SecondaryCommandBuffer + 'static,
     {
         if let Some(render_pass) = command_buffer.inheritance().render_pass {
             self.ensure_inside_render_pass_secondary(&render_pass)?;
@@ -2545,7 +2546,10 @@ unsafe impl<P> DeviceOwned for PrimaryAutoCommandBuffer<P> {
     }
 }
 
-unsafe impl<P> PrimaryCommandBuffer for PrimaryAutoCommandBuffer<P> {
+unsafe impl<P> PrimaryCommandBuffer for PrimaryAutoCommandBuffer<P>
+where
+    P: CommandPoolAlloc,
+{
     #[inline]
     fn inner(&self) -> &UnsafeCommandBuffer {
         self.inner.as_ref()
@@ -2654,7 +2658,10 @@ unsafe impl<P> DeviceOwned for SecondaryAutoCommandBuffer<P> {
     }
 }
 
-unsafe impl<P> SecondaryCommandBuffer for SecondaryAutoCommandBuffer<P> {
+unsafe impl<P> SecondaryCommandBuffer for SecondaryAutoCommandBuffer<P>
+where
+    P: CommandPoolAlloc,
+{
     #[inline]
     fn inner(&self) -> &UnsafeCommandBuffer {
         self.inner.as_ref()
