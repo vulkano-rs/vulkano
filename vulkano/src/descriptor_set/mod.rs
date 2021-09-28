@@ -106,7 +106,7 @@ pub mod sys;
 /// Trait for objects that contain a collection of resources that will be accessible by shaders.
 ///
 /// Objects of this type can be passed when submitting a draw command.
-pub unsafe trait DescriptorSet: DeviceOwned {
+pub unsafe trait DescriptorSet: DeviceOwned + Send + Sync {
     /// Returns the inner `UnsafeDescriptorSet`.
     fn inner(&self) -> &UnsafeDescriptorSet;
 
@@ -116,7 +116,7 @@ pub unsafe trait DescriptorSet: DeviceOwned {
     /// Creates a [`DescriptorSetWithOffsets`] with the given dynamic offsets.
     fn offsets<I>(self, dynamic_offsets: I) -> DescriptorSetWithOffsets
     where
-        Self: Sized + Send + Sync + 'static,
+        Self: Sized + 'static,
         I: IntoIterator<Item = u32>,
     {
         DescriptorSetWithOffsets::new(self, dynamic_offsets)
@@ -143,7 +143,7 @@ pub unsafe trait DescriptorSet: DeviceOwned {
 
 unsafe impl<T> DescriptorSet for T
 where
-    T: SafeDeref,
+    T: SafeDeref + Send + Sync,
     T::Target: DescriptorSet,
 {
     #[inline]
@@ -177,7 +177,7 @@ where
     }
 }
 
-impl PartialEq for dyn DescriptorSet + Send + Sync {
+impl PartialEq for dyn DescriptorSet {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.inner().internal_object() == other.inner().internal_object()
@@ -185,9 +185,9 @@ impl PartialEq for dyn DescriptorSet + Send + Sync {
     }
 }
 
-impl Eq for dyn DescriptorSet + Send + Sync {}
+impl Eq for dyn DescriptorSet {}
 
-impl Hash for dyn DescriptorSet + Send + Sync {
+impl Hash for dyn DescriptorSet {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().internal_object().hash(state);
@@ -196,7 +196,7 @@ impl Hash for dyn DescriptorSet + Send + Sync {
 }
 
 pub struct DescriptorSetWithOffsets {
-    descriptor_set: Box<dyn DescriptorSet + Send + Sync>,
+    descriptor_set: Box<dyn DescriptorSet>,
     dynamic_offsets: SmallVec<[u32; 4]>,
 }
 
@@ -204,7 +204,7 @@ impl DescriptorSetWithOffsets {
     #[inline]
     pub fn new<S, O>(descriptor_set: S, dynamic_offsets: O) -> Self
     where
-        S: DescriptorSet + Send + Sync + 'static,
+        S: DescriptorSet + 'static,
         O: IntoIterator<Item = u32>,
     {
         let dynamic_offsets: SmallVec<_> = dynamic_offsets.into_iter().collect();
@@ -272,19 +272,14 @@ impl DescriptorSetWithOffsets {
     }
 
     #[inline]
-    pub fn into_tuple(
-        self,
-    ) -> (
-        Box<dyn DescriptorSet + Send + Sync>,
-        impl ExactSizeIterator<Item = u32>,
-    ) {
+    pub fn into_tuple(self) -> (Box<dyn DescriptorSet>, impl ExactSizeIterator<Item = u32>) {
         (self.descriptor_set, self.dynamic_offsets.into_iter())
     }
 }
 
 impl<S> From<S> for DescriptorSetWithOffsets
 where
-    S: DescriptorSet + Send + Sync + 'static,
+    S: DescriptorSet + 'static,
 {
     #[inline]
     fn from(descriptor_set: S) -> Self {
