@@ -104,7 +104,7 @@ pub struct SyncCommandBuffer {
 
     // List of commands used by the command buffer. Used to hold the various resources that are
     // being used.
-    commands: Vec<Arc<dyn Command + Send + Sync>>,
+    commands: Vec<Arc<dyn Command>>,
 
     // Locations within commands that pipeline barriers were inserted. For debugging purposes.
     // TODO: present only in cfg(debug_assertions)?
@@ -460,7 +460,7 @@ struct ResourceLocation {
 }
 
 // Trait for single commands within the list of commands.
-trait Command {
+trait Command: Send + Sync {
     // Returns a user-friendly name for the command, for error reporting purposes.
     fn name(&self) -> &'static str;
 
@@ -511,7 +511,7 @@ trait Command {
     }
 }
 
-impl std::fmt::Debug for dyn Command + Send + Sync {
+impl std::fmt::Debug for dyn Command {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.name())
     }

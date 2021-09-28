@@ -69,10 +69,10 @@ use std::sync::{Arc, Mutex};
 #[derive(Debug, Default)]
 pub(super) struct CurrentState {
     descriptor_sets: FnvHashMap<PipelineBindPoint, DescriptorSetState>,
-    index_buffer: Option<Arc<dyn Command + Send + Sync>>,
-    pipeline_compute: Option<Arc<dyn Command + Send + Sync>>,
-    pipeline_graphics: Option<Arc<dyn Command + Send + Sync>>,
-    vertex_buffers: FnvHashMap<u32, Arc<dyn Command + Send + Sync>>,
+    index_buffer: Option<Arc<dyn Command>>,
+    pipeline_compute: Option<Arc<dyn Command>>,
+    pipeline_graphics: Option<Arc<dyn Command>>,
+    vertex_buffers: FnvHashMap<u32, Arc<dyn Command>>,
 
     push_constants: Option<PushConstantState>,
 
@@ -89,7 +89,7 @@ pub(super) struct CurrentState {
 
 #[derive(Debug)]
 struct DescriptorSetState {
-    descriptor_sets: FnvHashMap<u32, Arc<dyn Command + Send + Sync>>,
+    descriptor_sets: FnvHashMap<u32, Arc<dyn Command>>,
     pipeline_layout: Arc<PipelineLayout>,
 }
 
@@ -165,7 +165,7 @@ impl SyncCommandBufferBuilder {
         impl<F, I> Command for Cmd<F, I>
         where
             F: FramebufferAbstract + 'static,
-            I: IntoIterator<Item = ClearValue>,
+            I: IntoIterator<Item = ClearValue> + Send + Sync,
         {
             fn name(&self) -> &'static str {
                 "vkCmdBeginRenderPass"
@@ -437,7 +437,7 @@ impl SyncCommandBufferBuilder {
         where
             S: ImageAccess + 'static,
             D: ImageAccess + 'static,
-            R: IntoIterator<Item = UnsafeCommandBufferBuilderImageCopy>,
+            R: IntoIterator<Item = UnsafeCommandBufferBuilderImageCopy> + Send + Sync,
         {
             fn name(&self) -> &'static str {
                 "vkCmdCopyImage"
@@ -559,7 +559,7 @@ impl SyncCommandBufferBuilder {
         where
             S: ImageAccess + 'static,
             D: ImageAccess + 'static,
-            R: IntoIterator<Item = UnsafeCommandBufferBuilderImageBlit>,
+            R: IntoIterator<Item = UnsafeCommandBufferBuilderImageBlit> + Send + Sync,
         {
             fn name(&self) -> &'static str {
                 "vkCmdBlitImage"
@@ -762,7 +762,7 @@ impl SyncCommandBufferBuilder {
         where
             S: BufferAccess + 'static,
             D: BufferAccess + 'static,
-            R: IntoIterator<Item = (DeviceSize, DeviceSize, DeviceSize)>,
+            R: IntoIterator<Item = (DeviceSize, DeviceSize, DeviceSize)> + Send + Sync,
         {
             fn name(&self) -> &'static str {
                 "vkCmdCopyBuffer"
@@ -872,7 +872,7 @@ impl SyncCommandBufferBuilder {
         where
             S: BufferAccess + 'static,
             D: ImageAccess + 'static,
-            R: IntoIterator<Item = UnsafeCommandBufferBuilderBufferImageCopy>,
+            R: IntoIterator<Item = UnsafeCommandBufferBuilderBufferImageCopy> + Send + Sync,
         {
             fn name(&self) -> &'static str {
                 "vkCmdCopyBufferToImage"
@@ -988,7 +988,7 @@ impl SyncCommandBufferBuilder {
         where
             S: ImageAccess + 'static,
             D: BufferAccess + 'static,
-            R: IntoIterator<Item = UnsafeCommandBufferBuilderBufferImageCopy>,
+            R: IntoIterator<Item = UnsafeCommandBufferBuilderBufferImageCopy> + Send + Sync,
         {
             fn name(&self) -> &'static str {
                 "vkCmdCopyImageToBuffer"
@@ -1240,7 +1240,7 @@ impl SyncCommandBufferBuilder {
     pub unsafe fn dispatch(&mut self, group_counts: [u32; 3]) {
         struct Cmd {
             group_counts: [u32; 3],
-            descriptor_sets: SmallVec<[Arc<dyn Command + Send + Sync>; 12]>,
+            descriptor_sets: SmallVec<[Arc<dyn Command>; 12]>,
         }
 
         impl Command for Cmd {
@@ -1349,7 +1349,7 @@ impl SyncCommandBufferBuilder {
         B: BufferAccess + 'static,
     {
         struct Cmd<B> {
-            descriptor_sets: SmallVec<[Arc<dyn Command + Send + Sync>; 12]>,
+            descriptor_sets: SmallVec<[Arc<dyn Command>; 12]>,
             indirect_buffer: B,
         }
 
@@ -1470,8 +1470,8 @@ impl SyncCommandBufferBuilder {
         first_instance: u32,
     ) {
         struct Cmd {
-            descriptor_sets: SmallVec<[Arc<dyn Command + Send + Sync>; 12]>,
-            vertex_buffers: SmallVec<[(u32, Arc<dyn Command + Send + Sync>); 4]>,
+            descriptor_sets: SmallVec<[Arc<dyn Command>; 12]>,
+            vertex_buffers: SmallVec<[(u32, Arc<dyn Command>); 4]>,
             vertex_count: u32,
             instance_count: u32,
             first_vertex: u32,
@@ -1620,9 +1620,9 @@ impl SyncCommandBufferBuilder {
         first_instance: u32,
     ) {
         struct Cmd {
-            descriptor_sets: SmallVec<[Arc<dyn Command + Send + Sync>; 12]>,
-            vertex_buffers: SmallVec<[(u32, Arc<dyn Command + Send + Sync>); 4]>,
-            index_buffer: Arc<dyn Command + Send + Sync>,
+            descriptor_sets: SmallVec<[Arc<dyn Command>; 12]>,
+            vertex_buffers: SmallVec<[(u32, Arc<dyn Command>); 4]>,
+            index_buffer: Arc<dyn Command>,
             index_count: u32,
             instance_count: u32,
             first_index: u32,
@@ -1785,8 +1785,8 @@ impl SyncCommandBufferBuilder {
         B: BufferAccess + 'static,
     {
         struct Cmd<B> {
-            descriptor_sets: SmallVec<[Arc<dyn Command + Send + Sync>; 12]>,
-            vertex_buffers: SmallVec<[(u32, Arc<dyn Command + Send + Sync>); 4]>,
+            descriptor_sets: SmallVec<[Arc<dyn Command>; 12]>,
+            vertex_buffers: SmallVec<[(u32, Arc<dyn Command>); 4]>,
             indirect_buffer: B,
             draw_count: u32,
             stride: u32,
@@ -1942,9 +1942,9 @@ impl SyncCommandBufferBuilder {
         B: BufferAccess + 'static,
     {
         struct Cmd<B> {
-            descriptor_sets: SmallVec<[Arc<dyn Command + Send + Sync>; 12]>,
-            vertex_buffers: SmallVec<[(u32, Arc<dyn Command + Send + Sync>); 4]>,
-            index_buffer: Arc<dyn Command + Send + Sync>,
+            descriptor_sets: SmallVec<[Arc<dyn Command>; 12]>,
+            vertex_buffers: SmallVec<[(u32, Arc<dyn Command>); 4]>,
+            index_buffer: Arc<dyn Command>,
             indirect_buffer: B,
             draw_count: u32,
             stride: u32,
@@ -2812,15 +2812,15 @@ impl SyncCommandBufferBuilder {
         )>,
         pipeline_layout: &PipelineLayout,
         pipeline_bind_point: PipelineBindPoint,
-    ) -> SmallVec<[Arc<dyn Command + Send + Sync>; 12]> {
-        let descriptor_sets: SmallVec<[Arc<dyn Command + Send + Sync>; 12]> =
-            (0..pipeline_layout.descriptor_set_layouts().len() as u32)
-                .map(|set_num| {
-                    self.current_state.descriptor_sets[&pipeline_bind_point].descriptor_sets
-                        [&set_num]
-                        .clone()
-                })
-                .collect();
+    ) -> SmallVec<[Arc<dyn Command>; 12]> {
+        let descriptor_sets: SmallVec<[Arc<dyn Command>; 12]> = (0..pipeline_layout
+            .descriptor_set_layouts()
+            .len() as u32)
+            .map(|set_num| {
+                self.current_state.descriptor_sets[&pipeline_bind_point].descriptor_sets[&set_num]
+                    .clone()
+            })
+            .collect();
 
         for ds in descriptor_sets
             .iter()
@@ -2908,8 +2908,8 @@ impl SyncCommandBufferBuilder {
             )>,
         )>,
         vertex_input: &VertexInput,
-    ) -> SmallVec<[(u32, Arc<dyn Command + Send + Sync>); 4]> {
-        let vertex_buffers: SmallVec<[(u32, Arc<dyn Command + Send + Sync>); 4]> = vertex_input
+    ) -> SmallVec<[(u32, Arc<dyn Command>); 4]> {
+        let vertex_buffers: SmallVec<[(u32, Arc<dyn Command>); 4]> = vertex_input
             .bindings()
             .map(|(binding_num, _)| {
                 (
@@ -2955,7 +2955,7 @@ impl SyncCommandBufferBuilder {
                 ImageUninitializedSafe,
             )>,
         )>,
-    ) -> Arc<dyn Command + Send + Sync> {
+    ) -> Arc<dyn Command> {
         let index_buffer = self.current_state.index_buffer.as_ref().unwrap().clone();
 
         resources.push((

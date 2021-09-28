@@ -65,7 +65,7 @@ pub struct SyncCommandBufferBuilder {
     // submitted to the inner builder yet.
     // Each command owns the resources it uses (buffers, images, pipelines, descriptor sets etc.),
     // references to any of these must be indirect in the form of a command index + resource id.
-    commands: Vec<Arc<dyn Command + Send + Sync>>,
+    commands: Vec<Arc<dyn Command>>,
 
     // Prototype for the pipeline barrier that must be submitted before flushing the commands
     // in `commands`.
@@ -208,7 +208,7 @@ impl SyncCommandBufferBuilder {
         )],
     ) -> Result<(), SyncCommandBufferBuilderError>
     where
-        C: Command + Send + Sync + 'static,
+        C: Command + 'static,
     {
         // TODO: see comment for the `is_poisoned` member in the struct
         assert!(
