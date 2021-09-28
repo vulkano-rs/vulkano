@@ -484,7 +484,7 @@ where
 
 unsafe impl<T: ?Sized, A> TypedBufferAccess for CpuAccessibleBuffer<T, A>
 where
-    T: 'static + Send + Sync,
+    T: Send + Sync + 'static,
     A: Send + Sync,
 {
     type Content = T;
@@ -499,7 +499,7 @@ unsafe impl<T: ?Sized, A> DeviceOwned for CpuAccessibleBuffer<T, A> {
 
 impl<T: ?Sized, A> PartialEq for CpuAccessibleBuffer<T, A>
 where
-    T: 'static + Send + Sync,
+    T: Send + Sync + 'static,
     A: Send + Sync,
 {
     #[inline]
@@ -510,14 +510,14 @@ where
 
 impl<T: ?Sized, A> Eq for CpuAccessibleBuffer<T, A>
 where
-    T: 'static + Send + Sync,
+    T: Send + Sync + 'static,
     A: Send + Sync,
 {
 }
 
 impl<T: ?Sized, A> Hash for CpuAccessibleBuffer<T, A>
 where
-    T: 'static + Send + Sync,
+    T: Send + Sync + 'static,
     A: Send + Sync,
 {
     #[inline]

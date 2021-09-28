@@ -255,7 +255,7 @@ where
 
 unsafe impl<T, B> TypedBufferAccess for BufferSlice<T, B>
 where
-    T: ?Sized + Send + Sync,
+    T: Send + Sync + ?Sized,
     B: BufferAccess,
 {
     type Content = T;

@@ -96,7 +96,7 @@ impl<T: ?Sized> ImmutableBuffer<T> {
         queue: Arc<Queue>,
     ) -> Result<(Arc<ImmutableBuffer<T>>, ImmutableBufferFromBufferFuture), DeviceMemoryAllocError>
     where
-        T: 'static + Copy + Send + Sync + Sized,
+        T: Copy + Send + Sync + Sized + 'static,
     {
         let source = CpuAccessibleBuffer::from_data(
             queue.device().clone(),
@@ -194,7 +194,7 @@ impl<T> ImmutableBuffer<[T]> {
     ) -> Result<(Arc<ImmutableBuffer<[T]>>, ImmutableBufferFromBufferFuture), DeviceMemoryAllocError>
     where
         D: ExactSizeIterator<Item = T>,
-        T: 'static + Send + Sync + Sized,
+        T: Send + Sync + Sized + 'static,
     {
         let source = CpuAccessibleBuffer::from_iter(
             queue.device().clone(),
