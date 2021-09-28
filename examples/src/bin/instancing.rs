@@ -378,7 +378,7 @@ fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage<Window>>],
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
-) -> Vec<Arc<dyn FramebufferAbstract + Send + Sync>> {
+) -> Vec<Arc<dyn FramebufferAbstract>> {
     let dimensions = images[0].dimensions();
     viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
 
@@ -392,7 +392,7 @@ fn window_size_dependent_setup(
                     .unwrap()
                     .build()
                     .unwrap(),
-            ) as Arc<dyn FramebufferAbstract + Send + Sync>
+            ) as Arc<dyn FramebufferAbstract>
         })
         .collect::<Vec<_>>()
 }

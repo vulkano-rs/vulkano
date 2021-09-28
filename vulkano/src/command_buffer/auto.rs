@@ -105,7 +105,7 @@ pub struct AutoCommandBufferBuilder<L, P = StandardCommandPoolBuilder> {
 
     // The inheritance for secondary command buffers.
     // Must be `None` in a primary command buffer and `Some` in a secondary command buffer.
-    inheritance: Option<CommandBufferInheritance<Box<dyn FramebufferAbstract + Send + Sync>>>,
+    inheritance: Option<CommandBufferInheritance<Box<dyn FramebufferAbstract>>>,
 
     // Usage flags passed when creating the command buffer.
     usage: CommandBufferUsage,
@@ -274,7 +274,7 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
         level: CommandBufferLevel<F>,
     ) -> Result<AutoCommandBufferBuilder<L, StandardCommandPoolBuilder>, OomError>
     where
-        F: FramebufferAbstract + Clone + Send + Sync + 'static,
+        F: FramebufferAbstract + Clone + 'static,
     {
         let (inheritance, render_pass_state) = match &level {
             CommandBufferLevel::Primary => (None, None),
@@ -2158,7 +2158,7 @@ where
         clear_values: I,
     ) -> Result<&mut Self, BeginRenderPassError>
     where
-        F: FramebufferAbstract + Clone + Send + Sync + 'static,
+        F: FramebufferAbstract + Clone + 'static,
         I: IntoIterator<Item = ClearValue>,
     {
         unsafe {
@@ -2284,7 +2284,7 @@ where
                 }
             }
 
-            let framebuffer_object = FramebufferAbstract::inner(&framebuffer).internal_object();
+            let framebuffer_object = framebuffer.inner().internal_object();
             self.inner
                 .begin_render_pass(framebuffer.clone(), contents, clear_values)?;
             self.render_pass_state = Some(RenderPassState {
@@ -2470,9 +2470,7 @@ where
         // Framebuffer, if present on the secondary command buffer, must be the
         // same as the one in the current render pass.
         if let Some(framebuffer) = render_pass.framebuffer {
-            if FramebufferAbstract::inner(framebuffer).internal_object()
-                != render_pass_state.framebuffer
-            {
+            if framebuffer.inner().internal_object() != render_pass_state.framebuffer {
                 return Err(AutoCommandBufferBuilderContextError::IncompatibleFramebuffer);
             }
         }
@@ -2643,7 +2641,7 @@ unsafe impl<P> PrimaryCommandBuffer for PrimaryAutoCommandBuffer<P> {
 pub struct SecondaryAutoCommandBuffer<P = StandardCommandPoolAlloc> {
     inner: SyncCommandBuffer,
     pool_alloc: P, // Safety: must be dropped after `inner`
-    inheritance: CommandBufferInheritance<Box<dyn FramebufferAbstract + Send + Sync>>,
+    inheritance: CommandBufferInheritance<Box<dyn FramebufferAbstract>>,
 
     // Tracks usage of the command buffer on the GPU.
     submit_state: SubmitState,

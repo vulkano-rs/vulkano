@@ -136,7 +136,7 @@ impl UnsafeCommandBufferBuilder {
                     Some(ref fb) => {
                         // TODO: debug assert that the framebuffer is compatible with
                         //       the render pass?
-                        FramebufferAbstract::inner(fb).internal_object()
+                        fb.inner().internal_object()
                     }
                     None => ash::vk::Framebuffer::null(),
                 };

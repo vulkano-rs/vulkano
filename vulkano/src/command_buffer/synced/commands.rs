@@ -153,7 +153,7 @@ impl SyncCommandBufferBuilder {
         clear_values: I,
     ) -> Result<(), SyncCommandBufferBuilderError>
     where
-        F: FramebufferAbstract + Send + Sync + 'static,
+        F: FramebufferAbstract + 'static,
         I: IntoIterator<Item = ClearValue> + Send + Sync + 'static,
     {
         struct Cmd<F, I> {
@@ -164,7 +164,7 @@ impl SyncCommandBufferBuilder {
 
         impl<F, I> Command for Cmd<F, I>
         where
-            F: FramebufferAbstract + Send + Sync + 'static,
+            F: FramebufferAbstract + 'static,
             I: IntoIterator<Item = ClearValue>,
         {
             fn name(&self) -> &'static str {
