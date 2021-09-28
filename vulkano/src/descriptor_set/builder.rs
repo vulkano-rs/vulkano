@@ -353,7 +353,7 @@ impl DescriptorSetBuilder {
     /// Binds an image view as the next descriptor or array element.
     pub fn add_image(
         &mut self,
-        image_view: Arc<dyn ImageViewAbstract + Send + Sync + 'static>,
+        image_view: Arc<dyn ImageViewAbstract + 'static>,
     ) -> Result<(), DescriptorSetError> {
         if image_view.image().inner().image.device().internal_object()
             != self.layout.device().internal_object()
@@ -385,7 +385,9 @@ impl DescriptorSetBuilder {
                     ));
                 }
 
-                if !image_view.can_be_sampled(&immutable_samplers[descriptor.array_element as usize]) {
+                if !image_view
+                    .can_be_sampled(&immutable_samplers[descriptor.array_element as usize])
+                {
                     return Err(DescriptorSetError::IncompatibleImageViewSampler);
                 }
 
@@ -481,7 +483,7 @@ impl DescriptorSetBuilder {
     /// `add_image` instead.
     pub fn add_sampled_image(
         &mut self,
-        image_view: Arc<dyn ImageViewAbstract + Send + Sync + 'static>,
+        image_view: Arc<dyn ImageViewAbstract + 'static>,
         sampler: Arc<Sampler>,
     ) -> Result<(), DescriptorSetError> {
         if image_view.image().inner().image.device().internal_object()

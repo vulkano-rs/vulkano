@@ -228,7 +228,7 @@ impl FrameSystem {
     pub fn frame<F>(
         &mut self,
         before_future: F,
-        final_image: Arc<dyn ImageViewAbstract + Send + Sync + 'static>,
+        final_image: Arc<dyn ImageViewAbstract + 'static>,
         world_to_framebuffer: Matrix4<f32>,
     ) -> Frame
     where

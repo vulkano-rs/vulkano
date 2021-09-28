@@ -49,7 +49,7 @@ unsafe impl AttachmentsList for () {
     }
 }
 
-unsafe impl AttachmentsList for Vec<Arc<dyn ImageViewAbstract + Send + Sync>> {
+unsafe impl AttachmentsList for Vec<Arc<dyn ImageViewAbstract>> {
     #[inline]
     fn num_attachments(&self) -> usize {
         self.len()

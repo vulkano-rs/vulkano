@@ -109,10 +109,7 @@ impl PixelsDrawPipeline {
         }
     }
 
-    fn create_descriptor_set(
-        &self,
-        image: Arc<dyn ImageViewAbstract + Send + Sync>,
-    ) -> PersistentDescriptorSet {
+    fn create_descriptor_set(&self, image: Arc<dyn ImageViewAbstract>) -> PersistentDescriptorSet {
         let layout = self
             .pipeline
             .layout()
@@ -144,7 +141,7 @@ impl PixelsDrawPipeline {
     pub fn draw(
         &mut self,
         viewport_dimensions: [u32; 2],
-        image: Arc<dyn ImageViewAbstract + Send + Sync>,
+        image: Arc<dyn ImageViewAbstract>,
     ) -> SecondaryAutoCommandBuffer {
         let mut builder = AutoCommandBufferBuilder::secondary_graphics(
             self.gfx_queue.device().clone(),

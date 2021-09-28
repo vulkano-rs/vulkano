@@ -21,7 +21,7 @@ use std::sync::Arc;
 
 pub struct DescriptorSetResources {
     buffers: Vec<(Arc<dyn BufferAccess + 'static>, u32)>,
-    images: Vec<(Arc<dyn ImageViewAbstract + Send + Sync + 'static>, u32)>,
+    images: Vec<(Arc<dyn ImageViewAbstract + 'static>, u32)>,
     samplers: Vec<(Arc<Sampler>, u32)>,
 }
 
@@ -100,11 +100,7 @@ impl DescriptorSetResources {
             .push((Arc::new(BufferViewResource(view)), desc_index));
     }
 
-    pub fn add_image(
-        &mut self,
-        desc_index: u32,
-        image: Arc<dyn ImageViewAbstract + Send + Sync + 'static>,
-    ) {
+    pub fn add_image(&mut self, desc_index: u32, image: Arc<dyn ImageViewAbstract + 'static>) {
         self.images.push((image, desc_index));
     }
 
