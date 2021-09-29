@@ -54,7 +54,6 @@
 - Fixed bug where the wrong functions were used for retrieving physical device info.
 - Fixed minor bug in retrieving features from the physical device.
 - Add BSD platforms to external memory (dma-buf fd) cfgs
-- `SyncCommandBufferBuilder` now has methods to return the state set by previous commands.
 - Added support for `u8` index buffers with the `ext_index_buffer_uint8` extension.
 - Descriptor sets now support variable count descriptors.
     - e.g. `layout(set = 0, binding = 0) uniform sampler2D textures[];`
@@ -78,7 +77,10 @@
 - Added a `spirv` module to the main crate, which contains an auto-generated parser for SPIR-V files, and various other utilities that can be used to analyze shaders at runtime.
 - `DescriptorSetLayout` now has `variable_descriptor_count` which returns the descriptor count in a variable count descriptor if present.
 - Additional copy buffer to image checks.
-- Added an `inner` method to `AutoCommandBufferBuilder`, which returns the inner `SyncCommandBufferBuilder` and can be used to query the current state/bindings.
+- Add `clear_depth_stencil_image` to `AutoCommandBufferBuilder` to clear depth / stencil images.
+- `AutoCommandBufferBuilder` and `SyncCommandBufferBuilder` now have a `state` method, which can be used to query the state set by previous "bind" and "set" commands.
+- Changed parameters requiring an iterator so that they now take `IntoIterator`, for more flexibility.
+- Removed various custom iterator types in favour of returning `impl Iterator`.
 
 # Version 0.25.0 (2021-08-10)
 
