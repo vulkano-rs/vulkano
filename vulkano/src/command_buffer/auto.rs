@@ -12,6 +12,7 @@ use crate::buffer::TypedBufferAccess;
 use crate::command_buffer::pool::standard::StandardCommandPoolAlloc;
 use crate::command_buffer::pool::standard::StandardCommandPoolBuilder;
 use crate::command_buffer::pool::CommandPool;
+use crate::command_buffer::pool::CommandPoolAlloc;
 use crate::command_buffer::pool::CommandPoolBuilderAlloc;
 use crate::command_buffer::synced::CommandBufferState;
 use crate::command_buffer::synced::SyncCommandBuffer;
@@ -107,7 +108,7 @@ pub struct AutoCommandBufferBuilder<L, P = StandardCommandPoolBuilder> {
 
     // The inheritance for secondary command buffers.
     // Must be `None` in a primary command buffer and `Some` in a secondary command buffer.
-    inheritance: Option<CommandBufferInheritance<Box<dyn FramebufferAbstract + Send + Sync>>>,
+    inheritance: Option<CommandBufferInheritance<Box<dyn FramebufferAbstract>>>,
 
     // Usage flags passed when creating the command buffer.
     usage: CommandBufferUsage,
@@ -276,7 +277,7 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
         level: CommandBufferLevel<F>,
     ) -> Result<AutoCommandBufferBuilder<L, StandardCommandPoolBuilder>, OomError>
     where
-        F: FramebufferAbstract + Clone + Send + Sync + 'static,
+        F: FramebufferAbstract + Clone + 'static,
     {
         let (inheritance, render_pass_state) = match &level {
             CommandBufferLevel::Primary => (None, None),
@@ -588,7 +589,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///   enabled on the device.
     pub fn bind_index_buffer<Ib, I>(&mut self, index_buffer: Ib) -> &mut Self
     where
-        Ib: BufferAccess + TypedBufferAccess<Content = [I]> + Send + Sync + 'static,
+        Ib: TypedBufferAccess<Content = [I]> + 'static,
         I: Index + 'static,
     {
         assert!(
@@ -832,8 +833,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         filter: Filter,
     ) -> Result<&mut Self, BlitImageError>
     where
-        S: ImageAccess + Send + Sync + 'static,
-        D: ImageAccess + Send + Sync + 'static,
+        S: ImageAccess + 'static,
+        D: ImageAccess + 'static,
     {
         unsafe {
             if !self.queue_family().supports_graphics() {
@@ -904,7 +905,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         color: ClearValue,
     ) -> Result<&mut Self, ClearColorImageError>
     where
-        I: ImageAccess + Send + Sync + 'static,
+        I: ImageAccess + 'static,
     {
         let layers = image.dimensions().array_layers();
         let levels = image.mipmap_levels();
@@ -928,7 +929,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         color: ClearValue,
     ) -> Result<&mut Self, ClearColorImageError>
     where
-        I: ImageAccess + Send + Sync + 'static,
+        I: ImageAccess + 'static,
     {
         unsafe {
             if !self.queue_family().supports_graphics() && !self.queue_family().supports_compute() {
@@ -981,7 +982,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         clear_value: ClearValue,
     ) -> Result<&mut Self, ClearDepthStencilImageError>
     where
-        I: ImageAccess + Send + Sync + 'static,
+        I: ImageAccess + 'static,
     {
         let layers = image.dimensions().array_layers();
 
@@ -1002,7 +1003,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         clear_value: ClearValue,
     ) -> Result<&mut Self, ClearDepthStencilImageError>
     where
-        I: ImageAccess + Send + Sync + 'static,
+        I: ImageAccess + 'static,
     {
         unsafe {
             if !self.queue_family().supports_graphics() && !self.queue_family().supports_compute() {
@@ -1048,8 +1049,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         destination: D,
     ) -> Result<&mut Self, CopyBufferError>
     where
-        S: TypedBufferAccess<Content = T> + Send + Sync + 'static,
-        D: TypedBufferAccess<Content = T> + Send + Sync + 'static,
+        S: TypedBufferAccess<Content = T> + 'static,
+        D: TypedBufferAccess<Content = T> + 'static,
         T: ?Sized,
     {
         unsafe {
@@ -1073,8 +1074,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         count: DeviceSize,
     ) -> Result<&mut Self, CopyBufferError>
     where
-        S: TypedBufferAccess<Content = [T]> + Send + Sync + 'static,
-        D: TypedBufferAccess<Content = [T]> + Send + Sync + 'static,
+        S: TypedBufferAccess<Content = [T]> + 'static,
+        D: TypedBufferAccess<Content = [T]> + 'static,
     {
         self.ensure_outside_render_pass()?;
 
@@ -1104,8 +1105,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         destination: D,
     ) -> Result<&mut Self, CopyBufferImageError>
     where
-        S: TypedBufferAccess<Content = [Px]> + Send + Sync + 'static,
-        D: ImageAccess + Send + Sync + 'static,
+        S: TypedBufferAccess<Content = [Px]> + 'static,
+        D: ImageAccess + 'static,
         Px: Pixel,
     {
         self.ensure_outside_render_pass()?;
@@ -1126,8 +1127,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         mipmap: u32,
     ) -> Result<&mut Self, CopyBufferImageError>
     where
-        S: TypedBufferAccess<Content = [Px]> + Send + Sync + 'static,
-        D: ImageAccess + Send + Sync + 'static,
+        S: TypedBufferAccess<Content = [Px]> + 'static,
+        D: ImageAccess + 'static,
         Px: Pixel,
     {
         unsafe {
@@ -1207,8 +1208,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         layer_count: u32,
     ) -> Result<&mut Self, CopyImageError>
     where
-        S: ImageAccess + Send + Sync + 'static,
-        D: ImageAccess + Send + Sync + 'static,
+        S: ImageAccess + 'static,
+        D: ImageAccess + 'static,
     {
         unsafe {
             self.ensure_outside_render_pass()?;
@@ -1274,8 +1275,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         destination: D,
     ) -> Result<&mut Self, CopyBufferImageError>
     where
-        S: ImageAccess + Send + Sync + 'static,
-        D: TypedBufferAccess<Content = [Px]> + Send + Sync + 'static,
+        S: ImageAccess + 'static,
+        D: TypedBufferAccess<Content = [Px]> + 'static,
         Px: Pixel,
     {
         self.ensure_outside_render_pass()?;
@@ -1296,8 +1297,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         mipmap: u32,
     ) -> Result<&mut Self, CopyBufferImageError>
     where
-        S: ImageAccess + Send + Sync + 'static,
-        D: TypedBufferAccess<Content = [Px]> + Send + Sync + 'static,
+        S: ImageAccess + 'static,
+        D: TypedBufferAccess<Content = [Px]> + 'static,
         Px: Pixel,
     {
         unsafe {
@@ -1442,11 +1443,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         indirect_buffer: Inb,
     ) -> Result<&mut Self, DispatchIndirectError>
     where
-        Inb: BufferAccess
-            + TypedBufferAccess<Content = [DispatchIndirectCommand]>
-            + Send
-            + Sync
-            + 'static,
+        Inb: TypedBufferAccess<Content = [DispatchIndirectCommand]> + 'static,
     {
         if !self.queue_family().supports_compute() {
             return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
@@ -1639,11 +1636,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         indirect_buffer: Inb,
     ) -> Result<&mut Self, DrawIndexedIndirectError>
     where
-        Inb: BufferAccess
-            + TypedBufferAccess<Content = [DrawIndexedIndirectCommand]>
-            + Send
-            + Sync
-            + 'static,
+        Inb: TypedBufferAccess<Content = [DrawIndexedIndirectCommand]> + 'static,
     {
         let pipeline = check_pipeline_graphics(self.state())?;
         self.ensure_inside_render_pass_inline(pipeline)?;
@@ -2023,7 +2016,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         data: Dd,
     ) -> Result<&mut Self, UpdateBufferError>
     where
-        B: TypedBufferAccess<Content = D> + Send + Sync + 'static,
+        B: TypedBufferAccess<Content = D> + 'static,
         D: ?Sized,
         Dd: SafeDeref<Target = D> + Send + Sync + 'static,
     {
@@ -2171,7 +2164,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         flags: QueryResultFlags,
     ) -> Result<&mut Self, CopyQueryPoolResultsError>
     where
-        D: BufferAccess + TypedBufferAccess<Content = [T]> + Send + Sync + 'static,
+        D: TypedBufferAccess<Content = [T]> + 'static,
         T: QueryResultElement,
     {
         unsafe {
@@ -2245,7 +2238,7 @@ where
         clear_values: I,
     ) -> Result<&mut Self, BeginRenderPassError>
     where
-        F: FramebufferAbstract + Clone + Send + Sync + 'static,
+        F: FramebufferAbstract + Clone + 'static,
         I: IntoIterator<Item = ClearValue>,
     {
         unsafe {
@@ -2371,7 +2364,7 @@ where
                 }
             }
 
-            let framebuffer_object = FramebufferAbstract::inner(&framebuffer).internal_object();
+            let framebuffer_object = framebuffer.inner().internal_object();
             self.inner
                 .begin_render_pass(framebuffer.clone(), contents, clear_values)?;
             self.render_pass_state = Some(RenderPassState {
@@ -2425,7 +2418,7 @@ where
         command_buffer: C,
     ) -> Result<&mut Self, ExecuteCommandsError>
     where
-        C: SecondaryCommandBuffer + Send + Sync + 'static,
+        C: SecondaryCommandBuffer + 'static,
     {
         self.check_command_buffer(&command_buffer)?;
         let secondary_usage = command_buffer.inner().usage();
@@ -2456,7 +2449,7 @@ where
         command_buffers: Vec<C>,
     ) -> Result<&mut Self, ExecuteCommandsError>
     where
-        C: SecondaryCommandBuffer + Send + Sync + 'static,
+        C: SecondaryCommandBuffer + 'static,
     {
         for command_buffer in &command_buffers {
             self.check_command_buffer(command_buffer)?;
@@ -2487,7 +2480,7 @@ where
         command_buffer: &C,
     ) -> Result<(), AutoCommandBufferBuilderContextError>
     where
-        C: SecondaryCommandBuffer + Send + Sync + 'static,
+        C: SecondaryCommandBuffer + 'static,
     {
         if let Some(render_pass) = command_buffer.inheritance().render_pass {
             self.ensure_inside_render_pass_secondary(&render_pass)?;
@@ -2557,9 +2550,7 @@ where
         // Framebuffer, if present on the secondary command buffer, must be the
         // same as the one in the current render pass.
         if let Some(framebuffer) = render_pass.framebuffer {
-            if FramebufferAbstract::inner(framebuffer).internal_object()
-                != render_pass_state.framebuffer
-            {
+            if framebuffer.inner().internal_object() != render_pass_state.framebuffer {
                 return Err(AutoCommandBufferBuilderContextError::IncompatibleFramebuffer);
             }
         }
@@ -2634,7 +2625,10 @@ unsafe impl<P> DeviceOwned for PrimaryAutoCommandBuffer<P> {
     }
 }
 
-unsafe impl<P> PrimaryCommandBuffer for PrimaryAutoCommandBuffer<P> {
+unsafe impl<P> PrimaryCommandBuffer for PrimaryAutoCommandBuffer<P>
+where
+    P: CommandPoolAlloc,
+{
     #[inline]
     fn inner(&self) -> &UnsafeCommandBuffer {
         self.inner.as_ref()
@@ -2730,7 +2724,7 @@ unsafe impl<P> PrimaryCommandBuffer for PrimaryAutoCommandBuffer<P> {
 pub struct SecondaryAutoCommandBuffer<P = StandardCommandPoolAlloc> {
     inner: SyncCommandBuffer,
     pool_alloc: P, // Safety: must be dropped after `inner`
-    inheritance: CommandBufferInheritance<Box<dyn FramebufferAbstract + Send + Sync>>,
+    inheritance: CommandBufferInheritance<Box<dyn FramebufferAbstract>>,
 
     // Tracks usage of the command buffer on the GPU.
     submit_state: SubmitState,
@@ -2743,7 +2737,10 @@ unsafe impl<P> DeviceOwned for SecondaryAutoCommandBuffer<P> {
     }
 }
 
-unsafe impl<P> SecondaryCommandBuffer for SecondaryAutoCommandBuffer<P> {
+unsafe impl<P> SecondaryCommandBuffer for SecondaryAutoCommandBuffer<P>
+where
+    P: CommandPoolAlloc,
+{
     #[inline]
     fn inner(&self) -> &UnsafeCommandBuffer {
         self.inner.as_ref()

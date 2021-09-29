@@ -627,7 +627,10 @@ impl<A> AttachmentImage<A> {
     }
 }
 
-unsafe impl<A> ImageAccess for AttachmentImage<A> {
+unsafe impl<A> ImageAccess for AttachmentImage<A>
+where
+    A: MemoryPoolAlloc,
+{
     #[inline]
     fn inner(&self) -> ImageInner {
         ImageInner {
@@ -743,33 +746,45 @@ unsafe impl<A> ImageAccess for AttachmentImage<A> {
     }
 }
 
-unsafe impl<A> ImageClearValue<ClearValue> for Arc<AttachmentImage<A>> {
+unsafe impl<A> ImageClearValue<ClearValue> for Arc<AttachmentImage<A>>
+where
+    A: MemoryPoolAlloc,
+{
     #[inline]
     fn decode(&self, value: ClearValue) -> Option<ClearValue> {
         Some(self.format.decode_clear_value(value))
     }
 }
 
-unsafe impl<P, A> ImageContent<P> for Arc<AttachmentImage<A>> {
+unsafe impl<P, A> ImageContent<P> for Arc<AttachmentImage<A>>
+where
+    A: MemoryPoolAlloc,
+{
     #[inline]
     fn matches_format(&self) -> bool {
         true // FIXME:
     }
 }
 
-impl<A> PartialEq for AttachmentImage<A> {
+impl<A> PartialEq for AttachmentImage<A>
+where
+    A: MemoryPoolAlloc,
+{
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        ImageAccess::inner(self) == ImageAccess::inner(other)
+        self.inner() == other.inner()
     }
 }
 
-impl<A> Eq for AttachmentImage<A> {}
+impl<A> Eq for AttachmentImage<A> where A: MemoryPoolAlloc {}
 
-impl<A> Hash for AttachmentImage<A> {
+impl<A> Hash for AttachmentImage<A>
+where
+    A: MemoryPoolAlloc,
+{
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
-        ImageAccess::inner(self).hash(state);
+        self.inner().hash(state);
     }
 }
 

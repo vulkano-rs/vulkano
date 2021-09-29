@@ -228,7 +228,7 @@ impl FrameSystem {
     pub fn frame<F>(
         &mut self,
         before_future: F,
-        final_image: Arc<dyn ImageViewAbstract + Send + Sync + 'static>,
+        final_image: Arc<dyn ImageViewAbstract + 'static>,
         world_to_framebuffer: Matrix4<f32>,
     ) -> Frame
     where
@@ -347,7 +347,7 @@ pub struct Frame<'a> {
     // Future to wait upon before the main rendering.
     before_main_cb_future: Option<Box<dyn GpuFuture>>,
     // Framebuffer that was used when starting the render pass.
-    framebuffer: Arc<dyn FramebufferAbstract + Send + Sync>,
+    framebuffer: Arc<dyn FramebufferAbstract>,
     // The command buffer builder that will be built during the lifetime of this object.
     command_buffer_builder: Option<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>>,
     // Matrix that was passed to `frame()`.
@@ -439,7 +439,7 @@ impl<'f, 's: 'f> DrawPass<'f, 's> {
     #[inline]
     pub fn execute<C>(&mut self, command_buffer: C)
     where
-        C: SecondaryCommandBuffer + Send + Sync + 'static,
+        C: SecondaryCommandBuffer + 'static,
     {
         self.frame
             .command_buffer_builder

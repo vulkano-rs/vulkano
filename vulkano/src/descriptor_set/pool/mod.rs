@@ -38,7 +38,7 @@ pub unsafe trait DescriptorPool: DeviceOwned {
 }
 
 /// An allocated descriptor set.
-pub trait DescriptorPoolAlloc {
+pub trait DescriptorPoolAlloc: Send + Sync {
     /// Returns the inner unsafe descriptor set object.
     fn inner(&self) -> &UnsafeDescriptorSet;
 

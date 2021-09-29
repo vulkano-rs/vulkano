@@ -625,7 +625,6 @@ unsafe impl<T, A> BufferAccess for CpuBufferPoolChunk<T, A>
 where
     T: Send + Sync,
     A: MemoryPool,
-    <A as MemoryPool>::Alloc: Send + Sync,
 {
     #[inline]
     fn inner(&self) -> BufferInner {
@@ -738,7 +737,6 @@ unsafe impl<T, A> TypedBufferAccess for CpuBufferPoolChunk<T, A>
 where
     T: Send + Sync,
     A: MemoryPool,
-    <A as MemoryPool>::Alloc: Send + Sync,
 {
     type Content = [T];
 }
@@ -757,7 +755,6 @@ impl<T, A> PartialEq for CpuBufferPoolChunk<T, A>
 where
     T: Send + Sync,
     A: MemoryPool,
-    <A as MemoryPool>::Alloc: Send + Sync,
 {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
@@ -769,7 +766,6 @@ impl<T, A> Eq for CpuBufferPoolChunk<T, A>
 where
     T: Send + Sync,
     A: MemoryPool,
-    <A as MemoryPool>::Alloc: Send + Sync,
 {
 }
 
@@ -777,7 +773,6 @@ impl<T, A> Hash for CpuBufferPoolChunk<T, A>
 where
     T: Send + Sync,
     A: MemoryPool,
-    <A as MemoryPool>::Alloc: Send + Sync,
 {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -801,7 +796,6 @@ unsafe impl<T, A> BufferAccess for CpuBufferPoolSubbuffer<T, A>
 where
     T: Send + Sync,
     A: MemoryPool,
-    <A as MemoryPool>::Alloc: Send + Sync,
 {
     #[inline]
     fn inner(&self) -> BufferInner {
@@ -838,7 +832,6 @@ unsafe impl<T, A> TypedBufferAccess for CpuBufferPoolSubbuffer<T, A>
 where
     T: Send + Sync,
     A: MemoryPool,
-    <A as MemoryPool>::Alloc: Send + Sync,
 {
     type Content = T;
 }
@@ -857,7 +850,6 @@ impl<T, A> PartialEq for CpuBufferPoolSubbuffer<T, A>
 where
     T: Send + Sync,
     A: MemoryPool,
-    <A as MemoryPool>::Alloc: Send + Sync,
 {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
@@ -869,7 +861,6 @@ impl<T, A> Eq for CpuBufferPoolSubbuffer<T, A>
 where
     T: Send + Sync,
     A: MemoryPool,
-    <A as MemoryPool>::Alloc: Send + Sync,
 {
 }
 
@@ -877,7 +868,6 @@ impl<T, A> Hash for CpuBufferPoolSubbuffer<T, A>
 where
     T: Send + Sync,
     A: MemoryPool,
-    <A as MemoryPool>::Alloc: Send + Sync,
 {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {

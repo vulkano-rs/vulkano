@@ -96,7 +96,7 @@ impl<T: ?Sized> ImmutableBuffer<T> {
         queue: Arc<Queue>,
     ) -> Result<(Arc<ImmutableBuffer<T>>, ImmutableBufferFromBufferFuture), DeviceMemoryAllocError>
     where
-        T: 'static + Copy + Send + Sync + Sized,
+        T: Copy + Send + Sync + Sized + 'static,
     {
         let source = CpuAccessibleBuffer::from_data(
             queue.device().clone(),
@@ -119,8 +119,8 @@ impl<T: ?Sized> ImmutableBuffer<T> {
         queue: Arc<Queue>,
     ) -> Result<(Arc<ImmutableBuffer<T>>, ImmutableBufferFromBufferFuture), DeviceMemoryAllocError>
     where
-        B: BufferAccess + TypedBufferAccess<Content = T> + 'static + Clone + Send + Sync,
-        T: 'static + Send + Sync,
+        B: TypedBufferAccess<Content = T> + Clone + 'static,
+        T: Send + Sync + 'static,
     {
         unsafe {
             // We automatically set `transfer_destination` to true in order to avoid annoying errors.
@@ -195,7 +195,7 @@ impl<T> ImmutableBuffer<[T]> {
     where
         D: IntoIterator<Item = T>,
         D::IntoIter: ExactSizeIterator,
-        T: 'static + Send + Sync + Sized,
+        T: Send + Sync + Sized + 'static,
     {
         let source = CpuAccessibleBuffer::from_iter(
             queue.device().clone(),

@@ -113,7 +113,7 @@ impl AmbientLightingSystem {
     pub fn draw(
         &self,
         viewport_dimensions: [u32; 2],
-        color_input: Arc<dyn ImageViewAbstract + Send + Sync + 'static>,
+        color_input: Arc<dyn ImageViewAbstract + 'static>,
         ambient_color: [f32; 3],
     ) -> SecondaryAutoCommandBuffer {
         let push_constants = fs::ty::PushConstants {

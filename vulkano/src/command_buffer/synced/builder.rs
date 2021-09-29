@@ -72,7 +72,7 @@ pub struct SyncCommandBufferBuilder {
     // submitted to the inner builder yet.
     // Each command owns the resources it uses (buffers, images, pipelines, descriptor sets etc.),
     // references to any of these must be indirect in the form of a command index + resource id.
-    commands: Vec<Arc<dyn Command + Send + Sync>>,
+    commands: Vec<Arc<dyn Command>>,
 
     // Prototype for the pipeline barrier that must be submitted before flushing the commands
     // in `commands`.
@@ -223,7 +223,7 @@ impl SyncCommandBufferBuilder {
         )],
     ) -> Result<(), SyncCommandBufferBuilderError>
     where
-        C: Command + Send + Sync + 'static,
+        C: Command + 'static,
     {
         // TODO: see comment for the `is_poisoned` member in the struct
         assert!(
@@ -714,10 +714,10 @@ struct ResourceState {
 #[derive(Debug, Default)]
 struct CurrentState {
     descriptor_sets: FnvHashMap<PipelineBindPoint, DescriptorSetState>,
-    index_buffer: Option<Arc<dyn Command + Send + Sync>>,
-    pipeline_compute: Option<Arc<dyn Command + Send + Sync>>,
-    pipeline_graphics: Option<Arc<dyn Command + Send + Sync>>,
-    vertex_buffers: FnvHashMap<u32, Arc<dyn Command + Send + Sync>>,
+    index_buffer: Option<Arc<dyn Command>>,
+    pipeline_compute: Option<Arc<dyn Command>>,
+    pipeline_graphics: Option<Arc<dyn Command>>,
+    vertex_buffers: FnvHashMap<u32, Arc<dyn Command>>,
 
     push_constants: Option<PushConstantState>,
 
@@ -734,7 +734,7 @@ struct CurrentState {
 
 #[derive(Debug)]
 struct DescriptorSetState {
-    descriptor_sets: FnvHashMap<u32, Arc<dyn Command + Send + Sync>>,
+    descriptor_sets: FnvHashMap<u32, Arc<dyn Command>>,
     pipeline_layout: Arc<PipelineLayout>,
 }
 

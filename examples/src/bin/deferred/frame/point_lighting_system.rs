@@ -130,9 +130,9 @@ impl PointLightingSystem {
     pub fn draw(
         &self,
         viewport_dimensions: [u32; 2],
-        color_input: Arc<dyn ImageViewAbstract + Send + Sync + 'static>,
-        normals_input: Arc<dyn ImageViewAbstract + Send + Sync + 'static>,
-        depth_input: Arc<dyn ImageViewAbstract + Send + Sync + 'static>,
+        color_input: Arc<dyn ImageViewAbstract + 'static>,
+        normals_input: Arc<dyn ImageViewAbstract + 'static>,
+        depth_input: Arc<dyn ImageViewAbstract + 'static>,
         screen_to_world: Matrix4<f32>,
         position: Vector3<f32>,
         color: [f32; 3],

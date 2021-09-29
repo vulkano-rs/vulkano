@@ -582,7 +582,7 @@ impl Default for ComponentSwizzle {
 }
 
 /// Trait for types that represent the GPU can access an image view.
-pub unsafe trait ImageViewAbstract {
+pub unsafe trait ImageViewAbstract: Send + Sync {
     /// Returns the wrapped image that this image view was created from.
     fn image(&self) -> &dyn ImageAccess;
 
@@ -649,7 +649,7 @@ where
 
 unsafe impl<T> ImageViewAbstract for T
 where
-    T: SafeDeref,
+    T: SafeDeref + Send + Sync,
     T::Target: ImageViewAbstract,
 {
     #[inline]
@@ -688,16 +688,16 @@ where
     }
 }
 
-impl PartialEq for dyn ImageViewAbstract + Send + Sync {
+impl PartialEq for dyn ImageViewAbstract {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.inner() == other.inner()
     }
 }
 
-impl Eq for dyn ImageViewAbstract + Send + Sync {}
+impl Eq for dyn ImageViewAbstract {}
 
-impl Hash for dyn ImageViewAbstract + Send + Sync {
+impl Hash for dyn ImageViewAbstract {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);

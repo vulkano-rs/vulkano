@@ -351,7 +351,7 @@ impl<'a> SingleLayoutDescSetBuilder<'a> {
     #[inline]
     pub fn add_image(
         &mut self,
-        image_view: Arc<dyn ImageViewAbstract + Send + Sync + 'static>,
+        image_view: Arc<dyn ImageViewAbstract + 'static>,
     ) -> Result<&mut Self, DescriptorSetError> {
         if self.poisoned {
             Err(DescriptorSetError::BuilderPoisoned)
@@ -375,7 +375,7 @@ impl<'a> SingleLayoutDescSetBuilder<'a> {
     #[inline]
     pub fn add_sampled_image(
         &mut self,
-        image_view: Arc<dyn ImageViewAbstract + Send + Sync + 'static>,
+        image_view: Arc<dyn ImageViewAbstract + 'static>,
         sampler: Arc<Sampler>,
     ) -> Result<&mut Self, DescriptorSetError> {
         if self.poisoned {

@@ -48,7 +48,7 @@ use std::sync::Arc;
 /// use vulkano::render_pass::Framebuffer;
 ///
 /// # let render_pass: Arc<RenderPass> = return;
-/// # let view: Arc<vulkano::image::view::ImageView<Arc<vulkano::image::AttachmentImage<vulkano::format::Format>>>> = return;
+/// # let view: Arc<vulkano::image::view::ImageView<Arc<vulkano::image::AttachmentImage>>> = return;
 /// // let render_pass: Arc<_> = ...;
 /// let framebuffer = Framebuffer::start(render_pass.clone())
 ///     .add(view).unwrap()
@@ -56,7 +56,7 @@ use std::sync::Arc;
 /// ```
 ///
 /// All framebuffer objects implement the `FramebufferAbstract` trait. This means that you can cast
-/// any `Arc<Framebuffer<..>>` into an `Arc<FramebufferAbstract + Send + Sync>` for easier storage.
+/// any `Arc<Framebuffer<..>>` into an `Arc<FramebufferAbstract>` for easier storage.
 ///
 /// ## Framebuffer dimensions
 ///
@@ -387,8 +387,8 @@ impl<A> Framebuffer<A> {
 /// Trait for objects that contain a Vulkan framebuffer object.
 ///
 /// Any `Framebuffer` object implements this trait. You can therefore turn a `Arc<Framebuffer<_>>`
-/// into a `Arc<FramebufferAbstract + Send + Sync>` for easier storage.
-pub unsafe trait FramebufferAbstract {
+/// into a `Arc<FramebufferAbstract>` for easier storage.
+pub unsafe trait FramebufferAbstract: Send + Sync {
     /// Returns an opaque struct that represents the framebuffer's internals.
     fn inner(&self) -> FramebufferSys;
 
@@ -424,12 +424,12 @@ pub unsafe trait FramebufferAbstract {
 
 unsafe impl<T> FramebufferAbstract for T
 where
-    T: SafeDeref,
+    T: SafeDeref + Send + Sync,
     T::Target: FramebufferAbstract,
 {
     #[inline]
     fn inner(&self) -> FramebufferSys {
-        FramebufferAbstract::inner(&**self)
+        (**self).inner()
     }
 
     #[inline]

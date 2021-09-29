@@ -88,7 +88,10 @@ impl<W> SwapchainImage<W> {
     }
 }
 
-unsafe impl<W> ImageAccess for SwapchainImage<W> {
+unsafe impl<W> ImageAccess for SwapchainImage<W>
+where
+    W: Send + Sync,
+{
     #[inline]
     fn inner(&self) -> ImageInner {
         self.my_image()
@@ -158,32 +161,44 @@ unsafe impl<W> ImageAccess for SwapchainImage<W> {
     }
 }
 
-unsafe impl<W> ImageClearValue<ClearValue> for SwapchainImage<W> {
+unsafe impl<W> ImageClearValue<ClearValue> for SwapchainImage<W>
+where
+    W: Send + Sync,
+{
     #[inline]
     fn decode(&self, value: ClearValue) -> Option<ClearValue> {
         Some(self.swapchain.format().decode_clear_value(value))
     }
 }
 
-unsafe impl<P, W> ImageContent<P> for SwapchainImage<W> {
+unsafe impl<P, W> ImageContent<P> for SwapchainImage<W>
+where
+    W: Send + Sync,
+{
     #[inline]
     fn matches_format(&self) -> bool {
         true // FIXME:
     }
 }
 
-impl<W> PartialEq for SwapchainImage<W> {
+impl<W> PartialEq for SwapchainImage<W>
+where
+    W: Send + Sync,
+{
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        ImageAccess::inner(self) == ImageAccess::inner(other)
+        self.inner() == other.inner()
     }
 }
 
-impl<W> Eq for SwapchainImage<W> {}
+impl<W> Eq for SwapchainImage<W> where W: Send + Sync {}
 
-impl<W> Hash for SwapchainImage<W> {
+impl<W> Hash for SwapchainImage<W>
+where
+    W: Send + Sync,
+{
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
-        ImageAccess::inner(self).hash(state);
+        self.inner().hash(state);
     }
 }

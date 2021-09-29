@@ -7,7 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::buffer::BufferAccess;
 use crate::buffer::BufferUsage;
 use crate::buffer::CpuAccessibleBuffer;
 use crate::buffer::TypedBufferAccess;
@@ -72,7 +71,7 @@ pub struct ImmutableImage<A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> 
 /// The layer_levels_access must be a range showing which layers will be accessed
 /// The layout must be the layout of the image at the beginning and at the end of the command buffer
 pub struct SubImage {
-    image: Arc<dyn ImageAccess + Sync + Send>,
+    image: Arc<dyn ImageAccess>,
     mip_levels_access: std::ops::Range<u32>,
     layer_levels_access: std::ops::Range<u32>,
     layout: ImageLayout,
@@ -80,7 +79,7 @@ pub struct SubImage {
 
 impl SubImage {
     pub fn new(
-        image: Arc<dyn ImageAccess + Sync + Send>,
+        image: Arc<dyn ImageAccess>,
         mip_level: u32,
         mip_level_count: u32,
         layer_level: u32,
@@ -127,7 +126,7 @@ fn generate_mipmaps<L, Img>(
     dimensions: ImageDimensions,
     layout: ImageLayout,
 ) where
-    Img: ImageAccess + Send + Sync + 'static,
+    Img: ImageAccess + 'static,
 {
     for level in 1..image.mipmap_levels() {
         let [xs, ys, ds] = dimensions
@@ -358,7 +357,7 @@ impl ImmutableImage {
         ImageCreationError,
     >
     where
-        B: BufferAccess + TypedBufferAccess<Content = [Px]> + 'static + Clone + Send + Sync,
+        B: TypedBufferAccess<Content = [Px]> + Clone + 'static,
         Px: Pixel + Send + Sync + Clone + 'static,
     {
         let need_to_generate_mipmaps = has_mipmaps(mipmaps);
@@ -443,7 +442,10 @@ impl<A> ImmutableImage<A> {
     }
 }
 
-unsafe impl<A> ImageAccess for ImmutableImage<A> {
+unsafe impl<A> ImageAccess for ImmutableImage<A>
+where
+    A: MemoryPoolAlloc,
+{
     #[inline]
     fn inner(&self) -> ImageInner {
         ImageInner {
@@ -524,7 +526,10 @@ unsafe impl<A> ImageAccess for ImmutableImage<A> {
     }
 }
 
-unsafe impl<P, A> ImageContent<P> for ImmutableImage<A> {
+unsafe impl<P, A> ImageContent<P> for ImmutableImage<A>
+where
+    A: MemoryPoolAlloc,
+{
     #[inline]
     fn matches_format(&self) -> bool {
         true // FIXME:
@@ -593,26 +598,35 @@ unsafe impl ImageAccess for SubImage {
     }
 }
 
-impl<A> PartialEq for ImmutableImage<A> {
+impl<A> PartialEq for ImmutableImage<A>
+where
+    A: MemoryPoolAlloc,
+{
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        ImageAccess::inner(self) == ImageAccess::inner(other)
+        self.inner() == other.inner()
     }
 }
 
-impl<A> Eq for ImmutableImage<A> {}
+impl<A> Eq for ImmutableImage<A> where A: MemoryPoolAlloc {}
 
-impl<A> Hash for ImmutableImage<A> {
+impl<A> Hash for ImmutableImage<A>
+where
+    A: MemoryPoolAlloc,
+{
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
-        ImageAccess::inner(self).hash(state);
+        self.inner().hash(state);
     }
 }
 
-unsafe impl<A> ImageAccess for ImmutableImageInitialization<A> {
+unsafe impl<A> ImageAccess for ImmutableImageInitialization<A>
+where
+    A: MemoryPoolAlloc,
+{
     #[inline]
     fn inner(&self) -> ImageInner {
-        ImageAccess::inner(&self.image)
+        self.image.inner()
     }
 
     #[inline]
@@ -687,18 +701,24 @@ unsafe impl<A> ImageAccess for ImmutableImageInitialization<A> {
     }
 }
 
-impl<A> PartialEq for ImmutableImageInitialization<A> {
+impl<A> PartialEq for ImmutableImageInitialization<A>
+where
+    A: MemoryPoolAlloc,
+{
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        ImageAccess::inner(self) == ImageAccess::inner(other)
+        self.inner() == other.inner()
     }
 }
 
-impl<A> Eq for ImmutableImageInitialization<A> {}
+impl<A> Eq for ImmutableImageInitialization<A> where A: MemoryPoolAlloc {}
 
-impl<A> Hash for ImmutableImageInitialization<A> {
+impl<A> Hash for ImmutableImageInitialization<A>
+where
+    A: MemoryPoolAlloc,
+{
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
-        ImageAccess::inner(self).hash(state);
+        self.inner().hash(state);
     }
 }

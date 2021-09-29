@@ -38,7 +38,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-pub unsafe trait PrimaryCommandBuffer: DeviceOwned {
+pub unsafe trait PrimaryCommandBuffer: DeviceOwned + Send + Sync {
     /// Returns the underlying `UnsafeCommandBuffer` of this command buffer.
     fn inner(&self) -> &UnsafeCommandBuffer;
 
@@ -159,7 +159,7 @@ pub unsafe trait PrimaryCommandBuffer: DeviceOwned {
 
 unsafe impl<T> PrimaryCommandBuffer for T
 where
-    T: SafeDeref,
+    T: SafeDeref + Send + Sync,
     T::Target: PrimaryCommandBuffer,
 {
     #[inline]
@@ -203,7 +203,7 @@ where
     }
 }
 
-pub unsafe trait SecondaryCommandBuffer: DeviceOwned {
+pub unsafe trait SecondaryCommandBuffer: DeviceOwned + Send + Sync {
     /// Returns the underlying `UnsafeCommandBuffer` of this command buffer.
     fn inner(&self) -> &UnsafeCommandBuffer;
 
@@ -252,7 +252,7 @@ pub unsafe trait SecondaryCommandBuffer: DeviceOwned {
 
 unsafe impl<T> SecondaryCommandBuffer for T
 where
-    T: SafeDeref,
+    T: SafeDeref + Send + Sync,
     T::Target: SecondaryCommandBuffer,
 {
     #[inline]

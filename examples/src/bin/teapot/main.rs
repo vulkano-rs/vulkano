@@ -308,10 +308,7 @@ fn window_size_dependent_setup(
     fs: &fs::Shader,
     images: &[Arc<SwapchainImage<Window>>],
     render_pass: Arc<RenderPass>,
-) -> (
-    Arc<GraphicsPipeline>,
-    Vec<Arc<dyn FramebufferAbstract + Send + Sync>>,
-) {
+) -> (Arc<GraphicsPipeline>, Vec<Arc<dyn FramebufferAbstract>>) {
     let dimensions = images[0].dimensions();
 
     let depth_buffer = ImageView::new(
@@ -331,7 +328,7 @@ fn window_size_dependent_setup(
                     .unwrap()
                     .build()
                     .unwrap(),
-            ) as Arc<dyn FramebufferAbstract + Send + Sync>
+            ) as Arc<dyn FramebufferAbstract>
         })
         .collect::<Vec<_>>();
 
