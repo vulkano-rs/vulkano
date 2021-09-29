@@ -19,6 +19,7 @@ use crate::command_buffer::synced::SyncCommandBufferBuilderError;
 use crate::command_buffer::sys::UnsafeCommandBuffer;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderBufferImageCopy;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderColorImageClear;
+use crate::command_buffer::sys::UnsafeCommandBufferBuilderDepthStencilImageClear;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderImageBlit;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderImageCopy;
 use crate::command_buffer::validity::*;
@@ -960,6 +961,75 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 image,
                 ImageLayout::TransferDstOptimal,
                 color,
+                iter::once(region),
+            )?;
+            Ok(self)
+        }
+    }
+
+    /// Adds a command that clears all the layers of a depth / stencil image with a
+    /// specific value.
+    ///
+    /// # Panic
+    ///
+    /// Panics if `clear_value` is not a depth / stencil value.
+    ///
+    pub fn clear_depth_stencil_image<I>(
+        &mut self,
+        image: I,
+        clear_value: ClearValue,
+    ) -> Result<&mut Self, ClearDepthStencilImageError>
+    where
+        I: ImageAccess + Send + Sync + 'static,
+    {
+        let layers = image.dimensions().array_layers();
+
+        self.clear_depth_stencil_image_dimensions(image, 0, layers, clear_value)
+    }
+
+    /// Adds a command that clears a depth / stencil image with a specific value.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if `clear_value` is not a depth / stencil value.
+    ///
+    pub fn clear_depth_stencil_image_dimensions<I>(
+        &mut self,
+        image: I,
+        first_layer: u32,
+        num_layers: u32,
+        clear_value: ClearValue,
+    ) -> Result<&mut Self, ClearDepthStencilImageError>
+    where
+        I: ImageAccess + Send + Sync + 'static,
+    {
+        unsafe {
+            if !self.queue_family().supports_graphics() && !self.queue_family().supports_compute() {
+                return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
+            }
+
+            self.ensure_outside_render_pass()?;
+            check_clear_depth_stencil_image(self.device(), &image, first_layer, num_layers)?;
+
+            let (clear_depth, clear_stencil) = match clear_value {
+                ClearValue::Depth(_) => (true, false),
+                ClearValue::Stencil(_) => (false, true),
+                ClearValue::DepthStencil(_) => (true, true),
+                _ => panic!("The clear value is not a depth / stencil value"),
+            };
+
+            let region = UnsafeCommandBufferBuilderDepthStencilImageClear {
+                base_array_layer: first_layer,
+                layer_count: num_layers,
+                clear_depth,
+                clear_stencil,
+            };
+
+            // TODO: let choose layout
+            self.inner.clear_depth_stencil_image(
+                image,
+                ImageLayout::TransferDstOptimal,
+                clear_value,
                 iter::once(region),
             )?;
             Ok(self)
@@ -2847,6 +2917,12 @@ err_gen!(BlitImageError {
 err_gen!(ClearColorImageError {
     AutoCommandBufferBuilderContextError,
     CheckClearColorImageError,
+    SyncCommandBufferBuilderError,
+});
+
+err_gen!(ClearDepthStencilImageError {
+    AutoCommandBufferBuilderContextError,
+    CheckClearDepthStencilImageError,
     SyncCommandBufferBuilderError,
 });
 

@@ -17,6 +17,7 @@ use crate::command_buffer::sys::UnsafeCommandBufferBuilder;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderBindVertexBuffer;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderBufferImageCopy;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderColorImageClear;
+use crate::command_buffer::sys::UnsafeCommandBufferBuilderDepthStencilImageClear;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderExecuteCommands;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderImageBlit;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderImageCopy;
@@ -710,6 +711,94 @@ impl SyncCommandBufferBuilder {
                 image,
                 layout,
                 color,
+                regions: Mutex::new(Some(regions)),
+            },
+            &[(
+                KeyTy::Image,
+                Some((
+                    PipelineMemoryAccess {
+                        stages: PipelineStages {
+                            transfer: true,
+                            ..PipelineStages::none()
+                        },
+                        access: AccessFlags {
+                            transfer_write: true,
+                            ..AccessFlags::none()
+                        },
+                        exclusive: true,
+                    },
+                    layout,
+                    layout,
+                    ImageUninitializedSafe::Safe,
+                )),
+            )],
+        )?;
+
+        Ok(())
+    }
+
+    /// Calls `vkCmdClearDepthStencilImage` on the builder.
+    ///
+    /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
+    /// usage of the command anyway.
+    pub unsafe fn clear_depth_stencil_image<I, R>(
+        &mut self,
+        image: I,
+        layout: ImageLayout,
+        clear_value: ClearValue,
+        regions: R,
+    ) -> Result<(), SyncCommandBufferBuilderError>
+    where
+        I: ImageAccess + Send + Sync + 'static,
+        R: IntoIterator<Item = UnsafeCommandBufferBuilderDepthStencilImageClear>
+            + Send
+            + Sync
+            + 'static,
+    {
+        struct Cmd<I, R> {
+            image: I,
+            layout: ImageLayout,
+            clear_value: ClearValue,
+            regions: Mutex<Option<R>>,
+        }
+
+        impl<I, R> Command for Cmd<I, R>
+        where
+            I: ImageAccess + Send + Sync + 'static,
+            R: IntoIterator<Item = UnsafeCommandBufferBuilderDepthStencilImageClear>
+                + Send
+                + Sync
+                + 'static,
+        {
+            fn name(&self) -> &'static str {
+                "vkCmdClearColorImage"
+            }
+
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
+                out.clear_depth_stencil_image(
+                    &self.image,
+                    self.layout,
+                    self.clear_value,
+                    self.regions.lock().unwrap().take().unwrap(),
+                );
+            }
+
+            fn image(&self, num: usize) -> &dyn ImageAccess {
+                assert_eq!(num, 0);
+                &self.image
+            }
+
+            fn image_name(&self, num: usize) -> Cow<'static, str> {
+                assert_eq!(num, 0);
+                "target".into()
+            }
+        }
+
+        self.append_command(
+            Cmd {
+                image,
+                layout,
+                clear_value,
                 regions: Mutex::new(Some(regions)),
             },
             &[(
