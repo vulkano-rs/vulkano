@@ -12,7 +12,6 @@
 pub use self::standard::StdDescriptorPool;
 pub use self::sys::DescriptorPoolAllocError;
 pub use self::sys::UnsafeDescriptorPool;
-pub use self::sys::UnsafeDescriptorPoolAllocIter;
 use crate::descriptor_set::layout::DescriptorSetLayout;
 use crate::descriptor_set::layout::DescriptorType;
 use crate::descriptor_set::UnsafeDescriptorSet;

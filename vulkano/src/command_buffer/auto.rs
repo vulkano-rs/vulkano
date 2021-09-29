@@ -14,12 +14,14 @@ use crate::command_buffer::pool::standard::StandardCommandPoolBuilder;
 use crate::command_buffer::pool::CommandPool;
 use crate::command_buffer::pool::CommandPoolAlloc;
 use crate::command_buffer::pool::CommandPoolBuilderAlloc;
+use crate::command_buffer::synced::CommandBufferState;
 use crate::command_buffer::synced::SyncCommandBuffer;
 use crate::command_buffer::synced::SyncCommandBufferBuilder;
 use crate::command_buffer::synced::SyncCommandBufferBuilderError;
 use crate::command_buffer::sys::UnsafeCommandBuffer;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderBufferImageCopy;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderColorImageClear;
+use crate::command_buffer::sys::UnsafeCommandBufferBuilderDepthStencilImageClear;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderImageBlit;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderImageCopy;
 use crate::command_buffer::validity::*;
@@ -497,10 +499,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             .unwrap()
     }
 
-    /// Returns the inner `SyncCommandBufferBuilder`, which can be queried for the current state.
+    /// Returns the binding/setting state.
     #[inline]
-    pub fn inner(&self) -> &SyncCommandBufferBuilder {
-        &self.inner
+    pub fn state(&self) -> CommandBufferState {
+        self.inner.state()
     }
 
     /// Binds descriptor sets for future dispatch or draw calls.
@@ -967,6 +969,75 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
     }
 
+    /// Adds a command that clears all the layers of a depth / stencil image with a
+    /// specific value.
+    ///
+    /// # Panic
+    ///
+    /// Panics if `clear_value` is not a depth / stencil value.
+    ///
+    pub fn clear_depth_stencil_image<I>(
+        &mut self,
+        image: I,
+        clear_value: ClearValue,
+    ) -> Result<&mut Self, ClearDepthStencilImageError>
+    where
+        I: ImageAccess + 'static,
+    {
+        let layers = image.dimensions().array_layers();
+
+        self.clear_depth_stencil_image_dimensions(image, 0, layers, clear_value)
+    }
+
+    /// Adds a command that clears a depth / stencil image with a specific value.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if `clear_value` is not a depth / stencil value.
+    ///
+    pub fn clear_depth_stencil_image_dimensions<I>(
+        &mut self,
+        image: I,
+        first_layer: u32,
+        num_layers: u32,
+        clear_value: ClearValue,
+    ) -> Result<&mut Self, ClearDepthStencilImageError>
+    where
+        I: ImageAccess + 'static,
+    {
+        unsafe {
+            if !self.queue_family().supports_graphics() && !self.queue_family().supports_compute() {
+                return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
+            }
+
+            self.ensure_outside_render_pass()?;
+            check_clear_depth_stencil_image(self.device(), &image, first_layer, num_layers)?;
+
+            let (clear_depth, clear_stencil) = match clear_value {
+                ClearValue::Depth(_) => (true, false),
+                ClearValue::Stencil(_) => (false, true),
+                ClearValue::DepthStencil(_) => (true, true),
+                _ => panic!("The clear value is not a depth / stencil value"),
+            };
+
+            let region = UnsafeCommandBufferBuilderDepthStencilImageClear {
+                base_array_layer: first_layer,
+                layer_count: num_layers,
+                clear_depth,
+                clear_stencil,
+            };
+
+            // TODO: let choose layout
+            self.inner.clear_depth_stencil_image(
+                image,
+                ImageLayout::TransferDstOptimal,
+                clear_value,
+                iter::once(region),
+            )?;
+            Ok(self)
+        }
+    }
+
     /// Adds a command that copies from a buffer to another.
     ///
     /// This command will copy from the source to the destination. If their size is not equal, then
@@ -1347,10 +1418,14 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
         }
 
-        let pipeline = check_pipeline_compute(&self.inner)?;
+        let pipeline = check_pipeline_compute(self.state())?;
         self.ensure_outside_render_pass()?;
-        check_descriptor_sets_validity(&self.inner, pipeline.layout(), PipelineBindPoint::Compute)?;
-        check_push_constants_validity(&self.inner, pipeline.layout())?;
+        check_descriptor_sets_validity(
+            self.state(),
+            pipeline.layout(),
+            PipelineBindPoint::Compute,
+        )?;
+        check_push_constants_validity(self.state(), pipeline.layout())?;
         check_dispatch(self.device(), group_counts)?;
 
         unsafe {
@@ -1374,10 +1449,14 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
         }
 
-        let pipeline = check_pipeline_compute(&self.inner)?;
+        let pipeline = check_pipeline_compute(self.state())?;
         self.ensure_outside_render_pass()?;
-        check_descriptor_sets_validity(&self.inner, pipeline.layout(), PipelineBindPoint::Compute)?;
-        check_push_constants_validity(&self.inner, pipeline.layout())?;
+        check_descriptor_sets_validity(
+            self.state(),
+            pipeline.layout(),
+            PipelineBindPoint::Compute,
+        )?;
+        check_push_constants_validity(self.state(), pipeline.layout())?;
         check_indirect_buffer(self.device(), &indirect_buffer)?;
 
         unsafe {
@@ -1401,17 +1480,17 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         first_vertex: u32,
         first_instance: u32,
     ) -> Result<&mut Self, DrawError> {
-        let pipeline = check_pipeline_graphics(&self.inner)?;
+        let pipeline = check_pipeline_graphics(self.state())?;
         self.ensure_inside_render_pass_inline(pipeline)?;
-        check_dynamic_state_validity(&self.inner, pipeline)?;
+        check_dynamic_state_validity(self.state(), pipeline)?;
         check_descriptor_sets_validity(
-            &self.inner,
+            self.state(),
             pipeline.layout(),
             PipelineBindPoint::Graphics,
         )?;
-        check_push_constants_validity(&self.inner, pipeline.layout())?;
+        check_push_constants_validity(self.state(), pipeline.layout())?;
         check_vertex_buffers(
-            &self.inner,
+            self.state(),
             pipeline,
             Some((first_vertex, vertex_count)),
             Some((first_instance, instance_count)),
@@ -1451,16 +1530,16 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             + Sync
             + 'static,
     {
-        let pipeline = check_pipeline_graphics(&self.inner)?;
+        let pipeline = check_pipeline_graphics(self.state())?;
         self.ensure_inside_render_pass_inline(pipeline)?;
-        check_dynamic_state_validity(&self.inner, pipeline)?;
+        check_dynamic_state_validity(self.state(), pipeline)?;
         check_descriptor_sets_validity(
-            &self.inner,
+            self.state(),
             pipeline.layout(),
             PipelineBindPoint::Graphics,
         )?;
-        check_push_constants_validity(&self.inner, pipeline.layout())?;
-        check_vertex_buffers(&self.inner, pipeline, None, None)?;
+        check_push_constants_validity(self.state(), pipeline.layout())?;
+        check_vertex_buffers(self.state(), pipeline, None, None)?;
         check_indirect_buffer(self.device(), &indirect_buffer)?;
 
         let requested = indirect_buffer.len() as u32;
@@ -1506,22 +1585,22 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         first_instance: u32,
     ) -> Result<&mut Self, DrawIndexedError> {
         // TODO: how to handle an index out of range of the vertex buffers?
-        let pipeline = check_pipeline_graphics(&self.inner)?;
+        let pipeline = check_pipeline_graphics(self.state())?;
         self.ensure_inside_render_pass_inline(pipeline)?;
-        check_dynamic_state_validity(&self.inner, pipeline)?;
+        check_dynamic_state_validity(self.state(), pipeline)?;
         check_descriptor_sets_validity(
-            &self.inner,
+            self.state(),
             pipeline.layout(),
             PipelineBindPoint::Graphics,
         )?;
-        check_push_constants_validity(&self.inner, pipeline.layout())?;
+        check_push_constants_validity(self.state(), pipeline.layout())?;
         check_vertex_buffers(
-            &self.inner,
+            self.state(),
             pipeline,
             None,
             Some((first_instance, instance_count)),
         )?;
-        check_index_buffer(&self.inner, Some((first_index, index_count)))?;
+        check_index_buffer(self.state(), Some((first_index, index_count)))?;
 
         unsafe {
             self.inner.draw_indexed(
@@ -1559,17 +1638,17 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     where
         Inb: TypedBufferAccess<Content = [DrawIndexedIndirectCommand]> + 'static,
     {
-        let pipeline = check_pipeline_graphics(&self.inner)?;
+        let pipeline = check_pipeline_graphics(self.state())?;
         self.ensure_inside_render_pass_inline(pipeline)?;
-        check_dynamic_state_validity(&self.inner, pipeline)?;
+        check_dynamic_state_validity(self.state(), pipeline)?;
         check_descriptor_sets_validity(
-            &self.inner,
+            self.state(),
             pipeline.layout(),
             PipelineBindPoint::Graphics,
         )?;
-        check_push_constants_validity(&self.inner, pipeline.layout())?;
-        check_vertex_buffers(&self.inner, pipeline, None, None)?;
-        check_index_buffer(&self.inner, None)?;
+        check_push_constants_validity(self.state(), pipeline.layout())?;
+        check_vertex_buffers(self.state(), pipeline, None, None)?;
+        check_index_buffer(self.state(), None)?;
         check_indirect_buffer(self.device(), &indirect_buffer)?;
 
         let requested = indirect_buffer.len() as u32;
@@ -2844,6 +2923,12 @@ err_gen!(BlitImageError {
 err_gen!(ClearColorImageError {
     AutoCommandBufferBuilderContextError,
     CheckClearColorImageError,
+    SyncCommandBufferBuilderError,
+});
+
+err_gen!(ClearDepthStencilImageError {
+    AutoCommandBufferBuilderContextError,
+    CheckClearDepthStencilImageError,
     SyncCommandBufferBuilderError,
 });
 

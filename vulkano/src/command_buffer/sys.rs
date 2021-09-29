@@ -774,6 +774,94 @@ impl UnsafeCommandBufferBuilder {
         );
     }
 
+    /// Calls `vkCmdClearDepthStencilImage` on the builder.
+    ///
+    /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
+    /// usage of the command anyway.
+    pub unsafe fn clear_depth_stencil_image<I, R>(
+        &mut self,
+        image: &I,
+        layout: ImageLayout,
+        clear_value: ClearValue,
+        regions: R,
+    ) where
+        I: ?Sized + ImageAccess,
+        R: IntoIterator<Item = UnsafeCommandBufferBuilderDepthStencilImageClear>,
+    {
+        let image_aspects = image.format().aspects();
+        debug_assert!((image_aspects.depth || image_aspects.stencil) && !image_aspects.plane0);
+        debug_assert!(image.format().compression().is_none());
+
+        let image = image.inner();
+        debug_assert!(image.image.usage().transfer_destination);
+        debug_assert!(layout == ImageLayout::General || layout == ImageLayout::TransferDstOptimal);
+
+        let clear_value = match clear_value {
+            ClearValue::Depth(val) => ash::vk::ClearDepthStencilValue {
+                depth: val,
+                stencil: 0,
+            },
+            ClearValue::Stencil(val) => ash::vk::ClearDepthStencilValue {
+                depth: 0.0,
+                stencil: val,
+            },
+            ClearValue::DepthStencil((depth, stencil)) => {
+                ash::vk::ClearDepthStencilValue { depth, stencil }
+            }
+            _ => ash::vk::ClearDepthStencilValue {
+                depth: 0.0,
+                stencil: 0,
+            },
+        };
+
+        let regions: SmallVec<[_; 8]> = regions
+            .into_iter()
+            .filter_map(|region| {
+                debug_assert!(
+                    region.layer_count + region.base_array_layer <= image.num_layers as u32
+                );
+
+                if region.layer_count == 0 {
+                    return None;
+                }
+
+                let mut aspect_mask = ash::vk::ImageAspectFlags::empty();
+                if region.clear_depth {
+                    aspect_mask |= ash::vk::ImageAspectFlags::DEPTH;
+                }
+                if region.clear_depth {
+                    aspect_mask |= ash::vk::ImageAspectFlags::STENCIL;
+                }
+
+                if aspect_mask.is_empty() {
+                    return None;
+                }
+
+                Some(ash::vk::ImageSubresourceRange {
+                    aspect_mask,
+                    base_mip_level: 0,
+                    level_count: 1,
+                    base_array_layer: region.base_array_layer + image.first_layer as u32,
+                    layer_count: region.layer_count,
+                })
+            })
+            .collect();
+
+        if regions.is_empty() {
+            return;
+        }
+
+        let fns = self.device().fns();
+        let cmd = self.internal_object();
+        fns.v1_0.cmd_clear_depth_stencil_image(
+            cmd,
+            image.image.internal_object(),
+            layout.into(),
+            &clear_value,
+            regions.len() as u32,
+            regions.as_ptr(),
+        );
+    }
     /// Calls `vkCmdCopyBuffer` on the builder.
     ///
     /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
@@ -1618,6 +1706,15 @@ pub struct UnsafeCommandBufferBuilderColorImageClear {
     pub level_count: u32,
     pub base_array_layer: u32,
     pub layer_count: u32,
+}
+
+// TODO: move somewhere else?
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct UnsafeCommandBufferBuilderDepthStencilImageClear {
+    pub base_array_layer: u32,
+    pub layer_count: u32,
+    pub clear_stencil: bool,
+    pub clear_depth: bool,
 }
 
 // TODO: move somewhere else?

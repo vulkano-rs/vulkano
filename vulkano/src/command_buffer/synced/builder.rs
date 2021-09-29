@@ -15,6 +15,7 @@ use super::ResourceFinalState;
 use super::ResourceKey;
 use super::ResourceLocation;
 use super::SyncCommandBuffer;
+use crate::buffer::BufferAccess;
 use crate::command_buffer::pool::UnsafeCommandPoolAlloc;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilder;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderPipelineBarrier;
@@ -22,16 +23,22 @@ use crate::command_buffer::CommandBufferExecError;
 use crate::command_buffer::CommandBufferLevel;
 use crate::command_buffer::CommandBufferUsage;
 use crate::command_buffer::ImageUninitializedSafe;
+use crate::descriptor_set::DescriptorSet;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::image::ImageLayout;
+use crate::pipeline::input_assembly::IndexType;
+use crate::pipeline::layout::PipelineLayout;
+use crate::pipeline::viewport::Scissor;
+use crate::pipeline::viewport::Viewport;
+use crate::pipeline::ComputePipeline;
+use crate::pipeline::GraphicsPipeline;
+use crate::pipeline::PipelineBindPoint;
 use crate::render_pass::FramebufferAbstract;
 use crate::sync::AccessFlags;
 use crate::sync::PipelineMemoryAccess;
 use crate::sync::PipelineStages;
 use crate::OomError;
-use commands::CurrentState;
-pub use commands::StencilState;
 use fnv::FnvHashMap;
 use std::borrow::Cow;
 use std::collections::hash_map::Entry;
@@ -170,6 +177,14 @@ impl SyncCommandBufferBuilder {
             current_state: Default::default(),
             is_poisoned: false,
             is_secondary,
+        }
+    }
+
+    /// Returns the binding/setting state.
+    #[inline]
+    pub fn state(&self) -> CommandBufferState {
+        CommandBufferState {
+            current_state: &self.current_state,
         }
     }
 
@@ -693,4 +708,183 @@ struct ResourceState {
 
     // Extra context of how the image will be used
     image_uninitialized_safe: ImageUninitializedSafe,
+}
+
+/// Holds the current binding and setting state.
+#[derive(Debug, Default)]
+struct CurrentState {
+    descriptor_sets: FnvHashMap<PipelineBindPoint, DescriptorSetState>,
+    index_buffer: Option<Arc<dyn Command>>,
+    pipeline_compute: Option<Arc<dyn Command>>,
+    pipeline_graphics: Option<Arc<dyn Command>>,
+    vertex_buffers: FnvHashMap<u32, Arc<dyn Command>>,
+
+    push_constants: Option<PushConstantState>,
+
+    blend_constants: Option<[f32; 4]>,
+    depth_bias: Option<(f32, f32, f32)>,
+    depth_bounds: Option<(f32, f32)>,
+    line_width: Option<f32>,
+    stencil_compare_mask: StencilState,
+    stencil_reference: StencilState,
+    stencil_write_mask: StencilState,
+    scissor: FnvHashMap<u32, Scissor>,
+    viewport: FnvHashMap<u32, Viewport>,
+}
+
+#[derive(Debug)]
+struct DescriptorSetState {
+    descriptor_sets: FnvHashMap<u32, Arc<dyn Command>>,
+    pipeline_layout: Arc<PipelineLayout>,
+}
+
+#[derive(Debug)]
+struct PushConstantState {
+    pipeline_layout: Arc<PipelineLayout>,
+}
+
+/// Allows you to retrieve the current state of a command buffer builder.
+#[derive(Clone, Copy, Debug)]
+pub struct CommandBufferState<'a> {
+    current_state: &'a CurrentState,
+}
+
+impl<'a> CommandBufferState<'a> {
+    /// Returns the descriptor set currently bound to a given set number, or `None` if nothing has
+    /// been bound yet.
+    pub fn descriptor_set(
+        &self,
+        pipeline_bind_point: PipelineBindPoint,
+        set_num: u32,
+    ) -> Option<(&'a dyn DescriptorSet, &'a [u32])> {
+        self.current_state
+            .descriptor_sets
+            .get(&pipeline_bind_point)
+            .and_then(|state| {
+                state
+                    .descriptor_sets
+                    .get(&set_num)
+                    .map(|cmd| cmd.bound_descriptor_set(set_num))
+            })
+    }
+
+    /// Returns the pipeline layout that describes all currently bound descriptor sets.
+    ///
+    /// This can be the layout used to perform the last bind operation, but it can also be the
+    /// layout of an earlier bind if it was compatible with more recent binds.
+    #[inline]
+    pub fn descriptor_sets_pipeline_layout(
+        &self,
+        pipeline_bind_point: PipelineBindPoint,
+    ) -> Option<&'a Arc<PipelineLayout>> {
+        self.current_state
+            .descriptor_sets
+            .get(&pipeline_bind_point)
+            .map(|state| &state.pipeline_layout)
+    }
+
+    /// Returns the index buffer currently bound, or `None` if nothing has been bound yet.
+    pub fn index_buffer(&self) -> Option<(&'a dyn BufferAccess, IndexType)> {
+        self.current_state
+            .index_buffer
+            .as_ref()
+            .map(|cmd| cmd.bound_index_buffer())
+    }
+
+    /// Returns the compute pipeline currently bound, or `None` if nothing has been bound yet.
+    pub fn pipeline_compute(&self) -> Option<&'a Arc<ComputePipeline>> {
+        self.current_state
+            .pipeline_compute
+            .as_ref()
+            .map(|cmd| cmd.bound_pipeline_compute())
+    }
+
+    /// Returns the graphics pipeline currently bound, or `None` if nothing has been bound yet.
+    pub fn pipeline_graphics(&self) -> Option<&'a Arc<GraphicsPipeline>> {
+        self.current_state
+            .pipeline_graphics
+            .as_ref()
+            .map(|cmd| cmd.bound_pipeline_graphics())
+    }
+
+    /// Returns the vertex buffer currently bound to a given binding slot number, or `None` if
+    /// nothing has been bound yet.
+    pub fn vertex_buffer(&self, binding_num: u32) -> Option<&'a dyn BufferAccess> {
+        self.current_state
+            .vertex_buffers
+            .get(&binding_num)
+            .map(|cmd| cmd.bound_vertex_buffer(binding_num))
+    }
+
+    /// Returns the pipeline layout that describes the current push constants.
+    ///
+    /// This is the layout used to perform the last push constant write operation.
+    #[inline]
+    pub fn push_constants_pipeline_layout(&self) -> Option<&'a Arc<PipelineLayout>> {
+        self.current_state
+            .push_constants
+            .as_ref()
+            .map(|state| &state.pipeline_layout)
+    }
+
+    /// Returns the current blend constants, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn blend_constants(&self) -> Option<[f32; 4]> {
+        self.current_state.blend_constants
+    }
+
+    /// Returns the current depth bias settings, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn depth_bias(&self) -> Option<(f32, f32, f32)> {
+        self.current_state.depth_bias
+    }
+
+    /// Returns the current depth bounds settings, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn depth_bounds(&self) -> Option<(f32, f32)> {
+        self.current_state.depth_bounds
+    }
+
+    /// Returns the current line width, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn line_width(&self) -> Option<f32> {
+        self.current_state.line_width
+    }
+
+    /// Returns the current stencil compare masks.
+    #[inline]
+    pub fn stencil_compare_mask(&self) -> StencilState {
+        self.current_state.stencil_compare_mask
+    }
+
+    /// Returns the current stencil references.
+    #[inline]
+    pub fn stencil_reference(&self) -> StencilState {
+        self.current_state.stencil_reference
+    }
+
+    /// Returns the current stencil write masks.
+    #[inline]
+    pub fn stencil_write_mask(&self) -> StencilState {
+        self.current_state.stencil_write_mask
+    }
+
+    /// Returns the current viewport for a given viewport slot, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn viewport(&self, num: u32) -> Option<&'a Viewport> {
+        self.current_state.viewport.get(&num)
+    }
+
+    /// Returns the current scissor for a given viewport slot, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn scissor(&self, num: u32) -> Option<&'a Scissor> {
+        self.current_state.scissor.get(&num)
+    }
+}
+
+/// Holds the current stencil state of a command buffer builder.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct StencilState {
+    pub front: Option<u32>,
+    pub back: Option<u32>,
 }

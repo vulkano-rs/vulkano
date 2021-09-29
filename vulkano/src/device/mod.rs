@@ -191,8 +191,12 @@ impl Device {
     ///
     /// - Panics if one of the queue families doesn't belong to the given device.
     ///
+
     // TODO: return Arc<Queue> and handle synchronization in the Queue
-    // TODO: should take the PhysicalDevice by value
+
+    // TODO: Eliminate QueuesIter in favour of `impl ExactSizeIterator`. This doesn't currently work
+    // due to this Rust bug: https://github.com/rust-lang/rust/issues/42940. The compiler will
+    // erroneously assume that the return iterator borrows from 'a and break.
     pub fn new<'a, I>(
         physical_device: PhysicalDevice,
         requested_features: &Features,
@@ -447,15 +451,11 @@ impl Device {
     /// > **Note**: Will return `-> impl ExactSizeIterator<Item = QueueFamily>` in the future.
     // TODO: ^
     #[inline]
-    pub fn active_queue_families<'a>(
-        &'a self,
-    ) -> Box<dyn ExactSizeIterator<Item = QueueFamily<'a>> + 'a> {
+    pub fn active_queue_families<'a>(&'a self) -> impl ExactSizeIterator<Item = QueueFamily<'a>> {
         let physical_device = self.physical_device();
-        Box::new(
-            self.active_queue_families
-                .iter()
-                .map(move |&id| physical_device.queue_family_by_id(id).unwrap()),
-        )
+        self.active_queue_families
+            .iter()
+            .map(move |&id| physical_device.queue_family_by_id(id).unwrap())
     }
 
     /// Returns the features that have been enabled on the device.

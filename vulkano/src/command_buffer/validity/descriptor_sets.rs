@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::command_buffer::synced::SyncCommandBufferBuilder;
+use crate::command_buffer::synced::CommandBufferState;
 use crate::descriptor_set::layout::DescriptorSetCompatibilityError;
 use crate::pipeline::layout::PipelineLayout;
 use crate::pipeline::PipelineBindPoint;
@@ -17,7 +17,7 @@ use std::fmt;
 
 /// Checks whether descriptor sets are compatible with the pipeline.
 pub(in super::super) fn check_descriptor_sets_validity(
-    builder: &SyncCommandBufferBuilder,
+    current_state: CommandBufferState,
     pipeline_layout: &PipelineLayout,
     pipeline_bind_point: PipelineBindPoint,
 ) -> Result<(), CheckDescriptorSetsValidityError> {
@@ -25,8 +25,8 @@ pub(in super::super) fn check_descriptor_sets_validity(
         return Ok(());
     }
 
-    let bindings_pipeline_layout = match builder
-        .bound_descriptor_sets_pipeline_layout(pipeline_bind_point)
+    let bindings_pipeline_layout = match current_state
+        .descriptor_sets_pipeline_layout(pipeline_bind_point)
     {
         Some(x) => x,
         None => return Err(CheckDescriptorSetsValidityError::MissingDescriptorSet { set_num: 0 }),
@@ -41,7 +41,7 @@ pub(in super::super) fn check_descriptor_sets_validity(
     for (set_num, pipeline_set) in pipeline_layout.descriptor_set_layouts().iter().enumerate() {
         let set_num = set_num as u32;
 
-        let descriptor_set = match builder.bound_descriptor_set(pipeline_bind_point, set_num) {
+        let descriptor_set = match current_state.descriptor_set(pipeline_bind_point, set_num) {
             Some(s) => s,
             None => return Err(CheckDescriptorSetsValidityError::MissingDescriptorSet { set_num }),
         };

@@ -21,7 +21,6 @@ use std::fmt;
 use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
-use std::vec::IntoIter as VecIntoIter;
 
 /// Pool from which descriptor sets are allocated from.
 ///
@@ -153,7 +152,7 @@ impl UnsafeDescriptorPool {
     pub unsafe fn alloc<'l, I>(
         &mut self,
         layouts: I,
-    ) -> Result<UnsafeDescriptorPoolAllocIter, DescriptorPoolAllocError>
+    ) -> Result<impl ExactSizeIterator<Item = UnsafeDescriptorSet>, DescriptorPoolAllocError>
     where
         I: IntoIterator<Item = &'l DescriptorSetLayout>,
     {
@@ -182,70 +181,68 @@ impl UnsafeDescriptorPool {
         &mut self,
         layouts: &SmallVec<[ash::vk::DescriptorSetLayout; 8]>,
         variable_descriptor_counts: &SmallVec<[u32; 8]>,
-    ) -> Result<UnsafeDescriptorPoolAllocIter, DescriptorPoolAllocError> {
+    ) -> Result<impl ExactSizeIterator<Item = UnsafeDescriptorSet>, DescriptorPoolAllocError> {
         let num = layouts.len();
 
-        if num == 0 {
-            return Ok(UnsafeDescriptorPoolAllocIter {
-                sets: vec![].into_iter(),
-            });
-        }
-
-        let variable_desc_count_alloc_info = if variable_descriptor_counts.iter().any(|c| *c != 0) {
-            Some(ash::vk::DescriptorSetVariableDescriptorCountAllocateInfo {
-                descriptor_set_count: layouts.len() as u32,
-                p_descriptor_counts: variable_descriptor_counts.as_ptr(),
-                ..Default::default()
-            })
+        let output = if num == 0 {
+            vec![]
         } else {
-            None
+            let variable_desc_count_alloc_info =
+                if variable_descriptor_counts.iter().any(|c| *c != 0) {
+                    Some(ash::vk::DescriptorSetVariableDescriptorCountAllocateInfo {
+                        descriptor_set_count: layouts.len() as u32,
+                        p_descriptor_counts: variable_descriptor_counts.as_ptr(),
+                        ..Default::default()
+                    })
+                } else {
+                    None
+                };
+
+            let infos = ash::vk::DescriptorSetAllocateInfo {
+                descriptor_pool: self.pool,
+                descriptor_set_count: layouts.len() as u32,
+                p_set_layouts: layouts.as_ptr(),
+                p_next: if let Some(next) = variable_desc_count_alloc_info.as_ref() {
+                    next as *const _ as *const _
+                } else {
+                    ptr::null()
+                },
+                ..Default::default()
+            };
+
+            let mut output = Vec::with_capacity(num);
+
+            let fns = self.device.fns();
+            let ret = fns.v1_0.allocate_descriptor_sets(
+                self.device.internal_object(),
+                &infos,
+                output.as_mut_ptr(),
+            );
+
+            // According to the specs, because `VK_ERROR_FRAGMENTED_POOL` was added after version
+            // 1.0 of Vulkan, any negative return value except out-of-memory errors must be
+            // considered as a fragmented pool error.
+            match ret {
+                ash::vk::Result::ERROR_OUT_OF_HOST_MEMORY => {
+                    return Err(DescriptorPoolAllocError::OutOfHostMemory);
+                }
+                ash::vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => {
+                    return Err(DescriptorPoolAllocError::OutOfDeviceMemory);
+                }
+                ash::vk::Result::ERROR_OUT_OF_POOL_MEMORY_KHR => {
+                    return Err(DescriptorPoolAllocError::OutOfPoolMemory);
+                }
+                c if c.as_raw() < 0 => {
+                    return Err(DescriptorPoolAllocError::FragmentedPool);
+                }
+                _ => (),
+            };
+
+            output.set_len(num);
+            output
         };
 
-        let infos = ash::vk::DescriptorSetAllocateInfo {
-            descriptor_pool: self.pool,
-            descriptor_set_count: layouts.len() as u32,
-            p_set_layouts: layouts.as_ptr(),
-            p_next: if let Some(next) = variable_desc_count_alloc_info.as_ref() {
-                next as *const _ as *const _
-            } else {
-                ptr::null()
-            },
-            ..Default::default()
-        };
-
-        let mut output = Vec::with_capacity(num);
-
-        let fns = self.device.fns();
-        let ret = fns.v1_0.allocate_descriptor_sets(
-            self.device.internal_object(),
-            &infos,
-            output.as_mut_ptr(),
-        );
-
-        // According to the specs, because `VK_ERROR_FRAGMENTED_POOL` was added after version
-        // 1.0 of Vulkan, any negative return value except out-of-memory errors must be
-        // considered as a fragmented pool error.
-        match ret {
-            ash::vk::Result::ERROR_OUT_OF_HOST_MEMORY => {
-                return Err(DescriptorPoolAllocError::OutOfHostMemory);
-            }
-            ash::vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => {
-                return Err(DescriptorPoolAllocError::OutOfDeviceMemory);
-            }
-            ash::vk::Result::ERROR_OUT_OF_POOL_MEMORY_KHR => {
-                return Err(DescriptorPoolAllocError::OutOfPoolMemory);
-            }
-            c if c.as_raw() < 0 => {
-                return Err(DescriptorPoolAllocError::FragmentedPool);
-            }
-            _ => (),
-        };
-
-        output.set_len(num);
-
-        Ok(UnsafeDescriptorPoolAllocIter {
-            sets: output.into_iter(),
-        })
+        Ok(output.into_iter().map(|s| UnsafeDescriptorSet { set: s }))
     }
 
     /// Frees some descriptor sets.
@@ -368,28 +365,6 @@ impl fmt::Display for DescriptorPoolAllocError {
         )
     }
 }
-
-/// Iterator to the descriptor sets allocated from an unsafe descriptor pool.
-#[derive(Debug)]
-pub struct UnsafeDescriptorPoolAllocIter {
-    sets: VecIntoIter<ash::vk::DescriptorSet>,
-}
-
-impl Iterator for UnsafeDescriptorPoolAllocIter {
-    type Item = UnsafeDescriptorSet;
-
-    #[inline]
-    fn next(&mut self) -> Option<UnsafeDescriptorSet> {
-        self.sets.next().map(|s| UnsafeDescriptorSet { set: s })
-    }
-
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        self.sets.size_hint()
-    }
-}
-
-impl ExactSizeIterator for UnsafeDescriptorPoolAllocIter {}
 
 #[cfg(test)]
 mod tests {

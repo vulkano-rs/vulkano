@@ -8,15 +8,15 @@
 // according to those terms.
 
 use crate::{
-    command_buffer::synced::SyncCommandBufferBuilder,
+    command_buffer::synced::CommandBufferState,
     pipeline::{ComputePipeline, GraphicsPipeline},
 };
 use std::{error, fmt};
 
 pub(in super::super) fn check_pipeline_compute(
-    builder: &SyncCommandBufferBuilder,
+    current_state: CommandBufferState,
 ) -> Result<&ComputePipeline, CheckPipelineError> {
-    let pipeline = match builder.bound_pipeline_compute() {
+    let pipeline = match current_state.pipeline_compute() {
         Some(x) => x,
         None => return Err(CheckPipelineError::PipelineNotBound),
     };
@@ -25,9 +25,9 @@ pub(in super::super) fn check_pipeline_compute(
 }
 
 pub(in super::super) fn check_pipeline_graphics(
-    builder: &SyncCommandBufferBuilder,
+    current_state: CommandBufferState,
 ) -> Result<&GraphicsPipeline, CheckPipelineError> {
-    let pipeline = match builder.bound_pipeline_graphics() {
+    let pipeline = match current_state.pipeline_graphics() {
         Some(x) => x,
         None => return Err(CheckPipelineError::PipelineNotBound),
     };

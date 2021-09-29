@@ -193,7 +193,8 @@ impl<T> ImmutableBuffer<[T]> {
         queue: Arc<Queue>,
     ) -> Result<(Arc<ImmutableBuffer<[T]>>, ImmutableBufferFromBufferFuture), DeviceMemoryAllocError>
     where
-        D: ExactSizeIterator<Item = T>,
+        D: IntoIterator<Item = T>,
+        D::IntoIter: ExactSizeIterator,
         T: Send + Sync + Sized + 'static,
     {
         let source = CpuAccessibleBuffer::from_iter(

@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::command_buffer::synced::SyncCommandBufferBuilder;
+use crate::command_buffer::synced::CommandBufferState;
 use crate::pipeline::vertex::VertexInputRate;
 use crate::pipeline::GraphicsPipeline;
 use crate::DeviceSize;
@@ -16,7 +16,7 @@ use std::error;
 use std::fmt;
 
 pub(in super::super) fn check_vertex_buffers(
-    builder: &SyncCommandBufferBuilder,
+    current_state: CommandBufferState,
     pipeline: &GraphicsPipeline,
     vertices: Option<(u32, u32)>,
     instances: Option<(u32, u32)>,
@@ -26,7 +26,7 @@ pub(in super::super) fn check_vertex_buffers(
     let mut max_instance_count: Option<u32> = None;
 
     for (binding_num, binding_desc) in vertex_input.bindings() {
-        let vertex_buffer = match builder.bound_vertex_buffer(binding_num) {
+        let vertex_buffer = match current_state.vertex_buffer(binding_num) {
             Some(x) => x,
             None => return Err(CheckVertexBufferError::BufferNotBound { binding_num }),
         };

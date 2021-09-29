@@ -157,9 +157,12 @@ impl<T> CpuAccessibleBuffer<[T]> {
         data: I,
     ) -> Result<Arc<CpuAccessibleBuffer<[T]>>, DeviceMemoryAllocError>
     where
-        I: ExactSizeIterator<Item = T>,
+        I: IntoIterator<Item = T>,
+        I::IntoIter: ExactSizeIterator,
         T: Content + 'static,
     {
+        let data = data.into_iter();
+
         unsafe {
             let uninitialized = CpuAccessibleBuffer::uninitialized_array(
                 device,

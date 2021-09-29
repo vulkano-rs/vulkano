@@ -56,7 +56,7 @@ impl UnsafeDescriptorSet {
     ///
     pub unsafe fn write<I>(&mut self, device: &Device, writes: I)
     where
-        I: Iterator<Item = DescriptorWrite>,
+        I: IntoIterator<Item = DescriptorWrite>,
     {
         let fns = device.fns();
 

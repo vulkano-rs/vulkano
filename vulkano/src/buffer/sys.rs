@@ -72,7 +72,7 @@ impl UnsafeBuffer {
         sparse: Option<SparseLevel>,
     ) -> Result<(UnsafeBuffer, MemoryRequirements), BufferCreationError>
     where
-        I: Iterator<Item = u32>,
+        I: IntoIterator<Item = u32>,
     {
         let fns = device.fns();
 
@@ -126,7 +126,9 @@ impl UnsafeBuffer {
                 Sharing::Exclusive => {
                     (ash::vk::SharingMode::EXCLUSIVE, SmallVec::<[u32; 8]>::new())
                 }
-                Sharing::Concurrent(ids) => (ash::vk::SharingMode::CONCURRENT, ids.collect()),
+                Sharing::Concurrent(ids) => {
+                    (ash::vk::SharingMode::CONCURRENT, ids.into_iter().collect())
+                }
             };
 
             let infos = ash::vk::BufferCreateInfo {

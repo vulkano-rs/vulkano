@@ -420,11 +420,14 @@ where
     fn try_next_impl<I>(
         &self,
         cur_buf_mutex: &mut MutexGuard<Option<Arc<ActualBuffer<A>>>>,
-        mut data: I,
-    ) -> Result<CpuBufferPoolChunk<T, A>, I>
+        data: I,
+    ) -> Result<CpuBufferPoolChunk<T, A>, I::IntoIter>
     where
-        I: ExactSizeIterator<Item = T>,
+        I: IntoIterator<Item = T>,
+        I::IntoIter: ExactSizeIterator,
     {
+        let mut data = data.into_iter();
+
         // Grab the current buffer. Return `Err` if the pool wasn't "initialized" yet.
         let current_buffer = match cur_buf_mutex.clone() {
             Some(b) => b,

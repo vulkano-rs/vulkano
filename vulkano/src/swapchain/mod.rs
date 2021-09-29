@@ -296,18 +296,13 @@
 //! ```
 //!
 
-use std::sync::atomic::AtomicBool;
-
 pub use self::capabilities::Capabilities;
 pub use self::capabilities::ColorSpace;
 pub use self::capabilities::CompositeAlpha;
 pub use self::capabilities::PresentMode;
 pub use self::capabilities::SupportedCompositeAlpha;
-pub use self::capabilities::SupportedCompositeAlphaIter;
 pub use self::capabilities::SupportedPresentModes;
-pub use self::capabilities::SupportedPresentModesIter;
 pub use self::capabilities::SupportedSurfaceTransforms;
-pub use self::capabilities::SupportedSurfaceTransformsIter;
 pub use self::capabilities::SurfaceTransform;
 pub use self::present_region::PresentRegion;
 pub use self::present_region::RectangleLayer;
@@ -327,6 +322,7 @@ pub use self::swapchain::Swapchain;
 pub use self::swapchain::SwapchainAcquireFuture;
 pub use self::swapchain::SwapchainBuilder;
 pub use self::swapchain::SwapchainCreationError;
+use std::sync::atomic::AtomicBool;
 
 mod capabilities;
 pub mod display;
