@@ -22,7 +22,7 @@
   - Validity of the state is checked by the dispatch/draw commands.
   - `DynamicState` is removed; each individual state now has its own command to set it. This includes some states that were not previously included in `DynamicState`.
 - **Breaking** `StateCacher` is removed; its task is now partially handled by `SyncCommandBufferBuilder`.
-- **BREAKING** `BufferAccess` now requires Send + Sync. This cascades into `TypedBufferAccess`, `BufferSlice`, `ImmutableBufferInitialization`, `ImmutableBuffer`, `DeviceLocalBuffer`, `CpuBufferPoolSubbuffer`, `CpuBufferPoolChunk`, `CpuAccessibleBuffer`, and `BufferView` now requiring their types to be `Send + Sync`.
+- **Breaking** Many traits now require `Send + Sync`: `BufferAccess`, `ImageAccess`, `ImageViewAbstract`, `FramebufferAbstract`, `AttachmentsList`, `MemoryPoolAlloc`, `DescriptorSet`, `DescriptorPoolAlloc`, `PrimaryCommandBuffer`, `SecondaryCommandBuffer`, `CommandPoolAlloc`. This further means that any type parameters of types implementing these traits also require `Send + Sync`.
 - **BREAKING** `DescriptorSetLayout::new()` now returns `Result<Self, DescriptorSetLayoutError>` instead of Result<Self, OomError>`
 - **BREAKING** `DescriptorCompatibilityError` additional variant `VariableCount`.
 - **BREAKING** `GraphicsPipelineCreationError` additional variant `PipelineLayoutCreationError`.
