@@ -58,6 +58,7 @@ use crate::pipeline::vertex::VertexBuffersCollection;
 use crate::pipeline::viewport::Scissor;
 use crate::pipeline::viewport::Viewport;
 use crate::pipeline::ComputePipeline;
+use crate::pipeline::DynamicState;
 use crate::pipeline::GraphicsPipeline;
 use crate::pipeline::PipelineBindPoint;
 use crate::query::QueryControlFlags;
@@ -1773,15 +1774,33 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         self
     }
 
+    // Helper function for dynamic state setting.
+    fn has_fixed_state(&self, state: DynamicState) -> bool {
+        self.state()
+            .pipeline_graphics()
+            .map(|pipeline| {
+                matches!(
+                    pipeline.dynamic_state(state),
+                    Some(crate::pipeline::DynamicStateMode::Fixed)
+                )
+            })
+            .unwrap_or(false)
+    }
+
     /// Sets the dynamic blend constants for future draw calls.
     ///
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - Panics if the currently bound graphics pipeline already contains this state internally.
     pub fn set_blend_constants(&mut self, constants: [f32; 4]) -> &mut Self {
         assert!(
             self.queue_family().supports_graphics(),
             "the queue family of the command buffer must support graphics operations"
+        );
+        assert!(
+            !self.has_fixed_state(DynamicState::BlendConstants),
+            "the currently bound graphics pipeline must not contain this state internally"
         );
 
         unsafe {
@@ -1796,6 +1815,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - Panics if the currently bound graphics pipeline already contains this state internally.
     /// - If the
     ///   [`ext_depth_range_unrestricted`](crate::device::DeviceExtensions::ext_depth_range_unrestricted)
     ///   device extension is not enabled, panics if `min` or `max` is not between 0.0 and 1.0 inclusive.
@@ -1803,6 +1823,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         assert!(
             self.queue_family().supports_graphics(),
             "the queue family of the command buffer must support graphics operations"
+        );
+        assert!(
+            !self.has_fixed_state(DynamicState::DepthBounds),
+            "the currently bound graphics pipeline must not contain this state internally"
         );
 
         if !self
@@ -1828,12 +1852,17 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - Panics if the currently bound graphics pipeline already contains this state internally.
     /// - If the [`wide_lines`](crate::device::Features::wide_lines) feature is not enabled, panics
     ///   if `line_width` is not 1.0.
     pub fn set_line_width(&mut self, line_width: f32) -> &mut Self {
         assert!(
             self.queue_family().supports_graphics(),
             "the queue family of the command buffer must support graphics operations"
+        );
+        assert!(
+            !self.has_fixed_state(DynamicState::LineWidth),
+            "the currently bound graphics pipeline must not contain this state internally"
         );
 
         if !self.device().enabled_features().wide_lines {
@@ -1855,6 +1884,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - Panics if the currently bound graphics pipeline already contains this state internally.
     /// - Panics if the highest scissor slot being set is greater than the
     ///   [`max_viewports`](crate::device::Properties::max_viewports) device property.
     /// - If the [`multi_viewport`](crate::device::Features::multi_viewport) feature is not enabled,
@@ -1863,12 +1893,16 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     where
         I: IntoIterator<Item = Scissor>,
     {
-        let scissors: SmallVec<[Scissor; 2]> = scissors.into_iter().collect();
-
         assert!(
             self.queue_family().supports_graphics(),
             "the queue family of the command buffer must support graphics operations"
         );
+        assert!(
+            !self.has_fixed_state(DynamicState::Scissor),
+            "the currently bound graphics pipeline must not contain this state internally"
+        );
+
+        let scissors: SmallVec<[Scissor; 2]> = scissors.into_iter().collect();
 
         assert!(
             first_scissor + scissors.len() as u32 <= self.device().physical_device().properties().max_viewports,
@@ -1904,6 +1938,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - Panics if the currently bound graphics pipeline already contains this state internally.
     pub fn set_stencil_compare_mask(
         &mut self,
         faces: StencilFaces,
@@ -1912,6 +1947,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         assert!(
             self.queue_family().supports_graphics(),
             "the queue family of the command buffer must support graphics operations"
+        );
+        assert!(
+            !self.has_fixed_state(DynamicState::StencilCompareMask),
+            "the currently bound graphics pipeline must not contain this state internally"
         );
 
         unsafe {
@@ -1926,10 +1965,15 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - Panics if the currently bound graphics pipeline already contains this state internally.
     pub fn set_stencil_reference(&mut self, faces: StencilFaces, reference: u32) -> &mut Self {
         assert!(
             self.queue_family().supports_graphics(),
             "the queue family of the command buffer must support graphics operations"
+        );
+        assert!(
+            !self.has_fixed_state(DynamicState::StencilReference),
+            "the currently bound graphics pipeline must not contain this state internally"
         );
 
         unsafe {
@@ -1944,10 +1988,15 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - Panics if the currently bound graphics pipeline already contains this state internally.
     pub fn set_stencil_write_mask(&mut self, faces: StencilFaces, write_mask: u32) -> &mut Self {
         assert!(
             self.queue_family().supports_graphics(),
             "the queue family of the command buffer must support graphics operations"
+        );
+        assert!(
+            !self.has_fixed_state(DynamicState::StencilWriteMask),
+            "the currently bound graphics pipeline must not contain this state internally"
         );
 
         unsafe {
@@ -1962,6 +2011,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - Panics if the currently bound graphics pipeline already contains this state internally.
     /// - Panics if the highest viewport slot being set is greater than the
     ///   [`max_viewports`](crate::device::Properties::max_viewports) device property.
     /// - If the [`multi_viewport`](crate::device::Features::multi_viewport) feature is not enabled,
@@ -1970,12 +2020,16 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     where
         I: IntoIterator<Item = Viewport>,
     {
-        let viewports: SmallVec<[Viewport; 2]> = viewports.into_iter().collect();
-
         assert!(
             self.queue_family().supports_graphics(),
             "the queue family of the command buffer must support graphics operations"
         );
+        assert!(
+            !self.has_fixed_state(DynamicState::Viewport),
+            "the currently bound graphics pipeline must not contain this state internally"
+        );
+
+        let viewports: SmallVec<[Viewport; 2]> = viewports.into_iter().collect();
 
         assert!(
             first_viewport + viewports.len() as u32 <= self.device().physical_device().properties().max_viewports,
