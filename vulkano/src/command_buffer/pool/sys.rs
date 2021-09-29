@@ -22,7 +22,6 @@ use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
-use std::vec::IntoIter as VecIntoIter;
 
 /// Low-level implementation of a command pool.
 ///
@@ -182,41 +181,43 @@ impl UnsafeCommandPool {
         &self,
         secondary: bool,
         count: u32,
-    ) -> Result<UnsafeCommandPoolAllocIter, OomError> {
-        if count == 0 {
-            return Ok(UnsafeCommandPoolAllocIter {
-                device: self.device.clone(),
-                list: vec![].into_iter(),
-            });
-        }
+    ) -> Result<impl ExactSizeIterator<Item = UnsafeCommandPoolAlloc>, OomError> {
+        let out = if count == 0 {
+            vec![]
+        } else {
+            let infos = ash::vk::CommandBufferAllocateInfo {
+                command_pool: self.pool,
+                level: if secondary {
+                    ash::vk::CommandBufferLevel::SECONDARY
+                } else {
+                    ash::vk::CommandBufferLevel::PRIMARY
+                },
+                command_buffer_count: count,
+                ..Default::default()
+            };
 
-        let infos = ash::vk::CommandBufferAllocateInfo {
-            command_pool: self.pool,
-            level: if secondary {
-                ash::vk::CommandBufferLevel::SECONDARY
-            } else {
-                ash::vk::CommandBufferLevel::PRIMARY
-            },
-            command_buffer_count: count,
-            ..Default::default()
+            unsafe {
+                let fns = self.device.fns();
+                let mut out = Vec::with_capacity(count as usize);
+                check_errors(fns.v1_0.allocate_command_buffers(
+                    self.device.internal_object(),
+                    &infos,
+                    out.as_mut_ptr(),
+                ))?;
+
+                out.set_len(count as usize);
+                out
+            }
         };
 
-        unsafe {
-            let fns = self.device.fns();
-            let mut out = Vec::with_capacity(count as usize);
-            check_errors(fns.v1_0.allocate_command_buffers(
-                self.device.internal_object(),
-                &infos,
-                out.as_mut_ptr(),
-            ))?;
+        let device = self.device.clone();
 
-            out.set_len(count as usize);
-
-            Ok(UnsafeCommandPoolAllocIter {
-                device: self.device.clone(),
-                list: out.into_iter(),
-            })
-        }
+        Ok(out
+            .into_iter()
+            .map(move |command_buffer| UnsafeCommandPoolAlloc {
+                command_buffer,
+                device: device.clone(),
+            }))
     }
 
     /// Frees individual command buffers.
@@ -227,10 +228,12 @@ impl UnsafeCommandPool {
     ///
     pub unsafe fn free_command_buffers<I>(&self, command_buffers: I)
     where
-        I: Iterator<Item = UnsafeCommandPoolAlloc>,
+        I: IntoIterator<Item = UnsafeCommandPoolAlloc>,
     {
-        let command_buffers: SmallVec<[_; 4]> =
-            command_buffers.map(|cb| cb.command_buffer).collect();
+        let command_buffers: SmallVec<[_; 4]> = command_buffers
+            .into_iter()
+            .map(|cb| cb.command_buffer)
+            .collect();
         let fns = self.device.fns();
         fns.v1_0.free_command_buffers(
             self.device.internal_object(),
@@ -298,34 +301,6 @@ unsafe impl VulkanObject for UnsafeCommandPoolAlloc {
         self.command_buffer
     }
 }
-
-/// Iterator for newly-allocated command buffers.
-#[derive(Debug)]
-pub struct UnsafeCommandPoolAllocIter {
-    device: Arc<Device>,
-    list: VecIntoIter<ash::vk::CommandBuffer>,
-}
-
-impl Iterator for UnsafeCommandPoolAllocIter {
-    type Item = UnsafeCommandPoolAlloc;
-
-    #[inline]
-    fn next(&mut self) -> Option<UnsafeCommandPoolAlloc> {
-        self.list
-            .next()
-            .map(|command_buffer| UnsafeCommandPoolAlloc {
-                command_buffer,
-                device: self.device.clone(),
-            })
-    }
-
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        self.list.size_hint()
-    }
-}
-
-impl ExactSizeIterator for UnsafeCommandPoolAllocIter {}
 
 /// Error that can happen when trimming command pools.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]

@@ -164,7 +164,7 @@ impl<'a> From<&'a [&'a Arc<Queue>]> for SharingMode {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Sharing<I>
 where
-    I: Iterator<Item = u32>,
+    I: IntoIterator<Item = u32>,
 {
     /// The resource is used is only one queue family.
     Exclusive,

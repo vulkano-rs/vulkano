@@ -7,18 +7,16 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::error;
-use std::ffi::CStr;
-use std::fmt;
-use std::ptr;
-use std::vec::IntoIter;
-
 use crate::check_errors;
 use crate::instance::loader;
 use crate::instance::loader::LoadingError;
 use crate::Error;
 use crate::OomError;
 use crate::Version;
+use std::error;
+use std::ffi::CStr;
+use std::fmt;
+use std::ptr;
 
 /// Queries the list of layers that are available when creating an instance.
 ///
@@ -43,14 +41,14 @@ use crate::Version;
 ///     println!("Available layer: {}", layer.name());
 /// }
 /// ```
-pub fn layers_list() -> Result<LayersIterator, LayersListError> {
+pub fn layers_list() -> Result<impl ExactSizeIterator<Item = LayerProperties>, LayersListError> {
     layers_list_from_loader(loader::auto_loader()?)
 }
 
 /// Same as `layers_list()`, but allows specifying a loader.
 pub fn layers_list_from_loader<L>(
     ptrs: &loader::FunctionPointers<L>,
-) -> Result<LayersIterator, LayersListError>
+) -> Result<impl ExactSizeIterator<Item = LayerProperties>, LayersListError>
 where
     L: loader::Loader,
 {
@@ -70,9 +68,7 @@ where
         })?;
         layers.set_len(num as usize);
 
-        Ok(LayersIterator {
-            iter: layers.into_iter(),
-        })
+        Ok(layers.into_iter().map(|p| LayerProperties { props: p }))
     }
 }
 
@@ -223,28 +219,6 @@ impl From<Error> for LayersListError {
         }
     }
 }
-
-/// Iterator that produces the list of layers that are available.
-// TODO: #[derive(Debug, Clone)]
-pub struct LayersIterator {
-    iter: IntoIter<ash::vk::LayerProperties>,
-}
-
-impl Iterator for LayersIterator {
-    type Item = LayerProperties;
-
-    #[inline]
-    fn next(&mut self) -> Option<LayerProperties> {
-        self.iter.next().map(|p| LayerProperties { props: p })
-    }
-
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        self.iter.size_hint()
-    }
-}
-
-impl ExactSizeIterator for LayersIterator {}
 
 #[cfg(test)]
 mod tests {
