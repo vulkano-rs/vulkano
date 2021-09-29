@@ -7,46 +7,46 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::command_buffer::synced::SyncCommandBufferBuilder;
+use crate::command_buffer::synced::CommandBufferState;
 use crate::pipeline::GraphicsPipeline;
 use std::error;
 use std::fmt;
 
 /// Checks whether states that are about to be set are correct.
 pub(in super::super) fn check_dynamic_state_validity(
-    builder: &SyncCommandBufferBuilder,
+    current_state: CommandBufferState,
     pipeline: &GraphicsPipeline,
 ) -> Result<(), CheckDynamicStateValidityError> {
     let device = pipeline.device();
 
     if pipeline.has_dynamic_blend_constants() {
-        if builder.current_blend_constants().is_none() {
+        if current_state.blend_constants().is_none() {
             return Err(CheckDynamicStateValidityError::BlendConstantsNotSet);
         }
     }
 
     if pipeline.has_dynamic_depth_bounds() {
-        if builder.current_blend_constants().is_none() {
+        if current_state.blend_constants().is_none() {
             return Err(CheckDynamicStateValidityError::BlendConstantsNotSet);
         }
     }
 
     if pipeline.has_dynamic_line_width() {
-        if builder.current_line_width().is_none() {
+        if current_state.line_width().is_none() {
             return Err(CheckDynamicStateValidityError::LineWidthNotSet);
         }
     }
 
     if pipeline.has_dynamic_scissor() {
         for num in 0..pipeline.num_viewports() {
-            if builder.current_scissor(num).is_none() {
+            if current_state.scissor(num).is_none() {
                 return Err(CheckDynamicStateValidityError::ScissorNotSet { num });
             }
         }
     }
 
     if pipeline.has_dynamic_stencil_compare_mask() {
-        let state = builder.current_stencil_compare_mask();
+        let state = current_state.stencil_compare_mask();
 
         if state.front.is_none() || state.back.is_none() {
             return Err(CheckDynamicStateValidityError::StencilCompareMaskNotSet);
@@ -54,7 +54,7 @@ pub(in super::super) fn check_dynamic_state_validity(
     }
 
     if pipeline.has_dynamic_stencil_reference() {
-        let state = builder.current_stencil_reference();
+        let state = current_state.stencil_reference();
 
         if state.front.is_none() || state.back.is_none() {
             return Err(CheckDynamicStateValidityError::StencilReferenceNotSet);
@@ -62,7 +62,7 @@ pub(in super::super) fn check_dynamic_state_validity(
     }
 
     if pipeline.has_dynamic_stencil_write_mask() {
-        let state = builder.current_stencil_write_mask();
+        let state = current_state.stencil_write_mask();
 
         if state.front.is_none() || state.back.is_none() {
             return Err(CheckDynamicStateValidityError::StencilWriteMaskNotSet);
@@ -71,7 +71,7 @@ pub(in super::super) fn check_dynamic_state_validity(
 
     if pipeline.has_dynamic_viewport() {
         for num in 0..pipeline.num_viewports() {
-            if builder.current_viewport(num).is_none() {
+            if current_state.viewport(num).is_none() {
                 return Err(CheckDynamicStateValidityError::ViewportNotSet { num });
             }
         }

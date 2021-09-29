@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::command_buffer::synced::SyncCommandBufferBuilder;
+use crate::command_buffer::synced::CommandBufferState;
 use std::error;
 use std::fmt;
 
@@ -18,10 +18,10 @@ use std::fmt;
 /// - Panics if the buffer was not created with `device`.
 ///
 pub(in super::super) fn check_index_buffer(
-    builder: &SyncCommandBufferBuilder,
+    current_state: CommandBufferState,
     indices: Option<(u32, u32)>,
 ) -> Result<(), CheckIndexBufferError> {
-    let (index_buffer, index_type) = match builder.bound_index_buffer() {
+    let (index_buffer, index_type) = match current_state.index_buffer() {
         Some(x) => x,
         None => return Err(CheckIndexBufferError::BufferNotBound),
     };

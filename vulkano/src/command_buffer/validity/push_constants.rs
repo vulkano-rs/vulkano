@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::command_buffer::synced::SyncCommandBufferBuilder;
+use crate::command_buffer::synced::CommandBufferState;
 use crate::pipeline::layout::PipelineLayout;
 use crate::VulkanObject;
 use std::error;
@@ -15,14 +15,14 @@ use std::fmt;
 
 /// Checks whether push constants are compatible with the pipeline.
 pub(in super::super) fn check_push_constants_validity(
-    builder: &SyncCommandBufferBuilder,
+    current_state: CommandBufferState,
     pipeline_layout: &PipelineLayout,
 ) -> Result<(), CheckPushConstantsValidityError> {
     if pipeline_layout.push_constant_ranges().is_empty() {
         return Ok(());
     }
 
-    let constants_pipeline_layout = match builder.current_push_constants_pipeline_layout() {
+    let constants_pipeline_layout = match current_state.push_constants_pipeline_layout() {
         Some(x) => x,
         None => return Err(CheckPushConstantsValidityError::MissingPushConstants),
     };

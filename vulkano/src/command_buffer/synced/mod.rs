@@ -64,6 +64,7 @@
 //! queue. If not possible, the queue will be entirely flushed and the command added to a fresh new
 //! queue with a fresh new barrier prototype.
 
+pub use self::builder::CommandBufferState;
 pub use self::builder::StencilState;
 pub use self::builder::SyncCommandBufferBuilder;
 pub use self::builder::SyncCommandBufferBuilderBindDescriptorSets;
@@ -689,9 +690,9 @@ mod tests {
             buf_builder.add(buf);
             buf_builder.submit(1);
 
-            assert!(sync.bound_vertex_buffer(0).is_none());
-            assert!(sync.bound_vertex_buffer(1).is_some());
-            assert!(sync.bound_vertex_buffer(2).is_none());
+            assert!(sync.state().vertex_buffer(0).is_none());
+            assert!(sync.state().vertex_buffer(1).is_some());
+            assert!(sync.state().vertex_buffer(2).is_none());
         }
     }
 
@@ -741,16 +742,20 @@ mod tests {
             set_builder.submit(PipelineBindPoint::Graphics, pipeline_layout.clone(), 1);
 
             assert!(sync
-                .bound_descriptor_set(PipelineBindPoint::Compute, 0)
+                .state()
+                .descriptor_set(PipelineBindPoint::Compute, 0)
                 .is_none());
             assert!(sync
-                .bound_descriptor_set(PipelineBindPoint::Graphics, 0)
+                .state()
+                .descriptor_set(PipelineBindPoint::Graphics, 0)
                 .is_none());
             assert!(sync
-                .bound_descriptor_set(PipelineBindPoint::Graphics, 1)
+                .state()
+                .descriptor_set(PipelineBindPoint::Graphics, 1)
                 .is_some());
             assert!(sync
-                .bound_descriptor_set(PipelineBindPoint::Graphics, 2)
+                .state()
+                .descriptor_set(PipelineBindPoint::Graphics, 2)
                 .is_none());
 
             let mut set_builder = sync.bind_descriptor_sets();
@@ -758,10 +763,12 @@ mod tests {
             set_builder.submit(PipelineBindPoint::Graphics, pipeline_layout, 0);
 
             assert!(sync
-                .bound_descriptor_set(PipelineBindPoint::Graphics, 0)
+                .state()
+                .descriptor_set(PipelineBindPoint::Graphics, 0)
                 .is_some());
             assert!(sync
-                .bound_descriptor_set(PipelineBindPoint::Graphics, 1)
+                .state()
+                .descriptor_set(PipelineBindPoint::Graphics, 1)
                 .is_some());
 
             let pipeline_layout = Arc::new(
@@ -789,10 +796,12 @@ mod tests {
             set_builder.submit(PipelineBindPoint::Graphics, pipeline_layout, 1);
 
             assert!(sync
-                .bound_descriptor_set(PipelineBindPoint::Graphics, 0)
+                .state()
+                .descriptor_set(PipelineBindPoint::Graphics, 0)
                 .is_none());
             assert!(sync
-                .bound_descriptor_set(PipelineBindPoint::Graphics, 1)
+                .state()
+                .descriptor_set(PipelineBindPoint::Graphics, 1)
                 .is_some());
         }
     }
