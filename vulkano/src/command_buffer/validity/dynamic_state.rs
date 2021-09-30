@@ -21,85 +21,95 @@ pub(in super::super) fn check_dynamic_state_validity(
 ) -> Result<(), CheckDynamicStateValidityError> {
     let device = pipeline.device();
 
-    if matches!(
-        pipeline.dynamic_state(DynamicState::BlendConstants),
-        Some(DynamicStateMode::Dynamic)
-    ) {
-        if current_state.blend_constants().is_none() {
-            return Err(CheckDynamicStateValidityError::BlendConstantsNotSet);
+    for state in pipeline.dynamic_states().filter_map(|(state, mode)| {
+        if matches!(mode, DynamicStateMode::Dynamic) {
+            Some(state)
+        } else {
+            None
         }
-    }
-
-    if matches!(
-        pipeline.dynamic_state(DynamicState::DepthBounds),
-        Some(DynamicStateMode::Dynamic)
-    ) {
-        if current_state.depth_bounds().is_none() {
-            return Err(CheckDynamicStateValidityError::DepthBoundsNotSet);
-        }
-    }
-
-    if matches!(
-        pipeline.dynamic_state(DynamicState::LineWidth),
-        Some(DynamicStateMode::Dynamic)
-    ) {
-        if current_state.line_width().is_none() {
-            return Err(CheckDynamicStateValidityError::LineWidthNotSet);
-        }
-    }
-
-    if matches!(
-        pipeline.dynamic_state(DynamicState::Scissor),
-        Some(DynamicStateMode::Dynamic)
-    ) {
-        for num in 0..pipeline.num_viewports() {
-            if current_state.scissor(num).is_none() {
-                return Err(CheckDynamicStateValidityError::ScissorNotSet { num });
+    }) {
+        match state {
+            DynamicState::BlendConstants => {
+                if current_state.blend_constants().is_none() {
+                    return Err(CheckDynamicStateValidityError::BlendConstantsNotSet);
+                }
             }
-        }
-    }
-
-    if matches!(
-        pipeline.dynamic_state(DynamicState::StencilCompareMask),
-        Some(DynamicStateMode::Dynamic)
-    ) {
-        let state = current_state.stencil_compare_mask();
-
-        if state.front.is_none() || state.back.is_none() {
-            return Err(CheckDynamicStateValidityError::StencilCompareMaskNotSet);
-        }
-    }
-
-    if matches!(
-        pipeline.dynamic_state(DynamicState::StencilReference),
-        Some(DynamicStateMode::Dynamic)
-    ) {
-        let state = current_state.stencil_reference();
-
-        if state.front.is_none() || state.back.is_none() {
-            return Err(CheckDynamicStateValidityError::StencilReferenceNotSet);
-        }
-    }
-
-    if matches!(
-        pipeline.dynamic_state(DynamicState::StencilWriteMask),
-        Some(DynamicStateMode::Dynamic)
-    ) {
-        let state = current_state.stencil_write_mask();
-
-        if state.front.is_none() || state.back.is_none() {
-            return Err(CheckDynamicStateValidityError::StencilWriteMaskNotSet);
-        }
-    }
-
-    if matches!(
-        pipeline.dynamic_state(DynamicState::Viewport),
-        Some(DynamicStateMode::Dynamic)
-    ) {
-        for num in 0..pipeline.num_viewports() {
-            if current_state.viewport(num).is_none() {
-                return Err(CheckDynamicStateValidityError::ViewportNotSet { num });
+            DynamicState::ColorWriteEnable => todo!(),
+            DynamicState::CullMode => todo!(),
+            DynamicState::DepthBias => todo!(),
+            DynamicState::DepthBiasEnable => todo!(),
+            DynamicState::DepthBounds => {
+                if current_state.depth_bounds().is_none() {
+                    return Err(CheckDynamicStateValidityError::DepthBoundsNotSet);
+                }
             }
+            DynamicState::DepthBoundsTestEnable => todo!(),
+            DynamicState::DepthCompareOp => todo!(),
+            DynamicState::DepthTestEnable => todo!(),
+            DynamicState::DepthWriteEnable => todo!(),
+            DynamicState::DiscardRectangle => todo!(),
+            DynamicState::ExclusiveScissor => todo!(),
+            DynamicState::FragmentShadingRate => todo!(),
+            DynamicState::FrontFace => todo!(),
+            DynamicState::LineStipple => todo!(),
+            DynamicState::LineWidth => {
+                if current_state.line_width().is_none() {
+                    return Err(CheckDynamicStateValidityError::LineWidthNotSet);
+                }
+            }
+            DynamicState::LogicOp => todo!(),
+            DynamicState::PatchControlPoints => todo!(),
+            DynamicState::PrimitiveRestartEnable => todo!(),
+            DynamicState::PrimitiveTopology => todo!(),
+            DynamicState::RasterizerDiscardEnable => todo!(),
+            DynamicState::RayTracingPipelineStackSize => unreachable!(
+                "RayTracingPipelineStackSize dynamic state should not occur on a graphics pipeline"
+            ),
+            DynamicState::SampleLocations => todo!(),
+            DynamicState::Scissor => {
+                for num in 0..pipeline.num_viewports() {
+                    if current_state.scissor(num).is_none() {
+                        return Err(CheckDynamicStateValidityError::ScissorNotSet { num });
+                    }
+                }
+            }
+            DynamicState::ScissorWithCount => todo!(),
+            DynamicState::StencilCompareMask => {
+                let state = current_state.stencil_compare_mask();
+
+                if state.front.is_none() || state.back.is_none() {
+                    return Err(CheckDynamicStateValidityError::StencilCompareMaskNotSet);
+                }
+            }
+            DynamicState::StencilOp => todo!(),
+            DynamicState::StencilReference => {
+                let state = current_state.stencil_reference();
+
+                if state.front.is_none() || state.back.is_none() {
+                    return Err(CheckDynamicStateValidityError::StencilReferenceNotSet);
+                }
+            }
+            DynamicState::StencilTestEnable => todo!(),
+            DynamicState::StencilWriteMask => {
+                let state = current_state.stencil_write_mask();
+
+                if state.front.is_none() || state.back.is_none() {
+                    return Err(CheckDynamicStateValidityError::StencilWriteMaskNotSet);
+                }
+            }
+            DynamicState::VertexInput => todo!(),
+            DynamicState::VertexInputBindingStride => todo!(),
+            DynamicState::Viewport => {
+                for num in 0..pipeline.num_viewports() {
+                    if current_state.viewport(num).is_none() {
+                        return Err(CheckDynamicStateValidityError::ViewportNotSet { num });
+                    }
+                }
+            }
+            DynamicState::ViewportCoarseSampleOrder => todo!(),
+            DynamicState::ViewportShadingRatePalette => todo!(),
+            DynamicState::ViewportWithCount => todo!(),
+            DynamicState::ViewportWScaling => todo!(),
         }
     }
 
@@ -164,5 +174,3 @@ impl fmt::Display for CheckDynamicStateValidityError {
         )
     }
 }
-
-// TODO: tests
