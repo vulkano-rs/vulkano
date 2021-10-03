@@ -65,6 +65,8 @@
 //! queue with a fresh new barrier prototype.
 
 pub use self::builder::CommandBufferState;
+pub use self::builder::StencilOpFaceState;
+pub use self::builder::StencilOpState;
 pub use self::builder::StencilState;
 pub use self::builder::SyncCommandBufferBuilder;
 pub use self::builder::SyncCommandBufferBuilderBindDescriptorSets;

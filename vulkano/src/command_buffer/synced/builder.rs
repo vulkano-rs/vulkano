@@ -27,8 +27,14 @@ use crate::descriptor_set::DescriptorSet;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::image::ImageLayout;
+use crate::pipeline::blend::LogicOp;
+use crate::pipeline::depth_stencil::CompareOp;
+use crate::pipeline::depth_stencil::StencilOp;
 use crate::pipeline::input_assembly::IndexType;
+use crate::pipeline::input_assembly::PrimitiveTopology;
 use crate::pipeline::layout::PipelineLayout;
+use crate::pipeline::raster::CullMode;
+use crate::pipeline::raster::FrontFace;
 use crate::pipeline::viewport::Scissor;
 use crate::pipeline::viewport::Viewport;
 use crate::pipeline::ComputePipeline;
@@ -41,6 +47,7 @@ use crate::sync::PipelineMemoryAccess;
 use crate::sync::PipelineStages;
 use crate::OomError;
 use fnv::FnvHashMap;
+use smallvec::SmallVec;
 use std::borrow::Cow;
 use std::collections::hash_map::Entry;
 use std::error;
@@ -723,31 +730,75 @@ struct CurrentState {
     push_constants: Option<PushConstantState>,
 
     blend_constants: Option<[f32; 4]>,
+    color_write_enable: Option<SmallVec<[bool; 4]>>,
+    cull_mode: Option<CullMode>,
     depth_bias: Option<(f32, f32, f32)>,
+    depth_bias_enable: Option<bool>,
     depth_bounds: Option<(f32, f32)>,
+    depth_bounds_test_enable: Option<bool>,
+    depth_compare_op: Option<CompareOp>,
+    depth_test_enable: Option<bool>,
+    depth_write_enable: Option<bool>,
+    front_face: Option<FrontFace>,
+    line_stipple: Option<(u32, u16)>,
     line_width: Option<f32>,
-    stencil_compare_mask: StencilState,
-    stencil_reference: StencilState,
-    stencil_write_mask: StencilState,
+    logic_op: Option<LogicOp>,
+    patch_control_points: Option<u32>,
+    primitive_restart_enable: Option<bool>,
+    primitive_topology: Option<PrimitiveTopology>,
+    rasterizer_discard_enable: Option<bool>,
     scissor: FnvHashMap<u32, Scissor>,
+    scissor_with_count: Option<SmallVec<[Scissor; 2]>>,
+    stencil_compare_mask: StencilState,
+    stencil_op: StencilOpState,
+    stencil_reference: StencilState,
+    stencil_test_enable: Option<bool>,
+    stencil_write_mask: StencilState,
     viewport: FnvHashMap<u32, Viewport>,
+    viewport_with_count: Option<SmallVec<[Viewport; 2]>>,
 }
 
 impl CurrentState {
     fn reset_dynamic_states(&mut self, states: impl IntoIterator<Item = DynamicState>) {
         for state in states {
-            // TODO: If more dynamic states are added to CurrentState, add match arms here
             match state {
                 DynamicState::BlendConstants => self.blend_constants = None,
+                DynamicState::ColorWriteEnable => self.color_write_enable = None,
+                DynamicState::CullMode => self.cull_mode = None,
                 DynamicState::DepthBias => self.depth_bias = None,
+                DynamicState::DepthBiasEnable => self.depth_bias_enable = None,
                 DynamicState::DepthBounds => self.depth_bounds = None,
+                DynamicState::DepthBoundsTestEnable => self.depth_bounds_test_enable = None,
+                DynamicState::DepthCompareOp => self.depth_compare_op = None,
+                DynamicState::DepthTestEnable => self.depth_test_enable = None,
+                DynamicState::DepthWriteEnable => self.depth_write_enable = None,
+                DynamicState::DiscardRectangle => (), // TODO:
+                DynamicState::ExclusiveScissor => (), // TODO;
+                DynamicState::FragmentShadingRate => (), // TODO:
+                DynamicState::FrontFace => self.front_face = None,
+                DynamicState::LineStipple => self.line_stipple = None,
                 DynamicState::LineWidth => self.line_width = None,
-                DynamicState::StencilCompareMask => self.stencil_compare_mask = Default::default(),
-                DynamicState::StencilReference => self.stencil_reference = Default::default(),
-                DynamicState::StencilWriteMask => self.stencil_write_mask = Default::default(),
+                DynamicState::LogicOp => self.logic_op = None,
+                DynamicState::PatchControlPoints => self.patch_control_points = None,
+                DynamicState::PrimitiveRestartEnable => self.primitive_restart_enable = None,
+                DynamicState::PrimitiveTopology => self.primitive_topology = None,
+                DynamicState::RasterizerDiscardEnable => self.rasterizer_discard_enable = None,
+                DynamicState::RayTracingPipelineStackSize => (), // TODO:
+                DynamicState::SampleLocations => (),             // TODO:
                 DynamicState::Scissor => self.scissor.clear(),
+                DynamicState::ScissorWithCount => self.scissor_with_count = None,
+                DynamicState::StencilCompareMask => self.stencil_compare_mask = Default::default(),
+                DynamicState::StencilOp => self.stencil_op = Default::default(),
+                DynamicState::StencilReference => self.stencil_reference = Default::default(),
+                DynamicState::StencilTestEnable => self.stencil_test_enable = None,
+                DynamicState::StencilWriteMask => self.stencil_write_mask = Default::default(),
+                DynamicState::VertexInput => (), // TODO:
+                DynamicState::VertexInputBindingStride => (), // TODO:
                 DynamicState::Viewport => self.viewport.clear(),
-                _ => (),
+                DynamicState::ViewportCoarseSampleOrder => (), // TODO:
+                DynamicState::ViewportShadingRatePalette => (), // TODO:
+                DynamicState::ViewportWScaling => (),          // TODO:
+                DynamicState::ViewportWithCount => self.viewport_with_count = None,
             }
         }
     }
@@ -854,10 +905,31 @@ impl<'a> CommandBufferState<'a> {
         self.current_state.blend_constants
     }
 
+    /// Returns the current color write enable settings, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn color_write_enable(&self) -> Option<&'a [bool]> {
+        self.current_state
+            .color_write_enable
+            .as_ref()
+            .map(|x| x.as_slice())
+    }
+
+    /// Returns the current cull mode, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn cull_mode(&self) -> Option<CullMode> {
+        self.current_state.cull_mode
+    }
+
     /// Returns the current depth bias settings, or `None` if nothing has been set yet.
     #[inline]
     pub fn depth_bias(&self) -> Option<(f32, f32, f32)> {
         self.current_state.depth_bias
+    }
+
+    /// Returns whether depth bias is enabled, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn depth_bias_enable(&self) -> Option<bool> {
+        self.current_state.depth_bias_enable
     }
 
     /// Returns the current depth bounds settings, or `None` if nothing has been set yet.
@@ -866,10 +938,91 @@ impl<'a> CommandBufferState<'a> {
         self.current_state.depth_bounds
     }
 
+    /// Returns whether depth bound testing is enabled, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn depth_bounds_test_enable(&self) -> Option<bool> {
+        self.current_state.depth_bias_enable
+    }
+
+    /// Returns the current depth compare op, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn depth_compare_op(&self) -> Option<CompareOp> {
+        self.current_state.depth_compare_op
+    }
+
+    /// Returns whether depth testing is enabled, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn depth_test_enable(&self) -> Option<bool> {
+        self.current_state.depth_test_enable
+    }
+
+    /// Returns whether depth write is enabled, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn depth_write_enable(&self) -> Option<bool> {
+        self.current_state.depth_write_enable
+    }
+
+    /// Returns the current front face, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn front_face(&self) -> Option<FrontFace> {
+        self.current_state.front_face
+    }
+
+    /// Returns the current line stipple settings, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn line_stipple(&self) -> Option<(u32, u16)> {
+        self.current_state.line_stipple
+    }
+
     /// Returns the current line width, or `None` if nothing has been set yet.
     #[inline]
     pub fn line_width(&self) -> Option<f32> {
         self.current_state.line_width
+    }
+
+    /// Returns the current logic op, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn logic_op(&self) -> Option<LogicOp> {
+        self.current_state.logic_op
+    }
+
+    /// Returns the current number of patch control points, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn patch_control_points(&self) -> Option<u32> {
+        self.current_state.patch_control_points
+    }
+
+    /// Returns whether primitive restart is enabled, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn primitive_restart_enable(&self) -> Option<bool> {
+        self.current_state.primitive_restart_enable
+    }
+
+    /// Returns the current primitive topology, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn primitive_topology(&self) -> Option<PrimitiveTopology> {
+        self.current_state.primitive_topology
+    }
+
+    /// Returns whether rasterizer discard is enabled, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn rasterizer_discard_enable(&self) -> Option<bool> {
+        self.current_state.rasterizer_discard_enable
+    }
+
+    /// Returns the current scissor for a given viewport slot, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn scissor(&self, num: u32) -> Option<&'a Scissor> {
+        self.current_state.scissor.get(&num)
+    }
+
+    /// Returns the current viewport-with-count settings, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn scissor_with_count(&self) -> Option<&'a [Scissor]> {
+        self.current_state
+            .scissor_with_count
+            .as_ref()
+            .map(|x| x.as_slice())
     }
 
     /// Returns the current stencil compare masks.
@@ -878,10 +1031,22 @@ impl<'a> CommandBufferState<'a> {
         self.current_state.stencil_compare_mask
     }
 
+    /// Returns the current stencil ops.
+    #[inline]
+    pub fn stencil_op(&self) -> StencilOpState {
+        self.current_state.stencil_op
+    }
+
     /// Returns the current stencil references.
     #[inline]
     pub fn stencil_reference(&self) -> StencilState {
         self.current_state.stencil_reference
+    }
+
+    /// Returns whether stencil testing is enabled, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn stencil_test_enable(&self) -> Option<bool> {
+        self.current_state.stencil_test_enable
     }
 
     /// Returns the current stencil write masks.
@@ -896,10 +1061,13 @@ impl<'a> CommandBufferState<'a> {
         self.current_state.viewport.get(&num)
     }
 
-    /// Returns the current scissor for a given viewport slot, or `None` if nothing has been set yet.
+    /// Returns the current viewport-with-count settings, or `None` if nothing has been set yet.
     #[inline]
-    pub fn scissor(&self, num: u32) -> Option<&'a Scissor> {
-        self.current_state.scissor.get(&num)
+    pub fn viewport_with_count(&self) -> Option<&'a [Viewport]> {
+        self.current_state
+            .viewport_with_count
+            .as_ref()
+            .map(|x| x.as_slice())
     }
 }
 
@@ -908,4 +1076,20 @@ impl<'a> CommandBufferState<'a> {
 pub struct StencilState {
     pub front: Option<u32>,
     pub back: Option<u32>,
+}
+
+/// Holds the current stencil op state of a command buffer builder.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct StencilOpState {
+    pub front: Option<StencilOpFaceState>,
+    pub back: Option<StencilOpFaceState>,
+}
+
+/// Holds the current per-face stencil op state of a command buffer builder.
+#[derive(Clone, Copy, Debug)]
+pub struct StencilOpFaceState {
+    pub fail_op: StencilOp,
+    pub pass_op: StencilOp,
+    pub depth_fail_op: StencilOp,
+    pub compare_op: CompareOp,
 }
