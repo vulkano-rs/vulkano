@@ -32,6 +32,7 @@ use crate::pipeline::layout::PipelineLayout;
 use crate::pipeline::viewport::Scissor;
 use crate::pipeline::viewport::Viewport;
 use crate::pipeline::ComputePipeline;
+use crate::pipeline::DynamicState;
 use crate::pipeline::GraphicsPipeline;
 use crate::pipeline::PipelineBindPoint;
 use crate::render_pass::FramebufferAbstract;
@@ -730,6 +731,26 @@ struct CurrentState {
     stencil_write_mask: StencilState,
     scissor: FnvHashMap<u32, Scissor>,
     viewport: FnvHashMap<u32, Viewport>,
+}
+
+impl CurrentState {
+    fn reset_dynamic_states(&mut self, states: impl IntoIterator<Item = DynamicState>) {
+        for state in states {
+            // TODO: If more dynamic states are added to CurrentState, add match arms here
+            match state {
+                DynamicState::BlendConstants => self.blend_constants = None,
+                DynamicState::DepthBias => self.depth_bias = None,
+                DynamicState::DepthBounds => self.depth_bounds = None,
+                DynamicState::LineWidth => self.line_width = None,
+                DynamicState::StencilCompareMask => self.stencil_compare_mask = Default::default(),
+                DynamicState::StencilReference => self.stencil_reference = Default::default(),
+                DynamicState::StencilWriteMask => self.stencil_write_mask = Default::default(),
+                DynamicState::Scissor => self.scissor.clear(),
+                DynamicState::Viewport => self.viewport.clear(),
+                _ => (),
+            }
+        }
+    }
 }
 
 #[derive(Debug)]

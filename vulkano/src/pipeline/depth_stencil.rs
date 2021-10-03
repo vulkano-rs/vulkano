@@ -28,7 +28,7 @@ use std::u32;
 pub struct DepthStencil {
     /// Comparison to use between the depth value of each fragment and the depth value currently
     /// in the depth buffer.
-    pub depth_compare: Compare,
+    pub depth_compare: CompareOp,
 
     /// If `true`, then the value in the depth buffer will be updated when the depth test succeeds.
     pub depth_write: bool,
@@ -51,7 +51,7 @@ impl DepthStencil {
     pub fn disabled() -> DepthStencil {
         DepthStencil {
             depth_write: false,
-            depth_compare: Compare::Always,
+            depth_compare: CompareOp::Always,
             depth_bounds_test: DepthBounds::Disabled,
             stencil_front: Default::default(),
             stencil_back: Default::default(),
@@ -64,7 +64,7 @@ impl DepthStencil {
     pub fn simple_depth_test() -> DepthStencil {
         DepthStencil {
             depth_write: true,
-            depth_compare: Compare::Less,
+            depth_compare: CompareOp::Less,
             depth_bounds_test: DepthBounds::Disabled,
             stencil_front: Default::default(),
             stencil_back: Default::default(),
@@ -84,7 +84,7 @@ impl Default for DepthStencil {
 pub struct Stencil {
     /// The comparison to perform between the existing stencil value in the stencil buffer, and
     /// the reference value (given by `reference`).
-    pub compare: Compare,
+    pub compare: CompareOp,
 
     /// The operation to perform when both the depth test and the stencil test passed.
     pub pass_op: StencilOp,
@@ -133,10 +133,10 @@ impl Stencil {
     #[inline]
     pub fn always_keep(&self) -> bool {
         match self.compare {
-            Compare::Always => {
+            CompareOp::Always => {
                 self.pass_op == StencilOp::Keep && self.depth_fail_op == StencilOp::Keep
             }
-            Compare::Never => self.fail_op == StencilOp::Keep,
+            CompareOp::Never => self.fail_op == StencilOp::Keep,
             _ => {
                 self.pass_op == StencilOp::Keep
                     && self.fail_op == StencilOp::Keep
@@ -150,7 +150,7 @@ impl Default for Stencil {
     #[inline]
     fn default() -> Stencil {
         Stencil {
-            compare: Compare::Never,
+            compare: CompareOp::Never,
             pass_op: StencilOp::Keep,
             fail_op: StencilOp::Keep,
             depth_fail_op: StencilOp::Keep,
@@ -236,7 +236,7 @@ impl DepthBounds {
 /// Used for both depth testing and stencil testing.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(i32)]
-pub enum Compare {
+pub enum CompareOp {
     /// The test never passes.
     Never = ash::vk::CompareOp::NEVER.as_raw(),
     /// The test passes if `value < reference_value`.
@@ -255,9 +255,9 @@ pub enum Compare {
     Always = ash::vk::CompareOp::ALWAYS.as_raw(),
 }
 
-impl From<Compare> for ash::vk::CompareOp {
+impl From<CompareOp> for ash::vk::CompareOp {
     #[inline]
-    fn from(val: Compare) -> Self {
+    fn from(val: CompareOp) -> Self {
         Self::from_raw(val as i32)
     }
 }

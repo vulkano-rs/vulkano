@@ -65,7 +65,7 @@
 use crate::check_errors;
 use crate::device::Device;
 use crate::device::DeviceOwned;
-pub use crate::pipeline::depth_stencil::Compare;
+use crate::pipeline::depth_stencil::CompareOp;
 use crate::Error;
 use crate::OomError;
 use crate::VulkanObject;
@@ -225,7 +225,7 @@ impl Sampler {
         max_anisotropy: f32,
         min_lod: f32,
         max_lod: f32,
-        compare: Compare,
+        compare: CompareOp,
     ) -> Result<Arc<Sampler>, SamplerCreationError> {
         Sampler::new_impl(
             device,
@@ -255,7 +255,7 @@ impl Sampler {
         max_anisotropy: f32,
         min_lod: f32,
         max_lod: f32,
-        compare: Option<Compare>,
+        compare: Option<CompareOp>,
     ) -> Result<Arc<Sampler>, SamplerCreationError> {
         assert!(max_anisotropy >= 1.0);
         assert!(min_lod <= max_lod);
@@ -854,7 +854,7 @@ mod tests {
             1.0,
             0.0,
             2.0,
-            sampler::Compare::Less,
+            sampler::CompareOp::Less,
         )
         .unwrap();
 
