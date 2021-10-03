@@ -6,6 +6,9 @@
     description. They will be transferred to this file right after the
     Pull Request merge. 
 -->
+
+# Version 0.26.0 (2021-10-2)
+
 - **Breaking** The `draw` and `draw_indexed` commands on `AutoCommandBufferBuilder` now take parameters to explicitly specify the range of vertices and instances to draw.
 - **Breaking** `BufferlessDefinition` is removed.
 - **Breaking** The `VertexSource` trait is removed, and has been replaced with the new `VertexBuffersCollection` trait, which works analogously to `DescriptorSetsCollection`. Vertex buffers can now be passed in as a tuple, just like descriptor sets.
