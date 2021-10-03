@@ -42,7 +42,9 @@
   - The dynamic buffers parameter of `GraphicsPipelineBuilder::with_auto_layout` has been replaced with a closure that can be used to make tweaks to the descriptor set layouts as needed.
   - `ComputePipeline::new` has an additional closure parameter identical to the one described above.
 - **Breaking** `AttachmentImage::dimensions()` now returns `[u32; 3]` which includes the layer count.
-- **Breaking** Buffers and Images that have `with_exportable_fd` use dedicated allocation, thus requiring khr_get_memory_requirements2 and khr_dedicated_allocation on top of already needed khr_external_memory and khr_external_memory_fd.
+- **Breaking** Buffers and Images that have `with_exportable_fd` use dedicated allocation, thus requiring khr_get_memory_requirements2 and khr_dedicated_allocation on top of 
+already needed khr_external_memory and khr_external_memory_fd.
+- **Breaking** `Compare` is renamed to `CompareOp` to match Vulkan.
 - Added `export_fd` and `with_exportable_fd` to `AttachmentImage` and `StorageImage` as well as `mem_size` which is needed when using those images with Cuda.
 - Vulkano-shaders: added extension/feature checks for more SPIR-V capabilities.
 - Added support for surface creation from a CAMetalLayer using VK_EXT_metal_surface.
@@ -81,6 +83,8 @@
 - `AutoCommandBufferBuilder` and `SyncCommandBufferBuilder` now have a `state` method, which can be used to query the state set by previous "bind" and "set" commands.
 - Changed parameters requiring an iterator so that they now take `IntoIterator`, for more flexibility.
 - Removed various custom iterator types in favour of returning `impl Iterator`.
+- Replaced the various dynamic state querying methods of `GraphicsPipeline` with two: `dynamic_state` to query a single dynamic state, and `dynamic_states` to iterate over all of them.
+
 
 # Version 0.25.0 (2021-08-10)
 
