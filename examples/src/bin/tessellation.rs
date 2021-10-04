@@ -26,6 +26,7 @@ use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
+use vulkano::pipeline::tessellation::TessellationState;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
@@ -283,6 +284,9 @@ fn main() {
             .patch_list(3)
             // Enable line mode so we can see the generated vertices.
             .polygon_mode_line()
+            .tessellation_state(TessellationState {
+                patch_control_points: Some(3),
+            })
             .viewports_dynamic_scissors_irrelevant(1)
             .fragment_shader(fs.main_entry_point(), ())
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())

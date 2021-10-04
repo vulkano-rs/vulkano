@@ -27,6 +27,7 @@ use crate::pipeline::raster::{CullMode, DepthBiasControl, FrontFace, PolygonMode
 use crate::pipeline::shader::{
     EntryPointAbstract, GraphicsEntryPoint, GraphicsShaderType, SpecializationConstants,
 };
+use crate::pipeline::tessellation::TessellationState;
 use crate::pipeline::vertex::{BuffersDefinition, Vertex, VertexDefinition, VertexInputRate};
 use crate::pipeline::viewport::{Scissor, Viewport, ViewportsState};
 use crate::pipeline::{DynamicState, DynamicStateMode};
@@ -53,6 +54,7 @@ pub struct GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, T
     // Note: the `input_assembly_topology` member is temporary in order to not lose information
     // about the number of patches per primitive.
     input_assembly_topology: PrimitiveTopology,
+    tessellation_state: TessellationState,
     viewport: Option<ViewportsState>,
     raster: Rasterization,
     multisample: ash::vk::PipelineMultisampleStateCreateInfo,
@@ -99,6 +101,7 @@ impl
                 ..Default::default()
             },
             input_assembly_topology: PrimitiveTopology::TriangleList,
+            tessellation_state: Default::default(),
             viewport: None,
             raster: Default::default(),
             multisample: ash::vk::PipelineMultisampleStateCreateInfo::default(),
@@ -696,33 +699,50 @@ where
             }
         }
 
-        let tessellation_state = match self.input_assembly_topology {
-            PrimitiveTopology::PatchList { vertices_per_patch } => {
-                if self.tessellation_shaders.is_none() {
-                    return Err(GraphicsPipelineCreationError::InvalidPrimitiveTopology);
-                }
-                if vertices_per_patch
-                    > device
-                        .physical_device()
-                        .properties()
-                        .max_tessellation_patch_size
-                {
-                    return Err(GraphicsPipelineCreationError::MaxTessellationPatchSizeExceeded);
-                }
-
-                Some(ash::vk::PipelineTessellationStateCreateInfo {
-                    flags: ash::vk::PipelineTessellationStateCreateFlags::empty(),
-                    patch_control_points: vertices_per_patch,
-                    ..Default::default()
-                })
+        let tessellation_state = if self.tessellation_shaders.is_some() {
+            if !matches!(
+                self.input_assembly_topology,
+                PrimitiveTopology::PatchList { vertices_per_patch }
+            ) {
+                return Err(GraphicsPipelineCreationError::InvalidPrimitiveTopology);
             }
-            _ => {
-                if self.tessellation_shaders.is_some() {
-                    return Err(GraphicsPipelineCreationError::InvalidPrimitiveTopology);
-                }
 
-                None
-            }
+            let patch_control_points =
+                if let Some(patch_control_points) = self.tessellation_state.patch_control_points {
+                    if patch_control_points <= 0
+                        || patch_control_points
+                            > device
+                                .physical_device()
+                                .properties()
+                                .max_tessellation_patch_size
+                    {
+                        return Err(GraphicsPipelineCreationError::InvalidNumPatchControlPoints);
+                    }
+
+                    patch_control_points
+                } else {
+                    if !device
+                        .enabled_features()
+                        .extended_dynamic_state2_patch_control_points
+                    {
+                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                            feature: "extended_dynamic_state2_patch_control_points",
+                            reason: "TessellationState::patch_control_points was set to dynamic",
+                        });
+                    }
+
+                    dynamic_state_modes
+                        .insert(DynamicState::PatchControlPoints, DynamicStateMode::Dynamic);
+                    Default::default()
+                };
+
+            Some(ash::vk::PipelineTessellationStateCreateInfo {
+                flags: ash::vk::PipelineTessellationStateCreateFlags::empty(),
+                patch_control_points,
+                ..Default::default()
+            })
+        } else {
+            None
         };
 
         let (vp_vp, vp_sc, vp_num) = match *self.viewport.as_ref().unwrap() {
@@ -1349,6 +1369,162 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
 {
     // TODO: add pipeline derivate system
 
+    /// Sets the vertex shader to use.
+    // TODO: correct specialization constants
+    #[inline]
+    pub fn vertex_shader<'vs2, Vss2>(
+        self,
+        shader: GraphicsEntryPoint<'vs2>,
+        specialization_constants: Vss2,
+    ) -> GraphicsPipelineBuilder<'vs2, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss2, Tcss, Tess, Gss, Fss>
+    where
+        Vss2: SpecializationConstants,
+    {
+        GraphicsPipelineBuilder {
+            vertex_shader: Some((shader, specialization_constants)),
+            tessellation_shaders: self.tessellation_shaders,
+            geometry_shader: self.geometry_shader,
+            fragment_shader: self.fragment_shader,
+
+            vertex_definition: self.vertex_definition,
+            input_assembly: self.input_assembly,
+            input_assembly_topology: self.input_assembly_topology,
+            tessellation_state: self.tessellation_state,
+            viewport: self.viewport,
+            raster: self.raster,
+            multisample: self.multisample,
+            depth_stencil: self.depth_stencil,
+            blend: self.blend,
+
+            subpass: self.subpass,
+            cache: self.cache,
+        }
+    }
+
+    /// Sets the tessellation shaders to use.
+    // TODO: correct specialization constants
+    #[inline]
+    pub fn tessellation_shaders<'tcs2, 'tes2, Tcss2, Tess2>(
+        self,
+        tessellation_control_shader: GraphicsEntryPoint<'tcs2>,
+        tessellation_control_shader_spec_constants: Tcss2,
+        tessellation_evaluation_shader: GraphicsEntryPoint<'tes2>,
+        tessellation_evaluation_shader_spec_constants: Tess2,
+    ) -> GraphicsPipelineBuilder<'vs, 'tcs2, 'tes2, 'gs, 'fs, Vdef, Vss, Tcss2, Tess2, Gss, Fss>
+    where
+        Tcss2: SpecializationConstants,
+        Tess2: SpecializationConstants,
+    {
+        GraphicsPipelineBuilder {
+            vertex_shader: self.vertex_shader,
+            tessellation_shaders: Some(TessellationShaders {
+                tessellation_control_shader: (
+                    tessellation_control_shader,
+                    tessellation_control_shader_spec_constants,
+                ),
+                tessellation_evaluation_shader: (
+                    tessellation_evaluation_shader,
+                    tessellation_evaluation_shader_spec_constants,
+                ),
+            }),
+            geometry_shader: self.geometry_shader,
+            fragment_shader: self.fragment_shader,
+
+            vertex_definition: self.vertex_definition,
+            input_assembly: self.input_assembly,
+            input_assembly_topology: self.input_assembly_topology,
+            tessellation_state: self.tessellation_state,
+            viewport: self.viewport,
+            raster: self.raster,
+            multisample: self.multisample,
+            depth_stencil: self.depth_stencil,
+            blend: self.blend,
+
+            subpass: self.subpass,
+            cache: self.cache,
+        }
+    }
+
+    /// Sets the tessellation shaders stage as disabled. This is the default.
+    #[inline]
+    pub fn tessellation_shaders_disabled(mut self) -> Self {
+        self.tessellation_shaders = None;
+        self
+    }
+
+    /// Sets the geometry shader to use.
+    // TODO: correct specialization constants
+    #[inline]
+    pub fn geometry_shader<'gs2, Gss2>(
+        self,
+        shader: GraphicsEntryPoint<'gs2>,
+        specialization_constants: Gss2,
+    ) -> GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs2, 'fs, Vdef, Vss, Tcss, Tess, Gss2, Fss>
+    where
+        Gss2: SpecializationConstants,
+    {
+        GraphicsPipelineBuilder {
+            vertex_shader: self.vertex_shader,
+            tessellation_shaders: self.tessellation_shaders,
+            geometry_shader: Some((shader, specialization_constants)),
+            fragment_shader: self.fragment_shader,
+
+            vertex_definition: self.vertex_definition,
+            input_assembly: self.input_assembly,
+            input_assembly_topology: self.input_assembly_topology,
+            tessellation_state: self.tessellation_state,
+            viewport: self.viewport,
+            raster: self.raster,
+            multisample: self.multisample,
+            depth_stencil: self.depth_stencil,
+            blend: self.blend,
+
+            subpass: self.subpass,
+            cache: self.cache,
+        }
+    }
+
+    /// Sets the geometry shader stage as disabled. This is the default.
+    #[inline]
+    pub fn geometry_shader_disabled(mut self) -> Self {
+        self.geometry_shader = None;
+        self
+    }
+
+    /// Sets the fragment shader to use.
+    ///
+    /// The fragment shader is run once for each pixel that is covered by each primitive.
+    // TODO: correct specialization constants
+    #[inline]
+    pub fn fragment_shader<'fs2, Fss2>(
+        self,
+        shader: GraphicsEntryPoint<'fs2>,
+        specialization_constants: Fss2,
+    ) -> GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs2, Vdef, Vss, Tcss, Tess, Gss, Fss2>
+    where
+        Fss2: SpecializationConstants,
+    {
+        GraphicsPipelineBuilder {
+            vertex_shader: self.vertex_shader,
+            tessellation_shaders: self.tessellation_shaders,
+            geometry_shader: self.geometry_shader,
+            fragment_shader: Some((shader, specialization_constants)),
+
+            vertex_definition: self.vertex_definition,
+            input_assembly: self.input_assembly,
+            input_assembly_topology: self.input_assembly_topology,
+            tessellation_state: self.tessellation_state,
+            viewport: self.viewport,
+            raster: self.raster,
+            multisample: self.multisample,
+            depth_stencil: self.depth_stencil,
+            blend: self.blend,
+
+            subpass: self.subpass,
+            cache: self.cache,
+        }
+    }
+
     /// Sets the vertex input.
     #[inline]
     pub fn vertex_input<T>(
@@ -1364,6 +1540,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             vertex_definition,
             input_assembly: self.input_assembly,
             input_assembly_topology: self.input_assembly_topology,
+            tessellation_state: self.tessellation_state,
             viewport: self.viewport,
             raster: self.raster,
             multisample: self.multisample,
@@ -1396,37 +1573,6 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
         Fss,
     > {
         self.vertex_input(BuffersDefinition::new().vertex::<V>())
-    }
-
-    /// Sets the vertex shader to use.
-    // TODO: correct specialization constants
-    #[inline]
-    pub fn vertex_shader<'vs2, Vss2>(
-        self,
-        shader: GraphicsEntryPoint<'vs2>,
-        specialization_constants: Vss2,
-    ) -> GraphicsPipelineBuilder<'vs2, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss2, Tcss, Tess, Gss, Fss>
-    where
-        Vss2: SpecializationConstants,
-    {
-        GraphicsPipelineBuilder {
-            vertex_shader: Some((shader, specialization_constants)),
-            tessellation_shaders: self.tessellation_shaders,
-            geometry_shader: self.geometry_shader,
-            fragment_shader: self.fragment_shader,
-
-            vertex_definition: self.vertex_definition,
-            input_assembly: self.input_assembly,
-            input_assembly_topology: self.input_assembly_topology,
-            viewport: self.viewport,
-            raster: self.raster,
-            multisample: self.multisample,
-            depth_stencil: self.depth_stencil,
-            blend: self.blend,
-
-            subpass: self.subpass,
-            cache: self.cache,
-        }
     }
 
     /// Sets whether primitive restart if enabled.
@@ -1549,91 +1695,11 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
         self.primitive_topology(PrimitiveTopology::PatchList { vertices_per_patch })
     }
 
-    /// Sets the tessellation shaders to use.
-    // TODO: correct specialization constants
+    /// Sets the tessellation state. This is required if the pipeline contains tessellation shaders,
+    /// and ignored otherwise.
     #[inline]
-    pub fn tessellation_shaders<'tcs2, 'tes2, Tcss2, Tess2>(
-        self,
-        tessellation_control_shader: GraphicsEntryPoint<'tcs2>,
-        tessellation_control_shader_spec_constants: Tcss2,
-        tessellation_evaluation_shader: GraphicsEntryPoint<'tes2>,
-        tessellation_evaluation_shader_spec_constants: Tess2,
-    ) -> GraphicsPipelineBuilder<'vs, 'tcs2, 'tes2, 'gs, 'fs, Vdef, Vss, Tcss2, Tess2, Gss, Fss>
-    where
-        Tcss2: SpecializationConstants,
-        Tess2: SpecializationConstants,
-    {
-        GraphicsPipelineBuilder {
-            vertex_shader: self.vertex_shader,
-            tessellation_shaders: Some(TessellationShaders {
-                tessellation_control_shader: (
-                    tessellation_control_shader,
-                    tessellation_control_shader_spec_constants,
-                ),
-                tessellation_evaluation_shader: (
-                    tessellation_evaluation_shader,
-                    tessellation_evaluation_shader_spec_constants,
-                ),
-            }),
-            geometry_shader: self.geometry_shader,
-            fragment_shader: self.fragment_shader,
-
-            vertex_definition: self.vertex_definition,
-            input_assembly: self.input_assembly,
-            input_assembly_topology: self.input_assembly_topology,
-            viewport: self.viewport,
-            raster: self.raster,
-            multisample: self.multisample,
-            depth_stencil: self.depth_stencil,
-            blend: self.blend,
-
-            subpass: self.subpass,
-            cache: self.cache,
-        }
-    }
-
-    /// Sets the tessellation shaders stage as disabled. This is the default.
-    #[inline]
-    pub fn tessellation_shaders_disabled(mut self) -> Self {
-        self.tessellation_shaders = None;
-        self
-    }
-
-    /// Sets the geometry shader to use.
-    // TODO: correct specialization constants
-    #[inline]
-    pub fn geometry_shader<'gs2, Gss2>(
-        self,
-        shader: GraphicsEntryPoint<'gs2>,
-        specialization_constants: Gss2,
-    ) -> GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs2, 'fs, Vdef, Vss, Tcss, Tess, Gss2, Fss>
-    where
-        Gss2: SpecializationConstants,
-    {
-        GraphicsPipelineBuilder {
-            vertex_shader: self.vertex_shader,
-            tessellation_shaders: self.tessellation_shaders,
-            geometry_shader: Some((shader, specialization_constants)),
-            fragment_shader: self.fragment_shader,
-
-            vertex_definition: self.vertex_definition,
-            input_assembly: self.input_assembly,
-            input_assembly_topology: self.input_assembly_topology,
-            viewport: self.viewport,
-            raster: self.raster,
-            multisample: self.multisample,
-            depth_stencil: self.depth_stencil,
-            blend: self.blend,
-
-            subpass: self.subpass,
-            cache: self.cache,
-        }
-    }
-
-    /// Sets the geometry shader stage as disabled. This is the default.
-    #[inline]
-    pub fn geometry_shader_disabled(mut self) -> Self {
-        self.geometry_shader = None;
+    pub fn tessellation_state(mut self, tessellation_state: TessellationState) -> Self {
+        self.tessellation_state = tessellation_state;
         self
     }
 
@@ -1881,39 +1947,6 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
 
     // TODO: rasterizationSamples and pSampleMask
 
-    /// Sets the fragment shader to use.
-    ///
-    /// The fragment shader is run once for each pixel that is covered by each primitive.
-    // TODO: correct specialization constants
-    #[inline]
-    pub fn fragment_shader<'fs2, Fss2>(
-        self,
-        shader: GraphicsEntryPoint<'fs2>,
-        specialization_constants: Fss2,
-    ) -> GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs2, Vdef, Vss, Tcss, Tess, Gss, Fss2>
-    where
-        Fss2: SpecializationConstants,
-    {
-        GraphicsPipelineBuilder {
-            vertex_shader: self.vertex_shader,
-            tessellation_shaders: self.tessellation_shaders,
-            geometry_shader: self.geometry_shader,
-            fragment_shader: Some((shader, specialization_constants)),
-
-            vertex_definition: self.vertex_definition,
-            input_assembly: self.input_assembly,
-            input_assembly_topology: self.input_assembly_topology,
-            viewport: self.viewport,
-            raster: self.raster,
-            multisample: self.multisample,
-            depth_stencil: self.depth_stencil,
-            blend: self.blend,
-
-            subpass: self.subpass,
-            cache: self.cache,
-        }
-    }
-
     /// Sets the depth/stencil configuration. This function may be removed in the future.
     #[inline]
     pub fn depth_stencil(mut self, depth_stencil: DepthStencil) -> Self {
@@ -2020,6 +2053,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             vertex_definition: self.vertex_definition,
             input_assembly: self.input_assembly,
             input_assembly_topology: self.input_assembly_topology,
+            tessellation_state: self.tessellation_state,
             viewport: self.viewport,
             raster: self.raster,
             multisample: self.multisample,
@@ -2063,6 +2097,7 @@ where
             vertex_definition: self.vertex_definition.clone(),
             input_assembly: unsafe { ptr::read(&self.input_assembly) },
             input_assembly_topology: self.input_assembly_topology,
+            tessellation_state: self.tessellation_state,
             viewport: self.viewport.clone(),
             raster: self.raster.clone(),
             multisample: self.multisample,

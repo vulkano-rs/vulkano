@@ -58,7 +58,11 @@ pub(in super::super) fn check_dynamic_state_validity(
                 }
             }
             DynamicState::LogicOp => todo!(),
-            DynamicState::PatchControlPoints => todo!(),
+            DynamicState::PatchControlPoints => {
+                if current_state.patch_control_points().is_none() {
+                    return Err(CheckDynamicStateValidityError::PatchControlPointsNotSet);
+                }
+            }
             DynamicState::PrimitiveRestartEnable => todo!(),
             DynamicState::PrimitiveTopology => todo!(),
             DynamicState::RasterizerDiscardEnable => todo!(),
@@ -125,6 +129,8 @@ pub enum CheckDynamicStateValidityError {
     DepthBoundsNotSet,
     /// The pipeline has a dynamic line width, but no line width value was set.
     LineWidthNotSet,
+    /// The pipeline has a dynamic number of patch control points, but no patch control points value was set.
+    PatchControlPointsNotSet,
     /// The pipeline has a dynamic scissor, but the scissor for a slot used by the pipeline was not set.
     ScissorNotSet { num: u32 },
     /// The pipeline has dynamic stencil compare mask, but no compare mask was set for the front or back face.
@@ -154,6 +160,9 @@ impl fmt::Display for CheckDynamicStateValidityError {
                 }
                 CheckDynamicStateValidityError::LineWidthNotSet => {
                     "the pipeline has a dynamic line width, but no line width value was set"
+                }
+                CheckDynamicStateValidityError::PatchControlPointsNotSet => {
+                    "the pipeline has a dynamic number of patch control points, but no patch control points value was set"
                 }
                 CheckDynamicStateValidityError::ScissorNotSet { .. } => {
                     "The pipeline has a dynamic scissor, but the scissor for a slot used by the pipeline was not set"

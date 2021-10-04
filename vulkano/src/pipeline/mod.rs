@@ -95,6 +95,7 @@ pub mod layout;
 pub mod multisample;
 pub mod raster;
 pub mod shader;
+pub mod tessellation;
 pub mod vertex;
 pub mod viewport;
 
