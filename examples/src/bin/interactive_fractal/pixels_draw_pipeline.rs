@@ -12,6 +12,7 @@ use std::sync::Arc;
 use vulkano::buffer::TypedBufferAccess;
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
 use vulkano::descriptor_set::PersistentDescriptorSet;
+use vulkano::pipeline::input_assembly::InputAssemblyState;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::PipelineBindPoint;
 use vulkano::sampler::{Filter, MipmapMode, Sampler};
@@ -92,7 +93,7 @@ impl PixelsDrawPipeline {
                 GraphicsPipeline::start()
                     .vertex_input_single_buffer::<TexturedVertex>()
                     .vertex_shader(vs.main_entry_point(), ())
-                    .triangle_list()
+                    .input_assembly_state(InputAssemblyState::triangle_list())
                     .fragment_shader(fs.main_entry_point(), ())
                     .viewports_dynamic_scissors_irrelevant(1)
                     .depth_stencil_disabled()

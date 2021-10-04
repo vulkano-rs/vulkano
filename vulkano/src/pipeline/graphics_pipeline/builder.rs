@@ -21,7 +21,7 @@ use crate::pipeline::depth_stencil::{CompareOp, DepthBounds, DepthStencil};
 use crate::pipeline::graphics_pipeline::{
     GraphicsPipeline, GraphicsPipelineCreationError, Inner as GraphicsPipelineInner,
 };
-use crate::pipeline::input_assembly::PrimitiveTopology;
+use crate::pipeline::input_assembly::{InputAssemblyState, PrimitiveTopology};
 use crate::pipeline::layout::{PipelineLayout, PipelineLayoutCreationError, PipelineLayoutPcRange};
 use crate::pipeline::raster::{CullMode, DepthBiasControl, FrontFace, PolygonMode, Rasterization};
 use crate::pipeline::shader::{
@@ -42,7 +42,7 @@ use std::sync::Arc;
 use std::u32;
 
 /// Prototype for a `GraphicsPipeline`.
-// TODO: we can optimize this by filling directly the raw vk structs
+#[derive(Debug)]
 pub struct GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss> {
     vertex_shader: Option<(GraphicsEntryPoint<'vs>, Vss)>,
     tessellation_shaders: Option<TessellationShaders<'tcs, 'tes, Tcss, Tess>>,
@@ -50,10 +50,7 @@ pub struct GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, T
     fragment_shader: Option<(GraphicsEntryPoint<'fs>, Fss)>,
 
     vertex_definition: Vdef,
-    input_assembly: ash::vk::PipelineInputAssemblyStateCreateInfo,
-    // Note: the `input_assembly_topology` member is temporary in order to not lose information
-    // about the number of patches per primitive.
-    input_assembly_topology: PrimitiveTopology,
+    input_assembly_state: InputAssemblyState,
     tessellation_state: TessellationState,
     viewport: Option<ViewportsState>,
     raster: Rasterization,
@@ -96,11 +93,7 @@ impl
             fragment_shader: None,
 
             vertex_definition: BuffersDefinition::new(),
-            input_assembly: ash::vk::PipelineInputAssemblyStateCreateInfo {
-                topology: PrimitiveTopology::TriangleList.into(),
-                ..Default::default()
-            },
-            input_assembly_topology: PrimitiveTopology::TriangleList,
+            input_assembly_state: Default::default(),
             tessellation_state: Default::default(),
             viewport: None,
             raster: Default::default(),
@@ -447,10 +440,25 @@ where
                     return Err(GraphicsPipelineCreationError::GeometryShaderFeatureNotEnabled);
                 }
 
-                match geometry_shader.0.ty() {
-                    GraphicsShaderType::Geometry(_) => {}
+                let shader_execution_mode = match geometry_shader.0.ty() {
+                    GraphicsShaderType::Geometry(mode) => mode,
                     _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
                 };
+
+                if let Some(topology) = self.input_assembly_state.topology {
+                    if !shader_execution_mode.matches(topology) {
+                        return Err(
+                            GraphicsPipelineCreationError::TopologyNotMatchingGeometryShader,
+                        );
+                    }
+                }
+
+                // TODO: VUID-VkGraphicsPipelineCreateInfo-pStages-00739
+                // If the pipeline is being created with pre-rasterization shader state and pStages
+                // includes a geometry shader stage, and also includes tessellation shader stages,
+                // its shader code must contain an OpExecutionMode instruction that specifies an
+                // input primitive type that is compatible with the primitive topology that is
+                // output by the tessellation stages
 
                 stages.push(ash::vk::PipelineShaderStageCreateInfo {
                     flags: ash::vk::PipelineShaderStageCreateFlags::empty(),
@@ -673,36 +681,106 @@ where
             ..Default::default()
         });
 
-        let input_assembly_state = Some(self.input_assembly);
+        let input_assembly_state = if self.vertex_shader.is_some() {
+            let topology = if let Some(topology) = self.input_assembly_state.topology {
+                match topology {
+                    PrimitiveTopology::LineListWithAdjacency
+                    | PrimitiveTopology::LineStripWithAdjacency
+                    | PrimitiveTopology::TriangleListWithAdjacency
+                    | PrimitiveTopology::TriangleStripWithAdjacency => {
+                        if !device.enabled_features().geometry_shader {
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "geometry_shader",
+                                reason: "InputAssemblyState::topology was set to a \"with adjacency\" PrimitiveTopology",
+                            });
+                        }
+                    }
+                    PrimitiveTopology::PatchList => {
+                        if !device.enabled_features().tessellation_shader {
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "tessellation_shader",
+                                reason: "InputAssemblyState::topology was set to PrimitiveTopology::PatchList",
+                            });
+                        }
+                    }
+                    _ => (),
+                }
+                topology.into()
+            } else {
+                if !device.enabled_features().extended_dynamic_state {
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "extended_dynamic_state",
+                        reason: "InputAssemblyState::topology was set to dynamic",
+                    });
+                }
+                dynamic_state_modes
+                    .insert(DynamicState::PrimitiveTopology, DynamicStateMode::Dynamic);
+                Default::default()
+            };
 
-        if self.input_assembly.primitive_restart_enable != ash::vk::FALSE
-            && !self.input_assembly_topology.supports_primitive_restart()
-        {
-            return Err(
-                GraphicsPipelineCreationError::PrimitiveDoesntSupportPrimitiveRestart {
-                    primitive: self.input_assembly_topology,
-                },
-            );
-        }
-
-        // TODO: should check from the tess eval shader instead of the input assembly
-        if let Some(ref gs) = self.geometry_shader {
-            match gs.0.ty() {
-                GraphicsShaderType::Geometry(primitives) => {
-                    if !primitives.matches(self.input_assembly_topology) {
-                        return Err(
-                            GraphicsPipelineCreationError::TopologyNotMatchingGeometryShader,
-                        );
+            let primitive_restart_enable = if let Some(primitive_restart_enable) =
+                self.input_assembly_state.primitive_restart_enable
+            {
+                if primitive_restart_enable {
+                    match self.input_assembly_state.topology {
+                        Some(
+                            PrimitiveTopology::PointList
+                            | PrimitiveTopology::LineList
+                            | PrimitiveTopology::TriangleList
+                            | PrimitiveTopology::LineListWithAdjacency
+                            | PrimitiveTopology::TriangleListWithAdjacency,
+                        ) => {
+                            if !device.enabled_features().primitive_topology_list_restart {
+                                return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                    feature: "primitive_topology_list_restart",
+                                    reason: "InputAssemblyState::primitive_restart_enable was set to true in combination with a \"list\" PrimitiveTopology",
+                                });
+                            }
+                        }
+                        Some(PrimitiveTopology::PatchList) => {
+                            if !device
+                                .enabled_features()
+                                .primitive_topology_patch_list_restart
+                            {
+                                return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                    feature: "primitive_topology_patch_list_restart",
+                                    reason: "InputAssemblyState::primitive_restart_enable was set to true in combination with PrimitiveTopology::PatchList",
+                                });
+                            }
+                        }
+                        _ => (),
                     }
                 }
-                _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
-            }
-        }
+
+                primitive_restart_enable as ash::vk::Bool32
+            } else {
+                if !device.enabled_features().extended_dynamic_state2 {
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "extended_dynamic_state2",
+                        reason: "InputAssemblyState::primitive_restart_enable was set to dynamic",
+                    });
+                }
+                dynamic_state_modes.insert(
+                    DynamicState::PrimitiveRestartEnable,
+                    DynamicStateMode::Dynamic,
+                );
+                Default::default()
+            };
+
+            Some(ash::vk::PipelineInputAssemblyStateCreateInfo {
+                flags: ash::vk::PipelineInputAssemblyStateCreateFlags::empty(),
+                topology,
+                primitive_restart_enable,
+                ..Default::default()
+            })
+        } else {
+            None
+        };
 
         let tessellation_state = if self.tessellation_shaders.is_some() {
             if !matches!(
-                self.input_assembly_topology,
-                PrimitiveTopology::PatchList { vertices_per_patch }
+                self.input_assembly_state.topology,
+                None | Some(PrimitiveTopology::PatchList)
             ) {
                 return Err(GraphicsPipelineCreationError::InvalidPrimitiveTopology);
             }
@@ -1387,8 +1465,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             fragment_shader: self.fragment_shader,
 
             vertex_definition: self.vertex_definition,
-            input_assembly: self.input_assembly,
-            input_assembly_topology: self.input_assembly_topology,
+            input_assembly_state: self.input_assembly_state,
             tessellation_state: self.tessellation_state,
             viewport: self.viewport,
             raster: self.raster,
@@ -1431,8 +1508,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             fragment_shader: self.fragment_shader,
 
             vertex_definition: self.vertex_definition,
-            input_assembly: self.input_assembly,
-            input_assembly_topology: self.input_assembly_topology,
+            input_assembly_state: self.input_assembly_state,
             tessellation_state: self.tessellation_state,
             viewport: self.viewport,
             raster: self.raster,
@@ -1470,8 +1546,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             fragment_shader: self.fragment_shader,
 
             vertex_definition: self.vertex_definition,
-            input_assembly: self.input_assembly,
-            input_assembly_topology: self.input_assembly_topology,
+            input_assembly_state: self.input_assembly_state,
             tessellation_state: self.tessellation_state,
             viewport: self.viewport,
             raster: self.raster,
@@ -1511,8 +1586,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             fragment_shader: Some((shader, specialization_constants)),
 
             vertex_definition: self.vertex_definition,
-            input_assembly: self.input_assembly,
-            input_assembly_topology: self.input_assembly_topology,
+            input_assembly_state: self.input_assembly_state,
             tessellation_state: self.tessellation_state,
             viewport: self.viewport,
             raster: self.raster,
@@ -1538,8 +1612,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             fragment_shader: self.fragment_shader,
 
             vertex_definition,
-            input_assembly: self.input_assembly,
-            input_assembly_topology: self.input_assembly_topology,
+            input_assembly_state: self.input_assembly_state,
             tessellation_state: self.tessellation_state,
             viewport: self.viewport,
             raster: self.raster,
@@ -1575,23 +1648,26 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
         self.vertex_input(BuffersDefinition::new().vertex::<V>())
     }
 
-    /// Sets whether primitive restart if enabled.
+    /// Sets the input assembly state.
+    #[inline]
+    pub fn input_assembly_state(mut self, input_assembly_state: InputAssemblyState) -> Self {
+        self.input_assembly_state = input_assembly_state;
+        self
+    }
+
+    /// Sets whether primitive restart is enabled.
+    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn primitive_restart(mut self, enabled: bool) -> Self {
-        self.input_assembly.primitive_restart_enable = if enabled {
-            ash::vk::TRUE
-        } else {
-            ash::vk::FALSE
-        };
-
+        self.input_assembly_state.primitive_restart_enable = Some(enabled);
         self
     }
 
     /// Sets the topology of the primitives that are expected by the pipeline.
+    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn primitive_topology(mut self, topology: PrimitiveTopology) -> Self {
-        self.input_assembly_topology = topology;
-        self.input_assembly.topology = topology.into();
+        self.input_assembly_state.topology = Some(topology);
         self
     }
 
@@ -1599,6 +1675,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is equivalent to
     /// > `self.primitive_topology(PrimitiveTopology::PointList)`.
+    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn point_list(self) -> Self {
         self.primitive_topology(PrimitiveTopology::PointList)
@@ -1608,6 +1685,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is equivalent to
     /// > `self.primitive_topology(PrimitiveTopology::LineList)`.
+    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn line_list(self) -> Self {
         self.primitive_topology(PrimitiveTopology::LineList)
@@ -1617,6 +1695,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is equivalent to
     /// > `self.primitive_topology(PrimitiveTopology::LineStrip)`.
+    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn line_strip(self) -> Self {
         self.primitive_topology(PrimitiveTopology::LineStrip)
@@ -1626,6 +1705,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is equivalent to
     /// > `self.primitive_topology(PrimitiveTopology::TriangleList)`.
+    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn triangle_list(self) -> Self {
         self.primitive_topology(PrimitiveTopology::TriangleList)
@@ -1635,6 +1715,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is equivalent to
     /// > `self.primitive_topology(PrimitiveTopology::TriangleStrip)`.
+    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn triangle_strip(self) -> Self {
         self.primitive_topology(PrimitiveTopology::TriangleStrip)
@@ -1644,6 +1725,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is equivalent to
     /// > `self.primitive_topology(PrimitiveTopology::TriangleFan)`.
+    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn triangle_fan(self) -> Self {
         self.primitive_topology(PrimitiveTopology::TriangleFan)
@@ -1653,6 +1735,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is equivalent to
     /// > `self.primitive_topology(PrimitiveTopology::LineListWithAdjacency)`.
+    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn line_list_with_adjacency(self) -> Self {
         self.primitive_topology(PrimitiveTopology::LineListWithAdjacency)
@@ -1662,6 +1745,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is equivalent to
     /// > `self.primitive_topology(PrimitiveTopology::LineStripWithAdjacency)`.
+    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn line_strip_with_adjacency(self) -> Self {
         self.primitive_topology(PrimitiveTopology::LineStripWithAdjacency)
@@ -1671,6 +1755,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is equivalent to
     /// > `self.primitive_topology(PrimitiveTopology::TriangleListWithAdjacency)`.
+    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn triangle_list_with_adjacency(self) -> Self {
         self.primitive_topology(PrimitiveTopology::TriangleListWithAdjacency)
@@ -1680,6 +1765,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is equivalent to
     /// > `self.primitive_topology(PrimitiveTopology::TriangleStripWithAdjacency)`.
+    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn triangle_strip_with_adjacency(self) -> Self {
         self.primitive_topology(PrimitiveTopology::TriangleStripWithAdjacency)
@@ -1689,10 +1775,11 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     /// with a tessellation shader.
     ///
     /// > **Note**: This is equivalent to
-    /// > `self.primitive_topology(PrimitiveTopology::PatchList { vertices_per_patch })`.
+    /// > `self.primitive_topology(PrimitiveTopology::PatchList)`.
+    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
     #[inline]
-    pub fn patch_list(self, vertices_per_patch: u32) -> Self {
-        self.primitive_topology(PrimitiveTopology::PatchList { vertices_per_patch })
+    pub fn patch_list(self) -> Self {
+        self.primitive_topology(PrimitiveTopology::PatchList)
     }
 
     /// Sets the tessellation state. This is required if the pipeline contains tessellation shaders,
@@ -2051,8 +2138,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             fragment_shader: self.fragment_shader,
 
             vertex_definition: self.vertex_definition,
-            input_assembly: self.input_assembly,
-            input_assembly_topology: self.input_assembly_topology,
+            input_assembly_state: self.input_assembly_state,
             tessellation_state: self.tessellation_state,
             viewport: self.viewport,
             raster: self.raster,
@@ -2095,8 +2181,7 @@ where
             fragment_shader: self.fragment_shader.clone(),
 
             vertex_definition: self.vertex_definition.clone(),
-            input_assembly: unsafe { ptr::read(&self.input_assembly) },
-            input_assembly_topology: self.input_assembly_topology,
+            input_assembly_state: self.input_assembly_state,
             tessellation_state: self.tessellation_state,
             viewport: self.viewport.clone(),
             raster: self.raster.clone(),

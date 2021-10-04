@@ -7,7 +7,12 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-/// The tessellation state of a graphics pipeline.
+//! Subdividing primitives.
+//!
+//! A tessellation shader divides primitives into smaller primitives.
+
+/// The state in a graphics pipeline describing the tessellation shader execution of a graphics
+/// pipeline.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct TessellationState {
     /// The number of patch control points to use. `None` indicates that it is set dynamically.

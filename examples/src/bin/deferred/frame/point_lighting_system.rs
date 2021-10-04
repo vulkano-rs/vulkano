@@ -22,6 +22,7 @@ use vulkano::image::ImageViewAbstract;
 use vulkano::pipeline::blend::AttachmentBlend;
 use vulkano::pipeline::blend::BlendFactor;
 use vulkano::pipeline::blend::BlendOp;
+use vulkano::pipeline::input_assembly::InputAssemblyState;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::pipeline::PipelineBindPoint;
@@ -70,7 +71,7 @@ impl PointLightingSystem {
                 GraphicsPipeline::start()
                     .vertex_input_single_buffer::<Vertex>()
                     .vertex_shader(vs.main_entry_point(), ())
-                    .triangle_list()
+                    .input_assembly_state(InputAssemblyState::triangle_list())
                     .viewports_dynamic_scissors_irrelevant(1)
                     .fragment_shader(fs.main_entry_point(), ())
                     .blend_collective(AttachmentBlend {

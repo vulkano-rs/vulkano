@@ -20,6 +20,7 @@ use vulkano::image::{
     view::ImageView, ImageDimensions, ImageUsage, ImmutableImage, MipmapsCount, SwapchainImage,
 };
 use vulkano::instance::Instance;
+use vulkano::pipeline::input_assembly::{InputAssemblyState, PrimitiveTopology};
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::{GraphicsPipeline, PipelineBindPoint};
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
@@ -195,7 +196,10 @@ fn main() {
         GraphicsPipeline::start()
             .vertex_input_single_buffer::<Vertex>()
             .vertex_shader(vs.main_entry_point(), ())
-            .triangle_strip()
+            .input_assembly_state(InputAssemblyState {
+                topology: Some(PrimitiveTopology::TriangleStrip),
+                primitive_restart_enable: Some(false),
+            })
             .viewports_dynamic_scissors_irrelevant(1)
             .fragment_shader(fs.main_entry_point(), ())
             .blend_alpha_blending()

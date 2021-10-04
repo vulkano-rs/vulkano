@@ -33,6 +33,7 @@ use vulkano::format::Format;
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
+use vulkano::pipeline::input_assembly::InputAssemblyState;
 use vulkano::pipeline::shader::{
     GraphicsShaderType, ShaderInterface, ShaderInterfaceEntry, ShaderModule,
     SpecializationConstants,
@@ -243,7 +244,7 @@ fn main() {
         GraphicsPipeline::start()
             .vertex_input_single_buffer::<Vertex>()
             .vertex_shader(vert_main, ())
-            .triangle_list()
+            .input_assembly_state(InputAssemblyState::triangle_list())
             .viewports_dynamic_scissors_irrelevant(1)
             .fragment_shader(frag_main, ())
             .cull_mode_front()

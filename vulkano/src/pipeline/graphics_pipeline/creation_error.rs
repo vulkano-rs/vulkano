@@ -7,7 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::pipeline::input_assembly::PrimitiveTopology;
 use crate::pipeline::layout::PipelineLayoutCreationError;
 use crate::pipeline::layout::PipelineLayoutSupersetError;
 use crate::pipeline::shader::ShaderInterfaceMismatchError;
@@ -101,12 +100,6 @@ pub enum GraphicsPipelineCreationError {
         max: u32,
         /// Value that was passed.
         obtained: u32,
-    },
-
-    /// The user requested to use primitive restart, but the primitive topology doesn't support it.
-    PrimitiveDoesntSupportPrimitiveRestart {
-        /// The topology that doesn't support primitive restart.
-        primitive: PrimitiveTopology,
     },
 
     /// The `multi_viewport` feature must be enabled in order to use multiple viewports at once.
@@ -258,11 +251,6 @@ impl fmt::Display for GraphicsPipelineCreationError {
             }
             GraphicsPipelineCreationError::MaxVertexAttribDivisorExceeded { .. } => {
                 write!(fmt, "the maximum value for the instance rate divisor has been exceeded")
-            }
-            GraphicsPipelineCreationError::PrimitiveDoesntSupportPrimitiveRestart {
-                ..
-            } => {
-                write!(fmt, "the user requested to use primitive restart, but the primitive topology doesn't support it")
             }
             GraphicsPipelineCreationError::MultiViewportFeatureNotEnabled => {
                 write!(fmt, "the `multi_viewport` feature must be enabled in order to use multiple viewports at once")

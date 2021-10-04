@@ -23,6 +23,7 @@ use vulkano::image::attachment::AttachmentImage;
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
+use vulkano::pipeline::input_assembly::InputAssemblyState;
 use vulkano::pipeline::vertex::BuffersDefinition;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::{GraphicsPipeline, PipelineBindPoint};
@@ -344,7 +345,7 @@ fn window_size_dependent_setup(
                     .vertex::<Normal>(),
             )
             .vertex_shader(vs.main_entry_point(), ())
-            .triangle_list()
+            .input_assembly_state(InputAssemblyState::triangle_list())
             .viewports_dynamic_scissors_irrelevant(1)
             .viewports([Viewport {
                 origin: [0.0, 0.0],

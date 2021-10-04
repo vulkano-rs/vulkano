@@ -63,8 +63,20 @@ pub(in super::super) fn check_dynamic_state_validity(
                     return Err(CheckDynamicStateValidityError::PatchControlPointsNotSet);
                 }
             }
-            DynamicState::PrimitiveRestartEnable => todo!(),
-            DynamicState::PrimitiveTopology => todo!(),
+            DynamicState::PrimitiveRestartEnable => {
+                // TODO: does this have the same restrictions as fixed values at pipeline creation?
+
+                if current_state.primitive_restart_enable().is_none() {
+                    return Err(CheckDynamicStateValidityError::PrimitiveRestartEnableNotSet);
+                }
+            }
+            DynamicState::PrimitiveTopology => {
+                // TODO: does this have the same restrictions as fixed values at pipeline creation?
+
+                if current_state.primitive_topology().is_none() {
+                    return Err(CheckDynamicStateValidityError::PrimitiveTopologyNotSet);
+                }
+            }
             DynamicState::RasterizerDiscardEnable => todo!(),
             DynamicState::RayTracingPipelineStackSize => unreachable!(
                 "RayTracingPipelineStackSize dynamic state should not occur on a graphics pipeline"
@@ -123,21 +135,25 @@ pub(in super::super) fn check_dynamic_state_validity(
 /// Error that can happen when validating dynamic states.
 #[derive(Debug, Copy, Clone)]
 pub enum CheckDynamicStateValidityError {
-    /// The pipeline has dynamic blend constants, but no blend constants value was set.
+    /// The pipeline has dynamic blend constants, but no value was set.
     BlendConstantsNotSet,
-    /// The pipeline has dynamic depth bounds, but no depth bounds value was set.
+    /// The pipeline has dynamic depth bounds, but no value was set.
     DepthBoundsNotSet,
-    /// The pipeline has a dynamic line width, but no line width value was set.
+    /// The pipeline has a dynamic line width, but no value was set.
     LineWidthNotSet,
-    /// The pipeline has a dynamic number of patch control points, but no patch control points value was set.
+    /// The pipeline has a dynamic number of patch control points, but no value was set.
     PatchControlPointsNotSet,
+    /// The pipeline has dynamic primitive restart enable, but no value was set.
+    PrimitiveRestartEnableNotSet,
+    /// The pipeline has a dynamic primitive topology, but no value was set.
+    PrimitiveTopologyNotSet,
     /// The pipeline has a dynamic scissor, but the scissor for a slot used by the pipeline was not set.
     ScissorNotSet { num: u32 },
-    /// The pipeline has dynamic stencil compare mask, but no compare mask was set for the front or back face.
+    /// The pipeline has dynamic stencil compare mask, but no value was set for the front or back face.
     StencilCompareMaskNotSet,
-    /// The pipeline has dynamic stencil reference, but no reference was set for the front or back face.
+    /// The pipeline has dynamic stencil reference, but no value was set for the front or back face.
     StencilReferenceNotSet,
-    /// The pipeline has dynamic stencil write mask, but no write mask was set for the front or back face.
+    /// The pipeline has dynamic stencil write mask, but no value was set for the front or back face.
     StencilWriteMaskNotSet,
     /// The pipeline has a dynamic viewport, but the viewport for a slot used by the pipeline was not set.
     ViewportNotSet { num: u32 },
@@ -153,28 +169,34 @@ impl fmt::Display for CheckDynamicStateValidityError {
             "{}",
             match *self {
                 CheckDynamicStateValidityError::BlendConstantsNotSet => {
-                    "the pipeline has dynamic blend constants, but no blend constants value was set"
+                    "the pipeline has dynamic blend constants, but no value was set"
                 }
                 CheckDynamicStateValidityError::DepthBoundsNotSet => {
-                    "the pipeline has dynamic depth bounds, but no depth bounds value was set"
+                    "the pipeline has dynamic depth bounds, but no value was set"
                 }
                 CheckDynamicStateValidityError::LineWidthNotSet => {
-                    "the pipeline has a dynamic line width, but no line width value was set"
+                    "the pipeline has a dynamic line width, but no value was set"
                 }
                 CheckDynamicStateValidityError::PatchControlPointsNotSet => {
-                    "the pipeline has a dynamic number of patch control points, but no patch control points value was set"
+                    "the pipeline has a dynamic number of patch control points, but no value was set"
+                }
+                CheckDynamicStateValidityError::PrimitiveRestartEnableNotSet => {
+                    "the pipeline has dynamic primitive restart enable, but no value was set"
+                }
+                CheckDynamicStateValidityError::PrimitiveTopologyNotSet => {
+                    "the pipeline has a dynamic primitive topology, but no value was set"
                 }
                 CheckDynamicStateValidityError::ScissorNotSet { .. } => {
                     "The pipeline has a dynamic scissor, but the scissor for a slot used by the pipeline was not set"
                 }
                 CheckDynamicStateValidityError::StencilCompareMaskNotSet => {
-                    "the pipeline has dynamic stencil compare mask, but no compare mask was set for the front or back face"
+                    "the pipeline has dynamic stencil compare mask, but no value was set for the front or back face"
                 }
                 CheckDynamicStateValidityError::StencilReferenceNotSet => {
-                    "the pipeline has dynamic stencil reference, but no reference was set for the front or back face"
+                    "the pipeline has dynamic stencil reference, but no value was set for the front or back face"
                 }
                 CheckDynamicStateValidityError::StencilWriteMaskNotSet => {
-                    "the pipeline has dynamic stencil write mask, but no write mask was set for the front or back face"
+                    "the pipeline has dynamic stencil write mask, but no value was set for the front or back face"
                 }
                 CheckDynamicStateValidityError::ViewportNotSet { .. } => {
                     "the pipeline has a dynamic viewport, but the viewport for a slot used by the pipeline was not set"

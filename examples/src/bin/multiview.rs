@@ -28,6 +28,7 @@ use vulkano::image::{
     StorageImage,
 };
 use vulkano::instance::{Instance, InstanceExtensions};
+use vulkano::pipeline::input_assembly::InputAssemblyState;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{
@@ -240,7 +241,7 @@ fn main() {
         GraphicsPipeline::start()
             .vertex_input_single_buffer::<Vertex>()
             .vertex_shader(vs.main_entry_point(), ())
-            .triangle_list()
+            .input_assembly_state(InputAssemblyState::triangle_list())
             .viewports([Viewport {
                 origin: [0.0, 0.0],
                 dimensions: [

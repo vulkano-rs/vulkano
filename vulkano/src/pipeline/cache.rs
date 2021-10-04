@@ -32,6 +32,7 @@ use std::sync::Arc;
 /// Opaque cache that contains pipeline objects.
 ///
 /// See [the documentation of the module](crate::pipeline::cache) for more info.
+#[derive(Debug)]
 pub struct PipelineCache {
     device: Arc<Device>,
     cache: ash::vk::PipelineCache,

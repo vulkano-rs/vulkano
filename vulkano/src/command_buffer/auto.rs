@@ -2331,6 +2331,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the currently bound graphics pipeline must not contain this state internally"
         );
 
+        // TODO: does this have the same restrictions as fixed values at pipeline creation?
+        // Specifically with regard to enabled features for PatchList and WithAdjacency topologies.
+
         unsafe {
             self.inner.set_primitive_topology(topology);
         }
