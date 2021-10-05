@@ -23,6 +23,7 @@ use crate::pipeline::graphics_pipeline::{
 };
 use crate::pipeline::input_assembly::{InputAssemblyState, PrimitiveTopology};
 use crate::pipeline::layout::{PipelineLayout, PipelineLayoutCreationError, PipelineLayoutPcRange};
+use crate::pipeline::multisample::MultisampleState;
 use crate::pipeline::rasterization::{CullMode, FrontFace, PolygonMode, RasterizationState};
 use crate::pipeline::shader::{
     EntryPointAbstract, GraphicsEntryPoint, GraphicsShaderType, SpecializationConstants,
@@ -54,7 +55,7 @@ pub struct GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, T
     tessellation_state: TessellationState,
     viewport: Option<ViewportsState>,
     rasterization_state: RasterizationState,
-    multisample: ash::vk::PipelineMultisampleStateCreateInfo,
+    multisample_state: MultisampleState,
     depth_stencil_state: DepthStencilState,
     color_blend_state: ColorBlendState,
 
@@ -97,7 +98,7 @@ impl
             tessellation_state: Default::default(),
             viewport: None,
             rasterization_state: Default::default(),
-            multisample: ash::vk::PipelineMultisampleStateCreateInfo::default(),
+            multisample_state: Default::default(),
             depth_stencil_state: Default::default(),
             color_blend_state: ColorBlendState::pass_through(),
 
@@ -1041,24 +1042,50 @@ where
         let has_fragment_shader_state =
             self.rasterization_state.rasterizer_discard_enable != StateMode::Fixed(true);
 
-        self.multisample.rasterization_samples =
-            subpass.num_samples().unwrap_or(SampleCount::Sample1).into();
-        if self.multisample.sample_shading_enable != ash::vk::FALSE {
-            debug_assert!(
-                self.multisample.min_sample_shading >= 0.0
-                    && self.multisample.min_sample_shading <= 1.0
-            );
-            if !device.enabled_features().sample_rate_shading {
-                return Err(GraphicsPipelineCreationError::SampleRateShadingFeatureNotEnabled);
-            }
-        }
-        if self.multisample.alpha_to_one_enable != ash::vk::FALSE {
-            if !device.enabled_features().alpha_to_one {
-                return Err(GraphicsPipelineCreationError::AlphaToOneFeatureNotEnabled);
-            }
-        }
+        let multisample_state = if has_fragment_shader_state {
+            let rasterization_samples =
+                subpass.num_samples().unwrap_or(SampleCount::Sample1).into();
 
-        let multisample_state = Some(self.multisample);
+            let (sample_shading_enable, min_sample_shading) =
+                if let Some(min_sample_shading) = self.multisample_state.sample_shading {
+                    if !device.enabled_features().sample_rate_shading {
+                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                            feature: "sample_rate_shading",
+                            reason: "MultisampleState::sample_shading was Some",
+                        });
+                    }
+                    assert!(min_sample_shading >= 0.0 && min_sample_shading <= 1.0); // TODO: return error?
+                    (ash::vk::TRUE, min_sample_shading)
+                } else {
+                    (ash::vk::FALSE, 0.0)
+                };
+
+            let alpha_to_one_enable = {
+                if self.multisample_state.alpha_to_one_enable {
+                    if !device.enabled_features().alpha_to_one {
+                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                            feature: "alpha_to_one",
+                            reason: "MultisampleState::alpha_to_one was true",
+                        });
+                    }
+                }
+                self.multisample_state.alpha_to_one_enable as ash::vk::Bool32
+            };
+
+            Some(ash::vk::PipelineMultisampleStateCreateInfo {
+                flags: ash::vk::PipelineMultisampleStateCreateFlags::empty(),
+                rasterization_samples,
+                sample_shading_enable,
+                min_sample_shading,
+                p_sample_mask: ptr::null(),
+                alpha_to_coverage_enable: self.multisample_state.alpha_to_coverage_enable
+                    as ash::vk::Bool32,
+                alpha_to_one_enable,
+                ..Default::default()
+            })
+        } else {
+            None
+        };
 
         let depth_stencil_state = if has_fragment_shader_state
             && subpass.subpass_desc().depth_stencil.is_some()
@@ -1616,7 +1643,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             tessellation_state: self.tessellation_state,
             viewport: self.viewport,
             rasterization_state: self.rasterization_state,
-            multisample: self.multisample,
+            multisample_state: self.multisample_state,
             depth_stencil_state: self.depth_stencil_state,
             color_blend_state: self.color_blend_state,
 
@@ -1659,7 +1686,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             tessellation_state: self.tessellation_state,
             viewport: self.viewport,
             rasterization_state: self.rasterization_state,
-            multisample: self.multisample,
+            multisample_state: self.multisample_state,
             depth_stencil_state: self.depth_stencil_state,
             color_blend_state: self.color_blend_state,
 
@@ -1697,7 +1724,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             tessellation_state: self.tessellation_state,
             viewport: self.viewport,
             rasterization_state: self.rasterization_state,
-            multisample: self.multisample,
+            multisample_state: self.multisample_state,
             depth_stencil_state: self.depth_stencil_state,
             color_blend_state: self.color_blend_state,
 
@@ -1737,7 +1764,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             tessellation_state: self.tessellation_state,
             viewport: self.viewport,
             rasterization_state: self.rasterization_state,
-            multisample: self.multisample,
+            multisample_state: self.multisample_state,
             depth_stencil_state: self.depth_stencil_state,
             color_blend_state: self.color_blend_state,
 
@@ -1763,7 +1790,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             tessellation_state: self.tessellation_state,
             viewport: self.viewport,
             rasterization_state: self.rasterization_state,
-            multisample: self.multisample,
+            multisample_state: self.multisample_state,
             depth_stencil_state: self.depth_stencil_state,
             color_blend_state: self.color_blend_state,
 
@@ -2120,16 +2147,22 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
         self
     }
 
-    // TODO: missing DepthBiasControl
+    /// Sets the multisample state.
+    #[inline]
+    pub fn multisample_state(mut self, multisample_state: MultisampleState) -> Self {
+        self.multisample_state = multisample_state;
+        self
+    }
 
     /// Disables sample shading. The fragment shader will only be run once per fragment (ie. per
     /// pixel) and not once by sample. The output will then be copied in all of the covered
     /// samples.
     ///
     /// Sample shading is disabled by default.
+    #[deprecated(since = "0.27", note = "Use `multisample_state` instead")]
     #[inline]
     pub fn sample_shading_disabled(mut self) -> Self {
-        self.multisample.sample_shading_enable = ash::vk::FALSE;
+        self.multisample_state.sample_shading = None;
         self
     }
 
@@ -2149,32 +2182,35 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// - Panics if `min_fract` is not between 0.0 and 1.0.
     ///
+    #[deprecated(since = "0.27", note = "Use `multisample_state` instead")]
     #[inline]
     pub fn sample_shading_enabled(mut self, min_fract: f32) -> Self {
         assert!(min_fract >= 0.0 && min_fract <= 1.0);
-        self.multisample.sample_shading_enable = ash::vk::TRUE;
-        self.multisample.min_sample_shading = min_fract;
+        self.multisample_state.sample_shading = Some(min_fract);
         self
     }
 
     // TODO: doc
+    #[deprecated(since = "0.27", note = "Use `multisample_state` instead")]
     pub fn alpha_to_coverage_disabled(mut self) -> Self {
-        self.multisample.alpha_to_coverage_enable = ash::vk::FALSE;
+        self.multisample_state.alpha_to_coverage_enable = false;
         self
     }
 
     // TODO: doc
+    #[deprecated(since = "0.27", note = "Use `multisample_state` instead")]
     pub fn alpha_to_coverage_enabled(mut self) -> Self {
-        self.multisample.alpha_to_coverage_enable = ash::vk::TRUE;
+        self.multisample_state.alpha_to_coverage_enable = true;
         self
     }
 
     /// Disables alpha-to-one.
     ///
     /// Alpha-to-one is disabled by default.
+    #[deprecated(since = "0.27", note = "Use `multisample_state` instead")]
     #[inline]
     pub fn alpha_to_one_disabled(mut self) -> Self {
-        self.multisample.alpha_to_one_enable = ash::vk::FALSE;
+        self.multisample_state.alpha_to_one_enable = false;
         self
     }
 
@@ -2184,13 +2220,12 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     /// Enabling alpha-to-one requires the `alpha_to_one` feature to be enabled on the device.
     ///
     /// Alpha-to-one is disabled by default.
+    #[deprecated(since = "0.27", note = "Use `multisample_state` instead")]
     #[inline]
     pub fn alpha_to_one_enabled(mut self) -> Self {
-        self.multisample.alpha_to_one_enable = ash::vk::TRUE;
+        self.multisample_state.alpha_to_one_enable = true;
         self
     }
-
-    // TODO: rasterizationSamples and pSampleMask
 
     /// Sets the depth/stencil state.
     #[inline]
@@ -2328,7 +2363,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             tessellation_state: self.tessellation_state,
             viewport: self.viewport,
             rasterization_state: self.rasterization_state,
-            multisample: self.multisample,
+            multisample_state: self.multisample_state,
             depth_stencil_state: self.depth_stencil_state,
             color_blend_state: self.color_blend_state,
 
@@ -2371,7 +2406,7 @@ where
             tessellation_state: self.tessellation_state,
             viewport: self.viewport.clone(),
             rasterization_state: self.rasterization_state.clone(),
-            multisample: self.multisample,
+            multisample_state: self.multisample_state,
             depth_stencil_state: self.depth_stencil_state.clone(),
             color_blend_state: self.color_blend_state.clone(),
 
