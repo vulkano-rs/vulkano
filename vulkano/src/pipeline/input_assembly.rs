@@ -20,7 +20,8 @@ pub struct InputAssemblyState {
     ///
     /// Note that some topologies require a feature to be enabled on the device.
     ///
-    /// If set to `None`, it indicates that the value is set dynamically. This requires the
+    /// If set to `None`, then this state will be considered as dynamic and the value will
+    /// need to be set when building a command buffer. This requires the
     /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature to be
     /// enabled on the device.
     pub topology: Option<PrimitiveTopology>,
@@ -33,7 +34,8 @@ pub struct InputAssemblyState {
     /// topologies require a feature to be enabled on the device when combined with primitive
     /// restart.
     ///
-    /// If set to `None`, it indicates that the value is set dynamically. This requires the
+    /// If set to `None`, then this state will be considered as dynamic and the value will
+    /// need to be set when building a command buffer. This requires the
     /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature to be
     /// enabled on the device.
     pub primitive_restart_enable: Option<bool>,

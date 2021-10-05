@@ -34,6 +34,7 @@ use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
 use vulkano::pipeline::input_assembly::InputAssemblyState;
+use vulkano::pipeline::rasterization::{CullMode, FrontFace, RasterizationState};
 use vulkano::pipeline::shader::{
     GraphicsShaderType, ShaderInterface, ShaderInterfaceEntry, ShaderModule,
     SpecializationConstants,
@@ -247,8 +248,11 @@ fn main() {
             .input_assembly_state(InputAssemblyState::triangle_list())
             .viewports_dynamic_scissors_irrelevant(1)
             .fragment_shader(frag_main, ())
-            .cull_mode_front()
-            .front_face_counter_clockwise()
+            .rasterization_state(RasterizationState {
+                cull_mode: Some(CullMode::Front),
+                front_face: Some(FrontFace::CounterClockwise),
+                ..Default::default()
+            })
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
             .build(device.clone())
             .unwrap(),

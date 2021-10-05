@@ -88,17 +88,27 @@ impl Default for DepthStencilState {
 pub struct DepthState {
     /// Sets whether depth testing should be enabled and disabled dynamically. If set to `false`,
     /// depth testing is always enabled.
+    ///
+    /// Enabling this requires the
+    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature to be
+    /// enabled on the device.
     pub enable_dynamic: bool,
 
     /// Sets whether the value in the depth buffer will be updated when the depth test succeeds.
     ///
-    /// If set to `None`, it indicates that the value is set dynamically.
+    /// If set to `None`, then this state will be considered as dynamic and the value will
+    /// need to be set when building a command buffer. This requires the
+    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature to be
+    /// enabled on the device.
     pub write_enable: Option<bool>,
 
     /// Comparison operation to use between the depth value of each incoming fragment and the depth
     /// value currently in the depth buffer.
     ///
-    /// If set to `None`, it indicates that the value is set dynamically.
+    /// If set to `None`, then this state will be considered as dynamic and the value will
+    /// need to be set when building a command buffer. This requires the
+    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature to be
+    /// enabled on the device.
     pub compare_op: Option<CompareOp>,
 }
 
@@ -120,10 +130,19 @@ impl Default for DepthState {
 pub struct DepthBoundsState {
     /// Sets whether depth bounds testing should be enabled and disabled dynamically. If set to
     /// `false`, depth bounds testing is always enabled.
+    ///
+    /// Enabling this requires the
+    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature to be
+    /// enabled on the device.
     pub enable_dynamic: bool,
 
     /// The minimum and maximum depth values to use for the test. Fragments with values outside this
     /// range are discarded.
+    ///
+    /// If set to `None`, then this state will be considered as dynamic and the value will need to
+    /// be set when building a command buffer. This requires the
+    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature to be
+    /// enabled on the device.
     pub bounds: Option<RangeInclusive<f32>>,
 }
 
@@ -162,27 +181,33 @@ pub struct StencilState {
 pub struct StencilOpState {
     /// The stencil operations to perform.
     ///
-    /// If set to `None`, it indicates that the value is set dynamically.
+    /// If set to `None`, then this state will be considered as dynamic and the value will
+    /// need to be set when building a command buffer. This requires the
+    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature to be
+    /// enabled on the device.
     pub ops: Option<StencilOps>,
 
     /// A bitmask that selects the bits of the unsigned integer stencil values participating in the
     /// stencil test. Ignored if `compare_op` is `Never` or `Always`.
     ///
-    /// If set to `None`, it indicates that the value is set dynamically.
+    /// If set to `None`, then this state will be considered as dynamic and the value will
+    /// need to be set when building a command buffer.
     pub compare_mask: Option<u32>,
 
     /// A bitmask that selects the bits of the unsigned integer stencil values updated by the
     /// stencil test in the stencil framebuffer attachment. Ignored if the relevant operation is
     /// `Keep`.
     ///
-    /// If set to `None`, it indicates that the value is set dynamically.
+    /// If set to `None`, then this state will be considered as dynamic and the value will
+    /// need to be set when building a command buffer.
     pub write_mask: Option<u32>,
 
     /// Reference value that is used in the unsigned stencil comparison. The stencil test is
     /// considered to pass if the `compare_op` between the stencil buffer value and this reference
     /// value yields true.
     ///
-    /// If set to `None`, it indicates that the value is set dynamically.
+    /// If set to `None`, then this state will be considered as dynamic and the value will
+    /// need to be set when building a command buffer.
     pub reference: Option<u32>,
 }
 

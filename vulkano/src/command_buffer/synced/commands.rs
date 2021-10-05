@@ -2437,7 +2437,11 @@ impl SyncCommandBufferBuilder {
             &[],
         )
         .unwrap();
-        self.current_state.depth_bias = Some((constant_factor, clamp, slope_factor));
+        self.current_state.depth_bias = Some(DepthBias {
+            constant_factor,
+            clamp,
+            slope_factor,
+        });
     }
 
     /// Calls `vkCmdSetDepthBiasEnableEXT` on the builder.
@@ -2844,7 +2848,7 @@ impl SyncCommandBufferBuilder {
         let faces = ash::vk::StencilFaceFlags::from(faces);
 
         if faces.intersects(ash::vk::StencilFaceFlags::FRONT) {
-            self.current_state.stencil_op.front = Some(StencilOpFaceState {
+            self.current_state.stencil_op.front = Some(StencilOps {
                 fail_op,
                 pass_op,
                 depth_fail_op,
@@ -2853,7 +2857,7 @@ impl SyncCommandBufferBuilder {
         }
 
         if faces.intersects(ash::vk::StencilFaceFlags::BACK) {
-            self.current_state.stencil_op.back = Some(StencilOpFaceState {
+            self.current_state.stencil_op.back = Some(StencilOps {
                 fail_op,
                 pass_op,
                 depth_fail_op,

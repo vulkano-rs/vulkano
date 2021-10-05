@@ -198,7 +198,7 @@ fn main() {
             .vertex_shader(vs.main_entry_point(), ())
             .input_assembly_state(InputAssemblyState {
                 topology: Some(PrimitiveTopology::TriangleStrip),
-                primitive_restart_enable: Some(false),
+                ..Default::default()
             })
             .viewports_dynamic_scissors_irrelevant(1)
             .fragment_shader(fs.main_entry_point(), ())

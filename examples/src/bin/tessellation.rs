@@ -27,6 +27,7 @@ use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
 use vulkano::pipeline::input_assembly::{InputAssemblyState, PrimitiveTopology};
+use vulkano::pipeline::rasterization::{PolygonMode, RasterizationState};
 use vulkano::pipeline::tessellation::TessellationState;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
@@ -281,10 +282,13 @@ fn main() {
             .tessellation_shaders(tcs.main_entry_point(), (), tes.main_entry_point(), ())
             .input_assembly_state(InputAssemblyState {
                 topology: Some(PrimitiveTopology::PatchList),
-                primitive_restart_enable: Some(false),
+                ..Default::default()
             })
-            // Enable line mode so we can see the generated vertices.
-            .polygon_mode_line()
+            .rasterization_state(RasterizationState {
+                // Enable line mode so we can see the generated vertices.
+                polygon_mode: PolygonMode::Line,
+                ..Default::default()
+            })
             .tessellation_state(TessellationState {
                 // Use a patch_control_points of 3, because we want to convert one triangle into
                 // lots of little ones. A value of 4 would convert a rectangle into lots of little

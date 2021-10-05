@@ -30,11 +30,13 @@ use crate::image::ImageLayout;
 use crate::pipeline::blend::LogicOp;
 use crate::pipeline::depth_stencil::CompareOp;
 use crate::pipeline::depth_stencil::StencilOp;
+use crate::pipeline::depth_stencil::StencilOps;
 use crate::pipeline::input_assembly::IndexType;
 use crate::pipeline::input_assembly::PrimitiveTopology;
 use crate::pipeline::layout::PipelineLayout;
-use crate::pipeline::raster::CullMode;
-use crate::pipeline::raster::FrontFace;
+use crate::pipeline::rasterization::CullMode;
+use crate::pipeline::rasterization::DepthBias;
+use crate::pipeline::rasterization::FrontFace;
 use crate::pipeline::viewport::Scissor;
 use crate::pipeline::viewport::Viewport;
 use crate::pipeline::ComputePipeline;
@@ -732,7 +734,7 @@ struct CurrentState {
     blend_constants: Option<[f32; 4]>,
     color_write_enable: Option<SmallVec<[bool; 4]>>,
     cull_mode: Option<CullMode>,
-    depth_bias: Option<(f32, f32, f32)>,
+    depth_bias: Option<DepthBias>,
     depth_bias_enable: Option<bool>,
     depth_bounds: Option<(f32, f32)>,
     depth_bounds_test_enable: Option<bool>,
@@ -749,11 +751,11 @@ struct CurrentState {
     rasterizer_discard_enable: Option<bool>,
     scissor: FnvHashMap<u32, Scissor>,
     scissor_with_count: Option<SmallVec<[Scissor; 2]>>,
-    stencil_compare_mask: StencilState,
-    stencil_op: StencilOpState,
-    stencil_reference: StencilState,
+    stencil_compare_mask: StencilStateDynamic,
+    stencil_op: StencilOpStateDynamic,
+    stencil_reference: StencilStateDynamic,
     stencil_test_enable: Option<bool>,
-    stencil_write_mask: StencilState,
+    stencil_write_mask: StencilStateDynamic,
     viewport: FnvHashMap<u32, Viewport>,
     viewport_with_count: Option<SmallVec<[Viewport; 2]>>,
 }
@@ -922,7 +924,7 @@ impl<'a> CommandBufferState<'a> {
 
     /// Returns the current depth bias settings, or `None` if nothing has been set yet.
     #[inline]
-    pub fn depth_bias(&self) -> Option<(f32, f32, f32)> {
+    pub fn depth_bias(&self) -> Option<DepthBias> {
         self.current_state.depth_bias
     }
 
@@ -1027,19 +1029,19 @@ impl<'a> CommandBufferState<'a> {
 
     /// Returns the current stencil compare masks.
     #[inline]
-    pub fn stencil_compare_mask(&self) -> StencilState {
+    pub fn stencil_compare_mask(&self) -> StencilStateDynamic {
         self.current_state.stencil_compare_mask
     }
 
     /// Returns the current stencil ops.
     #[inline]
-    pub fn stencil_op(&self) -> StencilOpState {
+    pub fn stencil_op(&self) -> StencilOpStateDynamic {
         self.current_state.stencil_op
     }
 
     /// Returns the current stencil references.
     #[inline]
-    pub fn stencil_reference(&self) -> StencilState {
+    pub fn stencil_reference(&self) -> StencilStateDynamic {
         self.current_state.stencil_reference
     }
 
@@ -1051,7 +1053,7 @@ impl<'a> CommandBufferState<'a> {
 
     /// Returns the current stencil write masks.
     #[inline]
-    pub fn stencil_write_mask(&self) -> StencilState {
+    pub fn stencil_write_mask(&self) -> StencilStateDynamic {
         self.current_state.stencil_write_mask
     }
 
@@ -1073,23 +1075,14 @@ impl<'a> CommandBufferState<'a> {
 
 /// Holds the current stencil state of a command buffer builder.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct StencilState {
+pub struct StencilStateDynamic {
     pub front: Option<u32>,
     pub back: Option<u32>,
 }
 
-/// Holds the current stencil op state of a command buffer builder.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct StencilOpState {
-    pub front: Option<StencilOpFaceState>,
-    pub back: Option<StencilOpFaceState>,
-}
-
 /// Holds the current per-face stencil op state of a command buffer builder.
-#[derive(Clone, Copy, Debug)]
-pub struct StencilOpFaceState {
-    pub fail_op: StencilOp,
-    pub pass_op: StencilOp,
-    pub depth_fail_op: StencilOp,
-    pub compare_op: CompareOp,
+#[derive(Clone, Copy, Debug, Default)]
+pub struct StencilOpStateDynamic {
+    pub front: Option<StencilOps>,
+    pub back: Option<StencilOps>,
 }

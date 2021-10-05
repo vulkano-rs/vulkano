@@ -23,7 +23,7 @@ use crate::pipeline::graphics_pipeline::{
 };
 use crate::pipeline::input_assembly::{InputAssemblyState, PrimitiveTopology};
 use crate::pipeline::layout::{PipelineLayout, PipelineLayoutCreationError, PipelineLayoutPcRange};
-use crate::pipeline::raster::{CullMode, DepthBiasControl, FrontFace, PolygonMode, Rasterization};
+use crate::pipeline::rasterization::{CullMode, FrontFace, PolygonMode, RasterizationState};
 use crate::pipeline::shader::{
     EntryPointAbstract, GraphicsEntryPoint, GraphicsShaderType, SpecializationConstants,
 };
@@ -53,7 +53,7 @@ pub struct GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, T
     input_assembly_state: InputAssemblyState,
     tessellation_state: TessellationState,
     viewport: Option<ViewportsState>,
-    raster: Rasterization,
+    rasterization_state: RasterizationState,
     multisample: ash::vk::PipelineMultisampleStateCreateInfo,
     depth_stencil_state: DepthStencilState,
     blend: Blend,
@@ -96,7 +96,7 @@ impl
             input_assembly_state: Default::default(),
             tessellation_state: Default::default(),
             viewport: None,
-            raster: Default::default(),
+            rasterization_state: Default::default(),
             multisample: ash::vk::PipelineMultisampleStateCreateInfo::default(),
             depth_stencil_state: Default::default(),
             blend: Blend::pass_through(),
@@ -906,70 +906,131 @@ where
             ..Default::default()
         });
 
-        if let Some(line_width) = self.raster.line_width {
-            if line_width != 1.0 && !device.enabled_features().wide_lines {
-                return Err(GraphicsPipelineCreationError::WideLinesFeatureNotEnabled);
+        let rasterization_state = {
+            if self.rasterization_state.depth_clamp_enable && !device.enabled_features().depth_clamp
+            {
+                return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                    feature: "depth_clamp",
+                    reason: "RasterizationState::depth_clamp_enable was true",
+                });
             }
-        } else {
-            dynamic_state_modes.insert(DynamicState::LineWidth, DynamicStateMode::Dynamic);
-        }
 
-        let (db_enable, db_const, db_clamp, db_slope) = match self.raster.depth_bias {
-            DepthBiasControl::Dynamic => {
-                dynamic_state_modes.insert(DynamicState::DepthBias, DynamicStateMode::Dynamic);
-                (ash::vk::TRUE, 0.0, 0.0, 0.0)
+            let rasterizer_discard_enable = if let Some(rasterizer_discard_enable) =
+                self.rasterization_state.rasterizer_discard_enable
+            {
+                rasterizer_discard_enable as ash::vk::Bool32
+            } else {
+                if !device.enabled_features().extended_dynamic_state2 {
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "extended_dynamic_state2",
+                        reason: "RasterizationState::rasterizer_discard_enable was set to dynamic",
+                    });
+                }
+                dynamic_state_modes.insert(
+                    DynamicState::RasterizerDiscardEnable,
+                    DynamicStateMode::Dynamic,
+                );
+                ash::vk::FALSE
+            };
+
+            if self.rasterization_state.polygon_mode != PolygonMode::Fill
+                && !device.enabled_features().fill_mode_non_solid
+            {
+                return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                    feature: "fill_mode_non_solid",
+                    reason: "RasterizationState::polygon_mode was not Fill",
+                });
             }
-            DepthBiasControl::Disabled => (ash::vk::FALSE, 0.0, 0.0, 0.0),
-            DepthBiasControl::Static(bias) => {
-                if bias.clamp != 0.0 && !device.enabled_features().depth_bias_clamp {
-                    return Err(GraphicsPipelineCreationError::DepthBiasClampFeatureNotEnabled);
+
+            let cull_mode = if let Some(cull_mode) = self.rasterization_state.cull_mode {
+                cull_mode.into()
+            } else {
+                if !device.enabled_features().extended_dynamic_state {
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "extended_dynamic_state",
+                        reason: "RasterizationState::cull_mode was set to dynamic",
+                    });
+                }
+                dynamic_state_modes.insert(DynamicState::CullMode, DynamicStateMode::Dynamic);
+                CullMode::default().into()
+            };
+
+            let front_face = if let Some(front_face) = self.rasterization_state.front_face {
+                front_face.into()
+            } else {
+                if !device.enabled_features().extended_dynamic_state {
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "extended_dynamic_state",
+                        reason: "RasterizationState::front_face was set to dynamic",
+                    });
+                }
+                dynamic_state_modes.insert(DynamicState::FrontFace, DynamicStateMode::Dynamic);
+                FrontFace::default().into()
+            };
+
+            let (
+                depth_bias_enable,
+                depth_bias_constant_factor,
+                depth_bias_clamp,
+                depth_bias_slope_factor,
+            ) = if let Some(depth_bias_state) = self.rasterization_state.depth_bias {
+                if depth_bias_state.enable_dynamic {
+                    if !device.enabled_features().extended_dynamic_state2 {
+                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                            feature: "extended_dynamic_state2",
+                            reason: "DepthBiasState::enable_dynamic was true",
+                        });
+                    }
+                    dynamic_state_modes
+                        .insert(DynamicState::DepthTestEnable, DynamicStateMode::Dynamic);
                 }
 
-                (
-                    ash::vk::TRUE,
-                    bias.constant_factor,
-                    bias.clamp,
-                    bias.slope_factor,
-                )
+                let (constant_factor, clamp, slope_factor) = if let Some(bias) =
+                    depth_bias_state.bias
+                {
+                    if bias.clamp != 0.0 && !device.enabled_features().depth_bias_clamp {
+                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                            feature: "depth_bias_clamp",
+                            reason: "DepthBias::clamp was not 0.0",
+                        });
+                    }
+                    (bias.constant_factor, bias.clamp, bias.slope_factor)
+                } else {
+                    dynamic_state_modes.insert(DynamicState::DepthBias, DynamicStateMode::Dynamic);
+                    (0.0, 0.0, 0.0)
+                };
+
+                (ash::vk::TRUE, constant_factor, clamp, slope_factor)
+            } else {
+                (ash::vk::FALSE, 0.0, 0.0, 0.0)
+            };
+
+            if let Some(line_width) = self.rasterization_state.line_width {
+                if line_width != 1.0 && !device.enabled_features().wide_lines {
+                    return Err(GraphicsPipelineCreationError::WideLinesFeatureNotEnabled);
+                }
+            } else {
+                dynamic_state_modes.insert(DynamicState::LineWidth, DynamicStateMode::Dynamic);
             }
+
+            Some(ash::vk::PipelineRasterizationStateCreateInfo {
+                flags: ash::vk::PipelineRasterizationStateCreateFlags::empty(),
+                depth_clamp_enable: self.rasterization_state.depth_clamp_enable as ash::vk::Bool32,
+                rasterizer_discard_enable,
+                polygon_mode: self.rasterization_state.polygon_mode.into(),
+                cull_mode,
+                front_face,
+                depth_bias_enable,
+                depth_bias_constant_factor,
+                depth_bias_clamp,
+                depth_bias_slope_factor,
+                line_width: self.rasterization_state.line_width.unwrap_or(1.0),
+                ..Default::default()
+            })
         };
 
-        if self.raster.depth_clamp && !device.enabled_features().depth_clamp {
-            return Err(GraphicsPipelineCreationError::DepthClampFeatureNotEnabled);
-        }
-
-        if self.raster.polygon_mode != PolygonMode::Fill
-            && !device.enabled_features().fill_mode_non_solid
-        {
-            return Err(GraphicsPipelineCreationError::FillModeNonSolidFeatureNotEnabled);
-        }
-
-        let rasterization_state = Some(ash::vk::PipelineRasterizationStateCreateInfo {
-            flags: ash::vk::PipelineRasterizationStateCreateFlags::empty(),
-            depth_clamp_enable: if self.raster.depth_clamp {
-                ash::vk::TRUE
-            } else {
-                ash::vk::FALSE
-            },
-            rasterizer_discard_enable: if self.raster.rasterizer_discard {
-                ash::vk::TRUE
-            } else {
-                ash::vk::FALSE
-            },
-            polygon_mode: self.raster.polygon_mode.into(),
-            cull_mode: self.raster.cull_mode.into(),
-            front_face: self.raster.front_face.into(),
-            depth_bias_enable: db_enable,
-            depth_bias_constant_factor: db_const,
-            depth_bias_clamp: db_clamp,
-            depth_bias_slope_factor: db_slope,
-            line_width: self.raster.line_width.unwrap_or(1.0),
-            ..Default::default()
-        });
-
-        let has_fragment_shader_state = !self.raster.rasterizer_discard
-            || dynamic_state_modes.get(&DynamicState::RasterizerDiscardEnable)
-                == Some(&DynamicStateMode::Dynamic);
+        let has_fragment_shader_state =
+            self.rasterization_state.rasterizer_discard_enable != Some(true);
 
         self.multisample.rasterization_samples =
             subpass.num_samples().unwrap_or(SampleCount::Sample1).into();
@@ -1513,7 +1574,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             input_assembly_state: self.input_assembly_state,
             tessellation_state: self.tessellation_state,
             viewport: self.viewport,
-            raster: self.raster,
+            rasterization_state: self.rasterization_state,
             multisample: self.multisample,
             depth_stencil_state: self.depth_stencil_state,
             blend: self.blend,
@@ -1556,7 +1617,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             input_assembly_state: self.input_assembly_state,
             tessellation_state: self.tessellation_state,
             viewport: self.viewport,
-            raster: self.raster,
+            rasterization_state: self.rasterization_state,
             multisample: self.multisample,
             depth_stencil_state: self.depth_stencil_state,
             blend: self.blend,
@@ -1594,7 +1655,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             input_assembly_state: self.input_assembly_state,
             tessellation_state: self.tessellation_state,
             viewport: self.viewport,
-            raster: self.raster,
+            rasterization_state: self.rasterization_state,
             multisample: self.multisample,
             depth_stencil_state: self.depth_stencil_state,
             blend: self.blend,
@@ -1634,7 +1695,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             input_assembly_state: self.input_assembly_state,
             tessellation_state: self.tessellation_state,
             viewport: self.viewport,
-            raster: self.raster,
+            rasterization_state: self.rasterization_state,
             multisample: self.multisample,
             depth_stencil_state: self.depth_stencil_state,
             blend: self.blend,
@@ -1660,7 +1721,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             input_assembly_state: self.input_assembly_state,
             tessellation_state: self.tessellation_state,
             viewport: self.viewport,
-            raster: self.raster,
+            rasterization_state: self.rasterization_state,
             multisample: self.multisample,
             depth_stencil_state: self.depth_stencil_state,
             blend: self.blend,
@@ -1901,30 +1962,31 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
         self
     }
 
-    /// If true, then the depth value of the vertices will be clamped to the range `[0.0 ; 1.0]`.
-    /// If false, fragments whose depth is outside of this range will be discarded before the
-    /// fragment shader even runs.
+    /// Sets the rasterization state.
     #[inline]
-    pub fn depth_clamp(mut self, clamp: bool) -> Self {
-        self.raster.depth_clamp = clamp;
+    pub fn rasterization_state(mut self, rasterization_state: RasterizationState) -> Self {
+        self.rasterization_state = rasterization_state;
         self
     }
 
-    // TODO: this won't work correctly
-    /*/// Disables the fragment shader stage.
+    /// If true, then the depth value of the vertices will be clamped to the range `[0.0 ; 1.0]`.
+    /// If false, fragments whose depth is outside of this range will be discarded before the
+    /// fragment shader even runs.
+    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
     #[inline]
-    pub fn rasterizer_discard(mut self) -> Self {
-        self.rasterization.rasterizer_discard. = true;
+    pub fn depth_clamp(mut self, clamp: bool) -> Self {
+        self.rasterization_state.depth_clamp_enable = clamp;
         self
-    }*/
+    }
 
     /// Sets the front-facing faces to counter-clockwise faces. This is the default.
     ///
     /// Triangles whose vertices are oriented counter-clockwise on the screen will be considered
     /// as facing their front. Otherwise they will be considered as facing their back.
+    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn front_face_counter_clockwise(mut self) -> Self {
-        self.raster.front_face = FrontFace::CounterClockwise;
+        self.rasterization_state.front_face = Some(FrontFace::CounterClockwise);
         self
     }
 
@@ -1932,32 +1994,36 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// Triangles whose vertices are oriented clockwise on the screen will be considered
     /// as facing their front. Otherwise they will be considered as facing their back.
+    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn front_face_clockwise(mut self) -> Self {
-        self.raster.front_face = FrontFace::Clockwise;
+        self.rasterization_state.front_face = Some(FrontFace::Clockwise);
         self
     }
 
     /// Sets backface culling as disabled. This is the default.
+    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn cull_mode_disabled(mut self) -> Self {
-        self.raster.cull_mode = CullMode::None;
+        self.rasterization_state.cull_mode = Some(CullMode::None);
         self
     }
 
     /// Sets backface culling to front faces. The front faces (as chosen with the `front_face_*`
     /// methods) will be discarded by the GPU when drawing.
+    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn cull_mode_front(mut self) -> Self {
-        self.raster.cull_mode = CullMode::Front;
+        self.rasterization_state.cull_mode = Some(CullMode::Front);
         self
     }
 
     /// Sets backface culling to back faces. Faces that are not facing the front (as chosen with
     /// the `front_face_*` methods) will be discarded by the GPU when drawing.
+    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn cull_mode_back(mut self) -> Self {
-        self.raster.cull_mode = CullMode::Back;
+        self.rasterization_state.cull_mode = Some(CullMode::Back);
         self
     }
 
@@ -1965,45 +2031,51 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This option exists for the sake of completeness. It has no known practical
     /// > usage.
+    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn cull_mode_front_and_back(mut self) -> Self {
-        self.raster.cull_mode = CullMode::FrontAndBack;
+        self.rasterization_state.cull_mode = Some(CullMode::FrontAndBack);
         self
     }
 
     /// Sets the polygon mode to "fill". This is the default.
+    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn polygon_mode_fill(mut self) -> Self {
-        self.raster.polygon_mode = PolygonMode::Fill;
+        self.rasterization_state.polygon_mode = PolygonMode::Fill;
         self
     }
 
     /// Sets the polygon mode to "line". Triangles will each be turned into three lines.
+    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn polygon_mode_line(mut self) -> Self {
-        self.raster.polygon_mode = PolygonMode::Line;
+        self.rasterization_state.polygon_mode = PolygonMode::Line;
         self
     }
 
     /// Sets the polygon mode to "point". Triangles and lines will each be turned into three points.
+    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn polygon_mode_point(mut self) -> Self {
-        self.raster.polygon_mode = PolygonMode::Point;
+        self.rasterization_state.polygon_mode = PolygonMode::Point;
         self
     }
 
     /// Sets the width of the lines, if the GPU needs to draw lines. The default is `1.0`.
+    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn line_width(mut self, value: f32) -> Self {
-        self.raster.line_width = Some(value);
+        self.rasterization_state.line_width = Some(value);
         self
     }
 
     /// Sets the width of the lines as dynamic, which means that you will need to set this value
     /// when drawing.
+    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn line_width_dynamic(mut self) -> Self {
-        self.raster.line_width = None;
+        self.rasterization_state.line_width = None;
         self
     }
 
@@ -2198,7 +2270,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             input_assembly_state: self.input_assembly_state,
             tessellation_state: self.tessellation_state,
             viewport: self.viewport,
-            raster: self.raster,
+            rasterization_state: self.rasterization_state,
             multisample: self.multisample,
             depth_stencil_state: self.depth_stencil_state,
             blend: self.blend,
@@ -2241,7 +2313,7 @@ where
             input_assembly_state: self.input_assembly_state,
             tessellation_state: self.tessellation_state,
             viewport: self.viewport.clone(),
-            raster: self.raster.clone(),
+            rasterization_state: self.rasterization_state.clone(),
             multisample: self.multisample,
             depth_stencil_state: self.depth_stencil_state.clone(),
             blend: self.blend.clone(),

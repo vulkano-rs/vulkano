@@ -37,9 +37,27 @@ pub(in super::super) fn check_dynamic_state_validity(
                 }
             }
             DynamicState::ColorWriteEnable => todo!(),
-            DynamicState::CullMode => todo!(),
-            DynamicState::DepthBias => todo!(),
-            DynamicState::DepthBiasEnable => todo!(),
+            DynamicState::CullMode => {
+                if current_state.cull_mode().is_none() {
+                    return Err(CheckDynamicStateValidityError::NotSet {
+                        dynamic_state: DynamicState::CullMode,
+                    });
+                }
+            }
+            DynamicState::DepthBias => {
+                if current_state.depth_bias().is_none() {
+                    return Err(CheckDynamicStateValidityError::NotSet {
+                        dynamic_state: DynamicState::DepthBias,
+                    });
+                }
+            }
+            DynamicState::DepthBiasEnable => {
+                if current_state.depth_bias_enable().is_none() {
+                    return Err(CheckDynamicStateValidityError::NotSet {
+                        dynamic_state: DynamicState::DepthBiasEnable,
+                    });
+                }
+            }
             DynamicState::DepthBounds => {
                 if current_state.depth_bounds().is_none() {
                     return Err(CheckDynamicStateValidityError::NotSet {
@@ -80,7 +98,13 @@ pub(in super::super) fn check_dynamic_state_validity(
             DynamicState::DiscardRectangle => todo!(),
             DynamicState::ExclusiveScissor => todo!(),
             DynamicState::FragmentShadingRate => todo!(),
-            DynamicState::FrontFace => todo!(),
+            DynamicState::FrontFace => {
+                if current_state.front_face().is_none() {
+                    return Err(CheckDynamicStateValidityError::NotSet {
+                        dynamic_state: DynamicState::FrontFace,
+                    });
+                }
+            }
             DynamicState::LineStipple => todo!(),
             DynamicState::LineWidth => {
                 if current_state.line_width().is_none() {

@@ -93,7 +93,7 @@ mod graphics_pipeline;
 pub mod input_assembly;
 pub mod layout;
 pub mod multisample;
-pub mod raster;
+pub mod rasterization;
 pub mod shader;
 pub mod tessellation;
 pub mod vertex;
