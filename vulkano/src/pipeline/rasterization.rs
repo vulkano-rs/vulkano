@@ -12,49 +12,48 @@
 //! The rasterization is the stage when collections of triangles are turned into collections
 //! of pixels or samples.
 
+use crate::pipeline::StateMode;
+
 /// The state in a graphics pipeline describing how the rasterization stage should behave.
 #[derive(Clone, Debug)]
 pub struct RasterizationState {
     /// If true, then the depth value of the vertices will be clamped to the range [0.0, 1.0]. If
     /// false, fragments whose depth is outside of this range will be discarded.
     ///
-    /// Enabling this requires the [`depth_clamp`](crate::device::Features::depth_clamp) feature to
-    /// be enabled on the device.
+    /// If enabled, the [`depth_clamp`](crate::device::Features::depth_clamp) feature must be
+    /// enabled on the device.
     pub depth_clamp_enable: bool,
 
     /// If true, all the fragments will be discarded, and the fragment shader will not be run. This
     /// is usually used when your vertex shader has some side effects and you don't need to run the
     /// fragment shader.
     ///
-    /// If set to `None`, then this state will be considered as dynamic and the value will
-    /// need to be set when building a command buffer. This requires the
-    /// [`extended_dynamic_state2`](crate::device::Features::extended_dynamic_state2) feature to be
-    /// enabled on the device.
-    pub rasterizer_discard_enable: Option<bool>,
+    /// If set to `Dynamic`, the
+    /// [`extended_dynamic_state2`](crate::device::Features::extended_dynamic_state2) feature must
+    /// be enabled on the device.
+    pub rasterizer_discard_enable: StateMode<bool>,
 
     /// This setting can ask the rasterizer to downgrade triangles into lines or points, or lines
     /// into points.
     ///
-    /// Setting this to a value other than `Fill` requires the
-    /// [`fill_mode_non_solid`](crate::device::Features::fill_mode_non_solid) feature to be enabled on
-    /// the device.
+    /// If set to a value other than `Fill`, the
+    /// [`fill_mode_non_solid`](crate::device::Features::fill_mode_non_solid) feature must be
+    /// enabled on the device.
     pub polygon_mode: PolygonMode,
 
     /// Specifies whether front faces or back faces should be discarded, or none, or both.
     ///
-    /// If set to `None`, then this state will be considered as dynamic and the value will
-    /// need to be set when building a command buffer. This requires the
-    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature to be
+    /// If set to `Dynamic`, the
+    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
     /// enabled on the device.
-    pub cull_mode: Option<CullMode>,
+    pub cull_mode: StateMode<CullMode>,
 
     /// Specifies which triangle orientation is considered to be the front of the triangle.
     ///
-    /// If set to `None`, then this state will be considered as dynamic and the value will
-    /// need to be set when building a command buffer. This requires the
-    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature to be
+    /// If set to `Dynamic`, the
+    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
     /// enabled on the device.
-    pub front_face: Option<FrontFace>,
+    pub front_face: StateMode<FrontFace>,
 
     /// Sets how to modify depth values in the rasterization stage.
     ///
@@ -67,10 +66,7 @@ pub struct RasterizationState {
     /// Setting this to a value other than 1.0 requires the
     /// [`wide_lines`](crate::device::Features::wide_lines) feature to be enabled on
     /// the device.
-    ///
-    /// If set to `None`, then this state will be considered as dynamic and the value will
-    /// need to be set when building a command buffer.
-    pub line_width: Option<f32>,
+    pub line_width: StateMode<f32>,
 }
 
 impl Default for RasterizationState {
@@ -80,12 +76,12 @@ impl Default for RasterizationState {
     fn default() -> Self {
         Self {
             depth_clamp_enable: false,
-            rasterizer_discard_enable: Some(false),
+            rasterizer_discard_enable: StateMode::Fixed(false),
             polygon_mode: Default::default(),
-            cull_mode: Some(Default::default()),
-            front_face: Some(Default::default()),
-            line_width: Some(1.0),
+            cull_mode: StateMode::Fixed(Default::default()),
+            front_face: StateMode::Fixed(Default::default()),
             depth_bias: None,
+            line_width: StateMode::Fixed(1.0),
         }
     }
 }
@@ -94,16 +90,15 @@ impl Default for RasterizationState {
 #[derive(Clone, Copy, Debug)]
 pub struct DepthBiasState {
     /// Sets whether depth biasing should be enabled and disabled dynamically. If set to `false`,
-    /// depth biasing is always enabled. This requires the
-    /// [`extended_dynamic_state2`](crate::device::Features::extended_dynamic_state2) feature to be
-    /// enabled on the device.
+    /// depth biasing is always enabled.
+    ///
+    /// If set to `true`, the
+    /// [`extended_dynamic_state2`](crate::device::Features::extended_dynamic_state2) feature must
+    /// be enabled on the device.
     pub enable_dynamic: bool,
 
     /// The values to use when depth biasing is enabled.
-    ///
-    /// If set to `None`, then this state will be considered as dynamic and the value will
-    /// need to be set when building a command buffer.
-    pub bias: Option<DepthBias>,
+    pub bias: StateMode<DepthBias>,
 }
 
 /// The values to use for depth biasing.

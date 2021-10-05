@@ -19,9 +19,11 @@ use vulkano::command_buffer::{
 use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::Queue;
 use vulkano::image::ImageViewAbstract;
-use vulkano::pipeline::blend::AttachmentBlend;
-use vulkano::pipeline::blend::BlendFactor;
-use vulkano::pipeline::blend::BlendOp;
+use vulkano::pipeline::color_blend::AttachmentBlend;
+use vulkano::pipeline::color_blend::AttachmentsBlend;
+use vulkano::pipeline::color_blend::BlendFactor;
+use vulkano::pipeline::color_blend::BlendOp;
+use vulkano::pipeline::color_blend::ColorBlendState;
 use vulkano::pipeline::input_assembly::InputAssemblyState;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
@@ -74,18 +76,21 @@ impl PointLightingSystem {
                     .input_assembly_state(InputAssemblyState::triangle_list())
                     .viewports_dynamic_scissors_irrelevant(1)
                     .fragment_shader(fs.main_entry_point(), ())
-                    .blend_collective(AttachmentBlend {
-                        enabled: true,
-                        color_op: BlendOp::Add,
-                        color_source: BlendFactor::One,
-                        color_destination: BlendFactor::One,
-                        alpha_op: BlendOp::Max,
-                        alpha_source: BlendFactor::One,
-                        alpha_destination: BlendFactor::One,
-                        mask_red: true,
-                        mask_green: true,
-                        mask_blue: true,
-                        mask_alpha: true,
+                    .color_blend_state(ColorBlendState {
+                        attachments: AttachmentsBlend::Collective(AttachmentBlend {
+                            enabled: true,
+                            color_op: BlendOp::Add,
+                            color_source: BlendFactor::One,
+                            color_destination: BlendFactor::One,
+                            alpha_op: BlendOp::Max,
+                            alpha_source: BlendFactor::One,
+                            alpha_destination: BlendFactor::One,
+                            mask_red: true,
+                            mask_green: true,
+                            mask_blue: true,
+                            mask_alpha: true,
+                        }),
+                        ..Default::default()
                     })
                     .render_pass(subpass)
                     .build(gfx_queue.device().clone())

@@ -39,7 +39,6 @@ use crate::pipeline::vertex::VertexInput;
 use crate::pipeline::viewport::Scissor;
 use crate::pipeline::viewport::Viewport;
 use crate::pipeline::ComputePipeline;
-use crate::pipeline::DynamicStateMode;
 use crate::pipeline::GraphicsPipeline;
 use crate::pipeline::PipelineBindPoint;
 use crate::query::QueryControlFlags;
@@ -287,16 +286,14 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.current_state
-            .reset_dynamic_states(pipeline.dynamic_states().filter_map(|(state, mode)| {
-                // Reset any states that are fixed in the new pipeline. The pipeline bind command
-                // will overwrite these states.
-                if matches!(mode, DynamicStateMode::Fixed) {
-                    Some(state)
-                } else {
-                    None
-                }
-            }));
+        // Reset any states that are fixed in the new pipeline. The pipeline bind command will
+        // overwrite these states.
+        self.current_state.reset_dynamic_states(
+            pipeline
+                .dynamic_states()
+                .filter(|(_, d)| !d) // not dynamic
+                .map(|(s, _)| s),
+        );
         self.append_command(Cmd { pipeline }, &[]).unwrap();
         self.current_state.pipeline_graphics = self.commands.last().cloned();
     }

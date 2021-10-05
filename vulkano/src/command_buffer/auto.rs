@@ -49,7 +49,7 @@ use crate::image::ImageAccess;
 use crate::image::ImageAspect;
 use crate::image::ImageAspects;
 use crate::image::ImageLayout;
-use crate::pipeline::blend::LogicOp;
+use crate::pipeline::color_blend::LogicOp;
 use crate::pipeline::depth_stencil::CompareOp;
 use crate::pipeline::depth_stencil::StencilFaces;
 use crate::pipeline::depth_stencil::StencilOp;
@@ -1784,12 +1784,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     fn has_fixed_state(&self, state: DynamicState) -> bool {
         self.state()
             .pipeline_graphics()
-            .map(|pipeline| {
-                matches!(
-                    pipeline.dynamic_state(state),
-                    Some(crate::pipeline::DynamicStateMode::Fixed)
-                )
-            })
+            .map(|pipeline| matches!(pipeline.dynamic_state(state), Some(false)))
             .unwrap_or(false)
     }
 

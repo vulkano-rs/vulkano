@@ -27,7 +27,7 @@ use crate::image::ImageAspect;
 use crate::image::ImageAspects;
 use crate::image::ImageLayout;
 use crate::image::SampleCount;
-use crate::pipeline::blend::LogicOp;
+use crate::pipeline::color_blend::LogicOp;
 use crate::pipeline::depth_stencil::CompareOp;
 use crate::pipeline::depth_stencil::StencilFaces;
 use crate::pipeline::depth_stencil::StencilOp;

@@ -20,53 +20,67 @@
 //! For floating-point and fixed-point formats, the blending operation is applied. For integer
 //! formats, the logic operation is applied. For normalized integer formats, the logic operation
 //! will take precedence if it is activated, otherwise the blending operation is applied.
-//!
+
+use crate::pipeline::StateMode;
 
 /// Describes how the color output of the fragment shader is written to the attachment. See the
 /// documentation of the `blend` module for more info.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Blend {
-    pub logic_op: Option<LogicOp>,
+#[derive(Clone, Debug, PartialEq)]
+pub struct ColorBlendState {
+    /// Sets the logical operation to perform between the incoming fragment color and the existing
+    /// fragment in the framebuffer attachment.
+    ///
+    /// If set to `Some`, the [`logic_op`](crate::device::Features::logic_op) feature must be
+    /// enabled on the device. If set to `Some(Dynamic)`, then the
+    /// [`extended_dynamic_state2`](crate::device::Features::extended_dynamic_state2_logic_op)
+    /// feature must also be enabled on the device.
+    pub logic_op: Option<StateMode<LogicOp>>,
 
     pub attachments: AttachmentsBlend,
 
     /// The constant color to use for the `Constant*` blending operation.
-    ///
-    /// If you pass `None`, then this state will be considered as dynamic and the blend constants
-    /// will need to be set when you build the command buffer.
-    pub blend_constants: Option<[f32; 4]>,
+    pub blend_constants: StateMode<[f32; 4]>,
 }
 
-impl Blend {
+impl ColorBlendState {
     /// Returns a `Blend` object that directly writes colors and alpha on the surface.
     #[inline]
-    pub fn pass_through() -> Blend {
-        Blend {
+    pub fn pass_through() -> ColorBlendState {
+        ColorBlendState {
             logic_op: None,
             attachments: AttachmentsBlend::Collective(AttachmentBlend::pass_through()),
-            blend_constants: Some([0.0, 0.0, 0.0, 0.0]),
+            blend_constants: StateMode::Fixed([0.0, 0.0, 0.0, 0.0]),
         }
     }
 
     /// Returns a `Blend` object that adds transparent objects over others.
     #[inline]
-    pub fn alpha_blending() -> Blend {
-        Blend {
+    pub fn alpha_blending() -> ColorBlendState {
+        ColorBlendState {
             logic_op: None,
             attachments: AttachmentsBlend::Collective(AttachmentBlend::alpha_blending()),
-            blend_constants: Some([0.0, 0.0, 0.0, 0.0]),
+            blend_constants: StateMode::Fixed([0.0, 0.0, 0.0, 0.0]),
         }
     }
 }
 
+impl Default for ColorBlendState {
+    /// Creates a new `ColorBlendState` that passes through incoming values directly.
+    #[inline]
+    fn default() -> Self {
+        Self::pass_through()
+    }
+}
+
 /// Describes how the blending system should behave.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AttachmentsBlend {
     /// All the framebuffer attachments will use the same blending.
     Collective(AttachmentBlend),
 
-    /// Each attachment will behave differently. Note that this requires enabling the
-    /// `independent_blend` feature.
+    /// Each attachment will behave differently. The
+    /// [`independent_blend`](crate::device::Features::independent_blend) feature must be enabled
+    /// on the device.
     Individual(Vec<AttachmentBlend>),
 }
 

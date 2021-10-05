@@ -11,6 +11,7 @@
 //!
 //! The input assembly is the stage where lists of vertices are turned into primitives.
 
+use crate::pipeline::StateMode;
 use crate::DeviceSize;
 
 /// The state in a graphics pipeline describing how the input assembly stage should behave.
@@ -20,11 +21,10 @@ pub struct InputAssemblyState {
     ///
     /// Note that some topologies require a feature to be enabled on the device.
     ///
-    /// If set to `None`, then this state will be considered as dynamic and the value will
-    /// need to be set when building a command buffer. This requires the
-    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature to be
+    /// If set to `Dynamic`, the
+    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
     /// enabled on the device.
-    pub topology: Option<PrimitiveTopology>,
+    pub topology: StateMode<PrimitiveTopology>,
 
     /// If true, then when drawing with an index buffer, the special index value consisting of the
     /// maximum unsigned value (`0xff`, `0xffff` or `0xffffffff`) will tell the GPU that it is the
@@ -34,11 +34,10 @@ pub struct InputAssemblyState {
     /// topologies require a feature to be enabled on the device when combined with primitive
     /// restart.
     ///
-    /// If set to `None`, then this state will be considered as dynamic and the value will
-    /// need to be set when building a command buffer. This requires the
-    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature to be
+    /// If set to `Dynamic`, the
+    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
     /// enabled on the device.
-    pub primitive_restart_enable: Option<bool>,
+    pub primitive_restart_enable: StateMode<bool>,
 }
 
 impl InputAssemblyState {
@@ -47,13 +46,16 @@ impl InputAssemblyState {
     #[inline]
     pub fn triangle_list() -> InputAssemblyState {
         InputAssemblyState {
-            topology: Some(PrimitiveTopology::TriangleList),
-            primitive_restart_enable: Some(false),
+            topology: StateMode::Fixed(PrimitiveTopology::TriangleList),
+            primitive_restart_enable: StateMode::Fixed(false),
         }
     }
 }
 
 impl Default for InputAssemblyState {
+    /// Creates an `InputAssemblyState` with a `TriangleList` topology and primitive restart
+    /// disabled.
+    #[inline]
     fn default() -> Self {
         Self::triangle_list()
     }
@@ -104,6 +106,7 @@ pub enum PrimitiveTopology {
 // TODO: use the #[default] attribute once it's stable.
 // See: https://github.com/rust-lang/rust/issues/87517
 impl Default for PrimitiveTopology {
+    #[inline]
     fn default() -> Self {
         PrimitiveTopology::TriangleList
     }

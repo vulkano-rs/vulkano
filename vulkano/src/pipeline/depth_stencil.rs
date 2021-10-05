@@ -23,6 +23,7 @@
 //! value in the stencil buffer at each fragment's location. Depending on the outcome of the
 //! depth and stencil tests, the value of the stencil buffer at that location can be updated.
 
+use crate::pipeline::StateMode;
 use std::ops::RangeInclusive;
 use std::u32;
 
@@ -66,8 +67,8 @@ impl DepthStencilState {
         Self {
             depth: Some(DepthState {
                 enable_dynamic: false,
-                compare_op: Some(CompareOp::Less),
-                write_enable: Some(true),
+                compare_op: StateMode::Fixed(CompareOp::Less),
+                write_enable: StateMode::Fixed(true),
             }),
             depth_bounds: Default::default(),
             stencil: Default::default(),
@@ -89,37 +90,36 @@ pub struct DepthState {
     /// Sets whether depth testing should be enabled and disabled dynamically. If set to `false`,
     /// depth testing is always enabled.
     ///
-    /// Enabling this requires the
-    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature to be
+    /// If set to `true`, the
+    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
     /// enabled on the device.
     pub enable_dynamic: bool,
 
     /// Sets whether the value in the depth buffer will be updated when the depth test succeeds.
     ///
-    /// If set to `None`, then this state will be considered as dynamic and the value will
-    /// need to be set when building a command buffer. This requires the
-    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature to be
+    /// If set to `Dynamic`, the
+    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
     /// enabled on the device.
-    pub write_enable: Option<bool>,
+    pub write_enable: StateMode<bool>,
 
     /// Comparison operation to use between the depth value of each incoming fragment and the depth
     /// value currently in the depth buffer.
     ///
-    /// If set to `None`, then this state will be considered as dynamic and the value will
-    /// need to be set when building a command buffer. This requires the
-    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature to be
+    /// If set to `Dynamic`, the
+    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
     /// enabled on the device.
-    pub compare_op: Option<CompareOp>,
+    pub compare_op: StateMode<CompareOp>,
 }
 
 impl Default for DepthState {
     /// Creates a `DepthState` with no dynamic state, depth writes disabled and `compare_op` set
     /// to always pass.
+    #[inline]
     fn default() -> Self {
         Self {
             enable_dynamic: false,
-            write_enable: Some(false),
-            compare_op: Some(CompareOp::Always),
+            write_enable: StateMode::Fixed(false),
+            compare_op: StateMode::Fixed(CompareOp::Always),
         }
     }
 }
@@ -131,19 +131,18 @@ pub struct DepthBoundsState {
     /// Sets whether depth bounds testing should be enabled and disabled dynamically. If set to
     /// `false`, depth bounds testing is always enabled.
     ///
-    /// Enabling this requires the
-    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature to be
+    /// If set to `true`, the
+    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
     /// enabled on the device.
     pub enable_dynamic: bool,
 
     /// The minimum and maximum depth values to use for the test. Fragments with values outside this
     /// range are discarded.
     ///
-    /// If set to `None`, then this state will be considered as dynamic and the value will need to
-    /// be set when building a command buffer. This requires the
-    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature to be
+    /// If set to `Dynamic`, the
+    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
     /// enabled on the device.
-    pub bounds: Option<RangeInclusive<f32>>,
+    pub bounds: StateMode<RangeInclusive<f32>>,
 }
 
 impl Default for DepthBoundsState {
@@ -152,7 +151,7 @@ impl Default for DepthBoundsState {
     fn default() -> Self {
         Self {
             enable_dynamic: false,
-            bounds: Some(0.0..=1.0),
+            bounds: StateMode::Fixed(0.0..=1.0),
         }
     }
 }
@@ -161,11 +160,15 @@ impl Default for DepthBoundsState {
 ///
 /// Dynamic state can only be enabled or disabled for both faces at once. Therefore, the dynamic
 /// state values in `StencilOpState`, must match: the values for `front` and `back` must either both
-/// be `Some` or both be `None`.
+/// be `Fixed` or both be `Dynamic`.
 #[derive(Clone, Debug)]
 pub struct StencilState {
     /// Sets whether stencil testing should be enabled and disabled dynamically. If set to
     /// `false`, stencil testing is always enabled.
+    ///
+    /// If set to `true`, the
+    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
+    /// enabled on the device.
     pub enable_dynamic: bool,
 
     /// The stencil operation state to use for points and lines, and for triangles whose front is
@@ -181,34 +184,24 @@ pub struct StencilState {
 pub struct StencilOpState {
     /// The stencil operations to perform.
     ///
-    /// If set to `None`, then this state will be considered as dynamic and the value will
-    /// need to be set when building a command buffer. This requires the
-    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature to be
+    /// If set to `Dynamic`, the
+    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
     /// enabled on the device.
-    pub ops: Option<StencilOps>,
+    pub ops: StateMode<StencilOps>,
 
     /// A bitmask that selects the bits of the unsigned integer stencil values participating in the
     /// stencil test. Ignored if `compare_op` is `Never` or `Always`.
-    ///
-    /// If set to `None`, then this state will be considered as dynamic and the value will
-    /// need to be set when building a command buffer.
-    pub compare_mask: Option<u32>,
+    pub compare_mask: StateMode<u32>,
 
     /// A bitmask that selects the bits of the unsigned integer stencil values updated by the
     /// stencil test in the stencil framebuffer attachment. Ignored if the relevant operation is
     /// `Keep`.
-    ///
-    /// If set to `None`, then this state will be considered as dynamic and the value will
-    /// need to be set when building a command buffer.
-    pub write_mask: Option<u32>,
+    pub write_mask: StateMode<u32>,
 
     /// Reference value that is used in the unsigned stencil comparison. The stencil test is
     /// considered to pass if the `compare_op` between the stencil buffer value and this reference
     /// value yields true.
-    ///
-    /// If set to `None`, then this state will be considered as dynamic and the value will
-    /// need to be set when building a command buffer.
-    pub reference: Option<u32>,
+    pub reference: StateMode<u32>,
 }
 
 impl Default for StencilOpState {
@@ -217,10 +210,10 @@ impl Default for StencilOpState {
     #[inline]
     fn default() -> StencilOpState {
         StencilOpState {
-            ops: Default::default(),
-            compare_mask: Some(u32::MAX),
-            write_mask: Some(u32::MAX),
-            reference: Some(u32::MAX),
+            ops: StateMode::Fixed(Default::default()),
+            compare_mask: StateMode::Fixed(u32::MAX),
+            write_mask: StateMode::Fixed(u32::MAX),
+            reference: StateMode::Fixed(u32::MAX),
         }
     }
 }

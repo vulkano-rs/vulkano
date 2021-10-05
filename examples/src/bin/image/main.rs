@@ -20,9 +20,10 @@ use vulkano::image::{
     view::ImageView, ImageDimensions, ImageUsage, ImmutableImage, MipmapsCount, SwapchainImage,
 };
 use vulkano::instance::Instance;
+use vulkano::pipeline::color_blend::ColorBlendState;
 use vulkano::pipeline::input_assembly::{InputAssemblyState, PrimitiveTopology};
 use vulkano::pipeline::viewport::Viewport;
-use vulkano::pipeline::{GraphicsPipeline, PipelineBindPoint};
+use vulkano::pipeline::{GraphicsPipeline, PipelineBindPoint, StateMode};
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
 use vulkano::sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode};
 use vulkano::swapchain;
@@ -197,12 +198,12 @@ fn main() {
             .vertex_input_single_buffer::<Vertex>()
             .vertex_shader(vs.main_entry_point(), ())
             .input_assembly_state(InputAssemblyState {
-                topology: Some(PrimitiveTopology::TriangleStrip),
+                topology: StateMode::Fixed(PrimitiveTopology::TriangleStrip),
                 ..Default::default()
             })
             .viewports_dynamic_scissors_irrelevant(1)
             .fragment_shader(fs.main_entry_point(), ())
-            .blend_alpha_blending()
+            .color_blend_state(ColorBlendState::alpha_blending())
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
             .build(device.clone())
             .unwrap(),

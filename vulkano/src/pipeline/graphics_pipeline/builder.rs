@@ -15,8 +15,8 @@ use crate::check_errors;
 use crate::descriptor_set::layout::{DescriptorSetDesc, DescriptorSetLayout};
 use crate::device::Device;
 use crate::image::SampleCount;
-use crate::pipeline::blend::{AttachmentBlend, AttachmentsBlend, Blend, LogicOp};
 use crate::pipeline::cache::PipelineCache;
+use crate::pipeline::color_blend::{AttachmentBlend, AttachmentsBlend, ColorBlendState, LogicOp};
 use crate::pipeline::depth_stencil::DepthStencilState;
 use crate::pipeline::graphics_pipeline::{
     GraphicsPipeline, GraphicsPipelineCreationError, Inner as GraphicsPipelineInner,
@@ -30,7 +30,7 @@ use crate::pipeline::shader::{
 use crate::pipeline::tessellation::TessellationState;
 use crate::pipeline::vertex::{BuffersDefinition, Vertex, VertexDefinition, VertexInputRate};
 use crate::pipeline::viewport::{Scissor, Viewport, ViewportsState};
-use crate::pipeline::{DynamicState, DynamicStateMode};
+use crate::pipeline::{DynamicState, StateMode};
 use crate::render_pass::Subpass;
 use crate::VulkanObject;
 use fnv::FnvHashMap;
@@ -56,7 +56,7 @@ pub struct GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, T
     rasterization_state: RasterizationState,
     multisample: ash::vk::PipelineMultisampleStateCreateInfo,
     depth_stencil_state: DepthStencilState,
-    blend: Blend,
+    color_blend_state: ColorBlendState,
 
     subpass: Option<Subpass>,
     cache: Option<Arc<PipelineCache>>,
@@ -99,7 +99,7 @@ impl
             rasterization_state: Default::default(),
             multisample: ash::vk::PipelineMultisampleStateCreateInfo::default(),
             depth_stencil_state: Default::default(),
-            blend: Blend::pass_through(),
+            color_blend_state: ColorBlendState::pass_through(),
 
             subpass: None,
             cache: None,
@@ -271,8 +271,7 @@ where
         }
 
         // Will contain the list of dynamic states. Filled throughout this function.
-        let mut dynamic_state_modes: FnvHashMap<DynamicState, DynamicStateMode> =
-            HashMap::default();
+        let mut dynamic_state_modes: FnvHashMap<DynamicState, bool> = HashMap::default();
 
         // Creating the specialization constants of the various stages.
         let vertex_shader_specialization = {
@@ -441,7 +440,7 @@ where
                     _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
                 };
 
-                if let Some(topology) = self.input_assembly_state.topology {
+                if let StateMode::Fixed(topology) = self.input_assembly_state.topology {
                     if !shader_execution_mode.matches(topology) {
                         return Err(
                             GraphicsPipelineCreationError::TopologyNotMatchingGeometryShader,
@@ -678,89 +677,91 @@ where
         });
 
         let input_assembly_state = if self.vertex_shader.is_some() {
-            let topology = if let Some(topology) = self.input_assembly_state.topology {
-                match topology {
-                    PrimitiveTopology::LineListWithAdjacency
-                    | PrimitiveTopology::LineStripWithAdjacency
-                    | PrimitiveTopology::TriangleListWithAdjacency
-                    | PrimitiveTopology::TriangleStripWithAdjacency => {
-                        if !device.enabled_features().geometry_shader {
-                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                feature: "geometry_shader",
-                                reason: "InputAssemblyState::topology was set to a \"with adjacency\" PrimitiveTopology",
-                            });
-                        }
-                    }
-                    PrimitiveTopology::PatchList => {
-                        if !device.enabled_features().tessellation_shader {
-                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                feature: "tessellation_shader",
-                                reason: "InputAssemblyState::topology was set to PrimitiveTopology::PatchList",
-                            });
-                        }
-                    }
-                    _ => (),
-                }
-                topology.into()
-            } else {
-                if !device.enabled_features().extended_dynamic_state {
-                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                        feature: "extended_dynamic_state",
-                        reason: "InputAssemblyState::topology was set to dynamic",
-                    });
-                }
-                dynamic_state_modes
-                    .insert(DynamicState::PrimitiveTopology, DynamicStateMode::Dynamic);
-                Default::default()
-            };
-
-            let primitive_restart_enable = if let Some(primitive_restart_enable) =
-                self.input_assembly_state.primitive_restart_enable
-            {
-                if primitive_restart_enable {
-                    match self.input_assembly_state.topology {
-                        Some(
-                            PrimitiveTopology::PointList
-                            | PrimitiveTopology::LineList
-                            | PrimitiveTopology::TriangleList
-                            | PrimitiveTopology::LineListWithAdjacency
-                            | PrimitiveTopology::TriangleListWithAdjacency,
-                        ) => {
-                            if !device.enabled_features().primitive_topology_list_restart {
+            let topology = match self.input_assembly_state.topology {
+                StateMode::Fixed(topology) => {
+                    match topology {
+                        PrimitiveTopology::LineListWithAdjacency
+                        | PrimitiveTopology::LineStripWithAdjacency
+                        | PrimitiveTopology::TriangleListWithAdjacency
+                        | PrimitiveTopology::TriangleStripWithAdjacency => {
+                            if !device.enabled_features().geometry_shader {
                                 return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                    feature: "primitive_topology_list_restart",
-                                    reason: "InputAssemblyState::primitive_restart_enable was set to true in combination with a \"list\" PrimitiveTopology",
+                                    feature: "geometry_shader",
+                                    reason: "InputAssemblyState::topology was set to a \"with adjacency\" PrimitiveTopology",
                                 });
                             }
                         }
-                        Some(PrimitiveTopology::PatchList) => {
-                            if !device
-                                .enabled_features()
-                                .primitive_topology_patch_list_restart
-                            {
+                        PrimitiveTopology::PatchList => {
+                            if !device.enabled_features().tessellation_shader {
                                 return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                    feature: "primitive_topology_patch_list_restart",
-                                    reason: "InputAssemblyState::primitive_restart_enable was set to true in combination with PrimitiveTopology::PatchList",
+                                    feature: "tessellation_shader",
+                                    reason: "InputAssemblyState::topology was set to PrimitiveTopology::PatchList",
                                 });
                             }
                         }
                         _ => (),
                     }
+                    topology.into()
                 }
+                StateMode::Dynamic => {
+                    if !device.enabled_features().extended_dynamic_state {
+                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                            feature: "extended_dynamic_state",
+                            reason: "InputAssemblyState::topology was set to Dynamic",
+                        });
+                    }
+                    dynamic_state_modes.insert(DynamicState::PrimitiveTopology, true);
+                    Default::default()
+                }
+            };
 
-                primitive_restart_enable as ash::vk::Bool32
-            } else {
-                if !device.enabled_features().extended_dynamic_state2 {
-                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                        feature: "extended_dynamic_state2",
-                        reason: "InputAssemblyState::primitive_restart_enable was set to dynamic",
-                    });
+            let primitive_restart_enable = match self.input_assembly_state.primitive_restart_enable
+            {
+                StateMode::Fixed(primitive_restart_enable) => {
+                    if primitive_restart_enable {
+                        match self.input_assembly_state.topology {
+                            StateMode::Fixed(
+                                PrimitiveTopology::PointList
+                                | PrimitiveTopology::LineList
+                                | PrimitiveTopology::TriangleList
+                                | PrimitiveTopology::LineListWithAdjacency
+                                | PrimitiveTopology::TriangleListWithAdjacency,
+                            ) => {
+                                if !device.enabled_features().primitive_topology_list_restart {
+                                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                    feature: "primitive_topology_list_restart",
+                                    reason: "InputAssemblyState::primitive_restart_enable was set to true in combination with a \"list\" PrimitiveTopology",
+                                });
+                                }
+                            }
+                            StateMode::Fixed(PrimitiveTopology::PatchList) => {
+                                if !device
+                                    .enabled_features()
+                                    .primitive_topology_patch_list_restart
+                                {
+                                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                    feature: "primitive_topology_patch_list_restart",
+                                    reason: "InputAssemblyState::primitive_restart_enable was set to true in combination with PrimitiveTopology::PatchList",
+                                });
+                                }
+                            }
+                            _ => (),
+                        }
+                    }
+
+                    primitive_restart_enable as ash::vk::Bool32
                 }
-                dynamic_state_modes.insert(
-                    DynamicState::PrimitiveRestartEnable,
-                    DynamicStateMode::Dynamic,
-                );
-                Default::default()
+                StateMode::Dynamic => {
+                    if !device.enabled_features().extended_dynamic_state2 {
+                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                            feature: "extended_dynamic_state2",
+                            reason:
+                                "InputAssemblyState::primitive_restart_enable was set to Dynamic",
+                        });
+                    }
+                    dynamic_state_modes.insert(DynamicState::PrimitiveRestartEnable, true);
+                    Default::default()
+                }
             };
 
             Some(ash::vk::PipelineInputAssemblyStateCreateInfo {
@@ -776,13 +777,13 @@ where
         let tessellation_state = if self.tessellation_shaders.is_some() {
             if !matches!(
                 self.input_assembly_state.topology,
-                None | Some(PrimitiveTopology::PatchList)
+                StateMode::Dynamic | StateMode::Fixed(PrimitiveTopology::PatchList)
             ) {
                 return Err(GraphicsPipelineCreationError::InvalidPrimitiveTopology);
             }
 
-            let patch_control_points =
-                if let Some(patch_control_points) = self.tessellation_state.patch_control_points {
+            let patch_control_points = match self.tessellation_state.patch_control_points {
+                StateMode::Fixed(patch_control_points) => {
                     if patch_control_points <= 0
                         || patch_control_points
                             > device
@@ -794,21 +795,22 @@ where
                     }
 
                     patch_control_points
-                } else {
+                }
+                StateMode::Dynamic => {
                     if !device
                         .enabled_features()
                         .extended_dynamic_state2_patch_control_points
                     {
                         return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
                             feature: "extended_dynamic_state2_patch_control_points",
-                            reason: "TessellationState::patch_control_points was set to dynamic",
+                            reason: "TessellationState::patch_control_points was set to Dynamic",
                         });
                     }
 
-                    dynamic_state_modes
-                        .insert(DynamicState::PatchControlPoints, DynamicStateMode::Dynamic);
+                    dynamic_state_modes.insert(DynamicState::PatchControlPoints, true);
                     Default::default()
-                };
+                }
+            };
 
             Some(ash::vk::PipelineTessellationStateCreateInfo {
                 flags: ash::vk::PipelineTessellationStateCreateFlags::empty(),
@@ -835,7 +837,7 @@ where
                     .iter()
                     .map(|e| e.clone().into())
                     .collect::<SmallVec<[ash::vk::Rect2D; 4]>>();
-                dynamic_state_modes.insert(DynamicState::Viewport, DynamicStateMode::Dynamic);
+                dynamic_state_modes.insert(DynamicState::Viewport, true);
                 (SmallVec::new(), scissors, num)
             }
             ViewportsState::DynamicScissors { ref viewports } => {
@@ -844,12 +846,12 @@ where
                     .iter()
                     .map(|e| e.clone().into())
                     .collect::<SmallVec<[ash::vk::Viewport; 4]>>();
-                dynamic_state_modes.insert(DynamicState::Scissor, DynamicStateMode::Dynamic);
+                dynamic_state_modes.insert(DynamicState::Scissor, true);
                 (viewports, SmallVec::new(), num)
             }
             ViewportsState::Dynamic { num } => {
-                dynamic_state_modes.insert(DynamicState::Viewport, DynamicStateMode::Dynamic);
-                dynamic_state_modes.insert(DynamicState::Scissor, DynamicStateMode::Dynamic);
+                dynamic_state_modes.insert(DynamicState::Viewport, true);
+                dynamic_state_modes.insert(DynamicState::Scissor, true);
                 (SmallVec::new(), SmallVec::new(), num)
             }
         };
@@ -915,22 +917,22 @@ where
                 });
             }
 
-            let rasterizer_discard_enable = if let Some(rasterizer_discard_enable) =
-                self.rasterization_state.rasterizer_discard_enable
+            let rasterizer_discard_enable = match self.rasterization_state.rasterizer_discard_enable
             {
-                rasterizer_discard_enable as ash::vk::Bool32
-            } else {
-                if !device.enabled_features().extended_dynamic_state2 {
-                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                        feature: "extended_dynamic_state2",
-                        reason: "RasterizationState::rasterizer_discard_enable was set to dynamic",
-                    });
+                StateMode::Fixed(rasterizer_discard_enable) => {
+                    rasterizer_discard_enable as ash::vk::Bool32
                 }
-                dynamic_state_modes.insert(
-                    DynamicState::RasterizerDiscardEnable,
-                    DynamicStateMode::Dynamic,
-                );
-                ash::vk::FALSE
+                StateMode::Dynamic => {
+                    if !device.enabled_features().extended_dynamic_state2 {
+                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                            feature: "extended_dynamic_state2",
+                            reason:
+                                "RasterizationState::rasterizer_discard_enable was set to Dynamic",
+                        });
+                    }
+                    dynamic_state_modes.insert(DynamicState::RasterizerDiscardEnable, true);
+                    ash::vk::FALSE
+                }
             };
 
             if self.rasterization_state.polygon_mode != PolygonMode::Fill
@@ -942,30 +944,32 @@ where
                 });
             }
 
-            let cull_mode = if let Some(cull_mode) = self.rasterization_state.cull_mode {
-                cull_mode.into()
-            } else {
-                if !device.enabled_features().extended_dynamic_state {
-                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                        feature: "extended_dynamic_state",
-                        reason: "RasterizationState::cull_mode was set to dynamic",
-                    });
+            let cull_mode = match self.rasterization_state.cull_mode {
+                StateMode::Fixed(cull_mode) => cull_mode.into(),
+                StateMode::Dynamic => {
+                    if !device.enabled_features().extended_dynamic_state {
+                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                            feature: "extended_dynamic_state",
+                            reason: "RasterizationState::cull_mode was set to Dynamic",
+                        });
+                    }
+                    dynamic_state_modes.insert(DynamicState::CullMode, true);
+                    CullMode::default().into()
                 }
-                dynamic_state_modes.insert(DynamicState::CullMode, DynamicStateMode::Dynamic);
-                CullMode::default().into()
             };
 
-            let front_face = if let Some(front_face) = self.rasterization_state.front_face {
-                front_face.into()
-            } else {
-                if !device.enabled_features().extended_dynamic_state {
-                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                        feature: "extended_dynamic_state",
-                        reason: "RasterizationState::front_face was set to dynamic",
-                    });
+            let front_face = match self.rasterization_state.front_face {
+                StateMode::Fixed(front_face) => front_face.into(),
+                StateMode::Dynamic => {
+                    if !device.enabled_features().extended_dynamic_state {
+                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                            feature: "extended_dynamic_state",
+                            reason: "RasterizationState::front_face was set to Dynamic",
+                        });
+                    }
+                    dynamic_state_modes.insert(DynamicState::FrontFace, true);
+                    FrontFace::default().into()
                 }
-                dynamic_state_modes.insert(DynamicState::FrontFace, DynamicStateMode::Dynamic);
-                FrontFace::default().into()
             };
 
             let (
@@ -981,23 +985,23 @@ where
                             reason: "DepthBiasState::enable_dynamic was true",
                         });
                     }
-                    dynamic_state_modes
-                        .insert(DynamicState::DepthTestEnable, DynamicStateMode::Dynamic);
+                    dynamic_state_modes.insert(DynamicState::DepthTestEnable, true);
                 }
 
-                let (constant_factor, clamp, slope_factor) = if let Some(bias) =
-                    depth_bias_state.bias
-                {
-                    if bias.clamp != 0.0 && !device.enabled_features().depth_bias_clamp {
-                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                            feature: "depth_bias_clamp",
-                            reason: "DepthBias::clamp was not 0.0",
-                        });
+                let (constant_factor, clamp, slope_factor) = match depth_bias_state.bias {
+                    StateMode::Fixed(bias) => {
+                        if bias.clamp != 0.0 && !device.enabled_features().depth_bias_clamp {
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "depth_bias_clamp",
+                                reason: "DepthBias::clamp was not 0.0",
+                            });
+                        }
+                        (bias.constant_factor, bias.clamp, bias.slope_factor)
                     }
-                    (bias.constant_factor, bias.clamp, bias.slope_factor)
-                } else {
-                    dynamic_state_modes.insert(DynamicState::DepthBias, DynamicStateMode::Dynamic);
-                    (0.0, 0.0, 0.0)
+                    StateMode::Dynamic => {
+                        dynamic_state_modes.insert(DynamicState::DepthBias, true);
+                        (0.0, 0.0, 0.0)
+                    }
                 };
 
                 (ash::vk::TRUE, constant_factor, clamp, slope_factor)
@@ -1005,13 +1009,18 @@ where
                 (ash::vk::FALSE, 0.0, 0.0, 0.0)
             };
 
-            if let Some(line_width) = self.rasterization_state.line_width {
-                if line_width != 1.0 && !device.enabled_features().wide_lines {
-                    return Err(GraphicsPipelineCreationError::WideLinesFeatureNotEnabled);
+            let line_width = match self.rasterization_state.line_width {
+                StateMode::Fixed(line_width) => {
+                    if line_width != 1.0 && !device.enabled_features().wide_lines {
+                        return Err(GraphicsPipelineCreationError::WideLinesFeatureNotEnabled);
+                    }
+                    line_width
                 }
-            } else {
-                dynamic_state_modes.insert(DynamicState::LineWidth, DynamicStateMode::Dynamic);
-            }
+                StateMode::Dynamic => {
+                    dynamic_state_modes.insert(DynamicState::LineWidth, true);
+                    1.0
+                }
+            };
 
             Some(ash::vk::PipelineRasterizationStateCreateInfo {
                 flags: ash::vk::PipelineRasterizationStateCreateFlags::empty(),
@@ -1024,13 +1033,13 @@ where
                 depth_bias_constant_factor,
                 depth_bias_clamp,
                 depth_bias_slope_factor,
-                line_width: self.rasterization_state.line_width.unwrap_or(1.0),
+                line_width,
                 ..Default::default()
             })
         };
 
         let has_fragment_shader_state =
-            self.rasterization_state.rasterizer_discard_enable != Some(true);
+            self.rasterization_state.rasterizer_discard_enable != StateMode::Fixed(true);
 
         self.multisample.rasterization_samples =
             subpass.num_samples().unwrap_or(SampleCount::Sample1).into();
@@ -1067,39 +1076,40 @@ where
                                 reason: "DepthState::enable_dynamic was true",
                             });
                         }
-                        dynamic_state_modes
-                            .insert(DynamicState::DepthTestEnable, DynamicStateMode::Dynamic);
+                        dynamic_state_modes.insert(DynamicState::DepthTestEnable, true);
                     }
 
-                    let write_enable = if let Some(write_enable) = depth_state.write_enable {
-                        if write_enable && !subpass.has_writable_depth() {
-                            return Err(GraphicsPipelineCreationError::NoDepthAttachment);
+                    let write_enable = match depth_state.write_enable {
+                        StateMode::Fixed(write_enable) => {
+                            if write_enable && !subpass.has_writable_depth() {
+                                return Err(GraphicsPipelineCreationError::NoDepthAttachment);
+                            }
+                            write_enable as ash::vk::Bool32
                         }
-                        write_enable as ash::vk::Bool32
-                    } else {
-                        if !device.enabled_features().extended_dynamic_state {
-                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                feature: "extended_dynamic_state",
-                                reason: "DepthState::write_enable was set to dynamic",
-                            });
+                        StateMode::Dynamic => {
+                            if !device.enabled_features().extended_dynamic_state {
+                                return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                    feature: "extended_dynamic_state",
+                                    reason: "DepthState::write_enable was set to Dynamic",
+                                });
+                            }
+                            dynamic_state_modes.insert(DynamicState::DepthWriteEnable, true);
+                            ash::vk::TRUE
                         }
-                        dynamic_state_modes
-                            .insert(DynamicState::DepthWriteEnable, DynamicStateMode::Dynamic);
-                        ash::vk::TRUE
                     };
 
-                    let compare_op = if let Some(compare_op) = depth_state.compare_op {
-                        compare_op.into()
-                    } else {
-                        if !device.enabled_features().extended_dynamic_state {
-                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                feature: "extended_dynamic_state",
-                                reason: "DepthState::compare_op was set to dynamic",
-                            });
+                    let compare_op = match depth_state.compare_op {
+                        StateMode::Fixed(compare_op) => compare_op.into(),
+                        StateMode::Dynamic => {
+                            if !device.enabled_features().extended_dynamic_state {
+                                return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                    feature: "extended_dynamic_state",
+                                    reason: "DepthState::compare_op was set to Dynamic",
+                                });
+                            }
+                            dynamic_state_modes.insert(DynamicState::DepthCompareOp, true);
+                            ash::vk::CompareOp::ALWAYS
                         }
-                        dynamic_state_modes
-                            .insert(DynamicState::DepthCompareOp, DynamicStateMode::Dynamic);
-                        ash::vk::CompareOp::ALWAYS
                     };
 
                     (ash::vk::TRUE, write_enable, compare_op)
@@ -1126,27 +1136,26 @@ where
                             reason: "DepthBoundsState::enable_dynamic was true",
                         });
                     }
-                    dynamic_state_modes.insert(
-                        DynamicState::DepthBoundsTestEnable,
-                        DynamicStateMode::Dynamic,
-                    );
+                    dynamic_state_modes.insert(DynamicState::DepthBoundsTestEnable, true);
                 }
 
-                let (min_bounds, max_bounds) = if let Some(bounds) = depth_bounds_state.bounds {
-                    if !device.enabled_extensions().ext_depth_range_unrestricted
-                        && !(0.0..1.0).contains(bounds.start())
-                        && !(0.0..1.0).contains(bounds.end())
-                    {
-                        return Err(GraphicsPipelineCreationError::ExtensionNotEnabled {
+                let (min_bounds, max_bounds) = match depth_bounds_state.bounds {
+                    StateMode::Fixed(bounds) => {
+                        if !device.enabled_extensions().ext_depth_range_unrestricted
+                            && !(0.0..1.0).contains(bounds.start())
+                            && !(0.0..1.0).contains(bounds.end())
+                        {
+                            return Err(GraphicsPipelineCreationError::ExtensionNotEnabled {
                             extension: "ext_depth_range_unrestricted",
                             reason: "DepthBoundsState::bounds were not both between 0.0 and 1.0 inclusive",
                         });
+                        }
+                        bounds.into_inner()
                     }
-                    bounds.into_inner()
-                } else {
-                    dynamic_state_modes
-                        .insert(DynamicState::DepthBounds, DynamicStateMode::Dynamic);
-                    (0.0, 1.0)
+                    StateMode::Dynamic => {
+                        dynamic_state_modes.insert(DynamicState::DepthBounds, true);
+                        (0.0, 1.0)
+                    }
                 };
 
                 (ash::vk::TRUE, min_bounds, max_bounds)
@@ -1170,21 +1179,19 @@ where
                             reason: "StencilState::enable_dynamic was true",
                         });
                     }
-                    dynamic_state_modes
-                        .insert(DynamicState::StencilTestEnable, DynamicStateMode::Dynamic);
+                    dynamic_state_modes.insert(DynamicState::StencilTestEnable, true);
                 }
 
                 match (stencil_state.front.ops, stencil_state.back.ops) {
-                    (Some(_), Some(_)) => (),
-                    (None, None) => {
+                    (StateMode::Fixed(_), StateMode::Fixed(_)) => (),
+                    (StateMode::Dynamic, StateMode::Dynamic) => {
                         if !device.enabled_features().extended_dynamic_state {
                             return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
                                 feature: "extended_dynamic_state",
-                                reason: "StencilState::ops was set to dynamic",
+                                reason: "StencilState::ops was set to Dynamic",
                             });
                         }
-                        dynamic_state_modes
-                            .insert(DynamicState::StencilOp, DynamicStateMode::Dynamic);
+                        dynamic_state_modes.insert(DynamicState::StencilOp, true);
                     }
                     _ => return Err(GraphicsPipelineCreationError::WrongStencilState),
                 };
@@ -1193,10 +1200,9 @@ where
                     stencil_state.front.compare_mask,
                     stencil_state.back.compare_mask,
                 ) {
-                    (Some(_), Some(_)) => (),
-                    (None, None) => {
-                        dynamic_state_modes
-                            .insert(DynamicState::StencilCompareMask, DynamicStateMode::Dynamic);
+                    (StateMode::Fixed(_), StateMode::Fixed(_)) => (),
+                    (StateMode::Dynamic, StateMode::Dynamic) => {
+                        dynamic_state_modes.insert(DynamicState::StencilCompareMask, true);
                     }
                     _ => return Err(GraphicsPipelineCreationError::WrongStencilState),
                 };
@@ -1205,33 +1211,47 @@ where
                     stencil_state.front.write_mask,
                     stencil_state.back.write_mask,
                 ) {
-                    (Some(_), Some(_)) => (),
-                    (None, None) => {
-                        dynamic_state_modes
-                            .insert(DynamicState::StencilWriteMask, DynamicStateMode::Dynamic);
+                    (StateMode::Fixed(_), StateMode::Fixed(_)) => (),
+                    (StateMode::Dynamic, StateMode::Dynamic) => {
+                        dynamic_state_modes.insert(DynamicState::StencilWriteMask, true);
                     }
                     _ => return Err(GraphicsPipelineCreationError::WrongStencilState),
                 };
 
                 match (stencil_state.front.reference, stencil_state.back.reference) {
-                    (Some(_), Some(_)) => (),
-                    (None, None) => {
-                        dynamic_state_modes
-                            .insert(DynamicState::StencilReference, DynamicStateMode::Dynamic);
+                    (StateMode::Fixed(_), StateMode::Fixed(_)) => (),
+                    (StateMode::Dynamic, StateMode::Dynamic) => {
+                        dynamic_state_modes.insert(DynamicState::StencilReference, true);
                     }
                     _ => return Err(GraphicsPipelineCreationError::WrongStencilState),
                 };
 
                 let [front, back] = [&stencil_state.front, &stencil_state.back].map(|ops_state| {
-                    let ops = ops_state.ops.unwrap_or_default();
+                    let ops = match ops_state.ops {
+                        StateMode::Fixed(x) => x,
+                        StateMode::Dynamic => Default::default(),
+                    };
+                    let compare_mask = match ops_state.compare_mask {
+                        StateMode::Fixed(x) => x,
+                        StateMode::Dynamic => Default::default(),
+                    };
+                    let write_mask = match ops_state.write_mask {
+                        StateMode::Fixed(x) => x,
+                        StateMode::Dynamic => Default::default(),
+                    };
+                    let reference = match ops_state.reference {
+                        StateMode::Fixed(x) => x,
+                        StateMode::Dynamic => Default::default(),
+                    };
+
                     ash::vk::StencilOpState {
                         fail_op: ops.fail_op.into(),
                         pass_op: ops.pass_op.into(),
                         depth_fail_op: ops.depth_fail_op.into(),
                         compare_op: ops.compare_op.into(),
-                        compare_mask: stencil_state.front.compare_mask.unwrap_or(u32::MAX),
-                        write_mask: stencil_state.front.write_mask.unwrap_or(u32::MAX),
-                        reference: stencil_state.front.reference.unwrap_or(0),
+                        compare_mask,
+                        write_mask,
+                        reference,
                     }
                 });
 
@@ -1257,10 +1277,10 @@ where
             None
         };
 
-        let blend_atch: SmallVec<[ash::vk::PipelineColorBlendAttachmentState; 8]> = {
+        let color_blend_attachments: SmallVec<[ash::vk::PipelineColorBlendAttachmentState; 4]> = {
             let num_atch = subpass.num_color_attachments();
 
-            match self.blend.attachments {
+            match self.color_blend_state.attachments {
                 AttachmentsBlend::Collective(blend) => {
                     (0..num_atch).map(|_| blend.clone().into()).collect()
                 }
@@ -1282,38 +1302,59 @@ where
             }
         };
 
-        let color_blend_state = Some(ash::vk::PipelineColorBlendStateCreateInfo {
-            flags: ash::vk::PipelineColorBlendStateCreateFlags::empty(),
-            logic_op_enable: if self.blend.logic_op.is_some() {
-                if !device.enabled_features().logic_op {
-                    return Err(GraphicsPipelineCreationError::LogicOpFeatureNotEnabled);
+        let color_blend_state = {
+            let (logic_op_enable, logic_op) =
+                if let Some(logic_op) = self.color_blend_state.logic_op {
+                    if !device.enabled_features().logic_op {
+                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                            feature: "logic_op",
+                            reason: "ColorBlendState::logic_op was set to Some",
+                        });
+                    }
+
+                    let logic_op = match logic_op {
+                        StateMode::Fixed(logic_op) => logic_op,
+                        StateMode::Dynamic => {
+                            if !device.enabled_features().extended_dynamic_state2_logic_op {
+                                return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                    feature: "extended_dynamic_state2_logic_op",
+                                    reason: "ColorBlendState::logic_op was set to Some(Dynamic)",
+                                });
+                            }
+                            dynamic_state_modes.insert(DynamicState::LogicOp, true);
+                            Default::default()
+                        }
+                    };
+
+                    (ash::vk::TRUE, logic_op.into())
+                } else {
+                    (ash::vk::FALSE, Default::default())
+                };
+
+            let blend_constants = match self.color_blend_state.blend_constants {
+                StateMode::Fixed(blend_constants) => blend_constants,
+                StateMode::Dynamic => {
+                    dynamic_state_modes.insert(DynamicState::BlendConstants, true);
+                    Default::default()
                 }
-                ash::vk::TRUE
-            } else {
-                ash::vk::FALSE
-            },
-            logic_op: self.blend.logic_op.unwrap_or(Default::default()).into(),
-            attachment_count: blend_atch.len() as u32,
-            p_attachments: blend_atch.as_ptr(),
-            blend_constants: if let Some(c) = self.blend.blend_constants {
-                c
-            } else {
-                dynamic_state_modes.insert(DynamicState::BlendConstants, DynamicStateMode::Dynamic);
-                [0.0, 0.0, 0.0, 0.0]
-            },
-            ..Default::default()
-        });
+            };
+
+            Some(ash::vk::PipelineColorBlendStateCreateInfo {
+                flags: ash::vk::PipelineColorBlendStateCreateFlags::empty(),
+                logic_op_enable,
+                logic_op,
+                attachment_count: color_blend_attachments.len() as u32,
+                p_attachments: color_blend_attachments.as_ptr(),
+                blend_constants,
+                ..Default::default()
+            })
+        };
 
         // Dynamic state
         let dynamic_state_list: Vec<ash::vk::DynamicState> = dynamic_state_modes
             .iter()
-            .filter_map(|(&state, &mode)| {
-                if matches!(mode, DynamicStateMode::Dynamic) {
-                    Some(state.into())
-                } else {
-                    None
-                }
-            })
+            .filter(|(_, d)| **d)
+            .map(|(&state, _)| state.into())
             .collect();
 
         let dynamic_state = if !dynamic_state_list.is_empty() {
@@ -1331,100 +1372,100 @@ where
         if vertex_input_state.is_some() {
             dynamic_state_modes
                 .entry(DynamicState::VertexInput)
-                .or_insert(DynamicStateMode::Fixed);
+                .or_insert(false);
         }
 
         if input_assembly_state.is_some() {
             dynamic_state_modes
                 .entry(DynamicState::PrimitiveTopology)
-                .or_insert(DynamicStateMode::Fixed);
+                .or_insert(false);
             dynamic_state_modes
                 .entry(DynamicState::PrimitiveRestartEnable)
-                .or_insert(DynamicStateMode::Fixed);
+                .or_insert(false);
         }
 
         if tessellation_state.is_some() {
             dynamic_state_modes
                 .entry(DynamicState::PatchControlPoints)
-                .or_insert(DynamicStateMode::Fixed);
+                .or_insert(false);
         }
 
         if viewport_state.is_some() {
             dynamic_state_modes
                 .entry(DynamicState::Viewport)
-                .or_insert(DynamicStateMode::Fixed);
+                .or_insert(false);
             dynamic_state_modes
                 .entry(DynamicState::Scissor)
-                .or_insert(DynamicStateMode::Fixed);
+                .or_insert(false);
             dynamic_state_modes
                 .entry(DynamicState::ViewportWithCount)
-                .or_insert(DynamicStateMode::Fixed);
+                .or_insert(false);
             dynamic_state_modes
                 .entry(DynamicState::ScissorWithCount)
-                .or_insert(DynamicStateMode::Fixed);
+                .or_insert(false);
         }
 
         if rasterization_state.is_some() {
             dynamic_state_modes
                 .entry(DynamicState::RasterizerDiscardEnable)
-                .or_insert(DynamicStateMode::Fixed);
+                .or_insert(false);
             dynamic_state_modes
                 .entry(DynamicState::CullMode)
-                .or_insert(DynamicStateMode::Fixed);
+                .or_insert(false);
             dynamic_state_modes
                 .entry(DynamicState::FrontFace)
-                .or_insert(DynamicStateMode::Fixed);
+                .or_insert(false);
             dynamic_state_modes
                 .entry(DynamicState::DepthBiasEnable)
-                .or_insert(DynamicStateMode::Fixed);
+                .or_insert(false);
             dynamic_state_modes
                 .entry(DynamicState::DepthBias)
-                .or_insert(DynamicStateMode::Fixed);
+                .or_insert(false);
             dynamic_state_modes
                 .entry(DynamicState::LineWidth)
-                .or_insert(DynamicStateMode::Fixed);
+                .or_insert(false);
         }
 
         if depth_stencil_state.is_some() {
             dynamic_state_modes
                 .entry(DynamicState::DepthTestEnable)
-                .or_insert(DynamicStateMode::Fixed);
+                .or_insert(false);
             dynamic_state_modes
                 .entry(DynamicState::DepthWriteEnable)
-                .or_insert(DynamicStateMode::Fixed);
+                .or_insert(false);
             dynamic_state_modes
                 .entry(DynamicState::DepthCompareOp)
-                .or_insert(DynamicStateMode::Fixed);
+                .or_insert(false);
             dynamic_state_modes
                 .entry(DynamicState::DepthBoundsTestEnable)
-                .or_insert(DynamicStateMode::Fixed);
+                .or_insert(false);
             dynamic_state_modes
                 .entry(DynamicState::StencilTestEnable)
-                .or_insert(DynamicStateMode::Fixed);
+                .or_insert(false);
             dynamic_state_modes
                 .entry(DynamicState::StencilCompareMask)
-                .or_insert(DynamicStateMode::Fixed);
+                .or_insert(false);
             dynamic_state_modes
                 .entry(DynamicState::StencilWriteMask)
-                .or_insert(DynamicStateMode::Fixed);
+                .or_insert(false);
             dynamic_state_modes
                 .entry(DynamicState::StencilReference)
-                .or_insert(DynamicStateMode::Fixed);
+                .or_insert(false);
             dynamic_state_modes
                 .entry(DynamicState::DepthBounds)
-                .or_insert(DynamicStateMode::Fixed);
+                .or_insert(false);
         }
 
         if color_blend_state.is_some() {
             dynamic_state_modes
                 .entry(DynamicState::LogicOp)
-                .or_insert(DynamicStateMode::Fixed);
+                .or_insert(false);
             dynamic_state_modes
                 .entry(DynamicState::BlendConstants)
-                .or_insert(DynamicStateMode::Fixed);
+                .or_insert(false);
         }
 
-        // Dynamic states not handled yet:
+        // StateMode::Dynamic states not handled yet:
         // - ViewportWScaling (VkPipelineViewportWScalingStateCreateInfoNV)
         // - DiscardRectangle (VkPipelineDiscardRectangleStateCreateInfoEXT)
         // - SampleLocations (VkPipelineSampleLocationsStateCreateInfoEXT)
@@ -1577,7 +1618,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             rasterization_state: self.rasterization_state,
             multisample: self.multisample,
             depth_stencil_state: self.depth_stencil_state,
-            blend: self.blend,
+            color_blend_state: self.color_blend_state,
 
             subpass: self.subpass,
             cache: self.cache,
@@ -1620,7 +1661,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             rasterization_state: self.rasterization_state,
             multisample: self.multisample,
             depth_stencil_state: self.depth_stencil_state,
-            blend: self.blend,
+            color_blend_state: self.color_blend_state,
 
             subpass: self.subpass,
             cache: self.cache,
@@ -1658,7 +1699,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             rasterization_state: self.rasterization_state,
             multisample: self.multisample,
             depth_stencil_state: self.depth_stencil_state,
-            blend: self.blend,
+            color_blend_state: self.color_blend_state,
 
             subpass: self.subpass,
             cache: self.cache,
@@ -1698,7 +1739,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             rasterization_state: self.rasterization_state,
             multisample: self.multisample,
             depth_stencil_state: self.depth_stencil_state,
-            blend: self.blend,
+            color_blend_state: self.color_blend_state,
 
             subpass: self.subpass,
             cache: self.cache,
@@ -1724,7 +1765,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             rasterization_state: self.rasterization_state,
             multisample: self.multisample,
             depth_stencil_state: self.depth_stencil_state,
-            blend: self.blend,
+            color_blend_state: self.color_blend_state,
 
             subpass: self.subpass,
             cache: self.cache,
@@ -1765,7 +1806,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn primitive_restart(mut self, enabled: bool) -> Self {
-        self.input_assembly_state.primitive_restart_enable = Some(enabled);
+        self.input_assembly_state.primitive_restart_enable = StateMode::Fixed(enabled);
         self
     }
 
@@ -1773,7 +1814,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn primitive_topology(mut self, topology: PrimitiveTopology) -> Self {
-        self.input_assembly_state.topology = Some(topology);
+        self.input_assembly_state.topology = StateMode::Fixed(topology);
         self
     }
 
@@ -1986,7 +2027,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn front_face_counter_clockwise(mut self) -> Self {
-        self.rasterization_state.front_face = Some(FrontFace::CounterClockwise);
+        self.rasterization_state.front_face = StateMode::Fixed(FrontFace::CounterClockwise);
         self
     }
 
@@ -1997,7 +2038,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn front_face_clockwise(mut self) -> Self {
-        self.rasterization_state.front_face = Some(FrontFace::Clockwise);
+        self.rasterization_state.front_face = StateMode::Fixed(FrontFace::Clockwise);
         self
     }
 
@@ -2005,7 +2046,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn cull_mode_disabled(mut self) -> Self {
-        self.rasterization_state.cull_mode = Some(CullMode::None);
+        self.rasterization_state.cull_mode = StateMode::Fixed(CullMode::None);
         self
     }
 
@@ -2014,7 +2055,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn cull_mode_front(mut self) -> Self {
-        self.rasterization_state.cull_mode = Some(CullMode::Front);
+        self.rasterization_state.cull_mode = StateMode::Fixed(CullMode::Front);
         self
     }
 
@@ -2023,7 +2064,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn cull_mode_back(mut self) -> Self {
-        self.rasterization_state.cull_mode = Some(CullMode::Back);
+        self.rasterization_state.cull_mode = StateMode::Fixed(CullMode::Back);
         self
     }
 
@@ -2034,7 +2075,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn cull_mode_front_and_back(mut self) -> Self {
-        self.rasterization_state.cull_mode = Some(CullMode::FrontAndBack);
+        self.rasterization_state.cull_mode = StateMode::Fixed(CullMode::FrontAndBack);
         self
     }
 
@@ -2066,7 +2107,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn line_width(mut self, value: f32) -> Self {
-        self.rasterization_state.line_width = Some(value);
+        self.rasterization_state.line_width = StateMode::Fixed(value);
         self
     }
 
@@ -2075,7 +2116,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn line_width_dynamic(mut self) -> Self {
-        self.rasterization_state.line_width = None;
+        self.rasterization_state.line_width = StateMode::Dynamic;
         self
     }
 
@@ -2195,65 +2236,81 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             .depth_stencil_state
             .depth
             .get_or_insert(Default::default());
-        depth_state.write_enable = Some(write);
+        depth_state.write_enable = StateMode::Fixed(write);
         self
     }
 
+    /// Sets the color blend state.
+    #[inline]
+    pub fn color_blend_state(mut self, color_blend_state: ColorBlendState) -> Self {
+        self.color_blend_state = color_blend_state;
+        self
+    }
+
+    #[deprecated(since = "0.27", note = "Use `color_blend_state` instead")]
     #[inline]
     pub fn blend_collective(mut self, blend: AttachmentBlend) -> Self {
-        self.blend.attachments = AttachmentsBlend::Collective(blend);
+        self.color_blend_state.attachments = AttachmentsBlend::Collective(blend);
         self
     }
 
+    #[deprecated(since = "0.27", note = "Use `color_blend_state` instead")]
     #[inline]
     pub fn blend_individual<I>(mut self, blend: I) -> Self
     where
         I: IntoIterator<Item = AttachmentBlend>,
     {
-        self.blend.attachments = AttachmentsBlend::Individual(blend.into_iter().collect());
+        self.color_blend_state.attachments =
+            AttachmentsBlend::Individual(blend.into_iter().collect());
         self
     }
 
     /// Each fragment shader output will have its value directly written to the framebuffer
     /// attachment. This is the default.
+    #[deprecated(since = "0.27", note = "Use `color_blend_state` instead")]
     #[inline]
     pub fn blend_pass_through(self) -> Self {
         self.blend_collective(AttachmentBlend::pass_through())
     }
 
+    #[deprecated(since = "0.27", note = "Use `color_blend_state` instead")]
     #[inline]
     pub fn blend_alpha_blending(self) -> Self {
         self.blend_collective(AttachmentBlend::alpha_blending())
     }
 
+    #[deprecated(since = "0.27", note = "Use `color_blend_state` instead")]
     #[inline]
     pub fn blend_logic_op(mut self, logic_op: LogicOp) -> Self {
-        self.blend.logic_op = Some(logic_op);
+        self.color_blend_state.logic_op = Some(StateMode::Fixed(logic_op));
         self
     }
 
     /// Sets the logic operation as disabled. This is the default.
+    #[deprecated(since = "0.27", note = "Use `color_blend_state` instead")]
     #[inline]
     pub fn blend_logic_op_disabled(mut self) -> Self {
-        self.blend.logic_op = None;
+        self.color_blend_state.logic_op = None;
         self
     }
 
     /// Sets the blend constant. The default is `[0.0, 0.0, 0.0, 0.0]`.
     ///
     /// The blend constant is used for some blending calculations. It is irrelevant otherwise.
+    #[deprecated(since = "0.27", note = "Use `color_blend_state` instead")]
     #[inline]
     pub fn blend_constants(mut self, constants: [f32; 4]) -> Self {
-        self.blend.blend_constants = Some(constants);
+        self.color_blend_state.blend_constants = StateMode::Fixed(constants);
         self
     }
 
     /// Sets the blend constant value as dynamic. Its value will need to be set before drawing.
     ///
     /// The blend constant is used for some blending calculations. It is irrelevant otherwise.
+    #[deprecated(since = "0.27", note = "Use `color_blend_state` instead")]
     #[inline]
     pub fn blend_constants_dynamic(mut self) -> Self {
-        self.blend.blend_constants = None;
+        self.color_blend_state.blend_constants = StateMode::Dynamic;
         self
     }
 
@@ -2273,7 +2330,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             rasterization_state: self.rasterization_state,
             multisample: self.multisample,
             depth_stencil_state: self.depth_stencil_state,
-            blend: self.blend,
+            color_blend_state: self.color_blend_state,
 
             subpass: Some(subpass),
             cache: self.cache,
@@ -2316,7 +2373,7 @@ where
             rasterization_state: self.rasterization_state.clone(),
             multisample: self.multisample,
             depth_stencil_state: self.depth_stencil_state.clone(),
-            blend: self.blend.clone(),
+            color_blend_state: self.color_blend_state.clone(),
 
             subpass: self.subpass.clone(),
             cache: self.cache.clone(),

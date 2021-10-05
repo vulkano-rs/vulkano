@@ -27,7 +27,7 @@ use crate::descriptor_set::DescriptorSet;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::image::ImageLayout;
-use crate::pipeline::blend::LogicOp;
+use crate::pipeline::color_blend::LogicOp;
 use crate::pipeline::depth_stencil::CompareOp;
 use crate::pipeline::depth_stencil::StencilOp;
 use crate::pipeline::depth_stencil::StencilOps;

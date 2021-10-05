@@ -9,7 +9,6 @@
 
 use crate::command_buffer::synced::CommandBufferState;
 use crate::pipeline::DynamicState;
-use crate::pipeline::DynamicStateMode;
 use crate::pipeline::GraphicsPipeline;
 use std::error;
 use std::fmt;
@@ -21,13 +20,11 @@ pub(in super::super) fn check_dynamic_state_validity(
 ) -> Result<(), CheckDynamicStateValidityError> {
     let device = pipeline.device();
 
-    for state in pipeline.dynamic_states().filter_map(|(state, mode)| {
-        if matches!(mode, DynamicStateMode::Dynamic) {
-            Some(state)
-        } else {
-            None
-        }
-    }) {
+    for state in pipeline
+        .dynamic_states()
+        .filter(|(_, d)| *d)
+        .map(|(s, _)| s)
+    {
         match state {
             DynamicState::BlendConstants => {
                 if current_state.blend_constants().is_none() {
@@ -113,7 +110,13 @@ pub(in super::super) fn check_dynamic_state_validity(
                     });
                 }
             }
-            DynamicState::LogicOp => todo!(),
+            DynamicState::LogicOp => {
+                if current_state.logic_op().is_none() {
+                    return Err(CheckDynamicStateValidityError::NotSet {
+                        dynamic_state: DynamicState::LogicOp,
+                    });
+                }
+            }
             DynamicState::PatchControlPoints => {
                 if current_state.patch_control_points().is_none() {
                     return Err(CheckDynamicStateValidityError::NotSet {

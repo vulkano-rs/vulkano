@@ -40,7 +40,7 @@ use vulkano::pipeline::shader::{
     SpecializationConstants,
 };
 use vulkano::pipeline::viewport::Viewport;
-use vulkano::pipeline::GraphicsPipeline;
+use vulkano::pipeline::{GraphicsPipeline, StateMode};
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
 use vulkano::swapchain;
 use vulkano::swapchain::{AcquireError, Swapchain, SwapchainCreationError};
@@ -249,8 +249,8 @@ fn main() {
             .viewports_dynamic_scissors_irrelevant(1)
             .fragment_shader(frag_main, ())
             .rasterization_state(RasterizationState {
-                cull_mode: Some(CullMode::Front),
-                front_face: Some(FrontFace::CounterClockwise),
+                cull_mode: StateMode::Fixed(CullMode::Front),
+                front_face: StateMode::Fixed(FrontFace::CounterClockwise),
                 ..Default::default()
             })
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())

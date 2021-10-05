@@ -11,10 +11,22 @@
 //!
 //! A tessellation shader divides primitives into smaller primitives.
 
+use crate::pipeline::StateMode;
+
 /// The state in a graphics pipeline describing the tessellation shader execution of a graphics
 /// pipeline.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 pub struct TessellationState {
-    /// The number of patch control points to use. `None` indicates that it is set dynamically.
-    pub patch_control_points: Option<u32>,
+    /// The number of patch control points to use.
+    pub patch_control_points: StateMode<u32>,
+}
+
+impl Default for TessellationState {
+    /// Creates a new `TessellationState` with dynamic patch control points.
+    #[inline]
+    fn default() -> Self {
+        Self {
+            patch_control_points: StateMode::Dynamic,
+        }
+    }
 }

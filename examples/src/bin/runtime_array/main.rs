@@ -22,6 +22,7 @@ use vulkano::image::{
     view::ImageView, ImageDimensions, ImageUsage, ImmutableImage, MipmapsCount, SwapchainImage,
 };
 use vulkano::instance::Instance;
+use vulkano::pipeline::color_blend::ColorBlendState;
 use vulkano::pipeline::layout::PipelineLayout;
 use vulkano::pipeline::shader::EntryPointAbstract;
 use vulkano::pipeline::viewport::Viewport;
@@ -322,7 +323,7 @@ fn main() {
             .vertex_shader(vs.main_entry_point(), ())
             .viewports_dynamic_scissors_irrelevant(1)
             .fragment_shader(fs.main_entry_point(), ())
-            .blend_alpha_blending()
+            .color_blend_state(ColorBlendState::alpha_blending())
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
             .with_pipeline_layout(device.clone(), pipeline_layout)
             .unwrap(),
