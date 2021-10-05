@@ -96,7 +96,6 @@ impl PixelsDrawPipeline {
                     .input_assembly_state(InputAssemblyState::triangle_list())
                     .fragment_shader(fs.main_entry_point(), ())
                     .viewports_dynamic_scissors_irrelevant(1)
-                    .depth_stencil_disabled()
                     .render_pass(subpass)
                     .build(gfx_queue.device().clone())
                     .unwrap(),

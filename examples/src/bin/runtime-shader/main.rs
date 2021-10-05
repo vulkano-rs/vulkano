@@ -249,7 +249,6 @@ fn main() {
             .fragment_shader(frag_main, ())
             .cull_mode_front()
             .front_face_counter_clockwise()
-            .depth_stencil_disabled()
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
             .build(device.clone())
             .unwrap(),

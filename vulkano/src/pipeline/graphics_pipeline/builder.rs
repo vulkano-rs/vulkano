@@ -17,7 +17,7 @@ use crate::device::Device;
 use crate::image::SampleCount;
 use crate::pipeline::blend::{AttachmentBlend, AttachmentsBlend, Blend, LogicOp};
 use crate::pipeline::cache::PipelineCache;
-use crate::pipeline::depth_stencil::{CompareOp, DepthBounds, DepthStencil};
+use crate::pipeline::depth_stencil::DepthStencilState;
 use crate::pipeline::graphics_pipeline::{
     GraphicsPipeline, GraphicsPipelineCreationError, Inner as GraphicsPipelineInner,
 };
@@ -55,7 +55,7 @@ pub struct GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, T
     viewport: Option<ViewportsState>,
     raster: Rasterization,
     multisample: ash::vk::PipelineMultisampleStateCreateInfo,
-    depth_stencil: DepthStencil,
+    depth_stencil_state: DepthStencilState,
     blend: Blend,
 
     subpass: Option<Subpass>,
@@ -98,7 +98,7 @@ impl
             viewport: None,
             raster: Default::default(),
             multisample: ash::vk::PipelineMultisampleStateCreateInfo::default(),
-            depth_stencil: DepthStencil::disabled(),
+            depth_stencil_state: Default::default(),
             blend: Blend::pass_through(),
 
             subpass: None,
@@ -217,6 +217,7 @@ where
         // TODO: return errors instead of panicking if missing param
 
         let fns = device.fns();
+        let subpass = self.subpass.take().expect("Missing subpass");
 
         // Checking that the pipeline layout matches the shader stages.
         // TODO: more details in the errors
@@ -264,12 +265,7 @@ where
 
             // Check that the subpass can accept the output of the fragment shader.
             // TODO: If there is no fragment shader, what should be checked then? The previous stage?
-            if !self
-                .subpass
-                .as_ref()
-                .unwrap()
-                .is_compatible_with(shader.output())
-            {
+            if !subpass.is_compatible_with(shader.output()) {
                 return Err(GraphicsPipelineCreationError::FragmentShaderRenderPassIncompatible);
             }
         }
@@ -971,13 +967,12 @@ where
             ..Default::default()
         });
 
-        self.multisample.rasterization_samples = self
-            .subpass
-            .as_ref()
-            .unwrap()
-            .num_samples()
-            .unwrap_or(SampleCount::Sample1)
-            .into();
+        let has_fragment_shader_state = !self.raster.rasterizer_discard
+            || dynamic_state_modes.get(&DynamicState::RasterizerDiscardEnable)
+                == Some(&DynamicStateMode::Dynamic);
+
+        self.multisample.rasterization_samples =
+            subpass.num_samples().unwrap_or(SampleCount::Sample1).into();
         if self.multisample.sample_shading_enable != ash::vk::FALSE {
             debug_assert!(
                 self.multisample.min_sample_shading >= 0.0
@@ -995,150 +990,214 @@ where
 
         let multisample_state = Some(self.multisample);
 
-        let depth_stencil_state = {
-            let db = match self.depth_stencil.depth_bounds_test {
-                DepthBounds::Disabled => (ash::vk::FALSE, 0.0, 0.0),
-                DepthBounds::Fixed(ref range) => {
-                    if !device.enabled_features().depth_bounds {
-                        return Err(GraphicsPipelineCreationError::DepthBoundsFeatureNotEnabled);
+        let depth_stencil_state = if has_fragment_shader_state
+            && subpass.subpass_desc().depth_stencil.is_some()
+        {
+            let (depth_test_enable, depth_write_enable, depth_compare_op) =
+                if let Some(depth_state) = self.depth_stencil_state.depth {
+                    if !subpass.has_depth() {
+                        return Err(GraphicsPipelineCreationError::NoDepthAttachment);
                     }
 
-                    (ash::vk::TRUE, range.start, range.end)
+                    if depth_state.enable_dynamic {
+                        if !device.enabled_features().extended_dynamic_state {
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "extended_dynamic_state",
+                                reason: "DepthState::enable_dynamic was true",
+                            });
+                        }
+                        dynamic_state_modes
+                            .insert(DynamicState::DepthTestEnable, DynamicStateMode::Dynamic);
+                    }
+
+                    let write_enable = if let Some(write_enable) = depth_state.write_enable {
+                        if write_enable && !subpass.has_writable_depth() {
+                            return Err(GraphicsPipelineCreationError::NoDepthAttachment);
+                        }
+                        write_enable as ash::vk::Bool32
+                    } else {
+                        if !device.enabled_features().extended_dynamic_state {
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "extended_dynamic_state",
+                                reason: "DepthState::write_enable was set to dynamic",
+                            });
+                        }
+                        dynamic_state_modes
+                            .insert(DynamicState::DepthWriteEnable, DynamicStateMode::Dynamic);
+                        ash::vk::TRUE
+                    };
+
+                    let compare_op = if let Some(compare_op) = depth_state.compare_op {
+                        compare_op.into()
+                    } else {
+                        if !device.enabled_features().extended_dynamic_state {
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "extended_dynamic_state",
+                                reason: "DepthState::compare_op was set to dynamic",
+                            });
+                        }
+                        dynamic_state_modes
+                            .insert(DynamicState::DepthCompareOp, DynamicStateMode::Dynamic);
+                        ash::vk::CompareOp::ALWAYS
+                    };
+
+                    (ash::vk::TRUE, write_enable, compare_op)
+                } else {
+                    (ash::vk::FALSE, ash::vk::FALSE, ash::vk::CompareOp::ALWAYS)
+                };
+
+            let (depth_bounds_test_enable, min_depth_bounds, max_depth_bounds) = if let Some(
+                depth_bounds_state,
+            ) =
+                self.depth_stencil_state.depth_bounds
+            {
+                if !device.enabled_features().depth_bounds {
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "depth_bounds",
+                        reason: "DepthStencilState::depth_bounds was Some",
+                    });
                 }
-                DepthBounds::Dynamic => {
-                    if !device.enabled_features().depth_bounds {
-                        return Err(GraphicsPipelineCreationError::DepthBoundsFeatureNotEnabled);
-                    }
 
+                if depth_bounds_state.enable_dynamic {
+                    if !device.enabled_features().extended_dynamic_state {
+                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                            feature: "extended_dynamic_state",
+                            reason: "DepthBoundsState::enable_dynamic was true",
+                        });
+                    }
+                    dynamic_state_modes.insert(
+                        DynamicState::DepthBoundsTestEnable,
+                        DynamicStateMode::Dynamic,
+                    );
+                }
+
+                let (min_bounds, max_bounds) = if let Some(bounds) = depth_bounds_state.bounds {
+                    if !device.enabled_extensions().ext_depth_range_unrestricted
+                        && !(0.0..1.0).contains(bounds.start())
+                        && !(0.0..1.0).contains(bounds.end())
+                    {
+                        return Err(GraphicsPipelineCreationError::ExtensionNotEnabled {
+                            extension: "ext_depth_range_unrestricted",
+                            reason: "DepthBoundsState::bounds were not both between 0.0 and 1.0 inclusive",
+                        });
+                    }
+                    bounds.into_inner()
+                } else {
                     dynamic_state_modes
                         .insert(DynamicState::DepthBounds, DynamicStateMode::Dynamic);
+                    (0.0, 1.0)
+                };
 
-                    (ash::vk::TRUE, 0.0, 1.0)
-                }
+                (ash::vk::TRUE, min_bounds, max_bounds)
+            } else {
+                (ash::vk::FALSE, 0.0, 1.0)
             };
 
-            match (
-                self.depth_stencil.stencil_front.compare_mask,
-                self.depth_stencil.stencil_back.compare_mask,
-            ) {
-                (Some(_), Some(_)) => (),
-                (None, None) => {
-                    dynamic_state_modes
-                        .insert(DynamicState::StencilCompareMask, DynamicStateMode::Dynamic);
-                }
-                _ => return Err(GraphicsPipelineCreationError::WrongStencilState),
-            };
-
-            match (
-                self.depth_stencil.stencil_front.write_mask,
-                self.depth_stencil.stencil_back.write_mask,
-            ) {
-                (Some(_), Some(_)) => (),
-                (None, None) => {
-                    dynamic_state_modes
-                        .insert(DynamicState::StencilWriteMask, DynamicStateMode::Dynamic);
-                }
-                _ => return Err(GraphicsPipelineCreationError::WrongStencilState),
-            };
-
-            match (
-                self.depth_stencil.stencil_front.reference,
-                self.depth_stencil.stencil_back.reference,
-            ) {
-                (Some(_), Some(_)) => (),
-                (None, None) => {
-                    dynamic_state_modes
-                        .insert(DynamicState::StencilReference, DynamicStateMode::Dynamic);
-                }
-                _ => return Err(GraphicsPipelineCreationError::WrongStencilState),
-            };
-
-            if self.depth_stencil.depth_write
-                && !self.subpass.as_ref().unwrap().has_writable_depth()
+            let (stencil_test_enable, front, back) = if let Some(stencil_state) =
+                self.depth_stencil_state.stencil
             {
-                return Err(GraphicsPipelineCreationError::NoDepthAttachment);
-            }
+                if !subpass.has_stencil() {
+                    return Err(GraphicsPipelineCreationError::NoStencilAttachment);
+                }
 
-            if self.depth_stencil.depth_compare != CompareOp::Always
-                && !self.subpass.as_ref().unwrap().has_depth()
-            {
-                return Err(GraphicsPipelineCreationError::NoDepthAttachment);
-            }
+                // TODO: if stencil buffer can potentially be written, check if it is writable
 
-            if (!self.depth_stencil.stencil_front.always_keep()
-                || !self.depth_stencil.stencil_back.always_keep())
-                && !self.subpass.as_ref().unwrap().has_stencil()
-            {
-                return Err(GraphicsPipelineCreationError::NoStencilAttachment);
-            }
+                if stencil_state.enable_dynamic {
+                    if !device.enabled_features().extended_dynamic_state {
+                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                            feature: "extended_dynamic_state",
+                            reason: "StencilState::enable_dynamic was true",
+                        });
+                    }
+                    dynamic_state_modes
+                        .insert(DynamicState::StencilTestEnable, DynamicStateMode::Dynamic);
+                }
 
-            // FIXME: stencil writability
+                match (stencil_state.front.ops, stencil_state.back.ops) {
+                    (Some(_), Some(_)) => (),
+                    (None, None) => {
+                        if !device.enabled_features().extended_dynamic_state {
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "extended_dynamic_state",
+                                reason: "StencilState::ops was set to dynamic",
+                            });
+                        }
+                        dynamic_state_modes
+                            .insert(DynamicState::StencilOp, DynamicStateMode::Dynamic);
+                    }
+                    _ => return Err(GraphicsPipelineCreationError::WrongStencilState),
+                };
+
+                match (
+                    stencil_state.front.compare_mask,
+                    stencil_state.back.compare_mask,
+                ) {
+                    (Some(_), Some(_)) => (),
+                    (None, None) => {
+                        dynamic_state_modes
+                            .insert(DynamicState::StencilCompareMask, DynamicStateMode::Dynamic);
+                    }
+                    _ => return Err(GraphicsPipelineCreationError::WrongStencilState),
+                };
+
+                match (
+                    stencil_state.front.write_mask,
+                    stencil_state.back.write_mask,
+                ) {
+                    (Some(_), Some(_)) => (),
+                    (None, None) => {
+                        dynamic_state_modes
+                            .insert(DynamicState::StencilWriteMask, DynamicStateMode::Dynamic);
+                    }
+                    _ => return Err(GraphicsPipelineCreationError::WrongStencilState),
+                };
+
+                match (stencil_state.front.reference, stencil_state.back.reference) {
+                    (Some(_), Some(_)) => (),
+                    (None, None) => {
+                        dynamic_state_modes
+                            .insert(DynamicState::StencilReference, DynamicStateMode::Dynamic);
+                    }
+                    _ => return Err(GraphicsPipelineCreationError::WrongStencilState),
+                };
+
+                let [front, back] = [&stencil_state.front, &stencil_state.back].map(|ops_state| {
+                    let ops = ops_state.ops.unwrap_or_default();
+                    ash::vk::StencilOpState {
+                        fail_op: ops.fail_op.into(),
+                        pass_op: ops.pass_op.into(),
+                        depth_fail_op: ops.depth_fail_op.into(),
+                        compare_op: ops.compare_op.into(),
+                        compare_mask: stencil_state.front.compare_mask.unwrap_or(u32::MAX),
+                        write_mask: stencil_state.front.write_mask.unwrap_or(u32::MAX),
+                        reference: stencil_state.front.reference.unwrap_or(0),
+                    }
+                });
+
+                (ash::vk::TRUE, front, back)
+            } else {
+                (ash::vk::FALSE, Default::default(), Default::default())
+            };
 
             Some(ash::vk::PipelineDepthStencilStateCreateInfo {
                 flags: ash::vk::PipelineDepthStencilStateCreateFlags::empty(),
-                depth_test_enable: if !self.depth_stencil.depth_write
-                    && self.depth_stencil.depth_compare == CompareOp::Always
-                {
-                    ash::vk::FALSE
-                } else {
-                    ash::vk::TRUE
-                },
-                depth_write_enable: if self.depth_stencil.depth_write {
-                    ash::vk::TRUE
-                } else {
-                    ash::vk::FALSE
-                },
-                depth_compare_op: self.depth_stencil.depth_compare.into(),
-                depth_bounds_test_enable: db.0,
-                stencil_test_enable: if self.depth_stencil.stencil_front.always_keep()
-                    && self.depth_stencil.stencil_back.always_keep()
-                {
-                    ash::vk::FALSE
-                } else {
-                    ash::vk::TRUE
-                },
-                front: ash::vk::StencilOpState {
-                    fail_op: self.depth_stencil.stencil_front.fail_op.into(),
-                    pass_op: self.depth_stencil.stencil_front.pass_op.into(),
-                    depth_fail_op: self.depth_stencil.stencil_front.depth_fail_op.into(),
-                    compare_op: self.depth_stencil.stencil_front.compare.into(),
-                    compare_mask: self
-                        .depth_stencil
-                        .stencil_front
-                        .compare_mask
-                        .unwrap_or(u32::MAX),
-                    write_mask: self
-                        .depth_stencil
-                        .stencil_front
-                        .write_mask
-                        .unwrap_or(u32::MAX),
-                    reference: self.depth_stencil.stencil_front.reference.unwrap_or(0),
-                },
-                back: ash::vk::StencilOpState {
-                    fail_op: self.depth_stencil.stencil_back.fail_op.into(),
-                    pass_op: self.depth_stencil.stencil_back.pass_op.into(),
-                    depth_fail_op: self.depth_stencil.stencil_back.depth_fail_op.into(),
-                    compare_op: self.depth_stencil.stencil_back.compare.into(),
-                    compare_mask: self
-                        .depth_stencil
-                        .stencil_back
-                        .compare_mask
-                        .unwrap_or(u32::MAX),
-                    write_mask: self
-                        .depth_stencil
-                        .stencil_back
-                        .write_mask
-                        .unwrap_or(u32::MAX),
-                    reference: self.depth_stencil.stencil_back.reference.unwrap_or(0),
-                },
-                min_depth_bounds: db.1,
-                max_depth_bounds: db.2,
+                depth_test_enable,
+                depth_write_enable,
+                depth_compare_op,
+                depth_bounds_test_enable,
+                stencil_test_enable,
+                front,
+                back,
+                min_depth_bounds,
+                max_depth_bounds,
                 ..Default::default()
             })
+        } else {
+            None
         };
 
         let blend_atch: SmallVec<[ash::vk::PipelineColorBlendAttachmentState; 8]> = {
-            let num_atch = self.subpass.as_ref().unwrap().num_color_attachments();
+            let num_atch = subpass.num_color_attachments();
 
             match self.blend.attachments {
                 AttachmentsBlend::Collective(blend) => {
@@ -1315,15 +1374,7 @@ where
         // - LineStipple (VkPipelineRasterizationLineStateCreateInfoEXT)
         // - ColorWriteEnable (VkPipelineColorWriteCreateInfoEXT)
 
-        if let Some(multiview) = self
-            .subpass
-            .as_ref()
-            .unwrap()
-            .render_pass()
-            .desc()
-            .multiview()
-            .as_ref()
-        {
+        if let Some(multiview) = subpass.render_pass().desc().multiview().as_ref() {
             if multiview.used_layer_count() > 0 {
                 if self.geometry_shader.is_some()
                     && !device
@@ -1389,14 +1440,8 @@ where
                     .map(|s| s as *const _)
                     .unwrap_or(ptr::null()),
                 layout: pipeline_layout.internal_object(),
-                render_pass: self
-                    .subpass
-                    .as_ref()
-                    .unwrap()
-                    .render_pass()
-                    .inner()
-                    .internal_object(),
-                subpass: self.subpass.as_ref().unwrap().index(),
+                render_pass: subpass.render_pass().inner().internal_object(),
+                subpass: subpass.index(),
                 base_pipeline_handle: ash::vk::Pipeline::null(), // TODO:
                 base_pipeline_index: -1,                         // TODO:
                 ..Default::default()
@@ -1432,7 +1477,7 @@ where
                 pipeline,
             },
             layout: pipeline_layout,
-            subpass: self.subpass.take().unwrap(),
+            subpass,
             vertex_input,
             dynamic_state: dynamic_state_modes,
             num_viewports: self.viewport.as_ref().unwrap().num_viewports(),
@@ -1470,7 +1515,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             viewport: self.viewport,
             raster: self.raster,
             multisample: self.multisample,
-            depth_stencil: self.depth_stencil,
+            depth_stencil_state: self.depth_stencil_state,
             blend: self.blend,
 
             subpass: self.subpass,
@@ -1513,7 +1558,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             viewport: self.viewport,
             raster: self.raster,
             multisample: self.multisample,
-            depth_stencil: self.depth_stencil,
+            depth_stencil_state: self.depth_stencil_state,
             blend: self.blend,
 
             subpass: self.subpass,
@@ -1551,7 +1596,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             viewport: self.viewport,
             raster: self.raster,
             multisample: self.multisample,
-            depth_stencil: self.depth_stencil,
+            depth_stencil_state: self.depth_stencil_state,
             blend: self.blend,
 
             subpass: self.subpass,
@@ -1591,7 +1636,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             viewport: self.viewport,
             raster: self.raster,
             multisample: self.multisample,
-            depth_stencil: self.depth_stencil,
+            depth_stencil_state: self.depth_stencil_state,
             blend: self.blend,
 
             subpass: self.subpass,
@@ -1617,7 +1662,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             viewport: self.viewport,
             raster: self.raster,
             multisample: self.multisample,
-            depth_stencil: self.depth_stencil,
+            depth_stencil_state: self.depth_stencil_state,
             blend: self.blend,
 
             subpass: self.subpass,
@@ -2034,20 +2079,28 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
 
     // TODO: rasterizationSamples and pSampleMask
 
-    /// Sets the depth/stencil configuration. This function may be removed in the future.
+    /// Sets the depth/stencil state.
     #[inline]
-    pub fn depth_stencil(mut self, depth_stencil: DepthStencil) -> Self {
-        self.depth_stencil = depth_stencil;
+    pub fn depth_stencil_state(mut self, depth_stencil_state: DepthStencilState) -> Self {
+        self.depth_stencil_state = depth_stencil_state;
         self
+    }
+
+    /// Sets the depth/stencil state.
+    #[deprecated(since = "0.27", note = "Use `depth_stencil_state` instead")]
+    #[inline]
+    pub fn depth_stencil(self, depth_stencil_state: DepthStencilState) -> Self {
+        self.depth_stencil_state(depth_stencil_state)
     }
 
     /// Sets the depth/stencil tests as disabled.
     ///
     /// > **Note**: This is a shortcut for all the other `depth_*` and `depth_stencil_*` methods
     /// > of the builder.
+    #[deprecated(since = "0.27", note = "Use `depth_stencil_state` instead")]
     #[inline]
     pub fn depth_stencil_disabled(mut self) -> Self {
-        self.depth_stencil = DepthStencil::disabled();
+        self.depth_stencil_state = DepthStencilState::disabled();
         self
     }
 
@@ -2055,20 +2108,24 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is a shortcut for setting the depth test to `Less`, the depth write Into
     /// > ` true` and disable the stencil test.
+    #[deprecated(since = "0.27", note = "Use `depth_stencil_state` instead")]
     #[inline]
     pub fn depth_stencil_simple_depth(mut self) -> Self {
-        self.depth_stencil = DepthStencil::simple_depth_test();
+        self.depth_stencil_state = DepthStencilState::simple_depth_test();
         self
     }
 
     /// Sets whether the depth buffer will be written.
+    #[deprecated(since = "0.27", note = "Use `depth_stencil_state` instead")]
     #[inline]
     pub fn depth_write(mut self, write: bool) -> Self {
-        self.depth_stencil.depth_write = write;
+        let depth_state = self
+            .depth_stencil_state
+            .depth
+            .get_or_insert(Default::default());
+        depth_state.write_enable = Some(write);
         self
     }
-
-    // TODO: missing tons of depth-stencil stuff
 
     #[inline]
     pub fn blend_collective(mut self, blend: AttachmentBlend) -> Self {
@@ -2143,7 +2200,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             viewport: self.viewport,
             raster: self.raster,
             multisample: self.multisample,
-            depth_stencil: self.depth_stencil,
+            depth_stencil_state: self.depth_stencil_state,
             blend: self.blend,
 
             subpass: Some(subpass),
@@ -2186,7 +2243,7 @@ where
             viewport: self.viewport.clone(),
             raster: self.raster.clone(),
             multisample: self.multisample,
-            depth_stencil: self.depth_stencil.clone(),
+            depth_stencil_state: self.depth_stencil_state.clone(),
             blend: self.blend.clone(),
 
             subpass: self.subpass.clone(),

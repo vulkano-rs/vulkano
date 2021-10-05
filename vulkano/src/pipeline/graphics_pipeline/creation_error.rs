@@ -23,6 +23,12 @@ pub enum GraphicsPipelineCreationError {
     /// Not enough memory.
     OomError(OomError),
 
+    /// A device extension that was required for a particular setting on the graphics pipeline was not enabled.
+    ExtensionNotEnabled {
+        extension: &'static str,
+        reason: &'static str,
+    },
+
     /// A device feature that was required for a particular setting on the graphics pipeline was not enabled.
     FeatureNotEnabled {
         feature: &'static str,
@@ -38,7 +44,7 @@ pub enum GraphicsPipelineCreationError {
     /// The provided specialization constants are not compatible with what the shader expects.
     IncompatibleSpecializationConstants,
 
-    /// The output interface of one shader and the input interface of the next shader does not match.
+    /// The output interface of one shader and the input interface of the next shader do not match.
     ShaderStagesMismatch(ShaderInterfaceMismatchError),
 
     /// The output of the fragment shader is not compatible with what the render pass subpass
@@ -212,9 +218,14 @@ impl fmt::Display for GraphicsPipelineCreationError {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match *self {
             GraphicsPipelineCreationError::OomError(_) => write!(fmt, "not enough memory available"),
-            GraphicsPipelineCreationError::FeatureNotEnabled { feature, reason } => write!(fmt, "the feature {} must be enabled: {}", feature, reason),
+            GraphicsPipelineCreationError::ExtensionNotEnabled { extension, reason } => {
+                write!(fmt, "the extension {} must be enabled: {}", extension, reason)
+            }
+            GraphicsPipelineCreationError::FeatureNotEnabled { feature, reason } => {
+                write!(fmt, "the feature {} must be enabled: {}", feature, reason)
+            }
             GraphicsPipelineCreationError::ShaderStagesMismatch(_) => {
-                write!(fmt, "the output interface of one shader and the input interface of the next shader does not match")
+                write!(fmt, "the output interface of one shader and the input interface of the next shader do not match")
             }
             GraphicsPipelineCreationError::PipelineLayoutCreationError(_) => {
                 write!(fmt, "error while creating the pipeline layout object")

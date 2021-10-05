@@ -23,6 +23,7 @@ use vulkano::image::attachment::AttachmentImage;
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
+use vulkano::pipeline::depth_stencil::DepthStencilState;
 use vulkano::pipeline::input_assembly::InputAssemblyState;
 use vulkano::pipeline::vertex::BuffersDefinition;
 use vulkano::pipeline::viewport::Viewport;
@@ -353,7 +354,7 @@ fn window_size_dependent_setup(
                 depth_range: 0.0..1.0,
             }])
             .fragment_shader(fs.main_entry_point(), ())
-            .depth_stencil_simple_depth()
+            .depth_stencil_state(DepthStencilState::simple_depth_test())
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
             .build(device.clone())
             .unwrap(),

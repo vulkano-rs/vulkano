@@ -19,6 +19,7 @@ use vulkano::device::{Device, DeviceExtensions, DeviceOwned, Features};
 use vulkano::format::Format;
 use vulkano::image::{view::ImageView, AttachmentImage, ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
+use vulkano::pipeline::depth_stencil::DepthStencilState;
 use vulkano::pipeline::input_assembly::InputAssemblyState;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
@@ -249,7 +250,7 @@ fn main() {
             // Enable depth testing, which is needed for occlusion queries to make sense at all.
             // If you disable depth testing, every pixel is considered to pass the depth test, so
             // every query will return a nonzero result.
-            .depth_stencil_simple_depth()
+            .depth_stencil_state(DepthStencilState::simple_depth_test())
             .build(device.clone())
             .unwrap(),
     );

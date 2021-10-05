@@ -677,8 +677,9 @@ impl Subpass {
         }
     }
 
+    /// Returns the subpass description for this subpass.
     #[inline]
-    fn subpass_desc(&self) -> &SubpassDesc {
+    pub fn subpass_desc(&self) -> &SubpassDesc {
         &self.render_pass.desc().subpasses()[self.subpass_id as usize]
     }
 
