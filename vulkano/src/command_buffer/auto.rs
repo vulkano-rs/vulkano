@@ -592,7 +592,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// - Panics if `index_buffer` does not have the
     ///   [`index_buffer`](crate::buffer::BufferUsage::index_buffer) usage enabled.
     /// - If the index buffer contains `u8` indices, panics if the
-    ///   [`index_type_uint8`](crate::device::DeviceExtensions::index_type_uint8) feature is not
+    ///   [`index_type_uint8`](crate::device::Features::index_type_uint8) feature is not
     ///   enabled on the device.
     pub fn bind_index_buffer<Ib, I>(&mut self, index_buffer: Ib) -> &mut Self
     where

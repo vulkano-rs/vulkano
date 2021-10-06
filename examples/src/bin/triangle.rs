@@ -25,13 +25,11 @@ use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
 use vulkano::pipeline::input_assembly::InputAssemblyState;
-use vulkano::pipeline::viewport::{Scissor, Viewport, ViewportState};
+use vulkano::pipeline::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
-use vulkano::swapchain;
-use vulkano::swapchain::{AcquireError, Swapchain, SwapchainCreationError};
-use vulkano::sync;
-use vulkano::sync::{FlushError, GpuFuture};
+use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
+use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano::Version;
 use vulkano_win::VkSurfaceBuild;
 use winit::event::{Event, WindowEvent};
@@ -328,12 +326,9 @@ fn main() {
             // the entry point.
             .vertex_shader(vs.main_entry_point(), ())
             // The content of the vertex buffer describes a list of triangles.
-            .input_assembly_state(InputAssemblyState::triangle_list())
+            .input_assembly_state(InputAssemblyState::new())
             // Use a resizable viewport set to draw over the entire window
-            .viewport_state(ViewportState::FixedScissor {
-                scissors: vec![Scissor::irrelevant()],
-                viewport_count_dynamic: false,
-            })
+            .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
             // See `vertex_shader`.
             .fragment_shader(fs.main_entry_point(), ())
             // We have to indicate which subpass of which render pass this pipeline is going to be used

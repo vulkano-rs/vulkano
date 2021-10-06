@@ -8,18 +8,14 @@
 // according to those terms.
 
 use std::sync::Arc;
-use vulkano::buffer::BufferUsage;
-use vulkano::buffer::CpuAccessibleBuffer;
-use vulkano::buffer::TypedBufferAccess;
+use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer,
 };
 use vulkano::device::Queue;
 use vulkano::pipeline::depth_stencil::DepthStencilState;
 use vulkano::pipeline::input_assembly::InputAssemblyState;
-use vulkano::pipeline::viewport::Scissor;
-use vulkano::pipeline::viewport::Viewport;
-use vulkano::pipeline::viewport::ViewportState;
+use vulkano::pipeline::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::Subpass;
 
@@ -64,11 +60,8 @@ impl TriangleDrawSystem {
                 GraphicsPipeline::start()
                     .vertex_input_single_buffer::<Vertex>()
                     .vertex_shader(vs.main_entry_point(), ())
-                    .input_assembly_state(InputAssemblyState::triangle_list())
-                    .viewport_state(ViewportState::FixedScissor {
-                        scissors: vec![Scissor::irrelevant()],
-                        viewport_count_dynamic: false,
-                    })
+                    .input_assembly_state(InputAssemblyState::new())
+                    .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
                     .fragment_shader(fs.main_entry_point(), ())
                     .depth_stencil_state(DepthStencilState::simple_depth_test())
                     .render_pass(subpass)

@@ -43,32 +43,65 @@ pub struct ColorBlendState {
 }
 
 impl ColorBlendState {
-    /// Returns a `Blend` object that directly writes colors and alpha on the surface.
+    /// Creates a `ColorBlendState` with attachment passthrough, logical operations disabled and
+    /// blend constants set to zero.
     #[inline]
-    pub fn pass_through() -> ColorBlendState {
-        ColorBlendState {
+    pub fn new() -> Self {
+        Self {
             logic_op: None,
             attachments: AttachmentsBlend::Collective(AttachmentBlend::pass_through()),
             blend_constants: StateMode::Fixed([0.0, 0.0, 0.0, 0.0]),
         }
     }
 
-    /// Returns a `Blend` object that adds transparent objects over others.
+    /// Enables logical operations with the given logical operation.
     #[inline]
-    pub fn alpha_blending() -> ColorBlendState {
-        ColorBlendState {
-            logic_op: None,
-            attachments: AttachmentsBlend::Collective(AttachmentBlend::alpha_blending()),
-            blend_constants: StateMode::Fixed([0.0, 0.0, 0.0, 0.0]),
-        }
+    pub fn logic_op(mut self, logic_op: LogicOp) -> Self {
+        self.logic_op = Some(StateMode::Fixed(logic_op));
+        self
+    }
+
+    /// Enables logical operations with a dynamic logical operation.
+    #[inline]
+    pub fn logic_op_dynamic(mut self) -> Self {
+        self.logic_op = Some(StateMode::Dynamic);
+        self
+    }
+
+    /// Sets the attachments to collective alpha blending.
+    #[inline]
+    pub fn alpha_blending(mut self) -> Self {
+        self.attachments = AttachmentsBlend::Collective(AttachmentBlend::alpha_blending());
+        self
+    }
+
+    /// Sets the attachments to collective blending with the given parameters.
+    #[inline]
+    pub fn collective(mut self, params: AttachmentBlend) -> Self {
+        self.attachments = AttachmentsBlend::Collective(params);
+        self
+    }
+
+    /// Sets the blend constants.
+    #[inline]
+    pub fn blend_constants(mut self, constants: [f32; 4]) -> Self {
+        self.blend_constants = StateMode::Fixed(constants);
+        self
+    }
+
+    /// Sets the blend constants as dynamic.
+    #[inline]
+    pub fn blend_constants_dynamic(mut self) -> Self {
+        self.blend_constants = StateMode::Dynamic;
+        self
     }
 }
 
 impl Default for ColorBlendState {
-    /// Creates a new `ColorBlendState` that passes through incoming values directly.
+    /// Returns [`ColorBlendState::new()`].
     #[inline]
     fn default() -> Self {
-        Self::pass_through()
+        Self::new()
     }
 }
 

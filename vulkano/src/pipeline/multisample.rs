@@ -56,8 +56,9 @@ pub struct MultisampleState {
 }
 
 impl MultisampleState {
+    /// Creates a `MultisampleState` with multisampling disabled.
     #[inline]
-    pub fn disabled() -> MultisampleState {
+    pub fn new() -> MultisampleState {
         MultisampleState {
             //rasterization_samples: 1,
             sample_shading: None,
@@ -69,9 +70,9 @@ impl MultisampleState {
 }
 
 impl Default for MultisampleState {
-    /// Creates a `MultisampleState` with multisampling disabled.
+    /// Returns [`MultisampleState::new()`].
     #[inline]
     fn default() -> Self {
-        Self::disabled()
+        Self::new()
     }
 }

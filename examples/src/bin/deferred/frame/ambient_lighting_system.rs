@@ -8,26 +8,17 @@
 // according to those terms.
 
 use std::sync::Arc;
-use vulkano::buffer::BufferUsage;
-use vulkano::buffer::CpuAccessibleBuffer;
-use vulkano::buffer::TypedBufferAccess;
+use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer,
 };
 use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::Queue;
 use vulkano::image::ImageViewAbstract;
-use vulkano::pipeline::color_blend::AttachmentBlend;
-use vulkano::pipeline::color_blend::AttachmentsBlend;
-use vulkano::pipeline::color_blend::BlendFactor;
-use vulkano::pipeline::color_blend::BlendOp;
-use vulkano::pipeline::color_blend::ColorBlendState;
+use vulkano::pipeline::color_blend::{AttachmentBlend, BlendFactor, BlendOp, ColorBlendState};
 use vulkano::pipeline::input_assembly::InputAssemblyState;
-use vulkano::pipeline::viewport::Scissor;
-use vulkano::pipeline::viewport::Viewport;
-use vulkano::pipeline::viewport::ViewportState;
-use vulkano::pipeline::GraphicsPipeline;
-use vulkano::pipeline::PipelineBindPoint;
+use vulkano::pipeline::viewport::{Viewport, ViewportState};
+use vulkano::pipeline::{GraphicsPipeline, PipelineBindPoint};
 use vulkano::render_pass::Subpass;
 
 /// Allows applying an ambient lighting to a scene.
@@ -74,28 +65,22 @@ impl AmbientLightingSystem {
                 GraphicsPipeline::start()
                     .vertex_input_single_buffer::<Vertex>()
                     .vertex_shader(vs.main_entry_point(), ())
-                    .input_assembly_state(InputAssemblyState::triangle_list())
-                    .viewport_state(ViewportState::FixedScissor {
-                        scissors: vec![Scissor::irrelevant()],
-                        viewport_count_dynamic: false,
-                    })
+                    .input_assembly_state(InputAssemblyState::new())
+                    .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
                     .fragment_shader(fs.main_entry_point(), ())
-                    .color_blend_state(ColorBlendState {
-                        attachments: AttachmentsBlend::Collective(AttachmentBlend {
-                            enabled: true,
-                            color_op: BlendOp::Add,
-                            color_source: BlendFactor::One,
-                            color_destination: BlendFactor::One,
-                            alpha_op: BlendOp::Max,
-                            alpha_source: BlendFactor::One,
-                            alpha_destination: BlendFactor::One,
-                            mask_red: true,
-                            mask_green: true,
-                            mask_blue: true,
-                            mask_alpha: true,
-                        }),
-                        ..Default::default()
-                    })
+                    .color_blend_state(ColorBlendState::new().collective(AttachmentBlend {
+                        enabled: true,
+                        color_op: BlendOp::Add,
+                        color_source: BlendFactor::One,
+                        color_destination: BlendFactor::One,
+                        alpha_op: BlendOp::Max,
+                        alpha_source: BlendFactor::One,
+                        alpha_destination: BlendFactor::One,
+                        mask_red: true,
+                        mask_green: true,
+                        mask_blue: true,
+                        mask_alpha: true,
+                    }))
                     .render_pass(subpass)
                     .build(gfx_queue.device().clone())
                     .unwrap(),

@@ -100,7 +100,7 @@ impl
             rasterization_state: Default::default(),
             multisample_state: Default::default(),
             depth_stencil_state: Default::default(),
-            color_blend_state: ColorBlendState::pass_through(),
+            color_blend_state: Default::default(),
 
             subpass: None,
             cache: None,
@@ -1816,6 +1816,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     }
 
     /// Sets the tessellation shaders stage as disabled. This is the default.
+    #[deprecated(since = "0.27")]
     #[inline]
     pub fn tessellation_shaders_disabled(mut self) -> Self {
         self.tessellation_shaders = None;
@@ -1854,6 +1855,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     }
 
     /// Sets the geometry shader stage as disabled. This is the default.
+    #[deprecated(since = "0.27")]
     #[inline]
     pub fn geometry_shader_disabled(mut self) -> Self {
         self.geometry_shader = None;
@@ -1943,6 +1945,8 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     }
 
     /// Sets the input assembly state.
+    ///
+    /// The default value is [`InputAssemblyState::default()`].
     #[inline]
     pub fn input_assembly_state(mut self, input_assembly_state: InputAssemblyState) -> Self {
         self.input_assembly_state = input_assembly_state;
@@ -2078,6 +2082,8 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
 
     /// Sets the tessellation state. This is required if the pipeline contains tessellation shaders,
     /// and ignored otherwise.
+    ///
+    /// The default value is [`TessellationState::default()`].
     #[inline]
     pub fn tessellation_state(mut self, tessellation_state: TessellationState) -> Self {
         self.tessellation_state = tessellation_state;
@@ -2085,6 +2091,8 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     }
 
     /// Sets the viewport state.
+    ///
+    /// The default value is [`ViewportState::default()`].
     #[inline]
     pub fn viewport_state(mut self, viewport_state: ViewportState) -> Self {
         self.viewport_state = viewport_state;
@@ -2171,6 +2179,8 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     }
 
     /// Sets the rasterization state.
+    ///
+    /// The default value is [`RasterizationState::default()`].
     #[inline]
     pub fn rasterization_state(mut self, rasterization_state: RasterizationState) -> Self {
         self.rasterization_state = rasterization_state;
@@ -2288,6 +2298,8 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     }
 
     /// Sets the multisample state.
+    ///
+    /// The default value is [`MultisampleState::default()`].
     #[inline]
     pub fn multisample_state(mut self, multisample_state: MultisampleState) -> Self {
         self.multisample_state = multisample_state;
@@ -2368,6 +2380,8 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     }
 
     /// Sets the depth/stencil state.
+    ///
+    /// The default value is [`DepthStencilState::default()`].
     #[inline]
     pub fn depth_stencil_state(mut self, depth_stencil_state: DepthStencilState) -> Self {
         self.depth_stencil_state = depth_stencil_state;
@@ -2416,6 +2430,8 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     }
 
     /// Sets the color blend state.
+    ///
+    /// The default value is [`ColorBlendState::default()`].
     #[inline]
     pub fn color_blend_state(mut self, color_blend_state: ColorBlendState) -> Self {
         self.color_blend_state = color_blend_state;

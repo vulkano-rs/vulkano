@@ -8,23 +8,18 @@
 // according to those terms.
 
 use std::sync::Arc;
-
-use vulkano::buffer::TypedBufferAccess;
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
-use vulkano::descriptor_set::PersistentDescriptorSet;
-use vulkano::pipeline::input_assembly::InputAssemblyState;
-use vulkano::pipeline::viewport::{Scissor, Viewport, ViewportState};
-use vulkano::pipeline::PipelineBindPoint;
-use vulkano::sampler::{Filter, MipmapMode, Sampler};
-use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer},
-    command_buffer::SecondaryAutoCommandBuffer,
-    device::Queue,
-    image::ImageViewAbstract,
-    pipeline::GraphicsPipeline,
-    render_pass::Subpass,
-    sampler::SamplerAddressMode,
+use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
+use vulkano::command_buffer::{
+    AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer,
 };
+use vulkano::descriptor_set::PersistentDescriptorSet;
+use vulkano::device::Queue;
+use vulkano::image::ImageViewAbstract;
+use vulkano::pipeline::input_assembly::InputAssemblyState;
+use vulkano::pipeline::viewport::{Viewport, ViewportState};
+use vulkano::pipeline::{GraphicsPipeline, PipelineBindPoint};
+use vulkano::render_pass::Subpass;
+use vulkano::sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode};
 
 /// Vertex for textured quads
 #[derive(Default, Debug, Clone, Copy)]
@@ -93,12 +88,9 @@ impl PixelsDrawPipeline {
                 GraphicsPipeline::start()
                     .vertex_input_single_buffer::<TexturedVertex>()
                     .vertex_shader(vs.main_entry_point(), ())
-                    .input_assembly_state(InputAssemblyState::triangle_list())
+                    .input_assembly_state(InputAssemblyState::new())
                     .fragment_shader(fs.main_entry_point(), ())
-                    .viewport_state(ViewportState::FixedScissor {
-                        scissors: vec![Scissor::irrelevant()],
-                        viewport_count_dynamic: false,
-                    })
+                    .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
                     .render_pass(subpass)
                     .build(gfx_queue.device().clone())
                     .unwrap(),

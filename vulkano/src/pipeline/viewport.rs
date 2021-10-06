@@ -113,6 +113,64 @@ pub enum ViewportState {
 }
 
 impl ViewportState {
+    /// Creates a `ViewportState` with fixed state and no viewports or scissors.
+    #[inline]
+    pub fn new() -> Self {
+        Self::Fixed { data: Vec::new() }
+    }
+
+    /// Creates a `ViewportState` with fixed state from the given viewports and scissors.
+    #[inline]
+    pub fn viewport_fixed_scissor_fixed(
+        data: impl IntoIterator<Item = (Viewport, Scissor)>,
+    ) -> Self {
+        Self::Fixed {
+            data: data.into_iter().collect(),
+        }
+    }
+
+    /// Creates a `ViewportState` with fixed state from the given viewports, and matching scissors
+    /// that cover the whole viewport.
+    #[inline]
+    pub fn viewport_fixed_scissor_irrelevant(data: impl IntoIterator<Item = Viewport>) -> Self {
+        Self::Fixed {
+            data: data
+                .into_iter()
+                .map(|viewport| (viewport, Scissor::irrelevant()))
+                .collect(),
+        }
+    }
+
+    /// Creates a `ViewportState` with dynamic viewport, and a single scissor that always covers
+    /// the whole viewport.
+    #[inline]
+    pub fn viewport_dynamic_scissor_irrelevant() -> Self {
+        Self::FixedScissor {
+            scissors: vec![Scissor::irrelevant()],
+            viewport_count_dynamic: false,
+        }
+    }
+
+    /// Creates a `ViewportState` with dynamic viewports and scissors, but a fixed count.
+    #[inline]
+    pub fn viewport_dynamic_scissor_dynamic(count: u32) -> Self {
+        Self::Dynamic {
+            count,
+            viewport_count_dynamic: false,
+            scissor_count_dynamic: false,
+        }
+    }
+
+    /// Creates a `ViewportState` with dynamic viewport count and scissor count.
+    #[inline]
+    pub fn viewport_count_dynamic_scissor_count_dynamic() -> Self {
+        Self::Dynamic {
+            count: 0,
+            viewport_count_dynamic: true,
+            scissor_count_dynamic: true,
+        }
+    }
+
     /// Returns the number of viewports and scissors.
     ///
     /// `None` is returned if both `viewport_count_dynamic` and `scissor_count_dynamic` are `true`.
@@ -132,10 +190,10 @@ impl ViewportState {
 }
 
 impl Default for ViewportState {
-    /// Creates a `ViewportState` with fixed state and no viewports or scissors.
+    /// Returns [`ViewportState::new()`].
     #[inline]
     fn default() -> Self {
-        ViewportState::Fixed { data: Vec::new() }
+        Self::new()
     }
 }
 

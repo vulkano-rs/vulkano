@@ -29,14 +29,14 @@ use vulkano::image::{
 };
 use vulkano::instance::{Instance, InstanceExtensions};
 use vulkano::pipeline::input_assembly::InputAssemblyState;
-use vulkano::pipeline::viewport::{Scissor, Viewport, ViewportState};
+use vulkano::pipeline::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{
     AttachmentDesc, Framebuffer, LoadOp, MultiviewDesc, RenderPass, RenderPassDesc, StoreOp,
     Subpass, SubpassDesc,
 };
-use vulkano::sync::GpuFuture;
-use vulkano::{sync, Version};
+use vulkano::sync::{self, GpuFuture};
+use vulkano::Version;
 
 fn main() {
     let instance = Instance::new(
@@ -241,20 +241,17 @@ fn main() {
         GraphicsPipeline::start()
             .vertex_input_single_buffer::<Vertex>()
             .vertex_shader(vs.main_entry_point(), ())
-            .input_assembly_state(InputAssemblyState::triangle_list())
-            .viewport_state(ViewportState::Fixed {
-                data: vec![(
-                    Viewport {
-                        origin: [0.0, 0.0],
-                        dimensions: [
-                            image.dimensions().width() as f32,
-                            image.dimensions().height() as f32,
-                        ],
-                        depth_range: 0.0..1.0,
-                    },
-                    Scissor::irrelevant(),
-                )],
-            })
+            .input_assembly_state(InputAssemblyState::new())
+            .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([
+                Viewport {
+                    origin: [0.0, 0.0],
+                    dimensions: [
+                        image.dimensions().width() as f32,
+                        image.dimensions().height() as f32,
+                    ],
+                    depth_range: 0.0..1.0,
+                },
+            ]))
             .fragment_shader(fs.main_entry_point(), ())
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
             .build(device.clone())

@@ -29,13 +29,11 @@ use vulkano::instance::Instance;
 use vulkano::pipeline::input_assembly::{InputAssemblyState, PrimitiveTopology};
 use vulkano::pipeline::rasterization::{PolygonMode, RasterizationState};
 use vulkano::pipeline::tessellation::TessellationState;
-use vulkano::pipeline::viewport::{Scissor, Viewport, ViewportState};
-use vulkano::pipeline::{GraphicsPipeline, StateMode};
+use vulkano::pipeline::viewport::{Viewport, ViewportState};
+use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
-use vulkano::swapchain;
-use vulkano::swapchain::{AcquireError, Swapchain, SwapchainCreationError};
-use vulkano::sync;
-use vulkano::sync::{FlushError, GpuFuture};
+use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
+use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano::Version;
 use vulkano_win::VkSurfaceBuild;
 use winit::event::{Event, WindowEvent};
@@ -280,25 +278,16 @@ fn main() {
             .vertex_shader(vs.main_entry_point(), ())
             // Actually use the tessellation shaders.
             .tessellation_shaders(tcs.main_entry_point(), (), tes.main_entry_point(), ())
-            .input_assembly_state(InputAssemblyState {
-                topology: StateMode::Fixed(PrimitiveTopology::PatchList),
-                ..Default::default()
-            })
-            .rasterization_state(RasterizationState {
-                // Enable line mode so we can see the generated vertices.
-                polygon_mode: PolygonMode::Line,
-                ..Default::default()
-            })
-            .tessellation_state(TessellationState {
-                // Use a patch_control_points of 3, because we want to convert one triangle into
-                // lots of little ones. A value of 4 would convert a rectangle into lots of little
-                // triangles.
-                patch_control_points: StateMode::Fixed(3),
-            })
-            .viewport_state(ViewportState::FixedScissor {
-                scissors: vec![Scissor::irrelevant()],
-                viewport_count_dynamic: false,
-            })
+            .input_assembly_state(InputAssemblyState::new().topology(PrimitiveTopology::PatchList))
+            .rasterization_state(RasterizationState::new().polygon_mode(PolygonMode::Line))
+            .tessellation_state(
+                TessellationState::new()
+                    // Use a patch_control_points of 3, because we want to convert one triangle into
+                    // lots of little ones. A value of 4 would convert a rectangle into lots of little
+                    // triangles.
+                    .patch_control_points(3),
+            )
+            .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
             .fragment_shader(fs.main_entry_point(), ())
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
             .build(device.clone())

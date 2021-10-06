@@ -77,7 +77,7 @@ impl DepthStencilState {
 }
 
 impl Default for DepthStencilState {
-    /// Creates a `DepthStencilState` with all tests disabled.
+    /// Returns [`DepthStencilState::new()`].
     #[inline]
     fn default() -> Self {
         DepthStencilState::disabled()

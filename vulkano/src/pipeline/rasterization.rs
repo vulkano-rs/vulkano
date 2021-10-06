@@ -69,11 +69,11 @@ pub struct RasterizationState {
     pub line_width: StateMode<f32>,
 }
 
-impl Default for RasterizationState {
+impl RasterizationState {
     /// Creates a `RasterizationState` with depth clamping, discard and depth biasing disabled,
     /// filled polygons, no culling, counterclockwise front face, and the default line width.
     #[inline]
-    fn default() -> Self {
+    pub fn new() -> Self {
         Self {
             depth_clamp_enable: false,
             rasterizer_discard_enable: StateMode::Fixed(false),
@@ -83,6 +83,49 @@ impl Default for RasterizationState {
             depth_bias: None,
             line_width: StateMode::Fixed(1.0),
         }
+    }
+
+    /// Sets the polygon mode.
+    #[inline]
+    pub fn polygon_mode(mut self, polygon_mode: PolygonMode) -> Self {
+        self.polygon_mode = polygon_mode;
+        self
+    }
+
+    /// Sets the cull mode.
+    #[inline]
+    pub fn cull_mode(mut self, cull_mode: CullMode) -> Self {
+        self.cull_mode = StateMode::Fixed(cull_mode);
+        self
+    }
+
+    /// Sets the cull mode to dynamic.
+    #[inline]
+    pub fn cull_mode_dynamic(mut self) -> Self {
+        self.cull_mode = StateMode::Dynamic;
+        self
+    }
+
+    /// Sets the front face.
+    #[inline]
+    pub fn front_face(mut self, front_face: FrontFace) -> Self {
+        self.front_face = StateMode::Fixed(front_face);
+        self
+    }
+
+    /// Sets the front face to dynamic.
+    #[inline]
+    pub fn front_face_dynamic(mut self) -> Self {
+        self.front_face = StateMode::Dynamic;
+        self
+    }
+}
+
+impl Default for RasterizationState {
+    /// Returns [`RasterizationState::new()`].
+    #[inline]
+    fn default() -> Self {
+        Self::new()
     }
 }
 

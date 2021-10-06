@@ -81,7 +81,7 @@ use vulkano::image::{
     view::ImageView, AttachmentImage, ImageDimensions, SampleCount, StorageImage,
 };
 use vulkano::instance::Instance;
-use vulkano::pipeline::viewport::{Scissor, Viewport, ViewportState};
+use vulkano::pipeline::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, Subpass};
 use vulkano::sync::GpuFuture;
@@ -273,10 +273,7 @@ fn main() {
         GraphicsPipeline::start()
             .vertex_input_single_buffer::<Vertex>()
             .vertex_shader(vs.main_entry_point(), ())
-            .viewport_state(ViewportState::FixedScissor {
-                scissors: vec![Scissor::irrelevant()],
-                viewport_count_dynamic: false,
-            })
+            .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
             .fragment_shader(fs.main_entry_point(), ())
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
             .build(device.clone())

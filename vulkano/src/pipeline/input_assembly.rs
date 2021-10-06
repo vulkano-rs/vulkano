@@ -41,23 +41,50 @@ pub struct InputAssemblyState {
 }
 
 impl InputAssemblyState {
-    /// Builds an `InputAssembly` struct with the `TriangleList` topology and primitive restart
+    /// Creates an `InputAssemblyState` with the `TriangleList` topology and primitive restart
     /// disabled.
     #[inline]
-    pub fn triangle_list() -> InputAssemblyState {
-        InputAssemblyState {
+    pub fn new() -> Self {
+        Self {
             topology: StateMode::Fixed(PrimitiveTopology::TriangleList),
             primitive_restart_enable: StateMode::Fixed(false),
         }
     }
+
+    /// Sets the primitive topology.
+    #[inline]
+    pub fn topology(mut self, topology: PrimitiveTopology) -> Self {
+        self.topology = StateMode::Fixed(topology);
+        self
+    }
+
+    /// Sets the primitive topology to dynamic.
+    #[inline]
+    pub fn topology_dynamic(mut self) -> Self {
+        self.topology = StateMode::Dynamic;
+        self
+    }
+
+    /// Enables primitive restart.
+    #[inline]
+    pub fn primitive_restart_enable(mut self) -> Self {
+        self.primitive_restart_enable = StateMode::Fixed(true);
+        self
+    }
+
+    /// Sets primitive restart enable to dynmamic.
+    #[inline]
+    pub fn primitive_restart_enable_dynamic(mut self) -> Self {
+        self.primitive_restart_enable = StateMode::Dynamic;
+        self
+    }
 }
 
 impl Default for InputAssemblyState {
-    /// Creates an `InputAssemblyState` with a `TriangleList` topology and primitive restart
-    /// disabled.
+    /// Returns [`InputAssemblyState::new()`].
     #[inline]
     fn default() -> Self {
-        Self::triangle_list()
+        Self::new()
     }
 }
 
