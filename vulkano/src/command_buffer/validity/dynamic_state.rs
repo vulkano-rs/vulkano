@@ -148,7 +148,7 @@ pub(in super::super) fn check_dynamic_state_validity(
             ),
             DynamicState::SampleLocations => todo!(),
             DynamicState::Scissor => {
-                for num in 0..pipeline.num_viewports() {
+                for num in 0..pipeline.viewport_state().unwrap().count().unwrap() {
                     if current_state.scissor(num).is_none() {
                         return Err(CheckDynamicStateValidityError::NotSet {
                             dynamic_state: DynamicState::Scissor,
@@ -156,7 +156,29 @@ pub(in super::super) fn check_dynamic_state_validity(
                     }
                 }
             }
-            DynamicState::ScissorWithCount => todo!(),
+            DynamicState::ScissorWithCount => {
+                let scissor_count = if let Some(scissors) = current_state.scissor_with_count() {
+                    scissors.len() as u32
+                } else {
+                    return Err(CheckDynamicStateValidityError::NotSet {
+                        dynamic_state: DynamicState::ScissorWithCount,
+                    });
+                };
+
+                // Check if the counts match, but only if the viewport count is fixed.
+                // If the viewport count is also dynamic, then the DynamicState::ViewportWithCount
+                // match arm will handle it.
+                if let Some(viewport_count) = pipeline.viewport_state().unwrap().count() {
+                    if viewport_count != scissor_count {
+                        return Err(
+                            CheckDynamicStateValidityError::ViewportScissorCountMismatch {
+                                viewport_count,
+                                scissor_count,
+                            },
+                        );
+                    }
+                }
+            }
             DynamicState::StencilCompareMask => {
                 let state = current_state.stencil_compare_mask();
 
@@ -205,7 +227,7 @@ pub(in super::super) fn check_dynamic_state_validity(
             DynamicState::VertexInput => todo!(),
             DynamicState::VertexInputBindingStride => todo!(),
             DynamicState::Viewport => {
-                for num in 0..pipeline.num_viewports() {
+                for num in 0..pipeline.viewport_state().unwrap().count().unwrap() {
                     if current_state.viewport(num).is_none() {
                         return Err(CheckDynamicStateValidityError::NotSet {
                             dynamic_state: DynamicState::Viewport,
@@ -215,7 +237,48 @@ pub(in super::super) fn check_dynamic_state_validity(
             }
             DynamicState::ViewportCoarseSampleOrder => todo!(),
             DynamicState::ViewportShadingRatePalette => todo!(),
-            DynamicState::ViewportWithCount => todo!(),
+            DynamicState::ViewportWithCount => {
+                let viewport_count = if let Some(viewports) = current_state.viewport_with_count() {
+                    viewports.len() as u32
+                } else {
+                    return Err(CheckDynamicStateValidityError::NotSet {
+                        dynamic_state: DynamicState::ViewportWithCount,
+                    });
+                };
+
+                let scissor_count =
+                    if let Some(scissor_count) = pipeline.viewport_state().unwrap().count() {
+                        // The scissor count is fixed.
+                        scissor_count
+                    } else {
+                        // The scissor count is also dynamic.
+                        if let Some(scissors) = current_state.scissor_with_count() {
+                            scissors.len() as u32
+                        } else {
+                            return Err(CheckDynamicStateValidityError::NotSet {
+                                dynamic_state: DynamicState::ScissorWithCount,
+                            });
+                        }
+                    };
+
+                if viewport_count != scissor_count {
+                    return Err(
+                        CheckDynamicStateValidityError::ViewportScissorCountMismatch {
+                            viewport_count,
+                            scissor_count,
+                        },
+                    );
+                }
+
+                // TODO: VUID-vkCmdDrawIndexed-primitiveFragmentShadingRateWithMultipleViewports-04552
+                // If the primitiveFragmentShadingRateWithMultipleViewports limit is not supported,
+                // the bound graphics pipeline was created with the
+                // VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT_EXT dynamic state enabled, and any of the
+                // shader stages of the bound graphics pipeline write to the PrimitiveShadingRateKHR
+                // built-in, then vkCmdSetViewportWithCountEXT must have been called in the current
+                // command buffer prior to this drawing command, and the viewportCount parameter of
+                // vkCmdSetViewportWithCountEXT must be 1
+            }
             DynamicState::ViewportWScaling => todo!(),
         }
     }
@@ -229,6 +292,12 @@ pub enum CheckDynamicStateValidityError {
     /// The pipeline requires a particular state to be set dynamically, but the value was not or
     /// only partially set.
     NotSet { dynamic_state: DynamicState },
+
+    /// The viewport count and scissor count do not match.
+    ViewportScissorCountMismatch {
+        viewport_count: u32,
+        scissor_count: u32,
+    },
 }
 
 impl error::Error for CheckDynamicStateValidityError {}
@@ -239,6 +308,12 @@ impl fmt::Display for CheckDynamicStateValidityError {
         match *self {
             CheckDynamicStateValidityError::NotSet { dynamic_state } => {
                 write!(fmt, "the pipeline requires the dynamic state {:?} to be set, but the value was not or only partially set", dynamic_state)
+            }
+            CheckDynamicStateValidityError::ViewportScissorCountMismatch {
+                viewport_count,
+                scissor_count,
+            } => {
+                write!(fmt, "the viewport count and scissor count do not match; viewport count is {}, scissor count is {}", viewport_count, scissor_count)
             }
         }
     }

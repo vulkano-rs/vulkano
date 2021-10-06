@@ -39,7 +39,7 @@ use vulkano::pipeline::shader::{
     GraphicsShaderType, ShaderInterface, ShaderInterfaceEntry, ShaderModule,
     SpecializationConstants,
 };
-use vulkano::pipeline::viewport::Viewport;
+use vulkano::pipeline::viewport::{Scissor, Viewport, ViewportState};
 use vulkano::pipeline::{GraphicsPipeline, StateMode};
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
 use vulkano::swapchain;
@@ -246,7 +246,10 @@ fn main() {
             .vertex_input_single_buffer::<Vertex>()
             .vertex_shader(vert_main, ())
             .input_assembly_state(InputAssemblyState::triangle_list())
-            .viewports_dynamic_scissors_irrelevant(1)
+            .viewport_state(ViewportState::FixedScissor {
+                scissors: vec![Scissor::irrelevant()],
+                viewport_count_dynamic: false,
+            })
             .fragment_shader(frag_main, ())
             .rasterization_state(RasterizationState {
                 cull_mode: StateMode::Fixed(CullMode::Front),

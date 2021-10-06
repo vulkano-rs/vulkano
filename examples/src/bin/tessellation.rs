@@ -29,7 +29,7 @@ use vulkano::instance::Instance;
 use vulkano::pipeline::input_assembly::{InputAssemblyState, PrimitiveTopology};
 use vulkano::pipeline::rasterization::{PolygonMode, RasterizationState};
 use vulkano::pipeline::tessellation::TessellationState;
-use vulkano::pipeline::viewport::Viewport;
+use vulkano::pipeline::viewport::{Scissor, Viewport, ViewportState};
 use vulkano::pipeline::{GraphicsPipeline, StateMode};
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
 use vulkano::swapchain;
@@ -295,7 +295,10 @@ fn main() {
                 // triangles.
                 patch_control_points: StateMode::Fixed(3),
             })
-            .viewports_dynamic_scissors_irrelevant(1)
+            .viewport_state(ViewportState::FixedScissor {
+                scissors: vec![Scissor::irrelevant()],
+                viewport_count_dynamic: false,
+            })
             .fragment_shader(fs.main_entry_point(), ())
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
             .build(device.clone())

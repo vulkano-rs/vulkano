@@ -25,7 +25,7 @@ use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
 use vulkano::pipeline::input_assembly::InputAssemblyState;
-use vulkano::pipeline::viewport::Viewport;
+use vulkano::pipeline::viewport::{Scissor, Viewport, ViewportState};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
 use vulkano::swapchain;
@@ -330,7 +330,10 @@ fn main() {
             // The content of the vertex buffer describes a list of triangles.
             .input_assembly_state(InputAssemblyState::triangle_list())
             // Use a resizable viewport set to draw over the entire window
-            .viewports_dynamic_scissors_irrelevant(1)
+            .viewport_state(ViewportState::FixedScissor {
+                scissors: vec![Scissor::irrelevant()],
+                viewport_count_dynamic: false,
+            })
             // See `vertex_shader`.
             .fragment_shader(fs.main_entry_point(), ())
             // We have to indicate which subpass of which render pass this pipeline is going to be used

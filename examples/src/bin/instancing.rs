@@ -28,7 +28,7 @@ use vulkano::image::{ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
 use vulkano::pipeline::input_assembly::InputAssemblyState;
 use vulkano::pipeline::vertex::BuffersDefinition;
-use vulkano::pipeline::viewport::Viewport;
+use vulkano::pipeline::viewport::{Scissor, Viewport, ViewportState};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
 use vulkano::swapchain;
@@ -248,7 +248,10 @@ fn main() {
             )
             .vertex_shader(vs.main_entry_point(), ())
             .input_assembly_state(InputAssemblyState::triangle_list())
-            .viewports_dynamic_scissors_irrelevant(1)
+            .viewport_state(ViewportState::FixedScissor {
+                scissors: vec![Scissor::irrelevant()],
+                viewport_count_dynamic: false,
+            })
             .fragment_shader(fs.main_entry_point(), ())
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
             .build(device.clone())

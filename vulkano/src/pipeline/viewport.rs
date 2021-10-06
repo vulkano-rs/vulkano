@@ -54,67 +54,88 @@ use std::ops::Range;
 ///
 /// Note that the number of viewports and scissors must be the same.
 #[derive(Debug, Clone)]
-pub enum ViewportsState {
+pub enum ViewportState {
     /// The state is known in advance.
     Fixed {
         /// State of the viewports and scissors.
         data: Vec<(Viewport, Scissor)>,
     },
 
-    /// The state of scissors is known in advance, but the state of viewports is dynamic and will
-    /// bet set when drawing.
-    ///
-    /// Note that the number of viewports and scissors must be the same.
-    DynamicViewports {
-        /// State of the scissors.
-        scissors: Vec<Scissor>,
+    /// The state of viewports is known in advance, but the state of scissors is dynamic and will
+    /// be set when drawing.
+    FixedViewport {
+        /// State of the viewports.
+        viewports: Vec<Viewport>,
+
+        /// Sets whether the scissor count is also dynamic, or only the scissors themselves.
+        ///
+        /// If set to `true`, the
+        /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must
+        /// be enabled on the device.
+        scissor_count_dynamic: bool,
     },
 
-    /// The state of viewports is known in advance, but the state of scissors is dynamic and will
-    /// bet set when drawing.
-    ///
-    /// Note that the number of viewports and scissors must be the same.
-    DynamicScissors {
-        /// State of the viewports
-        viewports: Vec<Viewport>,
+    /// The state of scissors is known in advance, but the state of viewports is dynamic and will
+    /// be set when drawing.
+    FixedScissor {
+        /// State of the scissors.
+        scissors: Vec<Scissor>,
+
+        /// Sets whether the viewport count is also dynamic, or only the viewports themselves.
+        ///
+        /// If set to `true`, the
+        /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must
+        /// be enabled on the device.
+        viewport_count_dynamic: bool,
     },
 
     /// The state of both the viewports and scissors is dynamic and will be set when drawing.
     Dynamic {
         /// Number of viewports and scissors.
-        num: u32,
+        ///
+        /// This is ignored if both `viewport_count_dynamic` and `scissor_count_dynamic` are `true`.
+        count: u32,
+
+        /// Sets whether the viewport count is also dynamic, or only the viewports themselves.
+        ///
+        /// If set to `true`, the
+        /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must
+        /// be enabled on the device.
+        viewport_count_dynamic: bool,
+
+        /// Sets whether the scissor count is also dynamic, or only the scissors themselves.
+        ///
+        /// If set to `true`, the
+        /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must
+        /// be enabled on the device.
+        scissor_count_dynamic: bool,
     },
 }
 
-impl ViewportsState {
-    /// Returns true if the state of the viewports is dynamic.
-    pub fn dynamic_viewports(&self) -> bool {
-        match *self {
-            ViewportsState::Fixed { .. } => false,
-            ViewportsState::DynamicViewports { .. } => true,
-            ViewportsState::DynamicScissors { .. } => false,
-            ViewportsState::Dynamic { .. } => true,
-        }
-    }
-
-    /// Returns true if the state of the scissors is dynamic.
-    pub fn dynamic_scissors(&self) -> bool {
-        match *self {
-            ViewportsState::Fixed { .. } => false,
-            ViewportsState::DynamicViewports { .. } => false,
-            ViewportsState::DynamicScissors { .. } => true,
-            ViewportsState::Dynamic { .. } => true,
-        }
-    }
-
+impl ViewportState {
     /// Returns the number of viewports and scissors.
-    pub fn num_viewports(&self) -> u32 {
-        match *self {
-            ViewportsState::Fixed { ref data } => data.len() as u32,
-            ViewportsState::DynamicViewports { ref scissors } => scissors.len() as u32,
-            ViewportsState::DynamicScissors { ref viewports } => viewports.len() as u32,
-            ViewportsState::Dynamic { num } => num,
-        }
+    ///
+    /// `None` is returned if both `viewport_count_dynamic` and `scissor_count_dynamic` are `true`.
+    pub fn count(&self) -> Option<u32> {
+        Some(match *self {
+            ViewportState::Fixed { ref data } => data.len() as u32,
+            ViewportState::FixedViewport { ref viewports, .. } => viewports.len() as u32,
+            ViewportState::FixedScissor { ref scissors, .. } => scissors.len() as u32,
+            ViewportState::Dynamic {
+                viewport_count_dynamic: true,
+                scissor_count_dynamic: true,
+                ..
+            } => return None,
+            ViewportState::Dynamic { count, .. } => count,
+        })
+    }
+}
+
+impl Default for ViewportState {
+    /// Creates a `ViewportState` with fixed state and no viewports or scissors.
+    #[inline]
+    fn default() -> Self {
+        ViewportState::Fixed { data: Vec::new() }
     }
 }
 
@@ -168,7 +189,8 @@ pub struct Scissor {
 }
 
 impl Scissor {
-    /// Returns a scissor that, when used, will instruct the pipeline to draw to the entire framebuffer.
+    /// Returns a scissor that, when used, will instruct the pipeline to draw to the entire
+    /// framebuffer no matter its size.
     #[inline]
     pub fn irrelevant() -> Scissor {
         Scissor {

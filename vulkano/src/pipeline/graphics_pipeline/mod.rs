@@ -9,12 +9,17 @@
 
 pub use self::builder::GraphicsPipelineBuilder;
 pub use self::creation_error::GraphicsPipelineCreationError;
-use super::DynamicState;
-use crate::device::Device;
-use crate::device::DeviceOwned;
+use crate::device::{Device, DeviceOwned};
+use crate::pipeline::color_blend::ColorBlendState;
+use crate::pipeline::depth_stencil::DepthStencilState;
+use crate::pipeline::input_assembly::InputAssemblyState;
 use crate::pipeline::layout::PipelineLayout;
-use crate::pipeline::vertex::BuffersDefinition;
-use crate::pipeline::vertex::VertexInput;
+use crate::pipeline::multisample::MultisampleState;
+use crate::pipeline::rasterization::RasterizationState;
+use crate::pipeline::tessellation::TessellationState;
+use crate::pipeline::vertex::{BuffersDefinition, VertexInput};
+use crate::pipeline::viewport::ViewportState;
+use crate::pipeline::DynamicState;
 use crate::render_pass::Subpass;
 use crate::VulkanObject;
 use fnv::FnvHashMap;
@@ -24,7 +29,6 @@ use std::hash::Hasher;
 use std::marker::PhantomData;
 use std::ptr;
 use std::sync::Arc;
-use std::u32;
 
 mod builder;
 mod creation_error;
@@ -39,9 +43,16 @@ pub struct GraphicsPipeline {
     inner: Inner,
     layout: Arc<PipelineLayout>,
     subpass: Subpass,
+
     vertex_input: VertexInput,
+    input_assembly_state: InputAssemblyState,
+    tessellation_state: Option<TessellationState>,
+    viewport_state: Option<ViewportState>,
+    rasterization_state: RasterizationState,
+    multisample_state: Option<MultisampleState>,
+    depth_stencil_state: Option<DepthStencilState>,
+    color_blend_state: Option<ColorBlendState>,
     dynamic_state: FnvHashMap<DynamicState, bool>,
-    num_viewports: u32,
 }
 
 #[derive(PartialEq, Eq, Hash)]
@@ -87,16 +98,52 @@ impl GraphicsPipeline {
         &self.subpass
     }
 
-    /// Returns the vertex input description of the graphics pipeline.
+    /// Returns the vertex input state used to create this pipeline.
     #[inline]
     pub fn vertex_input(&self) -> &VertexInput {
         &self.vertex_input
     }
 
-    /// Returns the number of viewports and scissors of this pipeline.
+    /// Returns the input assembly state used to create this pipeline.
     #[inline]
-    pub fn num_viewports(&self) -> u32 {
-        self.num_viewports
+    pub fn input_assembly_state(&self) -> &InputAssemblyState {
+        &self.input_assembly_state
+    }
+
+    /// Returns the tessellation state used to create this pipeline.
+    #[inline]
+    pub fn tessellation_state(&self) -> Option<&TessellationState> {
+        self.tessellation_state.as_ref()
+    }
+
+    /// Returns the viewport state used to create this pipeline.
+    #[inline]
+    pub fn viewport_state(&self) -> Option<&ViewportState> {
+        self.viewport_state.as_ref()
+    }
+
+    /// Returns the rasterization state used to create this pipeline.
+    #[inline]
+    pub fn rasterization_state(&self) -> &RasterizationState {
+        &self.rasterization_state
+    }
+
+    /// Returns the multisample state used to create this pipeline.
+    #[inline]
+    pub fn multisample_state(&self) -> Option<&MultisampleState> {
+        self.multisample_state.as_ref()
+    }
+
+    /// Returns the depth/stencil state used to create this pipeline.
+    #[inline]
+    pub fn depth_stencil_state(&self) -> Option<&DepthStencilState> {
+        self.depth_stencil_state.as_ref()
+    }
+
+    /// Returns the color blend state used to create this pipeline.
+    #[inline]
+    pub fn color_blend_state(&self) -> Option<&ColorBlendState> {
+        self.color_blend_state.as_ref()
     }
 
     /// Returns whether a particular state is must be dynamically set.

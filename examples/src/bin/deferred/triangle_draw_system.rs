@@ -17,7 +17,9 @@ use vulkano::command_buffer::{
 use vulkano::device::Queue;
 use vulkano::pipeline::depth_stencil::DepthStencilState;
 use vulkano::pipeline::input_assembly::InputAssemblyState;
+use vulkano::pipeline::viewport::Scissor;
 use vulkano::pipeline::viewport::Viewport;
+use vulkano::pipeline::viewport::ViewportState;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::Subpass;
 
@@ -63,7 +65,10 @@ impl TriangleDrawSystem {
                     .vertex_input_single_buffer::<Vertex>()
                     .vertex_shader(vs.main_entry_point(), ())
                     .input_assembly_state(InputAssemblyState::triangle_list())
-                    .viewports_dynamic_scissors_irrelevant(1)
+                    .viewport_state(ViewportState::FixedScissor {
+                        scissors: vec![Scissor::irrelevant()],
+                        viewport_count_dynamic: false,
+                    })
                     .fragment_shader(fs.main_entry_point(), ())
                     .depth_stencil_state(DepthStencilState::simple_depth_test())
                     .render_pass(subpass)

@@ -23,7 +23,9 @@ use vulkano::pipeline::color_blend::BlendFactor;
 use vulkano::pipeline::color_blend::BlendOp;
 use vulkano::pipeline::color_blend::ColorBlendState;
 use vulkano::pipeline::input_assembly::InputAssemblyState;
+use vulkano::pipeline::viewport::Scissor;
 use vulkano::pipeline::viewport::Viewport;
+use vulkano::pipeline::viewport::ViewportState;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::pipeline::PipelineBindPoint;
 use vulkano::render_pass::Subpass;
@@ -73,7 +75,10 @@ impl AmbientLightingSystem {
                     .vertex_input_single_buffer::<Vertex>()
                     .vertex_shader(vs.main_entry_point(), ())
                     .input_assembly_state(InputAssemblyState::triangle_list())
-                    .viewports_dynamic_scissors_irrelevant(1)
+                    .viewport_state(ViewportState::FixedScissor {
+                        scissors: vec![Scissor::irrelevant()],
+                        viewport_count_dynamic: false,
+                    })
                     .fragment_shader(fs.main_entry_point(), ())
                     .color_blend_state(ColorBlendState {
                         attachments: AttachmentsBlend::Collective(AttachmentBlend {

@@ -31,7 +31,7 @@ use vulkano::image::{
 use vulkano::instance::Instance;
 use vulkano::pipeline::color_blend::ColorBlendState;
 use vulkano::pipeline::input_assembly::{InputAssemblyState, PrimitiveTopology};
-use vulkano::pipeline::viewport::Viewport;
+use vulkano::pipeline::viewport::{Scissor, Viewport, ViewportState};
 use vulkano::pipeline::{GraphicsPipeline, PipelineBindPoint, StateMode};
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
 use vulkano::sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode};
@@ -207,7 +207,10 @@ fn main() {
                 topology: StateMode::Fixed(PrimitiveTopology::TriangleStrip),
                 ..Default::default()
             })
-            .viewports_dynamic_scissors_irrelevant(1)
+            .viewport_state(ViewportState::FixedScissor {
+                scissors: vec![Scissor::irrelevant()],
+                viewport_count_dynamic: false,
+            })
             .fragment_shader(fs.main_entry_point(), ())
             .color_blend_state(ColorBlendState::alpha_blending())
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())

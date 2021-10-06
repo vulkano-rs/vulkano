@@ -13,7 +13,7 @@ use vulkano::buffer::TypedBufferAccess;
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
 use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::pipeline::input_assembly::InputAssemblyState;
-use vulkano::pipeline::viewport::Viewport;
+use vulkano::pipeline::viewport::{Scissor, Viewport, ViewportState};
 use vulkano::pipeline::PipelineBindPoint;
 use vulkano::sampler::{Filter, MipmapMode, Sampler};
 use vulkano::{
@@ -95,7 +95,10 @@ impl PixelsDrawPipeline {
                     .vertex_shader(vs.main_entry_point(), ())
                     .input_assembly_state(InputAssemblyState::triangle_list())
                     .fragment_shader(fs.main_entry_point(), ())
-                    .viewports_dynamic_scissors_irrelevant(1)
+                    .viewport_state(ViewportState::FixedScissor {
+                        scissors: vec![Scissor::irrelevant()],
+                        viewport_count_dynamic: false,
+                    })
                     .render_pass(subpass)
                     .build(gfx_queue.device().clone())
                     .unwrap(),
