@@ -2311,6 +2311,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state)
     ///   feature is not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
+    /// - If the [`geometry_shader`](crate::device::Features::geometry_shader) feature is not
+    ///   enabled, panics if `topology` is a `WithAdjacency` topology.
+    /// - If the [`tessellation_shader`](crate::device::Features::tessellation_shader) feature is
+    ///   not enabled, panics if `topology` is `PatchList`.
     #[inline]
     pub fn set_primitive_topology(&mut self, topology: PrimitiveTopology) -> &mut Self {
         assert!(
@@ -2326,8 +2330,19 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the currently bound graphics pipeline must not contain this state internally"
         );
 
-        // TODO: does this have the same restrictions as fixed values at pipeline creation?
-        // Specifically with regard to enabled features for PatchList and WithAdjacency topologies.
+        if !self.device().enabled_features().geometry_shader {
+            assert!(!matches!(topology, PrimitiveTopology::LineListWithAdjacency
+            | PrimitiveTopology::LineStripWithAdjacency
+            | PrimitiveTopology::TriangleListWithAdjacency
+            | PrimitiveTopology::TriangleStripWithAdjacency), "if the geometry_shader feature is not enabled, topology must not be a WithAdjacency topology");
+        }
+
+        if !self.device().enabled_features().tessellation_shader {
+            assert!(
+                !matches!(topology, PrimitiveTopology::PatchList),
+                "if the tessellation_shader feature is not enabled, topology must not be PatchList"
+            );
+        }
 
         unsafe {
             self.inner.set_primitive_topology(topology);

@@ -29,7 +29,8 @@ use crate::pipeline::layout::{PipelineLayout, PipelineLayoutCreationError, Pipel
 use crate::pipeline::multisample::MultisampleState;
 use crate::pipeline::rasterization::{CullMode, FrontFace, PolygonMode, RasterizationState};
 use crate::pipeline::shader::{
-    EntryPointAbstract, GraphicsEntryPoint, GraphicsShaderType, SpecializationConstants,
+    EntryPointAbstract, GraphicsEntryPoint, GraphicsShaderType, ShaderStage,
+    SpecializationConstants,
 };
 use crate::pipeline::tessellation::TessellationState;
 use crate::pipeline::vertex::{BuffersDefinition, Vertex, VertexDefinition, VertexInputRate};
@@ -48,6 +49,9 @@ use std::u32;
 /// Prototype for a `GraphicsPipeline`.
 #[derive(Debug)]
 pub struct GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss> {
+    subpass: Option<Subpass>,
+    cache: Option<Arc<PipelineCache>>,
+
     vertex_shader: Option<(GraphicsEntryPoint<'vs>, Vss)>,
     tessellation_shaders: Option<TessellationShaders<'tcs, 'tes, Tcss, Tess>>,
     geometry_shader: Option<(GraphicsEntryPoint<'gs>, Gss)>,
@@ -61,9 +65,6 @@ pub struct GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, T
     multisample_state: MultisampleState,
     depth_stencil_state: DepthStencilState,
     color_blend_state: ColorBlendState,
-
-    subpass: Option<Subpass>,
-    cache: Option<Arc<PipelineCache>>,
 }
 
 // Additional parameters if tessellation is used.
@@ -365,6 +366,7 @@ where
         };
 
         // List of shader stages.
+        let mut shaders = HashMap::default();
         let stages = {
             let mut stages = SmallVec::<[_; 5]>::new();
 
@@ -373,6 +375,7 @@ where
                 _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
             };
 
+            shaders.insert(ShaderStage::Vertex, ());
             stages.push(ash::vk::PipelineShaderStageCreateInfo {
                 flags: ash::vk::PipelineShaderStageCreateFlags::empty(),
                 stage: ash::vk::ShaderStageFlags::VERTEX,
@@ -405,6 +408,7 @@ where
                     _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
                 };
 
+                shaders.insert(ShaderStage::TessellationControl, ());
                 stages.push(ash::vk::PipelineShaderStageCreateInfo {
                     flags: ash::vk::PipelineShaderStageCreateFlags::empty(),
                     stage: ash::vk::ShaderStageFlags::TESSELLATION_CONTROL,
@@ -419,6 +423,7 @@ where
                     ..Default::default()
                 });
 
+                shaders.insert(ShaderStage::TessellationEvaluation, ());
                 stages.push(ash::vk::PipelineShaderStageCreateInfo {
                     flags: ash::vk::PipelineShaderStageCreateFlags::empty(),
                     stage: ash::vk::ShaderStageFlags::TESSELLATION_EVALUATION,
@@ -459,6 +464,7 @@ where
                 // input primitive type that is compatible with the primitive topology that is
                 // output by the tessellation stages
 
+                shaders.insert(ShaderStage::Geometry, ());
                 stages.push(ash::vk::PipelineShaderStageCreateInfo {
                     flags: ash::vk::PipelineShaderStageCreateFlags::empty(),
                     stage: ash::vk::ShaderStageFlags::GEOMETRY,
@@ -476,6 +482,7 @@ where
                     _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
                 };
 
+                shaders.insert(ShaderStage::Fragment, ());
                 stages.push(ash::vk::PipelineShaderStageCreateInfo {
                     flags: ash::vk::PipelineShaderStageCreateFlags::empty(),
                     stage: ash::vk::ShaderStageFlags::FRAGMENT,
@@ -692,7 +699,7 @@ where
                             if !device.enabled_features().geometry_shader {
                                 return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
                                     feature: "geometry_shader",
-                                    reason: "InputAssemblyState::topology was set to a \"with adjacency\" PrimitiveTopology",
+                                    reason: "InputAssemblyState::topology was set to a WithAdjacency PrimitiveTopology",
                                 });
                             }
                         }
@@ -734,9 +741,9 @@ where
                             ) => {
                                 if !device.enabled_features().primitive_topology_list_restart {
                                     return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                    feature: "primitive_topology_list_restart",
-                                    reason: "InputAssemblyState::primitive_restart_enable was set to true in combination with a \"list\" PrimitiveTopology",
-                                });
+                                        feature: "primitive_topology_list_restart",
+                                        reason: "InputAssemblyState::primitive_restart_enable was set to true in combination with a List PrimitiveTopology",
+                                    });
                                 }
                             }
                             StateMode::Fixed(PrimitiveTopology::PatchList) => {
@@ -745,9 +752,9 @@ where
                                     .primitive_topology_patch_list_restart
                                 {
                                     return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                    feature: "primitive_topology_patch_list_restart",
-                                    reason: "InputAssemblyState::primitive_restart_enable was set to true in combination with PrimitiveTopology::PatchList",
-                                });
+                                        feature: "primitive_topology_patch_list_restart",
+                                        reason: "InputAssemblyState::primitive_restart_enable was set to true in combination with PrimitiveTopology::PatchList",
+                                    });
                                 }
                             }
                             _ => (),
@@ -1756,6 +1763,7 @@ where
             },
             layout: pipeline_layout,
             subpass,
+            shaders,
 
             vertex_input,
             input_assembly_state: self.input_assembly_state,

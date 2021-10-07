@@ -611,7 +611,31 @@ pub struct SpecializationMapEntry {
     pub size: usize,
 }
 
-/// Describes a set of shader stages.
+/// A single shader stage.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[repr(u32)]
+pub enum ShaderStage {
+    Vertex = ash::vk::ShaderStageFlags::VERTEX.as_raw(),
+    TessellationControl = ash::vk::ShaderStageFlags::TESSELLATION_CONTROL.as_raw(),
+    TessellationEvaluation = ash::vk::ShaderStageFlags::TESSELLATION_EVALUATION.as_raw(),
+    Geometry = ash::vk::ShaderStageFlags::GEOMETRY.as_raw(),
+    Fragment = ash::vk::ShaderStageFlags::FRAGMENT.as_raw(),
+    Compute = ash::vk::ShaderStageFlags::COMPUTE.as_raw(),
+    Raygen = ash::vk::ShaderStageFlags::RAYGEN_KHR.as_raw(),
+    AnyHit = ash::vk::ShaderStageFlags::ANY_HIT_KHR.as_raw(),
+    ClosestHit = ash::vk::ShaderStageFlags::CLOSEST_HIT_KHR.as_raw(),
+    Miss = ash::vk::ShaderStageFlags::MISS_KHR.as_raw(),
+    Intersection = ash::vk::ShaderStageFlags::INTERSECTION_KHR.as_raw(),
+    Callable = ash::vk::ShaderStageFlags::CALLABLE_KHR.as_raw(),
+}
+
+impl From<ShaderStage> for ash::vk::ShaderStageFlags {
+    fn from(val: ShaderStage) -> Self {
+        Self::from_raw(val as u32)
+    }
+}
+
+/// A set of shader stages.
 // TODO: add example with BitOr
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct ShaderStages {

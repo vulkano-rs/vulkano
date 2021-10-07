@@ -16,6 +16,7 @@ use crate::pipeline::input_assembly::InputAssemblyState;
 use crate::pipeline::layout::PipelineLayout;
 use crate::pipeline::multisample::MultisampleState;
 use crate::pipeline::rasterization::RasterizationState;
+use crate::pipeline::shader::ShaderStage;
 use crate::pipeline::tessellation::TessellationState;
 use crate::pipeline::vertex::{BuffersDefinition, VertexInput};
 use crate::pipeline::viewport::ViewportState;
@@ -43,6 +44,8 @@ pub struct GraphicsPipeline {
     inner: Inner,
     layout: Arc<PipelineLayout>,
     subpass: Subpass,
+    // TODO: replace () with an object that describes the shaders in some way.
+    shaders: FnvHashMap<ShaderStage, ()>,
 
     vertex_input: VertexInput,
     input_assembly_state: InputAssemblyState,
@@ -96,6 +99,17 @@ impl GraphicsPipeline {
     #[inline]
     pub fn subpass(&self) -> &Subpass {
         &self.subpass
+    }
+
+    /// Returns information about a particular shader.
+    ///
+    /// `None` is returned if the pipeline does not contain this shader.
+    ///
+    /// Compatibility note: `()` is temporary, it will be replaced with something else in the future.
+    // TODO: ^ implement and make this public
+    #[inline]
+    pub(crate) fn shader(&self, stage: ShaderStage) -> Option<()> {
+        self.shaders.get(&stage).copied()
     }
 
     /// Returns the vertex input state used to create this pipeline.

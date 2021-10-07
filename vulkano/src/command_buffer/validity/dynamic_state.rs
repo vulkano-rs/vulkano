@@ -8,8 +8,11 @@
 // according to those terms.
 
 use crate::command_buffer::synced::CommandBufferState;
+use crate::pipeline::input_assembly::PrimitiveTopology;
+use crate::pipeline::shader::ShaderStage;
 use crate::pipeline::DynamicState;
 use crate::pipeline::GraphicsPipeline;
+use crate::pipeline::StateMode;
 use std::error;
 use std::fmt;
 
@@ -125,22 +128,83 @@ pub(in super::super) fn check_dynamic_state_validity(
                 }
             }
             DynamicState::PrimitiveRestartEnable => {
-                // TODO: does this have the same restrictions as fixed values at pipeline creation?
+                let primitive_restart_enable =
+                    if let Some(enable) = current_state.primitive_restart_enable() {
+                        enable
+                    } else {
+                        return Err(CheckDynamicStateValidityError::NotSet {
+                            dynamic_state: DynamicState::PrimitiveRestartEnable,
+                        });
+                    };
 
-                if current_state.primitive_restart_enable().is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet {
-                        dynamic_state: DynamicState::PrimitiveRestartEnable,
-                    });
+                if primitive_restart_enable {
+                    let topology = match pipeline.input_assembly_state().topology {
+                        StateMode::Fixed(topology) => topology,
+                        StateMode::Dynamic => {
+                            if let Some(topology) = current_state.primitive_topology() {
+                                topology
+                            } else {
+                                return Err(CheckDynamicStateValidityError::NotSet {
+                                    dynamic_state: DynamicState::PrimitiveTopology,
+                                });
+                            }
+                        }
+                    };
+
+                    match topology {
+                        PrimitiveTopology::PointList
+                        | PrimitiveTopology::LineList
+                        | PrimitiveTopology::TriangleList
+                        | PrimitiveTopology::LineListWithAdjacency
+                        | PrimitiveTopology::TriangleListWithAdjacency => {
+                            if !device.enabled_features().primitive_topology_list_restart {
+                                return Err(CheckDynamicStateValidityError::FeatureNotEnabled {
+                                    feature: "primitive_topology_list_restart",
+                                    reason: "the PrimitiveRestartEnable dynamic state was true in combination with a List PrimitiveTopology",
+                                });
+                            }
+                        }
+                        PrimitiveTopology::PatchList => {
+                            if !device
+                                .enabled_features()
+                                .primitive_topology_patch_list_restart
+                            {
+                                return Err(CheckDynamicStateValidityError::FeatureNotEnabled {
+                                    feature: "primitive_topology_patch_list_restart",
+                                    reason: "the PrimitiveRestartEnable dynamic state was true in combination with PrimitiveTopology::PatchList",
+                                });
+                            }
+                        }
+                        _ => (),
+                    }
                 }
             }
             DynamicState::PrimitiveTopology => {
-                // TODO: does this have the same restrictions as fixed values at pipeline creation?
-
-                if current_state.primitive_topology().is_none() {
+                let topology = if let Some(topology) = current_state.primitive_topology() {
+                    topology
+                } else {
                     return Err(CheckDynamicStateValidityError::NotSet {
                         dynamic_state: DynamicState::PrimitiveTopology,
                     });
+                };
+
+                if pipeline.shader(ShaderStage::TessellationControl).is_some() {
+                    if !matches!(topology, PrimitiveTopology::PatchList) {
+                        return Err(CheckDynamicStateValidityError::InvalidPrimitiveTopology {
+                            topology,
+                            reason: "the graphics pipeline includes tessellation shaders, so the topology must be PatchList",
+                        });
+                    }
+                } else {
+                    if matches!(topology, PrimitiveTopology::PatchList) {
+                        return Err(CheckDynamicStateValidityError::InvalidPrimitiveTopology {
+                            topology,
+                            reason: "the graphics pipeline doesn't include tessellation shaders",
+                        });
+                    }
                 }
+
+                // TODO: check that the topology matches the geometry shader
             }
             DynamicState::RasterizerDiscardEnable => todo!(),
             DynamicState::RayTracingPipelineStackSize => unreachable!(
@@ -289,6 +353,18 @@ pub(in super::super) fn check_dynamic_state_validity(
 /// Error that can happen when validating dynamic states.
 #[derive(Debug, Copy, Clone)]
 pub enum CheckDynamicStateValidityError {
+    /// A device feature that was required for a particular dynamic state value was not enabled.
+    FeatureNotEnabled {
+        feature: &'static str,
+        reason: &'static str,
+    },
+
+    /// A dynamic primitive topology was set, that is not compatible with the pipeline.
+    InvalidPrimitiveTopology {
+        topology: PrimitiveTopology,
+        reason: &'static str,
+    },
+
     /// The pipeline requires a particular state to be set dynamically, but the value was not or
     /// only partially set.
     NotSet { dynamic_state: DynamicState },
@@ -306,6 +382,16 @@ impl fmt::Display for CheckDynamicStateValidityError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match *self {
+            CheckDynamicStateValidityError::FeatureNotEnabled { feature, reason } => {
+                write!(fmt, "the feature {} must be enabled: {}", feature, reason)
+            }
+            CheckDynamicStateValidityError::InvalidPrimitiveTopology { topology, reason } => {
+                write!(
+                    fmt,
+                    "invalid dynamic PrimitiveTypology::{:?}: {}",
+                    topology, reason
+                )
+            }
             CheckDynamicStateValidityError::NotSet { dynamic_state } => {
                 write!(fmt, "the pipeline requires the dynamic state {:?} to be set, but the value was not or only partially set", dynamic_state)
             }
