@@ -68,18 +68,13 @@ impl PointLightingSystem {
                     .input_assembly_state(InputAssemblyState::new())
                     .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
                     .fragment_shader(fs.main_entry_point(), ())
-                    .color_blend_state(ColorBlendState::new().collective(AttachmentBlend {
-                        enabled: true,
+                    .color_blend_state(ColorBlendState::new().blend(AttachmentBlend {
                         color_op: BlendOp::Add,
                         color_source: BlendFactor::One,
                         color_destination: BlendFactor::One,
                         alpha_op: BlendOp::Max,
                         alpha_source: BlendFactor::One,
                         alpha_destination: BlendFactor::One,
-                        mask_red: true,
-                        mask_green: true,
-                        mask_blue: true,
-                        mask_alpha: true,
                     }))
                     .render_pass(subpass)
                     .build(gfx_queue.device().clone())

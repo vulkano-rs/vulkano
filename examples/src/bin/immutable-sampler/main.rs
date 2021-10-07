@@ -206,7 +206,7 @@ fn main() {
             )
             .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
             .fragment_shader(fs.main_entry_point(), ())
-            .color_blend_state(ColorBlendState::new().alpha_blending())
+            .color_blend_state(ColorBlendState::new().blend_alpha())
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
             .with_auto_layout(device.clone(), |set_descs| {
                 // Modify the auto-generated layout by setting an immutable sampler to

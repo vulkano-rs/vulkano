@@ -16,7 +16,10 @@ use crate::descriptor_set::layout::{DescriptorSetDesc, DescriptorSetLayout};
 use crate::device::Device;
 use crate::image::SampleCount;
 use crate::pipeline::cache::PipelineCache;
-use crate::pipeline::color_blend::{AttachmentBlend, AttachmentsBlend, ColorBlendState, LogicOp};
+use crate::pipeline::color_blend::{
+    AttachmentBlend, BlendFactor, ColorBlendAttachmentState, ColorBlendState, ColorComponents,
+    LogicOp,
+};
 use crate::pipeline::depth_stencil::DepthStencilState;
 use crate::pipeline::graphics_pipeline::{
     GraphicsPipeline, GraphicsPipelineCreationError, Inner as GraphicsPipelineInner,
@@ -1397,26 +1400,79 @@ where
 
         let color_blend_attachments: SmallVec<[ash::vk::PipelineColorBlendAttachmentState; 4]> = {
             let num_atch = subpass.num_color_attachments();
-
-            match &self.color_blend_state.attachments {
-                AttachmentsBlend::Collective(blend) => {
-                    (0..num_atch).map(|_| blend.clone().into()).collect()
-                }
-                AttachmentsBlend::Individual(blend) => {
-                    if blend.len() != num_atch as usize {
-                        return Err(
-                            GraphicsPipelineCreationError::MismatchBlendingAttachmentsCount,
-                        );
+            let to_vulkan = |state: &ColorBlendAttachmentState| {
+                let blend = if let Some(blend) = &state.blend {
+                    if !device.enabled_features().dual_src_blend
+                        && std::array::IntoIter::new([
+                            blend.color_source,
+                            blend.color_destination,
+                            blend.alpha_source,
+                            blend.alpha_destination,
+                        ])
+                        .any(|blend_factor| {
+                            matches!(
+                                blend_factor,
+                                BlendFactor::Src1Color
+                                    | BlendFactor::OneMinusSrc1Color
+                                    | BlendFactor::Src1Alpha
+                                    | BlendFactor::OneMinusSrc1Alpha
+                            )
+                        })
+                    {
+                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                            feature: "dual_src_blend",
+                            reason:
+                                "One of the BlendFactor members of AttachmentBlend was set to Src1",
+                        });
                     }
 
-                    if !device.enabled_features().independent_blend {
+                    blend.clone().into()
+                } else {
+                    Default::default()
+                };
+                let color_write_mask = state.color_write_mask.into();
+
+                Ok(ash::vk::PipelineColorBlendAttachmentState {
+                    color_write_mask,
+                    ..blend
+                })
+            };
+
+            if self.color_blend_state.attachments.len() == 1 {
+                std::iter::repeat(to_vulkan(&self.color_blend_state.attachments[0])?)
+                    .take(num_atch as usize)
+                    .collect()
+            } else {
+                if self.color_blend_state.attachments.len() != num_atch as usize {
+                    return Err(GraphicsPipelineCreationError::MismatchBlendingAttachmentsCount);
+                }
+
+                if self.color_blend_state.attachments.len() > 1
+                    && !device.enabled_features().independent_blend
+                {
+                    // Ensure that all `blend` and `color_write_mask` are identical.
+                    let mut iter = self
+                        .color_blend_state
+                        .attachments
+                        .iter()
+                        .map(|state| (&state.blend, &state.color_write_mask));
+                    let first = iter.next().unwrap();
+
+                    if !iter.all(|state| state == first) {
                         return Err(
-                            GraphicsPipelineCreationError::IndependentBlendFeatureNotEnabled,
+                            GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "independent_blend",
+                                reason: "The blend and color_write_mask members of all elements of ColorBlendState::attachments were not identical",
+                            },
                         );
                     }
-
-                    blend.iter().map(|b| b.clone().into()).collect()
                 }
+
+                self.color_blend_state
+                    .attachments
+                    .iter()
+                    .map(to_vulkan)
+                    .collect::<Result<_, _>>()?
             }
         };
 
@@ -2441,7 +2497,10 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     #[deprecated(since = "0.27", note = "Use `color_blend_state` instead")]
     #[inline]
     pub fn blend_collective(mut self, blend: AttachmentBlend) -> Self {
-        self.color_blend_state.attachments = AttachmentsBlend::Collective(blend);
+        self.color_blend_state.attachments = vec![ColorBlendAttachmentState {
+            blend: Some(blend),
+            color_write_mask: ColorComponents::all(),
+        }];
         self
     }
 
@@ -2451,8 +2510,13 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     where
         I: IntoIterator<Item = AttachmentBlend>,
     {
-        self.color_blend_state.attachments =
-            AttachmentsBlend::Individual(blend.into_iter().collect());
+        self.color_blend_state.attachments = blend
+            .into_iter()
+            .map(|x| ColorBlendAttachmentState {
+                blend: Some(x),
+                color_write_mask: ColorComponents::all(),
+            })
+            .collect();
         self
     }
 
@@ -2460,14 +2524,22 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     /// attachment. This is the default.
     #[deprecated(since = "0.27", note = "Use `color_blend_state` instead")]
     #[inline]
-    pub fn blend_pass_through(self) -> Self {
-        self.blend_collective(AttachmentBlend::pass_through())
+    pub fn blend_pass_through(mut self) -> Self {
+        self.color_blend_state.attachments = vec![ColorBlendAttachmentState {
+            blend: None,
+            color_write_mask: ColorComponents::all(),
+        }];
+        self
     }
 
     #[deprecated(since = "0.27", note = "Use `color_blend_state` instead")]
     #[inline]
-    pub fn blend_alpha_blending(self) -> Self {
-        self.blend_collective(AttachmentBlend::alpha_blending())
+    pub fn blend_alpha_blending(mut self) -> Self {
+        self.color_blend_state.attachments = vec![ColorBlendAttachmentState {
+            blend: Some(AttachmentBlend::alpha()),
+            color_write_mask: ColorComponents::all(),
+        }];
+        self
     }
 
     #[deprecated(since = "0.27", note = "Use `color_blend_state` instead")]

@@ -13,7 +13,7 @@
 //!
 //! There are three kinds of color attachments for the purpose of blending:
 //!
-//! - Attachments with a floating-point, fixed point format.
+//! - Attachments with a floating-point or fixed point format.
 //! - Attachments with a (non-normalized) integer format.
 //! - Attachments with a normalized integer format.
 //!
@@ -25,7 +25,7 @@ use crate::pipeline::StateMode;
 
 /// Describes how the color output of the fragment shader is written to the attachment. See the
 /// documentation of the `blend` module for more info.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct ColorBlendState {
     /// Sets the logical operation to perform between the incoming fragment color and the existing
     /// fragment in the framebuffer attachment.
@@ -36,20 +36,41 @@ pub struct ColorBlendState {
     /// feature must also be enabled on the device.
     pub logic_op: Option<StateMode<LogicOp>>,
 
-    pub attachments: AttachmentsBlend,
+    /// Sets the blend and output state for each color attachment.
+    ///
+    /// The number of elements must match the number of color attachments in the framebuffer.
+    /// However, you are allowed to specify only one element even if there are a different number of
+    /// color attachments (including zero), and that element will be used for all attachments.
+    ///
+    /// If there are multiple elements, and the `blend` and `color_write_mask` members of each
+    /// element differ, then the [`independent_blend`](crate::device::Features::independent_blend)
+    /// feature must be enabled on the device.
+    pub attachments: Vec<ColorBlendAttachmentState>,
 
-    /// The constant color to use for the `Constant*` blending operation.
+    /// The constant color to use for some of the `BlendFactor` variants.
     pub blend_constants: StateMode<[f32; 4]>,
 }
 
 impl ColorBlendState {
-    /// Creates a `ColorBlendState` with attachment passthrough, logical operations disabled and
-    /// blend constants set to zero.
+    /// Creates a `ColorBlendState` with logical operations disabled, blend constants set to zero,
+    /// and a single attachment entry that has blending disabled and all color components enabled.
     #[inline]
     pub fn new() -> Self {
+        Self::with_num(1)
+    }
+
+    /// Creates a `ColorBlendState` with logical operations disabled, blend constants set to zero,
+    /// and `num` attachment entries that have blending disabled and all color components enabled.
+    #[inline]
+    pub fn with_num(num: usize) -> Self {
         Self {
             logic_op: None,
-            attachments: AttachmentsBlend::Collective(AttachmentBlend::pass_through()),
+            attachments: (0..num)
+                .map(|_| ColorBlendAttachmentState {
+                    blend: None,
+                    color_write_mask: ColorComponents::all(),
+                })
+                .collect(),
             blend_constants: StateMode::Fixed([0.0, 0.0, 0.0, 0.0]),
         }
     }
@@ -68,17 +89,39 @@ impl ColorBlendState {
         self
     }
 
-    /// Sets the attachments to collective alpha blending.
+    /// Enables blending for all attachments, with the given parameters.
     #[inline]
-    pub fn alpha_blending(mut self) -> Self {
-        self.attachments = AttachmentsBlend::Collective(AttachmentBlend::alpha_blending());
+    pub fn blend(mut self, blend: AttachmentBlend) -> Self {
+        self.attachments
+            .iter_mut()
+            .for_each(|attachment_state| attachment_state.blend = Some(blend));
         self
     }
 
-    /// Sets the attachments to collective blending with the given parameters.
+    /// Enables blending for all attachments, with alpha blending.
     #[inline]
-    pub fn collective(mut self, params: AttachmentBlend) -> Self {
-        self.attachments = AttachmentsBlend::Collective(params);
+    pub fn blend_alpha(mut self) -> Self {
+        self.attachments
+            .iter_mut()
+            .for_each(|attachment_state| attachment_state.blend = Some(AttachmentBlend::alpha()));
+        self
+    }
+
+    /// Enables blending for all attachments, with additive blending.
+    #[inline]
+    pub fn blend_additive(mut self) -> Self {
+        self.attachments.iter_mut().for_each(|attachment_state| {
+            attachment_state.blend = Some(AttachmentBlend::additive())
+        });
+        self
+    }
+
+    /// Sets the color write mask for all attachments.
+    #[inline]
+    pub fn color_write_mask(mut self, color_write_mask: ColorComponents) -> Self {
+        self.attachments
+            .iter_mut()
+            .for_each(|attachment_state| attachment_state.color_write_mask = color_write_mask);
         self
     }
 
@@ -105,132 +148,6 @@ impl Default for ColorBlendState {
     }
 }
 
-/// Describes how the blending system should behave.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum AttachmentsBlend {
-    /// All the framebuffer attachments will use the same blending.
-    Collective(AttachmentBlend),
-
-    /// Each attachment will behave differently. The
-    /// [`independent_blend`](crate::device::Features::independent_blend) feature must be enabled
-    /// on the device.
-    Individual(Vec<AttachmentBlend>),
-}
-
-/// Describes how the blending system should behave for an individual attachment.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AttachmentBlend {
-    // TODO: could be automatically determined from the other params
-    /// If false, blending is ignored and the output is directly written to the attachment.
-    pub enabled: bool,
-
-    pub color_op: BlendOp,
-    pub color_source: BlendFactor,
-    pub color_destination: BlendFactor,
-
-    pub alpha_op: BlendOp,
-    pub alpha_source: BlendFactor,
-    pub alpha_destination: BlendFactor,
-
-    pub mask_red: bool,
-    pub mask_green: bool,
-    pub mask_blue: bool,
-    pub mask_alpha: bool,
-}
-
-impl AttachmentBlend {
-    /// Builds an `AttachmentBlend` where blending is disabled.
-    #[inline]
-    pub fn pass_through() -> AttachmentBlend {
-        AttachmentBlend {
-            enabled: false,
-            color_op: BlendOp::Add,
-            color_source: BlendFactor::Zero,
-            color_destination: BlendFactor::One,
-            alpha_op: BlendOp::Add,
-            alpha_source: BlendFactor::Zero,
-            alpha_destination: BlendFactor::One,
-            mask_red: true,
-            mask_green: true,
-            mask_blue: true,
-            mask_alpha: true,
-        }
-    }
-
-    /// Builds an `AttachmentBlend` where the output of the fragment shader is ignored and the
-    /// destination is untouched.
-    #[inline]
-    pub fn ignore_source() -> AttachmentBlend {
-        AttachmentBlend {
-            enabled: true,
-            color_op: BlendOp::Add,
-            color_source: BlendFactor::Zero,
-            color_destination: BlendFactor::DstColor,
-            alpha_op: BlendOp::Add,
-            alpha_source: BlendFactor::Zero,
-            alpha_destination: BlendFactor::DstColor,
-            mask_red: true,
-            mask_green: true,
-            mask_blue: true,
-            mask_alpha: true,
-        }
-    }
-
-    /// Builds an `AttachmentBlend` where the output will be merged with the existing value
-    /// based on the alpha of the source.
-    #[inline]
-    pub fn alpha_blending() -> AttachmentBlend {
-        AttachmentBlend {
-            enabled: true,
-            color_op: BlendOp::Add,
-            color_source: BlendFactor::SrcAlpha,
-            color_destination: BlendFactor::OneMinusSrcAlpha,
-            alpha_op: BlendOp::Add,
-            alpha_source: BlendFactor::SrcAlpha,
-            alpha_destination: BlendFactor::OneMinusSrcAlpha,
-            mask_red: true,
-            mask_green: true,
-            mask_blue: true,
-            mask_alpha: true,
-        }
-    }
-}
-
-impl From<AttachmentBlend> for ash::vk::PipelineColorBlendAttachmentState {
-    #[inline]
-    fn from(val: AttachmentBlend) -> Self {
-        ash::vk::PipelineColorBlendAttachmentState {
-            blend_enable: if val.enabled {
-                ash::vk::TRUE
-            } else {
-                ash::vk::FALSE
-            },
-            src_color_blend_factor: val.color_source.into(),
-            dst_color_blend_factor: val.color_destination.into(),
-            color_blend_op: val.color_op.into(),
-            src_alpha_blend_factor: val.alpha_source.into(),
-            dst_alpha_blend_factor: val.alpha_destination.into(),
-            alpha_blend_op: val.alpha_op.into(),
-            color_write_mask: {
-                let mut mask = ash::vk::ColorComponentFlags::empty();
-                if val.mask_red {
-                    mask |= ash::vk::ColorComponentFlags::R;
-                }
-                if val.mask_green {
-                    mask |= ash::vk::ColorComponentFlags::G;
-                }
-                if val.mask_blue {
-                    mask |= ash::vk::ColorComponentFlags::B;
-                }
-                if val.mask_alpha {
-                    mask |= ash::vk::ColorComponentFlags::A;
-                }
-                mask
-            },
-        }
-    }
-}
-
 /// Which logical operation to apply to the output values.
 ///
 /// The operation is applied individually for each channel (red, green, blue and alpha).
@@ -238,7 +155,7 @@ impl From<AttachmentBlend> for ash::vk::PipelineColorBlendAttachmentState {
 /// Only relevant for integer or unsigned attachments.
 ///
 /// Also note that some implementations don't support logic operations.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(i32)]
 pub enum LogicOp {
     /// Returns `0`.
@@ -289,13 +206,197 @@ impl Default for LogicOp {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+/// Describes how a framebuffer color attachment is handled in the pipeline during the color
+/// blend stage.
+#[derive(Clone, Debug)]
+pub struct ColorBlendAttachmentState {
+    /// The blend parameters for the attachment.
+    ///
+    /// If set to `None`, blending is disabled, and all incoming pixels will be used directly.
+    pub blend: Option<AttachmentBlend>,
+
+    /// Sets which components of the final pixel value are written to the attachment.
+    pub color_write_mask: ColorComponents,
+}
+
+/// Describes how the blending system should behave for an attachment.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AttachmentBlend {
+    /// The operation to apply between the color components of the source and destination pixels,
+    /// to produce the final pixel value.
+    pub color_op: BlendOp,
+
+    /// The operation to apply to the source color component before applying `color_op`.
+    pub color_source: BlendFactor,
+
+    /// The operation to apply to the destination color component before applying `color_op`.
+    pub color_destination: BlendFactor,
+
+    /// The operation to apply between the alpha component of the source and destination pixels,
+    /// to produce the final pixel value.
+    pub alpha_op: BlendOp,
+
+    /// The operation to apply to the source alpha component before applying `alpha_op`.
+    pub alpha_source: BlendFactor,
+
+    /// The operation to apply to the destination alpha component before applying `alpha_op`.
+    pub alpha_destination: BlendFactor,
+}
+
+impl AttachmentBlend {
+    /// Builds an `AttachmentBlend` where the output of the fragment shader is ignored and the
+    /// destination is untouched.
+    #[inline]
+    pub fn ignore_source() -> Self {
+        Self {
+            color_op: BlendOp::Add,
+            color_source: BlendFactor::Zero,
+            color_destination: BlendFactor::DstColor,
+            alpha_op: BlendOp::Add,
+            alpha_source: BlendFactor::Zero,
+            alpha_destination: BlendFactor::DstColor,
+        }
+    }
+
+    /// Builds an `AttachmentBlend` where the output will be merged with the existing value
+    /// based on the alpha of the source.
+    #[inline]
+    pub fn alpha() -> Self {
+        Self {
+            color_op: BlendOp::Add,
+            color_source: BlendFactor::SrcAlpha,
+            color_destination: BlendFactor::OneMinusSrcAlpha,
+            alpha_op: BlendOp::Add,
+            alpha_source: BlendFactor::SrcAlpha,
+            alpha_destination: BlendFactor::OneMinusSrcAlpha,
+        }
+    }
+
+    /// Builds an `AttachmentBlend` where the colors are added, and alpha is set to the maximum of
+    /// the two.
+    #[inline]
+    pub fn additive() -> Self {
+        Self {
+            color_op: BlendOp::Add,
+            color_source: BlendFactor::One,
+            color_destination: BlendFactor::One,
+            alpha_op: BlendOp::Max,
+            alpha_source: BlendFactor::One,
+            alpha_destination: BlendFactor::One,
+        }
+    }
+}
+
+impl From<AttachmentBlend> for ash::vk::PipelineColorBlendAttachmentState {
+    #[inline]
+    fn from(val: AttachmentBlend) -> Self {
+        ash::vk::PipelineColorBlendAttachmentState {
+            blend_enable: ash::vk::TRUE,
+            src_color_blend_factor: val.color_source.into(),
+            dst_color_blend_factor: val.color_destination.into(),
+            color_blend_op: val.color_op.into(),
+            src_alpha_blend_factor: val.alpha_source.into(),
+            dst_alpha_blend_factor: val.alpha_destination.into(),
+            alpha_blend_op: val.alpha_op.into(),
+            color_write_mask: ash::vk::ColorComponentFlags::empty(), // Overwritten by GraphicsPipelineBuilder
+        }
+    }
+}
+
+/// The operation that takes `source` (output from the fragment shader), `destination` (value
+/// currently in the framebuffer attachment) and `blend_constant` input values,
+/// and produces new inputs to be fed to `BlendOp`.
+///
+/// Some operations take `source1` as an input, representing the second source value. The
+/// [`dual_src_blend`](crate::device::Features::dual_src_blend) feature must be enabled on the
+/// device when these are used.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(i32)]
+pub enum BlendFactor {
+    /// Always `0`.
+    Zero = ash::vk::BlendFactor::ZERO.as_raw(),
+
+    /// Always `1`.
+    One = ash::vk::BlendFactor::ONE.as_raw(),
+
+    /// `source` component-wise.
+    SrcColor = ash::vk::BlendFactor::SRC_COLOR.as_raw(),
+
+    /// `1 - source` component-wise.
+    OneMinusSrcColor = ash::vk::BlendFactor::ONE_MINUS_SRC_COLOR.as_raw(),
+
+    /// `destination` component-wise.
+    DstColor = ash::vk::BlendFactor::DST_COLOR.as_raw(),
+
+    /// `1 - destination` component-wise.
+    OneMinusDstColor = ash::vk::BlendFactor::ONE_MINUS_DST_COLOR.as_raw(),
+
+    /// `source.a` for all components.
+    SrcAlpha = ash::vk::BlendFactor::SRC_ALPHA.as_raw(),
+
+    /// `1 - source.a` for all components.
+    OneMinusSrcAlpha = ash::vk::BlendFactor::ONE_MINUS_SRC_ALPHA.as_raw(),
+
+    /// `destination.a` for all components.
+    DstAlpha = ash::vk::BlendFactor::DST_ALPHA.as_raw(),
+
+    /// `1 - destination.a` for all components.
+    OneMinusDstAlpha = ash::vk::BlendFactor::ONE_MINUS_DST_ALPHA.as_raw(),
+
+    /// `blend_constants` component-wise.
+    ConstantColor = ash::vk::BlendFactor::CONSTANT_COLOR.as_raw(),
+
+    /// `1 - blend_constants` component-wise.
+    OneMinusConstantColor = ash::vk::BlendFactor::ONE_MINUS_CONSTANT_COLOR.as_raw(),
+
+    /// `blend_constants.a` for all components.
+    ConstantAlpha = ash::vk::BlendFactor::CONSTANT_ALPHA.as_raw(),
+
+    /// `1 - blend_constants.a` for all components.
+    OneMinusConstantAlpha = ash::vk::BlendFactor::ONE_MINUS_CONSTANT_ALPHA.as_raw(),
+
+    /// For the alpha component, always `1`. For the color components,
+    /// `min(source.a, 1 - destination.a)` for all components.
+    SrcAlphaSaturate = ash::vk::BlendFactor::SRC_ALPHA_SATURATE.as_raw(),
+
+    /// `source1` component-wise.
+    Src1Color = ash::vk::BlendFactor::SRC1_COLOR.as_raw(),
+
+    /// `1 - source1` component-wise.
+    OneMinusSrc1Color = ash::vk::BlendFactor::ONE_MINUS_SRC1_COLOR.as_raw(),
+
+    /// `source1.a` for all components.
+    Src1Alpha = ash::vk::BlendFactor::SRC1_ALPHA.as_raw(),
+
+    /// `1 - source1.a` for all components.
+    OneMinusSrc1Alpha = ash::vk::BlendFactor::ONE_MINUS_SRC1_ALPHA.as_raw(),
+}
+
+impl From<BlendFactor> for ash::vk::BlendFactor {
+    #[inline]
+    fn from(val: BlendFactor) -> Self {
+        Self::from_raw(val as i32)
+    }
+}
+
+/// The arithmetic operation that is applied between the `source` and `destination` component
+/// values, after the appropriate `BlendFactor` is applied to both.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(i32)]
 pub enum BlendOp {
+    /// `source + destination`.
     Add = ash::vk::BlendOp::ADD.as_raw(),
+
+    /// `source - destination`.
     Subtract = ash::vk::BlendOp::SUBTRACT.as_raw(),
+
+    /// `destination - source`.
     ReverseSubtract = ash::vk::BlendOp::REVERSE_SUBTRACT.as_raw(),
+
+    /// `min(source, destination)`.
     Min = ash::vk::BlendOp::MIN.as_raw(),
+
+    /// `max(source, destination)`.
     Max = ash::vk::BlendOp::MAX.as_raw(),
 }
 
@@ -306,33 +407,58 @@ impl From<BlendOp> for ash::vk::BlendOp {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[repr(i32)]
-pub enum BlendFactor {
-    Zero = ash::vk::BlendFactor::ZERO.as_raw(),
-    One = ash::vk::BlendFactor::ONE.as_raw(),
-    SrcColor = ash::vk::BlendFactor::SRC_COLOR.as_raw(),
-    OneMinusSrcColor = ash::vk::BlendFactor::ONE_MINUS_SRC_COLOR.as_raw(),
-    DstColor = ash::vk::BlendFactor::DST_COLOR.as_raw(),
-    OneMinusDstColor = ash::vk::BlendFactor::ONE_MINUS_DST_COLOR.as_raw(),
-    SrcAlpha = ash::vk::BlendFactor::SRC_ALPHA.as_raw(),
-    OneMinusSrcAlpha = ash::vk::BlendFactor::ONE_MINUS_SRC_ALPHA.as_raw(),
-    DstAlpha = ash::vk::BlendFactor::DST_ALPHA.as_raw(),
-    OneMinusDstAlpha = ash::vk::BlendFactor::ONE_MINUS_DST_ALPHA.as_raw(),
-    ConstantColor = ash::vk::BlendFactor::CONSTANT_COLOR.as_raw(),
-    OneMinusConstantColor = ash::vk::BlendFactor::ONE_MINUS_CONSTANT_COLOR.as_raw(),
-    ConstantAlpha = ash::vk::BlendFactor::CONSTANT_ALPHA.as_raw(),
-    OneMinusConstantAlpha = ash::vk::BlendFactor::ONE_MINUS_CONSTANT_ALPHA.as_raw(),
-    SrcAlphaSaturate = ash::vk::BlendFactor::SRC_ALPHA_SATURATE.as_raw(),
-    Src1Color = ash::vk::BlendFactor::SRC1_COLOR.as_raw(),
-    OneMinusSrc1Color = ash::vk::BlendFactor::ONE_MINUS_SRC1_COLOR.as_raw(),
-    Src1Alpha = ash::vk::BlendFactor::SRC1_ALPHA.as_raw(),
-    OneMinusSrc1Alpha = ash::vk::BlendFactor::ONE_MINUS_SRC1_ALPHA.as_raw(),
+/// A mask specifying color components that can be written to a framebuffer attachment.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ColorComponents {
+    #[allow(missing_docs)]
+    pub r: bool,
+    #[allow(missing_docs)]
+    pub g: bool,
+    #[allow(missing_docs)]
+    pub b: bool,
+    #[allow(missing_docs)]
+    pub a: bool,
 }
 
-impl From<BlendFactor> for ash::vk::BlendFactor {
+impl ColorComponents {
+    /// Returns a mask that specifies no components.
     #[inline]
-    fn from(val: BlendFactor) -> Self {
-        Self::from_raw(val as i32)
+    pub fn none() -> Self {
+        Self {
+            r: false,
+            g: false,
+            b: false,
+            a: false,
+        }
+    }
+
+    /// Returns a mask that specifies all components.
+    #[inline]
+    pub fn all() -> Self {
+        Self {
+            r: true,
+            g: true,
+            b: true,
+            a: true,
+        }
+    }
+}
+
+impl From<ColorComponents> for ash::vk::ColorComponentFlags {
+    fn from(val: ColorComponents) -> Self {
+        let mut result = Self::empty();
+        if val.r {
+            result |= ash::vk::ColorComponentFlags::R;
+        }
+        if val.g {
+            result |= ash::vk::ColorComponentFlags::G;
+        }
+        if val.b {
+            result |= ash::vk::ColorComponentFlags::B;
+        }
+        if val.a {
+            result |= ash::vk::ColorComponentFlags::A;
+        }
+        result
     }
 }
