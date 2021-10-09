@@ -2568,6 +2568,51 @@ impl SyncCommandBufferBuilder {
         self.current_state.depth_write_enable = Some(enable);
     }
 
+    /// Calls `vkCmdSetDiscardRectangle` on the builder.
+    ///
+    /// If the list is empty then the command is automatically ignored.
+    #[inline]
+    pub unsafe fn set_discard_rectangle<I>(&mut self, first_rectangle: u32, rectangles: I)
+    where
+        I: IntoIterator<Item = Scissor>,
+    {
+        struct Cmd {
+            first_rectangle: u32,
+            rectangles: Mutex<SmallVec<[Scissor; 2]>>,
+        }
+
+        impl Command for Cmd {
+            fn name(&self) -> &'static str {
+                "vkCmdSetRectangle"
+            }
+
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
+                out.set_discard_rectangle(
+                    self.first_rectangle,
+                    self.rectangles.lock().unwrap().drain(..),
+                );
+            }
+        }
+
+        let rectangles: SmallVec<[Scissor; 2]> = rectangles.into_iter().collect();
+
+        for (num, rectangle) in rectangles.iter().enumerate() {
+            let num = num as u32 + first_rectangle;
+            self.current_state
+                .discard_rectangle
+                .insert(num, rectangle.clone());
+        }
+
+        self.append_command(
+            Cmd {
+                first_rectangle,
+                rectangles: Mutex::new(rectangles),
+            },
+            &[],
+        )
+        .unwrap();
+    }
+
     /// Calls `vkCmdSetEvent` on the builder.
     #[inline]
     pub unsafe fn set_event(&mut self, event: Arc<Event>, stages: PipelineStages) {

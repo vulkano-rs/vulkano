@@ -87,6 +87,7 @@ pub mod cache;
 pub mod color_blend;
 mod compute_pipeline;
 pub mod depth_stencil;
+pub mod discard_rectangle;
 mod graphics_pipeline;
 pub mod input_assembly;
 pub mod layout;

@@ -2112,6 +2112,53 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         self
     }
 
+    /// Sets the dynamic discard rectangles for future draw calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - Panics if the [`ext_discard_rectangles`](crate::device::Features::ext_discard_rectangles)
+    ///   extension is not enabled on the device.
+    /// - Panics if the currently bound graphics pipeline already contains this state internally.
+    /// - Panics if the highest discard rectangle slot being set is greater than the
+    ///   [`max_discard_rectangle`](crate::device::Properties::max_discard_rectangle) device property.
+    pub fn set_discard_rectangle<I>(&mut self, first_rectangle: u32, rectangles: I) -> &mut Self
+    where
+        I: IntoIterator<Item = Scissor>,
+    {
+        assert!(
+            self.queue_family().supports_graphics(),
+            "the queue family of the command buffer must support graphics operations"
+        );
+        assert!(
+            self.device().enabled_extensions().ext_discard_rectangles,
+            "the ext_discard_rectangles extension must be enabled on the device"
+        );
+        assert!(
+            !self.has_fixed_state(DynamicState::DiscardRectangle),
+            "the currently bound graphics pipeline must not contain this state internally"
+        );
+
+        let rectangles: SmallVec<[Scissor; 2]> = rectangles.into_iter().collect();
+
+        assert!(
+            first_rectangle + rectangles.len() as u32 <= self.device().physical_device().properties().max_discard_rectangles.unwrap(),
+            "the highest discard rectangle slot being set must not be higher than the max_discard_rectangles device property"
+        );
+
+        // TODO: VUID-vkCmdSetDiscardRectangleEXT-viewportScissor2D-04788
+        // If this command is recorded in a secondary command buffer with
+        // VkCommandBufferInheritanceViewportScissorInfoNV::viewportScissor2D enabled, then this
+        // function must not be called
+
+        unsafe {
+            self.inner
+                .set_discard_rectangle(first_rectangle, rectangles);
+        }
+
+        self
+    }
+
     /// Sets the dynamic front face for future draw calls.
     ///
     /// # Panics

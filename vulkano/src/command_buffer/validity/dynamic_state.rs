@@ -91,7 +91,19 @@ pub(in super::super) fn check_dynamic_state_validity(
 
                 // TODO: Check if the depth buffer is writable
             }
-            DynamicState::DiscardRectangle => todo!(),
+            DynamicState::DiscardRectangle => {
+                let discard_rectangle_count =
+                    match pipeline.discard_rectangle_state().unwrap().rectangles {
+                        PartialStateMode::Dynamic(count) => count,
+                        _ => unreachable!(),
+                    };
+
+                for num in 0..discard_rectangle_count {
+                    if current_state.discard_rectangle(num).is_none() {
+                        return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
+                    }
+                }
+            }
             DynamicState::ExclusiveScissor => todo!(),
             DynamicState::FragmentShadingRate => todo!(),
             DynamicState::FrontFace => {

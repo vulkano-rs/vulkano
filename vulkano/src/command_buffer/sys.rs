@@ -1527,6 +1527,44 @@ impl UnsafeCommandBufferBuilder {
             .cmd_set_depth_write_enable_ext(cmd, enable.into());
     }
 
+    /// Calls `vkCmdSetDiscardRectangleEXT` on the builder.
+    ///
+    /// If the list is empty then the command is automatically ignored.
+    #[inline]
+    pub unsafe fn set_discard_rectangle<I>(&mut self, first_rectangle: u32, rectangles: I)
+    where
+        I: IntoIterator<Item = Scissor>,
+    {
+        debug_assert!(self.device().enabled_extensions().ext_discard_rectangles);
+
+        let rectangles = rectangles
+            .into_iter()
+            .map(|v| v.clone().into())
+            .collect::<SmallVec<[_; 2]>>();
+        if rectangles.is_empty() {
+            return;
+        }
+
+        debug_assert!(
+            first_rectangle + rectangles.len() as u32
+                <= self
+                    .device()
+                    .physical_device()
+                    .properties()
+                    .max_discard_rectangles
+                    .unwrap()
+        );
+
+        let fns = self.device().fns();
+        let cmd = self.internal_object();
+        fns.ext_discard_rectangles.cmd_set_discard_rectangle_ext(
+            cmd,
+            first_rectangle,
+            rectangles.len() as u32,
+            rectangles.as_ptr(),
+        );
+    }
+
     /// Calls `vkCmdSetEvent` on the builder.
     #[inline]
     pub unsafe fn set_event(&mut self, event: &Event, stages: PipelineStages) {

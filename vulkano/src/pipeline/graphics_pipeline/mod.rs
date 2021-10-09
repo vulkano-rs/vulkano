@@ -12,6 +12,7 @@ pub use self::creation_error::GraphicsPipelineCreationError;
 use crate::device::{Device, DeviceOwned};
 use crate::pipeline::color_blend::ColorBlendState;
 use crate::pipeline::depth_stencil::DepthStencilState;
+use crate::pipeline::discard_rectangle::DiscardRectangleState;
 use crate::pipeline::input_assembly::InputAssemblyState;
 use crate::pipeline::layout::PipelineLayout;
 use crate::pipeline::multisample::MultisampleState;
@@ -51,6 +52,7 @@ pub struct GraphicsPipeline {
     input_assembly_state: InputAssemblyState,
     tessellation_state: Option<TessellationState>,
     viewport_state: Option<ViewportState>,
+    discard_rectangle_state: Option<DiscardRectangleState>,
     rasterization_state: RasterizationState,
     multisample_state: Option<MultisampleState>,
     depth_stencil_state: Option<DepthStencilState>,
@@ -134,6 +136,12 @@ impl GraphicsPipeline {
     #[inline]
     pub fn viewport_state(&self) -> Option<&ViewportState> {
         self.viewport_state.as_ref()
+    }
+
+    /// Returns the discard rectangle state used to create this pipeline.
+    #[inline]
+    pub fn discard_rectangle_state(&self) -> Option<&DiscardRectangleState> {
+        self.discard_rectangle_state.as_ref()
     }
 
     /// Returns the rasterization state used to create this pipeline.

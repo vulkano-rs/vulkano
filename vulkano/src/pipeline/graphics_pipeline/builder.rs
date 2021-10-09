@@ -19,6 +19,7 @@ use crate::pipeline::color_blend::{
     AttachmentBlend, ColorBlendAttachmentState, ColorBlendState, ColorComponents, LogicOp,
 };
 use crate::pipeline::depth_stencil::DepthStencilState;
+use crate::pipeline::discard_rectangle::DiscardRectangleState;
 use crate::pipeline::graphics_pipeline::{
     GraphicsPipeline, GraphicsPipelineCreationError, Inner as GraphicsPipelineInner,
 };
@@ -59,6 +60,7 @@ pub struct GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, T
     input_assembly_state: InputAssemblyState,
     tessellation_state: TessellationState,
     viewport_state: ViewportState,
+    discard_rectangle_state: DiscardRectangleState,
     rasterization_state: RasterizationState,
     multisample_state: MultisampleState,
     depth_stencil_state: DepthStencilState,
@@ -90,6 +92,9 @@ impl
     /// Builds a new empty builder.
     pub(super) fn new() -> Self {
         GraphicsPipelineBuilder {
+            subpass: None,
+            cache: None,
+
             vertex_shader: None,
             tessellation_shaders: None,
             geometry_shader: None,
@@ -99,13 +104,11 @@ impl
             input_assembly_state: Default::default(),
             tessellation_state: Default::default(),
             viewport_state: Default::default(),
+            discard_rectangle_state: Default::default(),
             rasterization_state: Default::default(),
             multisample_state: Default::default(),
             depth_stencil_state: Default::default(),
             color_blend_state: Default::default(),
-
-            subpass: None,
-            cache: None,
         }
     }
 }
@@ -686,6 +689,7 @@ where
             ..Default::default()
         });
 
+        // Input assembly state
         let input_assembly_state = if self.vertex_shader.is_some() {
             Some(
                 self.input_assembly_state
@@ -695,6 +699,7 @@ where
             None
         };
 
+        // Tessellation state
         let tessellation_state = if self.tessellation_shaders.is_some() {
             Some(self.tessellation_state.to_vulkan(
                 &device,
@@ -705,6 +710,7 @@ where
             None
         };
 
+        // Viewport state
         let (viewport_count, viewports, scissor_count, scissors) = self
             .viewport_state
             .to_vulkan_viewports_scissors(&device, &mut dynamic_state_modes)?;
@@ -717,6 +723,17 @@ where
             &scissors,
         )?);
 
+        // Discard rectangle state
+        let discard_rectangles = self
+            .discard_rectangle_state
+            .to_vulkan_rectangles(&device, &mut dynamic_state_modes)?;
+        let mut discard_rectangle_state = self.discard_rectangle_state.to_vulkan(
+            &device,
+            &mut dynamic_state_modes,
+            &discard_rectangles,
+        )?;
+
+        // Rasterization state
         let mut rasterization_line_state = self
             .rasterization_state
             .to_vulkan_line_state(&device, &mut dynamic_state_modes)?;
@@ -726,9 +743,11 @@ where
             rasterization_line_state.as_mut(),
         )?);
 
+        // Fragment shader state
         let has_fragment_shader_state =
             self.rasterization_state.rasterizer_discard_enable != StateMode::Fixed(true);
 
+        // Multisample state
         let multisample_state = if has_fragment_shader_state {
             Some(
                 self.multisample_state
@@ -738,6 +757,7 @@ where
             None
         };
 
+        // Depth/stencil state
         let depth_stencil_state = if has_fragment_shader_state
             && subpass.subpass_desc().depth_stencil.is_some()
         {
@@ -749,6 +769,7 @@ where
             None
         };
 
+        // Color blend state
         let (color_blend_attachments, color_write_enables) = self
             .color_blend_state
             .to_vulkan_attachments(&device, &mut dynamic_state_modes, &subpass)?;
@@ -820,7 +841,7 @@ where
         }
 
         let pipeline = unsafe {
-            let infos = ash::vk::GraphicsPipelineCreateInfo {
+            let mut create_info = ash::vk::GraphicsPipelineCreateInfo {
                 flags: ash::vk::PipelineCreateFlags::empty(), // TODO: some flags are available but none are critical
                 stage_count: stages.len() as u32,
                 p_stages: stages.as_ptr(),
@@ -868,6 +889,11 @@ where
                 ..Default::default()
             };
 
+            if let Some(discard_rectangle_state) = discard_rectangle_state.as_mut() {
+                discard_rectangle_state.p_next = create_info.p_next;
+                create_info.p_next = discard_rectangle_state as *const _ as *const _;
+            }
+
             let cache_handle = match self.cache.as_ref() {
                 Some(cache) => cache.internal_object(),
                 None => ash::vk::PipelineCache::null(),
@@ -878,7 +904,7 @@ where
                 device.internal_object(),
                 cache_handle,
                 1,
-                &infos,
+                &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
             ))?;
@@ -901,8 +927,8 @@ where
             subpass,
             shaders,
 
-            vertex_input,
-            input_assembly_state: self.input_assembly_state,
+            vertex_input, // Can be None if there's a mesh shader, but we don't support that yet
+            input_assembly_state: self.input_assembly_state, // Can be None if there's a mesh shader, but we don't support that yet
             tessellation_state: if tessellation_state.is_some() {
                 Some(self.tessellation_state)
             } else {
@@ -910,6 +936,11 @@ where
             },
             viewport_state: if viewport_state.is_some() {
                 Some(self.viewport_state)
+            } else {
+                None
+            },
+            discard_rectangle_state: if discard_rectangle_state.is_some() {
+                Some(self.discard_rectangle_state)
             } else {
                 None
             },
@@ -953,6 +984,9 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
         Vss2: SpecializationConstants,
     {
         GraphicsPipelineBuilder {
+            subpass: self.subpass,
+            cache: self.cache,
+
             vertex_shader: Some((shader, specialization_constants)),
             tessellation_shaders: self.tessellation_shaders,
             geometry_shader: self.geometry_shader,
@@ -962,13 +996,11 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             input_assembly_state: self.input_assembly_state,
             tessellation_state: self.tessellation_state,
             viewport_state: self.viewport_state,
+            discard_rectangle_state: self.discard_rectangle_state,
             rasterization_state: self.rasterization_state,
             multisample_state: self.multisample_state,
             depth_stencil_state: self.depth_stencil_state,
             color_blend_state: self.color_blend_state,
-
-            subpass: self.subpass,
-            cache: self.cache,
         }
     }
 
@@ -987,6 +1019,9 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
         Tess2: SpecializationConstants,
     {
         GraphicsPipelineBuilder {
+            subpass: self.subpass,
+            cache: self.cache,
+
             vertex_shader: self.vertex_shader,
             tessellation_shaders: Some(TessellationShaders {
                 tessellation_control_shader: (
@@ -1005,22 +1040,12 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             input_assembly_state: self.input_assembly_state,
             tessellation_state: self.tessellation_state,
             viewport_state: self.viewport_state,
+            discard_rectangle_state: self.discard_rectangle_state,
             rasterization_state: self.rasterization_state,
             multisample_state: self.multisample_state,
             depth_stencil_state: self.depth_stencil_state,
             color_blend_state: self.color_blend_state,
-
-            subpass: self.subpass,
-            cache: self.cache,
         }
-    }
-
-    /// Sets the tessellation shaders stage as disabled. This is the default.
-    #[deprecated(since = "0.27")]
-    #[inline]
-    pub fn tessellation_shaders_disabled(mut self) -> Self {
-        self.tessellation_shaders = None;
-        self
     }
 
     /// Sets the geometry shader to use.
@@ -1035,6 +1060,9 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
         Gss2: SpecializationConstants,
     {
         GraphicsPipelineBuilder {
+            subpass: self.subpass,
+            cache: self.cache,
+
             vertex_shader: self.vertex_shader,
             tessellation_shaders: self.tessellation_shaders,
             geometry_shader: Some((shader, specialization_constants)),
@@ -1044,22 +1072,12 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             input_assembly_state: self.input_assembly_state,
             tessellation_state: self.tessellation_state,
             viewport_state: self.viewport_state,
+            discard_rectangle_state: self.discard_rectangle_state,
             rasterization_state: self.rasterization_state,
             multisample_state: self.multisample_state,
             depth_stencil_state: self.depth_stencil_state,
             color_blend_state: self.color_blend_state,
-
-            subpass: self.subpass,
-            cache: self.cache,
         }
-    }
-
-    /// Sets the geometry shader stage as disabled. This is the default.
-    #[deprecated(since = "0.27")]
-    #[inline]
-    pub fn geometry_shader_disabled(mut self) -> Self {
-        self.geometry_shader = None;
-        self
     }
 
     /// Sets the fragment shader to use.
@@ -1076,6 +1094,9 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
         Fss2: SpecializationConstants,
     {
         GraphicsPipelineBuilder {
+            subpass: self.subpass,
+            cache: self.cache,
+
             vertex_shader: self.vertex_shader,
             tessellation_shaders: self.tessellation_shaders,
             geometry_shader: self.geometry_shader,
@@ -1085,13 +1106,11 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             input_assembly_state: self.input_assembly_state,
             tessellation_state: self.tessellation_state,
             viewport_state: self.viewport_state,
+            discard_rectangle_state: self.discard_rectangle_state,
             rasterization_state: self.rasterization_state,
             multisample_state: self.multisample_state,
             depth_stencil_state: self.depth_stencil_state,
             color_blend_state: self.color_blend_state,
-
-            subpass: self.subpass,
-            cache: self.cache,
         }
     }
 
@@ -1102,6 +1121,9 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
         vertex_definition: T,
     ) -> GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs, T, Vss, Tcss, Tess, Gss, Fss> {
         GraphicsPipelineBuilder {
+            subpass: self.subpass,
+            cache: self.cache,
+
             vertex_shader: self.vertex_shader,
             tessellation_shaders: self.tessellation_shaders,
             geometry_shader: self.geometry_shader,
@@ -1111,13 +1133,11 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             input_assembly_state: self.input_assembly_state,
             tessellation_state: self.tessellation_state,
             viewport_state: self.viewport_state,
+            discard_rectangle_state: self.discard_rectangle_state,
             rasterization_state: self.rasterization_state,
             multisample_state: self.multisample_state,
             depth_stencil_state: self.depth_stencil_state,
             color_blend_state: self.color_blend_state,
-
-            subpass: self.subpass,
-            cache: self.cache,
         }
     }
 
@@ -1150,6 +1170,89 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     #[inline]
     pub fn input_assembly_state(mut self, input_assembly_state: InputAssemblyState) -> Self {
         self.input_assembly_state = input_assembly_state;
+        self
+    }
+
+    /// Sets the tessellation state. This is required if the pipeline contains tessellation shaders,
+    /// and ignored otherwise.
+    ///
+    /// The default value is [`TessellationState::default()`].
+    #[inline]
+    pub fn tessellation_state(mut self, tessellation_state: TessellationState) -> Self {
+        self.tessellation_state = tessellation_state;
+        self
+    }
+
+    /// Sets the viewport state.
+    ///
+    /// The default value is [`ViewportState::default()`].
+    #[inline]
+    pub fn viewport_state(mut self, viewport_state: ViewportState) -> Self {
+        self.viewport_state = viewport_state;
+        self
+    }
+
+    /// Sets the discard rectangle state.
+    ///
+    /// The default value is [`DiscardRectangleState::default()`].
+    #[inline]
+    pub fn discard_rectangle_state(
+        mut self,
+        discard_rectangle_state: DiscardRectangleState,
+    ) -> Self {
+        self.discard_rectangle_state = discard_rectangle_state;
+        self
+    }
+
+    /// Sets the rasterization state.
+    ///
+    /// The default value is [`RasterizationState::default()`].
+    #[inline]
+    pub fn rasterization_state(mut self, rasterization_state: RasterizationState) -> Self {
+        self.rasterization_state = rasterization_state;
+        self
+    }
+
+    /// Sets the multisample state.
+    ///
+    /// The default value is [`MultisampleState::default()`].
+    #[inline]
+    pub fn multisample_state(mut self, multisample_state: MultisampleState) -> Self {
+        self.multisample_state = multisample_state;
+        self
+    }
+
+    /// Sets the depth/stencil state.
+    ///
+    /// The default value is [`DepthStencilState::default()`].
+    #[inline]
+    pub fn depth_stencil_state(mut self, depth_stencil_state: DepthStencilState) -> Self {
+        self.depth_stencil_state = depth_stencil_state;
+        self
+    }
+
+    /// Sets the color blend state.
+    ///
+    /// The default value is [`ColorBlendState::default()`].
+    #[inline]
+    pub fn color_blend_state(mut self, color_blend_state: ColorBlendState) -> Self {
+        self.color_blend_state = color_blend_state;
+        self
+    }
+
+    /// Sets the tessellation shaders stage as disabled. This is the default.
+    #[deprecated(since = "0.27")]
+    #[inline]
+    pub fn tessellation_shaders_disabled(mut self) -> Self {
+        self.tessellation_shaders = None;
+        self
+    }
+
+    /// Sets the geometry shader stage as disabled. This is the default.
+    #[deprecated(since = "0.27")]
+    #[inline]
+    pub fn geometry_shader_disabled(mut self) -> Self {
+        self.geometry_shader = None;
         self
     }
 
@@ -1280,25 +1383,6 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
         self.primitive_topology(PrimitiveTopology::PatchList)
     }
 
-    /// Sets the tessellation state. This is required if the pipeline contains tessellation shaders,
-    /// and ignored otherwise.
-    ///
-    /// The default value is [`TessellationState::default()`].
-    #[inline]
-    pub fn tessellation_state(mut self, tessellation_state: TessellationState) -> Self {
-        self.tessellation_state = tessellation_state;
-        self
-    }
-
-    /// Sets the viewport state.
-    ///
-    /// The default value is [`ViewportState::default()`].
-    #[inline]
-    pub fn viewport_state(mut self, viewport_state: ViewportState) -> Self {
-        self.viewport_state = viewport_state;
-        self
-    }
-
     /// Sets the viewports to some value, and the scissor boxes to boxes that always cover the
     /// whole viewport.
     #[deprecated(since = "0.27", note = "Use `viewport_state` instead")]
@@ -1375,15 +1459,6 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             viewport_count_dynamic: false,
             scissor_count_dynamic: false,
         };
-        self
-    }
-
-    /// Sets the rasterization state.
-    ///
-    /// The default value is [`RasterizationState::default()`].
-    #[inline]
-    pub fn rasterization_state(mut self, rasterization_state: RasterizationState) -> Self {
-        self.rasterization_state = rasterization_state;
         self
     }
 
@@ -1497,15 +1572,6 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
         self
     }
 
-    /// Sets the multisample state.
-    ///
-    /// The default value is [`MultisampleState::default()`].
-    #[inline]
-    pub fn multisample_state(mut self, multisample_state: MultisampleState) -> Self {
-        self.multisample_state = multisample_state;
-        self
-    }
-
     /// Disables sample shading. The fragment shader will only be run once per fragment (ie. per
     /// pixel) and not once by sample. The output will then be copied in all of the covered
     /// samples.
@@ -1580,15 +1646,6 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     }
 
     /// Sets the depth/stencil state.
-    ///
-    /// The default value is [`DepthStencilState::default()`].
-    #[inline]
-    pub fn depth_stencil_state(mut self, depth_stencil_state: DepthStencilState) -> Self {
-        self.depth_stencil_state = depth_stencil_state;
-        self
-    }
-
-    /// Sets the depth/stencil state.
     #[deprecated(since = "0.27", note = "Use `depth_stencil_state` instead")]
     #[inline]
     pub fn depth_stencil(self, depth_stencil_state: DepthStencilState) -> Self {
@@ -1626,15 +1683,6 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             .depth
             .get_or_insert(Default::default());
         depth_state.write_enable = StateMode::Fixed(write);
-        self
-    }
-
-    /// Sets the color blend state.
-    ///
-    /// The default value is [`ColorBlendState::default()`].
-    #[inline]
-    pub fn color_blend_state(mut self, color_blend_state: ColorBlendState) -> Self {
-        self.color_blend_state = color_blend_state;
         self
     }
 
@@ -1735,6 +1783,9 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     #[inline]
     pub fn render_pass(self, subpass: Subpass) -> Self {
         GraphicsPipelineBuilder {
+            subpass: Some(subpass),
+            cache: self.cache,
+
             vertex_shader: self.vertex_shader,
             tessellation_shaders: self.tessellation_shaders,
             geometry_shader: self.geometry_shader,
@@ -1749,8 +1800,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             depth_stencil_state: self.depth_stencil_state,
             color_blend_state: self.color_blend_state,
 
-            subpass: Some(subpass),
-            cache: self.cache,
+            discard_rectangle_state: self.discard_rectangle_state,
         }
     }
 
@@ -1778,6 +1828,9 @@ where
 {
     fn clone(&self) -> Self {
         GraphicsPipelineBuilder {
+            subpass: self.subpass.clone(),
+            cache: self.cache.clone(),
+
             vertex_shader: self.vertex_shader.clone(),
             tessellation_shaders: self.tessellation_shaders.clone(),
             geometry_shader: self.geometry_shader.clone(),
@@ -1792,8 +1845,7 @@ where
             depth_stencil_state: self.depth_stencil_state.clone(),
             color_blend_state: self.color_blend_state.clone(),
 
-            subpass: self.subpass.clone(),
-            cache: self.cache.clone(),
+            discard_rectangle_state: self.discard_rectangle_state.clone(),
         }
     }
 }

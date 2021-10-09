@@ -57,6 +57,14 @@ pub enum GraphicsPipelineCreationError {
     /// The vertex definition is not compatible with the input of the vertex shader.
     IncompatibleVertexDefinition(IncompatibleVertexDefinitionError),
 
+    /// The maximum number of discard rectangles has been exceeded.
+    MaxDiscardRectanglesExceeded {
+        /// Maximum allowed value.
+        max: u32,
+        /// Value that was passed.
+        obtained: u32,
+    },
+
     /// The maximum stride value for vertex input (ie. the distance between two vertex elements)
     /// has been exceeded.
     MaxVertexInputBindingStrideExceeded {
@@ -247,6 +255,9 @@ impl fmt::Display for GraphicsPipelineCreationError {
             }
             GraphicsPipelineCreationError::IncompatibleVertexDefinition(_) => {
                 write!(fmt, "the vertex definition is not compatible with the input of the vertex shader")
+            }
+            GraphicsPipelineCreationError::MaxDiscardRectanglesExceeded { .. } => {
+                write!(fmt, "the maximum number of discard rectangles has been exceeded")
             }
             GraphicsPipelineCreationError::MaxVertexInputBindingStrideExceeded { .. } => {
                 write!(fmt, "the maximum stride value for vertex input (ie. the distance between two vertex elements) has been exceeded")

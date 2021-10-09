@@ -742,6 +742,7 @@ struct CurrentState {
     depth_compare_op: Option<CompareOp>,
     depth_test_enable: Option<bool>,
     depth_write_enable: Option<bool>,
+    discard_rectangle: FnvHashMap<u32, Scissor>,
     front_face: Option<FrontFace>,
     line_stipple: Option<LineStipple>,
     line_width: Option<f32>,
@@ -775,7 +776,7 @@ impl CurrentState {
                 DynamicState::DepthCompareOp => self.depth_compare_op = None,
                 DynamicState::DepthTestEnable => self.depth_test_enable = None,
                 DynamicState::DepthWriteEnable => self.depth_write_enable = None,
-                DynamicState::DiscardRectangle => (), // TODO:
+                DynamicState::DiscardRectangle => self.discard_rectangle.clear(),
                 DynamicState::ExclusiveScissor => (), // TODO;
                 DynamicState::FragmentShadingRate => (), // TODO:
                 DynamicState::FrontFace => self.front_face = None,
@@ -963,6 +964,12 @@ impl<'a> CommandBufferState<'a> {
     #[inline]
     pub fn depth_write_enable(&self) -> Option<bool> {
         self.current_state.depth_write_enable
+    }
+
+    /// Returns the current discard rectangles, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn discard_rectangle(&self, num: u32) -> Option<&'a Scissor> {
+        self.current_state.discard_rectangle.get(&num)
     }
 
     /// Returns the current front face, or `None` if nothing has been set yet.
