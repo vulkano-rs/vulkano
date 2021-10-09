@@ -12,7 +12,7 @@ use crate::pipeline::input_assembly::PrimitiveTopology;
 use crate::pipeline::shader::ShaderStage;
 use crate::pipeline::DynamicState;
 use crate::pipeline::GraphicsPipeline;
-use crate::pipeline::StateMode;
+use crate::pipeline::PartialStateMode;
 use std::error;
 use std::fmt;
 
@@ -155,8 +155,8 @@ pub(in super::super) fn check_dynamic_state_validity(
 
                 if primitive_restart_enable {
                     let topology = match pipeline.input_assembly_state().topology {
-                        StateMode::Fixed(topology) => topology,
-                        StateMode::Dynamic => {
+                        PartialStateMode::Fixed(topology) => topology,
+                        PartialStateMode::Dynamic(_) => {
                             if let Some(topology) = current_state.primitive_topology() {
                                 topology
                             } else {
@@ -218,6 +218,18 @@ pub(in super::super) fn check_dynamic_state_validity(
                             reason: "the graphics pipeline doesn't include tessellation shaders",
                         });
                     }
+                }
+
+                let topology_class = match pipeline.input_assembly_state().topology {
+                    PartialStateMode::Dynamic(topology_class) => topology_class,
+                    _ => unreachable!(),
+                };
+
+                if topology.class() != topology_class {
+                    return Err(CheckDynamicStateValidityError::InvalidPrimitiveTopology {
+                        topology,
+                        reason: "the topology class does not match the class the pipeline was created for",
+                    });
                 }
 
                 // TODO: check that the topology matches the geometry shader
@@ -375,7 +387,7 @@ pub enum CheckDynamicStateValidityError {
         reason: &'static str,
     },
 
-    /// A dynamic primitive topology was set, that is not compatible with the pipeline.
+    /// The provided dynamic primitive topology is not compatible with the pipeline.
     InvalidPrimitiveTopology {
         topology: PrimitiveTopology,
         reason: &'static str,

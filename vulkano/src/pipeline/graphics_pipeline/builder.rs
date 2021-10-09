@@ -24,7 +24,9 @@ use crate::pipeline::depth_stencil::DepthStencilState;
 use crate::pipeline::graphics_pipeline::{
     GraphicsPipeline, GraphicsPipelineCreationError, Inner as GraphicsPipelineInner,
 };
-use crate::pipeline::input_assembly::{InputAssemblyState, PrimitiveTopology};
+use crate::pipeline::input_assembly::{
+    InputAssemblyState, PrimitiveTopology, PrimitiveTopologyClass,
+};
 use crate::pipeline::layout::{PipelineLayout, PipelineLayoutCreationError, PipelineLayoutPcRange};
 use crate::pipeline::multisample::MultisampleState;
 use crate::pipeline::rasterization::{CullMode, FrontFace, PolygonMode, RasterizationState};
@@ -35,7 +37,7 @@ use crate::pipeline::shader::{
 use crate::pipeline::tessellation::TessellationState;
 use crate::pipeline::vertex::{BuffersDefinition, Vertex, VertexDefinition, VertexInputRate};
 use crate::pipeline::viewport::{Scissor, Viewport, ViewportState};
-use crate::pipeline::{DynamicState, StateMode};
+use crate::pipeline::{DynamicState, PartialStateMode, StateMode};
 use crate::render_pass::Subpass;
 use crate::VulkanObject;
 use fnv::FnvHashMap;
@@ -449,7 +451,7 @@ where
                     _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
                 };
 
-                if let StateMode::Fixed(topology) = self.input_assembly_state.topology {
+                if let PartialStateMode::Fixed(topology) = self.input_assembly_state.topology {
                     if !shader_execution_mode.matches(topology) {
                         return Err(
                             GraphicsPipelineCreationError::TopologyNotMatchingGeometryShader,
@@ -690,7 +692,7 @@ where
         // Input assembly state
         let input_assembly_state = if self.vertex_shader.is_some() {
             let topology = match self.input_assembly_state.topology {
-                StateMode::Fixed(topology) => {
+                PartialStateMode::Fixed(topology) => {
                     match topology {
                         PrimitiveTopology::LineListWithAdjacency
                         | PrimitiveTopology::LineStripWithAdjacency
@@ -715,7 +717,7 @@ where
                     }
                     topology.into()
                 }
-                StateMode::Dynamic => {
+                PartialStateMode::Dynamic(topology_class) => {
                     if !device.enabled_features().extended_dynamic_state {
                         return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
                             feature: "extended_dynamic_state",
@@ -723,7 +725,7 @@ where
                         });
                     }
                     dynamic_state_modes.insert(DynamicState::PrimitiveTopology, true);
-                    Default::default()
+                    topology_class.example().into()
                 }
             };
 
@@ -732,7 +734,7 @@ where
                 StateMode::Fixed(primitive_restart_enable) => {
                     if primitive_restart_enable {
                         match self.input_assembly_state.topology {
-                            StateMode::Fixed(
+                            PartialStateMode::Fixed(
                                 PrimitiveTopology::PointList
                                 | PrimitiveTopology::LineList
                                 | PrimitiveTopology::TriangleList
@@ -746,7 +748,7 @@ where
                                     });
                                 }
                             }
-                            StateMode::Fixed(PrimitiveTopology::PatchList) => {
+                            PartialStateMode::Fixed(PrimitiveTopology::PatchList) => {
                                 if !device
                                     .enabled_features()
                                     .primitive_topology_patch_list_restart
@@ -789,7 +791,8 @@ where
         let tessellation_state = if self.tessellation_shaders.is_some() {
             if !matches!(
                 self.input_assembly_state.topology,
-                StateMode::Dynamic | StateMode::Fixed(PrimitiveTopology::PatchList)
+                PartialStateMode::Dynamic(PrimitiveTopologyClass::Patch)
+                    | PartialStateMode::Fixed(PrimitiveTopology::PatchList)
             ) {
                 return Err(GraphicsPipelineCreationError::InvalidPrimitiveTopology);
             }
@@ -2082,7 +2085,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn primitive_topology(mut self, topology: PrimitiveTopology) -> Self {
-        self.input_assembly_state.topology = StateMode::Fixed(topology);
+        self.input_assembly_state.topology = PartialStateMode::Fixed(topology);
         self
     }
 

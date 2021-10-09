@@ -11,7 +11,7 @@
 //!
 //! The input assembly is the stage where lists of vertices are turned into primitives.
 
-use crate::pipeline::StateMode;
+use crate::pipeline::{PartialStateMode, StateMode};
 use crate::DeviceSize;
 
 /// The state in a graphics pipeline describing how the input assembly stage should behave.
@@ -24,7 +24,7 @@ pub struct InputAssemblyState {
     /// If set to `Dynamic`, the
     /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
     /// enabled on the device.
-    pub topology: StateMode<PrimitiveTopology>,
+    pub topology: PartialStateMode<PrimitiveTopology, PrimitiveTopologyClass>,
 
     /// If true, then when drawing with an index buffer, the special index value consisting of the
     /// maximum unsigned value (`0xff`, `0xffff` or `0xffffffff`) will tell the GPU that it is the
@@ -46,7 +46,7 @@ impl InputAssemblyState {
     #[inline]
     pub fn new() -> Self {
         Self {
-            topology: StateMode::Fixed(PrimitiveTopology::TriangleList),
+            topology: PartialStateMode::Fixed(PrimitiveTopology::TriangleList),
             primitive_restart_enable: StateMode::Fixed(false),
         }
     }
@@ -54,14 +54,14 @@ impl InputAssemblyState {
     /// Sets the primitive topology.
     #[inline]
     pub fn topology(mut self, topology: PrimitiveTopology) -> Self {
-        self.topology = StateMode::Fixed(topology);
+        self.topology = PartialStateMode::Fixed(topology);
         self
     }
 
     /// Sets the primitive topology to dynamic.
     #[inline]
-    pub fn topology_dynamic(mut self) -> Self {
-        self.topology = StateMode::Dynamic;
+    pub fn topology_dynamic(mut self, topology_class: PrimitiveTopologyClass) -> Self {
+        self.topology = PartialStateMode::Dynamic(topology_class);
         self
     }
 
@@ -147,16 +147,43 @@ impl From<PrimitiveTopology> for ash::vk::PrimitiveTopology {
 }
 
 impl PrimitiveTopology {
-    /// Returns true if this primitive topology supports using primitives restart.
+    /// Returns the topology class of this topology.
     #[inline]
-    pub fn supports_primitive_restart(&self) -> bool {
-        match *self {
-            PrimitiveTopology::LineStrip => true,
-            PrimitiveTopology::TriangleStrip => true,
-            PrimitiveTopology::TriangleFan => true,
-            PrimitiveTopology::LineStripWithAdjacency => true,
-            PrimitiveTopology::TriangleStripWithAdjacency => true,
-            _ => false,
+    pub fn class(&self) -> PrimitiveTopologyClass {
+        match self {
+            Self::PointList => PrimitiveTopologyClass::Point,
+            Self::LineList
+            | Self::LineStrip
+            | Self::LineListWithAdjacency
+            | Self::LineStripWithAdjacency => PrimitiveTopologyClass::Line,
+            Self::TriangleList
+            | Self::TriangleStrip
+            | Self::TriangleFan
+            | Self::TriangleListWithAdjacency
+            | Self::TriangleStripWithAdjacency => PrimitiveTopologyClass::Triangle,
+            Self::PatchList => PrimitiveTopologyClass::Patch,
+        }
+    }
+}
+
+/// Describes the shape of a primitive topology.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum PrimitiveTopologyClass {
+    Point,
+    Line,
+    Triangle,
+    Patch,
+}
+
+impl PrimitiveTopologyClass {
+    /// Returns a representative example of this topology class.
+    #[inline]
+    pub(crate) fn example(&self) -> PrimitiveTopology {
+        match self {
+            Self::Point => PrimitiveTopology::PointList,
+            Self::Line => PrimitiveTopology::LineList,
+            Self::Triangle => PrimitiveTopology::TriangleList,
+            Self::Patch => PrimitiveTopology::PatchList,
         }
     }
 }

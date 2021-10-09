@@ -165,10 +165,10 @@ impl From<DynamicState> for ash::vk::DynamicState {
 
 /// Specifies how a dynamic state is handled by a graphics pipeline.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum StateMode<T> {
+pub enum StateMode<F> {
     /// The pipeline has a fixed value for this state. Previously set dynamic state will be lost
     /// when binding it, and will have to be re-set after binding a pipeline that uses it.
-    Fixed(T),
+    Fixed(F),
     /// The pipeline expects a dynamic value to be set by a command buffer. Previously set dynamic
     /// state is not disturbed when binding it.
     Dynamic,
@@ -192,4 +192,12 @@ impl<T> From<StateMode<T>> for Option<T> {
             StateMode::Dynamic => None,
         }
     }
+}
+
+/// A variant of `StateMode` that is used for cases where some value is still needed when the state
+/// is dynamic.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PartialStateMode<F, D> {
+    Fixed(F),
+    Dynamic(D),
 }

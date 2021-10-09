@@ -77,7 +77,7 @@ impl DepthStencilState {
 }
 
 impl Default for DepthStencilState {
-    /// Returns [`DepthStencilState::new()`].
+    /// Returns [`DepthStencilState::disabled()`].
     #[inline]
     fn default() -> Self {
         DepthStencilState::disabled()
