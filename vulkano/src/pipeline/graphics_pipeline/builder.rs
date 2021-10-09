@@ -396,7 +396,10 @@ where
                 // FIXME: must check that the control shader and evaluation shader are compatible
 
                 if !device.enabled_features().tessellation_shader {
-                    return Err(GraphicsPipelineCreationError::TessellationShaderFeatureNotEnabled);
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "tessellation_shader",
+                        reason: "a tessellation shader was provided",
+                    });
                 }
 
                 match tess.tessellation_control_shader.0.ty() {
@@ -442,7 +445,10 @@ where
 
             if let Some(ref geometry_shader) = self.geometry_shader {
                 if !device.enabled_features().geometry_shader {
-                    return Err(GraphicsPipelineCreationError::GeometryShaderFeatureNotEnabled);
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "geometry_shader",
+                        reason: "a geometry shader was provided",
+                    });
                 }
 
                 let shader_execution_mode = match geometry_shader.0.ty() {
@@ -555,7 +561,10 @@ where
                             .enabled_features()
                             .vertex_attribute_instance_rate_divisor
                         {
-                            return Err(GraphicsPipelineCreationError::VertexAttributeInstanceRateDivisorFeatureNotEnabled);
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "vertex_attribute_instance_rate_divisor",
+                                reason: "VertexInputRate::Instance::divisor was not 1",
+                            });
                         }
 
                         if divisor == 0
@@ -563,7 +572,10 @@ where
                                 .enabled_features()
                                 .vertex_attribute_instance_rate_zero_divisor
                         {
-                            return Err(GraphicsPipelineCreationError::VertexAttributeInstanceRateZeroDivisorFeatureNotEnabled);
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "vertex_attribute_instance_rate_zero_divisor",
+                                reason: "VertexInputRate::Instance::divisor was 0",
+                            });
                         }
 
                         if divisor

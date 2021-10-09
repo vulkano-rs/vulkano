@@ -20,9 +20,6 @@ use std::u32;
 /// Error that can happen when creating a graphics pipeline.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GraphicsPipelineCreationError {
-    /// Not enough memory.
-    OomError(OomError),
-
     /// A device extension that was required for a particular setting on the graphics pipeline was not enabled.
     ExtensionNotEnabled {
         extension: &'static str,
@@ -35,11 +32,9 @@ pub enum GraphicsPipelineCreationError {
         reason: &'static str,
     },
 
-    /// The [`strict_lines`](crate::device::Properties::strict_lines) device property was `false`.
-    StrictLinesNotSupported,
-
-    /// Error while creating the pipeline layout object.
-    PipelineLayoutCreationError(PipelineLayoutCreationError),
+    /// The output of the fragment shader is not compatible with what the render pass subpass
+    /// expects.
+    FragmentShaderRenderPassIncompatible,
 
     /// The pipeline layout is not compatible with what the shaders expect.
     IncompatiblePipelineLayout(PipelineLayoutSupersetError),
@@ -47,18 +42,53 @@ pub enum GraphicsPipelineCreationError {
     /// The provided specialization constants are not compatible with what the shader expects.
     IncompatibleSpecializationConstants,
 
-    /// The output interface of one shader and the input interface of the next shader do not match.
-    ShaderStagesMismatch(ShaderInterfaceMismatchError),
-
-    /// The output of the fragment shader is not compatible with what the render pass subpass
-    /// expects.
-    FragmentShaderRenderPassIncompatible,
-
     /// The vertex definition is not compatible with the input of the vertex shader.
     IncompatibleVertexDefinition(IncompatibleVertexDefinitionError),
 
+    /// Tried to use a patch list without a tessellation shader, or a non-patch-list with a
+    /// tessellation shader.
+    InvalidPrimitiveTopology,
+
+    /// `patch_control_points` was not greater than 0 and less than or equal to the `max_tessellation_patch_size` limit.
+    InvalidNumPatchControlPoints,
+
     /// The maximum number of discard rectangles has been exceeded.
     MaxDiscardRectanglesExceeded {
+        /// Maximum allowed value.
+        max: u32,
+        /// Value that was passed.
+        obtained: u32,
+    },
+
+    /// The maximum value for the instance rate divisor has been exceeded.
+    MaxVertexAttribDivisorExceeded {
+        /// Index of the faulty binding.
+        binding: u32,
+        /// Maximum allowed value.
+        max: u32,
+        /// Value that was passed.
+        obtained: u32,
+    },
+
+    /// The maximum number of vertex attributes has been exceeded.
+    MaxVertexInputAttributesExceeded {
+        /// Maximum allowed value.
+        max: u32,
+        /// Value that was passed.
+        obtained: usize,
+    },
+
+    /// The maximum offset for a vertex attribute has been exceeded. This means that your vertex
+    /// struct is too large.
+    MaxVertexInputAttributeOffsetExceeded {
+        /// Maximum allowed value.
+        max: u32,
+        /// Value that was passed.
+        obtained: u32,
+    },
+
+    /// The maximum number of vertex sources has been exceeded.
+    MaxVertexInputBindingsExceeded {
         /// Maximum allowed value.
         max: u32,
         /// Value that was passed.
@@ -76,52 +106,6 @@ pub enum GraphicsPipelineCreationError {
         obtained: u32,
     },
 
-    /// The maximum number of vertex sources has been exceeded.
-    MaxVertexInputBindingsExceeded {
-        /// Maximum allowed value.
-        max: u32,
-        /// Value that was passed.
-        obtained: u32,
-    },
-
-    /// The maximum offset for a vertex attribute has been exceeded. This means that your vertex
-    /// struct is too large.
-    MaxVertexInputAttributeOffsetExceeded {
-        /// Maximum allowed value.
-        max: u32,
-        /// Value that was passed.
-        obtained: u32,
-    },
-
-    /// The maximum number of vertex attributes has been exceeded.
-    MaxVertexInputAttributesExceeded {
-        /// Maximum allowed value.
-        max: u32,
-        /// Value that was passed.
-        obtained: usize,
-    },
-
-    /// The `vertex_attribute_instance_rate_divisor` feature must be enabled in order to use
-    /// instance rate divisors.
-    VertexAttributeInstanceRateDivisorFeatureNotEnabled,
-
-    /// The `vertex_attribute_instance_rate_zero_divisor` feature must be enabled in order to use
-    /// an instance rate divisor of zero.
-    VertexAttributeInstanceRateZeroDivisorFeatureNotEnabled,
-
-    /// The maximum value for the instance rate divisor has been exceeded.
-    MaxVertexAttribDivisorExceeded {
-        /// Index of the faulty binding.
-        binding: u32,
-        /// Maximum allowed value.
-        max: u32,
-        /// Value that was passed.
-        obtained: u32,
-    },
-
-    /// The `multi_viewport` feature must be enabled in order to use multiple viewports at once.
-    MultiViewportFeatureNotEnabled,
-
     /// The maximum number of viewports has been exceeded.
     MaxViewportsExceeded {
         /// Maximum allowed value.
@@ -133,48 +117,15 @@ pub enum GraphicsPipelineCreationError {
     /// The maximum dimensions of viewports has been exceeded.
     MaxViewportDimensionsExceeded,
 
-    /// The minimum or maximum bounds of viewports have been exceeded.
-    ViewportBoundsExceeded,
-
-    /// The `wide_lines` feature must be enabled in order to use a line width greater than 1.0.
-    WideLinesFeatureNotEnabled,
-
-    /// The `depth_clamp` feature must be enabled in order to use depth clamping.
-    DepthClampFeatureNotEnabled,
-
-    /// The `depth_bias_clamp` feature must be enabled in order to use a depth bias clamp different
-    /// from 0.0.
-    DepthBiasClampFeatureNotEnabled,
-
-    /// The `fill_mode_non_solid` feature must be enabled in order to use a polygon mode different
-    /// from `Fill`.
-    FillModeNonSolidFeatureNotEnabled,
-
-    /// The `depth_bounds` feature must be enabled in order to use depth bounds testing.
-    DepthBoundsFeatureNotEnabled,
-
-    /// The requested stencil test is invalid.
-    WrongStencilState,
-
-    /// The primitives topology does not match what the geometry shader expects.
-    TopologyNotMatchingGeometryShader,
-
-    /// The `geometry_shader` feature must be enabled in order to use geometry shaders.
-    GeometryShaderFeatureNotEnabled,
-
-    /// The `tessellation_shader` feature must be enabled in order to use tessellation shaders.
-    TessellationShaderFeatureNotEnabled,
-
     /// The number of attachments specified in the blending does not match the number of
     /// attachments in the subpass.
     MismatchBlendingAttachmentsCount,
 
-    /// The `independent_blend` feature must be enabled in order to use different blending
-    /// operations per attachment.
-    IndependentBlendFeatureNotEnabled,
+    /// The device doesn't support using the `multiview´ feature with geometry shaders.
+    MultiviewGeometryShaderNotSupported,
 
-    /// The `logic_op` feature must be enabled in order to use logic operations.
-    LogicOpFeatureNotEnabled,
+    /// The device doesn't support using the `multiview´ feature with tessellation shaders.
+    MultiviewTessellationShaderNotSupported,
 
     /// The depth test requires a depth attachment but render pass has no depth attachment, or
     /// depth writing is enabled and the depth attachment is read-only.
@@ -184,29 +135,31 @@ pub enum GraphicsPipelineCreationError {
     /// stencil writing is enabled and the stencil attachment is read-only.
     NoStencilAttachment,
 
-    /// Tried to use a patch list without a tessellation shader, or a non-patch-list with a
-    /// tessellation shader.
-    InvalidPrimitiveTopology,
+    /// Not enough memory.
+    OomError(OomError),
 
-    /// `patch_control_points` was not greater than 0 and less than or equal to the `max_tessellation_patch_size` limit.
-    InvalidNumPatchControlPoints,
+    /// Error while creating the pipeline layout object.
+    PipelineLayoutCreationError(PipelineLayoutCreationError),
+
+    /// The output interface of one shader and the input interface of the next shader do not match.
+    ShaderStagesMismatch(ShaderInterfaceMismatchError),
+
+    /// The [`strict_lines`](crate::device::Properties::strict_lines) device property was `false`.
+    StrictLinesNotSupported,
+
+    /// The primitives topology does not match what the geometry shader expects.
+    TopologyNotMatchingGeometryShader,
+
+    /// The minimum or maximum bounds of viewports have been exceeded.
+    ViewportBoundsExceeded,
 
     /// The wrong type of shader has been passed.
     ///
     /// For example you passed a vertex shader as the fragment shader.
     WrongShaderType,
 
-    /// The `sample_rate_shading` feature must be enabled in order to use sample shading.
-    SampleRateShadingFeatureNotEnabled,
-
-    /// The `alpha_to_one` feature must be enabled in order to use alpha-to-one.
-    AlphaToOneFeatureNotEnabled,
-
-    /// The device doesn't support using the `multiview´ feature with geometry shaders.
-    MultiviewGeometryShaderNotSupported,
-
-    /// The device doesn't support using the `multiview´ feature with tessellation shaders.
-    MultiviewTessellationShaderNotSupported,
+    /// The requested stencil test is invalid.
+    WrongStencilState,
 }
 
 impl error::Error for GraphicsPipelineCreationError {
@@ -228,111 +181,33 @@ impl fmt::Display for GraphicsPipelineCreationError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match *self {
-            GraphicsPipelineCreationError::OomError(_) => write!(fmt, "not enough memory available"),
             GraphicsPipelineCreationError::ExtensionNotEnabled { extension, reason } => {
-                write!(fmt, "the extension {} must be enabled: {}", extension, reason)
+                write!(
+                    fmt,
+                    "the extension {} must be enabled: {}",
+                    extension, reason
+                )
             }
             GraphicsPipelineCreationError::FeatureNotEnabled { feature, reason } => {
                 write!(fmt, "the feature {} must be enabled: {}", feature, reason)
             }
-            GraphicsPipelineCreationError::ShaderStagesMismatch(_) => {
-                write!(fmt, "the output interface of one shader and the input interface of the next shader do not match")
-            }
-            GraphicsPipelineCreationError::StrictLinesNotSupported => {
-                write!(fmt, "the strict_lines device property was false")
-            }
-            GraphicsPipelineCreationError::PipelineLayoutCreationError(_) => {
-                write!(fmt, "error while creating the pipeline layout object")
+            GraphicsPipelineCreationError::FragmentShaderRenderPassIncompatible => {
+                write!(fmt, "the output of the fragment shader is not compatible with what the render pass subpass expects")
             }
             GraphicsPipelineCreationError::IncompatiblePipelineLayout(_) => {
-                write!(fmt, "the pipeline layout is not compatible with what the shaders expect")
+                write!(
+                    fmt,
+                    "the pipeline layout is not compatible with what the shaders expect"
+                )
             }
             GraphicsPipelineCreationError::IncompatibleSpecializationConstants => {
                 write!(fmt, "the provided specialization constants are not compatible with what the shader expects")
             }
-            GraphicsPipelineCreationError::FragmentShaderRenderPassIncompatible => {
-                write!(fmt, "the output of the fragment shader is not compatible with what the render pass subpass expects")
-            }
             GraphicsPipelineCreationError::IncompatibleVertexDefinition(_) => {
-                write!(fmt, "the vertex definition is not compatible with the input of the vertex shader")
-            }
-            GraphicsPipelineCreationError::MaxDiscardRectanglesExceeded { .. } => {
-                write!(fmt, "the maximum number of discard rectangles has been exceeded")
-            }
-            GraphicsPipelineCreationError::MaxVertexInputBindingStrideExceeded { .. } => {
-                write!(fmt, "the maximum stride value for vertex input (ie. the distance between two vertex elements) has been exceeded")
-            }
-            GraphicsPipelineCreationError::MaxVertexInputBindingsExceeded { .. } => {
-                write!(fmt, "the maximum number of vertex sources has been exceeded")
-            }
-            GraphicsPipelineCreationError::MaxVertexInputAttributeOffsetExceeded { .. } => {
-                write!(fmt, "the maximum offset for a vertex attribute has been exceeded")
-            }
-            GraphicsPipelineCreationError::MaxVertexInputAttributesExceeded { .. } => {
-                write!(fmt, "the maximum number of vertex attributes has been exceeded")
-            }
-            GraphicsPipelineCreationError::VertexAttributeInstanceRateDivisorFeatureNotEnabled => {
-                write!(fmt, "the `vertex_attribute_instance_rate_divisor` feature must be enabled in order to use instance rate divisors")
-            }
-            GraphicsPipelineCreationError::VertexAttributeInstanceRateZeroDivisorFeatureNotEnabled => {
-                write!(fmt, "the `vertex_attribute_instance_rate_zero_divisor` feature must be enabled in order to use an instance rate divisor of zero")
-            }
-            GraphicsPipelineCreationError::MaxVertexAttribDivisorExceeded { .. } => {
-                write!(fmt, "the maximum value for the instance rate divisor has been exceeded")
-            }
-            GraphicsPipelineCreationError::MultiViewportFeatureNotEnabled => {
-                write!(fmt, "the `multi_viewport` feature must be enabled in order to use multiple viewports at once")
-            }
-            GraphicsPipelineCreationError::MaxViewportsExceeded { .. } => {
-                write!(fmt, "the maximum number of viewports has been exceeded")
-            }
-            GraphicsPipelineCreationError::MaxViewportDimensionsExceeded => {
-                write!(fmt, "the maximum dimensions of viewports has been exceeded")
-            }
-            GraphicsPipelineCreationError::ViewportBoundsExceeded => {
-                write!(fmt, "the minimum or maximum bounds of viewports have been exceeded")
-            }
-            GraphicsPipelineCreationError::WideLinesFeatureNotEnabled => {
-                write!(fmt, "the `wide_lines` feature must be enabled in order to use a line width greater than 1.0")
-            }
-            GraphicsPipelineCreationError::DepthClampFeatureNotEnabled => {
-                write!(fmt, "the `depth_clamp` feature must be enabled in order to use depth clamping")
-            }
-            GraphicsPipelineCreationError::DepthBiasClampFeatureNotEnabled => {
-                write!(fmt, "the `depth_bias_clamp` feature must be enabled in order to use a depth bias clamp different from 0.0.")
-            }
-            GraphicsPipelineCreationError::FillModeNonSolidFeatureNotEnabled => {
-                write!(fmt, "the `fill_mode_non_solid` feature must be enabled in order to use a polygon mode different from `Fill`")
-            }
-            GraphicsPipelineCreationError::DepthBoundsFeatureNotEnabled => {
-                write!(fmt, "the `depth_bounds` feature must be enabled in order to use depth bounds testing")
-            }
-            GraphicsPipelineCreationError::WrongStencilState => {
-                write!(fmt, "the requested stencil test is invalid")
-            }
-            GraphicsPipelineCreationError::TopologyNotMatchingGeometryShader => {
-                write!(fmt, "the primitives topology does not match what the geometry shader expects")
-            }
-            GraphicsPipelineCreationError::GeometryShaderFeatureNotEnabled => {
-                write!(fmt, "the `geometry_shader` feature must be enabled in order to use geometry shaders")
-            }
-            GraphicsPipelineCreationError::TessellationShaderFeatureNotEnabled => {
-                write!(fmt, "the `tessellation_shader` feature must be enabled in order to use tessellation shaders")
-            }
-            GraphicsPipelineCreationError::MismatchBlendingAttachmentsCount => {
-                write!(fmt, "the number of attachments specified in the blending does not match the number of attachments in the subpass")
-            }
-            GraphicsPipelineCreationError::IndependentBlendFeatureNotEnabled => {
-                write!(fmt, "the `independent_blend` feature must be enabled in order to use different blending operations per attachment")
-            }
-            GraphicsPipelineCreationError::LogicOpFeatureNotEnabled => {
-                write!(fmt, "the `logic_op` feature must be enabled in order to use logic operations")
-            }
-            GraphicsPipelineCreationError::NoDepthAttachment => {
-                write!(fmt, "the depth attachment of the render pass does not match the depth test")
-            }
-            GraphicsPipelineCreationError::NoStencilAttachment => {
-                write!(fmt, "the stencil attachment of the render pass does not match the stencil test")
+                write!(
+                    fmt,
+                    "the vertex definition is not compatible with the input of the vertex shader"
+                )
             }
             GraphicsPipelineCreationError::InvalidPrimitiveTopology => {
                 write!(fmt, "trying to use a patch list without a tessellation shader, or a non-patch-list with a tessellation shader")
@@ -340,20 +215,95 @@ impl fmt::Display for GraphicsPipelineCreationError {
             GraphicsPipelineCreationError::InvalidNumPatchControlPoints => {
                 write!(fmt, "patch_control_points was not greater than 0 and less than or equal to the max_tessellation_patch_size limit")
             }
-            GraphicsPipelineCreationError::WrongShaderType => {
-                write!(fmt, "the wrong type of shader has been passed")
+            GraphicsPipelineCreationError::MaxDiscardRectanglesExceeded { .. } => {
+                write!(
+                    fmt,
+                    "the maximum number of discard rectangles has been exceeded"
+                )
             }
-            GraphicsPipelineCreationError::SampleRateShadingFeatureNotEnabled => {
-                write!(fmt, "the `sample_rate_shading` feature must be enabled in order to use sample shading")
+            GraphicsPipelineCreationError::MaxVertexAttribDivisorExceeded { .. } => {
+                write!(
+                    fmt,
+                    "the maximum value for the instance rate divisor has been exceeded"
+                )
             }
-            GraphicsPipelineCreationError::AlphaToOneFeatureNotEnabled => {
-                write!(fmt, "the `alpha_to_one` feature must be enabled in order to use alpha-to-one")
+            GraphicsPipelineCreationError::MaxVertexInputAttributesExceeded { .. } => {
+                write!(
+                    fmt,
+                    "the maximum number of vertex attributes has been exceeded"
+                )
+            }
+            GraphicsPipelineCreationError::MaxVertexInputAttributeOffsetExceeded { .. } => {
+                write!(
+                    fmt,
+                    "the maximum offset for a vertex attribute has been exceeded"
+                )
+            }
+            GraphicsPipelineCreationError::MaxVertexInputBindingsExceeded { .. } => {
+                write!(
+                    fmt,
+                    "the maximum number of vertex sources has been exceeded"
+                )
+            }
+            GraphicsPipelineCreationError::MaxVertexInputBindingStrideExceeded { .. } => {
+                write!(fmt, "the maximum stride value for vertex input (ie. the distance between two vertex elements) has been exceeded")
+            }
+            GraphicsPipelineCreationError::MaxViewportsExceeded { .. } => {
+                write!(fmt, "the maximum number of viewports has been exceeded")
+            }
+            GraphicsPipelineCreationError::MaxViewportDimensionsExceeded => {
+                write!(fmt, "the maximum dimensions of viewports has been exceeded")
+            }
+            GraphicsPipelineCreationError::MismatchBlendingAttachmentsCount => {
+                write!(fmt, "the number of attachments specified in the blending does not match the number of attachments in the subpass")
             }
             GraphicsPipelineCreationError::MultiviewGeometryShaderNotSupported => {
                 write!(fmt, "the device doesn't support using the `multiview´ feature with geometry shaders")
             }
             GraphicsPipelineCreationError::MultiviewTessellationShaderNotSupported => {
                 write!(fmt, "the device doesn't support using the `multiview´ feature with tessellation shaders")
+            }
+            GraphicsPipelineCreationError::NoDepthAttachment => {
+                write!(
+                    fmt,
+                    "the depth attachment of the render pass does not match the depth test"
+                )
+            }
+            GraphicsPipelineCreationError::NoStencilAttachment => {
+                write!(
+                    fmt,
+                    "the stencil attachment of the render pass does not match the stencil test"
+                )
+            }
+            GraphicsPipelineCreationError::OomError(_) => {
+                write!(fmt, "not enough memory available")
+            }
+            GraphicsPipelineCreationError::PipelineLayoutCreationError(_) => {
+                write!(fmt, "error while creating the pipeline layout object")
+            }
+            GraphicsPipelineCreationError::ShaderStagesMismatch(_) => {
+                write!(fmt, "the output interface of one shader and the input interface of the next shader do not match")
+            }
+            GraphicsPipelineCreationError::StrictLinesNotSupported => {
+                write!(fmt, "the strict_lines device property was false")
+            }
+            GraphicsPipelineCreationError::TopologyNotMatchingGeometryShader => {
+                write!(
+                    fmt,
+                    "the primitives topology does not match what the geometry shader expects"
+                )
+            }
+            GraphicsPipelineCreationError::ViewportBoundsExceeded => {
+                write!(
+                    fmt,
+                    "the minimum or maximum bounds of viewports have been exceeded"
+                )
+            }
+            GraphicsPipelineCreationError::WrongShaderType => {
+                write!(fmt, "the wrong type of shader has been passed")
+            }
+            GraphicsPipelineCreationError::WrongStencilState => {
+                write!(fmt, "the requested stencil test is invalid")
             }
         }
     }
