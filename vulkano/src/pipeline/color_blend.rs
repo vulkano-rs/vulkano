@@ -21,7 +21,10 @@
 //! formats, the logic operation is applied. For normalized integer formats, the logic operation
 //! will take precedence if it is activated, otherwise the blending operation is applied.
 
-use crate::pipeline::StateMode;
+use super::{DynamicState, GraphicsPipelineCreationError};
+use crate::{device::Device, pipeline::StateMode, render_pass::Subpass};
+use fnv::FnvHashMap;
+use smallvec::SmallVec;
 
 /// Describes how the color output of the fragment shader is written to the attachment. See the
 /// documentation of the `blend` module for more info.
@@ -129,6 +132,206 @@ impl ColorBlendState {
     pub fn blend_constants_dynamic(mut self) -> Self {
         self.blend_constants = StateMode::Dynamic;
         self
+    }
+
+    pub(crate) fn to_vulkan_attachments(
+        &mut self, // TODO: make non-mut
+        device: &Device,
+        dynamic_state_modes: &mut FnvHashMap<DynamicState, bool>,
+        subpass: &Subpass,
+    ) -> Result<
+        (
+            SmallVec<[ash::vk::PipelineColorBlendAttachmentState; 4]>,
+            SmallVec<[ash::vk::Bool32; 4]>,
+        ),
+        GraphicsPipelineCreationError,
+    > {
+        let num_atch = subpass.num_color_attachments();
+
+        // If there is one element, duplicate it for all attachments.
+        // TODO: this is undocumented and only exists for compatibility with some of the
+        // deprecated builder methods. Remove it when those methods are gone.
+        if self.attachments.len() == 1 {
+            let element = self.attachments.pop().unwrap();
+            self.attachments
+                .extend(std::iter::repeat(element).take(num_atch as usize));
+        } else {
+            if self.attachments.len() != num_atch as usize {
+                return Err(GraphicsPipelineCreationError::MismatchBlendingAttachmentsCount);
+            }
+
+            if self.attachments.len() > 1 && !device.enabled_features().independent_blend {
+                // Ensure that all `blend` and `color_write_mask` are identical.
+                let mut iter = self
+                    .attachments
+                    .iter()
+                    .map(|state| (&state.blend, &state.color_write_mask));
+                let first = iter.next().unwrap();
+
+                if !iter.all(|state| state == first) {
+                    return Err(
+                        GraphicsPipelineCreationError::FeatureNotEnabled {
+                            feature: "independent_blend",
+                            reason: "The blend and color_write_mask members of all elements of ColorBlendState::attachments were not identical",
+                        },
+                    );
+                }
+            }
+        }
+
+        let mut color_blend_attachments = SmallVec::with_capacity(self.attachments.len());
+        let mut color_write_enables = SmallVec::with_capacity(self.attachments.len());
+
+        for state in self.attachments.iter() {
+            let blend = if let Some(blend) = &state.blend {
+                if !device.enabled_features().dual_src_blend
+                    && std::array::IntoIter::new([
+                        blend.color_source,
+                        blend.color_destination,
+                        blend.alpha_source,
+                        blend.alpha_destination,
+                    ])
+                    .any(|blend_factor| {
+                        matches!(
+                            blend_factor,
+                            BlendFactor::Src1Color
+                                | BlendFactor::OneMinusSrc1Color
+                                | BlendFactor::Src1Alpha
+                                | BlendFactor::OneMinusSrc1Alpha
+                        )
+                    })
+                {
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "dual_src_blend",
+                        reason: "One of the BlendFactor members of AttachmentBlend was set to Src1",
+                    });
+                }
+
+                blend.clone().into()
+            } else {
+                Default::default()
+            };
+
+            let color_blend_attachment_state = ash::vk::PipelineColorBlendAttachmentState {
+                color_write_mask: state.color_write_mask.into(),
+                ..blend
+            };
+
+            let color_write_enable = match state.color_write_enable {
+                StateMode::Fixed(enable) => {
+                    if !enable && !device.enabled_features().color_write_enable {
+                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                            feature: "color_write_enable",
+                            reason:
+                                "ColorBlendAttachmentState::color_blend_enable was set to Fixed(false)",
+                        });
+                    }
+                    dynamic_state_modes.insert(DynamicState::ColorWriteEnable, false);
+                    enable as ash::vk::Bool32
+                }
+                StateMode::Dynamic => {
+                    if !device.enabled_features().color_write_enable {
+                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                            feature: "color_write_enable",
+                            reason:
+                                "ColorBlendAttachmentState::color_blend_enable was set to Dynamic",
+                        });
+                    }
+                    dynamic_state_modes.insert(DynamicState::ColorWriteEnable, true);
+                    ash::vk::TRUE
+                }
+            };
+
+            color_blend_attachments.push(color_blend_attachment_state);
+            color_write_enables.push(color_write_enable);
+        }
+
+        debug_assert_eq!(color_blend_attachments.len(), color_write_enables.len());
+        Ok((color_blend_attachments, color_write_enables))
+    }
+
+    pub(crate) fn to_vulkan_color_write(
+        &self,
+        device: &Device,
+        dynamic_state_modes: &mut FnvHashMap<DynamicState, bool>,
+        color_write_enables: &[ash::vk::Bool32],
+    ) -> Result<Option<ash::vk::PipelineColorWriteCreateInfoEXT>, GraphicsPipelineCreationError>
+    {
+        Ok(if device.enabled_extensions().ext_color_write_enable {
+            Some(ash::vk::PipelineColorWriteCreateInfoEXT {
+                attachment_count: color_write_enables.len() as u32,
+                p_color_write_enables: color_write_enables.as_ptr(),
+                ..Default::default()
+            })
+        } else {
+            None
+        })
+    }
+
+    pub(crate) fn to_vulkan(
+        &self,
+        device: &Device,
+        dynamic_state_modes: &mut FnvHashMap<DynamicState, bool>,
+        color_blend_attachments: &[ash::vk::PipelineColorBlendAttachmentState],
+        color_write: Option<&mut ash::vk::PipelineColorWriteCreateInfoEXT>,
+    ) -> Result<ash::vk::PipelineColorBlendStateCreateInfo, GraphicsPipelineCreationError> {
+        let (logic_op_enable, logic_op) = if let Some(logic_op) = self.logic_op {
+            if !device.enabled_features().logic_op {
+                return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                    feature: "logic_op",
+                    reason: "ColorBlendState::logic_op was set to Some",
+                });
+            }
+
+            let logic_op = match logic_op {
+                StateMode::Fixed(logic_op) => {
+                    dynamic_state_modes.insert(DynamicState::LogicOp, false);
+                    logic_op.into()
+                }
+                StateMode::Dynamic => {
+                    if !device.enabled_features().extended_dynamic_state2_logic_op {
+                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                            feature: "extended_dynamic_state2_logic_op",
+                            reason: "ColorBlendState::logic_op was set to Some(Dynamic)",
+                        });
+                    }
+                    dynamic_state_modes.insert(DynamicState::LogicOp, true);
+                    Default::default()
+                }
+            };
+
+            (ash::vk::TRUE, logic_op)
+        } else {
+            (ash::vk::FALSE, Default::default())
+        };
+
+        let blend_constants = match self.blend_constants {
+            StateMode::Fixed(blend_constants) => {
+                dynamic_state_modes.insert(DynamicState::BlendConstants, false);
+                blend_constants
+            }
+            StateMode::Dynamic => {
+                dynamic_state_modes.insert(DynamicState::BlendConstants, true);
+                Default::default()
+            }
+        };
+
+        let mut color_blend_state = ash::vk::PipelineColorBlendStateCreateInfo {
+            flags: ash::vk::PipelineColorBlendStateCreateFlags::empty(),
+            logic_op_enable,
+            logic_op,
+            attachment_count: color_blend_attachments.len() as u32,
+            p_attachments: color_blend_attachments.as_ptr(),
+            blend_constants,
+            ..Default::default()
+        };
+
+        if let Some(color_write) = color_write {
+            color_write.p_next = color_blend_state.p_next;
+            color_blend_state.p_next = color_write as *const _ as *const _;
+        }
+
+        Ok(color_blend_state)
     }
 }
 

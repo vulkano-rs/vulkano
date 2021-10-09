@@ -23,7 +23,10 @@
 //! value in the stencil buffer at each fragment's location. Depending on the outcome of the
 //! depth and stencil tests, the value of the stencil buffer at that location can be updated.
 
-use crate::pipeline::StateMode;
+use crate::device::Device;
+use crate::pipeline::{DynamicState, GraphicsPipelineCreationError, StateMode};
+use crate::render_pass::Subpass;
+use fnv::FnvHashMap;
 use std::ops::RangeInclusive;
 use std::u32;
 
@@ -73,6 +76,241 @@ impl DepthStencilState {
             depth_bounds: Default::default(),
             stencil: Default::default(),
         }
+    }
+
+    pub(crate) fn to_vulkan(
+        &self,
+        device: &Device,
+        dynamic_state_modes: &mut FnvHashMap<DynamicState, bool>,
+        subpass: &Subpass,
+    ) -> Result<ash::vk::PipelineDepthStencilStateCreateInfo, GraphicsPipelineCreationError> {
+        let (depth_test_enable, depth_write_enable, depth_compare_op) =
+            if let Some(depth_state) = &self.depth {
+                if !subpass.has_depth() {
+                    return Err(GraphicsPipelineCreationError::NoDepthAttachment);
+                }
+
+                if depth_state.enable_dynamic {
+                    if !device.enabled_features().extended_dynamic_state {
+                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                            feature: "extended_dynamic_state",
+                            reason: "DepthState::enable_dynamic was true",
+                        });
+                    }
+                    dynamic_state_modes.insert(DynamicState::DepthTestEnable, true);
+                } else {
+                    dynamic_state_modes.insert(DynamicState::DepthTestEnable, false);
+                }
+
+                let write_enable = match depth_state.write_enable {
+                    StateMode::Fixed(write_enable) => {
+                        if write_enable && !subpass.has_writable_depth() {
+                            return Err(GraphicsPipelineCreationError::NoDepthAttachment);
+                        }
+                        dynamic_state_modes.insert(DynamicState::DepthWriteEnable, false);
+                        write_enable as ash::vk::Bool32
+                    }
+                    StateMode::Dynamic => {
+                        if !device.enabled_features().extended_dynamic_state {
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "extended_dynamic_state",
+                                reason: "DepthState::write_enable was set to Dynamic",
+                            });
+                        }
+                        dynamic_state_modes.insert(DynamicState::DepthWriteEnable, true);
+                        ash::vk::TRUE
+                    }
+                };
+
+                let compare_op = match depth_state.compare_op {
+                    StateMode::Fixed(compare_op) => {
+                        dynamic_state_modes.insert(DynamicState::DepthCompareOp, false);
+                        compare_op.into()
+                    }
+                    StateMode::Dynamic => {
+                        if !device.enabled_features().extended_dynamic_state {
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "extended_dynamic_state",
+                                reason: "DepthState::compare_op was set to Dynamic",
+                            });
+                        }
+                        dynamic_state_modes.insert(DynamicState::DepthCompareOp, true);
+                        ash::vk::CompareOp::ALWAYS
+                    }
+                };
+
+                (ash::vk::TRUE, write_enable, compare_op)
+            } else {
+                (ash::vk::FALSE, ash::vk::FALSE, ash::vk::CompareOp::ALWAYS)
+            };
+
+        let (depth_bounds_test_enable, min_depth_bounds, max_depth_bounds) = if let Some(
+            depth_bounds_state,
+        ) =
+            &self.depth_bounds
+        {
+            if !device.enabled_features().depth_bounds {
+                return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                    feature: "depth_bounds",
+                    reason: "DepthStencilState::depth_bounds was Some",
+                });
+            }
+
+            if depth_bounds_state.enable_dynamic {
+                if !device.enabled_features().extended_dynamic_state {
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "extended_dynamic_state",
+                        reason: "DepthBoundsState::enable_dynamic was true",
+                    });
+                }
+                dynamic_state_modes.insert(DynamicState::DepthBoundsTestEnable, true);
+            } else {
+                dynamic_state_modes.insert(DynamicState::DepthBoundsTestEnable, false);
+            }
+
+            let (min_bounds, max_bounds) = match depth_bounds_state.bounds.clone() {
+                StateMode::Fixed(bounds) => {
+                    if !device.enabled_extensions().ext_depth_range_unrestricted
+                        && !(0.0..1.0).contains(bounds.start())
+                        && !(0.0..1.0).contains(bounds.end())
+                    {
+                        return Err(GraphicsPipelineCreationError::ExtensionNotEnabled {
+                            extension: "ext_depth_range_unrestricted",
+                            reason: "DepthBoundsState::bounds were not both between 0.0 and 1.0 inclusive",
+                        });
+                    }
+                    dynamic_state_modes.insert(DynamicState::DepthBounds, false);
+                    bounds.into_inner()
+                }
+                StateMode::Dynamic => {
+                    dynamic_state_modes.insert(DynamicState::DepthBounds, true);
+                    (0.0, 1.0)
+                }
+            };
+
+            (ash::vk::TRUE, min_bounds, max_bounds)
+        } else {
+            (ash::vk::FALSE, 0.0, 1.0)
+        };
+
+        let (stencil_test_enable, front, back) = if let Some(stencil_state) = &self.stencil {
+            if !subpass.has_stencil() {
+                return Err(GraphicsPipelineCreationError::NoStencilAttachment);
+            }
+
+            // TODO: if stencil buffer can potentially be written, check if it is writable
+
+            if stencil_state.enable_dynamic {
+                if !device.enabled_features().extended_dynamic_state {
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "extended_dynamic_state",
+                        reason: "StencilState::enable_dynamic was true",
+                    });
+                }
+                dynamic_state_modes.insert(DynamicState::StencilTestEnable, true);
+            } else {
+                dynamic_state_modes.insert(DynamicState::StencilTestEnable, false);
+            }
+
+            match (stencil_state.front.ops, stencil_state.back.ops) {
+                (StateMode::Fixed(_), StateMode::Fixed(_)) => {
+                    dynamic_state_modes.insert(DynamicState::StencilOp, false);
+                }
+                (StateMode::Dynamic, StateMode::Dynamic) => {
+                    if !device.enabled_features().extended_dynamic_state {
+                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                            feature: "extended_dynamic_state",
+                            reason: "StencilState::ops was set to Dynamic",
+                        });
+                    }
+                    dynamic_state_modes.insert(DynamicState::StencilOp, true);
+                }
+                _ => return Err(GraphicsPipelineCreationError::WrongStencilState),
+            };
+
+            match (
+                stencil_state.front.compare_mask,
+                stencil_state.back.compare_mask,
+            ) {
+                (StateMode::Fixed(_), StateMode::Fixed(_)) => {
+                    dynamic_state_modes.insert(DynamicState::StencilCompareMask, false);
+                }
+                (StateMode::Dynamic, StateMode::Dynamic) => {
+                    dynamic_state_modes.insert(DynamicState::StencilCompareMask, true);
+                }
+                _ => return Err(GraphicsPipelineCreationError::WrongStencilState),
+            };
+
+            match (
+                stencil_state.front.write_mask,
+                stencil_state.back.write_mask,
+            ) {
+                (StateMode::Fixed(_), StateMode::Fixed(_)) => {
+                    dynamic_state_modes.insert(DynamicState::StencilWriteMask, false);
+                }
+                (StateMode::Dynamic, StateMode::Dynamic) => {
+                    dynamic_state_modes.insert(DynamicState::StencilWriteMask, true);
+                }
+                _ => return Err(GraphicsPipelineCreationError::WrongStencilState),
+            };
+
+            match (stencil_state.front.reference, stencil_state.back.reference) {
+                (StateMode::Fixed(_), StateMode::Fixed(_)) => {
+                    dynamic_state_modes.insert(DynamicState::StencilReference, false);
+                }
+                (StateMode::Dynamic, StateMode::Dynamic) => {
+                    dynamic_state_modes.insert(DynamicState::StencilReference, true);
+                }
+                _ => return Err(GraphicsPipelineCreationError::WrongStencilState),
+            };
+
+            let [front, back] = [&stencil_state.front, &stencil_state.back].map(|ops_state| {
+                let ops = match ops_state.ops {
+                    StateMode::Fixed(x) => x,
+                    StateMode::Dynamic => Default::default(),
+                };
+                let compare_mask = match ops_state.compare_mask {
+                    StateMode::Fixed(x) => x,
+                    StateMode::Dynamic => Default::default(),
+                };
+                let write_mask = match ops_state.write_mask {
+                    StateMode::Fixed(x) => x,
+                    StateMode::Dynamic => Default::default(),
+                };
+                let reference = match ops_state.reference {
+                    StateMode::Fixed(x) => x,
+                    StateMode::Dynamic => Default::default(),
+                };
+
+                ash::vk::StencilOpState {
+                    fail_op: ops.fail_op.into(),
+                    pass_op: ops.pass_op.into(),
+                    depth_fail_op: ops.depth_fail_op.into(),
+                    compare_op: ops.compare_op.into(),
+                    compare_mask,
+                    write_mask,
+                    reference,
+                }
+            });
+
+            (ash::vk::TRUE, front, back)
+        } else {
+            (ash::vk::FALSE, Default::default(), Default::default())
+        };
+
+        Ok(ash::vk::PipelineDepthStencilStateCreateInfo {
+            flags: ash::vk::PipelineDepthStencilStateCreateFlags::empty(),
+            depth_test_enable,
+            depth_write_enable,
+            depth_compare_op,
+            depth_bounds_test_enable,
+            stencil_test_enable,
+            front,
+            back,
+            min_depth_bounds,
+            max_depth_bounds,
+            ..Default::default()
+        })
     }
 }
 

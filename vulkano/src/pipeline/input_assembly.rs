@@ -11,8 +11,10 @@
 //!
 //! The input assembly is the stage where lists of vertices are turned into primitives.
 
-use crate::pipeline::{PartialStateMode, StateMode};
+use crate::device::Device;
+use crate::pipeline::{DynamicState, GraphicsPipelineCreationError, PartialStateMode, StateMode};
 use crate::DeviceSize;
+use fnv::FnvHashMap;
 
 /// The state in a graphics pipeline describing how the input assembly stage should behave.
 #[derive(Clone, Copy, Debug)]
@@ -77,6 +79,105 @@ impl InputAssemblyState {
     pub fn primitive_restart_enable_dynamic(mut self) -> Self {
         self.primitive_restart_enable = StateMode::Dynamic;
         self
+    }
+
+    pub(crate) fn to_vulkan(
+        &self,
+        device: &Device,
+        dynamic_state_modes: &mut FnvHashMap<DynamicState, bool>,
+    ) -> Result<ash::vk::PipelineInputAssemblyStateCreateInfo, GraphicsPipelineCreationError> {
+        let topology = match self.topology {
+            PartialStateMode::Fixed(topology) => {
+                match topology {
+                    PrimitiveTopology::LineListWithAdjacency
+                    | PrimitiveTopology::LineStripWithAdjacency
+                    | PrimitiveTopology::TriangleListWithAdjacency
+                    | PrimitiveTopology::TriangleStripWithAdjacency => {
+                        if !device.enabled_features().geometry_shader {
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "geometry_shader",
+                                reason: "InputAssemblyState::topology was set to a WithAdjacency PrimitiveTopology",
+                            });
+                        }
+                    }
+                    PrimitiveTopology::PatchList => {
+                        if !device.enabled_features().tessellation_shader {
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "tessellation_shader",
+                                reason: "InputAssemblyState::topology was set to PrimitiveTopology::PatchList",
+                            });
+                        }
+                    }
+                    _ => (),
+                }
+                dynamic_state_modes.insert(DynamicState::PrimitiveTopology, false);
+                topology.into()
+            }
+            PartialStateMode::Dynamic(topology_class) => {
+                if !device.enabled_features().extended_dynamic_state {
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "extended_dynamic_state",
+                        reason: "InputAssemblyState::topology was set to Dynamic",
+                    });
+                }
+                dynamic_state_modes.insert(DynamicState::PrimitiveTopology, true);
+                topology_class.example().into()
+            }
+        };
+
+        let primitive_restart_enable = match self.primitive_restart_enable {
+            StateMode::Fixed(primitive_restart_enable) => {
+                if primitive_restart_enable {
+                    match self.topology {
+                        PartialStateMode::Fixed(
+                            PrimitiveTopology::PointList
+                            | PrimitiveTopology::LineList
+                            | PrimitiveTopology::TriangleList
+                            | PrimitiveTopology::LineListWithAdjacency
+                            | PrimitiveTopology::TriangleListWithAdjacency,
+                        ) => {
+                            if !device.enabled_features().primitive_topology_list_restart {
+                                return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                    feature: "primitive_topology_list_restart",
+                                    reason: "InputAssemblyState::primitive_restart_enable was set to true in combination with a List PrimitiveTopology",
+                                });
+                            }
+                        }
+                        PartialStateMode::Fixed(PrimitiveTopology::PatchList) => {
+                            if !device
+                                .enabled_features()
+                                .primitive_topology_patch_list_restart
+                            {
+                                return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                    feature: "primitive_topology_patch_list_restart",
+                                    reason: "InputAssemblyState::primitive_restart_enable was set to true in combination with PrimitiveTopology::PatchList",
+                                });
+                            }
+                        }
+                        _ => (),
+                    }
+                }
+                dynamic_state_modes.insert(DynamicState::PrimitiveRestartEnable, false);
+                primitive_restart_enable as ash::vk::Bool32
+            }
+            StateMode::Dynamic => {
+                if !device.enabled_features().extended_dynamic_state2 {
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "extended_dynamic_state2",
+                        reason: "InputAssemblyState::primitive_restart_enable was set to Dynamic",
+                    });
+                }
+                dynamic_state_modes.insert(DynamicState::PrimitiveRestartEnable, true);
+                Default::default()
+            }
+        };
+
+        Ok(ash::vk::PipelineInputAssemblyStateCreateInfo {
+            flags: ash::vk::PipelineInputAssemblyStateCreateFlags::empty(),
+            topology,
+            primitive_restart_enable,
+            ..Default::default()
+        })
     }
 }
 

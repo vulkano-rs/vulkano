@@ -48,7 +48,13 @@
 //! In all cases the number of viewports and scissor boxes must be the same.
 //!
 
-use std::ops::Range;
+use crate::{
+    device::Device,
+    pipeline::{DynamicState, GraphicsPipelineCreationError},
+};
+use fnv::FnvHashMap;
+use smallvec::SmallVec;
+use std::{ops::Range, ptr};
 
 /// List of viewports and scissors that are used when creating a graphics pipeline object.
 ///
@@ -185,6 +191,220 @@ impl ViewportState {
                 ..
             } => return None,
             ViewportState::Dynamic { count, .. } => count,
+        })
+    }
+
+    pub(crate) fn to_vulkan_viewports_scissors(
+        &self,
+        device: &Device,
+        dynamic_state_modes: &mut FnvHashMap<DynamicState, bool>,
+    ) -> Result<
+        (
+            u32,
+            SmallVec<[ash::vk::Viewport; 2]>,
+            u32,
+            SmallVec<[ash::vk::Rect2D; 2]>,
+        ),
+        GraphicsPipelineCreationError,
+    > {
+        Ok(match self {
+            ViewportState::Fixed { data } => {
+                let count = data.len() as u32;
+                assert!(count != 0); // TODO: return error?
+                let viewports = data
+                    .iter()
+                    .map(|e| e.0.clone().into())
+                    .collect::<SmallVec<[ash::vk::Viewport; 2]>>();
+                dynamic_state_modes.insert(DynamicState::Viewport, false);
+                dynamic_state_modes.insert(DynamicState::ViewportWithCount, false);
+
+                let scissors = data
+                    .iter()
+                    .map(|e| e.1.clone().into())
+                    .collect::<SmallVec<[ash::vk::Rect2D; 2]>>();
+                dynamic_state_modes.insert(DynamicState::Scissor, false);
+                dynamic_state_modes.insert(DynamicState::ScissorWithCount, false);
+
+                (count, viewports, count, scissors)
+            }
+            ViewportState::FixedViewport {
+                viewports,
+                scissor_count_dynamic,
+            } => {
+                let viewport_count = viewports.len() as u32;
+                assert!(viewport_count != 0); // TODO: return error?
+                let viewports = viewports
+                    .iter()
+                    .map(|e| e.clone().into())
+                    .collect::<SmallVec<[ash::vk::Viewport; 2]>>();
+                dynamic_state_modes.insert(DynamicState::Viewport, false);
+                dynamic_state_modes.insert(DynamicState::ViewportWithCount, false);
+
+                let scissor_count = if *scissor_count_dynamic {
+                    if !device.enabled_features().extended_dynamic_state {
+                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                            feature: "extended_dynamic_state",
+                            reason: "ViewportState::FixedViewport::scissor_count_dynamic was set to true",
+                        });
+                    }
+                    dynamic_state_modes.insert(DynamicState::Scissor, false);
+                    dynamic_state_modes.insert(DynamicState::ScissorWithCount, true);
+                    0
+                } else {
+                    dynamic_state_modes.insert(DynamicState::Scissor, true);
+                    dynamic_state_modes.insert(DynamicState::ScissorWithCount, false);
+                    viewport_count
+                };
+
+                (viewport_count, viewports, scissor_count, SmallVec::new())
+            }
+            ViewportState::FixedScissor {
+                scissors,
+                viewport_count_dynamic,
+            } => {
+                let scissor_count = scissors.len() as u32;
+                assert!(scissor_count != 0); // TODO: return error?
+                let scissors = scissors
+                    .iter()
+                    .map(|e| e.clone().into())
+                    .collect::<SmallVec<[ash::vk::Rect2D; 2]>>();
+                dynamic_state_modes.insert(DynamicState::Scissor, false);
+                dynamic_state_modes.insert(DynamicState::ScissorWithCount, false);
+
+                let viewport_count = if *viewport_count_dynamic {
+                    if !device.enabled_features().extended_dynamic_state {
+                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                            feature: "extended_dynamic_state",
+                            reason: "ViewportState::FixedScissor::viewport_count_dynamic was set to true",
+                        });
+                    }
+                    dynamic_state_modes.insert(DynamicState::Viewport, false);
+                    dynamic_state_modes.insert(DynamicState::ViewportWithCount, true);
+                    0
+                } else {
+                    dynamic_state_modes.insert(DynamicState::Viewport, true);
+                    dynamic_state_modes.insert(DynamicState::ViewportWithCount, false);
+                    scissor_count
+                };
+
+                (viewport_count, SmallVec::new(), scissor_count, scissors)
+            }
+            ViewportState::Dynamic {
+                count,
+                viewport_count_dynamic,
+                scissor_count_dynamic,
+            } => {
+                if !(*viewport_count_dynamic && *scissor_count_dynamic) {
+                    assert!(*count != 0); // TODO: return error?
+                }
+
+                let viewport_count = if *viewport_count_dynamic {
+                    if !device.enabled_features().extended_dynamic_state {
+                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                            feature: "extended_dynamic_state",
+                            reason:
+                                "ViewportState::Dynamic::viewport_count_dynamic was set to true",
+                        });
+                    }
+                    dynamic_state_modes.insert(DynamicState::Viewport, false);
+                    dynamic_state_modes.insert(DynamicState::ViewportWithCount, true);
+                    0
+                } else {
+                    dynamic_state_modes.insert(DynamicState::Viewport, true);
+                    dynamic_state_modes.insert(DynamicState::ViewportWithCount, false);
+                    *count
+                };
+
+                let scissor_count = if *scissor_count_dynamic {
+                    if !device.enabled_features().extended_dynamic_state {
+                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                            feature: "extended_dynamic_state",
+                            reason: "ViewportState::Dynamic::scissor_count_dynamic was set to true",
+                        });
+                    }
+                    dynamic_state_modes.insert(DynamicState::Scissor, false);
+                    dynamic_state_modes.insert(DynamicState::ScissorWithCount, true);
+                    0
+                } else {
+                    dynamic_state_modes.insert(DynamicState::Scissor, true);
+                    dynamic_state_modes.insert(DynamicState::ScissorWithCount, false);
+                    *count
+                };
+
+                (
+                    viewport_count,
+                    SmallVec::new(),
+                    scissor_count,
+                    SmallVec::new(),
+                )
+            }
+        })
+    }
+
+    pub(crate) fn to_vulkan(
+        &self,
+        device: &Device,
+        dynamic_state_modes: &mut FnvHashMap<DynamicState, bool>,
+        viewport_count: u32,
+        viewports: &[ash::vk::Viewport],
+        scissor_count: u32,
+        scissors: &[ash::vk::Rect2D],
+    ) -> Result<ash::vk::PipelineViewportStateCreateInfo, GraphicsPipelineCreationError> {
+        let viewport_scissor_count = u32::max(viewport_count, scissor_count);
+
+        if viewport_scissor_count > 1 && !device.enabled_features().multi_viewport {
+            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                feature: "multi_viewport",
+                reason: "ViewportState viewport/scissor count was greater than 1",
+            });
+        }
+
+        if viewport_scissor_count > device.physical_device().properties().max_viewports {
+            return Err(GraphicsPipelineCreationError::MaxViewportsExceeded {
+                obtained: viewport_scissor_count,
+                max: device.physical_device().properties().max_viewports,
+            });
+        }
+
+        for vp in viewports.iter() {
+            if vp.width
+                > device
+                    .physical_device()
+                    .properties()
+                    .max_viewport_dimensions[0] as f32
+                || vp.height
+                    > device
+                        .physical_device()
+                        .properties()
+                        .max_viewport_dimensions[1] as f32
+            {
+                return Err(GraphicsPipelineCreationError::MaxViewportDimensionsExceeded);
+            }
+
+            if vp.x < device.physical_device().properties().viewport_bounds_range[0]
+                || vp.x + vp.width > device.physical_device().properties().viewport_bounds_range[1]
+                || vp.y < device.physical_device().properties().viewport_bounds_range[0]
+                || vp.y + vp.height > device.physical_device().properties().viewport_bounds_range[1]
+            {
+                return Err(GraphicsPipelineCreationError::ViewportBoundsExceeded);
+            }
+        }
+
+        Ok(ash::vk::PipelineViewportStateCreateInfo {
+            flags: ash::vk::PipelineViewportStateCreateFlags::empty(),
+            viewport_count,
+            p_viewports: if viewports.is_empty() {
+                ptr::null()
+            } else {
+                viewports.as_ptr()
+            }, // validation layer crashes if you just pass the pointer
+            scissor_count,
+            p_scissors: if scissors.is_empty() {
+                ptr::null()
+            } else {
+                scissors.as_ptr()
+            }, // validation layer crashes if you just pass the pointer
+            ..Default::default()
         })
     }
 }

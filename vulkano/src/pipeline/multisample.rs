@@ -12,6 +12,13 @@
 //! Multisampling allows you to ask the GPU to run the rasterizer to generate more than one
 //! sample per pixel.
 
+use crate::device::Device;
+use crate::image::SampleCount;
+use crate::pipeline::{DynamicState, GraphicsPipelineCreationError};
+use crate::render_pass::Subpass;
+use fnv::FnvHashMap;
+use std::ptr;
+
 // TODO: handle some weird behaviors with non-floating-point targets
 
 /// State of the multisampling.
@@ -66,6 +73,52 @@ impl MultisampleState {
             alpha_to_coverage_enable: false,
             alpha_to_one_enable: false,
         }
+    }
+
+    pub(crate) fn to_vulkan(
+        &self,
+        device: &Device,
+        dynamic_state_modes: &mut FnvHashMap<DynamicState, bool>,
+        subpass: &Subpass,
+    ) -> Result<ash::vk::PipelineMultisampleStateCreateInfo, GraphicsPipelineCreationError> {
+        let rasterization_samples = subpass.num_samples().unwrap_or(SampleCount::Sample1).into();
+
+        let (sample_shading_enable, min_sample_shading) =
+            if let Some(min_sample_shading) = self.sample_shading {
+                if !device.enabled_features().sample_rate_shading {
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "sample_rate_shading",
+                        reason: "MultisampleState::sample_shading was Some",
+                    });
+                }
+                assert!(min_sample_shading >= 0.0 && min_sample_shading <= 1.0); // TODO: return error?
+                (ash::vk::TRUE, min_sample_shading)
+            } else {
+                (ash::vk::FALSE, 0.0)
+            };
+
+        let alpha_to_one_enable = {
+            if self.alpha_to_one_enable {
+                if !device.enabled_features().alpha_to_one {
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "alpha_to_one",
+                        reason: "MultisampleState::alpha_to_one was true",
+                    });
+                }
+            }
+            self.alpha_to_one_enable as ash::vk::Bool32
+        };
+
+        Ok(ash::vk::PipelineMultisampleStateCreateInfo {
+            flags: ash::vk::PipelineMultisampleStateCreateFlags::empty(),
+            rasterization_samples,
+            sample_shading_enable,
+            min_sample_shading,
+            p_sample_mask: ptr::null(),
+            alpha_to_coverage_enable: self.alpha_to_coverage_enable as ash::vk::Bool32,
+            alpha_to_one_enable,
+            ..Default::default()
+        })
     }
 }
 
