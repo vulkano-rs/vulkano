@@ -67,11 +67,26 @@ pub struct RasterizationState {
     /// [`wide_lines`](crate::device::Features::wide_lines) feature to be enabled on
     /// the device.
     pub line_width: StateMode<f32>,
+
+    /// The rasterization mode for lines.
+    ///
+    /// If this is not set to `Default`, the
+    /// [`ext_line_rasterization`](crate::device::DeviceExtensions::ext_line_rasterization)
+    /// extension and an additional feature must be enabled on the device.
+    pub line_rasterization_mode: LineRasterizationMode,
+
+    /// Enables and sets the parameters for line stippling.
+    ///
+    /// If this is set to `Some`, the
+    /// [`ext_line_rasterization`](crate::device::DeviceExtensions::ext_line_rasterization)
+    /// extension and an additional feature must be enabled on the device.
+    pub line_stipple: Option<StateMode<LineStipple>>,
 }
 
 impl RasterizationState {
-    /// Creates a `RasterizationState` with depth clamping, discard and depth biasing disabled,
-    /// filled polygons, no culling, counterclockwise front face, and the default line width.
+    /// Creates a `RasterizationState` with depth clamping, discard, depth biasing and line
+    /// stippling disabled, filled polygons, no culling, counterclockwise front face, and the
+    /// default line width and line rasterization mode.
     #[inline]
     pub fn new() -> Self {
         Self {
@@ -82,6 +97,8 @@ impl RasterizationState {
             front_face: StateMode::Fixed(Default::default()),
             depth_bias: None,
             line_width: StateMode::Fixed(1.0),
+            line_rasterization_mode: Default::default(),
+            line_stipple: None,
         }
     }
 
@@ -241,4 +258,64 @@ impl Default for PolygonMode {
     fn default() -> PolygonMode {
         PolygonMode::Fill
     }
+}
+
+/// The rasterization mode to use for lines.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[repr(i32)]
+pub enum LineRasterizationMode {
+    /// If the [`strict_lines`](crate::device::Properties::strict_lines) device property is `true`,
+    /// then this is the same as `Rectangular`. Otherwise, lines are drawn as parallelograms.
+    ///
+    /// If [`RasterizationState::line_stipple`] is `Some`, then the
+    /// [`strict_lines`](crate::device::Properties::strict_lines) property must be `true` and the
+    /// [`stippled_rectangular_lines`](crate::device::Features::stippled_rectangular_lines) feature
+    /// must be enabled on the device.
+    Default = ash::vk::LineRasterizationModeEXT::DEFAULT.as_raw(),
+
+    /// Lines are drawn as if they were rectangles extruded from the line.
+    ///
+    /// The [`rectangular_lines`](crate::device::Features::rectangular_lines) feature must be
+    /// enabled on the device. If [`RasterizationState::line_stipple`] is `Some`, then the
+    /// [`stippled_rectangular_lines`](crate::device::Features::stippled_rectangular_lines) must
+    /// also be enabled.
+    Rectangular = ash::vk::LineRasterizationModeEXT::RECTANGULAR.as_raw(),
+
+    /// Lines are drawn by determining which pixel diamonds the line intersects and exits.
+    ///
+    /// The [`bresenham_lines`](crate::device::Features::bresenham_lines) feature must be
+    /// enabled on the device. If [`RasterizationState::line_stipple`] is `Some`, then the
+    /// [`stippled_bresenham_lines`](crate::device::Features::stippled_bresenham_lines) must
+    /// also be enabled.
+    Bresenham = ash::vk::LineRasterizationModeEXT::BRESENHAM.as_raw(),
+
+    /// As `Rectangular`, but with alpha falloff.
+    ///
+    /// The [`smooth_lines`](crate::device::Features::smooth_lines) feature must be
+    /// enabled on the device. If [`RasterizationState::line_stipple`] is `Some`, then the
+    /// [`stippled_smooth_lines`](crate::device::Features::stippled_smooth_lines) must
+    /// also be enabled.
+    RectangularSmooth = ash::vk::LineRasterizationModeEXT::RECTANGULAR_SMOOTH.as_raw(),
+}
+
+impl Default for LineRasterizationMode {
+    /// Returns `LineRasterizationMode::Default`.
+    fn default() -> Self {
+        Self::Default
+    }
+}
+
+impl From<LineRasterizationMode> for ash::vk::LineRasterizationModeEXT {
+    fn from(val: LineRasterizationMode) -> Self {
+        Self::from_raw(val as i32)
+    }
+}
+
+/// The parameters of a stippled line.
+#[derive(Clone, Copy, Debug)]
+pub struct LineStipple {
+    /// The repeat factor used in stippled line rasterization. Must be between 1 and 256 inclusive.
+    pub factor: u32,
+    /// The bit pattern used in stippled line rasterization.
+    pub pattern: u16,
 }

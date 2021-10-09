@@ -2629,7 +2629,7 @@ impl SyncCommandBufferBuilder {
         }
 
         self.append_command(Cmd { factor, pattern }, &[]).unwrap();
-        self.current_state.line_stipple = Some((factor, pattern));
+        self.current_state.line_stipple = Some(LineStipple { factor, pattern });
     }
 
     /// Calls `vkCmdSetLineWidth` on the builder.

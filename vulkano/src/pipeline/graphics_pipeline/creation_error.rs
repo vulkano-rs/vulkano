@@ -35,6 +35,9 @@ pub enum GraphicsPipelineCreationError {
         reason: &'static str,
     },
 
+    /// The [`strict_lines`](crate::device::Properties::strict_lines) device property was `false`.
+    StrictLinesNotSupported,
+
     /// Error while creating the pipeline layout object.
     PipelineLayoutCreationError(PipelineLayoutCreationError),
 
@@ -226,6 +229,9 @@ impl fmt::Display for GraphicsPipelineCreationError {
             }
             GraphicsPipelineCreationError::ShaderStagesMismatch(_) => {
                 write!(fmt, "the output interface of one shader and the input interface of the next shader do not match")
+            }
+            GraphicsPipelineCreationError::StrictLinesNotSupported => {
+                write!(fmt, "the strict_lines device property was false")
             }
             GraphicsPipelineCreationError::PipelineLayoutCreationError(_) => {
                 write!(fmt, "error while creating the pipeline layout object")

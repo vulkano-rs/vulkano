@@ -23,26 +23,22 @@ pub(in super::super) fn check_dynamic_state_validity(
 ) -> Result<(), CheckDynamicStateValidityError> {
     let device = pipeline.device();
 
-    for state in pipeline
+    for dynamic_state in pipeline
         .dynamic_states()
         .filter(|(_, d)| *d)
         .map(|(s, _)| s)
     {
-        match state {
+        match dynamic_state {
             DynamicState::BlendConstants => {
                 if current_state.blend_constants().is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet {
-                        dynamic_state: DynamicState::BlendConstants,
-                    });
+                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
                 }
             }
             DynamicState::ColorWriteEnable => {
                 let enables = if let Some(enables) = current_state.color_write_enable() {
                     enables
                 } else {
-                    return Err(CheckDynamicStateValidityError::NotSet {
-                        dynamic_state: DynamicState::CullMode,
-                    });
+                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
                 };
 
                 if enables.len() < pipeline.color_blend_state().unwrap().attachments.len() {
@@ -55,58 +51,42 @@ pub(in super::super) fn check_dynamic_state_validity(
             }
             DynamicState::CullMode => {
                 if current_state.cull_mode().is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet {
-                        dynamic_state: DynamicState::CullMode,
-                    });
+                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
                 }
             }
             DynamicState::DepthBias => {
                 if current_state.depth_bias().is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet {
-                        dynamic_state: DynamicState::DepthBias,
-                    });
+                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
                 }
             }
             DynamicState::DepthBiasEnable => {
                 if current_state.depth_bias_enable().is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet {
-                        dynamic_state: DynamicState::DepthBiasEnable,
-                    });
+                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
                 }
             }
             DynamicState::DepthBounds => {
                 if current_state.depth_bounds().is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet {
-                        dynamic_state: DynamicState::DepthBounds,
-                    });
+                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
                 }
             }
             DynamicState::DepthBoundsTestEnable => {
                 if current_state.depth_bounds_test_enable().is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet {
-                        dynamic_state: DynamicState::DepthBoundsTestEnable,
-                    });
+                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
                 }
             }
             DynamicState::DepthCompareOp => {
                 if current_state.depth_compare_op().is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet {
-                        dynamic_state: DynamicState::DepthCompareOp,
-                    });
+                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
                 }
             }
             DynamicState::DepthTestEnable => {
                 if current_state.depth_test_enable().is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet {
-                        dynamic_state: DynamicState::DepthTestEnable,
-                    });
+                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
                 }
             }
             DynamicState::DepthWriteEnable => {
                 if current_state.depth_write_enable().is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet {
-                        dynamic_state: DynamicState::DepthWriteEnable,
-                    });
+                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
                 }
 
                 // TODO: Check if the depth buffer is writable
@@ -116,31 +96,27 @@ pub(in super::super) fn check_dynamic_state_validity(
             DynamicState::FragmentShadingRate => todo!(),
             DynamicState::FrontFace => {
                 if current_state.front_face().is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet {
-                        dynamic_state: DynamicState::FrontFace,
-                    });
+                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
                 }
             }
-            DynamicState::LineStipple => todo!(),
+            DynamicState::LineStipple => {
+                if current_state.line_stipple().is_none() {
+                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
+                }
+            }
             DynamicState::LineWidth => {
                 if current_state.line_width().is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet {
-                        dynamic_state: DynamicState::LineWidth,
-                    });
+                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
                 }
             }
             DynamicState::LogicOp => {
                 if current_state.logic_op().is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet {
-                        dynamic_state: DynamicState::LogicOp,
-                    });
+                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
                 }
             }
             DynamicState::PatchControlPoints => {
                 if current_state.patch_control_points().is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet {
-                        dynamic_state: DynamicState::PatchControlPoints,
-                    });
+                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
                 }
             }
             DynamicState::PrimitiveRestartEnable => {
@@ -148,9 +124,7 @@ pub(in super::super) fn check_dynamic_state_validity(
                     if let Some(enable) = current_state.primitive_restart_enable() {
                         enable
                     } else {
-                        return Err(CheckDynamicStateValidityError::NotSet {
-                            dynamic_state: DynamicState::PrimitiveRestartEnable,
-                        });
+                        return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
                     };
 
                 if primitive_restart_enable {
@@ -199,9 +173,7 @@ pub(in super::super) fn check_dynamic_state_validity(
                 let topology = if let Some(topology) = current_state.primitive_topology() {
                     topology
                 } else {
-                    return Err(CheckDynamicStateValidityError::NotSet {
-                        dynamic_state: DynamicState::PrimitiveTopology,
-                    });
+                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
                 };
 
                 if pipeline.shader(ShaderStage::TessellationControl).is_some() {
@@ -234,7 +206,11 @@ pub(in super::super) fn check_dynamic_state_validity(
 
                 // TODO: check that the topology matches the geometry shader
             }
-            DynamicState::RasterizerDiscardEnable => todo!(),
+            DynamicState::RasterizerDiscardEnable => {
+                if current_state.rasterizer_discard_enable().is_none() {
+                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
+                }
+            }
             DynamicState::RayTracingPipelineStackSize => unreachable!(
                 "RayTracingPipelineStackSize dynamic state should not occur on a graphics pipeline"
             ),
@@ -242,9 +218,7 @@ pub(in super::super) fn check_dynamic_state_validity(
             DynamicState::Scissor => {
                 for num in 0..pipeline.viewport_state().unwrap().count().unwrap() {
                     if current_state.scissor(num).is_none() {
-                        return Err(CheckDynamicStateValidityError::NotSet {
-                            dynamic_state: DynamicState::Scissor,
-                        });
+                        return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
                     }
                 }
             }
@@ -252,9 +226,7 @@ pub(in super::super) fn check_dynamic_state_validity(
                 let scissor_count = if let Some(scissors) = current_state.scissor_with_count() {
                     scissors.len() as u32
                 } else {
-                    return Err(CheckDynamicStateValidityError::NotSet {
-                        dynamic_state: DynamicState::ScissorWithCount,
-                    });
+                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
                 };
 
                 // Check if the counts match, but only if the viewport count is fixed.
@@ -275,34 +247,26 @@ pub(in super::super) fn check_dynamic_state_validity(
                 let state = current_state.stencil_compare_mask();
 
                 if state.front.is_none() || state.back.is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet {
-                        dynamic_state: DynamicState::StencilCompareMask,
-                    });
+                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
                 }
             }
             DynamicState::StencilOp => {
                 let state = current_state.stencil_op();
 
                 if state.front.is_none() || state.back.is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet {
-                        dynamic_state: DynamicState::StencilOp,
-                    });
+                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
                 }
             }
             DynamicState::StencilReference => {
                 let state = current_state.stencil_reference();
 
                 if state.front.is_none() || state.back.is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet {
-                        dynamic_state: DynamicState::StencilReference,
-                    });
+                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
                 }
             }
             DynamicState::StencilTestEnable => {
                 if current_state.stencil_test_enable().is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet {
-                        dynamic_state: DynamicState::StencilTestEnable,
-                    });
+                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
                 }
 
                 // TODO: Check if the stencil buffer is writable
@@ -311,9 +275,7 @@ pub(in super::super) fn check_dynamic_state_validity(
                 let state = current_state.stencil_write_mask();
 
                 if state.front.is_none() || state.back.is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet {
-                        dynamic_state: DynamicState::StencilWriteMask,
-                    });
+                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
                 }
             }
             DynamicState::VertexInput => todo!(),
@@ -321,9 +283,7 @@ pub(in super::super) fn check_dynamic_state_validity(
             DynamicState::Viewport => {
                 for num in 0..pipeline.viewport_state().unwrap().count().unwrap() {
                     if current_state.viewport(num).is_none() {
-                        return Err(CheckDynamicStateValidityError::NotSet {
-                            dynamic_state: DynamicState::CullMode,
-                        });
+                        return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
                     }
                 }
             }
@@ -333,9 +293,7 @@ pub(in super::super) fn check_dynamic_state_validity(
                 let viewport_count = if let Some(viewports) = current_state.viewport_with_count() {
                     viewports.len() as u32
                 } else {
-                    return Err(CheckDynamicStateValidityError::NotSet {
-                        dynamic_state: DynamicState::ViewportWithCount,
-                    });
+                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
                 };
 
                 let scissor_count =
@@ -347,9 +305,7 @@ pub(in super::super) fn check_dynamic_state_validity(
                         if let Some(scissors) = current_state.scissor_with_count() {
                             scissors.len() as u32
                         } else {
-                            return Err(CheckDynamicStateValidityError::NotSet {
-                                dynamic_state: DynamicState::ScissorWithCount,
-                            });
+                            return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
                         }
                     };
 

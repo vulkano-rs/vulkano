@@ -37,6 +37,7 @@ use crate::pipeline::layout::PipelineLayout;
 use crate::pipeline::rasterization::CullMode;
 use crate::pipeline::rasterization::DepthBias;
 use crate::pipeline::rasterization::FrontFace;
+use crate::pipeline::rasterization::LineStipple;
 use crate::pipeline::viewport::Scissor;
 use crate::pipeline::viewport::Viewport;
 use crate::pipeline::ComputePipeline;
@@ -742,7 +743,7 @@ struct CurrentState {
     depth_test_enable: Option<bool>,
     depth_write_enable: Option<bool>,
     front_face: Option<FrontFace>,
-    line_stipple: Option<(u32, u16)>,
+    line_stipple: Option<LineStipple>,
     line_width: Option<f32>,
     logic_op: Option<LogicOp>,
     patch_control_points: Option<u32>,
@@ -972,7 +973,7 @@ impl<'a> CommandBufferState<'a> {
 
     /// Returns the current line stipple settings, or `None` if nothing has been set yet.
     #[inline]
-    pub fn line_stipple(&self) -> Option<(u32, u16)> {
+    pub fn line_stipple(&self) -> Option<LineStipple> {
         self.current_state.line_stipple
     }
 

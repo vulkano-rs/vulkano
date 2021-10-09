@@ -29,7 +29,9 @@ use crate::pipeline::input_assembly::{
 };
 use crate::pipeline::layout::{PipelineLayout, PipelineLayoutCreationError, PipelineLayoutPcRange};
 use crate::pipeline::multisample::MultisampleState;
-use crate::pipeline::rasterization::{CullMode, FrontFace, PolygonMode, RasterizationState};
+use crate::pipeline::rasterization::{
+    CullMode, FrontFace, LineRasterizationMode, PolygonMode, RasterizationState,
+};
 use crate::pipeline::shader::{
     EntryPointAbstract, GraphicsEntryPoint, GraphicsShaderType, ShaderStage,
     SpecializationConstants,
@@ -1013,6 +1015,129 @@ where
             })
         };
 
+        let mut rasterization_line_state = if device.enabled_extensions().ext_line_rasterization {
+            let line_rasterization_mode = {
+                match self.rasterization_state.line_rasterization_mode {
+                    LineRasterizationMode::Default => (),
+                    LineRasterizationMode::Rectangular => {
+                        if !device.enabled_features().rectangular_lines {
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "rectangular_lines",
+                                reason:
+                                    "RasterizationState::line_rasterization_mode was Rectangular",
+                            });
+                        }
+                    }
+                    LineRasterizationMode::Bresenham => {
+                        if !device.enabled_features().bresenham_lines {
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "bresenham_lines",
+                                reason: "RasterizationState::line_rasterization_mode was Bresenham",
+                            });
+                        }
+                    }
+                    LineRasterizationMode::RectangularSmooth => {
+                        if !device.enabled_features().smooth_lines {
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "smooth_lines",
+                                reason:
+                                    "RasterizationState::line_rasterization_mode was RectangularSmooth",
+                            });
+                        }
+                    }
+                }
+
+                self.rasterization_state.line_rasterization_mode.into()
+            };
+
+            let (stippled_line_enable, line_stipple_factor, line_stipple_pattern) = if let Some(
+                line_stipple,
+            ) =
+                self.rasterization_state.line_stipple
+            {
+                match self.rasterization_state.line_rasterization_mode {
+                    LineRasterizationMode::Default => {
+                        if !device.enabled_features().stippled_rectangular_lines {
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "stippled_rectangular_lines",
+                                reason:
+                                    "RasterizationState::line_stipple was Some and line_rasterization_mode was Default",
+                            });
+                        }
+
+                        if !device.physical_device().properties().strict_lines {
+                            return Err(GraphicsPipelineCreationError::StrictLinesNotSupported);
+                        }
+                    }
+                    LineRasterizationMode::Rectangular => {
+                        if !device.enabled_features().stippled_rectangular_lines {
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "stippled_rectangular_lines",
+                                reason:
+                                    "RasterizationState::line_stipple was Some and line_rasterization_mode was Rectangular",
+                            });
+                        }
+                    }
+                    LineRasterizationMode::Bresenham => {
+                        if !device.enabled_features().stippled_bresenham_lines {
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "stippled_bresenham_lines",
+                                reason: "RasterizationState::line_stipple was Some and line_rasterization_mode was Bresenham",
+                            });
+                        }
+                    }
+                    LineRasterizationMode::RectangularSmooth => {
+                        if !device.enabled_features().stippled_smooth_lines {
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                    feature: "stippled_smooth_lines",
+                                    reason:
+                                        "RasterizationState::line_stipple was Some and line_rasterization_mode was RectangularSmooth",
+                                });
+                        }
+                    }
+                }
+
+                let (factor, pattern) = match line_stipple {
+                    StateMode::Fixed(line_stipple) => {
+                        assert!(line_stipple.factor >= 1 && line_stipple.factor <= 256); // TODO: return error?
+                        (line_stipple.factor, line_stipple.pattern)
+                    }
+                    StateMode::Dynamic => {
+                        dynamic_state_modes.insert(DynamicState::LineStipple, true);
+                        (1, 0)
+                    }
+                };
+
+                (ash::vk::TRUE, factor, pattern)
+            } else {
+                (ash::vk::FALSE, 1, 0)
+            };
+
+            Some(ash::vk::PipelineRasterizationLineStateCreateInfoEXT {
+                line_rasterization_mode,
+                stippled_line_enable,
+                line_stipple_factor,
+                line_stipple_pattern,
+                ..Default::default()
+            })
+        } else {
+            if self.rasterization_state.line_rasterization_mode != LineRasterizationMode::Default {
+                return Err(GraphicsPipelineCreationError::ExtensionNotEnabled {
+                    extension: "ext_line_rasterization",
+                    reason: "RasterizationState::line_rasterization_mode was not Default",
+                });
+            }
+
+            if self.rasterization_state.line_stipple.is_some() {
+                return Err(GraphicsPipelineCreationError::ExtensionNotEnabled {
+                    extension: "ext_line_rasterization",
+                    reason: "RasterizationState::line_stipple was not None",
+                });
+            }
+
+            None
+        };
+
         let rasterization_state = {
             if self.rasterization_state.depth_clamp_enable && !device.enabled_features().depth_clamp
             {
@@ -1117,7 +1242,10 @@ where
             let line_width = match self.rasterization_state.line_width {
                 StateMode::Fixed(line_width) => {
                     if line_width != 1.0 && !device.enabled_features().wide_lines {
-                        return Err(GraphicsPipelineCreationError::WideLinesFeatureNotEnabled);
+                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                            feature: "wide_lines",
+                            reason: "RasterizationState::line_width was not 1.0",
+                        });
                     }
                     line_width
                 }
@@ -1127,7 +1255,7 @@ where
                 }
             };
 
-            Some(ash::vk::PipelineRasterizationStateCreateInfo {
+            let mut rasterization_state = ash::vk::PipelineRasterizationStateCreateInfo {
                 flags: ash::vk::PipelineRasterizationStateCreateFlags::empty(),
                 depth_clamp_enable: self.rasterization_state.depth_clamp_enable as ash::vk::Bool32,
                 rasterizer_discard_enable,
@@ -1140,7 +1268,14 @@ where
                 depth_bias_slope_factor,
                 line_width,
                 ..Default::default()
-            })
+            };
+
+            if let Some(rasterization_line_state) = rasterization_line_state.as_mut() {
+                rasterization_line_state.p_next = rasterization_state.p_next;
+                rasterization_state.p_next = rasterization_line_state as *const _ as *const _;
+            }
+
+            Some(rasterization_state)
         };
 
         let has_fragment_shader_state =
@@ -1277,9 +1412,9 @@ where
                             && !(0.0..1.0).contains(bounds.end())
                         {
                             return Err(GraphicsPipelineCreationError::ExtensionNotEnabled {
-                            extension: "ext_depth_range_unrestricted",
-                            reason: "DepthBoundsState::bounds were not both between 0.0 and 1.0 inclusive",
-                        });
+                                extension: "ext_depth_range_unrestricted",
+                                reason: "DepthBoundsState::bounds were not both between 0.0 and 1.0 inclusive",
+                            });
                         }
                         bounds.into_inner()
                     }
@@ -1522,7 +1657,7 @@ where
 
         debug_assert_eq!(color_blend_attachments.len(), color_write_enables.len());
 
-        let mut color_write_enable_info = if device.enabled_extensions().ext_color_write_enable {
+        let mut color_write = if device.enabled_extensions().ext_color_write_enable {
             Some(ash::vk::PipelineColorWriteCreateInfoEXT {
                 attachment_count: color_write_enables.len() as u32,
                 p_color_write_enables: color_write_enables.as_ptr(),
@@ -1579,9 +1714,9 @@ where
                 ..Default::default()
             };
 
-            if let Some(color_write_enable_info) = color_write_enable_info.as_mut() {
-                color_write_enable_info.p_next = color_blend_state.p_next;
-                color_blend_state.p_next = color_write_enable_info as *const _ as *const _;
+            if let Some(color_write) = color_write.as_mut() {
+                color_write.p_next = color_blend_state.p_next;
+                color_blend_state.p_next = color_write as *const _ as *const _;
             }
 
             Some(color_blend_state)
@@ -1663,6 +1798,12 @@ where
             dynamic_state_modes
                 .entry(DynamicState::LineWidth)
                 .or_insert(false);
+
+            if rasterization_line_state.is_some() {
+                dynamic_state_modes
+                    .entry(DynamicState::LineStipple)
+                    .or_insert(false);
+            }
         }
 
         if depth_stencil_state.is_some() {
@@ -1702,6 +1843,12 @@ where
             dynamic_state_modes
                 .entry(DynamicState::BlendConstants)
                 .or_insert(false);
+
+            if color_write.is_some() {
+                dynamic_state_modes
+                    .entry(DynamicState::ColorWriteEnable)
+                    .or_insert(false);
+            }
         }
 
         // StateMode::Dynamic states not handled yet:
@@ -1712,8 +1859,6 @@ where
         // - ViewportCoarseSampleOrder (VkPipelineViewportCoarseSampleOrderStateCreateInfoNV)
         // - ExclusiveScissor (VkPipelineViewportExclusiveScissorStateCreateInfoNV)
         // - FragmentShadingRate (VkPipelineFragmentShadingRateStateCreateInfoKHR)
-        // - LineStipple (VkPipelineRasterizationLineStateCreateInfoEXT)
-        // - ColorWriteEnable (VkPipelineColorWriteCreateInfoEXT)
 
         if let Some(multiview) = subpass.render_pass().desc().multiview().as_ref() {
             if multiview.used_layer_count() > 0 {
