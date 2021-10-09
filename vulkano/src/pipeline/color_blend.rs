@@ -36,11 +36,8 @@ pub struct ColorBlendState {
     /// feature must also be enabled on the device.
     pub logic_op: Option<StateMode<LogicOp>>,
 
-    /// Sets the blend and output state for each color attachment.
-    ///
-    /// The number of elements must match the number of color attachments in the framebuffer.
-    /// However, you are allowed to specify only one element even if there are a different number of
-    /// color attachments (including zero), and that element will be used for all attachments.
+    /// Sets the blend and output state for each color attachment. The number of elements must match
+    /// the number of color attachments in the framebuffer.
     ///
     /// If there are multiple elements, and the `blend` and `color_write_mask` members of each
     /// element differ, then the [`independent_blend`](crate::device::Features::independent_blend)
@@ -53,22 +50,17 @@ pub struct ColorBlendState {
 
 impl ColorBlendState {
     /// Creates a `ColorBlendState` with logical operations disabled, blend constants set to zero,
-    /// and a single attachment entry that has blending disabled and all color components enabled.
+    /// and `num` attachment entries that have blending disabled, and color write and all color
+    /// components enabled.
     #[inline]
-    pub fn new() -> Self {
-        Self::with_num(1)
-    }
-
-    /// Creates a `ColorBlendState` with logical operations disabled, blend constants set to zero,
-    /// and `num` attachment entries that have blending disabled and all color components enabled.
-    #[inline]
-    pub fn with_num(num: usize) -> Self {
+    pub fn new(num: u32) -> Self {
         Self {
             logic_op: None,
             attachments: (0..num)
                 .map(|_| ColorBlendAttachmentState {
                     blend: None,
                     color_write_mask: ColorComponents::all(),
+                    color_write_enable: StateMode::Fixed(true),
                 })
                 .collect(),
             blend_constants: StateMode::Fixed([0.0, 0.0, 0.0, 0.0]),
@@ -141,10 +133,10 @@ impl ColorBlendState {
 }
 
 impl Default for ColorBlendState {
-    /// Returns [`ColorBlendState::new()`].
+    /// Returns [`ColorBlendState::new(1)`].
     #[inline]
     fn default() -> Self {
-        Self::new()
+        Self::new(1)
     }
 }
 
@@ -217,6 +209,15 @@ pub struct ColorBlendAttachmentState {
 
     /// Sets which components of the final pixel value are written to the attachment.
     pub color_write_mask: ColorComponents,
+
+    /// Sets whether anything at all is written to the attachment. If enabled, the pixel data
+    /// that is written is determined by the `color_write_mask`. If disabled, the mask is ignored
+    /// and nothing is written.
+    ///
+    /// If set to anything other than `Fixed(true)`, the
+    /// [`color_write_enable`](crate::device::Features::color_write_enable) feature must be enabled
+    /// on the device.
+    pub color_write_enable: StateMode<bool>,
 }
 
 /// Describes how the blending system should behave for an attachment.

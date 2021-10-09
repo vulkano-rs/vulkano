@@ -76,7 +76,6 @@ use crate::query::QueryType;
 use crate::render_pass::Framebuffer;
 use crate::render_pass::FramebufferAbstract;
 use crate::render_pass::LoadOp;
-use crate::render_pass::RenderPass;
 use crate::render_pass::Subpass;
 use crate::sampler::Filter;
 use crate::sync::AccessCheckError;
@@ -131,7 +130,7 @@ pub struct AutoCommandBufferBuilder<L, P = StandardCommandPoolBuilder> {
 
 // The state of the current render pass, specifying the pass, subpass index and its intended contents.
 struct RenderPassState {
-    subpass: (Arc<RenderPass>, u32),
+    subpass: Subpass,
     contents: SubpassContents,
     framebuffer: ash::vk::Framebuffer, // Always null for secondary command buffers
 }
@@ -295,14 +294,13 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
                         framebuffer,
                     }) => {
                         let render_pass = CommandBufferInheritanceRenderPass {
-                            subpass: Subpass::from(subpass.render_pass().clone(), subpass.index())
-                                .unwrap(),
+                            subpass: subpass.clone(),
                             framebuffer: framebuffer
                                 .as_ref()
                                 .map(|f| Box::new(f.clone()) as Box<_>),
                         };
                         let render_pass_state = RenderPassState {
-                            subpass: (subpass.render_pass().clone(), subpass.index()),
+                            subpass: subpass.clone(),
                             contents: SubpassContents::Inline,
                             framebuffer: ash::vk::Framebuffer::null(), // Only needed for primary command buffers
                         };
@@ -481,7 +479,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
 
         // Subpasses must be the same.
-        if pipeline.subpass().index() != render_pass_state.subpass.1 {
+        if pipeline.subpass().index() != render_pass_state.subpass.index() {
             return Err(AutoCommandBufferBuilderContextError::WrongSubpassIndex);
         }
 
@@ -490,7 +488,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             .subpass()
             .render_pass()
             .desc()
-            .is_compatible_with_desc(&render_pass_state.subpass.0.desc())
+            .is_compatible_with_desc(&render_pass_state.subpass.render_pass().desc())
         {
             return Err(AutoCommandBufferBuilderContextError::IncompatibleRenderPass);
         }
@@ -1820,10 +1818,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// - Panics if the [`color_write_enable`](crate::device::Features::color_write_enable)
     ///   feature is not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
+    /// - If there is a graphics pipeline with color blend state bound, `enables.len()` must equal
+    /// - [`attachments.len()`](crate::pipeline::color_blend::ColorBlendState::attachments).
     #[inline]
     pub fn set_color_write_enable<I>(&mut self, enables: I) -> &mut Self
     where
         I: IntoIterator<Item = bool>,
+        I::IntoIter: ExactSizeIterator,
     {
         assert!(
             self.queue_family().supports_graphics(),
@@ -1837,6 +1838,19 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             !self.has_fixed_state(DynamicState::ColorWriteEnable),
             "the currently bound graphics pipeline must not contain this state internally"
         );
+
+        let enables = enables.into_iter();
+
+        if let Some(color_blend_state) = self
+            .state()
+            .pipeline_graphics()
+            .and_then(|pipeline| pipeline.color_blend_state())
+        {
+            assert!(
+                enables.len() == color_blend_state.attachments.len(),
+                "if there is a graphics pipeline with color blend state bound, enables.len() must equal attachments.len()"
+            );
+        }
 
         unsafe {
             self.inner.set_color_write_enable(enables);
@@ -3105,7 +3119,7 @@ where
             self.inner
                 .begin_render_pass(framebuffer.clone(), contents, clear_values)?;
             self.render_pass_state = Some(RenderPassState {
-                subpass: (framebuffer.render_pass().clone(), 0),
+                subpass: framebuffer.render_pass().clone().first_subpass(),
                 contents,
                 framebuffer: framebuffer_object,
             });
@@ -3121,12 +3135,15 @@ where
     pub fn end_render_pass(&mut self) -> Result<&mut Self, AutoCommandBufferBuilderContextError> {
         unsafe {
             if let Some(render_pass_state) = self.render_pass_state.as_ref() {
-                let (ref rp, index) = render_pass_state.subpass;
-
-                if rp.desc().subpasses().len() as u32 != index + 1 {
+                if !render_pass_state.subpass.is_last_subpass() {
                     return Err(AutoCommandBufferBuilderContextError::NumSubpassesMismatch {
-                        actual: rp.desc().subpasses().len() as u32,
-                        current: index,
+                        actual: render_pass_state
+                            .subpass
+                            .render_pass()
+                            .desc()
+                            .subpasses()
+                            .len() as u32,
+                        current: render_pass_state.subpass.index(),
                     });
                 }
             } else {
@@ -3270,7 +3287,7 @@ where
         }
 
         // Subpasses must be the same.
-        if render_pass.subpass.index() != render_pass_state.subpass.1 {
+        if render_pass.subpass.index() != render_pass_state.subpass.index() {
             return Err(AutoCommandBufferBuilderContextError::WrongSubpassIndex);
         }
 
@@ -3279,7 +3296,7 @@ where
             .subpass
             .render_pass()
             .desc()
-            .is_compatible_with_desc(render_pass_state.subpass.0.desc())
+            .is_compatible_with_desc(render_pass_state.subpass.render_pass().desc())
         {
             return Err(AutoCommandBufferBuilderContextError::IncompatibleRenderPass);
         }
@@ -3303,19 +3320,22 @@ where
     ) -> Result<&mut Self, AutoCommandBufferBuilderContextError> {
         unsafe {
             if let Some(render_pass_state) = self.render_pass_state.as_mut() {
-                let (ref rp, ref mut index) = render_pass_state.subpass;
-
-                if *index + 1 >= rp.desc().subpasses().len() as u32 {
-                    return Err(AutoCommandBufferBuilderContextError::NumSubpassesMismatch {
-                        actual: rp.desc().subpasses().len() as u32,
-                        current: *index,
-                    });
-                } else {
-                    *index += 1;
+                if render_pass_state.subpass.try_next_subpass() {
                     render_pass_state.contents = contents;
+                } else {
+                    return Err(AutoCommandBufferBuilderContextError::NumSubpassesMismatch {
+                        actual: render_pass_state
+                            .subpass
+                            .render_pass()
+                            .desc()
+                            .subpasses()
+                            .len() as u32,
+                        current: render_pass_state.subpass.index(),
+                    });
                 }
 
-                if let Some(multiview) = rp.desc().multiview() {
+                if let Some(multiview) = render_pass_state.subpass.render_pass().desc().multiview()
+                {
                     // When multiview is enabled, at the beginning of each subpass all non-render pass state is undefined
                     self.inner.reset_state();
                 }

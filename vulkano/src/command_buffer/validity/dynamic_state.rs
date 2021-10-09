@@ -36,7 +36,23 @@ pub(in super::super) fn check_dynamic_state_validity(
                     });
                 }
             }
-            DynamicState::ColorWriteEnable => todo!(),
+            DynamicState::ColorWriteEnable => {
+                let enables = if let Some(enables) = current_state.color_write_enable() {
+                    enables
+                } else {
+                    return Err(CheckDynamicStateValidityError::NotSet {
+                        dynamic_state: DynamicState::CullMode,
+                    });
+                };
+
+                if enables.len() < pipeline.color_blend_state().unwrap().attachments.len() {
+                    return Err(CheckDynamicStateValidityError::NotEnoughColorWriteEnable {
+                        color_write_enable_count: enables.len() as u32,
+                        attachment_count: pipeline.color_blend_state().unwrap().attachments.len()
+                            as u32,
+                    });
+                }
+            }
             DynamicState::CullMode => {
                 if current_state.cull_mode().is_none() {
                     return Err(CheckDynamicStateValidityError::NotSet {
@@ -294,7 +310,7 @@ pub(in super::super) fn check_dynamic_state_validity(
                 for num in 0..pipeline.viewport_state().unwrap().count().unwrap() {
                     if current_state.viewport(num).is_none() {
                         return Err(CheckDynamicStateValidityError::NotSet {
-                            dynamic_state: DynamicState::Viewport,
+                            dynamic_state: DynamicState::CullMode,
                         });
                     }
                 }
@@ -365,6 +381,13 @@ pub enum CheckDynamicStateValidityError {
         reason: &'static str,
     },
 
+    /// The number of ColorWriteEnable values was less than the number of attachments in the
+    /// color blend state of the pipeline.
+    NotEnoughColorWriteEnable {
+        color_write_enable_count: u32,
+        attachment_count: u32,
+    },
+
     /// The pipeline requires a particular state to be set dynamically, but the value was not or
     /// only partially set.
     NotSet { dynamic_state: DynamicState },
@@ -382,20 +405,26 @@ impl fmt::Display for CheckDynamicStateValidityError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match *self {
-            CheckDynamicStateValidityError::FeatureNotEnabled { feature, reason } => {
+            Self::FeatureNotEnabled { feature, reason } => {
                 write!(fmt, "the feature {} must be enabled: {}", feature, reason)
             }
-            CheckDynamicStateValidityError::InvalidPrimitiveTopology { topology, reason } => {
+            Self::InvalidPrimitiveTopology { topology, reason } => {
                 write!(
                     fmt,
                     "invalid dynamic PrimitiveTypology::{:?}: {}",
                     topology, reason
                 )
             }
-            CheckDynamicStateValidityError::NotSet { dynamic_state } => {
+            Self::NotEnoughColorWriteEnable {
+                color_write_enable_count,
+                attachment_count,
+            } => {
+                write!(fmt, "the number of ColorWriteEnable values ({}) was less than the number of attachments ({}) in the color blend state of the pipeline", color_write_enable_count, attachment_count)
+            }
+            Self::NotSet { dynamic_state } => {
                 write!(fmt, "the pipeline requires the dynamic state {:?} to be set, but the value was not or only partially set", dynamic_state)
             }
-            CheckDynamicStateValidityError::ViewportScissorCountMismatch {
+            Self::ViewportScissorCountMismatch {
                 viewport_count,
                 scissor_count,
             } => {

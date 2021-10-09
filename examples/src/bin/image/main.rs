@@ -191,6 +191,7 @@ fn main() {
     )
     .unwrap();
 
+    let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
     let pipeline = Arc::new(
         GraphicsPipeline::start()
             .vertex_input_single_buffer::<Vertex>()
@@ -200,8 +201,8 @@ fn main() {
             )
             .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
             .fragment_shader(fs.main_entry_point(), ())
-            .color_blend_state(ColorBlendState::new().blend_alpha())
-            .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+            .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()).blend_alpha())
+            .render_pass(subpass)
             .build(device.clone())
             .unwrap(),
     );

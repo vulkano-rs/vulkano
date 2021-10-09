@@ -1405,9 +1405,53 @@ where
             None
         };
 
-        let color_blend_attachments: SmallVec<[ash::vk::PipelineColorBlendAttachmentState; 4]> = {
+        let (color_blend_attachments, color_write_enables): (
+            SmallVec<[ash::vk::PipelineColorBlendAttachmentState; 4]>,
+            SmallVec<[ash::vk::Bool32; 4]>,
+        ) = {
             let num_atch = subpass.num_color_attachments();
-            let to_vulkan = |state: &ColorBlendAttachmentState| {
+
+            // If there is one element, duplicate it for all attachments.
+            // TODO: this is undocumented and only exists for compatibility with some of the
+            // deprecated builder methods. Remove it when those methods are gone.
+            if self.color_blend_state.attachments.len() == 1 {
+                let element = self.color_blend_state.attachments.pop().unwrap();
+                self.color_blend_state
+                    .attachments
+                    .extend(std::iter::repeat(element).take(num_atch as usize));
+            } else {
+                if self.color_blend_state.attachments.len() != num_atch as usize {
+                    return Err(GraphicsPipelineCreationError::MismatchBlendingAttachmentsCount);
+                }
+
+                if self.color_blend_state.attachments.len() > 1
+                    && !device.enabled_features().independent_blend
+                {
+                    // Ensure that all `blend` and `color_write_mask` are identical.
+                    let mut iter = self
+                        .color_blend_state
+                        .attachments
+                        .iter()
+                        .map(|state| (&state.blend, &state.color_write_mask));
+                    let first = iter.next().unwrap();
+
+                    if !iter.all(|state| state == first) {
+                        return Err(
+                            GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "independent_blend",
+                                reason: "The blend and color_write_mask members of all elements of ColorBlendState::attachments were not identical",
+                            },
+                        );
+                    }
+                }
+            }
+
+            let mut color_blend_attachments =
+                SmallVec::with_capacity(self.color_blend_state.attachments.len());
+            let mut color_write_enables =
+                SmallVec::with_capacity(self.color_blend_state.attachments.len());
+
+            for state in self.color_blend_state.attachments.iter() {
                 let blend = if let Some(blend) = &state.blend {
                     if !device.enabled_features().dual_src_blend
                         && std::array::IntoIter::new([
@@ -1437,50 +1481,52 @@ where
                 } else {
                     Default::default()
                 };
-                let color_write_mask = state.color_write_mask.into();
 
-                Ok(ash::vk::PipelineColorBlendAttachmentState {
-                    color_write_mask,
+                let color_blend_attachment_state = ash::vk::PipelineColorBlendAttachmentState {
+                    color_write_mask: state.color_write_mask.into(),
                     ..blend
-                })
-            };
+                };
 
-            if self.color_blend_state.attachments.len() == 1 {
-                std::iter::repeat(to_vulkan(&self.color_blend_state.attachments[0])?)
-                    .take(num_atch as usize)
-                    .collect()
-            } else {
-                if self.color_blend_state.attachments.len() != num_atch as usize {
-                    return Err(GraphicsPipelineCreationError::MismatchBlendingAttachmentsCount);
-                }
-
-                if self.color_blend_state.attachments.len() > 1
-                    && !device.enabled_features().independent_blend
-                {
-                    // Ensure that all `blend` and `color_write_mask` are identical.
-                    let mut iter = self
-                        .color_blend_state
-                        .attachments
-                        .iter()
-                        .map(|state| (&state.blend, &state.color_write_mask));
-                    let first = iter.next().unwrap();
-
-                    if !iter.all(|state| state == first) {
-                        return Err(
-                            GraphicsPipelineCreationError::FeatureNotEnabled {
-                                feature: "independent_blend",
-                                reason: "The blend and color_write_mask members of all elements of ColorBlendState::attachments were not identical",
-                            },
-                        );
+                let color_write_enable = match state.color_write_enable {
+                    StateMode::Fixed(enable) => {
+                        if !enable && !device.enabled_features().color_write_enable {
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "color_write_enable",
+                                reason:
+                                    "ColorBlendAttachmentState::color_blend_enable was set to Fixed(false)",
+                            });
+                        }
+                        enable as ash::vk::Bool32
                     }
-                }
+                    StateMode::Dynamic => {
+                        if !device.enabled_features().color_write_enable {
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "color_write_enable",
+                                reason: "ColorBlendAttachmentState::color_blend_enable was set to Dynamic",
+                            });
+                        }
+                        dynamic_state_modes.insert(DynamicState::ColorWriteEnable, true);
+                        ash::vk::TRUE
+                    }
+                };
 
-                self.color_blend_state
-                    .attachments
-                    .iter()
-                    .map(to_vulkan)
-                    .collect::<Result<_, _>>()?
+                color_blend_attachments.push(color_blend_attachment_state);
+                color_write_enables.push(color_write_enable);
             }
+
+            (color_blend_attachments, color_write_enables)
+        };
+
+        debug_assert_eq!(color_blend_attachments.len(), color_write_enables.len());
+
+        let mut color_write_enable_info = if device.enabled_extensions().ext_color_write_enable {
+            Some(ash::vk::PipelineColorWriteCreateInfoEXT {
+                attachment_count: color_write_enables.len() as u32,
+                p_color_write_enables: color_write_enables.as_ptr(),
+                ..Default::default()
+            })
+        } else {
+            None
         };
 
         let color_blend_state = if has_fragment_shader_state {
@@ -1520,7 +1566,7 @@ where
                 }
             };
 
-            Some(ash::vk::PipelineColorBlendStateCreateInfo {
+            let mut color_blend_state = ash::vk::PipelineColorBlendStateCreateInfo {
                 flags: ash::vk::PipelineColorBlendStateCreateFlags::empty(),
                 logic_op_enable,
                 logic_op,
@@ -1528,7 +1574,14 @@ where
                 p_attachments: color_blend_attachments.as_ptr(),
                 blend_constants,
                 ..Default::default()
-            })
+            };
+
+            if let Some(color_write_enable_info) = color_write_enable_info.as_mut() {
+                color_write_enable_info.p_next = color_blend_state.p_next;
+                color_blend_state.p_next = color_write_enable_info as *const _ as *const _;
+            }
+
+            Some(color_blend_state)
         } else {
             None
         };
@@ -2503,11 +2556,14 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     }
 
     #[deprecated(since = "0.27", note = "Use `color_blend_state` instead")]
+    // TODO: When this method is removed, also remove the special casing in `with_pipeline_layout`
+    // for self.color_blend_state.attachments.len() == 1
     #[inline]
     pub fn blend_collective(mut self, blend: AttachmentBlend) -> Self {
         self.color_blend_state.attachments = vec![ColorBlendAttachmentState {
             blend: Some(blend),
             color_write_mask: ColorComponents::all(),
+            color_write_enable: StateMode::Fixed(true),
         }];
         self
     }
@@ -2523,6 +2579,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
             .map(|x| ColorBlendAttachmentState {
                 blend: Some(x),
                 color_write_mask: ColorComponents::all(),
+                color_write_enable: StateMode::Fixed(true),
             })
             .collect();
         self
@@ -2531,21 +2588,27 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     /// Each fragment shader output will have its value directly written to the framebuffer
     /// attachment. This is the default.
     #[deprecated(since = "0.27", note = "Use `color_blend_state` instead")]
+    // TODO: When this method is removed, also remove the special casing in `with_pipeline_layout`
+    // for self.color_blend_state.attachments.len() == 1
     #[inline]
     pub fn blend_pass_through(mut self) -> Self {
         self.color_blend_state.attachments = vec![ColorBlendAttachmentState {
             blend: None,
             color_write_mask: ColorComponents::all(),
+            color_write_enable: StateMode::Fixed(true),
         }];
         self
     }
 
     #[deprecated(since = "0.27", note = "Use `color_blend_state` instead")]
+    // TODO: When this method is removed, also remove the special casing in `with_pipeline_layout`
+    // for self.color_blend_state.attachments.len() == 1
     #[inline]
     pub fn blend_alpha_blending(mut self) -> Self {
         self.color_blend_state.attachments = vec![ColorBlendAttachmentState {
             blend: Some(AttachmentBlend::alpha()),
             color_write_mask: ColorComponents::all(),
+            color_write_enable: StateMode::Fixed(true),
         }];
         self
     }
