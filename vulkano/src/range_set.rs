@@ -17,11 +17,13 @@ pub struct RangeSet<T>(Vec<Range<T>>);
 
 impl<T: Ord + Copy> RangeSet<T> {
     /// Returns a new empty `RangeSet`.
+    #[inline]
     pub fn new() -> Self {
         RangeSet(Vec::new())
     }
 
     /// Returns whether all elements of `range` are contained in the set.
+    #[inline]
     pub fn contains(&self, elements: Range<T>) -> bool {
         self.0
             .iter()
