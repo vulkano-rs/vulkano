@@ -2274,12 +2274,15 @@ impl SyncCommandBufferBuilder {
         )
         .unwrap();
 
-        // TODO: Track the state of which push constant bytes are set, and potential invalidations.
-        // The Vulkan spec currently is unclear about this, so Vulkano can't do much more for the
-        // moment. See:
+        // TODO: Push constant invalidations.
+        // The Vulkan spec currently is unclear about this, so Vulkano currently just marks
+        // push constants as set, and never unsets them. See:
         // https://github.com/KhronosGroup/Vulkan-Docs/issues/1485
         // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/2711
-        self.current_state.push_constants = Some(PushConstantState { pipeline_layout });
+        self.current_state
+            .push_constants
+            .insert(offset..offset + size);
+        self.current_state.push_constants_pipeline_layout = Some(pipeline_layout);
     }
 
     /// Calls `vkCmdResetEvent` on the builder.
