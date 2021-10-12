@@ -9,11 +9,19 @@
 
 pub use self::builder::GraphicsPipelineBuilder;
 pub use self::creation_error::GraphicsPipelineCreationError;
-use crate::device::Device;
-use crate::device::DeviceOwned;
+use crate::device::{Device, DeviceOwned};
+use crate::pipeline::color_blend::ColorBlendState;
+use crate::pipeline::depth_stencil::DepthStencilState;
+use crate::pipeline::discard_rectangle::DiscardRectangleState;
+use crate::pipeline::input_assembly::InputAssemblyState;
 use crate::pipeline::layout::PipelineLayout;
-use crate::pipeline::vertex::BuffersDefinition;
-use crate::pipeline::vertex::VertexInput;
+use crate::pipeline::multisample::MultisampleState;
+use crate::pipeline::rasterization::RasterizationState;
+use crate::pipeline::shader::ShaderStage;
+use crate::pipeline::tessellation::TessellationState;
+use crate::pipeline::vertex::{BuffersDefinition, VertexInput};
+use crate::pipeline::viewport::ViewportState;
+use crate::pipeline::DynamicState;
 use crate::render_pass::Subpass;
 use crate::VulkanObject;
 use fnv::FnvHashMap;
@@ -23,7 +31,6 @@ use std::hash::Hasher;
 use std::marker::PhantomData;
 use std::ptr;
 use std::sync::Arc;
-use std::u32;
 
 mod builder;
 mod creation_error;
@@ -38,9 +45,19 @@ pub struct GraphicsPipeline {
     inner: Inner,
     layout: Arc<PipelineLayout>,
     subpass: Subpass,
+    // TODO: replace () with an object that describes the shaders in some way.
+    shaders: FnvHashMap<ShaderStage, ()>,
+
     vertex_input: VertexInput,
-    dynamic_state: FnvHashMap<DynamicState, DynamicStateMode>,
-    num_viewports: u32,
+    input_assembly_state: InputAssemblyState,
+    tessellation_state: Option<TessellationState>,
+    viewport_state: Option<ViewportState>,
+    discard_rectangle_state: Option<DiscardRectangleState>,
+    rasterization_state: RasterizationState,
+    multisample_state: Option<MultisampleState>,
+    depth_stencil_state: Option<DepthStencilState>,
+    color_blend_state: Option<ColorBlendState>,
+    dynamic_state: FnvHashMap<DynamicState, bool>,
 }
 
 #[derive(PartialEq, Eq, Hash)]
@@ -86,30 +103,81 @@ impl GraphicsPipeline {
         &self.subpass
     }
 
-    /// Returns the vertex input description of the graphics pipeline.
+    /// Returns information about a particular shader.
+    ///
+    /// `None` is returned if the pipeline does not contain this shader.
+    ///
+    /// Compatibility note: `()` is temporary, it will be replaced with something else in the future.
+    // TODO: ^ implement and make this public
+    #[inline]
+    pub(crate) fn shader(&self, stage: ShaderStage) -> Option<()> {
+        self.shaders.get(&stage).copied()
+    }
+
+    /// Returns the vertex input state used to create this pipeline.
     #[inline]
     pub fn vertex_input(&self) -> &VertexInput {
         &self.vertex_input
     }
 
-    /// Returns the number of viewports and scissors of this pipeline.
+    /// Returns the input assembly state used to create this pipeline.
     #[inline]
-    pub fn num_viewports(&self) -> u32 {
-        self.num_viewports
+    pub fn input_assembly_state(&self) -> &InputAssemblyState {
+        &self.input_assembly_state
     }
 
-    /// Returns the mode of a particular dynamic state.
+    /// Returns the tessellation state used to create this pipeline.
+    #[inline]
+    pub fn tessellation_state(&self) -> Option<&TessellationState> {
+        self.tessellation_state.as_ref()
+    }
+
+    /// Returns the viewport state used to create this pipeline.
+    #[inline]
+    pub fn viewport_state(&self) -> Option<&ViewportState> {
+        self.viewport_state.as_ref()
+    }
+
+    /// Returns the discard rectangle state used to create this pipeline.
+    #[inline]
+    pub fn discard_rectangle_state(&self) -> Option<&DiscardRectangleState> {
+        self.discard_rectangle_state.as_ref()
+    }
+
+    /// Returns the rasterization state used to create this pipeline.
+    #[inline]
+    pub fn rasterization_state(&self) -> &RasterizationState {
+        &self.rasterization_state
+    }
+
+    /// Returns the multisample state used to create this pipeline.
+    #[inline]
+    pub fn multisample_state(&self) -> Option<&MultisampleState> {
+        self.multisample_state.as_ref()
+    }
+
+    /// Returns the depth/stencil state used to create this pipeline.
+    #[inline]
+    pub fn depth_stencil_state(&self) -> Option<&DepthStencilState> {
+        self.depth_stencil_state.as_ref()
+    }
+
+    /// Returns the color blend state used to create this pipeline.
+    #[inline]
+    pub fn color_blend_state(&self) -> Option<&ColorBlendState> {
+        self.color_blend_state.as_ref()
+    }
+
+    /// Returns whether a particular state is must be dynamically set.
     ///
     /// `None` is returned if the pipeline does not contain this state. Previously set dynamic
     /// state is not disturbed when binding it.
-    pub fn dynamic_state(&self, state: DynamicState) -> Option<DynamicStateMode> {
+    pub fn dynamic_state(&self, state: DynamicState) -> Option<bool> {
         self.dynamic_state.get(&state).copied()
     }
 
-    /// Returns all dynamic states and their modes.
-    pub fn dynamic_states(
-        &self,
-    ) -> impl ExactSizeIterator<Item = (DynamicState, DynamicStateMode)> + '_ {
+    /// Returns all potentially dynamic states in the pipeline, and whether they are dynamic or not.
+    pub fn dynamic_states(&self) -> impl ExactSizeIterator<Item = (DynamicState, bool)> + '_ {
         self.dynamic_state.iter().map(|(k, v)| (*k, *v))
     }
 }
@@ -175,67 +243,4 @@ unsafe impl<'a> VulkanObject for GraphicsPipelineSys<'a> {
     fn internal_object(&self) -> ash::vk::Pipeline {
         self.0
     }
-}
-
-/// A particular state value within a graphics pipeline that can be dynamically set by a command
-/// buffer.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[repr(i32)]
-pub enum DynamicState {
-    Viewport = ash::vk::DynamicState::VIEWPORT.as_raw(),
-    Scissor = ash::vk::DynamicState::SCISSOR.as_raw(),
-    LineWidth = ash::vk::DynamicState::LINE_WIDTH.as_raw(),
-    DepthBias = ash::vk::DynamicState::DEPTH_BIAS.as_raw(),
-    BlendConstants = ash::vk::DynamicState::BLEND_CONSTANTS.as_raw(),
-    DepthBounds = ash::vk::DynamicState::DEPTH_BOUNDS.as_raw(),
-    StencilCompareMask = ash::vk::DynamicState::STENCIL_COMPARE_MASK.as_raw(),
-    StencilWriteMask = ash::vk::DynamicState::STENCIL_WRITE_MASK.as_raw(),
-    StencilReference = ash::vk::DynamicState::STENCIL_REFERENCE.as_raw(),
-    ViewportWScaling = ash::vk::DynamicState::VIEWPORT_W_SCALING_NV.as_raw(),
-    DiscardRectangle = ash::vk::DynamicState::DISCARD_RECTANGLE_EXT.as_raw(),
-    SampleLocations = ash::vk::DynamicState::SAMPLE_LOCATIONS_EXT.as_raw(),
-    RayTracingPipelineStackSize =
-        ash::vk::DynamicState::RAY_TRACING_PIPELINE_STACK_SIZE_KHR.as_raw(),
-    ViewportShadingRatePalette = ash::vk::DynamicState::VIEWPORT_SHADING_RATE_PALETTE_NV.as_raw(),
-    ViewportCoarseSampleOrder = ash::vk::DynamicState::VIEWPORT_COARSE_SAMPLE_ORDER_NV.as_raw(),
-    ExclusiveScissor = ash::vk::DynamicState::EXCLUSIVE_SCISSOR_NV.as_raw(),
-    FragmentShadingRate = ash::vk::DynamicState::FRAGMENT_SHADING_RATE_KHR.as_raw(),
-    LineStipple = ash::vk::DynamicState::LINE_STIPPLE_EXT.as_raw(),
-    CullMode = ash::vk::DynamicState::CULL_MODE_EXT.as_raw(),
-    FrontFace = ash::vk::DynamicState::FRONT_FACE_EXT.as_raw(),
-    PrimitiveTopology = ash::vk::DynamicState::PRIMITIVE_TOPOLOGY_EXT.as_raw(),
-    ViewportWithCount = ash::vk::DynamicState::VIEWPORT_WITH_COUNT_EXT.as_raw(),
-    ScissorWithCount = ash::vk::DynamicState::SCISSOR_WITH_COUNT_EXT.as_raw(),
-    VertexInputBindingStride = ash::vk::DynamicState::VERTEX_INPUT_BINDING_STRIDE_EXT.as_raw(),
-    DepthTestEnable = ash::vk::DynamicState::DEPTH_TEST_ENABLE_EXT.as_raw(),
-    DepthWriteEnable = ash::vk::DynamicState::DEPTH_WRITE_ENABLE_EXT.as_raw(),
-    DepthCompareOp = ash::vk::DynamicState::DEPTH_COMPARE_OP_EXT.as_raw(),
-    DepthBoundsTestEnable = ash::vk::DynamicState::DEPTH_BOUNDS_TEST_ENABLE_EXT.as_raw(),
-    StencilTestEnable = ash::vk::DynamicState::STENCIL_TEST_ENABLE_EXT.as_raw(),
-    StencilOp = ash::vk::DynamicState::STENCIL_OP_EXT.as_raw(),
-    VertexInput = ash::vk::DynamicState::VERTEX_INPUT_EXT.as_raw(),
-    PatchControlPoints = ash::vk::DynamicState::PATCH_CONTROL_POINTS_EXT.as_raw(),
-    RasterizerDiscardEnable = ash::vk::DynamicState::RASTERIZER_DISCARD_ENABLE_EXT.as_raw(),
-    DepthBiasEnable = ash::vk::DynamicState::DEPTH_BIAS_ENABLE_EXT.as_raw(),
-    LogicOp = ash::vk::DynamicState::LOGIC_OP_EXT.as_raw(),
-    PrimitiveRestartEnable = ash::vk::DynamicState::PRIMITIVE_RESTART_ENABLE_EXT.as_raw(),
-    ColorWriteEnable = ash::vk::DynamicState::COLOR_WRITE_ENABLE_EXT.as_raw(),
-}
-
-impl From<DynamicState> for ash::vk::DynamicState {
-    #[inline]
-    fn from(val: DynamicState) -> Self {
-        Self::from_raw(val as i32)
-    }
-}
-
-/// Specifies how a dynamic state is handled by a graphics pipeline.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum DynamicStateMode {
-    /// The pipeline has a fixed value for this state. Previously set dynamic state will be lost
-    /// when binding it, and will have to be re-set after binding a pipeline that uses it.
-    Fixed,
-    /// The pipeline expects a dynamic value to be set by a command buffer. Previously set dynamic
-    /// state is not disturbed when binding it.
-    Dynamic,
 }

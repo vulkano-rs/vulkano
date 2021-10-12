@@ -29,14 +29,14 @@ use vulkano::image::{
     view::ImageView, ImageDimensions, ImageUsage, ImmutableImage, MipmapsCount, SwapchainImage,
 };
 use vulkano::instance::Instance;
-use vulkano::pipeline::viewport::Viewport;
+use vulkano::pipeline::color_blend::ColorBlendState;
+use vulkano::pipeline::input_assembly::{InputAssemblyState, PrimitiveTopology};
+use vulkano::pipeline::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::{GraphicsPipeline, PipelineBindPoint};
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
 use vulkano::sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode};
-use vulkano::swapchain;
-use vulkano::swapchain::{AcquireError, Swapchain, SwapchainCreationError};
-use vulkano::sync;
-use vulkano::sync::{FlushError, GpuFuture};
+use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
+use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano::Version;
 use vulkano_win::VkSurfaceBuild;
 use winit::event::{Event, WindowEvent};
@@ -197,15 +197,18 @@ fn main() {
     )
     .unwrap();
 
+    let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
     let pipeline = Arc::new(
         GraphicsPipeline::start()
             .vertex_input_single_buffer::<Vertex>()
             .vertex_shader(vs.main_entry_point(), ())
-            .triangle_strip()
-            .viewports_dynamic_scissors_irrelevant(1)
+            .input_assembly_state(
+                InputAssemblyState::new().topology(PrimitiveTopology::TriangleStrip),
+            )
+            .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
             .fragment_shader(fs.main_entry_point(), ())
-            .blend_alpha_blending()
-            .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+            .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()).blend_alpha())
+            .render_pass(subpass)
             .with_auto_layout(device.clone(), |set_descs| {
                 // Modify the auto-generated layout by setting an immutable sampler to
                 // set 0 binding 0.

@@ -20,7 +20,7 @@ use crate::DeviceSize;
 use std::mem;
 
 /// A vertex definition for any number of vertex and instance buffers.
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct BuffersDefinition(Vec<VertexBuffer>);
 
 #[derive(Clone, Copy)]
@@ -28,6 +28,15 @@ struct VertexBuffer {
     info_fn: fn(&str) -> Option<VertexMemberInfo>,
     stride: u32,
     input_rate: VertexInputRate,
+}
+
+impl std::fmt::Debug for VertexBuffer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("VertexBuffer")
+            .field("stride", &self.stride)
+            .field("input_rate", &self.input_rate)
+            .finish()
+    }
 }
 
 impl From<VertexBuffer> for VertexInputBinding {

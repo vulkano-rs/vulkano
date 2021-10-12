@@ -550,6 +550,15 @@ impl RenderPass {
     pub fn desc(&self) -> &RenderPassDesc {
         &self.desc
     }
+
+    /// Returns the first subpass of the render pass.
+    #[inline]
+    pub fn first_subpass(self: Arc<Self>) -> Subpass {
+        Subpass {
+            render_pass: self,
+            subpass_id: 0, // Guaranteed to exist
+        }
+    }
 }
 
 unsafe impl DeviceOwned for RenderPass {
@@ -677,9 +686,30 @@ impl Subpass {
         }
     }
 
+    /// Returns the subpass description for this subpass.
     #[inline]
-    fn subpass_desc(&self) -> &SubpassDesc {
+    pub fn subpass_desc(&self) -> &SubpassDesc {
         &self.render_pass.desc().subpasses()[self.subpass_id as usize]
+    }
+
+    /// Returns whether this subpass is the last one in the render pass. If `true` is returned,
+    /// `next_subpass` will return `None`.
+    #[inline]
+    pub fn is_last_subpass(&self) -> bool {
+        self.subpass_id as usize == self.render_pass.desc().subpasses().len() - 1
+    }
+
+    /// Tries to advance to the next subpass after this one, and returns `true` if successful.
+    #[inline]
+    pub fn try_next_subpass(&mut self) -> bool {
+        let next_id = self.subpass_id + 1;
+
+        if (next_id as usize) < self.render_pass.desc().subpasses().len() {
+            self.subpass_id = next_id;
+            true
+        } else {
+            false
+        }
     }
 
     #[inline]

@@ -19,14 +19,14 @@ use vulkano::device::{Device, DeviceExtensions, DeviceOwned, Features};
 use vulkano::format::Format;
 use vulkano::image::{view::ImageView, AttachmentImage, ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
-use vulkano::pipeline::viewport::Viewport;
+use vulkano::pipeline::depth_stencil::DepthStencilState;
+use vulkano::pipeline::input_assembly::InputAssemblyState;
+use vulkano::pipeline::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::query::{QueryControlFlags, QueryPool, QueryResultFlags, QueryType};
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
-use vulkano::swapchain;
-use vulkano::swapchain::{AcquireError, Swapchain, SwapchainCreationError};
-use vulkano::sync;
-use vulkano::sync::{FlushError, GpuFuture};
+use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
+use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano::Version;
 use vulkano_win::VkSurfaceBuild;
 use winit::event::{Event, WindowEvent};
@@ -241,14 +241,14 @@ fn main() {
         GraphicsPipeline::start()
             .vertex_input_single_buffer::<Vertex>()
             .vertex_shader(vs.main_entry_point(), ())
-            .triangle_list()
-            .viewports_dynamic_scissors_irrelevant(1)
+            .input_assembly_state(InputAssemblyState::new())
+            .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
             .fragment_shader(fs.main_entry_point(), ())
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
             // Enable depth testing, which is needed for occlusion queries to make sense at all.
             // If you disable depth testing, every pixel is considered to pass the depth test, so
             // every query will return a nonzero result.
-            .depth_stencil_simple_depth()
+            .depth_stencil_state(DepthStencilState::simple_depth_test())
             .build(device.clone())
             .unwrap(),
     );

@@ -39,7 +39,6 @@ use crate::pipeline::vertex::VertexInput;
 use crate::pipeline::viewport::Scissor;
 use crate::pipeline::viewport::Viewport;
 use crate::pipeline::ComputePipeline;
-use crate::pipeline::DynamicStateMode;
 use crate::pipeline::GraphicsPipeline;
 use crate::pipeline::PipelineBindPoint;
 use crate::query::QueryControlFlags;
@@ -287,16 +286,14 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.current_state
-            .reset_dynamic_states(pipeline.dynamic_states().filter_map(|(state, mode)| {
-                // Reset any states that are fixed in the new pipeline. The pipeline bind command
-                // will overwrite these states.
-                if matches!(mode, DynamicStateMode::Fixed) {
-                    Some(state)
-                } else {
-                    None
-                }
-            }));
+        // Reset any states that are fixed in the new pipeline. The pipeline bind command will
+        // overwrite these states.
+        self.current_state.reset_dynamic_states(
+            pipeline
+                .dynamic_states()
+                .filter(|(_, d)| !d) // not dynamic
+                .map(|(s, _)| s),
+        );
         self.append_command(Cmd { pipeline }, &[]).unwrap();
         self.current_state.pipeline_graphics = self.commands.last().cloned();
     }
@@ -2352,6 +2349,63 @@ impl SyncCommandBufferBuilder {
         self.current_state.blend_constants = Some(constants);
     }
 
+    /// Calls `vkCmdSetColorWriteEnableEXT` on the builder.
+    ///
+    /// If the list is empty then the command is automatically ignored.
+    #[inline]
+    pub unsafe fn set_color_write_enable<I>(&mut self, enables: I)
+    where
+        I: IntoIterator<Item = bool>,
+    {
+        struct Cmd<I> {
+            enables: Mutex<Option<I>>,
+        }
+
+        impl<I> Command for Cmd<I>
+        where
+            I: IntoIterator<Item = bool> + Send + Sync,
+        {
+            fn name(&self) -> &'static str {
+                "vkCmdSetColorWriteEnableEXT"
+            }
+
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
+                out.set_color_write_enable(self.enables.lock().unwrap().take().unwrap());
+            }
+        }
+
+        let enables: SmallVec<[bool; 4]> = enables.into_iter().collect();
+        self.current_state.color_write_enable = Some(enables.clone());
+        self.append_command(
+            Cmd {
+                enables: Mutex::new(Some(enables)),
+            },
+            &[],
+        )
+        .unwrap();
+    }
+
+    /// Calls `vkCmdSetCullModeEXT` on the builder.
+    #[inline]
+    pub unsafe fn set_cull_mode(&mut self, cull_mode: CullMode) {
+        struct Cmd {
+            cull_mode: CullMode,
+        }
+
+        impl Command for Cmd {
+            fn name(&self) -> &'static str {
+                "vkCmdSetCullModeEXT"
+            }
+
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
+                out.set_cull_mode(self.cull_mode);
+            }
+        }
+
+        self.append_command(Cmd { cull_mode }, &[]).unwrap();
+        self.current_state.cull_mode = Some(cull_mode);
+    }
+
     /// Calls `vkCmdSetDepthBias` on the builder.
     #[inline]
     pub unsafe fn set_depth_bias(&mut self, constant_factor: f32, clamp: f32, slope_factor: f32) {
@@ -2380,7 +2434,32 @@ impl SyncCommandBufferBuilder {
             &[],
         )
         .unwrap();
-        self.current_state.depth_bias = Some((constant_factor, clamp, slope_factor));
+        self.current_state.depth_bias = Some(DepthBias {
+            constant_factor,
+            clamp,
+            slope_factor,
+        });
+    }
+
+    /// Calls `vkCmdSetDepthBiasEnableEXT` on the builder.
+    #[inline]
+    pub unsafe fn set_depth_bias_enable(&mut self, enable: bool) {
+        struct Cmd {
+            enable: bool,
+        }
+
+        impl Command for Cmd {
+            fn name(&self) -> &'static str {
+                "vkCmdSetDepthBiasEnableEXT"
+            }
+
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
+                out.set_depth_bias_enable(self.enable);
+            }
+        }
+
+        self.append_command(Cmd { enable }, &[]).unwrap();
+        self.current_state.depth_bias_enable = Some(enable);
     }
 
     /// Calls `vkCmdSetDepthBounds` on the builder.
@@ -2405,6 +2484,135 @@ impl SyncCommandBufferBuilder {
         self.current_state.depth_bounds = Some((min, max));
     }
 
+    /// Calls `vkCmdSetDepthBoundsTestEnableEXT` on the builder.
+    #[inline]
+    pub unsafe fn set_depth_bounds_test_enable(&mut self, enable: bool) {
+        struct Cmd {
+            enable: bool,
+        }
+
+        impl Command for Cmd {
+            fn name(&self) -> &'static str {
+                "vkCmdSetDepthBoundsTestEnableEXT"
+            }
+
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
+                out.set_depth_bounds_test_enable(self.enable);
+            }
+        }
+
+        self.append_command(Cmd { enable }, &[]).unwrap();
+        self.current_state.depth_bounds_test_enable = Some(enable);
+    }
+
+    /// Calls `vkCmdSetDepthCompareOpEXT` on the builder.
+    #[inline]
+    pub unsafe fn set_depth_compare_op(&mut self, compare_op: CompareOp) {
+        struct Cmd {
+            compare_op: CompareOp,
+        }
+
+        impl Command for Cmd {
+            fn name(&self) -> &'static str {
+                "vkCmdSetDepthCompareOpEXT"
+            }
+
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
+                out.set_depth_compare_op(self.compare_op);
+            }
+        }
+
+        self.append_command(Cmd { compare_op }, &[]).unwrap();
+        self.current_state.depth_compare_op = Some(compare_op);
+    }
+
+    /// Calls `vkCmdSetDepthTestEnableEXT` on the builder.
+    #[inline]
+    pub unsafe fn set_depth_test_enable(&mut self, enable: bool) {
+        struct Cmd {
+            enable: bool,
+        }
+
+        impl Command for Cmd {
+            fn name(&self) -> &'static str {
+                "vkCmdSetDepthTestEnableEXT"
+            }
+
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
+                out.set_depth_test_enable(self.enable);
+            }
+        }
+
+        self.append_command(Cmd { enable }, &[]).unwrap();
+        self.current_state.depth_test_enable = Some(enable);
+    }
+
+    /// Calls `vkCmdSetDepthWriteEnableEXT` on the builder.
+    #[inline]
+    pub unsafe fn set_depth_write_enable(&mut self, enable: bool) {
+        struct Cmd {
+            enable: bool,
+        }
+
+        impl Command for Cmd {
+            fn name(&self) -> &'static str {
+                "vkCmdSetDepthWriteEnableEXT"
+            }
+
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
+                out.set_depth_write_enable(self.enable);
+            }
+        }
+
+        self.append_command(Cmd { enable }, &[]).unwrap();
+        self.current_state.depth_write_enable = Some(enable);
+    }
+
+    /// Calls `vkCmdSetDiscardRectangle` on the builder.
+    ///
+    /// If the list is empty then the command is automatically ignored.
+    #[inline]
+    pub unsafe fn set_discard_rectangle<I>(&mut self, first_rectangle: u32, rectangles: I)
+    where
+        I: IntoIterator<Item = Scissor>,
+    {
+        struct Cmd {
+            first_rectangle: u32,
+            rectangles: Mutex<SmallVec<[Scissor; 2]>>,
+        }
+
+        impl Command for Cmd {
+            fn name(&self) -> &'static str {
+                "vkCmdSetRectangle"
+            }
+
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
+                out.set_discard_rectangle(
+                    self.first_rectangle,
+                    self.rectangles.lock().unwrap().drain(..),
+                );
+            }
+        }
+
+        let rectangles: SmallVec<[Scissor; 2]> = rectangles.into_iter().collect();
+
+        for (num, rectangle) in rectangles.iter().enumerate() {
+            let num = num as u32 + first_rectangle;
+            self.current_state
+                .discard_rectangle
+                .insert(num, rectangle.clone());
+        }
+
+        self.append_command(
+            Cmd {
+                first_rectangle,
+                rectangles: Mutex::new(rectangles),
+            },
+            &[],
+        )
+        .unwrap();
+    }
+
     /// Calls `vkCmdSetEvent` on the builder.
     #[inline]
     pub unsafe fn set_event(&mut self, event: Arc<Event>, stages: PipelineStages) {
@@ -2426,6 +2634,49 @@ impl SyncCommandBufferBuilder {
         self.append_command(Cmd { event, stages }, &[]).unwrap();
     }
 
+    /// Calls `vkCmdSetFrontFaceEXT` on the builder.
+    #[inline]
+    pub unsafe fn set_front_face(&mut self, face: FrontFace) {
+        struct Cmd {
+            face: FrontFace,
+        }
+
+        impl Command for Cmd {
+            fn name(&self) -> &'static str {
+                "vkCmdSetFrontFaceEXT"
+            }
+
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
+                out.set_front_face(self.face);
+            }
+        }
+
+        self.append_command(Cmd { face }, &[]).unwrap();
+        self.current_state.front_face = Some(face);
+    }
+
+    /// Calls `vkCmdSetLineStippleEXT` on the builder.
+    #[inline]
+    pub unsafe fn set_line_stipple(&mut self, factor: u32, pattern: u16) {
+        struct Cmd {
+            factor: u32,
+            pattern: u16,
+        }
+
+        impl Command for Cmd {
+            fn name(&self) -> &'static str {
+                "vkCmdSetLineStippleEXT"
+            }
+
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
+                out.set_line_stipple(self.factor, self.pattern);
+            }
+        }
+
+        self.append_command(Cmd { factor, pattern }, &[]).unwrap();
+        self.current_state.line_stipple = Some(LineStipple { factor, pattern });
+    }
+
     /// Calls `vkCmdSetLineWidth` on the builder.
     #[inline]
     pub unsafe fn set_line_width(&mut self, line_width: f32) {
@@ -2445,6 +2696,111 @@ impl SyncCommandBufferBuilder {
 
         self.append_command(Cmd { line_width }, &[]).unwrap();
         self.current_state.line_width = Some(line_width);
+    }
+
+    /// Calls `vkCmdSetLogicOpEXT` on the builder.
+    #[inline]
+    pub unsafe fn set_logic_op(&mut self, logic_op: LogicOp) {
+        struct Cmd {
+            logic_op: LogicOp,
+        }
+
+        impl Command for Cmd {
+            fn name(&self) -> &'static str {
+                "vkCmdSetLogicOpEXT"
+            }
+
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
+                out.set_logic_op(self.logic_op);
+            }
+        }
+
+        self.append_command(Cmd { logic_op }, &[]).unwrap();
+        self.current_state.logic_op = Some(logic_op);
+    }
+
+    /// Calls `vkCmdSetPatchControlPointsEXT` on the builder.
+    #[inline]
+    pub unsafe fn set_patch_control_points(&mut self, num: u32) {
+        struct Cmd {
+            num: u32,
+        }
+
+        impl Command for Cmd {
+            fn name(&self) -> &'static str {
+                "vkCmdSetPatchControlPointsEXT"
+            }
+
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
+                out.set_patch_control_points(self.num);
+            }
+        }
+
+        self.append_command(Cmd { num }, &[]).unwrap();
+        self.current_state.patch_control_points = Some(num);
+    }
+
+    /// Calls `vkCmdSetPrimitiveRestartEnableEXT` on the builder.
+    #[inline]
+    pub unsafe fn set_primitive_restart_enable(&mut self, enable: bool) {
+        struct Cmd {
+            enable: bool,
+        }
+
+        impl Command for Cmd {
+            fn name(&self) -> &'static str {
+                "vkCmdSetPrimitiveRestartEnableEXT"
+            }
+
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
+                out.set_primitive_restart_enable(self.enable);
+            }
+        }
+
+        self.append_command(Cmd { enable }, &[]).unwrap();
+        self.current_state.primitive_restart_enable = Some(enable);
+    }
+
+    /// Calls `vkCmdSetPrimitiveTopologyEXT` on the builder.
+    #[inline]
+    pub unsafe fn set_primitive_topology(&mut self, topology: PrimitiveTopology) {
+        struct Cmd {
+            topology: PrimitiveTopology,
+        }
+
+        impl Command for Cmd {
+            fn name(&self) -> &'static str {
+                "vkCmdSetPrimitiveTopologyEXT"
+            }
+
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
+                out.set_primitive_topology(self.topology);
+            }
+        }
+
+        self.append_command(Cmd { topology }, &[]).unwrap();
+        self.current_state.primitive_topology = Some(topology);
+    }
+
+    /// Calls `vkCmdSetRasterizerDiscardEnableEXT` on the builder.
+    #[inline]
+    pub unsafe fn set_rasterizer_discard_enable(&mut self, enable: bool) {
+        struct Cmd {
+            enable: bool,
+        }
+
+        impl Command for Cmd {
+            fn name(&self) -> &'static str {
+                "vkCmdSetRasterizerDiscardEnableEXT"
+            }
+
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
+                out.set_rasterizer_discard_enable(self.enable);
+            }
+        }
+
+        self.append_command(Cmd { enable }, &[]).unwrap();
+        self.current_state.rasterizer_discard_enable = Some(enable);
     }
 
     /// Calls `vkCmdSetStencilCompareMask` on the builder.
@@ -2485,6 +2841,73 @@ impl SyncCommandBufferBuilder {
         }
     }
 
+    /// Calls `vkCmdSetStencilOpEXT` on the builder.
+    #[inline]
+    pub unsafe fn set_stencil_op(
+        &mut self,
+        faces: StencilFaces,
+        fail_op: StencilOp,
+        pass_op: StencilOp,
+        depth_fail_op: StencilOp,
+        compare_op: CompareOp,
+    ) {
+        struct Cmd {
+            faces: StencilFaces,
+            fail_op: StencilOp,
+            pass_op: StencilOp,
+            depth_fail_op: StencilOp,
+            compare_op: CompareOp,
+        }
+
+        impl Command for Cmd {
+            fn name(&self) -> &'static str {
+                "vkCmdSetStencilOpEXT"
+            }
+
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
+                out.set_stencil_op(
+                    self.faces,
+                    self.fail_op,
+                    self.pass_op,
+                    self.depth_fail_op,
+                    self.compare_op,
+                );
+            }
+        }
+
+        self.append_command(
+            Cmd {
+                faces,
+                fail_op,
+                pass_op,
+                depth_fail_op,
+                compare_op,
+            },
+            &[],
+        )
+        .unwrap();
+
+        let faces = ash::vk::StencilFaceFlags::from(faces);
+
+        if faces.intersects(ash::vk::StencilFaceFlags::FRONT) {
+            self.current_state.stencil_op.front = Some(StencilOps {
+                fail_op,
+                pass_op,
+                depth_fail_op,
+                compare_op,
+            });
+        }
+
+        if faces.intersects(ash::vk::StencilFaceFlags::BACK) {
+            self.current_state.stencil_op.back = Some(StencilOps {
+                fail_op,
+                pass_op,
+                depth_fail_op,
+                compare_op,
+            });
+        }
+    }
+
     /// Calls `vkCmdSetStencilReference` on the builder.
     #[inline]
     pub unsafe fn set_stencil_reference(&mut self, faces: StencilFaces, reference: u32) {
@@ -2514,6 +2937,27 @@ impl SyncCommandBufferBuilder {
         if faces.intersects(ash::vk::StencilFaceFlags::BACK) {
             self.current_state.stencil_reference.back = Some(reference);
         }
+    }
+
+    /// Calls `vkCmdSetStencilTestEnableEXT` on the builder.
+    #[inline]
+    pub unsafe fn set_stencil_test_enable(&mut self, enable: bool) {
+        struct Cmd {
+            enable: bool,
+        }
+
+        impl Command for Cmd {
+            fn name(&self) -> &'static str {
+                "vkCmdSetStencilTestEnableEXT"
+            }
+
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
+                out.set_stencil_test_enable(self.enable);
+            }
+        }
+
+        self.append_command(Cmd { enable }, &[]).unwrap();
+        self.current_state.stencil_test_enable = Some(enable);
     }
 
     /// Calls `vkCmdSetStencilWriteMask` on the builder.
@@ -2587,6 +3031,39 @@ impl SyncCommandBufferBuilder {
         .unwrap();
     }
 
+    /// Calls `vkCmdSetScissorWithCountEXT` on the builder.
+    ///
+    /// If the list is empty then the command is automatically ignored.
+    #[inline]
+    pub unsafe fn set_scissor_with_count<I>(&mut self, scissors: I)
+    where
+        I: IntoIterator<Item = Scissor>,
+    {
+        struct Cmd {
+            scissors: Mutex<SmallVec<[Scissor; 2]>>,
+        }
+
+        impl Command for Cmd {
+            fn name(&self) -> &'static str {
+                "vkCmdSetScissorWithCountEXT"
+            }
+
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
+                out.set_scissor_with_count(self.scissors.lock().unwrap().drain(..));
+            }
+        }
+
+        let scissors: SmallVec<[Scissor; 2]> = scissors.into_iter().collect();
+        self.current_state.scissor_with_count = Some(scissors.clone());
+        self.append_command(
+            Cmd {
+                scissors: Mutex::new(scissors),
+            },
+            &[],
+        )
+        .unwrap();
+    }
+
     /// Calls `vkCmdSetViewport` on the builder.
     ///
     /// If the list is empty then the command is automatically ignored.
@@ -2623,6 +3100,39 @@ impl SyncCommandBufferBuilder {
         self.append_command(
             Cmd {
                 first_viewport,
+                viewports: Mutex::new(viewports),
+            },
+            &[],
+        )
+        .unwrap();
+    }
+
+    /// Calls `vkCmdSetViewportWithCountEXT` on the builder.
+    ///
+    /// If the list is empty then the command is automatically ignored.
+    #[inline]
+    pub unsafe fn set_viewport_with_count<I>(&mut self, viewports: I)
+    where
+        I: IntoIterator<Item = Viewport>,
+    {
+        struct Cmd {
+            viewports: Mutex<SmallVec<[Viewport; 2]>>,
+        }
+
+        impl Command for Cmd {
+            fn name(&self) -> &'static str {
+                "vkCmdSetViewportWithCountEXT"
+            }
+
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
+                out.set_viewport_with_count(self.viewports.lock().unwrap().drain(..));
+            }
+        }
+
+        let viewports: SmallVec<[Viewport; 2]> = viewports.into_iter().collect();
+        self.current_state.viewport_with_count = Some(viewports.clone());
+        self.append_command(
+            Cmd {
                 viewports: Mutex::new(viewports),
             },
             &[],

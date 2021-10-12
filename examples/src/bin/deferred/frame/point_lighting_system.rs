@@ -7,24 +7,19 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use cgmath::Matrix4;
-use cgmath::Vector3;
+use cgmath::{Matrix4, Vector3};
 use std::sync::Arc;
-use vulkano::buffer::BufferUsage;
-use vulkano::buffer::CpuAccessibleBuffer;
-use vulkano::buffer::TypedBufferAccess;
+use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer,
 };
 use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::Queue;
 use vulkano::image::ImageViewAbstract;
-use vulkano::pipeline::blend::AttachmentBlend;
-use vulkano::pipeline::blend::BlendFactor;
-use vulkano::pipeline::blend::BlendOp;
-use vulkano::pipeline::viewport::Viewport;
-use vulkano::pipeline::GraphicsPipeline;
-use vulkano::pipeline::PipelineBindPoint;
+use vulkano::pipeline::color_blend::{AttachmentBlend, BlendFactor, BlendOp, ColorBlendState};
+use vulkano::pipeline::input_assembly::InputAssemblyState;
+use vulkano::pipeline::viewport::{Viewport, ViewportState};
+use vulkano::pipeline::{GraphicsPipeline, PipelineBindPoint};
 use vulkano::render_pass::Subpass;
 
 pub struct PointLightingSystem {
@@ -70,22 +65,19 @@ impl PointLightingSystem {
                 GraphicsPipeline::start()
                     .vertex_input_single_buffer::<Vertex>()
                     .vertex_shader(vs.main_entry_point(), ())
-                    .triangle_list()
-                    .viewports_dynamic_scissors_irrelevant(1)
+                    .input_assembly_state(InputAssemblyState::new())
+                    .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
                     .fragment_shader(fs.main_entry_point(), ())
-                    .blend_collective(AttachmentBlend {
-                        enabled: true,
-                        color_op: BlendOp::Add,
-                        color_source: BlendFactor::One,
-                        color_destination: BlendFactor::One,
-                        alpha_op: BlendOp::Max,
-                        alpha_source: BlendFactor::One,
-                        alpha_destination: BlendFactor::One,
-                        mask_red: true,
-                        mask_green: true,
-                        mask_blue: true,
-                        mask_alpha: true,
-                    })
+                    .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()).blend(
+                        AttachmentBlend {
+                            color_op: BlendOp::Add,
+                            color_source: BlendFactor::One,
+                            color_destination: BlendFactor::One,
+                            alpha_op: BlendOp::Max,
+                            alpha_source: BlendFactor::One,
+                            alpha_destination: BlendFactor::One,
+                        },
+                    ))
                     .render_pass(subpass)
                     .build(gfx_queue.device().clone())
                     .unwrap(),

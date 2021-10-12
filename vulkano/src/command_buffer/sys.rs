@@ -27,9 +27,15 @@ use crate::image::ImageAspect;
 use crate::image::ImageAspects;
 use crate::image::ImageLayout;
 use crate::image::SampleCount;
+use crate::pipeline::color_blend::LogicOp;
+use crate::pipeline::depth_stencil::CompareOp;
 use crate::pipeline::depth_stencil::StencilFaces;
+use crate::pipeline::depth_stencil::StencilOp;
 use crate::pipeline::input_assembly::IndexType;
+use crate::pipeline::input_assembly::PrimitiveTopology;
 use crate::pipeline::layout::PipelineLayout;
+use crate::pipeline::rasterization::CullMode;
+use crate::pipeline::rasterization::FrontFace;
 use crate::pipeline::shader::ShaderStages;
 use crate::pipeline::viewport::Scissor;
 use crate::pipeline::viewport::Viewport;
@@ -400,6 +406,7 @@ impl UnsafeCommandBufferBuilder {
     ///
     /// Does nothing if the list of buffers is empty, as it would be a no-op and isn't a valid
     /// usage of the command anyway.
+    // TODO: vkCmdBindVertexBuffers2EXT
     #[inline]
     pub unsafe fn bind_vertex_buffers(
         &mut self,
@@ -1382,46 +1389,318 @@ impl UnsafeCommandBufferBuilder {
         fns.v1_0.cmd_set_blend_constants(cmd, &constants);
     }
 
+    /// Calls `vkCmdSetColorWriteEnableEXT` on the builder.
+    ///
+    /// If the list is empty then the command is automatically ignored.
+    #[inline]
+    pub unsafe fn set_color_write_enable<I>(&mut self, enables: I)
+    where
+        I: IntoIterator<Item = bool>,
+    {
+        debug_assert!(self.device().enabled_extensions().ext_color_write_enable);
+        debug_assert!(self.device().enabled_features().color_write_enable);
+
+        let enables = enables
+            .into_iter()
+            .map(|v| v as ash::vk::Bool32)
+            .collect::<SmallVec<[_; 4]>>();
+        if enables.is_empty() {
+            return;
+        }
+
+        let fns = self.device().fns();
+        let cmd = self.internal_object();
+        fns.ext_color_write_enable.cmd_set_color_write_enable_ext(
+            cmd,
+            enables.len() as u32,
+            enables.as_ptr(),
+        );
+    }
+
+    /// Calls `vkCmdSetCullModeEXT` on the builder.
+    #[inline]
+    pub unsafe fn set_cull_mode(&mut self, cull_mode: CullMode) {
+        debug_assert!(
+            self.device()
+                .enabled_extensions()
+                .ext_extended_dynamic_state
+        );
+        debug_assert!(self.device().enabled_features().extended_dynamic_state);
+        let fns = self.device().fns();
+        let cmd = self.internal_object();
+        fns.ext_extended_dynamic_state
+            .cmd_set_cull_mode_ext(cmd, cull_mode.into());
+    }
+
     /// Calls `vkCmdSetDepthBias` on the builder.
     #[inline]
     pub unsafe fn set_depth_bias(&mut self, constant_factor: f32, clamp: f32, slope_factor: f32) {
+        debug_assert!(clamp == 0.0 || self.device().enabled_features().depth_bias_clamp);
         let fns = self.device().fns();
         let cmd = self.internal_object();
-        debug_assert!(clamp == 0.0 || self.device().enabled_features().depth_bias_clamp);
         fns.v1_0
             .cmd_set_depth_bias(cmd, constant_factor, clamp, slope_factor);
+    }
+
+    /// Calls `vkCmdSetDepthBiasEnableEXT` on the builder.
+    #[inline]
+    pub unsafe fn set_depth_bias_enable(&mut self, enable: bool) {
+        debug_assert!(
+            self.device()
+                .enabled_extensions()
+                .ext_extended_dynamic_state2
+        );
+        debug_assert!(self.device().enabled_features().extended_dynamic_state2);
+        let fns = self.device().fns();
+        let cmd = self.internal_object();
+        fns.ext_extended_dynamic_state2
+            .cmd_set_depth_bias_enable_ext(cmd, enable.into());
     }
 
     /// Calls `vkCmdSetDepthBounds` on the builder.
     #[inline]
     pub unsafe fn set_depth_bounds(&mut self, min: f32, max: f32) {
-        let fns = self.device().fns();
-        let cmd = self.internal_object();
         debug_assert!(min >= 0.0 && min <= 1.0);
         debug_assert!(max >= 0.0 && max <= 1.0);
+        let fns = self.device().fns();
+        let cmd = self.internal_object();
         fns.v1_0.cmd_set_depth_bounds(cmd, min, max);
+    }
+
+    /// Calls `vkCmdSetDepthBoundsTestEnableEXT` on the builder.
+    #[inline]
+    pub unsafe fn set_depth_bounds_test_enable(&mut self, enable: bool) {
+        debug_assert!(
+            self.device()
+                .enabled_extensions()
+                .ext_extended_dynamic_state
+        );
+        debug_assert!(self.device().enabled_features().extended_dynamic_state);
+        let fns = self.device().fns();
+        let cmd = self.internal_object();
+        fns.ext_extended_dynamic_state
+            .cmd_set_depth_bounds_test_enable_ext(cmd, enable.into());
+    }
+
+    /// Calls `vkCmdSetDepthCompareOpEXT` on the builder.
+    #[inline]
+    pub unsafe fn set_depth_compare_op(&mut self, compare_op: CompareOp) {
+        debug_assert!(
+            self.device()
+                .enabled_extensions()
+                .ext_extended_dynamic_state
+        );
+        debug_assert!(self.device().enabled_features().extended_dynamic_state);
+        let fns = self.device().fns();
+        let cmd = self.internal_object();
+        fns.ext_extended_dynamic_state
+            .cmd_set_depth_compare_op_ext(cmd, compare_op.into());
+    }
+
+    /// Calls `vkCmdSetDepthTestEnableEXT` on the builder.
+    #[inline]
+    pub unsafe fn set_depth_test_enable(&mut self, enable: bool) {
+        debug_assert!(
+            self.device()
+                .enabled_extensions()
+                .ext_extended_dynamic_state
+        );
+        debug_assert!(self.device().enabled_features().extended_dynamic_state);
+        let fns = self.device().fns();
+        let cmd = self.internal_object();
+        fns.ext_extended_dynamic_state
+            .cmd_set_depth_test_enable_ext(cmd, enable.into());
+    }
+
+    /// Calls `vkCmdSetDepthWriteEnableEXT` on the builder.
+    #[inline]
+    pub unsafe fn set_depth_write_enable(&mut self, enable: bool) {
+        debug_assert!(
+            self.device()
+                .enabled_extensions()
+                .ext_extended_dynamic_state
+        );
+        debug_assert!(self.device().enabled_features().extended_dynamic_state);
+        let fns = self.device().fns();
+        let cmd = self.internal_object();
+        fns.ext_extended_dynamic_state
+            .cmd_set_depth_write_enable_ext(cmd, enable.into());
+    }
+
+    /// Calls `vkCmdSetDiscardRectangleEXT` on the builder.
+    ///
+    /// If the list is empty then the command is automatically ignored.
+    #[inline]
+    pub unsafe fn set_discard_rectangle<I>(&mut self, first_rectangle: u32, rectangles: I)
+    where
+        I: IntoIterator<Item = Scissor>,
+    {
+        debug_assert!(self.device().enabled_extensions().ext_discard_rectangles);
+
+        let rectangles = rectangles
+            .into_iter()
+            .map(|v| v.clone().into())
+            .collect::<SmallVec<[_; 2]>>();
+        if rectangles.is_empty() {
+            return;
+        }
+
+        debug_assert!(
+            first_rectangle + rectangles.len() as u32
+                <= self
+                    .device()
+                    .physical_device()
+                    .properties()
+                    .max_discard_rectangles
+                    .unwrap()
+        );
+
+        let fns = self.device().fns();
+        let cmd = self.internal_object();
+        fns.ext_discard_rectangles.cmd_set_discard_rectangle_ext(
+            cmd,
+            first_rectangle,
+            rectangles.len() as u32,
+            rectangles.as_ptr(),
+        );
     }
 
     /// Calls `vkCmdSetEvent` on the builder.
     #[inline]
     pub unsafe fn set_event(&mut self, event: &Event, stages: PipelineStages) {
-        let fns = self.device().fns();
-        let cmd = self.internal_object();
-
         debug_assert!(!stages.host);
         debug_assert_ne!(stages, PipelineStages::none());
-
+        let fns = self.device().fns();
+        let cmd = self.internal_object();
         fns.v1_0
             .cmd_set_event(cmd, event.internal_object(), stages.into());
+    }
+
+    /// Calls `vkCmdSetFrontFaceEXT` on the builder.
+    #[inline]
+    pub unsafe fn set_front_face(&mut self, face: FrontFace) {
+        debug_assert!(
+            self.device()
+                .enabled_extensions()
+                .ext_extended_dynamic_state
+        );
+        debug_assert!(self.device().enabled_features().extended_dynamic_state);
+        let fns = self.device().fns();
+        let cmd = self.internal_object();
+        fns.ext_extended_dynamic_state
+            .cmd_set_front_face_ext(cmd, face.into());
+    }
+
+    /// Calls `vkCmdSetLineStippleEXT` on the builder.
+    #[inline]
+    pub unsafe fn set_line_stipple(&mut self, factor: u32, pattern: u16) {
+        debug_assert!(self.device().enabled_extensions().ext_line_rasterization);
+        debug_assert!(factor >= 1 && factor <= 256);
+        let fns = self.device().fns();
+        let cmd = self.internal_object();
+        fns.ext_line_rasterization
+            .cmd_set_line_stipple_ext(cmd, factor, pattern);
     }
 
     /// Calls `vkCmdSetLineWidth` on the builder.
     #[inline]
     pub unsafe fn set_line_width(&mut self, line_width: f32) {
+        debug_assert!(line_width == 1.0 || self.device().enabled_features().wide_lines);
         let fns = self.device().fns();
         let cmd = self.internal_object();
-        debug_assert!(line_width == 1.0 || self.device().enabled_features().wide_lines);
         fns.v1_0.cmd_set_line_width(cmd, line_width);
+    }
+
+    /// Calls `vkCmdSetLogicOpEXT` on the builder.
+    #[inline]
+    pub unsafe fn set_logic_op(&mut self, logic_op: LogicOp) {
+        debug_assert!(
+            self.device()
+                .enabled_extensions()
+                .ext_extended_dynamic_state2
+        );
+        debug_assert!(
+            self.device()
+                .enabled_features()
+                .extended_dynamic_state2_logic_op
+        );
+        let fns = self.device().fns();
+        let cmd = self.internal_object();
+        fns.ext_extended_dynamic_state2
+            .cmd_set_logic_op_ext(cmd, logic_op.into());
+    }
+
+    /// Calls `vkCmdSetPatchControlPointsEXT` on the builder.
+    #[inline]
+    pub unsafe fn set_patch_control_points(&mut self, num: u32) {
+        debug_assert!(
+            self.device()
+                .enabled_extensions()
+                .ext_extended_dynamic_state2
+        );
+        debug_assert!(
+            self.device()
+                .enabled_features()
+                .extended_dynamic_state2_patch_control_points
+        );
+        debug_assert!(num > 0);
+        debug_assert!(
+            num as u32
+                <= self
+                    .device()
+                    .physical_device()
+                    .properties()
+                    .max_tessellation_patch_size
+        );
+        let fns = self.device().fns();
+        let cmd = self.internal_object();
+        fns.ext_extended_dynamic_state2
+            .cmd_set_patch_control_points_ext(cmd, num);
+    }
+
+    /// Calls `vkCmdSetPrimitiveRestartEnableEXT` on the builder.
+    #[inline]
+    pub unsafe fn set_primitive_restart_enable(&mut self, enable: bool) {
+        debug_assert!(
+            self.device()
+                .enabled_extensions()
+                .ext_extended_dynamic_state2
+        );
+        debug_assert!(self.device().enabled_features().extended_dynamic_state2);
+        let fns = self.device().fns();
+        let cmd = self.internal_object();
+        fns.ext_extended_dynamic_state2
+            .cmd_set_primitive_restart_enable_ext(cmd, enable.into());
+    }
+
+    /// Calls `vkCmdSetPrimitiveTopologyEXT` on the builder.
+    #[inline]
+    pub unsafe fn set_primitive_topology(&mut self, topology: PrimitiveTopology) {
+        debug_assert!(
+            self.device()
+                .enabled_extensions()
+                .ext_extended_dynamic_state
+        );
+        debug_assert!(self.device().enabled_features().extended_dynamic_state);
+        let fns = self.device().fns();
+        let cmd = self.internal_object();
+        fns.ext_extended_dynamic_state
+            .cmd_set_primitive_topology_ext(cmd, topology.into());
+    }
+
+    /// Calls `vkCmdSetRasterizerDiscardEnableEXT` on the builder.
+    #[inline]
+    pub unsafe fn set_rasterizer_discard_enable(&mut self, enable: bool) {
+        debug_assert!(
+            self.device()
+                .enabled_extensions()
+                .ext_extended_dynamic_state2
+        );
+        debug_assert!(self.device().enabled_features().extended_dynamic_state2);
+        let fns = self.device().fns();
+        let cmd = self.internal_object();
+        fns.ext_extended_dynamic_state2
+            .cmd_set_rasterizer_discard_enable_ext(cmd, enable.into());
     }
 
     /// Calls `vkCmdSetStencilCompareMask` on the builder.
@@ -1433,6 +1712,34 @@ impl UnsafeCommandBufferBuilder {
             .cmd_set_stencil_compare_mask(cmd, face_mask.into(), compare_mask);
     }
 
+    /// Calls `vkCmdSetStencilOpEXT` on the builder.
+    #[inline]
+    pub unsafe fn set_stencil_op(
+        &mut self,
+        face_mask: StencilFaces,
+        fail_op: StencilOp,
+        pass_op: StencilOp,
+        depth_fail_op: StencilOp,
+        compare_op: CompareOp,
+    ) {
+        debug_assert!(
+            self.device()
+                .enabled_extensions()
+                .ext_extended_dynamic_state
+        );
+        debug_assert!(self.device().enabled_features().extended_dynamic_state);
+        let fns = self.device().fns();
+        let cmd = self.internal_object();
+        fns.ext_extended_dynamic_state.cmd_set_stencil_op_ext(
+            cmd,
+            face_mask.into(),
+            fail_op.into(),
+            pass_op.into(),
+            depth_fail_op.into(),
+            compare_op.into(),
+        );
+    }
+
     /// Calls `vkCmdSetStencilReference` on the builder.
     #[inline]
     pub unsafe fn set_stencil_reference(&mut self, face_mask: StencilFaces, reference: u32) {
@@ -1440,6 +1747,21 @@ impl UnsafeCommandBufferBuilder {
         let cmd = self.internal_object();
         fns.v1_0
             .cmd_set_stencil_reference(cmd, face_mask.into(), reference);
+    }
+
+    /// Calls `vkCmdSetStencilTestEnableEXT` on the builder.
+    #[inline]
+    pub unsafe fn set_stencil_test_enable(&mut self, enable: bool) {
+        debug_assert!(
+            self.device()
+                .enabled_extensions()
+                .ext_extended_dynamic_state
+        );
+        debug_assert!(self.device().enabled_features().extended_dynamic_state);
+        let fns = self.device().fns();
+        let cmd = self.internal_object();
+        fns.ext_extended_dynamic_state
+            .cmd_set_stencil_test_enable_ext(cmd, enable.into());
     }
 
     /// Calls `vkCmdSetStencilWriteMask` on the builder.
@@ -1462,7 +1784,7 @@ impl UnsafeCommandBufferBuilder {
         let scissors = scissors
             .into_iter()
             .map(|v| ash::vk::Rect2D::from(v.clone()))
-            .collect::<SmallVec<[_; 16]>>();
+            .collect::<SmallVec<[_; 2]>>();
         if scissors.is_empty() {
             return;
         }
@@ -1478,15 +1800,56 @@ impl UnsafeCommandBufferBuilder {
             (first_scissor == 0 && scissors.len() == 1)
                 || self.device().enabled_features().multi_viewport
         );
-        debug_assert!({
-            let max = self.device().physical_device().properties().max_viewports;
-            first_scissor + scissors.len() as u32 <= max
-        });
+        debug_assert!(
+            first_scissor + scissors.len() as u32
+                <= self.device().physical_device().properties().max_viewports
+        );
 
         let fns = self.device().fns();
         let cmd = self.internal_object();
         fns.v1_0
             .cmd_set_scissor(cmd, first_scissor, scissors.len() as u32, scissors.as_ptr());
+    }
+
+    /// Calls `vkCmdSetScissorWithCountEXT` on the builder.
+    ///
+    /// If the list is empty then the command is automatically ignored.
+    #[inline]
+    pub unsafe fn set_scissor_with_count<I>(&mut self, scissors: I)
+    where
+        I: IntoIterator<Item = Scissor>,
+    {
+        debug_assert!(
+            self.device()
+                .enabled_extensions()
+                .ext_extended_dynamic_state
+        );
+        debug_assert!(self.device().enabled_features().extended_dynamic_state);
+
+        let scissors = scissors
+            .into_iter()
+            .map(|v| ash::vk::Rect2D::from(v.clone()))
+            .collect::<SmallVec<[_; 2]>>();
+        if scissors.is_empty() {
+            return;
+        }
+
+        debug_assert!(scissors.iter().all(|s| s.offset.x >= 0 && s.offset.y >= 0));
+        debug_assert!(scissors.iter().all(|s| {
+            s.extent.width < i32::MAX as u32
+                && s.extent.height < i32::MAX as u32
+                && s.offset.x.checked_add(s.extent.width as i32).is_some()
+                && s.offset.y.checked_add(s.extent.height as i32).is_some()
+        }));
+        debug_assert!(scissors.len() == 1 || self.device().enabled_features().multi_viewport);
+        debug_assert!(
+            scissors.len() as u32 <= self.device().physical_device().properties().max_viewports
+        );
+
+        let fns = self.device().fns();
+        let cmd = self.internal_object();
+        fns.ext_extended_dynamic_state
+            .cmd_set_scissor_with_count_ext(cmd, scissors.len() as u32, scissors.as_ptr());
     }
 
     /// Calls `vkCmdSetViewport` on the builder.
@@ -1500,7 +1863,7 @@ impl UnsafeCommandBufferBuilder {
         let viewports = viewports
             .into_iter()
             .map(|v| v.clone().into())
-            .collect::<SmallVec<[_; 16]>>();
+            .collect::<SmallVec<[_; 2]>>();
         if viewports.is_empty() {
             return;
         }
@@ -1509,10 +1872,10 @@ impl UnsafeCommandBufferBuilder {
             (first_viewport == 0 && viewports.len() == 1)
                 || self.device().enabled_features().multi_viewport
         );
-        debug_assert!({
-            let max = self.device().physical_device().properties().max_viewports;
-            first_viewport + viewports.len() as u32 <= max
-        });
+        debug_assert!(
+            first_viewport + viewports.len() as u32
+                <= self.device().physical_device().properties().max_viewports
+        );
 
         let fns = self.device().fns();
         let cmd = self.internal_object();
@@ -1522,6 +1885,40 @@ impl UnsafeCommandBufferBuilder {
             viewports.len() as u32,
             viewports.as_ptr(),
         );
+    }
+
+    /// Calls `vkCmdSetViewportWithCountEXT` on the builder.
+    ///
+    /// If the list is empty then the command is automatically ignored.
+    #[inline]
+    pub unsafe fn set_viewport_with_count<I>(&mut self, viewports: I)
+    where
+        I: IntoIterator<Item = Viewport>,
+    {
+        debug_assert!(
+            self.device()
+                .enabled_extensions()
+                .ext_extended_dynamic_state
+        );
+        debug_assert!(self.device().enabled_features().extended_dynamic_state);
+
+        let viewports = viewports
+            .into_iter()
+            .map(|v| v.clone().into())
+            .collect::<SmallVec<[_; 2]>>();
+        if viewports.is_empty() {
+            return;
+        }
+
+        debug_assert!(viewports.len() == 1 || self.device().enabled_features().multi_viewport);
+        debug_assert!(
+            viewports.len() as u32 <= self.device().physical_device().properties().max_viewports
+        );
+
+        let fns = self.device().fns();
+        let cmd = self.internal_object();
+        fns.ext_extended_dynamic_state
+            .cmd_set_viewport_with_count_ext(cmd, viewports.len() as u32, viewports.as_ptr());
     }
 
     /// Calls `vkCmdUpdateBuffer` on the builder.

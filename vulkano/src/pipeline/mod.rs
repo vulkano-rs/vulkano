@@ -78,23 +78,23 @@
 pub use self::compute_pipeline::ComputePipeline;
 pub use self::compute_pipeline::ComputePipelineCreationError;
 pub use self::compute_pipeline::ComputePipelineSys;
-pub use self::graphics_pipeline::DynamicState;
-pub use self::graphics_pipeline::DynamicStateMode;
 pub use self::graphics_pipeline::GraphicsPipeline;
 pub use self::graphics_pipeline::GraphicsPipelineBuilder;
 pub use self::graphics_pipeline::GraphicsPipelineCreationError;
 pub use self::graphics_pipeline::GraphicsPipelineSys;
 
-pub mod blend;
 pub mod cache;
+pub mod color_blend;
 mod compute_pipeline;
 pub mod depth_stencil;
+pub mod discard_rectangle;
 mod graphics_pipeline;
 pub mod input_assembly;
 pub mod layout;
 pub mod multisample;
-pub mod raster;
+pub mod rasterization;
 pub mod shader;
+pub mod tessellation;
 pub mod vertex;
 pub mod viewport;
 
@@ -110,4 +110,95 @@ impl From<PipelineBindPoint> for ash::vk::PipelineBindPoint {
     fn from(val: PipelineBindPoint) -> Self {
         Self::from_raw(val as i32)
     }
+}
+
+/// A particular state value within a graphics pipeline that can be dynamically set by a command
+/// buffer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[repr(i32)]
+pub enum DynamicState {
+    Viewport = ash::vk::DynamicState::VIEWPORT.as_raw(),
+    Scissor = ash::vk::DynamicState::SCISSOR.as_raw(),
+    LineWidth = ash::vk::DynamicState::LINE_WIDTH.as_raw(),
+    DepthBias = ash::vk::DynamicState::DEPTH_BIAS.as_raw(),
+    BlendConstants = ash::vk::DynamicState::BLEND_CONSTANTS.as_raw(),
+    DepthBounds = ash::vk::DynamicState::DEPTH_BOUNDS.as_raw(),
+    StencilCompareMask = ash::vk::DynamicState::STENCIL_COMPARE_MASK.as_raw(),
+    StencilWriteMask = ash::vk::DynamicState::STENCIL_WRITE_MASK.as_raw(),
+    StencilReference = ash::vk::DynamicState::STENCIL_REFERENCE.as_raw(),
+    ViewportWScaling = ash::vk::DynamicState::VIEWPORT_W_SCALING_NV.as_raw(),
+    DiscardRectangle = ash::vk::DynamicState::DISCARD_RECTANGLE_EXT.as_raw(),
+    SampleLocations = ash::vk::DynamicState::SAMPLE_LOCATIONS_EXT.as_raw(),
+    RayTracingPipelineStackSize =
+        ash::vk::DynamicState::RAY_TRACING_PIPELINE_STACK_SIZE_KHR.as_raw(),
+    ViewportShadingRatePalette = ash::vk::DynamicState::VIEWPORT_SHADING_RATE_PALETTE_NV.as_raw(),
+    ViewportCoarseSampleOrder = ash::vk::DynamicState::VIEWPORT_COARSE_SAMPLE_ORDER_NV.as_raw(),
+    ExclusiveScissor = ash::vk::DynamicState::EXCLUSIVE_SCISSOR_NV.as_raw(),
+    FragmentShadingRate = ash::vk::DynamicState::FRAGMENT_SHADING_RATE_KHR.as_raw(),
+    LineStipple = ash::vk::DynamicState::LINE_STIPPLE_EXT.as_raw(),
+    CullMode = ash::vk::DynamicState::CULL_MODE_EXT.as_raw(),
+    FrontFace = ash::vk::DynamicState::FRONT_FACE_EXT.as_raw(),
+    PrimitiveTopology = ash::vk::DynamicState::PRIMITIVE_TOPOLOGY_EXT.as_raw(),
+    ViewportWithCount = ash::vk::DynamicState::VIEWPORT_WITH_COUNT_EXT.as_raw(),
+    ScissorWithCount = ash::vk::DynamicState::SCISSOR_WITH_COUNT_EXT.as_raw(),
+    VertexInputBindingStride = ash::vk::DynamicState::VERTEX_INPUT_BINDING_STRIDE_EXT.as_raw(),
+    DepthTestEnable = ash::vk::DynamicState::DEPTH_TEST_ENABLE_EXT.as_raw(),
+    DepthWriteEnable = ash::vk::DynamicState::DEPTH_WRITE_ENABLE_EXT.as_raw(),
+    DepthCompareOp = ash::vk::DynamicState::DEPTH_COMPARE_OP_EXT.as_raw(),
+    DepthBoundsTestEnable = ash::vk::DynamicState::DEPTH_BOUNDS_TEST_ENABLE_EXT.as_raw(),
+    StencilTestEnable = ash::vk::DynamicState::STENCIL_TEST_ENABLE_EXT.as_raw(),
+    StencilOp = ash::vk::DynamicState::STENCIL_OP_EXT.as_raw(),
+    VertexInput = ash::vk::DynamicState::VERTEX_INPUT_EXT.as_raw(),
+    PatchControlPoints = ash::vk::DynamicState::PATCH_CONTROL_POINTS_EXT.as_raw(),
+    RasterizerDiscardEnable = ash::vk::DynamicState::RASTERIZER_DISCARD_ENABLE_EXT.as_raw(),
+    DepthBiasEnable = ash::vk::DynamicState::DEPTH_BIAS_ENABLE_EXT.as_raw(),
+    LogicOp = ash::vk::DynamicState::LOGIC_OP_EXT.as_raw(),
+    PrimitiveRestartEnable = ash::vk::DynamicState::PRIMITIVE_RESTART_ENABLE_EXT.as_raw(),
+    ColorWriteEnable = ash::vk::DynamicState::COLOR_WRITE_ENABLE_EXT.as_raw(),
+}
+
+impl From<DynamicState> for ash::vk::DynamicState {
+    #[inline]
+    fn from(val: DynamicState) -> Self {
+        Self::from_raw(val as i32)
+    }
+}
+
+/// Specifies how a dynamic state is handled by a graphics pipeline.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StateMode<F> {
+    /// The pipeline has a fixed value for this state. Previously set dynamic state will be lost
+    /// when binding it, and will have to be re-set after binding a pipeline that uses it.
+    Fixed(F),
+    /// The pipeline expects a dynamic value to be set by a command buffer. Previously set dynamic
+    /// state is not disturbed when binding it.
+    Dynamic,
+}
+
+impl<T> From<Option<T>> for StateMode<T> {
+    #[inline]
+    fn from(val: Option<T>) -> Self {
+        match val {
+            Some(x) => StateMode::Fixed(x),
+            None => StateMode::Dynamic,
+        }
+    }
+}
+
+impl<T> From<StateMode<T>> for Option<T> {
+    #[inline]
+    fn from(val: StateMode<T>) -> Self {
+        match val {
+            StateMode::Fixed(x) => Some(x),
+            StateMode::Dynamic => None,
+        }
+    }
+}
+
+/// A variant of `StateMode` that is used for cases where some value is still needed when the state
+/// is dynamic.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PartialStateMode<F, D> {
+    Fixed(F),
+    Dynamic(D),
 }
