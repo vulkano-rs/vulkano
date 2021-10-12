@@ -6,6 +6,17 @@
     description. They will be transferred to this file right after the
     Pull Request merge. 
 -->
+- **Breaking** Major changes have been made to most parts of the graphics pipeline state.
+  - Each state category is now provided by a separate type ending in `State` that lives in its own submodule of `pipeline`. Some of these were existing types that were renamed.
+  - Most of the state-setting methods on `GraphicsPipelineBuilder` are deprecated. State is now set using a `_state` method, which is given one of the above state types.
+- **Breaking** `DynamicStateMode` is replaced with a simple `bool`.
+- **Breaking** The presence of dynamic state in the pipeline state is now expressed more explicitly with two new types, `StateMode` and `PartialStateMode`.
+- Added support for lots more dynamic state, most of which requires features or extensions to use.
+- Added support for discard rectangles, in the `pipeline::discard_rectangle` module.
+- Added support for line rasterization state, in the `pipeline::rasterization` module.
+- Added support for color write enable state, in the `pipeline::color_blend` module.
+- `GraphicsPipeline` now has methods to return each state object it was created with.
+- `ash` has been updated to 0.33.3, which provides new features and extensions.
 
 # Version 0.26.0 (2021-10-2)
 
