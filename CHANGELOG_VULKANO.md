@@ -17,6 +17,8 @@
 - Added support for color write enable state, in the `pipeline::color_blend` module.
 - `GraphicsPipeline` now has methods to return each state object it was created with.
 - `ash` has been updated to 0.33.3, which provides new features and extensions.
+- Added `CommandBufferState::push_constants` to retrieve the set of all push constant bytes that have been set.
+- Added check to `AutoCommandBufferBuilder` to ensure that the push constants that are needed by the pipeline have been set.
 
 # Version 0.26.0 (2021-10-2)
 
