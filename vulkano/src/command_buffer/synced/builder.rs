@@ -44,6 +44,7 @@ use crate::pipeline::ComputePipeline;
 use crate::pipeline::DynamicState;
 use crate::pipeline::GraphicsPipeline;
 use crate::pipeline::PipelineBindPoint;
+use crate::range_set::RangeSet;
 use crate::render_pass::FramebufferAbstract;
 use crate::sync::AccessFlags;
 use crate::sync::PipelineMemoryAccess;
@@ -730,7 +731,8 @@ struct CurrentState {
     pipeline_graphics: Option<Arc<dyn Command>>,
     vertex_buffers: FnvHashMap<u32, Arc<dyn Command>>,
 
-    push_constants: Option<PushConstantState>,
+    push_constants: RangeSet<u32>,
+    push_constants_pipeline_layout: Option<Arc<PipelineLayout>>,
 
     blend_constants: Option<[f32; 4]>,
     color_write_enable: Option<SmallVec<[bool; 4]>>,
@@ -814,11 +816,6 @@ struct DescriptorSetState {
     pipeline_layout: Arc<PipelineLayout>,
 }
 
-#[derive(Debug)]
-struct PushConstantState {
-    pipeline_layout: Arc<PipelineLayout>,
-}
-
 /// Allows you to retrieve the current state of a command buffer builder.
 #[derive(Clone, Copy, Debug)]
 pub struct CommandBufferState<'a> {
@@ -828,6 +825,7 @@ pub struct CommandBufferState<'a> {
 impl<'a> CommandBufferState<'a> {
     /// Returns the descriptor set currently bound to a given set number, or `None` if nothing has
     /// been bound yet.
+    #[inline]
     pub fn descriptor_set(
         &self,
         pipeline_bind_point: PipelineBindPoint,
@@ -860,6 +858,7 @@ impl<'a> CommandBufferState<'a> {
     }
 
     /// Returns the index buffer currently bound, or `None` if nothing has been bound yet.
+    #[inline]
     pub fn index_buffer(&self) -> Option<(&'a dyn BufferAccess, IndexType)> {
         self.current_state
             .index_buffer
@@ -868,6 +867,7 @@ impl<'a> CommandBufferState<'a> {
     }
 
     /// Returns the compute pipeline currently bound, or `None` if nothing has been bound yet.
+    #[inline]
     pub fn pipeline_compute(&self) -> Option<&'a Arc<ComputePipeline>> {
         self.current_state
             .pipeline_compute
@@ -876,6 +876,7 @@ impl<'a> CommandBufferState<'a> {
     }
 
     /// Returns the graphics pipeline currently bound, or `None` if nothing has been bound yet.
+    #[inline]
     pub fn pipeline_graphics(&self) -> Option<&'a Arc<GraphicsPipeline>> {
         self.current_state
             .pipeline_graphics
@@ -885,6 +886,7 @@ impl<'a> CommandBufferState<'a> {
 
     /// Returns the vertex buffer currently bound to a given binding slot number, or `None` if
     /// nothing has been bound yet.
+    #[inline]
     pub fn vertex_buffer(&self, binding_num: u32) -> Option<&'a dyn BufferAccess> {
         self.current_state
             .vertex_buffers
@@ -892,15 +894,18 @@ impl<'a> CommandBufferState<'a> {
             .map(|cmd| cmd.bound_vertex_buffer(binding_num))
     }
 
+    /// Returns a set containing push constant bytes that have been set.
+    #[inline]
+    pub fn push_constants(&self) -> &'a RangeSet<u32> {
+        &self.current_state.push_constants
+    }
+
     /// Returns the pipeline layout that describes the current push constants.
     ///
     /// This is the layout used to perform the last push constant write operation.
     #[inline]
     pub fn push_constants_pipeline_layout(&self) -> Option<&'a Arc<PipelineLayout>> {
-        self.current_state
-            .push_constants
-            .as_ref()
-            .map(|state| &state.pipeline_layout)
+        self.current_state.push_constants_pipeline_layout.as_ref()
     }
 
     /// Returns the current blend constants, or `None` if nothing has been set yet.

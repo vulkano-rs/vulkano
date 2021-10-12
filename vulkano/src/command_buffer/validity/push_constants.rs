@@ -34,11 +34,15 @@ pub(in super::super) fn check_push_constants_validity(
         return Err(CheckPushConstantsValidityError::IncompatiblePushConstants);
     }
 
-    // TODO: Check that the push constants that the pipeline needs have all been set correctly.
-    // The Vulkan spec currently is unclear about push constant invalidation, so Vulkano can't do
-    // much more for the moment. See:
-    // https://github.com/KhronosGroup/Vulkan-Docs/issues/1485
-    // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/2711
+    let set_bytes = current_state.push_constants();
+
+    if !pipeline_layout
+        .push_constant_ranges()
+        .iter()
+        .all(|pc_range| set_bytes.contains(pc_range.offset..pc_range.offset + pc_range.size))
+    {
+        return Err(CheckPushConstantsValidityError::MissingPushConstants);
+    }
 
     Ok(())
 }
