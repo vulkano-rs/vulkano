@@ -17,6 +17,7 @@ use crate::command_buffer::CommandBufferLevel;
 use crate::command_buffer::CommandBufferUsage;
 use crate::command_buffer::SecondaryCommandBuffer;
 use crate::command_buffer::SubpassContents;
+use crate::descriptor_set::sys::DescriptorWrite;
 use crate::descriptor_set::sys::UnsafeDescriptorSet;
 use crate::device::Device;
 use crate::device::DeviceOwned;
@@ -1351,6 +1352,41 @@ impl UnsafeCommandBufferBuilder {
             offset as u32,
             size as u32,
             data as *const D as *const _,
+        );
+    }
+
+    /// Calls `vkCmdDescriptorSetKHR` on the builder.
+    ///
+    /// If the list is empty then the command is automatically ignored.
+    #[inline]
+    pub unsafe fn push_descriptor_set(
+        &mut self,
+        pipeline_bind_point: PipelineBindPoint,
+        pipeline_layout: &PipelineLayout,
+        set_num: u32,
+        descriptor_writes: &[DescriptorWrite],
+    ) {
+        debug_assert!(self.device().enabled_extensions().khr_push_descriptor);
+
+        if descriptor_writes.is_empty() {
+            return;
+        }
+
+        let fns = self.device().fns();
+        let cmd = self.internal_object();
+
+        let raw_writes: SmallVec<[_; 8]> = descriptor_writes
+            .iter()
+            .map(|write| write.to_vulkan(ash::vk::DescriptorSet::null()))
+            .collect();
+
+        fns.khr_push_descriptor.cmd_push_descriptor_set_khr(
+            cmd,
+            pipeline_bind_point.into(),
+            pipeline_layout.internal_object(),
+            set_num,
+            raw_writes.len() as u32,
+            raw_writes.as_ptr(),
         );
     }
 

@@ -25,8 +25,8 @@ use crate::command_buffer::CommandBufferExecError;
 use crate::command_buffer::ImageUninitializedSafe;
 use crate::command_buffer::SecondaryCommandBuffer;
 use crate::command_buffer::SubpassContents;
+use crate::descriptor_set::builder::DescriptorSetBuilderOutput;
 use crate::descriptor_set::layout::DescriptorDescTy;
-use crate::descriptor_set::DescriptorSet;
 use crate::descriptor_set::DescriptorSetWithOffsets;
 use crate::format::ClearValue;
 use crate::image::ImageAccess;
@@ -58,7 +58,6 @@ use crate::SafeDeref;
 use crate::VulkanObject;
 use smallvec::SmallVec;
 use std::borrow::Cow;
-use std::collections::hash_map::Entry;
 use std::ffi::CStr;
 use std::mem;
 use std::ops::Range;
@@ -1247,7 +1246,7 @@ impl SyncCommandBufferBuilder {
                     .descriptor_sets
                     .iter()
                     .enumerate()
-                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32).0)
+                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32))
                 {
                     if let Some(buf) = set.buffer(num) {
                         return buf.0;
@@ -1262,7 +1261,7 @@ impl SyncCommandBufferBuilder {
                     .descriptor_sets
                     .iter()
                     .enumerate()
-                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32).0))
+                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32)))
                 {
                     if let Some(buf) = set.buffer(num) {
                         return format!("Buffer bound to set {} descriptor {}", set_num, buf.1)
@@ -1278,7 +1277,7 @@ impl SyncCommandBufferBuilder {
                     .descriptor_sets
                     .iter()
                     .enumerate()
-                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32).0)
+                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32))
                 {
                     if let Some(img) = set.image(num) {
                         return img.0.image();
@@ -1293,7 +1292,7 @@ impl SyncCommandBufferBuilder {
                     .descriptor_sets
                     .iter()
                     .enumerate()
-                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32).0))
+                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32)))
                 {
                     if let Some(img) = set.image(num) {
                         return format!("Image bound to set {} descriptor {}", set_num, img.1)
@@ -1360,7 +1359,7 @@ impl SyncCommandBufferBuilder {
                     .descriptor_sets
                     .iter()
                     .enumerate()
-                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32).0)
+                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32))
                 {
                     if let Some(buf) = set.buffer(num) {
                         return buf.0;
@@ -1378,7 +1377,7 @@ impl SyncCommandBufferBuilder {
                     .descriptor_sets
                     .iter()
                     .enumerate()
-                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32).0))
+                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32)))
                 {
                     if let Some(buf) = set.buffer(num) {
                         return format!("Buffer bound to set {} descriptor {}", set_num, buf.1)
@@ -1397,7 +1396,7 @@ impl SyncCommandBufferBuilder {
                     .descriptor_sets
                     .iter()
                     .enumerate()
-                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32).0)
+                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32))
                 {
                     if let Some(img) = set.image(num) {
                         return img.0.image();
@@ -1412,7 +1411,7 @@ impl SyncCommandBufferBuilder {
                     .descriptor_sets
                     .iter()
                     .enumerate()
-                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32).0))
+                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32)))
                 {
                     if let Some(img) = set.image(num) {
                         return format!("Image bound to set {} descriptor {}", set_num, img.1)
@@ -1487,7 +1486,7 @@ impl SyncCommandBufferBuilder {
                     .descriptor_sets
                     .iter()
                     .enumerate()
-                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32).0)
+                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32))
                 {
                     if let Some(buf) = set.buffer(num) {
                         return buf.0;
@@ -1514,7 +1513,7 @@ impl SyncCommandBufferBuilder {
                     .descriptor_sets
                     .iter()
                     .enumerate()
-                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32).0))
+                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32)))
                 {
                     if let Some(buf) = set.buffer(num) {
                         return format!("Buffer bound to set {} descriptor {}", set_num, buf.1)
@@ -1542,7 +1541,7 @@ impl SyncCommandBufferBuilder {
                     .descriptor_sets
                     .iter()
                     .enumerate()
-                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32).0)
+                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32))
                 {
                     if let Some(img) = set.image(num) {
                         return img.0.image();
@@ -1557,7 +1556,7 @@ impl SyncCommandBufferBuilder {
                     .descriptor_sets
                     .iter()
                     .enumerate()
-                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32).0))
+                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32)))
                 {
                     if let Some(img) = set.image(num) {
                         return format!("Image bound to set {} descriptor {}", set_num, img.1)
@@ -1640,7 +1639,7 @@ impl SyncCommandBufferBuilder {
                     .descriptor_sets
                     .iter()
                     .enumerate()
-                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32).0)
+                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32))
                 {
                     if let Some(buf) = set.buffer(num) {
                         return buf.0;
@@ -1671,7 +1670,7 @@ impl SyncCommandBufferBuilder {
                     .descriptor_sets
                     .iter()
                     .enumerate()
-                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32).0))
+                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32)))
                 {
                     if let Some(buf) = set.buffer(num) {
                         return format!("Buffer bound to set {} descriptor {}", set_num, buf.1)
@@ -1703,7 +1702,7 @@ impl SyncCommandBufferBuilder {
                     .descriptor_sets
                     .iter()
                     .enumerate()
-                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32).0)
+                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32))
                 {
                     if let Some(img) = set.image(num) {
                         return img.0.image();
@@ -1718,7 +1717,7 @@ impl SyncCommandBufferBuilder {
                     .descriptor_sets
                     .iter()
                     .enumerate()
-                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32).0))
+                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32)))
                 {
                     if let Some(img) = set.image(num) {
                         return format!("Image bound to set {} descriptor {}", set_num, img.1)
@@ -1799,7 +1798,7 @@ impl SyncCommandBufferBuilder {
                     .descriptor_sets
                     .iter()
                     .enumerate()
-                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32).0)
+                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32))
                 {
                     if let Some(buf) = set.buffer(num) {
                         return buf.0;
@@ -1830,7 +1829,7 @@ impl SyncCommandBufferBuilder {
                     .descriptor_sets
                     .iter()
                     .enumerate()
-                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32).0))
+                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32)))
                 {
                     if let Some(buf) = set.buffer(num) {
                         return format!("Buffer bound to set {} descriptor {}", set_num, buf.1)
@@ -1862,7 +1861,7 @@ impl SyncCommandBufferBuilder {
                     .descriptor_sets
                     .iter()
                     .enumerate()
-                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32).0)
+                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32))
                 {
                     if let Some(img) = set.image(num) {
                         return img.0.image();
@@ -1877,7 +1876,7 @@ impl SyncCommandBufferBuilder {
                     .descriptor_sets
                     .iter()
                     .enumerate()
-                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32).0))
+                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32)))
                 {
                     if let Some(img) = set.image(num) {
                         return format!("Image bound to set {} descriptor {}", set_num, img.1)
@@ -1957,7 +1956,7 @@ impl SyncCommandBufferBuilder {
                     .descriptor_sets
                     .iter()
                     .enumerate()
-                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32).0)
+                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32))
                 {
                     if let Some(buf) = set.buffer(num) {
                         return buf.0;
@@ -1990,7 +1989,7 @@ impl SyncCommandBufferBuilder {
                     .descriptor_sets
                     .iter()
                     .enumerate()
-                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32).0))
+                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32)))
                 {
                     if let Some(buf) = set.buffer(num) {
                         return format!("Buffer bound to set {} descriptor {}", set_num, buf.1)
@@ -2024,7 +2023,7 @@ impl SyncCommandBufferBuilder {
                     .descriptor_sets
                     .iter()
                     .enumerate()
-                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32).0)
+                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32))
                 {
                     if let Some(img) = set.image(num) {
                         return img.0.image();
@@ -2039,7 +2038,7 @@ impl SyncCommandBufferBuilder {
                     .descriptor_sets
                     .iter()
                     .enumerate()
-                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32).0))
+                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32)))
                 {
                     if let Some(img) = set.image(num) {
                         return format!("Image bound to set {} descriptor {}", set_num, img.1)
@@ -2280,6 +2279,61 @@ impl SyncCommandBufferBuilder {
             .push_constants
             .insert(offset..offset + size);
         self.current_state.push_constants_pipeline_layout = Some(pipeline_layout);
+    }
+
+    /// Calls `vkCmdPushDescriptorSetKHR` on the builder.
+    pub unsafe fn push_descriptor_set(
+        &mut self,
+        pipeline_bind_point: PipelineBindPoint,
+        pipeline_layout: Arc<PipelineLayout>,
+        set_num: u32,
+        descriptor_writes: DescriptorSetBuilderOutput,
+    ) {
+        struct Cmd {
+            pipeline_bind_point: PipelineBindPoint,
+            pipeline_layout: Arc<PipelineLayout>,
+            set_num: u32,
+            descriptor_writes: DescriptorSetBuilderOutput,
+        }
+
+        impl Command for Cmd {
+            fn name(&self) -> &'static str {
+                "vkCmdPushDescriptorSetKHR"
+            }
+
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
+                out.push_descriptor_set(
+                    self.pipeline_bind_point,
+                    &self.pipeline_layout,
+                    self.set_num,
+                    self.descriptor_writes.writes(),
+                );
+            }
+
+            fn bound_descriptor_set(&self, num: u32) -> SetOrPush {
+                debug_assert!(num == self.set_num);
+                SetOrPush::Push(&self.descriptor_writes)
+            }
+        }
+
+        self.append_command(
+            Cmd {
+                pipeline_bind_point,
+                pipeline_layout: pipeline_layout.clone(),
+                set_num,
+                descriptor_writes,
+            },
+            &[],
+        )
+        .unwrap();
+
+        self.current_state.invalidate_descriptor_sets(
+            pipeline_bind_point,
+            pipeline_layout,
+            set_num,
+            1,
+            self.commands.last().unwrap(),
+        );
     }
 
     /// Calls `vkCmdResetEvent` on the builder.
@@ -3266,7 +3320,7 @@ impl SyncCommandBufferBuilder {
         for ds in descriptor_sets
             .iter()
             .enumerate()
-            .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32).0)
+            .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32))
         {
             for buf_num in 0..ds.num_buffers() {
                 let desc = ds
@@ -3511,9 +3565,10 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
                 );
             }
 
-            fn bound_descriptor_set(&self, set_num: u32) -> (&dyn DescriptorSet, &[u32]) {
+            fn bound_descriptor_set(&self, set_num: u32) -> SetOrPush {
                 let index = set_num.checked_sub(self.first_set).unwrap() as usize;
-                self.descriptor_sets[index].as_ref()
+                let (set, offset) = self.descriptor_sets[index].as_ref();
+                SetOrPush::Set(set, offset)
             }
         }
 
@@ -3530,65 +3585,13 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
             )
             .unwrap();
 
-        let cmd = self.builder.commands.last().unwrap();
-        let state = match self
-            .builder
-            .current_state
-            .descriptor_sets
-            .entry(pipeline_bind_point)
-        {
-            Entry::Vacant(entry) => entry.insert(DescriptorSetState {
-                descriptor_sets: Default::default(),
-                pipeline_layout,
-            }),
-            Entry::Occupied(entry) => {
-                let state = entry.into_mut();
-
-                let invalidate_from = if state.pipeline_layout.internal_object()
-                    == pipeline_layout.internal_object()
-                {
-                    // If we're still using the exact same layout, then of course it's compatible.
-                    None
-                } else if state.pipeline_layout.push_constant_ranges()
-                    != pipeline_layout.push_constant_ranges()
-                {
-                    // If the push constant ranges don't match,
-                    // all bound descriptor sets are disturbed.
-                    Some(0)
-                } else {
-                    // Find the first descriptor set layout in the current pipeline layout that
-                    // isn't compatible with the corresponding set in the new pipeline layout.
-                    // If an incompatible set was found, all bound sets from that slot onwards will
-                    // be disturbed.
-                    let current_layouts = state.pipeline_layout.descriptor_set_layouts();
-                    let new_layouts = pipeline_layout.descriptor_set_layouts();
-                    let max = (current_layouts.len() as u32).min(first_set + num_descriptor_sets);
-                    (0..max).find(|&num| {
-                        let num = num as usize;
-                        !current_layouts[num].is_compatible_with(&new_layouts[num])
-                    })
-                };
-
-                if let Some(invalidate_from) = invalidate_from {
-                    // Remove disturbed sets and set new pipeline layout.
-                    state
-                        .descriptor_sets
-                        .retain(|&num, _| num < invalidate_from);
-                    state.pipeline_layout = pipeline_layout;
-                } else if (first_set + num_descriptor_sets) as usize
-                    >= state.pipeline_layout.descriptor_set_layouts().len()
-                {
-                    // New layout is a superset of the old one.
-                    state.pipeline_layout = pipeline_layout;
-                }
-
-                state
-            }
-        };
-
-        for i in 0..num_descriptor_sets {
-            state.descriptor_sets.insert(first_set + i, cmd.clone());
-        }
+        self.builder.current_state.invalidate_descriptor_sets(
+            pipeline_bind_point,
+            pipeline_layout,
+            first_set,
+            num_descriptor_sets,
+            self.builder.commands.last().unwrap(),
+        );
     }
 }
 

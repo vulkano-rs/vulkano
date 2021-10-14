@@ -141,7 +141,7 @@ impl PointLightingSystem {
             .descriptor_set_layouts()
             .get(0)
             .unwrap();
-        let mut descriptor_set_builder = PersistentDescriptorSet::start(layout.clone());
+        let mut descriptor_set_builder = PersistentDescriptorSet::start(layout.clone()).unwrap();
 
         descriptor_set_builder
             .add_image(color_input)

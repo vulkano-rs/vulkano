@@ -73,6 +73,7 @@
 //! - The `DescriptorSetsCollection` trait is implemented on collections of types that implement
 //!   `DescriptorSet`. It is what you pass to the draw functions.
 
+pub use self::builder::DescriptorSetBuilder;
 pub use self::collection::DescriptorSetsCollection;
 use self::layout::DescriptorSetLayout;
 pub use self::persistent::PersistentDescriptorSet;
@@ -94,7 +95,7 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::sync::Arc;
 
-mod builder;
+pub mod builder;
 mod collection;
 pub mod layout;
 pub mod persistent;
@@ -293,9 +294,6 @@ pub enum DescriptorSetError {
     /// Builder is already within an array.
     AlreadyInArray,
 
-    /// The builder has previously return an error and is an unknown state.
-    BuilderPoisoned,
-
     /// The number of array layers of an image doesn't match what was expected.
     ArrayLayersMismatch {
         /// Number of expected array layers for the image.
@@ -320,8 +318,8 @@ pub enum DescriptorSetError {
         obtained: u32,
     },
 
-    /// Expected a multisampled image, but got a single-sampled image.
-    ExpectedMultisampled,
+    /// The builder has previously return an error and is an unknown state.
+    BuilderPoisoned,
 
     /// Operation can not be performed on an empty descriptor.
     DescriptorIsEmpty,
@@ -333,6 +331,9 @@ pub enum DescriptorSetError {
         /// Obtained bindings
         obtained: u32,
     },
+
+    /// Expected a multisampled image, but got a single-sampled image.
+    ExpectedMultisampled,
 
     /// The format of an image view doesn't match what was expected.
     ImageViewFormatMismatch {
@@ -352,6 +353,10 @@ pub enum DescriptorSetError {
 
     /// The image view isn't compatible with the sampler.
     IncompatibleImageViewSampler,
+
+    /// The provided descriptor set layout is for push descriptors, and cannot be used to build a
+    /// descriptor set object.
+    LayoutIsPushDescriptor,
 
     /// The buffer is missing the correct usage.
     MissingBufferUsage(MissingBufferUsage),
@@ -421,6 +426,7 @@ impl fmt::Display for DescriptorSetError {
                     "the type of an image view doesn't match what was expected",
                 Self::IncompatibleImageViewSampler =>
                     "the image view isn't compatible with the sampler",
+                Self::LayoutIsPushDescriptor => "the provided descriptor set layout is for push descriptors, and cannot be used to build a descriptor set object",
                 Self::MissingBufferUsage(_) => "the buffer is missing the correct usage",
                 Self::MissingImageUsage(_) => "the image is missing the correct usage",
                 Self::NotIdentitySwizzled =>

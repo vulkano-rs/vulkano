@@ -8,7 +8,6 @@
 // according to those terms.
 
 use super::builder::DescriptorSetBuilder;
-use super::builder::DescriptorSetBuilderOutput;
 use super::resources::DescriptorSetResources;
 use super::DescriptorSetError;
 use crate::buffer::BufferView;
@@ -48,15 +47,17 @@ pub struct SingleLayoutDescSetPool {
 impl SingleLayoutDescSetPool {
     /// Initializes a new pool. The pool is configured to allocate sets that corresponds to the
     /// parameters passed to this function.
-    pub fn new(layout: Arc<DescriptorSetLayout>) -> Self {
-        let device = layout.device().clone();
+    pub fn new(layout: Arc<DescriptorSetLayout>) -> Result<Self, DescriptorSetError> {
+        if layout.desc().is_push_descriptor() {
+            return Err(DescriptorSetError::LayoutIsPushDescriptor);
+        }
 
-        Self {
+        Ok(Self {
             inner: None,
-            device,
+            device: layout.device().clone(),
             set_count: 4,
             layout,
-        }
+        })
     }
 
     /// Starts the process of building a new descriptor set.
@@ -68,7 +69,6 @@ impl SingleLayoutDescSetPool {
         SingleLayoutDescSetBuilder {
             pool: self,
             inner: DescriptorSetBuilder::start(layout),
-            poisoned: false,
         }
     }
 
@@ -239,7 +239,6 @@ impl Hash for SingleLayoutDescSet {
 pub struct SingleLayoutDescSetBuilder<'a> {
     pool: &'a mut SingleLayoutDescSetPool,
     inner: DescriptorSetBuilder,
-    poisoned: bool,
 }
 
 impl<'a> SingleLayoutDescSetBuilder<'a> {
@@ -253,17 +252,8 @@ impl<'a> SingleLayoutDescSetBuilder<'a> {
     /// the "array", add one element, then leave.
     #[inline]
     pub fn enter_array(&mut self) -> Result<&mut Self, DescriptorSetError> {
-        if self.poisoned {
-            Err(DescriptorSetError::BuilderPoisoned)
-        } else {
-            match self.inner.enter_array() {
-                Ok(_) => Ok(self),
-                Err(e) => {
-                    self.poisoned = true;
-                    Err(e)
-                }
-            }
-        }
+        self.inner.enter_array()?;
+        Ok(self)
     }
 
     /// Leaves the array. Call this once you added all the elements of the array.
@@ -271,33 +261,15 @@ impl<'a> SingleLayoutDescSetBuilder<'a> {
     /// Returns an error if the array is missing elements, or if the builder is not in an array.
     #[inline]
     pub fn leave_array(&mut self) -> Result<&mut Self, DescriptorSetError> {
-        if self.poisoned {
-            Err(DescriptorSetError::BuilderPoisoned)
-        } else {
-            match self.inner.leave_array() {
-                Ok(_) => Ok(self),
-                Err(e) => {
-                    self.poisoned = true;
-                    Err(e)
-                }
-            }
-        }
+        self.inner.leave_array()?;
+        Ok(self)
     }
 
     /// Skips the current descriptor if it is empty.
     #[inline]
     pub fn add_empty(&mut self) -> Result<&mut Self, DescriptorSetError> {
-        if self.poisoned {
-            Err(DescriptorSetError::BuilderPoisoned)
-        } else {
-            match self.inner.add_empty() {
-                Ok(_) => Ok(self),
-                Err(e) => {
-                    self.poisoned = true;
-                    Err(e)
-                }
-            }
-        }
+        self.inner.add_empty()?;
+        Ok(self)
     }
 
     /// Binds a buffer as the next descriptor.
@@ -308,17 +280,8 @@ impl<'a> SingleLayoutDescSetBuilder<'a> {
         &mut self,
         buffer: Arc<dyn BufferAccess + 'static>,
     ) -> Result<&mut Self, DescriptorSetError> {
-        if self.poisoned {
-            Err(DescriptorSetError::BuilderPoisoned)
-        } else {
-            match self.inner.add_buffer(buffer) {
-                Ok(_) => Ok(self),
-                Err(e) => {
-                    self.poisoned = true;
-                    Err(e)
-                }
-            }
-        }
+        self.inner.add_buffer(buffer)?;
+        Ok(self)
     }
 
     /// Binds a buffer view as the next descriptor.
@@ -332,17 +295,8 @@ impl<'a> SingleLayoutDescSetBuilder<'a> {
     where
         B: BufferAccess + 'static,
     {
-        if self.poisoned {
-            Err(DescriptorSetError::BuilderPoisoned)
-        } else {
-            match self.inner.add_buffer_view(view) {
-                Ok(_) => Ok(self),
-                Err(e) => {
-                    self.poisoned = true;
-                    Err(e)
-                }
-            }
-        }
+        self.inner.add_buffer_view(view)?;
+        Ok(self)
     }
 
     /// Binds an image view as the next descriptor.
@@ -353,17 +307,8 @@ impl<'a> SingleLayoutDescSetBuilder<'a> {
         &mut self,
         image_view: Arc<dyn ImageViewAbstract + 'static>,
     ) -> Result<&mut Self, DescriptorSetError> {
-        if self.poisoned {
-            Err(DescriptorSetError::BuilderPoisoned)
-        } else {
-            match self.inner.add_image(image_view) {
-                Ok(_) => Ok(self),
-                Err(e) => {
-                    self.poisoned = true;
-                    Err(e)
-                }
-            }
-        }
+        self.inner.add_image(image_view)?;
+        Ok(self)
     }
 
     /// Binds an image view with a sampler as the next descriptor.
@@ -378,17 +323,8 @@ impl<'a> SingleLayoutDescSetBuilder<'a> {
         image_view: Arc<dyn ImageViewAbstract + 'static>,
         sampler: Arc<Sampler>,
     ) -> Result<&mut Self, DescriptorSetError> {
-        if self.poisoned {
-            Err(DescriptorSetError::BuilderPoisoned)
-        } else {
-            match self.inner.add_sampled_image(image_view, sampler) {
-                Ok(_) => Ok(self),
-                Err(e) => {
-                    self.poisoned = true;
-                    Err(e)
-                }
-            }
-        }
+        self.inner.add_sampled_image(image_view, sampler)?;
+        Ok(self)
     }
 
     /// Binds a sampler as the next descriptor.
@@ -396,36 +332,16 @@ impl<'a> SingleLayoutDescSetBuilder<'a> {
     /// An error is returned if the sampler isn't compatible with the descriptor.
     #[inline]
     pub fn add_sampler(&mut self, sampler: Arc<Sampler>) -> Result<&mut Self, DescriptorSetError> {
-        if self.poisoned {
-            Err(DescriptorSetError::BuilderPoisoned)
-        } else {
-            match self.inner.add_sampler(sampler) {
-                Ok(_) => Ok(self),
-                Err(e) => {
-                    self.poisoned = true;
-                    Err(e)
-                }
-            }
-        }
+        self.inner.add_sampler(sampler)?;
+        Ok(self)
     }
 
     /// Builds a `SingleLayoutDescSet` from the builder.
     pub fn build(self) -> Result<SingleLayoutDescSet, DescriptorSetError> {
-        if self.poisoned {
-            return Err(DescriptorSetError::BuilderPoisoned);
-        }
-
-        let DescriptorSetBuilderOutput {
-            layout,
-            writes,
-            resources,
-        } = self.inner.output()?;
-
+        let (layout, writes, resources) = self.inner.build()?.into();
         let mut alloc = self.pool.next_alloc()?;
         unsafe {
-            alloc
-                .inner_mut()
-                .write(&self.pool.device, writes.into_iter());
+            alloc.inner_mut().write(&self.pool.device, &writes);
         }
 
         Ok(SingleLayoutDescSet {

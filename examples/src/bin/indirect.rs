@@ -331,7 +331,8 @@ fn main() {
                     .descriptor_set_layouts()
                     .get(0)
                     .unwrap();
-                let mut cs_desciptor_set_builder = PersistentDescriptorSet::start(layout.clone());
+                let mut cs_desciptor_set_builder =
+                    PersistentDescriptorSet::start(layout.clone()).unwrap();
 
                 cs_desciptor_set_builder
                     .add_buffer(vertices.clone())

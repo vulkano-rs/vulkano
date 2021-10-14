@@ -12,6 +12,7 @@ use crate::descriptor_set::layout::DescriptorDesc;
 use crate::descriptor_set::layout::DescriptorDescTy;
 use crate::descriptor_set::layout::DescriptorSetCompatibilityError;
 use crate::descriptor_set::layout::DescriptorSetDesc;
+use crate::descriptor_set::layout::DescriptorType;
 use crate::descriptor_set::pool::DescriptorsCount;
 use crate::device::Device;
 use crate::device::DeviceOwned;
@@ -31,7 +32,7 @@ pub struct DescriptorSetLayout {
     device: Arc<Device>,
     // Descriptors.
     desc: DescriptorSetDesc,
-    // Number of descriptors.
+    // Number of descriptors of each type.
     descriptors_count: DescriptorsCount,
     // Number of descriptors in a variable count descriptor. Will be zero if no variable count descriptors are present.
     variable_descriptor_count: u32,
@@ -45,21 +46,38 @@ impl DescriptorSetLayout {
     /// empty, you can make the iterator yield `None` for an element.
     pub fn new<D>(
         device: Arc<Device>,
-        desc: D,
+        set_desc: D,
     ) -> Result<DescriptorSetLayout, DescriptorSetLayoutError>
     where
         D: Into<DescriptorSetDesc>,
     {
-        let desc = desc.into();
+        let set_desc = set_desc.into();
         let mut descriptors_count = DescriptorsCount::zero();
         let mut variable_descriptor_count = 0;
-        let bindings = desc.bindings();
+        let bindings = set_desc.bindings();
         let mut bindings_vk = Vec::with_capacity(bindings.len());
         let mut binding_flags_vk = Vec::with_capacity(bindings.len());
         let mut immutable_samplers_vk: Vec<Box<[ash::vk::Sampler]>> = Vec::new(); // only to keep the arrays of handles alive
 
-        for (binding, desc) in bindings.iter().enumerate() {
-            let desc = match desc {
+        let mut flags = ash::vk::DescriptorSetLayoutCreateFlags::empty();
+
+        if set_desc.is_push_descriptor() {
+            if !device.enabled_extensions().khr_push_descriptor {
+                return Err(DescriptorSetLayoutError::ExtensionNotEnabled {
+                    extension: "khr_push_descriptor",
+                    reason: "description was set to be a push descriptor",
+                });
+            }
+
+            // TODO: VUID-VkDescriptorSetLayoutCreateInfo-flags-04590
+            // If flags contains VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR, flags must
+            // not contain VK_DESCRIPTOR_SET_LAYOUT_CREATE_HOST_ONLY_POOL_BIT_VALVE
+
+            flags |= ash::vk::DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR_KHR;
+        }
+
+        for (binding, binding_desc) in bindings.iter().enumerate() {
+            let binding_desc = match binding_desc {
                 Some(d) => d,
                 None => continue,
             };
@@ -67,15 +85,34 @@ impl DescriptorSetLayout {
             // FIXME: it is not legal to pass eg. the TESSELLATION_SHADER bit when the device
             //        doesn't have tess shaders enabled
 
-            let ty = desc.ty.ty();
-            descriptors_count.add_num(ty, desc.descriptor_count);
+            let ty = binding_desc.ty.ty();
+
+            if set_desc.is_push_descriptor() {
+                if matches!(
+                    ty,
+                    DescriptorType::StorageBufferDynamic | DescriptorType::UniformBufferDynamic
+                ) {
+                    return Err(DescriptorSetLayoutError::PushDescriptorDynamicBuffer);
+                }
+
+                // TODO: VUID-VkDescriptorSetLayoutCreateInfo-flags-02208
+                // If flags contains VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR, then all
+                // elements of pBindings must not have a descriptorType of
+                // VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT
+
+                // TODO: VUID-VkDescriptorSetLayoutCreateInfo-flags-04591
+                // If flags contains VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR,
+                // pBindings must not have a descriptorType of VK_DESCRIPTOR_TYPE_MUTABLE_VALVE
+            }
+
+            descriptors_count.add_num(ty, binding_desc.descriptor_count);
             let mut binding_flags = ash::vk::DescriptorBindingFlags::empty();
-            let immutable_samplers = desc.ty.immutable_samplers();
+            let immutable_samplers = binding_desc.ty.immutable_samplers();
 
             let p_immutable_samplers = if !immutable_samplers.is_empty() {
-                if desc.descriptor_count != immutable_samplers.len() as u32 {
+                if binding_desc.descriptor_count != immutable_samplers.len() as u32 {
                     return Err(DescriptorSetLayoutError::ImmutableSamplersCountMismatch {
-                        descriptor_count: desc.descriptor_count,
+                        descriptor_count: binding_desc.descriptor_count,
                         sampler_count: immutable_samplers.len() as u32,
                     });
                 }
@@ -97,43 +134,42 @@ impl DescriptorSetLayout {
                 ptr::null()
             };
 
-            if desc.variable_count {
+            if binding_desc.variable_count {
                 if binding != bindings.len() - 1 {
                     return Err(DescriptorSetLayoutError::VariableCountDescMustBeLast);
                 }
 
-                if desc.ty == DescriptorDescTy::UniformBufferDynamic
-                    || desc.ty == DescriptorDescTy::StorageBufferDynamic
+                if binding_desc.ty == DescriptorDescTy::UniformBufferDynamic
+                    || binding_desc.ty == DescriptorDescTy::StorageBufferDynamic
                 {
                     return Err(DescriptorSetLayoutError::VariableCountDescMustNotBeDynamic);
                 }
 
                 if !device.enabled_features().runtime_descriptor_array {
-                    return Err(DescriptorSetLayoutError::VariableCountIncompatibleDevice(
-                        IncompatibleDevice::MissingFeature(MissingFeature::RuntimeDescriptorArray),
-                    ));
+                    return Err(DescriptorSetLayoutError::FeatureNotEnabled {
+                        feature: "runtime_descriptor_array",
+                        reason: "binding has a variable count",
+                    });
                 }
 
                 if !device
                     .enabled_features()
                     .descriptor_binding_variable_descriptor_count
                 {
-                    return Err(DescriptorSetLayoutError::VariableCountIncompatibleDevice(
-                        IncompatibleDevice::MissingFeature(
-                            MissingFeature::DescriptorBindingVariableDescriptorCount,
-                        ),
-                    ));
+                    return Err(DescriptorSetLayoutError::FeatureNotEnabled {
+                        feature: "descriptor_binding_variable_descriptor_count",
+                        reason: "binding has a variable count",
+                    });
                 }
 
                 if !device.enabled_features().descriptor_binding_partially_bound {
-                    return Err(DescriptorSetLayoutError::VariableCountIncompatibleDevice(
-                        IncompatibleDevice::MissingFeature(
-                            MissingFeature::DescriptorBindingPartiallyBound,
-                        ),
-                    ));
+                    return Err(DescriptorSetLayoutError::FeatureNotEnabled {
+                        feature: "descriptor_binding_partially_bound",
+                        reason: "binding has a variable count",
+                    });
                 }
 
-                variable_descriptor_count = desc.descriptor_count;
+                variable_descriptor_count = binding_desc.descriptor_count;
                 // TODO: should these be settable separately by the user?
                 binding_flags |= ash::vk::DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT;
                 binding_flags |= ash::vk::DescriptorBindingFlags::PARTIALLY_BOUND;
@@ -142,20 +178,37 @@ impl DescriptorSetLayout {
             bindings_vk.push(ash::vk::DescriptorSetLayoutBinding {
                 binding: binding as u32,
                 descriptor_type: ty.into(),
-                descriptor_count: desc.descriptor_count,
-                stage_flags: desc.stages.into(),
+                descriptor_count: binding_desc.descriptor_count,
+                stage_flags: binding_desc.stages.into(),
                 p_immutable_samplers,
             });
             binding_flags_vk.push(binding_flags);
         }
 
-        // Note that it seems legal to have no descriptor at all in the set.
+        if set_desc.is_push_descriptor()
+            && descriptors_count.total()
+                > device
+                    .physical_device()
+                    .properties()
+                    .max_push_descriptors
+                    .unwrap_or(0)
+        {
+            return Err(DescriptorSetLayoutError::MaxPushDescriptorsExceeded {
+                max: device
+                    .physical_device()
+                    .properties()
+                    .max_push_descriptors
+                    .unwrap_or(0),
+                obtained: descriptors_count.total(),
+            });
+        }
 
         let handle = unsafe {
             let binding_flags_infos = if device.api_version() >= Version::V1_2
                 || device.enabled_extensions().ext_descriptor_indexing
             {
                 Some(ash::vk::DescriptorSetLayoutBindingFlagsCreateInfo {
+                    // Note that it seems legal to have no descriptor at all in the set.
                     binding_count: binding_flags_vk.len() as u32,
                     p_binding_flags: binding_flags_vk.as_ptr(),
                     ..Default::default()
@@ -165,7 +218,7 @@ impl DescriptorSetLayout {
             };
 
             let infos = ash::vk::DescriptorSetLayoutCreateInfo {
-                flags: ash::vk::DescriptorSetLayoutCreateFlags::empty(),
+                flags,
                 binding_count: bindings_vk.len() as u32,
                 p_bindings: bindings_vk.as_ptr(),
                 p_next: if let Some(next) = binding_flags_infos.as_ref() {
@@ -193,7 +246,7 @@ impl DescriptorSetLayout {
         Ok(DescriptorSetLayout {
             handle,
             device,
-            desc,
+            desc: set_desc,
             descriptors_count,
             variable_descriptor_count,
         })
@@ -285,11 +338,17 @@ impl Drop for DescriptorSetLayout {
     }
 }
 
-/// Error related to descriptor set layout
+/// Error related to descriptor set layout.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DescriptorSetLayoutError {
-    /// Out of Memory
-    OomError(OomError),
+    ExtensionNotEnabled {
+        extension: &'static str,
+        reason: &'static str,
+    },
+    FeatureNotEnabled {
+        feature: &'static str,
+        reason: &'static str,
+    },
 
     /// The number of immutable samplers does not match the descriptor count.
     ImmutableSamplersCountMismatch {
@@ -297,42 +356,25 @@ pub enum DescriptorSetLayoutError {
         sampler_count: u32,
     },
 
-    /// Variable count descriptor must be last binding
+    /// The maximum number of push descriptors has been exceeded.
+    MaxPushDescriptorsExceeded {
+        /// Maximum allowed value.
+        max: u32,
+        /// Value that was passed.
+        obtained: u32,
+    },
+
+    /// Out of Memory.
+    OomError(OomError),
+
+    /// The layout was being created for push descriptors, but included a dynamic buffer descriptor.
+    PushDescriptorDynamicBuffer,
+
+    /// Variable count descriptor must be last binding.
     VariableCountDescMustBeLast,
 
-    /// Variable count descriptor must not be a dynamic buffer
+    /// Variable count descriptor must not be a dynamic buffer.
     VariableCountDescMustNotBeDynamic,
-
-    /// Device is not compatible with variable count descriptors
-    VariableCountIncompatibleDevice(IncompatibleDevice),
-}
-
-// Part of the DescriptorSetLayoutError for the case
-// of missing features on a device.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum IncompatibleDevice {
-    MissingExtension(MissingExtension),
-    MissingFeature(MissingFeature),
-    InsufficientApiVersion {
-        required: Version,
-        obtained: Version,
-    },
-}
-
-// Part of the IncompatibleDevice for the case
-// of missing features on a device.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum MissingFeature {
-    RuntimeDescriptorArray,
-    DescriptorBindingVariableDescriptorCount,
-    DescriptorBindingPartiallyBound,
-}
-
-// Part of the IncompatibleDevice for the case
-// of missing extensions on a device.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum MissingExtension {
-    DescriptorIndexing,
 }
 
 impl From<OomError> for DescriptorSetLayoutError {
@@ -346,21 +388,45 @@ impl std::error::Error for DescriptorSetLayoutError {}
 impl std::fmt::Display for DescriptorSetLayoutError {
     #[inline]
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                Self::OomError(_) => "out of memory",
-                Self::ImmutableSamplersCountMismatch { .. } =>
-                    "the number of immutable samplers does not match the descriptor count",
-                Self::VariableCountDescMustBeLast =>
-                    "variable count descriptor must be last binding",
-                Self::VariableCountDescMustNotBeDynamic =>
-                    "variable count descriptor must not be a dynamic buffer",
-                Self::VariableCountIncompatibleDevice(_) =>
-                    "device is not compatible with variable count descriptors",
+        match *self {
+            Self::ExtensionNotEnabled { extension, reason } => {
+                write!(
+                    fmt,
+                    "the extension {} must be enabled: {}",
+                    extension, reason
+                )
             }
-        )
+            Self::FeatureNotEnabled { feature, reason } => {
+                write!(fmt, "the feature {} must be enabled: {}", feature, reason)
+            }
+            Self::ImmutableSamplersCountMismatch { .. } => {
+                write!(
+                    fmt,
+                    "the number of immutable samplers does not match the descriptor count"
+                )
+            }
+            Self::MaxPushDescriptorsExceeded { .. } => {
+                write!(
+                    fmt,
+                    "the maximum number of push descriptors has been exceeded"
+                )
+            }
+            Self::PushDescriptorDynamicBuffer => {
+                write!(fmt, "the layout was being created for push descriptors, but included a dynamic buffer descriptor")
+            }
+            Self::OomError(_) => {
+                write!(fmt, "out of memory")
+            }
+            Self::VariableCountDescMustBeLast => {
+                write!(fmt, "variable count descriptor must be last binding")
+            }
+            Self::VariableCountDescMustNotBeDynamic => {
+                write!(
+                    fmt,
+                    "variable count descriptor must not be a dynamic buffer"
+                )
+            }
+        }
     }
 }
 

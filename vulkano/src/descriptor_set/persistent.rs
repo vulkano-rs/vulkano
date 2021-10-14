@@ -22,7 +22,6 @@
 //! TODO:
 
 use super::builder::DescriptorSetBuilder;
-use super::builder::DescriptorSetBuilderOutput;
 use super::resources::DescriptorSetResources;
 use super::DescriptorSetError;
 use crate::buffer::BufferView;
@@ -51,11 +50,16 @@ pub struct PersistentDescriptorSet<P = StdDescriptorPoolAlloc> {
 
 impl PersistentDescriptorSet {
     /// Starts the process of building a `PersistentDescriptorSet`. Returns a builder.
-    pub fn start(layout: Arc<DescriptorSetLayout>) -> PersistentDescriptorSetBuilder {
-        PersistentDescriptorSetBuilder {
-            inner: DescriptorSetBuilder::start(layout),
-            poisoned: false,
+    pub fn start(
+        layout: Arc<DescriptorSetLayout>,
+    ) -> Result<PersistentDescriptorSetBuilder, DescriptorSetError> {
+        if layout.desc().is_push_descriptor() {
+            return Err(DescriptorSetError::LayoutIsPushDescriptor);
         }
+
+        Ok(PersistentDescriptorSetBuilder {
+            inner: DescriptorSetBuilder::start(layout),
+        })
     }
 }
 
@@ -128,7 +132,6 @@ where
 /// Prototype of a `PersistentDescriptorSet`.
 pub struct PersistentDescriptorSetBuilder {
     inner: DescriptorSetBuilder,
-    poisoned: bool,
 }
 
 impl PersistentDescriptorSetBuilder {
@@ -142,17 +145,8 @@ impl PersistentDescriptorSetBuilder {
     /// the "array", add one element, then leave.
     #[inline]
     pub fn enter_array(&mut self) -> Result<&mut Self, DescriptorSetError> {
-        if self.poisoned {
-            Err(DescriptorSetError::BuilderPoisoned)
-        } else {
-            match self.inner.enter_array() {
-                Ok(_) => Ok(self),
-                Err(e) => {
-                    self.poisoned = true;
-                    Err(e)
-                }
-            }
-        }
+        self.inner.enter_array()?;
+        Ok(self)
     }
 
     /// Leaves the array. Call this once you added all the elements of the array.
@@ -160,33 +154,15 @@ impl PersistentDescriptorSetBuilder {
     /// Returns an error if the array is missing elements, or if the builder is not in an array.
     #[inline]
     pub fn leave_array(&mut self) -> Result<&mut Self, DescriptorSetError> {
-        if self.poisoned {
-            Err(DescriptorSetError::BuilderPoisoned)
-        } else {
-            match self.inner.leave_array() {
-                Ok(_) => Ok(self),
-                Err(e) => {
-                    self.poisoned = true;
-                    Err(e)
-                }
-            }
-        }
+        self.inner.leave_array()?;
+        Ok(self)
     }
 
     /// Skips the current descriptor if it is empty.
     #[inline]
     pub fn add_empty(&mut self) -> Result<&mut Self, DescriptorSetError> {
-        if self.poisoned {
-            Err(DescriptorSetError::BuilderPoisoned)
-        } else {
-            match self.inner.add_empty() {
-                Ok(_) => Ok(self),
-                Err(e) => {
-                    self.poisoned = true;
-                    Err(e)
-                }
-            }
-        }
+        self.inner.add_empty()?;
+        Ok(self)
     }
 
     /// Binds a buffer as the next descriptor.
@@ -197,17 +173,8 @@ impl PersistentDescriptorSetBuilder {
         &mut self,
         buffer: Arc<dyn BufferAccess + 'static>,
     ) -> Result<&mut Self, DescriptorSetError> {
-        if self.poisoned {
-            Err(DescriptorSetError::BuilderPoisoned)
-        } else {
-            match self.inner.add_buffer(buffer) {
-                Ok(_) => Ok(self),
-                Err(e) => {
-                    self.poisoned = true;
-                    Err(e)
-                }
-            }
-        }
+        self.inner.add_buffer(buffer)?;
+        Ok(self)
     }
 
     /// Binds a buffer view as the next descriptor.
@@ -221,17 +188,8 @@ impl PersistentDescriptorSetBuilder {
     where
         B: BufferAccess + 'static,
     {
-        if self.poisoned {
-            Err(DescriptorSetError::BuilderPoisoned)
-        } else {
-            match self.inner.add_buffer_view(view) {
-                Ok(_) => Ok(self),
-                Err(e) => {
-                    self.poisoned = true;
-                    Err(e)
-                }
-            }
-        }
+        self.inner.add_buffer_view(view)?;
+        Ok(self)
     }
 
     /// Binds an image view as the next descriptor.
@@ -242,17 +200,8 @@ impl PersistentDescriptorSetBuilder {
         &mut self,
         image_view: Arc<dyn ImageViewAbstract + 'static>,
     ) -> Result<&mut Self, DescriptorSetError> {
-        if self.poisoned {
-            Err(DescriptorSetError::BuilderPoisoned)
-        } else {
-            match self.inner.add_image(image_view) {
-                Ok(_) => Ok(self),
-                Err(e) => {
-                    self.poisoned = true;
-                    Err(e)
-                }
-            }
-        }
+        self.inner.add_image(image_view)?;
+        Ok(self)
     }
 
     /// Binds an image view with a sampler as the next descriptor.
@@ -267,17 +216,8 @@ impl PersistentDescriptorSetBuilder {
         image_view: Arc<dyn ImageViewAbstract + 'static>,
         sampler: Arc<Sampler>,
     ) -> Result<&mut Self, DescriptorSetError> {
-        if self.poisoned {
-            Err(DescriptorSetError::BuilderPoisoned)
-        } else {
-            match self.inner.add_sampled_image(image_view, sampler) {
-                Ok(_) => Ok(self),
-                Err(e) => {
-                    self.poisoned = true;
-                    Err(e)
-                }
-            }
-        }
+        self.inner.add_sampled_image(image_view, sampler)?;
+        Ok(self)
     }
 
     /// Binds a sampler as the next descriptor.
@@ -285,17 +225,8 @@ impl PersistentDescriptorSetBuilder {
     /// An error is returned if the sampler isn't compatible with the descriptor.
     #[inline]
     pub fn add_sampler(&mut self, sampler: Arc<Sampler>) -> Result<&mut Self, DescriptorSetError> {
-        if self.poisoned {
-            Err(DescriptorSetError::BuilderPoisoned)
-        } else {
-            match self.inner.add_sampler(sampler) {
-                Ok(_) => Ok(self),
-                Err(e) => {
-                    self.poisoned = true;
-                    Err(e)
-                }
-            }
-        }
+        self.inner.add_sampler(sampler)?;
+        Ok(self)
     }
 
     /// Builds a `PersistentDescriptorSet` from the builder.
@@ -315,19 +246,10 @@ impl PersistentDescriptorSetBuilder {
     where
         P: ?Sized + DescriptorPool,
     {
-        if self.poisoned {
-            return Err(DescriptorSetError::BuilderPoisoned);
-        }
-
-        let DescriptorSetBuilderOutput {
-            layout,
-            writes,
-            resources,
-        } = self.inner.output()?;
-
+        let (layout, writes, resources) = self.inner.build()?.into();
         let set = unsafe {
             let mut set = pool.alloc(&layout)?;
-            set.inner_mut().write(pool.device(), writes.into_iter());
+            set.inner_mut().write(pool.device(), &writes);
             set
         };
 
