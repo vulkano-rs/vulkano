@@ -11,21 +11,15 @@ use super::resources::DescriptorSetResources;
 use super::DescriptorSetError;
 use super::MissingBufferUsage;
 use super::MissingImageUsage;
-use crate::buffer::BufferView;
-use crate::descriptor_set::layout::DescriptorDesc;
-use crate::descriptor_set::layout::DescriptorDescImage;
-use crate::descriptor_set::layout::DescriptorDescTy;
+use crate::buffer::{BufferAccess, BufferView};
+use crate::descriptor_set::layout::{DescriptorDesc, DescriptorDescImage, DescriptorDescTy};
 use crate::descriptor_set::sys::DescriptorWrite;
-use crate::descriptor_set::BufferAccess;
 use crate::descriptor_set::DescriptorSetLayout;
-use crate::device::Device;
-use crate::device::DeviceOwned;
+use crate::device::{Device, DeviceOwned};
 use crate::image::view::ImageViewType;
-use crate::image::ImageViewAbstract;
-use crate::image::SampleCount;
+use crate::image::{ImageViewAbstract, SampleCount};
 use crate::sampler::Sampler;
 use crate::VulkanObject;
-
 use std::sync::Arc;
 
 struct BuilderDescriptor {
@@ -41,15 +35,7 @@ pub struct DescriptorSetBuilder {
     cur_binding: u32,
     resources: DescriptorSetResources,
     desc_writes: Vec<DescriptorWrite>,
-}
-
-/// The output of the descriptor set builder.
-///
-/// This is not a descriptor set yet, but can be used to write the descriptors to one.
-pub struct DescriptorSetBuilderOutput {
-    pub layout: Arc<DescriptorSetLayout>,
-    pub writes: Vec<DescriptorWrite>,
-    pub resources: DescriptorSetResources,
+    poisoned: bool,
 }
 
 impl DescriptorSetBuilder {
@@ -106,11 +92,16 @@ impl DescriptorSetBuilder {
             descriptors,
             resources: DescriptorSetResources::new(t_num_bufs, t_num_imgs, t_num_samplers),
             desc_writes: Vec::with_capacity(desc_writes_capacity),
+            poisoned: false,
         }
     }
 
     /// Finalizes the building process and returns the generated output.
-    pub fn output(self) -> Result<DescriptorSetBuilderOutput, DescriptorSetError> {
+    pub fn build(self) -> Result<DescriptorSetBuilderOutput, DescriptorSetError> {
+        if self.poisoned {
+            return Err(DescriptorSetError::BuilderPoisoned);
+        }
+
         if self.cur_binding != self.descriptors.len() as u32 {
             Err(DescriptorSetError::DescriptorsMissing {
                 expected: self.descriptors.len() as u32,
@@ -125,356 +116,413 @@ impl DescriptorSetBuilder {
         }
     }
 
+    fn poison_on_err(
+        &mut self,
+        func: impl FnOnce(&mut Self) -> Result<(), DescriptorSetError>,
+    ) -> Result<&mut Self, DescriptorSetError> {
+        if self.poisoned {
+            return Err(DescriptorSetError::BuilderPoisoned);
+        }
+
+        match func(self) {
+            Ok(()) => Ok(self),
+            Err(err) => {
+                self.poisoned = true;
+                Err(err)
+            }
+        }
+    }
+
     /// Call this function if the next element of the set is an array in order to set the value of
     /// each element.
     ///
     /// This function can be called even if the descriptor isn't an array, and it is valid to enter
     /// the "array", add one element, then leave.
-    pub fn enter_array(&mut self) -> Result<(), DescriptorSetError> {
-        if self.in_array {
-            Err(DescriptorSetError::AlreadyInArray)
-        } else if self.cur_binding >= self.descriptors.len() as u32 {
-            Err(DescriptorSetError::TooManyDescriptors)
-        } else if self.descriptors[self.cur_binding as usize].desc.is_none() {
-            Err(DescriptorSetError::DescriptorIsEmpty)
-        } else {
-            self.in_array = true;
-            Ok(())
-        }
+    pub fn enter_array(&mut self) -> Result<&mut Self, DescriptorSetError> {
+        self.poison_on_err(|builder| {
+            if builder.in_array {
+                Err(DescriptorSetError::AlreadyInArray)
+            } else if builder.cur_binding >= builder.descriptors.len() as u32 {
+                Err(DescriptorSetError::TooManyDescriptors)
+            } else if builder.descriptors[builder.cur_binding as usize]
+                .desc
+                .is_none()
+            {
+                Err(DescriptorSetError::DescriptorIsEmpty)
+            } else {
+                builder.in_array = true;
+                Ok(())
+            }
+        })
     }
 
     /// Leaves the array. Call this once you added all the elements of the array.
-    pub fn leave_array(&mut self) -> Result<(), DescriptorSetError> {
-        if !self.in_array {
-            Err(DescriptorSetError::NotInArray)
-        } else {
-            let descriptor = &self.descriptors[self.cur_binding as usize];
-            let inner_desc = match descriptor.desc.as_ref() {
-                Some(some) => some,
-                None => unreachable!(),
-            };
+    pub fn leave_array(&mut self) -> Result<&mut Self, DescriptorSetError> {
+        self.poison_on_err(|builder| {
+            if !builder.in_array {
+                Err(DescriptorSetError::NotInArray)
+            } else {
+                let descriptor = &builder.descriptors[builder.cur_binding as usize];
+                let inner_desc = match descriptor.desc.as_ref() {
+                    Some(some) => some,
+                    None => unreachable!(),
+                };
 
-            if inner_desc.variable_count {
-                if descriptor.array_element > inner_desc.descriptor_count {
-                    return Err(DescriptorSetError::ArrayTooManyDescriptors {
-                        capacity: inner_desc.descriptor_count,
+                if inner_desc.variable_count {
+                    if descriptor.array_element > inner_desc.descriptor_count {
+                        return Err(DescriptorSetError::ArrayTooManyDescriptors {
+                            capacity: inner_desc.descriptor_count,
+                            obtained: descriptor.array_element,
+                        });
+                    }
+                } else if descriptor.array_element != inner_desc.descriptor_count {
+                    return Err(DescriptorSetError::ArrayLengthMismatch {
+                        expected: inner_desc.descriptor_count,
                         obtained: descriptor.array_element,
                     });
                 }
-            } else if descriptor.array_element != inner_desc.descriptor_count {
-                return Err(DescriptorSetError::ArrayLengthMismatch {
-                    expected: inner_desc.descriptor_count,
-                    obtained: descriptor.array_element,
-                });
-            }
 
-            self.in_array = false;
-            self.cur_binding += 1;
-            Ok(())
-        }
+                builder.in_array = false;
+                builder.cur_binding += 1;
+                Ok(())
+            }
+        })
     }
 
     /// Skips the current descriptor if it is empty.
-    pub fn add_empty(&mut self) -> Result<(), DescriptorSetError> {
-        // Should be unreahable as enter_array prevents entering an array for empty descriptors.
-        assert!(!self.in_array);
+    pub fn add_empty(&mut self) -> Result<&mut Self, DescriptorSetError> {
+        self.poison_on_err(|builder| {
+            // Should be unreahable as enter_array prevents entering an array for empty descriptors.
+            assert!(!builder.in_array);
 
-        if self.descriptors[self.cur_binding as usize].desc.is_some() {
-            return Err(DescriptorSetError::WrongDescriptorType);
-        }
+            if builder.descriptors[builder.cur_binding as usize]
+                .desc
+                .is_some()
+            {
+                return Err(DescriptorSetError::WrongDescriptorType);
+            }
 
-        self.cur_binding += 1;
-        Ok(())
+            builder.cur_binding += 1;
+            Ok(())
+        })
     }
 
     /// Binds a buffer as the next descriptor or array element.
     pub fn add_buffer(
         &mut self,
         buffer: Arc<dyn BufferAccess + 'static>,
-    ) -> Result<(), DescriptorSetError> {
-        if buffer.inner().buffer.device().internal_object()
-            != self.layout.device().internal_object()
-        {
-            return Err(DescriptorSetError::ResourceWrongDevice);
-        }
-
-        let leave_array = if !self.in_array {
-            self.enter_array()?;
-            true
-        } else {
-            false
-        };
-
-        let descriptor = &mut self.descriptors[self.cur_binding as usize];
-        let inner_desc = match descriptor.desc.as_ref() {
-            Some(some) => some,
-            None => return Err(DescriptorSetError::WrongDescriptorType),
-        };
-
-        // Note that the buffer content is not checked. This is technically not unsafe as
-        // long as the data in the buffer has no invalid memory representation (ie. no
-        // bool, no enum, no pointer, no str) and as long as the robust buffer access
-        // feature is enabled.
-        // TODO: this is not checked ^
-
-        // TODO: eventually shouldn't be an assert ; for now robust_buffer_access is always
-        //       enabled so this assert should never fail in practice, but we put it anyway
-        //       in case we forget to adjust this code
-
-        self.desc_writes.push(match inner_desc.ty {
-            DescriptorDescTy::StorageBuffer | DescriptorDescTy::StorageBufferDynamic => {
-                assert!(self.layout.device().enabled_features().robust_buffer_access);
-
-                if !buffer.inner().buffer.usage().storage_buffer {
-                    return Err(DescriptorSetError::MissingBufferUsage(
-                        MissingBufferUsage::StorageBuffer,
-                    ));
-                }
-
-                unsafe {
-                    DescriptorWrite::storage_buffer(
-                        self.cur_binding,
-                        descriptor.array_element,
-                        &buffer,
-                    )
-                }
+    ) -> Result<&mut Self, DescriptorSetError> {
+        self.poison_on_err(|builder| {
+            if buffer.inner().buffer.device().internal_object()
+                != builder.layout.device().internal_object()
+            {
+                return Err(DescriptorSetError::ResourceWrongDevice);
             }
-            DescriptorDescTy::UniformBuffer => {
-                assert!(self.layout.device().enabled_features().robust_buffer_access);
 
-                if !buffer.inner().buffer.usage().uniform_buffer {
-                    return Err(DescriptorSetError::MissingBufferUsage(
-                        MissingBufferUsage::UniformBuffer,
-                    ));
-                }
+            let leave_array = if !builder.in_array {
+                builder.enter_array()?;
+                true
+            } else {
+                false
+            };
 
-                unsafe {
-                    DescriptorWrite::uniform_buffer(
-                        self.cur_binding,
-                        descriptor.array_element,
-                        &buffer,
-                    )
+            let descriptor = &mut builder.descriptors[builder.cur_binding as usize];
+            let inner_desc = match descriptor.desc.as_ref() {
+                Some(some) => some,
+                None => return Err(DescriptorSetError::WrongDescriptorType),
+            };
+
+            // Note that the buffer content is not checked. This is technically not unsafe as
+            // long as the data in the buffer has no invalid memory representation (ie. no
+            // bool, no enum, no pointer, no str) and as long as the robust buffer access
+            // feature is enabled.
+            // TODO: this is not checked ^
+
+            // TODO: eventually shouldn't be an assert ; for now robust_buffer_access is always
+            //       enabled so this assert should never fail in practice, but we put it anyway
+            //       in case we forget to adjust this code
+
+            builder.desc_writes.push(match inner_desc.ty {
+                DescriptorDescTy::StorageBuffer | DescriptorDescTy::StorageBufferDynamic => {
+                    assert!(
+                        builder
+                            .layout
+                            .device()
+                            .enabled_features()
+                            .robust_buffer_access
+                    );
+
+                    if !buffer.inner().buffer.usage().storage_buffer {
+                        return Err(DescriptorSetError::MissingBufferUsage(
+                            MissingBufferUsage::StorageBuffer,
+                        ));
+                    }
+
+                    unsafe {
+                        DescriptorWrite::storage_buffer(
+                            builder.cur_binding,
+                            descriptor.array_element,
+                            &buffer,
+                        )
+                    }
                 }
+                DescriptorDescTy::UniformBuffer => {
+                    assert!(
+                        builder
+                            .layout
+                            .device()
+                            .enabled_features()
+                            .robust_buffer_access
+                    );
+
+                    if !buffer.inner().buffer.usage().uniform_buffer {
+                        return Err(DescriptorSetError::MissingBufferUsage(
+                            MissingBufferUsage::UniformBuffer,
+                        ));
+                    }
+
+                    unsafe {
+                        DescriptorWrite::uniform_buffer(
+                            builder.cur_binding,
+                            descriptor.array_element,
+                            &buffer,
+                        )
+                    }
+                }
+                DescriptorDescTy::UniformBufferDynamic => {
+                    assert!(
+                        builder
+                            .layout
+                            .device()
+                            .enabled_features()
+                            .robust_buffer_access
+                    );
+
+                    if !buffer.inner().buffer.usage().uniform_buffer {
+                        return Err(DescriptorSetError::MissingBufferUsage(
+                            MissingBufferUsage::UniformBuffer,
+                        ));
+                    }
+
+                    unsafe {
+                        DescriptorWrite::dynamic_uniform_buffer(
+                            builder.cur_binding,
+                            descriptor.array_element,
+                            &buffer,
+                        )
+                    }
+                }
+                _ => return Err(DescriptorSetError::WrongDescriptorType),
+            });
+
+            builder.resources.add_buffer(builder.cur_binding, buffer);
+            descriptor.array_element += 1;
+
+            if leave_array {
+                builder.leave_array()?;
             }
-            DescriptorDescTy::UniformBufferDynamic => {
-                assert!(self.layout.device().enabled_features().robust_buffer_access);
 
-                if !buffer.inner().buffer.usage().uniform_buffer {
-                    return Err(DescriptorSetError::MissingBufferUsage(
-                        MissingBufferUsage::UniformBuffer,
-                    ));
-                }
-
-                unsafe {
-                    DescriptorWrite::dynamic_uniform_buffer(
-                        self.cur_binding,
-                        descriptor.array_element,
-                        &buffer,
-                    )
-                }
-            }
-            _ => return Err(DescriptorSetError::WrongDescriptorType),
-        });
-
-        self.resources.add_buffer(self.cur_binding, buffer);
-        descriptor.array_element += 1;
-
-        if leave_array {
-            self.leave_array()
-        } else {
             Ok(())
-        }
+        })
     }
 
     /// Binds a buffer view as the next descriptor or array element.
-    pub fn add_buffer_view<B>(&mut self, view: Arc<BufferView<B>>) -> Result<(), DescriptorSetError>
+    pub fn add_buffer_view<B>(
+        &mut self,
+        view: Arc<BufferView<B>>,
+    ) -> Result<&mut Self, DescriptorSetError>
     where
         B: BufferAccess + 'static,
     {
-        if view.device().internal_object() != self.layout.device().internal_object() {
-            return Err(DescriptorSetError::ResourceWrongDevice);
-        }
-
-        let leave_array = if !self.in_array {
-            self.enter_array()?;
-            true
-        } else {
-            false
-        };
-
-        let descriptor = &mut self.descriptors[self.cur_binding as usize];
-        let inner_desc = match descriptor.desc.as_ref() {
-            Some(some) => some,
-            None => return Err(DescriptorSetError::WrongDescriptorType),
-        };
-
-        self.desc_writes.push(match inner_desc.ty {
-            DescriptorDescTy::StorageTexelBuffer { .. } => {
-                // TODO: storage_texel_buffer_atomic
-
-                if !view.storage_texel_buffer() {
-                    return Err(DescriptorSetError::MissingBufferUsage(
-                        MissingBufferUsage::StorageTexelBuffer,
-                    ));
-                }
-
-                DescriptorWrite::storage_texel_buffer(
-                    self.cur_binding,
-                    descriptor.array_element,
-                    &view,
-                )
+        self.poison_on_err(|builder| {
+            if view.device().internal_object() != builder.layout.device().internal_object() {
+                return Err(DescriptorSetError::ResourceWrongDevice);
             }
-            DescriptorDescTy::UniformTexelBuffer { .. } => {
-                if !view.uniform_texel_buffer() {
-                    return Err(DescriptorSetError::MissingBufferUsage(
-                        MissingBufferUsage::UniformTexelBuffer,
-                    ));
+
+            let leave_array = if !builder.in_array {
+                builder.enter_array()?;
+                true
+            } else {
+                false
+            };
+
+            let descriptor = &mut builder.descriptors[builder.cur_binding as usize];
+            let inner_desc = match descriptor.desc.as_ref() {
+                Some(some) => some,
+                None => return Err(DescriptorSetError::WrongDescriptorType),
+            };
+
+            builder.desc_writes.push(match inner_desc.ty {
+                DescriptorDescTy::StorageTexelBuffer { .. } => {
+                    // TODO: storage_texel_buffer_atomic
+
+                    if !view.storage_texel_buffer() {
+                        return Err(DescriptorSetError::MissingBufferUsage(
+                            MissingBufferUsage::StorageTexelBuffer,
+                        ));
+                    }
+
+                    DescriptorWrite::storage_texel_buffer(
+                        builder.cur_binding,
+                        descriptor.array_element,
+                        &view,
+                    )
                 }
+                DescriptorDescTy::UniformTexelBuffer { .. } => {
+                    if !view.uniform_texel_buffer() {
+                        return Err(DescriptorSetError::MissingBufferUsage(
+                            MissingBufferUsage::UniformTexelBuffer,
+                        ));
+                    }
 
-                DescriptorWrite::uniform_texel_buffer(
-                    self.cur_binding,
-                    descriptor.array_element,
-                    &view,
-                )
+                    DescriptorWrite::uniform_texel_buffer(
+                        builder.cur_binding,
+                        descriptor.array_element,
+                        &view,
+                    )
+                }
+                _ => return Err(DescriptorSetError::WrongDescriptorType),
+            });
+
+            builder.resources.add_buffer_view(builder.cur_binding, view);
+            descriptor.array_element += 1;
+
+            if leave_array {
+                builder.leave_array()?;
             }
-            _ => return Err(DescriptorSetError::WrongDescriptorType),
-        });
 
-        self.resources.add_buffer_view(self.cur_binding, view);
-        descriptor.array_element += 1;
-
-        if leave_array {
-            self.leave_array()
-        } else {
             Ok(())
-        }
+        })
     }
 
     /// Binds an image view as the next descriptor or array element.
     pub fn add_image(
         &mut self,
         image_view: Arc<dyn ImageViewAbstract + 'static>,
-    ) -> Result<(), DescriptorSetError> {
-        if image_view.image().inner().image.device().internal_object()
-            != self.layout.device().internal_object()
-        {
-            return Err(DescriptorSetError::ResourceWrongDevice);
-        }
-
-        let leave_array = if !self.in_array {
-            self.enter_array()?;
-            true
-        } else {
-            false
-        };
-
-        let descriptor = &mut self.descriptors[self.cur_binding as usize];
-        let inner_desc = match descriptor.desc.as_ref() {
-            Some(some) => some,
-            None => return Err(DescriptorSetError::WrongDescriptorType),
-        };
-
-        self.desc_writes.push(match &inner_desc.ty {
-            DescriptorDescTy::CombinedImageSampler {
-                image_desc,
-                immutable_samplers,
-            } if !immutable_samplers.is_empty() => {
-                if !image_view.image().inner().image.usage().sampled {
-                    return Err(DescriptorSetError::MissingImageUsage(
-                        MissingImageUsage::Sampled,
-                    ));
-                }
-
-                if !image_view
-                    .can_be_sampled(&immutable_samplers[descriptor.array_element as usize])
-                {
-                    return Err(DescriptorSetError::IncompatibleImageViewSampler);
-                }
-
-                image_match_desc(&image_view, image_desc)?;
-
-                DescriptorWrite::combined_image_sampler(
-                    self.cur_binding,
-                    descriptor.array_element,
-                    None,
-                    &image_view,
-                )
+    ) -> Result<&mut Self, DescriptorSetError> {
+        self.poison_on_err(|builder| {
+            if image_view.image().inner().image.device().internal_object()
+                != builder.layout.device().internal_object()
+            {
+                return Err(DescriptorSetError::ResourceWrongDevice);
             }
-            DescriptorDescTy::SampledImage { ref image_desc, .. } => {
-                if !image_view.image().inner().image.usage().sampled {
-                    return Err(DescriptorSetError::MissingImageUsage(
-                        MissingImageUsage::Sampled,
-                    ));
+
+            let leave_array = if !builder.in_array {
+                builder.enter_array()?;
+                true
+            } else {
+                false
+            };
+
+            let descriptor = &mut builder.descriptors[builder.cur_binding as usize];
+            let inner_desc = match descriptor.desc.as_ref() {
+                Some(some) => some,
+                None => return Err(DescriptorSetError::WrongDescriptorType),
+            };
+
+            builder.desc_writes.push(match &inner_desc.ty {
+                DescriptorDescTy::CombinedImageSampler {
+                    image_desc,
+                    immutable_samplers,
+                } if !immutable_samplers.is_empty() => {
+                    if !image_view.image().inner().image.usage().sampled {
+                        return Err(DescriptorSetError::MissingImageUsage(
+                            MissingImageUsage::Sampled,
+                        ));
+                    }
+
+                    if !image_view
+                        .can_be_sampled(&immutable_samplers[descriptor.array_element as usize])
+                    {
+                        return Err(DescriptorSetError::IncompatibleImageViewSampler);
+                    }
+
+                    image_match_desc(&image_view, image_desc)?;
+
+                    DescriptorWrite::combined_image_sampler(
+                        builder.cur_binding,
+                        descriptor.array_element,
+                        None,
+                        &image_view,
+                    )
                 }
+                DescriptorDescTy::SampledImage { ref image_desc, .. } => {
+                    if !image_view.image().inner().image.usage().sampled {
+                        return Err(DescriptorSetError::MissingImageUsage(
+                            MissingImageUsage::Sampled,
+                        ));
+                    }
 
-                image_match_desc(&image_view, image_desc)?;
+                    image_match_desc(&image_view, image_desc)?;
 
-                DescriptorWrite::sampled_image(
-                    self.cur_binding,
-                    descriptor.array_element,
-                    &image_view,
-                )
+                    DescriptorWrite::sampled_image(
+                        builder.cur_binding,
+                        descriptor.array_element,
+                        &image_view,
+                    )
+                }
+                DescriptorDescTy::StorageImage { ref image_desc, .. } => {
+                    if !image_view.image().inner().image.usage().storage {
+                        return Err(DescriptorSetError::MissingImageUsage(
+                            MissingImageUsage::Storage,
+                        ));
+                    }
+
+                    image_match_desc(&image_view, image_desc)?;
+
+                    if !image_view.component_mapping().is_identity() {
+                        return Err(DescriptorSetError::NotIdentitySwizzled);
+                    }
+
+                    DescriptorWrite::storage_image(
+                        builder.cur_binding,
+                        descriptor.array_element,
+                        &image_view,
+                    )
+                }
+                DescriptorDescTy::InputAttachment { multisampled } => {
+                    if !image_view.image().inner().image.usage().input_attachment {
+                        return Err(DescriptorSetError::MissingImageUsage(
+                            MissingImageUsage::InputAttachment,
+                        ));
+                    }
+
+                    if !image_view.component_mapping().is_identity() {
+                        return Err(DescriptorSetError::NotIdentitySwizzled);
+                    }
+
+                    if *multisampled && image_view.image().samples() == SampleCount::Sample1 {
+                        return Err(DescriptorSetError::ExpectedMultisampled);
+                    } else if !multisampled && image_view.image().samples() != SampleCount::Sample1
+                    {
+                        return Err(DescriptorSetError::UnexpectedMultisampled);
+                    }
+
+                    let image_layers = image_view.array_layers();
+                    let num_layers = image_layers.end - image_layers.start;
+
+                    if image_view.ty().is_arrayed() {
+                        return Err(DescriptorSetError::UnexpectedArrayed);
+                    }
+
+                    DescriptorWrite::input_attachment(
+                        builder.cur_binding,
+                        descriptor.array_element,
+                        &image_view,
+                    )
+                }
+                _ => return Err(DescriptorSetError::WrongDescriptorType),
+            });
+
+            descriptor.array_element += 1;
+            builder.resources.add_image(builder.cur_binding, image_view);
+
+            if leave_array {
+                builder.leave_array()?;
             }
-            DescriptorDescTy::StorageImage { ref image_desc, .. } => {
-                if !image_view.image().inner().image.usage().storage {
-                    return Err(DescriptorSetError::MissingImageUsage(
-                        MissingImageUsage::Storage,
-                    ));
-                }
 
-                image_match_desc(&image_view, image_desc)?;
-
-                if !image_view.component_mapping().is_identity() {
-                    return Err(DescriptorSetError::NotIdentitySwizzled);
-                }
-
-                DescriptorWrite::storage_image(
-                    self.cur_binding,
-                    descriptor.array_element,
-                    &image_view,
-                )
-            }
-            DescriptorDescTy::InputAttachment { multisampled } => {
-                if !image_view.image().inner().image.usage().input_attachment {
-                    return Err(DescriptorSetError::MissingImageUsage(
-                        MissingImageUsage::InputAttachment,
-                    ));
-                }
-
-                if !image_view.component_mapping().is_identity() {
-                    return Err(DescriptorSetError::NotIdentitySwizzled);
-                }
-
-                if *multisampled && image_view.image().samples() == SampleCount::Sample1 {
-                    return Err(DescriptorSetError::ExpectedMultisampled);
-                } else if !multisampled && image_view.image().samples() != SampleCount::Sample1 {
-                    return Err(DescriptorSetError::UnexpectedMultisampled);
-                }
-
-                let image_layers = image_view.array_layers();
-                let num_layers = image_layers.end - image_layers.start;
-
-                if image_view.ty().is_arrayed() {
-                    return Err(DescriptorSetError::UnexpectedArrayed);
-                }
-
-                DescriptorWrite::input_attachment(
-                    self.cur_binding,
-                    descriptor.array_element,
-                    &image_view,
-                )
-            }
-            _ => return Err(DescriptorSetError::WrongDescriptorType),
-        });
-
-        descriptor.array_element += 1;
-        self.resources.add_image(self.cur_binding, image_view);
-
-        if leave_array {
-            self.leave_array()
-        } else {
             Ok(())
-        }
+        })
     }
 
     /// Binds an image view with a sampler as the next descriptor or array element.
@@ -485,116 +533,166 @@ impl DescriptorSetBuilder {
         &mut self,
         image_view: Arc<dyn ImageViewAbstract + 'static>,
         sampler: Arc<Sampler>,
-    ) -> Result<(), DescriptorSetError> {
-        if image_view.image().inner().image.device().internal_object()
-            != self.layout.device().internal_object()
-        {
-            return Err(DescriptorSetError::ResourceWrongDevice);
-        }
-
-        if sampler.device().internal_object() != self.layout.device().internal_object() {
-            return Err(DescriptorSetError::ResourceWrongDevice);
-        }
-
-        if !image_view.image().inner().image.usage().sampled {
-            return Err(DescriptorSetError::MissingImageUsage(
-                MissingImageUsage::Sampled,
-            ));
-        }
-
-        if !image_view.can_be_sampled(&sampler) {
-            return Err(DescriptorSetError::IncompatibleImageViewSampler);
-        }
-
-        let leave_array = if !self.in_array {
-            self.enter_array()?;
-            true
-        } else {
-            false
-        };
-
-        let descriptor = &mut self.descriptors[self.cur_binding as usize];
-        let inner_desc = match descriptor.desc.as_ref() {
-            Some(some) => some,
-            None => return Err(DescriptorSetError::WrongDescriptorType),
-        };
-
-        self.desc_writes.push(match &inner_desc.ty {
-            DescriptorDescTy::CombinedImageSampler {
-                image_desc,
-                immutable_samplers,
-            } => {
-                if !immutable_samplers.is_empty() {
-                    return Err(DescriptorSetError::SamplerIsImmutable);
-                }
-
-                image_match_desc(&image_view, image_desc)?;
-
-                DescriptorWrite::combined_image_sampler(
-                    self.cur_binding,
-                    descriptor.array_element,
-                    Some(&sampler),
-                    &image_view,
-                )
+    ) -> Result<&mut Self, DescriptorSetError> {
+        self.poison_on_err(|builder| {
+            if image_view.image().inner().image.device().internal_object()
+                != builder.layout.device().internal_object()
+            {
+                return Err(DescriptorSetError::ResourceWrongDevice);
             }
-            _ => return Err(DescriptorSetError::WrongDescriptorType),
-        });
 
-        descriptor.array_element += 1;
-        self.resources.add_image(self.cur_binding, image_view);
-        self.resources.add_sampler(self.cur_binding, sampler);
+            if sampler.device().internal_object() != builder.layout.device().internal_object() {
+                return Err(DescriptorSetError::ResourceWrongDevice);
+            }
 
-        if leave_array {
-            self.leave_array()
-        } else {
+            if !image_view.image().inner().image.usage().sampled {
+                return Err(DescriptorSetError::MissingImageUsage(
+                    MissingImageUsage::Sampled,
+                ));
+            }
+
+            if !image_view.can_be_sampled(&sampler) {
+                return Err(DescriptorSetError::IncompatibleImageViewSampler);
+            }
+
+            let leave_array = if !builder.in_array {
+                builder.enter_array()?;
+                true
+            } else {
+                false
+            };
+
+            let descriptor = &mut builder.descriptors[builder.cur_binding as usize];
+            let inner_desc = match descriptor.desc.as_ref() {
+                Some(some) => some,
+                None => return Err(DescriptorSetError::WrongDescriptorType),
+            };
+
+            builder.desc_writes.push(match &inner_desc.ty {
+                DescriptorDescTy::CombinedImageSampler {
+                    image_desc,
+                    immutable_samplers,
+                } => {
+                    if !immutable_samplers.is_empty() {
+                        return Err(DescriptorSetError::SamplerIsImmutable);
+                    }
+
+                    image_match_desc(&image_view, image_desc)?;
+
+                    DescriptorWrite::combined_image_sampler(
+                        builder.cur_binding,
+                        descriptor.array_element,
+                        Some(&sampler),
+                        &image_view,
+                    )
+                }
+                _ => return Err(DescriptorSetError::WrongDescriptorType),
+            });
+
+            descriptor.array_element += 1;
+            builder.resources.add_image(builder.cur_binding, image_view);
+            builder.resources.add_sampler(builder.cur_binding, sampler);
+
+            if leave_array {
+                builder.leave_array()?;
+            }
+
             Ok(())
-        }
+        })
     }
 
     /// Binds a sampler as the next descriptor or array element.
-    pub fn add_sampler(&mut self, sampler: Arc<Sampler>) -> Result<(), DescriptorSetError> {
-        if sampler.device().internal_object() != self.layout.device().internal_object() {
-            return Err(DescriptorSetError::ResourceWrongDevice);
-        }
-
-        let leave_array = if !self.in_array {
-            self.enter_array()?;
-            true
-        } else {
-            false
-        };
-
-        let descriptor = &mut self.descriptors[self.cur_binding as usize];
-        let inner_desc = match descriptor.desc.as_ref() {
-            Some(some) => some,
-            None => return Err(DescriptorSetError::WrongDescriptorType),
-        };
-
-        self.desc_writes.push(match &inner_desc.ty {
-            DescriptorDescTy::Sampler { immutable_samplers } => {
-                if !immutable_samplers.is_empty() {
-                    return Err(DescriptorSetError::SamplerIsImmutable);
-                }
-
-                DescriptorWrite::sampler(self.cur_binding, descriptor.array_element, &sampler)
+    pub fn add_sampler(&mut self, sampler: Arc<Sampler>) -> Result<&mut Self, DescriptorSetError> {
+        self.poison_on_err(|builder| {
+            if sampler.device().internal_object() != builder.layout.device().internal_object() {
+                return Err(DescriptorSetError::ResourceWrongDevice);
             }
-            _ => return Err(DescriptorSetError::WrongDescriptorType),
-        });
 
-        descriptor.array_element += 1;
-        self.resources.add_sampler(self.cur_binding, sampler);
+            let leave_array = if !builder.in_array {
+                builder.enter_array()?;
+                true
+            } else {
+                false
+            };
 
-        if leave_array {
-            self.leave_array()
-        } else {
+            let descriptor = &mut builder.descriptors[builder.cur_binding as usize];
+            let inner_desc = match descriptor.desc.as_ref() {
+                Some(some) => some,
+                None => return Err(DescriptorSetError::WrongDescriptorType),
+            };
+
+            builder.desc_writes.push(match &inner_desc.ty {
+                DescriptorDescTy::Sampler { immutable_samplers } => {
+                    if !immutable_samplers.is_empty() {
+                        return Err(DescriptorSetError::SamplerIsImmutable);
+                    }
+
+                    DescriptorWrite::sampler(
+                        builder.cur_binding,
+                        descriptor.array_element,
+                        &sampler,
+                    )
+                }
+                _ => return Err(DescriptorSetError::WrongDescriptorType),
+            });
+
+            descriptor.array_element += 1;
+            builder.resources.add_sampler(builder.cur_binding, sampler);
+
+            if leave_array {
+                builder.leave_array()?;
+            }
+
             Ok(())
-        }
+        })
     }
 }
 
 unsafe impl DeviceOwned for DescriptorSetBuilder {
     fn device(&self) -> &Arc<Device> {
         self.layout.device()
+    }
+}
+
+/// The output of the descriptor set builder.
+///
+/// This is not a descriptor set yet, but can be used to write the descriptors to one.
+pub struct DescriptorSetBuilderOutput {
+    layout: Arc<DescriptorSetLayout>,
+    writes: Vec<DescriptorWrite>,
+    resources: DescriptorSetResources,
+}
+
+impl DescriptorSetBuilderOutput {
+    /// Returns the descriptor set layout.
+    #[inline]
+    pub fn layout(&self) -> &Arc<DescriptorSetLayout> {
+        &self.layout
+    }
+
+    /// Returns the resources used by the output.
+    #[inline]
+    pub fn resources(&self) -> &DescriptorSetResources {
+        &self.resources
+    }
+
+    /// Returns the descriptor writes.
+    #[inline]
+    pub fn writes(&self) -> &[DescriptorWrite] {
+        &self.writes
+    }
+}
+
+impl From<DescriptorSetBuilderOutput>
+    for (
+        Arc<DescriptorSetLayout>,
+        Vec<DescriptorWrite>,
+        DescriptorSetResources,
+    )
+{
+    #[inline]
+    fn from(output: DescriptorSetBuilderOutput) -> Self {
+        (output.layout, output.writes, output.resources)
     }
 }
 

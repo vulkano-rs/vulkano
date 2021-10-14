@@ -55,7 +55,8 @@ use std::sync::Arc;
 
 #[derive(Clone, Debug, Default)]
 pub struct DescriptorSetDesc {
-    descriptors: SmallVec<[Option<DescriptorDesc>; 32]>,
+    descriptors: SmallVec<[Option<DescriptorDesc>; 4]>,
+    push_descriptor: bool,
 }
 
 impl DescriptorSetDesc {
@@ -71,6 +72,7 @@ impl DescriptorSetDesc {
     {
         DescriptorSetDesc {
             descriptors: descriptors.into_iter().collect(),
+            push_descriptor: false,
         }
     }
 
@@ -79,10 +81,12 @@ impl DescriptorSetDesc {
     pub fn empty() -> DescriptorSetDesc {
         DescriptorSetDesc {
             descriptors: SmallVec::new(),
+            push_descriptor: false,
         }
     }
 
     /// Returns the descriptors in the set.
+    #[inline]
     pub fn bindings(&self) -> &[Option<DescriptorDesc>] {
         &self.descriptors
     }
@@ -91,6 +95,12 @@ impl DescriptorSetDesc {
     #[inline]
     pub fn descriptor(&self, num: u32) -> Option<&DescriptorDesc> {
         self.descriptors.get(num as usize).and_then(|b| b.as_ref())
+    }
+
+    /// Returns whether the description is set to be a push descriptor.
+    #[inline]
+    pub fn is_push_descriptor(&self) -> bool {
+        self.push_descriptor
     }
 
     /// Builds the union of this layout description and another.
@@ -116,7 +126,10 @@ impl DescriptorSetDesc {
                 )
             })
             .collect::<Result<_, ()>>()?;
-        Ok(DescriptorSetDesc { descriptors })
+        Ok(DescriptorSetDesc {
+            descriptors,
+            push_descriptor: false,
+        })
     }
 
     /// Builds the union of multiple descriptor sets.
@@ -139,7 +152,16 @@ impl DescriptorSetDesc {
     }
 
     /// Changes a buffer descriptor's type to dynamic.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the description is set to be a push descriptor.
+    /// - Panics if `binding_num` does not refer to a `StorageBuffer` or `UniformBuffer` descriptor.
     pub fn set_buffer_dynamic(&mut self, binding_num: u32) {
+        assert!(
+            !self.push_descriptor,
+            "push descriptor is enabled, which does not allow dynamic buffer descriptors"
+        );
         assert!(
             self.descriptor(binding_num).map_or(false, |desc| matches!(
                 desc.ty,
@@ -197,6 +219,30 @@ impl DescriptorSetDesc {
         immutable_samplers.extend(samplers.into_iter());
     }
 
+    /// Sets the descriptor set layout to use push descriptors instead of descriptor sets.
+    ///
+    /// If set to enabled, the
+    /// [`khr_push_descriptor`](crate::device::DeviceExtensions::khr_push_descriptor) extension must
+    /// be enabled on the device.
+    ///
+    /// # Panics
+    ///
+    /// - If enabled, panics if the description contains a dynamic buffer descriptor.
+    pub fn set_push_descriptor(&mut self, enabled: bool) {
+        if enabled {
+            assert!(
+                !self.descriptors.iter().flatten().any(|desc| {
+                    matches!(
+                        desc.ty.ty(),
+                        DescriptorType::UniformBufferDynamic | DescriptorType::StorageBufferDynamic
+                    )
+                }),
+                "descriptor set contains a dynamic buffer descriptor"
+            );
+        }
+        self.push_descriptor = enabled;
+    }
+
     /// Sets the descriptor count for a descriptor that has a variable count.
     pub fn set_variable_descriptor_count(&mut self, binding_num: u32, descriptor_count: u32) {
         // TODO: Errors instead of panic
@@ -221,9 +267,13 @@ impl DescriptorSetDesc {
     ///
     /// "Compatible" in this sense is defined by the Vulkan specification under the section
     /// "Pipeline layout compatibility": the two must be identically defined to the Vulkan API,
-    /// meaning that all descriptors are compatible.
+    /// meaning that all descriptors are compatible and flags are identical.
     #[inline]
     pub fn is_compatible_with(&self, other: &DescriptorSetDesc) -> bool {
+        if self.push_descriptor != other.push_descriptor {
+            return false;
+        }
+
         let num_bindings = cmp::max(self.descriptors.len(), other.descriptors.len()) as u32;
         (0..num_bindings).all(|binding_num| {
             match (self.descriptor(binding_num), other.descriptor(binding_num)) {
@@ -240,6 +290,8 @@ impl DescriptorSetDesc {
         &self,
         other: &DescriptorSetDesc,
     ) -> Result<(), DescriptorSetCompatibilityError> {
+        // Don't care about push descriptors.
+
         if self.descriptors.len() < other.descriptors.len() {
             return Err(DescriptorSetCompatibilityError::DescriptorsCountMismatch {
                 self_num: self.descriptors.len() as u32,
@@ -276,12 +328,22 @@ impl DescriptorSetDesc {
         Ok(())
     }
 
-    /// Checks whether the descriptor of a pipeline layout `self` is compatible with the descriptor
-    /// of a descriptor set being bound `other`.
+    /// Checks whether the descriptor set of a pipeline layout `self` is compatible with the
+    /// descriptor set being bound `other`.
+    ///
+    /// This performs the same check as `is_compatible_with`, but additionally ensures that the
+    /// shader can accept the binding.
     pub fn ensure_compatible_with_bind(
         &self,
         other: &DescriptorSetDesc,
     ) -> Result<(), DescriptorSetCompatibilityError> {
+        if self.push_descriptor != other.push_descriptor {
+            return Err(DescriptorSetCompatibilityError::PushDescriptorMismatch {
+                self_enabled: self.push_descriptor,
+                other_enabled: other.push_descriptor,
+            });
+        }
+
         if self.descriptors.len() != other.descriptors.len() {
             return Err(DescriptorSetCompatibilityError::DescriptorsCountMismatch {
                 self_num: self.descriptors.len() as u32,
@@ -327,6 +389,7 @@ where
     fn from(val: I) -> Self {
         DescriptorSetDesc {
             descriptors: val.into_iter().collect(),
+            push_descriptor: false,
         }
     }
 }
@@ -790,6 +853,12 @@ pub enum DescriptorSetCompatibilityError {
         error: DescriptorCompatibilityError,
         binding_num: u32,
     },
+
+    /// The push descriptor settings of the two sets are not compatible.
+    PushDescriptorMismatch {
+        self_enabled: bool,
+        other_enabled: bool,
+    },
 }
 
 impl error::Error for DescriptorSetCompatibilityError {
@@ -807,18 +876,23 @@ impl error::Error for DescriptorSetCompatibilityError {
 impl fmt::Display for DescriptorSetCompatibilityError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                DescriptorSetCompatibilityError::DescriptorsCountMismatch { .. } => {
-                    "the number of descriptors in the two sets is not compatible."
-                }
-                DescriptorSetCompatibilityError::IncompatibleDescriptors { .. } => {
-                    "two descriptors are incompatible"
-                }
+        match *self {
+            DescriptorSetCompatibilityError::DescriptorsCountMismatch { .. } => {
+                write!(
+                    fmt,
+                    "the number of descriptors in the two sets is not compatible"
+                )
             }
-        )
+            DescriptorSetCompatibilityError::IncompatibleDescriptors { .. } => {
+                write!(fmt, "two descriptors are incompatible")
+            }
+            DescriptorSetCompatibilityError::PushDescriptorMismatch { .. } => {
+                write!(
+                    fmt,
+                    "the push descriptor settings of the two sets are not compatible"
+                )
+            }
+        }
     }
 }
 
@@ -827,9 +901,6 @@ impl fmt::Display for DescriptorSetCompatibilityError {
 pub enum DescriptorCompatibilityError {
     /// The number of descriptors is not compatible.
     DescriptorCount { first: u32, second: u32 },
-
-    /// The variable counts of the descriptors is not compatible.
-    VariableCount { first: bool, second: bool },
 
     /// The presence or absence of a descriptor in a binding is not compatible.
     Empty { first: bool, second: bool },
@@ -866,6 +937,9 @@ pub enum DescriptorCompatibilityError {
         first: DescriptorType,
         second: DescriptorType,
     },
+
+    /// The variable counts of the descriptors is not compatible.
+    VariableCount { first: bool, second: bool },
 }
 
 impl error::Error for DescriptorCompatibilityError {}
