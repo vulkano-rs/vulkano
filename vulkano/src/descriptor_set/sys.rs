@@ -113,98 +113,117 @@ enum DescriptorWriteInfo {
 
 impl DescriptorWrite {
     #[inline]
-    pub fn storage_image<I>(binding: u32, array_element: u32, image_view: &I) -> DescriptorWrite
-    where
-        I: ImageViewAbstract,
-    {
-        let layouts = image_view
-            .image()
-            .descriptor_layouts()
-            .expect("descriptor_layouts must return Some when used in an image view");
-
-        DescriptorWrite {
-            binding,
-            first_array_element: array_element,
-            descriptor_type: DescriptorType::StorageImage,
-            info: DescriptorWriteInfo::Image(
-                [ash::vk::DescriptorImageInfo {
-                    sampler: ash::vk::Sampler::null(),
-                    image_view: image_view.inner().internal_object(),
-                    image_layout: layouts.storage_image.into(),
-                }]
-                .into(),
-            ),
-        }
-    }
-
-    #[inline]
-    pub fn sampler(binding: u32, array_element: u32, sampler: &Arc<Sampler>) -> DescriptorWrite {
-        DescriptorWrite {
-            binding,
-            first_array_element: array_element,
-            descriptor_type: DescriptorType::Sampler,
-            info: DescriptorWriteInfo::Image(
-                [ash::vk::DescriptorImageInfo {
-                    sampler: sampler.internal_object(),
-                    image_view: ash::vk::ImageView::null(),
-                    image_layout: ash::vk::ImageLayout::UNDEFINED,
-                }]
-                .into(),
-            ),
-        }
-    }
-
-    #[inline]
-    pub fn sampled_image<I>(binding: u32, array_element: u32, image_view: &I) -> DescriptorWrite
-    where
-        I: ImageViewAbstract,
-    {
-        let layouts = image_view
-            .image()
-            .descriptor_layouts()
-            .expect("descriptor_layouts must return Some when used in an image view");
-
-        DescriptorWrite {
-            binding,
-            first_array_element: array_element,
-            descriptor_type: DescriptorType::SampledImage,
-            info: DescriptorWriteInfo::Image(
-                [ash::vk::DescriptorImageInfo {
-                    sampler: ash::vk::Sampler::null(),
-                    image_view: image_view.inner().internal_object(),
-                    image_layout: layouts.sampled_image.into(),
-                }]
-                .into(),
-            ),
-        }
-    }
-
-    #[inline]
-    pub fn combined_image_sampler<I>(
+    pub fn storage_image<'a, I>(
         binding: u32,
-        array_element: u32,
-        sampler: Option<&Arc<Sampler>>, // Some for dynamic sampler, None for immutable
-        image_view: &I,
+        first_array_element: u32,
+        image_views: impl IntoIterator<Item = &'a I>,
     ) -> DescriptorWrite
     where
-        I: ImageViewAbstract,
+        I: ImageViewAbstract + 'a,
     {
-        let layouts = image_view
-            .image()
-            .descriptor_layouts()
-            .expect("descriptor_layouts must return Some when used in an image view");
-
         DescriptorWrite {
             binding,
-            first_array_element: array_element,
+            first_array_element,
+            descriptor_type: DescriptorType::StorageImage,
+            info: DescriptorWriteInfo::Image(
+                image_views
+                    .into_iter()
+                    .map(|image_view| {
+                        let layouts = image_view.image().descriptor_layouts().expect(
+                            "descriptor_layouts must return Some when used in an image view",
+                        );
+                        ash::vk::DescriptorImageInfo {
+                            sampler: ash::vk::Sampler::null(),
+                            image_view: image_view.inner().internal_object(),
+                            image_layout: layouts.storage_image.into(),
+                        }
+                    })
+                    .collect(),
+            ),
+        }
+    }
+
+    #[inline]
+    pub fn sampler<'a>(
+        binding: u32,
+        first_array_element: u32,
+        samplers: impl IntoIterator<Item = &'a Arc<Sampler>>,
+    ) -> DescriptorWrite {
+        DescriptorWrite {
+            binding,
+            first_array_element,
+            descriptor_type: DescriptorType::Sampler,
+            info: DescriptorWriteInfo::Image(
+                samplers
+                    .into_iter()
+                    .map(|sampler| ash::vk::DescriptorImageInfo {
+                        sampler: sampler.internal_object(),
+                        image_view: ash::vk::ImageView::null(),
+                        image_layout: ash::vk::ImageLayout::UNDEFINED,
+                    })
+                    .collect(),
+            ),
+        }
+    }
+
+    #[inline]
+    pub fn sampled_image<'a, I>(
+        binding: u32,
+        first_array_element: u32,
+        image_views: impl IntoIterator<Item = &'a I>,
+    ) -> DescriptorWrite
+    where
+        I: ImageViewAbstract + 'a,
+    {
+        DescriptorWrite {
+            binding,
+            first_array_element,
+            descriptor_type: DescriptorType::SampledImage,
+            info: DescriptorWriteInfo::Image(
+                image_views
+                    .into_iter()
+                    .map(|image_view| {
+                        let layouts = image_view.image().descriptor_layouts().expect(
+                            "descriptor_layouts must return Some when used in an image view",
+                        );
+                        ash::vk::DescriptorImageInfo {
+                            sampler: ash::vk::Sampler::null(),
+                            image_view: image_view.inner().internal_object(),
+                            image_layout: layouts.sampled_image.into(),
+                        }
+                    })
+                    .collect(),
+            ),
+        }
+    }
+
+    #[inline]
+    pub fn combined_image_sampler<'a, I>(
+        binding: u32,
+        first_array_element: u32,
+        image_views_samplers: impl IntoIterator<Item = (Option<&'a Arc<Sampler>>, &'a I)>, // Some for dynamic sampler, None for immutable
+    ) -> DescriptorWrite
+    where
+        I: ImageViewAbstract + 'a,
+    {
+        DescriptorWrite {
+            binding,
+            first_array_element,
             descriptor_type: DescriptorType::CombinedImageSampler,
             info: DescriptorWriteInfo::Image(
-                [ash::vk::DescriptorImageInfo {
-                    sampler: sampler.map(|s| s.internal_object()).unwrap_or_default(),
-                    image_view: image_view.inner().internal_object(),
-                    image_layout: layouts.combined_image_sampler.into(),
-                }]
-                .into(),
+                image_views_samplers
+                    .into_iter()
+                    .map(|(sampler, image_view)| {
+                        let layouts = image_view.image().descriptor_layouts().expect(
+                            "descriptor_layouts must return Some when used in an image view",
+                        );
+                        ash::vk::DescriptorImageInfo {
+                            sampler: sampler.map(|s| s.internal_object()).unwrap_or_default(),
+                            image_view: image_view.inner().internal_object(),
+                            image_layout: layouts.combined_image_sampler.into(),
+                        }
+                    })
+                    .collect(),
             ),
         }
     }
@@ -212,230 +231,272 @@ impl DescriptorWrite {
     #[inline]
     pub fn uniform_texel_buffer<'a, B>(
         binding: u32,
-        array_element: u32,
-        view: &BufferView<B>,
+        first_array_element: u32,
+        buffer_views: impl IntoIterator<Item = &'a BufferView<B>>,
     ) -> DescriptorWrite
     where
-        B: BufferAccess,
+        B: BufferAccess + 'a,
     {
-        assert!(view.uniform_texel_buffer());
-
         DescriptorWrite {
             binding,
-            first_array_element: array_element,
+            first_array_element,
             descriptor_type: DescriptorType::UniformTexelBuffer,
-            info: DescriptorWriteInfo::BufferView([view.internal_object()].into()),
+            info: DescriptorWriteInfo::BufferView(
+                buffer_views
+                    .into_iter()
+                    .map(|buffer_view| {
+                        assert!(buffer_view.uniform_texel_buffer());
+                        buffer_view.internal_object()
+                    })
+                    .collect(),
+            ),
         }
     }
 
     #[inline]
     pub fn storage_texel_buffer<'a, B>(
         binding: u32,
-        array_element: u32,
-        view: &BufferView<B>,
+        first_array_element: u32,
+        buffer_view: impl IntoIterator<Item = &'a BufferView<B>>,
     ) -> DescriptorWrite
     where
-        B: BufferAccess,
+        B: BufferAccess + 'a,
     {
-        assert!(view.storage_texel_buffer());
-
         DescriptorWrite {
             binding,
-            first_array_element: array_element,
+            first_array_element,
             descriptor_type: DescriptorType::StorageTexelBuffer,
-            info: DescriptorWriteInfo::BufferView([view.internal_object()].into()),
+            info: DescriptorWriteInfo::BufferView(
+                buffer_view
+                    .into_iter()
+                    .map(|buffer_view| {
+                        assert!(buffer_view.storage_texel_buffer());
+                        buffer_view.internal_object()
+                    })
+                    .collect(),
+            ),
         }
     }
 
     #[inline]
-    pub unsafe fn uniform_buffer<B>(binding: u32, array_element: u32, buffer: &B) -> DescriptorWrite
+    pub unsafe fn uniform_buffer<'a, B>(
+        binding: u32,
+        first_array_element: u32,
+        buffers: impl IntoIterator<Item = &'a B>,
+    ) -> DescriptorWrite
     where
-        B: BufferAccess,
+        B: BufferAccess + 'a,
     {
-        let size = buffer.size();
-        let BufferInner { buffer, offset } = buffer.inner();
-
-        debug_assert_eq!(
-            offset
-                % buffer
-                    .device()
-                    .physical_device()
-                    .properties()
-                    .min_uniform_buffer_offset_alignment,
-            0
-        );
-        debug_assert!(
-            size <= buffer
-                .device()
-                .physical_device()
-                .properties()
-                .max_uniform_buffer_range as DeviceSize
-        );
-
         DescriptorWrite {
             binding,
-            first_array_element: array_element,
+            first_array_element,
             descriptor_type: DescriptorType::UniformBuffer,
             info: DescriptorWriteInfo::Buffer(
-                [ash::vk::DescriptorBufferInfo {
-                    buffer: buffer.internal_object(),
-                    offset,
-                    range: size,
-                }]
-                .into(),
+                buffers
+                    .into_iter()
+                    .map(|buffer| {
+                        let size = buffer.size();
+                        let BufferInner { buffer, offset } = buffer.inner();
+
+                        debug_assert_eq!(
+                            offset
+                                % buffer
+                                    .device()
+                                    .physical_device()
+                                    .properties()
+                                    .min_uniform_buffer_offset_alignment,
+                            0
+                        );
+                        debug_assert!(
+                            size <= buffer
+                                .device()
+                                .physical_device()
+                                .properties()
+                                .max_uniform_buffer_range
+                                as DeviceSize
+                        );
+                        ash::vk::DescriptorBufferInfo {
+                            buffer: buffer.internal_object(),
+                            offset,
+                            range: size,
+                        }
+                    })
+                    .collect(),
             ),
         }
     }
 
     #[inline]
-    pub unsafe fn storage_buffer<B>(binding: u32, array_element: u32, buffer: &B) -> DescriptorWrite
+    pub unsafe fn storage_buffer<'a, B>(
+        binding: u32,
+        first_array_element: u32,
+        buffers: impl IntoIterator<Item = &'a B>,
+    ) -> DescriptorWrite
     where
-        B: BufferAccess,
+        B: BufferAccess + 'a,
     {
-        let size = buffer.size();
-        let BufferInner { buffer, offset } = buffer.inner();
-
-        debug_assert_eq!(
-            offset
-                % buffer
-                    .device()
-                    .physical_device()
-                    .properties()
-                    .min_storage_buffer_offset_alignment,
-            0
-        );
-        debug_assert!(
-            size <= buffer
-                .device()
-                .physical_device()
-                .properties()
-                .max_storage_buffer_range as DeviceSize
-        );
-
         DescriptorWrite {
             binding,
-            first_array_element: array_element,
+            first_array_element,
             descriptor_type: DescriptorType::StorageBuffer,
             info: DescriptorWriteInfo::Buffer(
-                [ash::vk::DescriptorBufferInfo {
-                    buffer: buffer.internal_object(),
-                    offset,
-                    range: size,
-                }]
-                .into(),
+                buffers
+                    .into_iter()
+                    .map(|buffer| {
+                        let size = buffer.size();
+                        let BufferInner { buffer, offset } = buffer.inner();
+
+                        debug_assert_eq!(
+                            offset
+                                % buffer
+                                    .device()
+                                    .physical_device()
+                                    .properties()
+                                    .min_storage_buffer_offset_alignment,
+                            0
+                        );
+                        debug_assert!(
+                            size <= buffer
+                                .device()
+                                .physical_device()
+                                .properties()
+                                .max_storage_buffer_range
+                                as DeviceSize
+                        );
+                        ash::vk::DescriptorBufferInfo {
+                            buffer: buffer.internal_object(),
+                            offset,
+                            range: size,
+                        }
+                    })
+                    .collect(),
             ),
         }
     }
 
     #[inline]
-    pub unsafe fn dynamic_uniform_buffer<B>(
+    pub unsafe fn dynamic_uniform_buffer<'a, B>(
         binding: u32,
-        array_element: u32,
-        buffer: &B,
+        first_array_element: u32,
+        buffers: impl IntoIterator<Item = &'a B>,
     ) -> DescriptorWrite
     where
-        B: BufferAccess,
+        B: BufferAccess + 'a,
     {
-        let size = buffer.size();
-        let BufferInner { buffer, offset } = buffer.inner();
-
-        debug_assert_eq!(
-            offset
-                % buffer
-                    .device()
-                    .physical_device()
-                    .properties()
-                    .min_uniform_buffer_offset_alignment,
-            0
-        );
-        debug_assert!(
-            size <= buffer
-                .device()
-                .physical_device()
-                .properties()
-                .max_uniform_buffer_range as DeviceSize
-        );
-
         DescriptorWrite {
             binding,
-            first_array_element: array_element,
+            first_array_element,
             descriptor_type: DescriptorType::UniformBufferDynamic,
             info: DescriptorWriteInfo::Buffer(
-                [ash::vk::DescriptorBufferInfo {
-                    buffer: buffer.internal_object(),
-                    offset,
-                    range: size,
-                }]
-                .into(),
+                buffers
+                    .into_iter()
+                    .map(|buffer| {
+                        let size = buffer.size();
+                        let BufferInner { buffer, offset } = buffer.inner();
+
+                        debug_assert_eq!(
+                            offset
+                                % buffer
+                                    .device()
+                                    .physical_device()
+                                    .properties()
+                                    .min_uniform_buffer_offset_alignment,
+                            0
+                        );
+                        debug_assert!(
+                            size <= buffer
+                                .device()
+                                .physical_device()
+                                .properties()
+                                .max_uniform_buffer_range
+                                as DeviceSize
+                        );
+                        ash::vk::DescriptorBufferInfo {
+                            buffer: buffer.internal_object(),
+                            offset,
+                            range: size,
+                        }
+                    })
+                    .collect(),
             ),
         }
     }
 
     #[inline]
-    pub unsafe fn dynamic_storage_buffer<B>(
+    pub unsafe fn dynamic_storage_buffer<'a, B>(
         binding: u32,
-        array_element: u32,
-        buffer: &B,
+        first_array_element: u32,
+        buffers: impl IntoIterator<Item = &'a B>,
     ) -> DescriptorWrite
     where
-        B: BufferAccess,
+        B: BufferAccess + 'a,
     {
-        let size = buffer.size();
-        let BufferInner { buffer, offset } = buffer.inner();
-
-        debug_assert_eq!(
-            offset
-                % buffer
-                    .device()
-                    .physical_device()
-                    .properties()
-                    .min_storage_buffer_offset_alignment,
-            0
-        );
-        debug_assert!(
-            size <= buffer
-                .device()
-                .physical_device()
-                .properties()
-                .max_storage_buffer_range as DeviceSize
-        );
-
         DescriptorWrite {
             binding,
-            first_array_element: array_element,
+            first_array_element,
             descriptor_type: DescriptorType::StorageBufferDynamic,
             info: DescriptorWriteInfo::Buffer(
-                [ash::vk::DescriptorBufferInfo {
-                    buffer: buffer.internal_object(),
-                    offset,
-                    range: size,
-                }]
-                .into(),
+                buffers
+                    .into_iter()
+                    .map(|buffer| {
+                        let size = buffer.size();
+                        let BufferInner { buffer, offset } = buffer.inner();
+
+                        debug_assert_eq!(
+                            offset
+                                % buffer
+                                    .device()
+                                    .physical_device()
+                                    .properties()
+                                    .min_storage_buffer_offset_alignment,
+                            0
+                        );
+                        debug_assert!(
+                            size <= buffer
+                                .device()
+                                .physical_device()
+                                .properties()
+                                .max_storage_buffer_range
+                                as DeviceSize
+                        );
+                        ash::vk::DescriptorBufferInfo {
+                            buffer: buffer.internal_object(),
+                            offset,
+                            range: size,
+                        }
+                    })
+                    .collect(),
             ),
         }
     }
 
     #[inline]
-    pub fn input_attachment<I>(binding: u32, array_element: u32, image_view: &I) -> DescriptorWrite
+    pub fn input_attachment<'a, I>(
+        binding: u32,
+        first_array_element: u32,
+        image_views: impl IntoIterator<Item = &'a I>,
+    ) -> DescriptorWrite
     where
-        I: ImageViewAbstract,
+        I: ImageViewAbstract + 'a,
     {
-        let layouts = image_view
-            .image()
-            .descriptor_layouts()
-            .expect("descriptor_layouts must return Some when used in an image view");
-
         DescriptorWrite {
             binding,
-            first_array_element: array_element,
+            first_array_element,
             descriptor_type: DescriptorType::InputAttachment,
             info: DescriptorWriteInfo::Image(
-                [ash::vk::DescriptorImageInfo {
-                    sampler: ash::vk::Sampler::null(),
-                    image_view: image_view.inner().internal_object(),
-                    image_layout: layouts.input_attachment.into(),
-                }]
-                .into(),
+                image_views
+                    .into_iter()
+                    .map(|image_view| {
+                        let layouts = image_view.image().descriptor_layouts().expect(
+                            "descriptor_layouts must return Some when used in an image view",
+                        );
+                        ash::vk::DescriptorImageInfo {
+                            sampler: ash::vk::Sampler::null(),
+                            image_view: image_view.inner().internal_object(),
+                            image_layout: layouts.input_attachment.into(),
+                        }
+                    })
+                    .collect(),
             ),
         }
     }

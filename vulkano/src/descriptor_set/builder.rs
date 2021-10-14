@@ -262,7 +262,7 @@ impl DescriptorSetBuilder {
                         DescriptorWrite::storage_buffer(
                             builder.cur_binding,
                             descriptor.array_element,
-                            &buffer,
+                            [&buffer],
                         )
                     }
                 }
@@ -285,7 +285,7 @@ impl DescriptorSetBuilder {
                         DescriptorWrite::uniform_buffer(
                             builder.cur_binding,
                             descriptor.array_element,
-                            &buffer,
+                            [&buffer],
                         )
                     }
                 }
@@ -308,7 +308,7 @@ impl DescriptorSetBuilder {
                         DescriptorWrite::dynamic_uniform_buffer(
                             builder.cur_binding,
                             descriptor.array_element,
-                            &buffer,
+                            [&buffer],
                         )
                     }
                 }
@@ -365,7 +365,7 @@ impl DescriptorSetBuilder {
                     DescriptorWrite::storage_texel_buffer(
                         builder.cur_binding,
                         descriptor.array_element,
-                        &view,
+                        [&*view],
                     )
                 }
                 DescriptorDescTy::UniformTexelBuffer { .. } => {
@@ -378,7 +378,7 @@ impl DescriptorSetBuilder {
                     DescriptorWrite::uniform_texel_buffer(
                         builder.cur_binding,
                         descriptor.array_element,
-                        &view,
+                        [&*view],
                     )
                 }
                 _ => return Err(DescriptorSetError::WrongDescriptorType),
@@ -442,8 +442,7 @@ impl DescriptorSetBuilder {
                     DescriptorWrite::combined_image_sampler(
                         builder.cur_binding,
                         descriptor.array_element,
-                        None,
-                        &image_view,
+                        [(None, &image_view)],
                     )
                 }
                 DescriptorDescTy::SampledImage { ref image_desc, .. } => {
@@ -458,7 +457,7 @@ impl DescriptorSetBuilder {
                     DescriptorWrite::sampled_image(
                         builder.cur_binding,
                         descriptor.array_element,
-                        &image_view,
+                        [&image_view],
                     )
                 }
                 DescriptorDescTy::StorageImage { ref image_desc, .. } => {
@@ -477,7 +476,7 @@ impl DescriptorSetBuilder {
                     DescriptorWrite::storage_image(
                         builder.cur_binding,
                         descriptor.array_element,
-                        &image_view,
+                        [&image_view],
                     )
                 }
                 DescriptorDescTy::InputAttachment { multisampled } => {
@@ -508,7 +507,7 @@ impl DescriptorSetBuilder {
                     DescriptorWrite::input_attachment(
                         builder.cur_binding,
                         descriptor.array_element,
-                        &image_view,
+                        [&image_view],
                     )
                 }
                 _ => return Err(DescriptorSetError::WrongDescriptorType),
@@ -582,8 +581,7 @@ impl DescriptorSetBuilder {
                     DescriptorWrite::combined_image_sampler(
                         builder.cur_binding,
                         descriptor.array_element,
-                        Some(&sampler),
-                        &image_view,
+                        [(Some(&sampler), &image_view)],
                     )
                 }
                 _ => return Err(DescriptorSetError::WrongDescriptorType),
@@ -630,7 +628,7 @@ impl DescriptorSetBuilder {
                     DescriptorWrite::sampler(
                         builder.cur_binding,
                         descriptor.array_element,
-                        &sampler,
+                        [&sampler],
                     )
                 }
                 _ => return Err(DescriptorSetError::WrongDescriptorType),
