@@ -354,10 +354,6 @@ pub enum DescriptorSetError {
     /// The image view isn't compatible with the sampler.
     IncompatibleImageViewSampler,
 
-    /// The provided descriptor set layout is for push descriptors, and cannot be used to build a
-    /// descriptor set object.
-    LayoutIsPushDescriptor,
-
     /// The buffer is missing the correct usage.
     MissingBufferUsage(MissingBufferUsage),
 
@@ -426,7 +422,6 @@ impl fmt::Display for DescriptorSetError {
                     "the type of an image view doesn't match what was expected",
                 Self::IncompatibleImageViewSampler =>
                     "the image view isn't compatible with the sampler",
-                Self::LayoutIsPushDescriptor => "the provided descriptor set layout is for push descriptors, and cannot be used to build a descriptor set object",
                 Self::MissingBufferUsage(_) => "the buffer is missing the correct usage",
                 Self::MissingImageUsage(_) => "the image is missing the correct usage",
                 Self::NotIdentitySwizzled =>

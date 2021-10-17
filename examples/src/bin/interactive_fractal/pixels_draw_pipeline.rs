@@ -125,7 +125,7 @@ impl PixelsDrawPipeline {
             0.0,
         )
         .unwrap();
-        let mut desc_set_builder = PersistentDescriptorSet::start(layout.clone()).unwrap();
+        let mut desc_set_builder = PersistentDescriptorSet::start(layout.clone());
         desc_set_builder
             .add_sampled_image(image.clone(), sampler)
             .unwrap();

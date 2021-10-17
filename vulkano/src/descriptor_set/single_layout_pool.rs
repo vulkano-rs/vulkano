@@ -47,17 +47,18 @@ pub struct SingleLayoutDescSetPool {
 impl SingleLayoutDescSetPool {
     /// Initializes a new pool. The pool is configured to allocate sets that corresponds to the
     /// parameters passed to this function.
-    pub fn new(layout: Arc<DescriptorSetLayout>) -> Result<Self, DescriptorSetError> {
-        if layout.desc().is_push_descriptor() {
-            return Err(DescriptorSetError::LayoutIsPushDescriptor);
-        }
+    pub fn new(layout: Arc<DescriptorSetLayout>) -> Self {
+        assert!(
+            !layout.desc().is_push_descriptor(),
+            "the provided descriptor set layout is for push descriptors, and cannot be used to build a descriptor set object"
+        );
 
-        Ok(Self {
+        Self {
             inner: None,
             device: layout.device().clone(),
             set_count: 4,
             layout,
-        })
+        }
     }
 
     /// Starts the process of building a new descriptor set.

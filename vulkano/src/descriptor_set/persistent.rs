@@ -50,16 +50,15 @@ pub struct PersistentDescriptorSet<P = StdDescriptorPoolAlloc> {
 
 impl PersistentDescriptorSet {
     /// Starts the process of building a `PersistentDescriptorSet`. Returns a builder.
-    pub fn start(
-        layout: Arc<DescriptorSetLayout>,
-    ) -> Result<PersistentDescriptorSetBuilder, DescriptorSetError> {
-        if layout.desc().is_push_descriptor() {
-            return Err(DescriptorSetError::LayoutIsPushDescriptor);
-        }
+    pub fn start(layout: Arc<DescriptorSetLayout>) -> PersistentDescriptorSetBuilder {
+        assert!(
+            !layout.desc().is_push_descriptor(),
+            "the provided descriptor set layout is for push descriptors, and cannot be used to build a descriptor set object"
+        );
 
-        Ok(PersistentDescriptorSetBuilder {
+        PersistentDescriptorSetBuilder {
             inner: DescriptorSetBuilder::start(layout),
-        })
+        }
     }
 }
 

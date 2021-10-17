@@ -100,7 +100,7 @@ impl FractalComputePipeline {
         let img_dims = image.image().dimensions().width_height();
         let pipeline_layout = self.pipeline.layout();
         let desc_layout = pipeline_layout.descriptor_set_layouts().get(0).unwrap();
-        let mut desc_set_builder = PersistentDescriptorSet::start(desc_layout.clone()).unwrap();
+        let mut desc_set_builder = PersistentDescriptorSet::start(desc_layout.clone());
         desc_set_builder
             .add_image(image.clone())
             .unwrap()

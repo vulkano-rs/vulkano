@@ -218,7 +218,7 @@ fn main() {
     );
 
     let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
-    let mut set_builder = PersistentDescriptorSet::start(layout.clone()).unwrap();
+    let mut set_builder = PersistentDescriptorSet::start(layout.clone());
 
     // Use `add_image` instead of `add_sampled_image`, since the sampler is already in the layout.
     set_builder.add_image(texture.clone()).unwrap();
