@@ -18,18 +18,22 @@
 //! `vulkano-shaders` crate that will generate Rust code that wraps around vulkano's shaders API.
 
 use crate::check_errors;
-use crate::descriptor_set::layout::DescriptorSetDesc;
+use crate::descriptor_set::layout::DescriptorType;
 use crate::device::Device;
 use crate::format::Format;
+use crate::image::view::ImageViewType;
 use crate::pipeline::input_assembly::PrimitiveTopology;
 use crate::pipeline::layout::PipelineLayoutPcRange;
 use crate::sync::PipelineStages;
 use crate::OomError;
 use crate::VulkanObject;
+use fnv::FnvHashMap;
 use std::borrow::Cow;
 use std::error;
+use std::error::Error;
 use std::ffi::CStr;
 use std::fmt;
+use std::fmt::Display;
 use std::mem;
 use std::mem::MaybeUninit;
 use std::ops::BitOr;
@@ -128,23 +132,20 @@ impl ShaderModule {
     /// - The input, output and layout must correctly describe the input, output and layout used
     ///   by this stage.
     ///
-    pub unsafe fn graphics_entry_point<'a, D>(
+    pub unsafe fn graphics_entry_point<'a>(
         &'a self,
         name: &'a CStr,
-        descriptor_set_layout_descs: D,
+        descriptor_requirements: impl IntoIterator<Item = ((u32, u32), DescriptorRequirements)>,
         push_constant_range: Option<PipelineLayoutPcRange>,
         spec_constants: &'static [SpecializationMapEntry],
         input: ShaderInterface,
         output: ShaderInterface,
         ty: GraphicsShaderType,
-    ) -> GraphicsEntryPoint<'a>
-    where
-        D: IntoIterator<Item = DescriptorSetDesc>,
-    {
+    ) -> GraphicsEntryPoint<'a> {
         GraphicsEntryPoint {
             module: self,
             name,
-            descriptor_set_layout_descs: descriptor_set_layout_descs.into_iter().collect(),
+            descriptor_requirements: descriptor_requirements.into_iter().collect(),
             push_constant_range,
             spec_constants,
             input,
@@ -165,20 +166,17 @@ impl ShaderModule {
     /// - The layout must correctly describe the layout used by this stage.
     ///
     #[inline]
-    pub unsafe fn compute_entry_point<'a, D>(
+    pub unsafe fn compute_entry_point<'a>(
         &'a self,
         name: &'a CStr,
-        descriptor_set_layout_descs: D,
+        descriptor_requirements: impl IntoIterator<Item = ((u32, u32), DescriptorRequirements)>,
         push_constant_range: Option<PipelineLayoutPcRange>,
         spec_constants: &'static [SpecializationMapEntry],
-    ) -> ComputeEntryPoint<'a>
-    where
-        D: IntoIterator<Item = DescriptorSetDesc>,
-    {
+    ) -> ComputeEntryPoint<'a> {
         ComputeEntryPoint {
             module: self,
             name,
-            descriptor_set_layout_descs: descriptor_set_layout_descs.into_iter().collect(),
+            descriptor_requirements: descriptor_requirements.into_iter().collect(),
             push_constant_range,
             spec_constants,
         }
@@ -205,23 +203,6 @@ impl Drop for ShaderModule {
     }
 }
 
-pub unsafe trait EntryPointAbstract {
-    /// Returns the module this entry point comes from.
-    fn module(&self) -> &ShaderModule;
-
-    /// Returns the name of the entry point.
-    fn name(&self) -> &CStr;
-
-    /// Returns a description of the descriptor set layouts.
-    fn descriptor_set_layout_descs(&self) -> &[DescriptorSetDesc];
-
-    /// Returns the push constant ranges.
-    fn push_constant_range(&self) -> &Option<PipelineLayoutPcRange>;
-
-    /// Returns the layout of the specialization constants.
-    fn spec_constants(&self) -> &[SpecializationMapEntry];
-}
-
 /// Represents a shader entry point in a shader module.
 ///
 /// Can be obtained by calling `entry_point()` on the shader module.
@@ -230,7 +211,7 @@ pub struct GraphicsEntryPoint<'a> {
     module: &'a ShaderModule,
     name: &'a CStr,
 
-    descriptor_set_layout_descs: Vec<DescriptorSetDesc>,
+    descriptor_requirements: FnvHashMap<(u32, u32), DescriptorRequirements>,
     push_constant_range: Option<PipelineLayoutPcRange>,
     spec_constants: &'static [SpecializationMapEntry],
     input: ShaderInterface,
@@ -239,6 +220,38 @@ pub struct GraphicsEntryPoint<'a> {
 }
 
 impl<'a> GraphicsEntryPoint<'a> {
+    /// Returns the module this entry point comes from.
+    #[inline]
+    pub fn module(&self) -> &ShaderModule {
+        self.module
+    }
+
+    /// Returns the name of the entry point.
+    #[inline]
+    pub fn name(&self) -> &CStr {
+        self.name
+    }
+
+    /// Returns the descriptor requirements.
+    #[inline]
+    pub fn descriptor_requirements(
+        &self,
+    ) -> impl ExactSizeIterator<Item = ((u32, u32), &DescriptorRequirements)> {
+        self.descriptor_requirements.iter().map(|(k, v)| (*k, v))
+    }
+
+    /// Returns the push constant ranges.
+    #[inline]
+    pub fn push_constant_range(&self) -> &Option<PipelineLayoutPcRange> {
+        &self.push_constant_range
+    }
+
+    /// Returns the layout of the specialization constants.
+    #[inline]
+    pub fn spec_constants(&self) -> &[SpecializationMapEntry] {
+        self.spec_constants
+    }
+
     /// Returns the input attributes used by the shader stage.
     #[inline]
     pub fn input(&self) -> &ShaderInterface {
@@ -255,33 +268,6 @@ impl<'a> GraphicsEntryPoint<'a> {
     #[inline]
     pub fn ty(&self) -> GraphicsShaderType {
         self.ty
-    }
-}
-
-unsafe impl<'a> EntryPointAbstract for GraphicsEntryPoint<'a> {
-    #[inline]
-    fn module(&self) -> &ShaderModule {
-        self.module
-    }
-
-    #[inline]
-    fn name(&self) -> &CStr {
-        self.name
-    }
-
-    #[inline]
-    fn descriptor_set_layout_descs(&self) -> &[DescriptorSetDesc] {
-        &self.descriptor_set_layout_descs
-    }
-
-    #[inline]
-    fn push_constant_range(&self) -> &Option<PipelineLayoutPcRange> {
-        &self.push_constant_range
-    }
-
-    #[inline]
-    fn spec_constants(&self) -> &[SpecializationMapEntry] {
-        self.spec_constants
     }
 }
 
@@ -343,34 +329,41 @@ impl GeometryShaderExecutionMode {
 pub struct ComputeEntryPoint<'a> {
     module: &'a ShaderModule,
     name: &'a CStr,
-    descriptor_set_layout_descs: Vec<DescriptorSetDesc>,
+    descriptor_requirements: FnvHashMap<(u32, u32), DescriptorRequirements>,
     push_constant_range: Option<PipelineLayoutPcRange>,
     spec_constants: &'static [SpecializationMapEntry],
 }
 
-unsafe impl<'a> EntryPointAbstract for ComputeEntryPoint<'a> {
+impl<'a> ComputeEntryPoint<'a> {
+    /// Returns the module this entry point comes from.
     #[inline]
-    fn module(&self) -> &ShaderModule {
+    pub fn module(&self) -> &ShaderModule {
         self.module
     }
 
+    /// Returns the name of the entry point.
     #[inline]
-    fn name(&self) -> &CStr {
+    pub fn name(&self) -> &CStr {
         self.name
     }
 
+    /// Returns the descriptor requirements.
     #[inline]
-    fn descriptor_set_layout_descs(&self) -> &[DescriptorSetDesc] {
-        &self.descriptor_set_layout_descs
+    pub fn descriptor_requirements(
+        &self,
+    ) -> impl ExactSizeIterator<Item = ((u32, u32), &DescriptorRequirements)> {
+        self.descriptor_requirements.iter().map(|(k, v)| (*k, v))
     }
 
+    /// Returns the push constant ranges.
     #[inline]
-    fn push_constant_range(&self) -> &Option<PipelineLayoutPcRange> {
+    pub fn push_constant_range(&self) -> &Option<PipelineLayoutPcRange> {
         &self.push_constant_range
     }
 
+    /// Returns the layout of the specialization constants.
     #[inline]
-    fn spec_constants(&self) -> &[SpecializationMapEntry] {
+    pub fn spec_constants(&self) -> &[SpecializationMapEntry] {
         self.spec_constants
     }
 }
@@ -529,12 +522,6 @@ impl fmt::Display for ShaderInterfaceMismatchError {
 ///
 /// This trait is implemented on `()` for shaders that don't have any specialization constant.
 ///
-/// Note that it is the shader module that chooses which type that implements
-/// `SpecializationConstants` it is possible to pass when creating the pipeline, through [the
-/// `EntryPointAbstract` trait](crate::pipeline::shader::EntryPointAbstract). Therefore there is generally no
-/// point to implement this trait yourself, unless you are also writing your own implementation of
-/// `EntryPointAbstract`.
-///
 /// # Example
 ///
 /// ```rust
@@ -637,7 +624,7 @@ impl From<ShaderStage> for ash::vk::ShaderStageFlags {
 
 /// A set of shader stages.
 // TODO: add example with BitOr
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ShaderStages {
     pub vertex: bool,
     pub tessellation_control: bool,
@@ -810,6 +797,120 @@ impl From<ShaderStages> for PipelineStages {
             fragment_shader: stages.fragment,
             compute_shader: stages.compute,
             ..PipelineStages::none()
+        }
+    }
+}
+
+/// The requirements imposed by a shader on a descriptor within a descriptor set layout, and on any
+/// resource that is bound to that descriptor.
+#[derive(Clone, Debug, Default)]
+pub struct DescriptorRequirements {
+    /// The descriptor types that are allowed.
+    pub descriptor_types: Vec<DescriptorType>,
+
+    /// The number of descriptors (array elements) that the shader requires. The descriptor set
+    /// layout can declare more than this, but never less.
+    pub descriptor_count: u32,
+
+    /// The image format that is required for image views bound to this descriptor. If this is
+    /// `None`, then any image format is allowed.
+    pub format: Option<Format>,
+
+    /// The view type that is required for image views bound to this descriptor. This is `None` for
+    /// non-image descriptors.
+    pub image_view_type: Option<ImageViewType>,
+
+    /// Whether image views bound to this descriptor must have multisampling enabled or disabled.
+    pub multisampled: bool,
+
+    /// Whether the shader requires mutable (exclusive) access to the resource bound to this
+    /// descriptor.
+    pub mutable: bool,
+
+    /// The shader stages that the descriptor must be declared for.
+    pub stages: ShaderStages,
+}
+
+impl DescriptorRequirements {
+    /// Produces the intersection of two descriptor requirements, so that the requirements of both
+    /// are satisfied. An error is returned if the requirements conflict.
+    pub fn intersection(&self, other: &Self) -> Result<Self, DescriptorRequirementsIncompatible> {
+        let descriptor_types: Vec<_> = self
+            .descriptor_types
+            .iter()
+            .copied()
+            .filter(|ty| other.descriptor_types.contains(&ty))
+            .collect();
+
+        if descriptor_types.is_empty() {
+            return Err(DescriptorRequirementsIncompatible::DescriptorType);
+        }
+
+        if let (Some(first), Some(second)) = (self.format, other.format) {
+            if first != second {
+                return Err(DescriptorRequirementsIncompatible::Format);
+            }
+        }
+
+        if let (Some(first), Some(second)) = (self.image_view_type, other.image_view_type) {
+            if first != second {
+                return Err(DescriptorRequirementsIncompatible::ImageViewType);
+            }
+        }
+
+        if self.multisampled != other.multisampled {
+            return Err(DescriptorRequirementsIncompatible::Multisampled);
+        }
+
+        Ok(Self {
+            descriptor_types,
+            descriptor_count: self.descriptor_count.max(other.descriptor_count),
+            format: self.format.or(other.format),
+            image_view_type: self.image_view_type.or(other.image_view_type),
+            multisampled: self.multisampled,
+            mutable: self.mutable || other.mutable,
+            stages: self.stages | other.stages,
+        })
+    }
+}
+
+/// An error that can be returned when trying to create the intersection of two
+/// `DescriptorRequirements` values.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DescriptorRequirementsIncompatible {
+    /// The allowed descriptor types of the descriptors do not overlap.
+    DescriptorType,
+    /// The descriptors require different formats.
+    Format,
+    /// The descriptors require different image view types.
+    ImageViewType,
+    /// The multisampling requirements of the descriptors differ.
+    Multisampled,
+}
+
+impl Error for DescriptorRequirementsIncompatible {}
+
+impl Display for DescriptorRequirementsIncompatible {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DescriptorRequirementsIncompatible::DescriptorType => {
+                write!(
+                    f,
+                    "the allowed descriptor types of the two descriptors do not overlap"
+                )
+            }
+            DescriptorRequirementsIncompatible::Format => {
+                write!(f, "the descriptors require different formats")
+            }
+            DescriptorRequirementsIncompatible::ImageViewType => {
+                write!(f, "the descriptors require different image view types")
+            }
+            DescriptorRequirementsIncompatible::Multisampled => {
+                write!(
+                    f,
+                    "the multisampling requirements of the descriptors differ"
+                )
+            }
         }
     }
 }

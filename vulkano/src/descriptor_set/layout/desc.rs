@@ -43,6 +43,7 @@
 
 use crate::format::Format;
 use crate::image::view::ImageViewType;
+use crate::pipeline::shader::DescriptorRequirements;
 use crate::pipeline::shader::ShaderStages;
 use crate::sampler::Sampler;
 use crate::sync::AccessFlags;
@@ -65,13 +66,41 @@ impl DescriptorSetDesc {
     /// at bind point 0 first, then descriptor at bind point 1, and so on. If a binding must remain
     /// empty, you can make the iterator yield `None` for an element.
     #[inline]
-    pub fn new<I>(descriptors: I) -> DescriptorSetDesc
+    pub fn new<I>(descriptors: I) -> Self
     where
         I: IntoIterator<Item = Option<DescriptorDesc>>,
     {
-        DescriptorSetDesc {
+        Self {
             descriptors: descriptors.into_iter().collect(),
         }
+    }
+
+    /// Builds a list of `DescriptorSetDesc` from an iterator of `DescriptorRequirement` originating
+    /// from a shader.
+    #[inline]
+    pub fn from_requirements<'a>(
+        descriptor_requirements: impl IntoIterator<Item = ((u32, u32), &'a DescriptorRequirements)>,
+    ) -> Vec<Self> {
+        let mut descriptor_sets: Vec<Self> = Vec::new();
+
+        for ((set_num, binding_num), reqs) in descriptor_requirements {
+            let set_num = set_num as usize;
+            let binding_num = binding_num as usize;
+
+            if set_num >= descriptor_sets.len() {
+                descriptor_sets.resize(set_num + 1, Self::default());
+            }
+
+            let descriptors = &mut descriptor_sets[set_num].descriptors;
+
+            if binding_num >= descriptors.len() {
+                descriptors.resize(binding_num + 1, None);
+            }
+
+            descriptors[binding_num] = Some(reqs.into());
+        }
+
+        descriptor_sets
     }
 
     /// Builds a new empty `DescriptorSetDesc`.
@@ -91,51 +120,6 @@ impl DescriptorSetDesc {
     #[inline]
     pub fn descriptor(&self, num: u32) -> Option<&DescriptorDesc> {
         self.descriptors.get(num as usize).and_then(|b| b.as_ref())
-    }
-
-    /// Builds the union of this layout description and another.
-    #[inline]
-    pub fn union(
-        first: &DescriptorSetDesc,
-        second: &DescriptorSetDesc,
-    ) -> Result<DescriptorSetDesc, ()> {
-        let num_bindings = cmp::max(first.descriptors.len(), second.descriptors.len());
-        let descriptors = (0..num_bindings)
-            .map(|binding_num| {
-                DescriptorDesc::union(
-                    first
-                        .descriptors
-                        .get(binding_num)
-                        .map(|desc| desc.as_ref())
-                        .flatten(),
-                    second
-                        .descriptors
-                        .get(binding_num)
-                        .map(|desc| desc.as_ref())
-                        .flatten(),
-                )
-            })
-            .collect::<Result<_, ()>>()?;
-        Ok(DescriptorSetDesc { descriptors })
-    }
-
-    /// Builds the union of multiple descriptor sets.
-    pub fn union_multiple(
-        first: &[DescriptorSetDesc],
-        second: &[DescriptorSetDesc],
-    ) -> Result<Vec<DescriptorSetDesc>, ()> {
-        // Ewwwwwww
-        let empty = DescriptorSetDesc::empty();
-        let num_sets = cmp::max(first.len(), second.len());
-
-        (0..num_sets)
-            .map(|set_num| {
-                Ok(DescriptorSetDesc::union(
-                    first.get(set_num).unwrap_or_else(|| &empty),
-                    second.get(set_num).unwrap_or_else(|| &empty),
-                )?)
-            })
-            .collect()
     }
 
     /// Changes a buffer descriptor's type to dynamic.
@@ -207,11 +191,8 @@ impl DescriptorSetDesc {
             .and_then(|b| b.as_mut())
         {
             Some(desc) => {
-                if desc.variable_count {
-                    desc.descriptor_count = descriptor_count;
-                } else {
-                    panic!("descriptor isn't variable count")
-                }
+                desc.variable_count = true;
+                desc.descriptor_count = descriptor_count;
             }
             None => panic!("descriptor is empty"),
         }
@@ -232,48 +213,6 @@ impl DescriptorSetDesc {
                 _ => false,
             }
         })
-    }
-
-    /// Checks whether the descriptor of a pipeline layout `self` is compatible with the descriptor
-    /// of a shader `other`.
-    pub fn ensure_compatible_with_shader(
-        &self,
-        other: &DescriptorSetDesc,
-    ) -> Result<(), DescriptorSetCompatibilityError> {
-        if self.descriptors.len() < other.descriptors.len() {
-            return Err(DescriptorSetCompatibilityError::DescriptorsCountMismatch {
-                self_num: self.descriptors.len() as u32,
-                other_num: other.descriptors.len() as u32,
-            });
-        }
-
-        for binding_num in 0..other.descriptors.len() as u32 {
-            let self_desc = self.descriptor(binding_num);
-            let other_desc = self.descriptor(binding_num);
-
-            match (self_desc, other_desc) {
-                (Some(mine), Some(other)) => {
-                    if let Err(err) = mine.ensure_compatible_with_shader(&other) {
-                        return Err(DescriptorSetCompatibilityError::IncompatibleDescriptors {
-                            error: err,
-                            binding_num: binding_num as u32,
-                        });
-                    }
-                }
-                (None, Some(_)) => {
-                    return Err(DescriptorSetCompatibilityError::IncompatibleDescriptors {
-                        error: DescriptorCompatibilityError::Empty {
-                            first: true,
-                            second: false,
-                        },
-                        binding_num: binding_num as u32,
-                    })
-                }
-                _ => (),
-            }
-        }
-
-        Ok(())
     }
 
     /// Checks whether the descriptor of a pipeline layout `self` is compatible with the descriptor
@@ -376,39 +315,65 @@ impl DescriptorDesc {
     #[inline]
     pub fn ensure_compatible_with_shader(
         &self,
-        other: &DescriptorDesc,
-    ) -> Result<(), DescriptorCompatibilityError> {
-        match (self.ty.ty(), other.ty.ty()) {
-            (DescriptorType::UniformBufferDynamic, DescriptorType::UniformBuffer) => (),
-            (DescriptorType::StorageBufferDynamic, DescriptorType::StorageBuffer) => (),
-            _ => self.ty.ensure_superset_of(&other.ty)?,
-        }
+        descriptor_requirements: &DescriptorRequirements,
+    ) -> Result<(), DescriptorRequirementsNotMet> {
+        let DescriptorRequirements {
+            descriptor_types,
+            descriptor_count,
+            format,
+            image_view_type,
+            multisampled,
+            mutable,
+            stages,
+        } = descriptor_requirements;
 
-        if !self.stages.is_superset_of(&other.stages) {
-            return Err(DescriptorCompatibilityError::ShaderStages {
-                first: self.stages,
-                second: other.stages,
+        if !descriptor_types.contains(&self.ty.ty()) {
+            return Err(DescriptorRequirementsNotMet::DescriptorType {
+                required: descriptor_types.clone(),
+                obtained: self.ty.ty(),
             });
         }
 
-        if self.descriptor_count < other.descriptor_count {
-            return Err(DescriptorCompatibilityError::DescriptorCount {
-                first: self.descriptor_count,
-                second: other.descriptor_count,
+        if self.descriptor_count < *descriptor_count {
+            return Err(DescriptorRequirementsNotMet::DescriptorCount {
+                required: *descriptor_count,
+                obtained: self.descriptor_count,
             });
         }
 
-        if self.variable_count != other.variable_count {
-            return Err(DescriptorCompatibilityError::VariableCount {
-                first: self.variable_count,
-                second: other.variable_count,
+        if let Some(format) = *format {
+            if self.ty.format() != Some(format) {
+                return Err(DescriptorRequirementsNotMet::Format {
+                    required: format,
+                    obtained: self.ty.format(),
+                });
+            }
+        }
+
+        if let Some(image_view_type) = *image_view_type {
+            if self.ty.image_view_type() != Some(image_view_type) {
+                return Err(DescriptorRequirementsNotMet::ImageViewType {
+                    required: image_view_type,
+                    obtained: self.ty.image_view_type(),
+                });
+            }
+        }
+
+        if *multisampled != self.ty.multisampled() {
+            return Err(DescriptorRequirementsNotMet::Multisampling {
+                required: *multisampled,
+                obtained: self.ty.multisampled(),
             });
         }
 
-        if !self.mutable && other.mutable {
-            return Err(DescriptorCompatibilityError::Mutability {
-                first: self.mutable,
-                second: other.mutable,
+        if *mutable && !self.mutable {
+            return Err(DescriptorRequirementsNotMet::Mutability);
+        }
+
+        if !self.stages.is_superset_of(stages) {
+            return Err(DescriptorRequirementsNotMet::ShaderStages {
+                required: *stages,
+                obtained: self.stages,
             });
         }
 
@@ -455,70 +420,6 @@ impl DescriptorDesc {
         Ok(())
     }
 
-    /// Builds a `DescriptorDesc` that is the union of `self` and `other`, if possible.
-    ///
-    /// The returned value will be a superset of both `self` and `other`, or `None` if both were
-    /// `None`.
-    ///
-    /// `Err` is returned if the descriptors are not compatible.
-    ///
-    ///# Example
-    ///```
-    ///use vulkano::descriptor_set::layout::DescriptorDesc;
-    ///use vulkano::descriptor_set::layout::DescriptorDescTy::*;
-    ///use vulkano::pipeline::shader::ShaderStages;
-    ///
-    ///let desc_part1 = DescriptorDesc{ ty: Sampler { immutable_samplers: vec![] }, descriptor_count: 2, stages: ShaderStages{
-    ///  vertex: true,
-    ///  tessellation_control: true,
-    ///  tessellation_evaluation: false,
-    ///  geometry: true,
-    ///  fragment: false,
-    ///  compute: true
-    ///}, mutable: true, variable_count: false };
-    ///
-    ///let desc_part2 = DescriptorDesc{ ty: Sampler { immutable_samplers: vec![] }, descriptor_count: 1, stages: ShaderStages{
-    ///  vertex: true,
-    ///  tessellation_control: false,
-    ///  tessellation_evaluation: true,
-    ///  geometry: false,
-    ///  fragment: true,
-    ///  compute: true
-    ///}, mutable: false, variable_count: false };
-    ///
-    ///let desc_union = DescriptorDesc{ ty: Sampler { immutable_samplers: vec![] }, descriptor_count: 2, stages: ShaderStages{
-    ///  vertex: true,
-    ///  tessellation_control: true,
-    ///  tessellation_evaluation: true,
-    ///  geometry: true,
-    ///  fragment: true,
-    ///  compute: true
-    ///}, mutable: true, variable_count: false };
-    ///
-    ///assert_eq!(DescriptorDesc::union(Some(&desc_part1), Some(&desc_part2)), Ok(Some(desc_union)));
-    ///```
-    #[inline]
-    pub fn union(
-        first: Option<&DescriptorDesc>,
-        second: Option<&DescriptorDesc>,
-    ) -> Result<Option<DescriptorDesc>, ()> {
-        if let (Some(first), Some(second)) = (first, second) {
-            if first.ty != second.ty {
-                return Err(());
-            }
-
-            Ok(Some(DescriptorDesc {
-                ty: first.ty.clone(),
-                descriptor_count: cmp::max(first.descriptor_count, second.descriptor_count),
-                stages: first.stages | second.stages,
-                mutable: first.mutable || second.mutable,
-                variable_count: first.variable_count && second.variable_count, // TODO: What is the correct behavior here?
-            }))
-        } else {
-            Ok(first.or(second).cloned())
-        }
-    }
-
     /// Returns the pipeline stages and access flags corresponding to the usage of this descriptor.
     ///
     /// # Panic
@@ -563,6 +464,59 @@ impl DescriptorDesc {
     }
 }
 
+impl From<&DescriptorRequirements> for DescriptorDesc {
+    fn from(reqs: &DescriptorRequirements) -> Self {
+        let ty = match reqs.descriptor_types[0] {
+            DescriptorType::Sampler => DescriptorDescTy::Sampler {
+                immutable_samplers: Vec::new(),
+            },
+            DescriptorType::CombinedImageSampler => DescriptorDescTy::CombinedImageSampler {
+                image_desc: DescriptorDescImage {
+                    format: reqs.format,
+                    multisampled: reqs.multisampled,
+                    view_type: reqs.image_view_type.unwrap(),
+                },
+                immutable_samplers: Vec::new(),
+            },
+            DescriptorType::SampledImage => DescriptorDescTy::SampledImage {
+                image_desc: DescriptorDescImage {
+                    format: reqs.format,
+                    multisampled: reqs.multisampled,
+                    view_type: reqs.image_view_type.unwrap(),
+                },
+            },
+            DescriptorType::StorageImage => DescriptorDescTy::StorageImage {
+                image_desc: DescriptorDescImage {
+                    format: reqs.format,
+                    multisampled: reqs.multisampled,
+                    view_type: reqs.image_view_type.unwrap(),
+                },
+            },
+            DescriptorType::UniformTexelBuffer => DescriptorDescTy::UniformTexelBuffer {
+                format: reqs.format,
+            },
+            DescriptorType::StorageTexelBuffer => DescriptorDescTy::StorageTexelBuffer {
+                format: reqs.format,
+            },
+            DescriptorType::UniformBuffer => DescriptorDescTy::UniformBuffer,
+            DescriptorType::StorageBuffer => DescriptorDescTy::StorageBuffer,
+            DescriptorType::UniformBufferDynamic => DescriptorDescTy::UniformBufferDynamic,
+            DescriptorType::StorageBufferDynamic => DescriptorDescTy::StorageBufferDynamic,
+            DescriptorType::InputAttachment => DescriptorDescTy::InputAttachment {
+                multisampled: reqs.multisampled,
+            },
+        };
+
+        Self {
+            ty,
+            descriptor_count: reqs.descriptor_count,
+            stages: reqs.stages,
+            variable_count: false,
+            mutable: reqs.mutable,
+        }
+    }
+}
+
 /// Describes what kind of resource may later be bound to a descriptor.
 ///
 /// This is mostly the same as a `DescriptorDescTy` but with less precise information.
@@ -586,6 +540,86 @@ impl From<DescriptorType> for ash::vk::DescriptorType {
     #[inline]
     fn from(val: DescriptorType) -> Self {
         Self::from_raw(val as i32)
+    }
+}
+
+/// Error when checking whether the requirements for a descriptor have been met.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DescriptorRequirementsNotMet {
+    /// The descriptor's type is not one of those required.
+    DescriptorType {
+        required: Vec<DescriptorType>,
+        obtained: DescriptorType,
+    },
+
+    /// The descriptor count is less than what is required.
+    DescriptorCount { required: u32, obtained: u32 },
+
+    /// The descriptor's format does not match what is required.
+    Format {
+        required: Format,
+        obtained: Option<Format>,
+    },
+
+    /// The descriptor's image view type does not match what is required.
+    ImageViewType {
+        required: ImageViewType,
+        obtained: Option<ImageViewType>,
+    },
+
+    /// The descriptor's multisampling does not match what is required.
+    Multisampling { required: bool, obtained: bool },
+
+    /// The descriptor is marked as read-only, but mutability is required.
+    Mutability,
+
+    /// The descriptor's shader stages do not contain the stages that are required.
+    ShaderStages {
+        required: ShaderStages,
+        obtained: ShaderStages,
+    },
+}
+
+impl error::Error for DescriptorRequirementsNotMet {}
+
+impl fmt::Display for DescriptorRequirementsNotMet {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match self {
+            Self::DescriptorType { required, obtained } => write!(
+                fmt,
+                "the descriptor's type ({:?}) is not one of those required ({:?})",
+                obtained, required
+            ),
+            Self::DescriptorCount { required, obtained } => write!(
+                fmt,
+                "the descriptor count ({}) is less than what is required ({})",
+                obtained, required
+            ),
+            Self::Format { required, obtained } => write!(
+                fmt,
+                "the descriptor's format ({:?}) does not match what is required ({:?})",
+                obtained, required
+            ),
+            Self::ImageViewType { required, obtained } => write!(
+                fmt,
+                "the descriptor's image view type ({:?}) does not match what is required ({:?})",
+                obtained, required
+            ),
+            Self::Multisampling { required, obtained } => write!(
+                fmt,
+                "the descriptor's multisampling ({}) does not match what is required ({})",
+                obtained, required
+            ),
+            Self::Mutability => write!(
+                fmt,
+                "the descriptor is marked as read-only, but mutability is required",
+            ),
+            Self::ShaderStages { required, obtained } => write!(
+                fmt,
+                "the descriptor's shader stages do not contain the stages that are required",
+            ),
+        }
     }
 }
 
@@ -660,6 +694,9 @@ impl DescriptorDescTy {
     #[inline]
     fn format(&self) -> Option<Format> {
         match self {
+            Self::CombinedImageSampler { image_desc, .. }
+            | Self::SampledImage { image_desc, .. }
+            | Self::StorageImage { image_desc, .. } => image_desc.format,
             Self::UniformTexelBuffer { format } | Self::StorageTexelBuffer { format } => *format,
             _ => None,
         }
@@ -671,6 +708,16 @@ impl DescriptorDescTy {
             Self::CombinedImageSampler { image_desc, .. }
             | Self::SampledImage { image_desc, .. }
             | Self::StorageImage { image_desc, .. } => Some(image_desc),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    fn image_view_type(&self) -> Option<ImageViewType> {
+        match self {
+            Self::CombinedImageSampler { image_desc, .. }
+            | Self::SampledImage { image_desc, .. }
+            | Self::StorageImage { image_desc, .. } => Some(image_desc.view_type),
             _ => None,
         }
     }
@@ -691,6 +738,9 @@ impl DescriptorDescTy {
     #[inline]
     fn multisampled(&self) -> bool {
         match self {
+            Self::CombinedImageSampler { image_desc, .. }
+            | Self::SampledImage { image_desc, .. }
+            | Self::StorageImage { image_desc, .. } => image_desc.multisampled,
             DescriptorDescTy::InputAttachment { multisampled } => *multisampled,
             _ => false,
         }

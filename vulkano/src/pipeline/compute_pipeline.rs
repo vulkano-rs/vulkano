@@ -8,19 +8,17 @@
 // according to those terms.
 
 use crate::check_errors;
-use crate::descriptor_set::layout::DescriptorSetDesc;
-use crate::descriptor_set::layout::DescriptorSetLayout;
-use crate::device::Device;
-use crate::device::DeviceOwned;
+use crate::descriptor_set::layout::{DescriptorSetDesc, DescriptorSetLayout};
+use crate::device::{Device, DeviceOwned};
 use crate::pipeline::cache::PipelineCache;
-use crate::pipeline::layout::PipelineLayout;
-use crate::pipeline::layout::PipelineLayoutCreationError;
-use crate::pipeline::layout::PipelineLayoutSupersetError;
-use crate::pipeline::shader::EntryPointAbstract;
-use crate::pipeline::shader::SpecializationConstants;
+use crate::pipeline::layout::{
+    PipelineLayout, PipelineLayoutCreationError, PipelineLayoutSupersetError,
+};
+use crate::pipeline::shader::{ComputeEntryPoint, DescriptorRequirements, SpecializationConstants};
 use crate::Error;
 use crate::OomError;
 use crate::VulkanObject;
+use fnv::FnvHashMap;
 use std::error;
 use std::fmt;
 use std::marker::PhantomData;
@@ -43,6 +41,7 @@ use std::sync::Arc;
 pub struct ComputePipeline {
     inner: Inner,
     pipeline_layout: Arc<PipelineLayout>,
+    descriptor_requirements: FnvHashMap<(u32, u32), DescriptorRequirements>,
 }
 
 struct Inner {
@@ -56,19 +55,19 @@ impl ComputePipeline {
     /// `func` is a closure that is given a mutable reference to the inferred descriptor set
     /// definitions. This can be used to make changes to the layout before it's created, for example
     /// to add dynamic buffers or immutable samplers.
-    pub fn new<Cs, Css, F>(
+    pub fn new<Css, F>(
         device: Arc<Device>,
-        shader: &Cs,
+        shader: &ComputeEntryPoint,
         spec_constants: &Css,
         cache: Option<Arc<PipelineCache>>,
         func: F,
     ) -> Result<ComputePipeline, ComputePipelineCreationError>
     where
-        Cs: EntryPointAbstract,
         Css: SpecializationConstants,
         F: FnOnce(&mut [DescriptorSetDesc]),
     {
-        let mut descriptor_set_layout_descs = shader.descriptor_set_layout_descs().to_owned();
+        let mut descriptor_set_layout_descs =
+            DescriptorSetDesc::from_requirements(shader.descriptor_requirements());
         func(&mut descriptor_set_layout_descs);
 
         let descriptor_set_layouts = descriptor_set_layout_descs
@@ -101,15 +100,14 @@ impl ComputePipeline {
     ///
     /// An error will be returned if the pipeline layout isn't a superset of what the shader
     /// uses.
-    pub fn with_pipeline_layout<Cs, Css>(
+    pub fn with_pipeline_layout<Css>(
         device: Arc<Device>,
-        shader: &Cs,
+        shader: &ComputeEntryPoint,
         spec_constants: &Css,
         pipeline_layout: Arc<PipelineLayout>,
         cache: Option<Arc<PipelineCache>>,
     ) -> Result<ComputePipeline, ComputePipelineCreationError>
     where
-        Cs: EntryPointAbstract,
         Css: SpecializationConstants,
     {
         if Css::descriptors() != shader.spec_constants() {
@@ -118,7 +116,7 @@ impl ComputePipeline {
 
         unsafe {
             pipeline_layout.ensure_compatible_with_shader(
-                shader.descriptor_set_layout_descs(),
+                shader.descriptor_requirements(),
                 shader.push_constant_range(),
             )?;
             ComputePipeline::with_unchecked_pipeline_layout(
@@ -133,15 +131,14 @@ impl ComputePipeline {
 
     /// Same as `with_pipeline_layout`, but doesn't check whether the pipeline layout is a
     /// superset of what the shader expects.
-    pub unsafe fn with_unchecked_pipeline_layout<Cs, Css>(
+    pub unsafe fn with_unchecked_pipeline_layout<Css>(
         device: Arc<Device>,
-        shader: &Cs,
+        shader: &ComputeEntryPoint,
         spec_constants: &Css,
         pipeline_layout: Arc<PipelineLayout>,
         cache: Option<Arc<PipelineCache>>,
     ) -> Result<ComputePipeline, ComputePipelineCreationError>
     where
-        Cs: EntryPointAbstract,
         Css: SpecializationConstants,
     {
         let fns = device.fns();
@@ -200,6 +197,10 @@ impl ComputePipeline {
                 pipeline: pipeline,
             },
             pipeline_layout: pipeline_layout,
+            descriptor_requirements: shader
+                .descriptor_requirements()
+                .map(|(loc, reqs)| (loc, reqs.clone()))
+                .collect(),
         })
     }
 
@@ -213,6 +214,16 @@ impl ComputePipeline {
     #[inline]
     pub fn layout(&self) -> &Arc<PipelineLayout> {
         &self.pipeline_layout
+    }
+
+    /// Returns an iterator over the descriptor requirements for this pipeline.
+    #[inline]
+    pub fn descriptor_requirements(
+        &self,
+    ) -> impl ExactSizeIterator<Item = ((u32, u32), &DescriptorRequirements)> {
+        self.descriptor_requirements
+            .iter()
+            .map(|(loc, reqs)| (*loc, reqs))
     }
 }
 
@@ -362,10 +373,9 @@ mod tests {
     use crate::buffer::CpuAccessibleBuffer;
     use crate::command_buffer::AutoCommandBufferBuilder;
     use crate::command_buffer::CommandBufferUsage;
-    use crate::descriptor_set::layout::DescriptorDesc;
-    use crate::descriptor_set::layout::DescriptorDescTy;
-    use crate::descriptor_set::layout::DescriptorSetDesc;
+    use crate::descriptor_set::layout::DescriptorType;
     use crate::descriptor_set::PersistentDescriptorSet;
+    use crate::pipeline::shader::DescriptorRequirements;
     use crate::pipeline::shader::ShaderModule;
     use crate::pipeline::shader::ShaderStages;
     use crate::pipeline::shader::SpecializationConstants;
@@ -432,16 +442,21 @@ mod tests {
             static NAME: [u8; 5] = [109, 97, 105, 110, 0]; // "main"
             module.compute_entry_point(
                 CStr::from_ptr(NAME.as_ptr() as *const _),
-                [DescriptorSetDesc::new([Some(DescriptorDesc {
-                    ty: DescriptorDescTy::StorageBuffer,
-                    descriptor_count: 1,
-                    stages: ShaderStages {
-                        compute: true,
-                        ..ShaderStages::none()
+                [(
+                    (0, 0),
+                    DescriptorRequirements {
+                        descriptor_types: vec![DescriptorType::StorageBuffer],
+                        descriptor_count: 1,
+                        format: None,
+                        image_view_type: None,
+                        multisampled: false,
+                        mutable: false,
+                        stages: ShaderStages {
+                            compute: true,
+                            ..ShaderStages::none()
+                        },
                     },
-                    mutable: false,
-                    variable_count: false,
-                })])],
+                )],
                 None,
                 SpecConsts::descriptors(),
             )

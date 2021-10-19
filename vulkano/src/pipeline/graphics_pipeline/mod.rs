@@ -17,7 +17,7 @@ use crate::pipeline::input_assembly::InputAssemblyState;
 use crate::pipeline::layout::PipelineLayout;
 use crate::pipeline::multisample::MultisampleState;
 use crate::pipeline::rasterization::RasterizationState;
-use crate::pipeline::shader::ShaderStage;
+use crate::pipeline::shader::{DescriptorRequirements, ShaderStage};
 use crate::pipeline::tessellation::TessellationState;
 use crate::pipeline::vertex::{BuffersDefinition, VertexInput};
 use crate::pipeline::viewport::ViewportState;
@@ -47,6 +47,7 @@ pub struct GraphicsPipeline {
     subpass: Subpass,
     // TODO: replace () with an object that describes the shaders in some way.
     shaders: FnvHashMap<ShaderStage, ()>,
+    descriptor_requirements: FnvHashMap<(u32, u32), DescriptorRequirements>,
 
     vertex_input: VertexInput,
     input_assembly_state: InputAssemblyState,
@@ -112,6 +113,16 @@ impl GraphicsPipeline {
     #[inline]
     pub(crate) fn shader(&self, stage: ShaderStage) -> Option<()> {
         self.shaders.get(&stage).copied()
+    }
+
+    /// Returns an iterator over the descriptor requirements for this pipeline.
+    #[inline]
+    pub fn descriptor_requirements(
+        &self,
+    ) -> impl ExactSizeIterator<Item = ((u32, u32), &DescriptorRequirements)> {
+        self.descriptor_requirements
+            .iter()
+            .map(|(loc, reqs)| (*loc, reqs))
     }
 
     /// Returns the vertex input state used to create this pipeline.
