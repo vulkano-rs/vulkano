@@ -79,6 +79,13 @@ macro_rules! descriptors_count {
                     )+
                 }
             }
+
+            /// Returns the total number of descriptors.
+            #[inline]
+            pub fn total(&self) -> u32 {
+                std::array::IntoIter::new([$(self.$name,)+]).sum()
+            }
+
             /// Adds one descriptor of the given type to the count.
             #[inline]
             pub fn add_one(&mut self, ty: DescriptorType) {
