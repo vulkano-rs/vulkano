@@ -23,10 +23,13 @@ use crate::command_buffer::CommandBufferExecError;
 use crate::command_buffer::CommandBufferLevel;
 use crate::command_buffer::CommandBufferUsage;
 use crate::command_buffer::ImageUninitializedSafe;
+use crate::descriptor_set::builder::DescriptorSetBuilderOutput;
+use crate::descriptor_set::layout::DescriptorSetLayout;
 use crate::descriptor_set::DescriptorSet;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::image::ImageLayout;
+use crate::image::ImageViewAbstract;
 use crate::pipeline::color_blend::LogicOp;
 use crate::pipeline::depth_stencil::CompareOp;
 use crate::pipeline::depth_stencil::StencilOp;
@@ -50,6 +53,7 @@ use crate::sync::AccessFlags;
 use crate::sync::PipelineMemoryAccess;
 use crate::sync::PipelineStages;
 use crate::OomError;
+use crate::VulkanObject;
 use fnv::FnvHashMap;
 use smallvec::SmallVec;
 use std::borrow::Cow;
@@ -808,6 +812,69 @@ impl CurrentState {
             }
         }
     }
+
+    fn invalidate_descriptor_sets(
+        &mut self,
+        pipeline_bind_point: PipelineBindPoint,
+        pipeline_layout: Arc<PipelineLayout>,
+        first_set: u32,
+        num_descriptor_sets: u32,
+        cmd: &Arc<dyn Command>,
+    ) {
+        let state = match self.descriptor_sets.entry(pipeline_bind_point) {
+            Entry::Vacant(entry) => entry.insert(DescriptorSetState {
+                descriptor_sets: Default::default(),
+                pipeline_layout,
+            }),
+            Entry::Occupied(entry) => {
+                let state = entry.into_mut();
+
+                let invalidate_from = if state.pipeline_layout.internal_object()
+                    == pipeline_layout.internal_object()
+                {
+                    // If we're still using the exact same layout, then of course it's compatible.
+                    None
+                } else if state.pipeline_layout.push_constant_ranges()
+                    != pipeline_layout.push_constant_ranges()
+                {
+                    // If the push constant ranges don't match,
+                    // all bound descriptor sets are disturbed.
+                    Some(0)
+                } else {
+                    // Find the first descriptor set layout in the current pipeline layout that
+                    // isn't compatible with the corresponding set in the new pipeline layout.
+                    // If an incompatible set was found, all bound sets from that slot onwards will
+                    // be disturbed.
+                    let current_layouts = state.pipeline_layout.descriptor_set_layouts();
+                    let new_layouts = pipeline_layout.descriptor_set_layouts();
+                    let max = (current_layouts.len() as u32).min(first_set + num_descriptor_sets);
+                    (0..max).find(|&num| {
+                        let num = num as usize;
+                        !current_layouts[num].is_compatible_with(&new_layouts[num])
+                    })
+                };
+
+                if let Some(invalidate_from) = invalidate_from {
+                    // Remove disturbed sets and set new pipeline layout.
+                    state
+                        .descriptor_sets
+                        .retain(|&num, _| num < invalidate_from);
+                    state.pipeline_layout = pipeline_layout;
+                } else if (first_set + num_descriptor_sets) as usize
+                    >= state.pipeline_layout.descriptor_set_layouts().len()
+                {
+                    // New layout is a superset of the old one.
+                    state.pipeline_layout = pipeline_layout;
+                }
+
+                state
+            }
+        };
+
+        for i in 0..num_descriptor_sets {
+            state.descriptor_sets.insert(first_set + i, cmd.clone());
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -830,16 +897,18 @@ impl<'a> CommandBufferState<'a> {
         &self,
         pipeline_bind_point: PipelineBindPoint,
         set_num: u32,
-    ) -> Option<(&'a dyn DescriptorSet, &'a [u32])> {
-        self.current_state
-            .descriptor_sets
-            .get(&pipeline_bind_point)
-            .and_then(|state| {
+    ) -> Option<SetOrPush<'a>> {
+        let state =
+            if let Some(state) = self.current_state.descriptor_sets.get(&pipeline_bind_point) {
                 state
-                    .descriptor_sets
-                    .get(&set_num)
-                    .map(|cmd| cmd.bound_descriptor_set(set_num))
-            })
+            } else {
+                return None;
+            };
+
+        state
+            .descriptor_sets
+            .get(&set_num)
+            .map(|cmd| cmd.bound_descriptor_set(set_num))
     }
 
     /// Returns the pipeline layout that describes all currently bound descriptor sets.
@@ -1083,6 +1152,53 @@ impl<'a> CommandBufferState<'a> {
             .viewport_with_count
             .as_ref()
             .map(|x| x.as_slice())
+    }
+}
+
+#[derive(Clone)]
+pub enum SetOrPush<'a> {
+    Set(&'a dyn DescriptorSet, &'a [u32]),
+    Push(&'a DescriptorSetBuilderOutput),
+}
+
+impl<'a> SetOrPush<'a> {
+    pub fn layout(&self) -> &'a Arc<DescriptorSetLayout> {
+        match *self {
+            Self::Set(set, offsets) => set.layout(),
+            Self::Push(writes) => writes.layout(),
+        }
+    }
+
+    #[inline]
+    pub fn num_buffers(&self) -> usize {
+        match self {
+            Self::Set(set, offsets) => set.num_buffers(),
+            Self::Push(writes) => writes.resources().num_buffers(),
+        }
+    }
+
+    #[inline]
+    pub fn buffer(&self, num: usize) -> Option<(&'a dyn BufferAccess, u32)> {
+        match *self {
+            Self::Set(set, offsets) => set.buffer(num),
+            Self::Push(writes) => writes.resources().buffer(num),
+        }
+    }
+
+    #[inline]
+    pub fn num_images(&self) -> usize {
+        match self {
+            Self::Set(set, offsets) => set.num_images(),
+            Self::Push(writes) => writes.resources().num_images(),
+        }
+    }
+
+    #[inline]
+    pub fn image(&self, num: usize) -> Option<(&'a dyn ImageViewAbstract, u32)> {
+        match *self {
+            Self::Set(set, offsets) => set.image(num),
+            Self::Push(writes) => writes.resources().image(num),
+        }
     }
 }
 

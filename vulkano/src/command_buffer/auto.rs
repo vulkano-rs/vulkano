@@ -37,6 +37,7 @@ use crate::command_buffer::ImageUninitializedSafe;
 use crate::command_buffer::PrimaryCommandBuffer;
 use crate::command_buffer::SecondaryCommandBuffer;
 use crate::command_buffer::SubpassContents;
+use crate::descriptor_set::builder::DescriptorSetBuilderOutput;
 use crate::descriptor_set::DescriptorSetsCollection;
 use crate::device::physical::QueueFamily;
 use crate::device::Device;
@@ -1772,6 +1773,61 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 offset,
                 size,
                 data,
+            );
+        }
+
+        self
+    }
+
+    /// Pushes descriptor data directly into the command buffer for future dispatch or draw calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support `pipeline_bind_point`.
+    /// - Panics if the
+    ///   [`khr_push_descriptor`](crate::device::DeviceExtensions::khr_push_descriptor)
+    ///   extension is not enabled on the device.
+    /// - Panics if `set_num` is not less than the number of sets in `pipeline_layout`.
+    pub fn push_descriptor_set(
+        &mut self,
+        pipeline_bind_point: PipelineBindPoint,
+        pipeline_layout: Arc<PipelineLayout>,
+        set_num: u32,
+        descriptor_writes: DescriptorSetBuilderOutput, // TODO: make partial writes possible
+    ) -> &mut Self {
+        match pipeline_bind_point {
+            PipelineBindPoint::Compute => assert!(
+                self.queue_family().supports_compute(),
+                "the queue family of the command buffer must support compute operations"
+            ),
+            PipelineBindPoint::Graphics => assert!(
+                self.queue_family().supports_graphics(),
+                "the queue family of the command buffer must support graphics operations"
+            ),
+        }
+
+        assert!(
+            self.device().enabled_extensions().khr_push_descriptor,
+            "the khr_push_descriptor extension must be enabled on the device"
+        );
+        assert!(
+            set_num as usize <= pipeline_layout.descriptor_set_layouts().len(),
+            "the descriptor set slot being bound must be less than the number of sets in pipeline_layout"
+        );
+
+        let pipeline_set = &pipeline_layout.descriptor_set_layouts()[set_num as usize];
+        assert!(
+            pipeline_set.is_compatible_with(descriptor_writes.layout()),
+            "descriptor_writes is not compatible with slot {} in pipeline_layout",
+            set_num as usize,
+        );
+
+        unsafe {
+            self.inner.push_descriptor_set(
+                pipeline_bind_point,
+                pipeline_layout,
+                set_num,
+                descriptor_writes,
             );
         }
 

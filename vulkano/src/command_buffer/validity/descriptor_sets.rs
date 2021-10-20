@@ -8,6 +8,7 @@
 // according to those terms.
 
 use crate::command_buffer::synced::CommandBufferState;
+use crate::command_buffer::synced::SetOrPush;
 use crate::descriptor_set::layout::DescriptorSetCompatibilityError;
 use crate::pipeline::layout::PipelineLayout;
 use crate::pipeline::PipelineBindPoint;
@@ -46,7 +47,12 @@ pub(in super::super) fn check_descriptor_sets_validity(
             None => return Err(CheckDescriptorSetsValidityError::MissingDescriptorSet { set_num }),
         };
 
-        match pipeline_set.ensure_compatible_with_bind(descriptor_set.0.layout()) {
+        let descriptor_set_layout = match descriptor_set {
+            SetOrPush::Set(descriptor_set, _dynamic_offsets) => descriptor_set.layout(),
+            SetOrPush::Push(descriptor_writes) => descriptor_writes.layout(),
+        };
+
+        match pipeline_set.ensure_compatible_with_bind(descriptor_set_layout) {
             Ok(_) => (),
             Err(error) => {
                 return Err(

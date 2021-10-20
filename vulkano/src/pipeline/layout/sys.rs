@@ -33,8 +33,8 @@ use std::sync::Arc;
 pub struct PipelineLayout {
     handle: ash::vk::PipelineLayout,
     device: Arc<Device>,
-    descriptor_set_layouts: SmallVec<[Arc<DescriptorSetLayout>; 16]>,
-    push_constant_ranges: SmallVec<[PipelineLayoutPcRange; 8]>,
+    descriptor_set_layouts: SmallVec<[Arc<DescriptorSetLayout>; 4]>,
+    push_constant_ranges: SmallVec<[PipelineLayoutPcRange; 4]>,
 }
 
 impl PipelineLayout {
@@ -50,9 +50,19 @@ impl PipelineLayout {
         P: IntoIterator<Item = PipelineLayoutPcRange>,
     {
         let fns = device.fns();
-        let descriptor_set_layouts: SmallVec<[Arc<DescriptorSetLayout>; 16]> =
+        let descriptor_set_layouts: SmallVec<[Arc<DescriptorSetLayout>; 4]> =
             descriptor_set_layouts.into_iter().collect();
-        let mut push_constant_ranges: SmallVec<[PipelineLayoutPcRange; 8]> =
+
+        if descriptor_set_layouts
+            .iter()
+            .filter(|layout| layout.desc().is_push_descriptor())
+            .count()
+            > 1
+        {
+            return Err(PipelineLayoutCreationError::MultiplePushDescriptor);
+        }
+
+        let mut push_constant_ranges: SmallVec<[PipelineLayoutPcRange; 4]> =
             push_constant_ranges.into_iter().collect();
 
         // Check for overlapping stages
@@ -89,11 +99,11 @@ impl PipelineLayout {
         let layouts_ids = descriptor_set_layouts
             .iter()
             .map(|l| l.internal_object())
-            .collect::<SmallVec<[_; 16]>>();
+            .collect::<SmallVec<[_; 4]>>();
 
         // Builds a list of `vkPushConstantRange` that describe the push constants.
         let push_constants = {
-            let mut out: SmallVec<[_; 8]> = SmallVec::new();
+            let mut out: SmallVec<[_; 4]> = SmallVec::new();
 
             for &PipelineLayoutPcRange {
                 offset,
@@ -279,6 +289,8 @@ pub enum PipelineLayoutCreationError {
     /// One of the push constants range didn't obey the rules. The list of stages must not be
     /// empty, the size must not be 0, and the size must be a multiple or 4.
     InvalidPushConstant,
+    /// More than one descriptor set layout was set for push descriptors.
+    MultiplePushDescriptor,
     /// Conflict between different push constants ranges.
     PushConstantsConflict {
         first_range: PipelineLayoutPcRange,
@@ -292,9 +304,9 @@ impl error::Error for PipelineLayoutCreationError {
     #[inline]
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
-            PipelineLayoutCreationError::OomError(ref err) => Some(err),
-            PipelineLayoutCreationError::LimitsError(ref err) => Some(err),
-            PipelineLayoutCreationError::SetLayoutError(ref err) => Some(err),
+            Self::OomError(ref err) => Some(err),
+            Self::LimitsError(ref err) => Some(err),
+            Self::SetLayoutError(ref err) => Some(err),
             _ => None,
         }
     }
@@ -303,25 +315,28 @@ impl error::Error for PipelineLayoutCreationError {
 impl fmt::Display for PipelineLayoutCreationError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                PipelineLayoutCreationError::OomError(_) => "not enough memory available",
-                PipelineLayoutCreationError::LimitsError(_) => {
+        match *self {
+            Self::OomError(_) => write!(fmt, "not enough memory available"),
+            Self::LimitsError(_) => {
+                write!(
+                    fmt,
                     "the pipeline layout description doesn't fulfill the limit requirements"
-                }
-                PipelineLayoutCreationError::InvalidPushConstant => {
-                    "one of the push constants range didn't obey the rules"
-                }
-                PipelineLayoutCreationError::PushConstantsConflict { .. } => {
-                    "conflict between different push constants ranges"
-                }
-                PipelineLayoutCreationError::SetLayoutError(_) => {
-                    "one of the sets has an error"
-                }
+                )
             }
-        )
+            Self::InvalidPushConstant => {
+                write!(fmt, "one of the push constants range didn't obey the rules")
+            }
+            Self::MultiplePushDescriptor => {
+                write!(
+                    fmt,
+                    "more than one descriptor set layout was set for push descriptors"
+                )
+            }
+            Self::PushConstantsConflict { .. } => {
+                write!(fmt, "conflict between different push constants ranges")
+            }
+            Self::SetLayoutError(_) => write!(fmt, "one of the sets has an error"),
+        }
     }
 }
 
