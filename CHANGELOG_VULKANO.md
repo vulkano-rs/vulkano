@@ -11,6 +11,9 @@
   - Most of the state-setting methods on `GraphicsPipelineBuilder` are deprecated. State is now set using a `_state` method, which is given one of the above state types.
 - **Breaking** `DynamicStateMode` is replaced with a simple `bool`.
 - **Breaking** The presence of dynamic state in the pipeline state is now expressed more explicitly with two new types, `StateMode` and `PartialStateMode`.
+- **Breaking** The `PersistentDescriptorSet::start` and `SingleLayoutDescSetPool::new` functions now return `Result`.
+- **Breaking** `DescriptorWrite` now takes an iterator instead of a single item, allowing arrayed descriptors to be written in one operation.
+- Added basic support for the `khr_push_descriptor` extension, with an example of how it's used. The implementation is somewhat limited and some of the details may change in a future update.
 - Added support for lots more dynamic state, most of which requires features or extensions to use.
 - Added support for discard rectangles, in the `pipeline::discard_rectangle` module.
 - Added support for line rasterization state, in the `pipeline::rasterization` module.
