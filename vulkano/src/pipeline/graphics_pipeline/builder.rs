@@ -14,22 +14,27 @@
 use crate::check_errors;
 use crate::descriptor_set::layout::{DescriptorSetDesc, DescriptorSetLayout};
 use crate::device::Device;
-use crate::image::SampleCount;
-use crate::pipeline::blend::{AttachmentBlend, AttachmentsBlend, Blend, LogicOp};
 use crate::pipeline::cache::PipelineCache;
-use crate::pipeline::depth_stencil::{CompareOp, DepthBounds, DepthStencil};
+use crate::pipeline::color_blend::{
+    AttachmentBlend, ColorBlendAttachmentState, ColorBlendState, ColorComponents, LogicOp,
+};
+use crate::pipeline::depth_stencil::DepthStencilState;
+use crate::pipeline::discard_rectangle::DiscardRectangleState;
 use crate::pipeline::graphics_pipeline::{
     GraphicsPipeline, GraphicsPipelineCreationError, Inner as GraphicsPipelineInner,
 };
-use crate::pipeline::input_assembly::PrimitiveTopology;
+use crate::pipeline::input_assembly::{InputAssemblyState, PrimitiveTopology};
 use crate::pipeline::layout::{PipelineLayout, PipelineLayoutCreationError, PipelineLayoutPcRange};
-use crate::pipeline::raster::{CullMode, DepthBiasControl, FrontFace, PolygonMode, Rasterization};
+use crate::pipeline::multisample::MultisampleState;
+use crate::pipeline::rasterization::{CullMode, FrontFace, PolygonMode, RasterizationState};
 use crate::pipeline::shader::{
-    EntryPointAbstract, GraphicsEntryPoint, GraphicsShaderType, SpecializationConstants,
+    EntryPointAbstract, GraphicsEntryPoint, GraphicsShaderType, ShaderStage,
+    SpecializationConstants,
 };
+use crate::pipeline::tessellation::TessellationState;
 use crate::pipeline::vertex::{BuffersDefinition, Vertex, VertexDefinition, VertexInputRate};
-use crate::pipeline::viewport::{Scissor, Viewport, ViewportsState};
-use crate::pipeline::{DynamicState, DynamicStateMode};
+use crate::pipeline::viewport::{Scissor, Viewport, ViewportState};
+use crate::pipeline::{DynamicState, PartialStateMode, StateMode};
 use crate::render_pass::Subpass;
 use crate::VulkanObject;
 use fnv::FnvHashMap;
@@ -41,26 +46,25 @@ use std::sync::Arc;
 use std::u32;
 
 /// Prototype for a `GraphicsPipeline`.
-// TODO: we can optimize this by filling directly the raw vk structs
+#[derive(Debug)]
 pub struct GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss> {
+    subpass: Option<Subpass>,
+    cache: Option<Arc<PipelineCache>>,
+
     vertex_shader: Option<(GraphicsEntryPoint<'vs>, Vss)>,
     tessellation_shaders: Option<TessellationShaders<'tcs, 'tes, Tcss, Tess>>,
     geometry_shader: Option<(GraphicsEntryPoint<'gs>, Gss)>,
     fragment_shader: Option<(GraphicsEntryPoint<'fs>, Fss)>,
 
     vertex_definition: Vdef,
-    input_assembly: ash::vk::PipelineInputAssemblyStateCreateInfo,
-    // Note: the `input_assembly_topology` member is temporary in order to not lose information
-    // about the number of patches per primitive.
-    input_assembly_topology: PrimitiveTopology,
-    viewport: Option<ViewportsState>,
-    raster: Rasterization,
-    multisample: ash::vk::PipelineMultisampleStateCreateInfo,
-    depth_stencil: DepthStencil,
-    blend: Blend,
-
-    subpass: Option<Subpass>,
-    cache: Option<Arc<PipelineCache>>,
+    input_assembly_state: InputAssemblyState,
+    tessellation_state: TessellationState,
+    viewport_state: ViewportState,
+    discard_rectangle_state: DiscardRectangleState,
+    rasterization_state: RasterizationState,
+    multisample_state: MultisampleState,
+    depth_stencil_state: DepthStencilState,
+    color_blend_state: ColorBlendState,
 }
 
 // Additional parameters if tessellation is used.
@@ -88,25 +92,23 @@ impl
     /// Builds a new empty builder.
     pub(super) fn new() -> Self {
         GraphicsPipelineBuilder {
+            subpass: None,
+            cache: None,
+
             vertex_shader: None,
             tessellation_shaders: None,
             geometry_shader: None,
             fragment_shader: None,
 
             vertex_definition: BuffersDefinition::new(),
-            input_assembly: ash::vk::PipelineInputAssemblyStateCreateInfo {
-                topology: PrimitiveTopology::TriangleList.into(),
-                ..Default::default()
-            },
-            input_assembly_topology: PrimitiveTopology::TriangleList,
-            viewport: None,
-            raster: Default::default(),
-            multisample: ash::vk::PipelineMultisampleStateCreateInfo::default(),
-            depth_stencil: DepthStencil::disabled(),
-            blend: Blend::pass_through(),
-
-            subpass: None,
-            cache: None,
+            input_assembly_state: Default::default(),
+            tessellation_state: Default::default(),
+            viewport_state: Default::default(),
+            discard_rectangle_state: Default::default(),
+            rasterization_state: Default::default(),
+            multisample_state: Default::default(),
+            depth_stencil_state: Default::default(),
+            color_blend_state: Default::default(),
         }
     }
 }
@@ -221,6 +223,7 @@ where
         // TODO: return errors instead of panicking if missing param
 
         let fns = device.fns();
+        let subpass = self.subpass.take().expect("Missing subpass");
 
         // Checking that the pipeline layout matches the shader stages.
         // TODO: more details in the errors
@@ -268,19 +271,13 @@ where
 
             // Check that the subpass can accept the output of the fragment shader.
             // TODO: If there is no fragment shader, what should be checked then? The previous stage?
-            if !self
-                .subpass
-                .as_ref()
-                .unwrap()
-                .is_compatible_with(shader.output())
-            {
+            if !subpass.is_compatible_with(shader.output()) {
                 return Err(GraphicsPipelineCreationError::FragmentShaderRenderPassIncompatible);
             }
         }
 
         // Will contain the list of dynamic states. Filled throughout this function.
-        let mut dynamic_state_modes: FnvHashMap<DynamicState, DynamicStateMode> =
-            HashMap::default();
+        let mut dynamic_state_modes: FnvHashMap<DynamicState, bool> = HashMap::default();
 
         // Creating the specialization constants of the various stages.
         let vertex_shader_specialization = {
@@ -370,6 +367,7 @@ where
         };
 
         // List of shader stages.
+        let mut shaders = HashMap::default();
         let stages = {
             let mut stages = SmallVec::<[_; 5]>::new();
 
@@ -378,6 +376,7 @@ where
                 _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
             };
 
+            shaders.insert(ShaderStage::Vertex, ());
             stages.push(ash::vk::PipelineShaderStageCreateInfo {
                 flags: ash::vk::PipelineShaderStageCreateFlags::empty(),
                 stage: ash::vk::ShaderStageFlags::VERTEX,
@@ -397,7 +396,10 @@ where
                 // FIXME: must check that the control shader and evaluation shader are compatible
 
                 if !device.enabled_features().tessellation_shader {
-                    return Err(GraphicsPipelineCreationError::TessellationShaderFeatureNotEnabled);
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "tessellation_shader",
+                        reason: "a tessellation shader was provided",
+                    });
                 }
 
                 match tess.tessellation_control_shader.0.ty() {
@@ -410,6 +412,7 @@ where
                     _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
                 };
 
+                shaders.insert(ShaderStage::TessellationControl, ());
                 stages.push(ash::vk::PipelineShaderStageCreateInfo {
                     flags: ash::vk::PipelineShaderStageCreateFlags::empty(),
                     stage: ash::vk::ShaderStageFlags::TESSELLATION_CONTROL,
@@ -424,6 +427,7 @@ where
                     ..Default::default()
                 });
 
+                shaders.insert(ShaderStage::TessellationEvaluation, ());
                 stages.push(ash::vk::PipelineShaderStageCreateInfo {
                     flags: ash::vk::PipelineShaderStageCreateFlags::empty(),
                     stage: ash::vk::ShaderStageFlags::TESSELLATION_EVALUATION,
@@ -441,14 +445,33 @@ where
 
             if let Some(ref geometry_shader) = self.geometry_shader {
                 if !device.enabled_features().geometry_shader {
-                    return Err(GraphicsPipelineCreationError::GeometryShaderFeatureNotEnabled);
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "geometry_shader",
+                        reason: "a geometry shader was provided",
+                    });
                 }
 
-                match geometry_shader.0.ty() {
-                    GraphicsShaderType::Geometry(_) => {}
+                let shader_execution_mode = match geometry_shader.0.ty() {
+                    GraphicsShaderType::Geometry(mode) => mode,
                     _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
                 };
 
+                if let PartialStateMode::Fixed(topology) = self.input_assembly_state.topology {
+                    if !shader_execution_mode.matches(topology) {
+                        return Err(
+                            GraphicsPipelineCreationError::TopologyNotMatchingGeometryShader,
+                        );
+                    }
+                }
+
+                // TODO: VUID-VkGraphicsPipelineCreateInfo-pStages-00739
+                // If the pipeline is being created with pre-rasterization shader state and pStages
+                // includes a geometry shader stage, and also includes tessellation shader stages,
+                // its shader code must contain an OpExecutionMode instruction that specifies an
+                // input primitive type that is compatible with the primitive topology that is
+                // output by the tessellation stages
+
+                shaders.insert(ShaderStage::Geometry, ());
                 stages.push(ash::vk::PipelineShaderStageCreateInfo {
                     flags: ash::vk::PipelineShaderStageCreateFlags::empty(),
                     stage: ash::vk::ShaderStageFlags::GEOMETRY,
@@ -466,6 +489,7 @@ where
                     _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
                 };
 
+                shaders.insert(ShaderStage::Fragment, ());
                 stages.push(ash::vk::PipelineShaderStageCreateInfo {
                     flags: ash::vk::PipelineShaderStageCreateFlags::empty(),
                     stage: ash::vk::ShaderStageFlags::FRAGMENT,
@@ -480,7 +504,7 @@ where
             stages
         };
 
-        // Vertex input.
+        // Vertex input state
         let vertex_input = self
             .vertex_definition
             .definition(self.vertex_shader.as_ref().unwrap().0.input())?;
@@ -537,7 +561,10 @@ where
                             .enabled_features()
                             .vertex_attribute_instance_rate_divisor
                         {
-                            return Err(GraphicsPipelineCreationError::VertexAttributeInstanceRateDivisorFeatureNotEnabled);
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "vertex_attribute_instance_rate_divisor",
+                                reason: "VertexInputRate::Instance::divisor was not 1",
+                            });
                         }
 
                         if divisor == 0
@@ -545,7 +572,10 @@ where
                                 .enabled_features()
                                 .vertex_attribute_instance_rate_zero_divisor
                         {
-                            return Err(GraphicsPipelineCreationError::VertexAttributeInstanceRateZeroDivisorFeatureNotEnabled);
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "vertex_attribute_instance_rate_zero_divisor",
+                                reason: "VertexInputRate::Instance::divisor was 0",
+                            });
                         }
 
                         if divisor
@@ -656,6 +686,7 @@ where
             None
         };
 
+        dynamic_state_modes.insert(DynamicState::VertexInput, false);
         let vertex_input_state = Some(ash::vk::PipelineVertexInputStateCreateInfo {
             p_next: if let Some(next) = vertex_input_divisor_state.as_ref() {
                 next as *const _ as *const _
@@ -670,432 +701,111 @@ where
             ..Default::default()
         });
 
-        let input_assembly_state = Some(self.input_assembly);
-
-        if self.input_assembly.primitive_restart_enable != ash::vk::FALSE
-            && !self.input_assembly_topology.supports_primitive_restart()
-        {
-            return Err(
-                GraphicsPipelineCreationError::PrimitiveDoesntSupportPrimitiveRestart {
-                    primitive: self.input_assembly_topology,
-                },
-            );
-        }
-
-        // TODO: should check from the tess eval shader instead of the input assembly
-        if let Some(ref gs) = self.geometry_shader {
-            match gs.0.ty() {
-                GraphicsShaderType::Geometry(primitives) => {
-                    if !primitives.matches(self.input_assembly_topology) {
-                        return Err(
-                            GraphicsPipelineCreationError::TopologyNotMatchingGeometryShader,
-                        );
-                    }
-                }
-                _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
-            }
-        }
-
-        let tessellation_state = match self.input_assembly_topology {
-            PrimitiveTopology::PatchList { vertices_per_patch } => {
-                if self.tessellation_shaders.is_none() {
-                    return Err(GraphicsPipelineCreationError::InvalidPrimitiveTopology);
-                }
-                if vertices_per_patch
-                    > device
-                        .physical_device()
-                        .properties()
-                        .max_tessellation_patch_size
-                {
-                    return Err(GraphicsPipelineCreationError::MaxTessellationPatchSizeExceeded);
-                }
-
-                Some(ash::vk::PipelineTessellationStateCreateInfo {
-                    flags: ash::vk::PipelineTessellationStateCreateFlags::empty(),
-                    patch_control_points: vertices_per_patch,
-                    ..Default::default()
-                })
-            }
-            _ => {
-                if self.tessellation_shaders.is_some() {
-                    return Err(GraphicsPipelineCreationError::InvalidPrimitiveTopology);
-                }
-
-                None
-            }
-        };
-
-        let (vp_vp, vp_sc, vp_num) = match *self.viewport.as_ref().unwrap() {
-            ViewportsState::Fixed { ref data } => (
-                data.iter()
-                    .map(|e| e.0.clone().into())
-                    .collect::<SmallVec<[ash::vk::Viewport; 4]>>(),
-                data.iter()
-                    .map(|e| e.1.clone().into())
-                    .collect::<SmallVec<[ash::vk::Rect2D; 4]>>(),
-                data.len() as u32,
-            ),
-            ViewportsState::DynamicViewports { ref scissors } => {
-                let num = scissors.len() as u32;
-                let scissors = scissors
-                    .iter()
-                    .map(|e| e.clone().into())
-                    .collect::<SmallVec<[ash::vk::Rect2D; 4]>>();
-                dynamic_state_modes.insert(DynamicState::Viewport, DynamicStateMode::Dynamic);
-                (SmallVec::new(), scissors, num)
-            }
-            ViewportsState::DynamicScissors { ref viewports } => {
-                let num = viewports.len() as u32;
-                let viewports = viewports
-                    .iter()
-                    .map(|e| e.clone().into())
-                    .collect::<SmallVec<[ash::vk::Viewport; 4]>>();
-                dynamic_state_modes.insert(DynamicState::Scissor, DynamicStateMode::Dynamic);
-                (viewports, SmallVec::new(), num)
-            }
-            ViewportsState::Dynamic { num } => {
-                dynamic_state_modes.insert(DynamicState::Viewport, DynamicStateMode::Dynamic);
-                dynamic_state_modes.insert(DynamicState::Scissor, DynamicStateMode::Dynamic);
-                (SmallVec::new(), SmallVec::new(), num)
-            }
-        };
-
-        if vp_num > 1 && !device.enabled_features().multi_viewport {
-            return Err(GraphicsPipelineCreationError::MultiViewportFeatureNotEnabled);
-        }
-
-        if vp_num > device.physical_device().properties().max_viewports {
-            return Err(GraphicsPipelineCreationError::MaxViewportsExceeded {
-                obtained: vp_num,
-                max: device.physical_device().properties().max_viewports,
-            });
-        }
-
-        for vp in vp_vp.iter() {
-            if vp.width
-                > device
-                    .physical_device()
-                    .properties()
-                    .max_viewport_dimensions[0] as f32
-                || vp.height
-                    > device
-                        .physical_device()
-                        .properties()
-                        .max_viewport_dimensions[1] as f32
-            {
-                return Err(GraphicsPipelineCreationError::MaxViewportDimensionsExceeded);
-            }
-
-            if vp.x < device.physical_device().properties().viewport_bounds_range[0]
-                || vp.x + vp.width > device.physical_device().properties().viewport_bounds_range[1]
-                || vp.y < device.physical_device().properties().viewport_bounds_range[0]
-                || vp.y + vp.height > device.physical_device().properties().viewport_bounds_range[1]
-            {
-                return Err(GraphicsPipelineCreationError::ViewportBoundsExceeded);
-            }
-        }
-
-        let viewport_state = Some(ash::vk::PipelineViewportStateCreateInfo {
-            flags: ash::vk::PipelineViewportStateCreateFlags::empty(),
-            viewport_count: vp_num,
-            p_viewports: if vp_vp.is_empty() {
-                ptr::null()
-            } else {
-                vp_vp.as_ptr()
-            }, // validation layer crashes if you just pass the pointer
-            scissor_count: vp_num,
-            p_scissors: if vp_sc.is_empty() {
-                ptr::null()
-            } else {
-                vp_sc.as_ptr()
-            }, // validation layer crashes if you just pass the pointer
-            ..Default::default()
-        });
-
-        if let Some(line_width) = self.raster.line_width {
-            if line_width != 1.0 && !device.enabled_features().wide_lines {
-                return Err(GraphicsPipelineCreationError::WideLinesFeatureNotEnabled);
-            }
+        // Input assembly state
+        let input_assembly_state = if self.vertex_shader.is_some() {
+            Some(
+                self.input_assembly_state
+                    .to_vulkan(&device, &mut dynamic_state_modes)?,
+            )
         } else {
-            dynamic_state_modes.insert(DynamicState::LineWidth, DynamicStateMode::Dynamic);
-        }
-
-        let (db_enable, db_const, db_clamp, db_slope) = match self.raster.depth_bias {
-            DepthBiasControl::Dynamic => {
-                dynamic_state_modes.insert(DynamicState::DepthBias, DynamicStateMode::Dynamic);
-                (ash::vk::TRUE, 0.0, 0.0, 0.0)
-            }
-            DepthBiasControl::Disabled => (ash::vk::FALSE, 0.0, 0.0, 0.0),
-            DepthBiasControl::Static(bias) => {
-                if bias.clamp != 0.0 && !device.enabled_features().depth_bias_clamp {
-                    return Err(GraphicsPipelineCreationError::DepthBiasClampFeatureNotEnabled);
-                }
-
-                (
-                    ash::vk::TRUE,
-                    bias.constant_factor,
-                    bias.clamp,
-                    bias.slope_factor,
-                )
-            }
+            None
         };
 
-        if self.raster.depth_clamp && !device.enabled_features().depth_clamp {
-            return Err(GraphicsPipelineCreationError::DepthClampFeatureNotEnabled);
-        }
+        // Tessellation state
+        let tessellation_state = if self.tessellation_shaders.is_some() {
+            Some(self.tessellation_state.to_vulkan(
+                &device,
+                &mut dynamic_state_modes,
+                &self.input_assembly_state,
+            )?)
+        } else {
+            None
+        };
 
-        if self.raster.polygon_mode != PolygonMode::Fill
-            && !device.enabled_features().fill_mode_non_solid
+        // Viewport state
+        let (viewport_count, viewports, scissor_count, scissors) = self
+            .viewport_state
+            .to_vulkan_viewports_scissors(&device, &mut dynamic_state_modes)?;
+        let viewport_state = Some(self.viewport_state.to_vulkan(
+            &device,
+            &mut dynamic_state_modes,
+            viewport_count,
+            &viewports,
+            scissor_count,
+            &scissors,
+        )?);
+
+        // Discard rectangle state
+        let discard_rectangles = self
+            .discard_rectangle_state
+            .to_vulkan_rectangles(&device, &mut dynamic_state_modes)?;
+        let mut discard_rectangle_state = self.discard_rectangle_state.to_vulkan(
+            &device,
+            &mut dynamic_state_modes,
+            &discard_rectangles,
+        )?;
+
+        // Rasterization state
+        let mut rasterization_line_state = self
+            .rasterization_state
+            .to_vulkan_line_state(&device, &mut dynamic_state_modes)?;
+        let rasterization_state = Some(self.rasterization_state.to_vulkan(
+            &device,
+            &mut dynamic_state_modes,
+            rasterization_line_state.as_mut(),
+        )?);
+
+        // Fragment shader state
+        let has_fragment_shader_state =
+            self.rasterization_state.rasterizer_discard_enable != StateMode::Fixed(true);
+
+        // Multisample state
+        let multisample_state = if has_fragment_shader_state {
+            Some(
+                self.multisample_state
+                    .to_vulkan(&device, &mut dynamic_state_modes, &subpass)?,
+            )
+        } else {
+            None
+        };
+
+        // Depth/stencil state
+        let depth_stencil_state = if has_fragment_shader_state
+            && subpass.subpass_desc().depth_stencil.is_some()
         {
-            return Err(GraphicsPipelineCreationError::FillModeNonSolidFeatureNotEnabled);
-        }
-
-        let rasterization_state = Some(ash::vk::PipelineRasterizationStateCreateInfo {
-            flags: ash::vk::PipelineRasterizationStateCreateFlags::empty(),
-            depth_clamp_enable: if self.raster.depth_clamp {
-                ash::vk::TRUE
-            } else {
-                ash::vk::FALSE
-            },
-            rasterizer_discard_enable: if self.raster.rasterizer_discard {
-                ash::vk::TRUE
-            } else {
-                ash::vk::FALSE
-            },
-            polygon_mode: self.raster.polygon_mode.into(),
-            cull_mode: self.raster.cull_mode.into(),
-            front_face: self.raster.front_face.into(),
-            depth_bias_enable: db_enable,
-            depth_bias_constant_factor: db_const,
-            depth_bias_clamp: db_clamp,
-            depth_bias_slope_factor: db_slope,
-            line_width: self.raster.line_width.unwrap_or(1.0),
-            ..Default::default()
-        });
-
-        self.multisample.rasterization_samples = self
-            .subpass
-            .as_ref()
-            .unwrap()
-            .num_samples()
-            .unwrap_or(SampleCount::Sample1)
-            .into();
-        if self.multisample.sample_shading_enable != ash::vk::FALSE {
-            debug_assert!(
-                self.multisample.min_sample_shading >= 0.0
-                    && self.multisample.min_sample_shading <= 1.0
-            );
-            if !device.enabled_features().sample_rate_shading {
-                return Err(GraphicsPipelineCreationError::SampleRateShadingFeatureNotEnabled);
-            }
-        }
-        if self.multisample.alpha_to_one_enable != ash::vk::FALSE {
-            if !device.enabled_features().alpha_to_one {
-                return Err(GraphicsPipelineCreationError::AlphaToOneFeatureNotEnabled);
-            }
-        }
-
-        let multisample_state = Some(self.multisample);
-
-        let depth_stencil_state = {
-            let db = match self.depth_stencil.depth_bounds_test {
-                DepthBounds::Disabled => (ash::vk::FALSE, 0.0, 0.0),
-                DepthBounds::Fixed(ref range) => {
-                    if !device.enabled_features().depth_bounds {
-                        return Err(GraphicsPipelineCreationError::DepthBoundsFeatureNotEnabled);
-                    }
-
-                    (ash::vk::TRUE, range.start, range.end)
-                }
-                DepthBounds::Dynamic => {
-                    if !device.enabled_features().depth_bounds {
-                        return Err(GraphicsPipelineCreationError::DepthBoundsFeatureNotEnabled);
-                    }
-
-                    dynamic_state_modes
-                        .insert(DynamicState::DepthBounds, DynamicStateMode::Dynamic);
-
-                    (ash::vk::TRUE, 0.0, 1.0)
-                }
-            };
-
-            match (
-                self.depth_stencil.stencil_front.compare_mask,
-                self.depth_stencil.stencil_back.compare_mask,
-            ) {
-                (Some(_), Some(_)) => (),
-                (None, None) => {
-                    dynamic_state_modes
-                        .insert(DynamicState::StencilCompareMask, DynamicStateMode::Dynamic);
-                }
-                _ => return Err(GraphicsPipelineCreationError::WrongStencilState),
-            };
-
-            match (
-                self.depth_stencil.stencil_front.write_mask,
-                self.depth_stencil.stencil_back.write_mask,
-            ) {
-                (Some(_), Some(_)) => (),
-                (None, None) => {
-                    dynamic_state_modes
-                        .insert(DynamicState::StencilWriteMask, DynamicStateMode::Dynamic);
-                }
-                _ => return Err(GraphicsPipelineCreationError::WrongStencilState),
-            };
-
-            match (
-                self.depth_stencil.stencil_front.reference,
-                self.depth_stencil.stencil_back.reference,
-            ) {
-                (Some(_), Some(_)) => (),
-                (None, None) => {
-                    dynamic_state_modes
-                        .insert(DynamicState::StencilReference, DynamicStateMode::Dynamic);
-                }
-                _ => return Err(GraphicsPipelineCreationError::WrongStencilState),
-            };
-
-            if self.depth_stencil.depth_write
-                && !self.subpass.as_ref().unwrap().has_writable_depth()
-            {
-                return Err(GraphicsPipelineCreationError::NoDepthAttachment);
-            }
-
-            if self.depth_stencil.depth_compare != CompareOp::Always
-                && !self.subpass.as_ref().unwrap().has_depth()
-            {
-                return Err(GraphicsPipelineCreationError::NoDepthAttachment);
-            }
-
-            if (!self.depth_stencil.stencil_front.always_keep()
-                || !self.depth_stencil.stencil_back.always_keep())
-                && !self.subpass.as_ref().unwrap().has_stencil()
-            {
-                return Err(GraphicsPipelineCreationError::NoStencilAttachment);
-            }
-
-            // FIXME: stencil writability
-
-            Some(ash::vk::PipelineDepthStencilStateCreateInfo {
-                flags: ash::vk::PipelineDepthStencilStateCreateFlags::empty(),
-                depth_test_enable: if !self.depth_stencil.depth_write
-                    && self.depth_stencil.depth_compare == CompareOp::Always
-                {
-                    ash::vk::FALSE
-                } else {
-                    ash::vk::TRUE
-                },
-                depth_write_enable: if self.depth_stencil.depth_write {
-                    ash::vk::TRUE
-                } else {
-                    ash::vk::FALSE
-                },
-                depth_compare_op: self.depth_stencil.depth_compare.into(),
-                depth_bounds_test_enable: db.0,
-                stencil_test_enable: if self.depth_stencil.stencil_front.always_keep()
-                    && self.depth_stencil.stencil_back.always_keep()
-                {
-                    ash::vk::FALSE
-                } else {
-                    ash::vk::TRUE
-                },
-                front: ash::vk::StencilOpState {
-                    fail_op: self.depth_stencil.stencil_front.fail_op.into(),
-                    pass_op: self.depth_stencil.stencil_front.pass_op.into(),
-                    depth_fail_op: self.depth_stencil.stencil_front.depth_fail_op.into(),
-                    compare_op: self.depth_stencil.stencil_front.compare.into(),
-                    compare_mask: self
-                        .depth_stencil
-                        .stencil_front
-                        .compare_mask
-                        .unwrap_or(u32::MAX),
-                    write_mask: self
-                        .depth_stencil
-                        .stencil_front
-                        .write_mask
-                        .unwrap_or(u32::MAX),
-                    reference: self.depth_stencil.stencil_front.reference.unwrap_or(0),
-                },
-                back: ash::vk::StencilOpState {
-                    fail_op: self.depth_stencil.stencil_back.fail_op.into(),
-                    pass_op: self.depth_stencil.stencil_back.pass_op.into(),
-                    depth_fail_op: self.depth_stencil.stencil_back.depth_fail_op.into(),
-                    compare_op: self.depth_stencil.stencil_back.compare.into(),
-                    compare_mask: self
-                        .depth_stencil
-                        .stencil_back
-                        .compare_mask
-                        .unwrap_or(u32::MAX),
-                    write_mask: self
-                        .depth_stencil
-                        .stencil_back
-                        .write_mask
-                        .unwrap_or(u32::MAX),
-                    reference: self.depth_stencil.stencil_back.reference.unwrap_or(0),
-                },
-                min_depth_bounds: db.1,
-                max_depth_bounds: db.2,
-                ..Default::default()
-            })
+            Some(
+                self.depth_stencil_state
+                    .to_vulkan(&device, &mut dynamic_state_modes, &subpass)?,
+            )
+        } else {
+            None
         };
 
-        let blend_atch: SmallVec<[ash::vk::PipelineColorBlendAttachmentState; 8]> = {
-            let num_atch = self.subpass.as_ref().unwrap().num_color_attachments();
-
-            match self.blend.attachments {
-                AttachmentsBlend::Collective(blend) => {
-                    (0..num_atch).map(|_| blend.clone().into()).collect()
-                }
-                AttachmentsBlend::Individual(blend) => {
-                    if blend.len() != num_atch as usize {
-                        return Err(
-                            GraphicsPipelineCreationError::MismatchBlendingAttachmentsCount,
-                        );
-                    }
-
-                    if !device.enabled_features().independent_blend {
-                        return Err(
-                            GraphicsPipelineCreationError::IndependentBlendFeatureNotEnabled,
-                        );
-                    }
-
-                    blend.iter().map(|b| b.clone().into()).collect()
-                }
-            }
+        // Color blend state
+        let (color_blend_attachments, color_write_enables) = self
+            .color_blend_state
+            .to_vulkan_attachments(&device, &mut dynamic_state_modes, &subpass)?;
+        let mut color_write = self.color_blend_state.to_vulkan_color_write(
+            &device,
+            &mut dynamic_state_modes,
+            &color_write_enables,
+        )?;
+        let color_blend_state = if has_fragment_shader_state {
+            Some(self.color_blend_state.to_vulkan(
+                &device,
+                &mut dynamic_state_modes,
+                &color_blend_attachments,
+                color_write.as_mut(),
+            )?)
+        } else {
+            None
         };
-
-        let color_blend_state = Some(ash::vk::PipelineColorBlendStateCreateInfo {
-            flags: ash::vk::PipelineColorBlendStateCreateFlags::empty(),
-            logic_op_enable: if self.blend.logic_op.is_some() {
-                if !device.enabled_features().logic_op {
-                    return Err(GraphicsPipelineCreationError::LogicOpFeatureNotEnabled);
-                }
-                ash::vk::TRUE
-            } else {
-                ash::vk::FALSE
-            },
-            logic_op: self.blend.logic_op.unwrap_or(Default::default()).into(),
-            attachment_count: blend_atch.len() as u32,
-            p_attachments: blend_atch.as_ptr(),
-            blend_constants: if let Some(c) = self.blend.blend_constants {
-                c
-            } else {
-                dynamic_state_modes.insert(DynamicState::BlendConstants, DynamicStateMode::Dynamic);
-                [0.0, 0.0, 0.0, 0.0]
-            },
-            ..Default::default()
-        });
 
         // Dynamic state
         let dynamic_state_list: Vec<ash::vk::DynamicState> = dynamic_state_modes
             .iter()
-            .filter_map(|(&state, &mode)| {
-                if matches!(mode, DynamicStateMode::Dynamic) {
-                    Some(state.into())
-                } else {
-                    None
-                }
-            })
+            .filter(|(_, d)| **d)
+            .map(|(&state, _)| state.into())
             .collect();
 
         let dynamic_state = if !dynamic_state_list.is_empty() {
@@ -1109,103 +819,6 @@ where
             None
         };
 
-        // Set any remaining states to fixed, if the corresponding state is enabled.
-        if vertex_input_state.is_some() {
-            dynamic_state_modes
-                .entry(DynamicState::VertexInput)
-                .or_insert(DynamicStateMode::Fixed);
-        }
-
-        if input_assembly_state.is_some() {
-            dynamic_state_modes
-                .entry(DynamicState::PrimitiveTopology)
-                .or_insert(DynamicStateMode::Fixed);
-            dynamic_state_modes
-                .entry(DynamicState::PrimitiveRestartEnable)
-                .or_insert(DynamicStateMode::Fixed);
-        }
-
-        if tessellation_state.is_some() {
-            dynamic_state_modes
-                .entry(DynamicState::PatchControlPoints)
-                .or_insert(DynamicStateMode::Fixed);
-        }
-
-        if viewport_state.is_some() {
-            dynamic_state_modes
-                .entry(DynamicState::Viewport)
-                .or_insert(DynamicStateMode::Fixed);
-            dynamic_state_modes
-                .entry(DynamicState::Scissor)
-                .or_insert(DynamicStateMode::Fixed);
-            dynamic_state_modes
-                .entry(DynamicState::ViewportWithCount)
-                .or_insert(DynamicStateMode::Fixed);
-            dynamic_state_modes
-                .entry(DynamicState::ScissorWithCount)
-                .or_insert(DynamicStateMode::Fixed);
-        }
-
-        if rasterization_state.is_some() {
-            dynamic_state_modes
-                .entry(DynamicState::RasterizerDiscardEnable)
-                .or_insert(DynamicStateMode::Fixed);
-            dynamic_state_modes
-                .entry(DynamicState::CullMode)
-                .or_insert(DynamicStateMode::Fixed);
-            dynamic_state_modes
-                .entry(DynamicState::FrontFace)
-                .or_insert(DynamicStateMode::Fixed);
-            dynamic_state_modes
-                .entry(DynamicState::DepthBiasEnable)
-                .or_insert(DynamicStateMode::Fixed);
-            dynamic_state_modes
-                .entry(DynamicState::DepthBias)
-                .or_insert(DynamicStateMode::Fixed);
-            dynamic_state_modes
-                .entry(DynamicState::LineWidth)
-                .or_insert(DynamicStateMode::Fixed);
-        }
-
-        if depth_stencil_state.is_some() {
-            dynamic_state_modes
-                .entry(DynamicState::DepthTestEnable)
-                .or_insert(DynamicStateMode::Fixed);
-            dynamic_state_modes
-                .entry(DynamicState::DepthWriteEnable)
-                .or_insert(DynamicStateMode::Fixed);
-            dynamic_state_modes
-                .entry(DynamicState::DepthCompareOp)
-                .or_insert(DynamicStateMode::Fixed);
-            dynamic_state_modes
-                .entry(DynamicState::DepthBoundsTestEnable)
-                .or_insert(DynamicStateMode::Fixed);
-            dynamic_state_modes
-                .entry(DynamicState::StencilTestEnable)
-                .or_insert(DynamicStateMode::Fixed);
-            dynamic_state_modes
-                .entry(DynamicState::StencilCompareMask)
-                .or_insert(DynamicStateMode::Fixed);
-            dynamic_state_modes
-                .entry(DynamicState::StencilWriteMask)
-                .or_insert(DynamicStateMode::Fixed);
-            dynamic_state_modes
-                .entry(DynamicState::StencilReference)
-                .or_insert(DynamicStateMode::Fixed);
-            dynamic_state_modes
-                .entry(DynamicState::DepthBounds)
-                .or_insert(DynamicStateMode::Fixed);
-        }
-
-        if color_blend_state.is_some() {
-            dynamic_state_modes
-                .entry(DynamicState::LogicOp)
-                .or_insert(DynamicStateMode::Fixed);
-            dynamic_state_modes
-                .entry(DynamicState::BlendConstants)
-                .or_insert(DynamicStateMode::Fixed);
-        }
-
         // Dynamic states not handled yet:
         // - ViewportWScaling (VkPipelineViewportWScalingStateCreateInfoNV)
         // - DiscardRectangle (VkPipelineDiscardRectangleStateCreateInfoEXT)
@@ -1214,18 +827,8 @@ where
         // - ViewportCoarseSampleOrder (VkPipelineViewportCoarseSampleOrderStateCreateInfoNV)
         // - ExclusiveScissor (VkPipelineViewportExclusiveScissorStateCreateInfoNV)
         // - FragmentShadingRate (VkPipelineFragmentShadingRateStateCreateInfoKHR)
-        // - LineStipple (VkPipelineRasterizationLineStateCreateInfoEXT)
-        // - ColorWriteEnable (VkPipelineColorWriteCreateInfoEXT)
 
-        if let Some(multiview) = self
-            .subpass
-            .as_ref()
-            .unwrap()
-            .render_pass()
-            .desc()
-            .multiview()
-            .as_ref()
-        {
+        if let Some(multiview) = subpass.render_pass().desc().multiview().as_ref() {
             if multiview.used_layer_count() > 0 {
                 if self.geometry_shader.is_some()
                     && !device
@@ -1250,7 +853,7 @@ where
         }
 
         let pipeline = unsafe {
-            let infos = ash::vk::GraphicsPipelineCreateInfo {
+            let mut create_info = ash::vk::GraphicsPipelineCreateInfo {
                 flags: ash::vk::PipelineCreateFlags::empty(), // TODO: some flags are available but none are critical
                 stage_count: stages.len() as u32,
                 p_stages: stages.as_ptr(),
@@ -1291,20 +894,19 @@ where
                     .map(|s| s as *const _)
                     .unwrap_or(ptr::null()),
                 layout: pipeline_layout.internal_object(),
-                render_pass: self
-                    .subpass
-                    .as_ref()
-                    .unwrap()
-                    .render_pass()
-                    .inner()
-                    .internal_object(),
-                subpass: self.subpass.as_ref().unwrap().index(),
+                render_pass: subpass.render_pass().inner().internal_object(),
+                subpass: subpass.index(),
                 base_pipeline_handle: ash::vk::Pipeline::null(), // TODO:
                 base_pipeline_index: -1,                         // TODO:
                 ..Default::default()
             };
 
-            let cache_handle = match self.cache {
+            if let Some(discard_rectangle_state) = discard_rectangle_state.as_mut() {
+                discard_rectangle_state.p_next = create_info.p_next;
+                create_info.p_next = discard_rectangle_state as *const _ as *const _;
+            }
+
+            let cache_handle = match self.cache.as_ref() {
                 Some(cache) => cache.internal_object(),
                 None => ash::vk::PipelineCache::null(),
             };
@@ -1314,7 +916,7 @@ where
                 device.internal_object(),
                 cache_handle,
                 1,
-                &infos,
+                &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
             ))?;
@@ -1334,10 +936,43 @@ where
                 pipeline,
             },
             layout: pipeline_layout,
-            subpass: self.subpass.take().unwrap(),
-            vertex_input,
+            subpass,
+            shaders,
+
+            vertex_input, // Can be None if there's a mesh shader, but we don't support that yet
+            input_assembly_state: self.input_assembly_state, // Can be None if there's a mesh shader, but we don't support that yet
+            tessellation_state: if tessellation_state.is_some() {
+                Some(self.tessellation_state)
+            } else {
+                None
+            },
+            viewport_state: if viewport_state.is_some() {
+                Some(self.viewport_state)
+            } else {
+                None
+            },
+            discard_rectangle_state: if discard_rectangle_state.is_some() {
+                Some(self.discard_rectangle_state)
+            } else {
+                None
+            },
+            rasterization_state: self.rasterization_state,
+            multisample_state: if multisample_state.is_some() {
+                Some(self.multisample_state)
+            } else {
+                None
+            },
+            depth_stencil_state: if depth_stencil_state.is_some() {
+                Some(self.depth_stencil_state)
+            } else {
+                None
+            },
+            color_blend_state: if color_blend_state.is_some() {
+                Some(self.color_blend_state)
+            } else {
+                None
+            },
             dynamic_state: dynamic_state_modes,
-            num_viewports: self.viewport.as_ref().unwrap().num_viewports(),
         })
     }
 
@@ -1349,6 +984,148 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
 {
     // TODO: add pipeline derivate system
 
+    /// Sets the vertex shader to use.
+    // TODO: correct specialization constants
+    #[inline]
+    pub fn vertex_shader<'vs2, Vss2>(
+        self,
+        shader: GraphicsEntryPoint<'vs2>,
+        specialization_constants: Vss2,
+    ) -> GraphicsPipelineBuilder<'vs2, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss2, Tcss, Tess, Gss, Fss>
+    where
+        Vss2: SpecializationConstants,
+    {
+        GraphicsPipelineBuilder {
+            subpass: self.subpass,
+            cache: self.cache,
+
+            vertex_shader: Some((shader, specialization_constants)),
+            tessellation_shaders: self.tessellation_shaders,
+            geometry_shader: self.geometry_shader,
+            fragment_shader: self.fragment_shader,
+
+            vertex_definition: self.vertex_definition,
+            input_assembly_state: self.input_assembly_state,
+            tessellation_state: self.tessellation_state,
+            viewport_state: self.viewport_state,
+            discard_rectangle_state: self.discard_rectangle_state,
+            rasterization_state: self.rasterization_state,
+            multisample_state: self.multisample_state,
+            depth_stencil_state: self.depth_stencil_state,
+            color_blend_state: self.color_blend_state,
+        }
+    }
+
+    /// Sets the tessellation shaders to use.
+    // TODO: correct specialization constants
+    #[inline]
+    pub fn tessellation_shaders<'tcs2, 'tes2, Tcss2, Tess2>(
+        self,
+        tessellation_control_shader: GraphicsEntryPoint<'tcs2>,
+        tessellation_control_shader_spec_constants: Tcss2,
+        tessellation_evaluation_shader: GraphicsEntryPoint<'tes2>,
+        tessellation_evaluation_shader_spec_constants: Tess2,
+    ) -> GraphicsPipelineBuilder<'vs, 'tcs2, 'tes2, 'gs, 'fs, Vdef, Vss, Tcss2, Tess2, Gss, Fss>
+    where
+        Tcss2: SpecializationConstants,
+        Tess2: SpecializationConstants,
+    {
+        GraphicsPipelineBuilder {
+            subpass: self.subpass,
+            cache: self.cache,
+
+            vertex_shader: self.vertex_shader,
+            tessellation_shaders: Some(TessellationShaders {
+                tessellation_control_shader: (
+                    tessellation_control_shader,
+                    tessellation_control_shader_spec_constants,
+                ),
+                tessellation_evaluation_shader: (
+                    tessellation_evaluation_shader,
+                    tessellation_evaluation_shader_spec_constants,
+                ),
+            }),
+            geometry_shader: self.geometry_shader,
+            fragment_shader: self.fragment_shader,
+
+            vertex_definition: self.vertex_definition,
+            input_assembly_state: self.input_assembly_state,
+            tessellation_state: self.tessellation_state,
+            viewport_state: self.viewport_state,
+            discard_rectangle_state: self.discard_rectangle_state,
+            rasterization_state: self.rasterization_state,
+            multisample_state: self.multisample_state,
+            depth_stencil_state: self.depth_stencil_state,
+            color_blend_state: self.color_blend_state,
+        }
+    }
+
+    /// Sets the geometry shader to use.
+    // TODO: correct specialization constants
+    #[inline]
+    pub fn geometry_shader<'gs2, Gss2>(
+        self,
+        shader: GraphicsEntryPoint<'gs2>,
+        specialization_constants: Gss2,
+    ) -> GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs2, 'fs, Vdef, Vss, Tcss, Tess, Gss2, Fss>
+    where
+        Gss2: SpecializationConstants,
+    {
+        GraphicsPipelineBuilder {
+            subpass: self.subpass,
+            cache: self.cache,
+
+            vertex_shader: self.vertex_shader,
+            tessellation_shaders: self.tessellation_shaders,
+            geometry_shader: Some((shader, specialization_constants)),
+            fragment_shader: self.fragment_shader,
+
+            vertex_definition: self.vertex_definition,
+            input_assembly_state: self.input_assembly_state,
+            tessellation_state: self.tessellation_state,
+            viewport_state: self.viewport_state,
+            discard_rectangle_state: self.discard_rectangle_state,
+            rasterization_state: self.rasterization_state,
+            multisample_state: self.multisample_state,
+            depth_stencil_state: self.depth_stencil_state,
+            color_blend_state: self.color_blend_state,
+        }
+    }
+
+    /// Sets the fragment shader to use.
+    ///
+    /// The fragment shader is run once for each pixel that is covered by each primitive.
+    // TODO: correct specialization constants
+    #[inline]
+    pub fn fragment_shader<'fs2, Fss2>(
+        self,
+        shader: GraphicsEntryPoint<'fs2>,
+        specialization_constants: Fss2,
+    ) -> GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs2, Vdef, Vss, Tcss, Tess, Gss, Fss2>
+    where
+        Fss2: SpecializationConstants,
+    {
+        GraphicsPipelineBuilder {
+            subpass: self.subpass,
+            cache: self.cache,
+
+            vertex_shader: self.vertex_shader,
+            tessellation_shaders: self.tessellation_shaders,
+            geometry_shader: self.geometry_shader,
+            fragment_shader: Some((shader, specialization_constants)),
+
+            vertex_definition: self.vertex_definition,
+            input_assembly_state: self.input_assembly_state,
+            tessellation_state: self.tessellation_state,
+            viewport_state: self.viewport_state,
+            discard_rectangle_state: self.discard_rectangle_state,
+            rasterization_state: self.rasterization_state,
+            multisample_state: self.multisample_state,
+            depth_stencil_state: self.depth_stencil_state,
+            color_blend_state: self.color_blend_state,
+        }
+    }
+
     /// Sets the vertex input.
     #[inline]
     pub fn vertex_input<T>(
@@ -1356,22 +1133,23 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
         vertex_definition: T,
     ) -> GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs, T, Vss, Tcss, Tess, Gss, Fss> {
         GraphicsPipelineBuilder {
+            subpass: self.subpass,
+            cache: self.cache,
+
             vertex_shader: self.vertex_shader,
             tessellation_shaders: self.tessellation_shaders,
             geometry_shader: self.geometry_shader,
             fragment_shader: self.fragment_shader,
 
             vertex_definition,
-            input_assembly: self.input_assembly,
-            input_assembly_topology: self.input_assembly_topology,
-            viewport: self.viewport,
-            raster: self.raster,
-            multisample: self.multisample,
-            depth_stencil: self.depth_stencil,
-            blend: self.blend,
-
-            subpass: self.subpass,
-            cache: self.cache,
+            input_assembly_state: self.input_assembly_state,
+            tessellation_state: self.tessellation_state,
+            viewport_state: self.viewport_state,
+            discard_rectangle_state: self.discard_rectangle_state,
+            rasterization_state: self.rasterization_state,
+            multisample_state: self.multisample_state,
+            depth_stencil_state: self.depth_stencil_state,
+            color_blend_state: self.color_blend_state,
         }
     }
 
@@ -1398,54 +1176,111 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
         self.vertex_input(BuffersDefinition::new().vertex::<V>())
     }
 
-    /// Sets the vertex shader to use.
-    // TODO: correct specialization constants
+    /// Sets the input assembly state.
+    ///
+    /// The default value is [`InputAssemblyState::default()`].
     #[inline]
-    pub fn vertex_shader<'vs2, Vss2>(
-        self,
-        shader: GraphicsEntryPoint<'vs2>,
-        specialization_constants: Vss2,
-    ) -> GraphicsPipelineBuilder<'vs2, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss2, Tcss, Tess, Gss, Fss>
-    where
-        Vss2: SpecializationConstants,
-    {
-        GraphicsPipelineBuilder {
-            vertex_shader: Some((shader, specialization_constants)),
-            tessellation_shaders: self.tessellation_shaders,
-            geometry_shader: self.geometry_shader,
-            fragment_shader: self.fragment_shader,
-
-            vertex_definition: self.vertex_definition,
-            input_assembly: self.input_assembly,
-            input_assembly_topology: self.input_assembly_topology,
-            viewport: self.viewport,
-            raster: self.raster,
-            multisample: self.multisample,
-            depth_stencil: self.depth_stencil,
-            blend: self.blend,
-
-            subpass: self.subpass,
-            cache: self.cache,
-        }
+    pub fn input_assembly_state(mut self, input_assembly_state: InputAssemblyState) -> Self {
+        self.input_assembly_state = input_assembly_state;
+        self
     }
 
-    /// Sets whether primitive restart if enabled.
+    /// Sets the tessellation state. This is required if the pipeline contains tessellation shaders,
+    /// and ignored otherwise.
+    ///
+    /// The default value is [`TessellationState::default()`].
+    #[inline]
+    pub fn tessellation_state(mut self, tessellation_state: TessellationState) -> Self {
+        self.tessellation_state = tessellation_state;
+        self
+    }
+
+    /// Sets the viewport state.
+    ///
+    /// The default value is [`ViewportState::default()`].
+    #[inline]
+    pub fn viewport_state(mut self, viewport_state: ViewportState) -> Self {
+        self.viewport_state = viewport_state;
+        self
+    }
+
+    /// Sets the discard rectangle state.
+    ///
+    /// The default value is [`DiscardRectangleState::default()`].
+    #[inline]
+    pub fn discard_rectangle_state(
+        mut self,
+        discard_rectangle_state: DiscardRectangleState,
+    ) -> Self {
+        self.discard_rectangle_state = discard_rectangle_state;
+        self
+    }
+
+    /// Sets the rasterization state.
+    ///
+    /// The default value is [`RasterizationState::default()`].
+    #[inline]
+    pub fn rasterization_state(mut self, rasterization_state: RasterizationState) -> Self {
+        self.rasterization_state = rasterization_state;
+        self
+    }
+
+    /// Sets the multisample state.
+    ///
+    /// The default value is [`MultisampleState::default()`].
+    #[inline]
+    pub fn multisample_state(mut self, multisample_state: MultisampleState) -> Self {
+        self.multisample_state = multisample_state;
+        self
+    }
+
+    /// Sets the depth/stencil state.
+    ///
+    /// The default value is [`DepthStencilState::default()`].
+    #[inline]
+    pub fn depth_stencil_state(mut self, depth_stencil_state: DepthStencilState) -> Self {
+        self.depth_stencil_state = depth_stencil_state;
+        self
+    }
+
+    /// Sets the color blend state.
+    ///
+    /// The default value is [`ColorBlendState::default()`].
+    #[inline]
+    pub fn color_blend_state(mut self, color_blend_state: ColorBlendState) -> Self {
+        self.color_blend_state = color_blend_state;
+        self
+    }
+
+    /// Sets the tessellation shaders stage as disabled. This is the default.
+    #[deprecated(since = "0.27")]
+    #[inline]
+    pub fn tessellation_shaders_disabled(mut self) -> Self {
+        self.tessellation_shaders = None;
+        self
+    }
+
+    /// Sets the geometry shader stage as disabled. This is the default.
+    #[deprecated(since = "0.27")]
+    #[inline]
+    pub fn geometry_shader_disabled(mut self) -> Self {
+        self.geometry_shader = None;
+        self
+    }
+
+    /// Sets whether primitive restart is enabled.
+    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn primitive_restart(mut self, enabled: bool) -> Self {
-        self.input_assembly.primitive_restart_enable = if enabled {
-            ash::vk::TRUE
-        } else {
-            ash::vk::FALSE
-        };
-
+        self.input_assembly_state.primitive_restart_enable = StateMode::Fixed(enabled);
         self
     }
 
     /// Sets the topology of the primitives that are expected by the pipeline.
+    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn primitive_topology(mut self, topology: PrimitiveTopology) -> Self {
-        self.input_assembly_topology = topology;
-        self.input_assembly.topology = topology.into();
+        self.input_assembly_state.topology = PartialStateMode::Fixed(topology);
         self
     }
 
@@ -1453,6 +1288,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is equivalent to
     /// > `self.primitive_topology(PrimitiveTopology::PointList)`.
+    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn point_list(self) -> Self {
         self.primitive_topology(PrimitiveTopology::PointList)
@@ -1462,6 +1298,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is equivalent to
     /// > `self.primitive_topology(PrimitiveTopology::LineList)`.
+    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn line_list(self) -> Self {
         self.primitive_topology(PrimitiveTopology::LineList)
@@ -1471,6 +1308,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is equivalent to
     /// > `self.primitive_topology(PrimitiveTopology::LineStrip)`.
+    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn line_strip(self) -> Self {
         self.primitive_topology(PrimitiveTopology::LineStrip)
@@ -1480,6 +1318,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is equivalent to
     /// > `self.primitive_topology(PrimitiveTopology::TriangleList)`.
+    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn triangle_list(self) -> Self {
         self.primitive_topology(PrimitiveTopology::TriangleList)
@@ -1489,6 +1328,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is equivalent to
     /// > `self.primitive_topology(PrimitiveTopology::TriangleStrip)`.
+    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn triangle_strip(self) -> Self {
         self.primitive_topology(PrimitiveTopology::TriangleStrip)
@@ -1498,6 +1338,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is equivalent to
     /// > `self.primitive_topology(PrimitiveTopology::TriangleFan)`.
+    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn triangle_fan(self) -> Self {
         self.primitive_topology(PrimitiveTopology::TriangleFan)
@@ -1507,6 +1348,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is equivalent to
     /// > `self.primitive_topology(PrimitiveTopology::LineListWithAdjacency)`.
+    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn line_list_with_adjacency(self) -> Self {
         self.primitive_topology(PrimitiveTopology::LineListWithAdjacency)
@@ -1516,6 +1358,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is equivalent to
     /// > `self.primitive_topology(PrimitiveTopology::LineStripWithAdjacency)`.
+    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn line_strip_with_adjacency(self) -> Self {
         self.primitive_topology(PrimitiveTopology::LineStripWithAdjacency)
@@ -1525,6 +1368,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is equivalent to
     /// > `self.primitive_topology(PrimitiveTopology::TriangleListWithAdjacency)`.
+    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn triangle_list_with_adjacency(self) -> Self {
         self.primitive_topology(PrimitiveTopology::TriangleListWithAdjacency)
@@ -1534,6 +1378,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is equivalent to
     /// > `self.primitive_topology(PrimitiveTopology::TriangleStripWithAdjacency)`.
+    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn triangle_strip_with_adjacency(self) -> Self {
         self.primitive_topology(PrimitiveTopology::TriangleStripWithAdjacency)
@@ -1543,102 +1388,16 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     /// with a tessellation shader.
     ///
     /// > **Note**: This is equivalent to
-    /// > `self.primitive_topology(PrimitiveTopology::PatchList { vertices_per_patch })`.
+    /// > `self.primitive_topology(PrimitiveTopology::PatchList)`.
+    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
     #[inline]
-    pub fn patch_list(self, vertices_per_patch: u32) -> Self {
-        self.primitive_topology(PrimitiveTopology::PatchList { vertices_per_patch })
-    }
-
-    /// Sets the tessellation shaders to use.
-    // TODO: correct specialization constants
-    #[inline]
-    pub fn tessellation_shaders<'tcs2, 'tes2, Tcss2, Tess2>(
-        self,
-        tessellation_control_shader: GraphicsEntryPoint<'tcs2>,
-        tessellation_control_shader_spec_constants: Tcss2,
-        tessellation_evaluation_shader: GraphicsEntryPoint<'tes2>,
-        tessellation_evaluation_shader_spec_constants: Tess2,
-    ) -> GraphicsPipelineBuilder<'vs, 'tcs2, 'tes2, 'gs, 'fs, Vdef, Vss, Tcss2, Tess2, Gss, Fss>
-    where
-        Tcss2: SpecializationConstants,
-        Tess2: SpecializationConstants,
-    {
-        GraphicsPipelineBuilder {
-            vertex_shader: self.vertex_shader,
-            tessellation_shaders: Some(TessellationShaders {
-                tessellation_control_shader: (
-                    tessellation_control_shader,
-                    tessellation_control_shader_spec_constants,
-                ),
-                tessellation_evaluation_shader: (
-                    tessellation_evaluation_shader,
-                    tessellation_evaluation_shader_spec_constants,
-                ),
-            }),
-            geometry_shader: self.geometry_shader,
-            fragment_shader: self.fragment_shader,
-
-            vertex_definition: self.vertex_definition,
-            input_assembly: self.input_assembly,
-            input_assembly_topology: self.input_assembly_topology,
-            viewport: self.viewport,
-            raster: self.raster,
-            multisample: self.multisample,
-            depth_stencil: self.depth_stencil,
-            blend: self.blend,
-
-            subpass: self.subpass,
-            cache: self.cache,
-        }
-    }
-
-    /// Sets the tessellation shaders stage as disabled. This is the default.
-    #[inline]
-    pub fn tessellation_shaders_disabled(mut self) -> Self {
-        self.tessellation_shaders = None;
-        self
-    }
-
-    /// Sets the geometry shader to use.
-    // TODO: correct specialization constants
-    #[inline]
-    pub fn geometry_shader<'gs2, Gss2>(
-        self,
-        shader: GraphicsEntryPoint<'gs2>,
-        specialization_constants: Gss2,
-    ) -> GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs2, 'fs, Vdef, Vss, Tcss, Tess, Gss2, Fss>
-    where
-        Gss2: SpecializationConstants,
-    {
-        GraphicsPipelineBuilder {
-            vertex_shader: self.vertex_shader,
-            tessellation_shaders: self.tessellation_shaders,
-            geometry_shader: Some((shader, specialization_constants)),
-            fragment_shader: self.fragment_shader,
-
-            vertex_definition: self.vertex_definition,
-            input_assembly: self.input_assembly,
-            input_assembly_topology: self.input_assembly_topology,
-            viewport: self.viewport,
-            raster: self.raster,
-            multisample: self.multisample,
-            depth_stencil: self.depth_stencil,
-            blend: self.blend,
-
-            subpass: self.subpass,
-            cache: self.cache,
-        }
-    }
-
-    /// Sets the geometry shader stage as disabled. This is the default.
-    #[inline]
-    pub fn geometry_shader_disabled(mut self) -> Self {
-        self.geometry_shader = None;
-        self
+    pub fn patch_list(self) -> Self {
+        self.primitive_topology(PrimitiveTopology::PatchList)
     }
 
     /// Sets the viewports to some value, and the scissor boxes to boxes that always cover the
     /// whole viewport.
+    #[deprecated(since = "0.27", note = "Use `viewport_state` instead")]
     #[inline]
     pub fn viewports<I>(self, viewports: I) -> Self
     where
@@ -1648,85 +1407,91 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     }
 
     /// Sets the characteristics of viewports and scissor boxes in advance.
+    #[deprecated(since = "0.27", note = "Use `viewport_state` instead")]
     #[inline]
     pub fn viewports_scissors<I>(mut self, viewports: I) -> Self
     where
         I: IntoIterator<Item = (Viewport, Scissor)>,
     {
-        self.viewport = Some(ViewportsState::Fixed {
+        self.viewport_state = ViewportState::Fixed {
             data: viewports.into_iter().collect(),
-        });
+        };
         self
     }
 
     /// Sets the scissor boxes to some values, and viewports to dynamic. The viewports will
     /// need to be set before drawing.
+    #[deprecated(since = "0.27", note = "Use `viewport_state` instead")]
     #[inline]
     pub fn viewports_dynamic_scissors_fixed<I>(mut self, scissors: I) -> Self
     where
         I: IntoIterator<Item = Scissor>,
     {
-        self.viewport = Some(ViewportsState::DynamicViewports {
+        self.viewport_state = ViewportState::FixedScissor {
             scissors: scissors.into_iter().collect(),
-        });
+            viewport_count_dynamic: false,
+        };
         self
     }
 
     /// Sets the viewports to dynamic, and the scissor boxes to boxes that always cover the whole
     /// viewport. The viewports will need to be set before drawing.
+    #[deprecated(since = "0.27", note = "Use `viewport_state` instead")]
     #[inline]
     pub fn viewports_dynamic_scissors_irrelevant(mut self, num: u32) -> Self {
-        self.viewport = Some(ViewportsState::DynamicViewports {
+        self.viewport_state = ViewportState::FixedScissor {
             scissors: (0..num).map(|_| Scissor::irrelevant()).collect(),
-        });
+            viewport_count_dynamic: false,
+        };
         self
     }
 
     /// Sets the viewports to some values, and scissor boxes to dynamic. The scissor boxes will
     /// need to be set before drawing.
+    #[deprecated(since = "0.27", note = "Use `viewport_state` instead")]
     #[inline]
     pub fn viewports_fixed_scissors_dynamic<I>(mut self, viewports: I) -> Self
     where
         I: IntoIterator<Item = Viewport>,
     {
-        self.viewport = Some(ViewportsState::DynamicScissors {
+        self.viewport_state = ViewportState::FixedViewport {
             viewports: viewports.into_iter().collect(),
-        });
+            scissor_count_dynamic: false,
+        };
         self
     }
 
     /// Sets the viewports and scissor boxes to dynamic. They will both need to be set before
     /// drawing.
+    #[deprecated(since = "0.27", note = "Use `viewport_state` instead")]
     #[inline]
-    pub fn viewports_scissors_dynamic(mut self, num: u32) -> Self {
-        self.viewport = Some(ViewportsState::Dynamic { num });
+    pub fn viewports_scissors_dynamic(mut self, count: u32) -> Self {
+        self.viewport_state = ViewportState::Dynamic {
+            count,
+            viewport_count_dynamic: false,
+            scissor_count_dynamic: false,
+        };
         self
     }
 
     /// If true, then the depth value of the vertices will be clamped to the range `[0.0 ; 1.0]`.
     /// If false, fragments whose depth is outside of this range will be discarded before the
     /// fragment shader even runs.
+    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn depth_clamp(mut self, clamp: bool) -> Self {
-        self.raster.depth_clamp = clamp;
+        self.rasterization_state.depth_clamp_enable = clamp;
         self
     }
-
-    // TODO: this won't work correctly
-    /*/// Disables the fragment shader stage.
-    #[inline]
-    pub fn rasterizer_discard(mut self) -> Self {
-        self.rasterization.rasterizer_discard. = true;
-        self
-    }*/
 
     /// Sets the front-facing faces to counter-clockwise faces. This is the default.
     ///
     /// Triangles whose vertices are oriented counter-clockwise on the screen will be considered
     /// as facing their front. Otherwise they will be considered as facing their back.
+    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn front_face_counter_clockwise(mut self) -> Self {
-        self.raster.front_face = FrontFace::CounterClockwise;
+        self.rasterization_state.front_face = StateMode::Fixed(FrontFace::CounterClockwise);
         self
     }
 
@@ -1734,32 +1499,36 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// Triangles whose vertices are oriented clockwise on the screen will be considered
     /// as facing their front. Otherwise they will be considered as facing their back.
+    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn front_face_clockwise(mut self) -> Self {
-        self.raster.front_face = FrontFace::Clockwise;
+        self.rasterization_state.front_face = StateMode::Fixed(FrontFace::Clockwise);
         self
     }
 
     /// Sets backface culling as disabled. This is the default.
+    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn cull_mode_disabled(mut self) -> Self {
-        self.raster.cull_mode = CullMode::None;
+        self.rasterization_state.cull_mode = StateMode::Fixed(CullMode::None);
         self
     }
 
     /// Sets backface culling to front faces. The front faces (as chosen with the `front_face_*`
     /// methods) will be discarded by the GPU when drawing.
+    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn cull_mode_front(mut self) -> Self {
-        self.raster.cull_mode = CullMode::Front;
+        self.rasterization_state.cull_mode = StateMode::Fixed(CullMode::Front);
         self
     }
 
     /// Sets backface culling to back faces. Faces that are not facing the front (as chosen with
     /// the `front_face_*` methods) will be discarded by the GPU when drawing.
+    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn cull_mode_back(mut self) -> Self {
-        self.raster.cull_mode = CullMode::Back;
+        self.rasterization_state.cull_mode = StateMode::Fixed(CullMode::Back);
         self
     }
 
@@ -1767,58 +1536,63 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This option exists for the sake of completeness. It has no known practical
     /// > usage.
+    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn cull_mode_front_and_back(mut self) -> Self {
-        self.raster.cull_mode = CullMode::FrontAndBack;
+        self.rasterization_state.cull_mode = StateMode::Fixed(CullMode::FrontAndBack);
         self
     }
 
     /// Sets the polygon mode to "fill". This is the default.
+    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn polygon_mode_fill(mut self) -> Self {
-        self.raster.polygon_mode = PolygonMode::Fill;
+        self.rasterization_state.polygon_mode = PolygonMode::Fill;
         self
     }
 
     /// Sets the polygon mode to "line". Triangles will each be turned into three lines.
+    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn polygon_mode_line(mut self) -> Self {
-        self.raster.polygon_mode = PolygonMode::Line;
+        self.rasterization_state.polygon_mode = PolygonMode::Line;
         self
     }
 
     /// Sets the polygon mode to "point". Triangles and lines will each be turned into three points.
+    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn polygon_mode_point(mut self) -> Self {
-        self.raster.polygon_mode = PolygonMode::Point;
+        self.rasterization_state.polygon_mode = PolygonMode::Point;
         self
     }
 
     /// Sets the width of the lines, if the GPU needs to draw lines. The default is `1.0`.
+    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn line_width(mut self, value: f32) -> Self {
-        self.raster.line_width = Some(value);
+        self.rasterization_state.line_width = StateMode::Fixed(value);
         self
     }
 
     /// Sets the width of the lines as dynamic, which means that you will need to set this value
     /// when drawing.
+    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn line_width_dynamic(mut self) -> Self {
-        self.raster.line_width = None;
+        self.rasterization_state.line_width = StateMode::Dynamic;
         self
     }
-
-    // TODO: missing DepthBiasControl
 
     /// Disables sample shading. The fragment shader will only be run once per fragment (ie. per
     /// pixel) and not once by sample. The output will then be copied in all of the covered
     /// samples.
     ///
     /// Sample shading is disabled by default.
+    #[deprecated(since = "0.27", note = "Use `multisample_state` instead")]
     #[inline]
     pub fn sample_shading_disabled(mut self) -> Self {
-        self.multisample.sample_shading_enable = ash::vk::FALSE;
+        self.multisample_state.sample_shading = None;
         self
     }
 
@@ -1838,32 +1612,35 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// - Panics if `min_fract` is not between 0.0 and 1.0.
     ///
+    #[deprecated(since = "0.27", note = "Use `multisample_state` instead")]
     #[inline]
     pub fn sample_shading_enabled(mut self, min_fract: f32) -> Self {
         assert!(min_fract >= 0.0 && min_fract <= 1.0);
-        self.multisample.sample_shading_enable = ash::vk::TRUE;
-        self.multisample.min_sample_shading = min_fract;
+        self.multisample_state.sample_shading = Some(min_fract);
         self
     }
 
     // TODO: doc
+    #[deprecated(since = "0.27", note = "Use `multisample_state` instead")]
     pub fn alpha_to_coverage_disabled(mut self) -> Self {
-        self.multisample.alpha_to_coverage_enable = ash::vk::FALSE;
+        self.multisample_state.alpha_to_coverage_enable = false;
         self
     }
 
     // TODO: doc
+    #[deprecated(since = "0.27", note = "Use `multisample_state` instead")]
     pub fn alpha_to_coverage_enabled(mut self) -> Self {
-        self.multisample.alpha_to_coverage_enable = ash::vk::TRUE;
+        self.multisample_state.alpha_to_coverage_enable = true;
         self
     }
 
     /// Disables alpha-to-one.
     ///
     /// Alpha-to-one is disabled by default.
+    #[deprecated(since = "0.27", note = "Use `multisample_state` instead")]
     #[inline]
     pub fn alpha_to_one_disabled(mut self) -> Self {
-        self.multisample.alpha_to_one_enable = ash::vk::FALSE;
+        self.multisample_state.alpha_to_one_enable = false;
         self
     }
 
@@ -1873,61 +1650,28 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     /// Enabling alpha-to-one requires the `alpha_to_one` feature to be enabled on the device.
     ///
     /// Alpha-to-one is disabled by default.
+    #[deprecated(since = "0.27", note = "Use `multisample_state` instead")]
     #[inline]
     pub fn alpha_to_one_enabled(mut self) -> Self {
-        self.multisample.alpha_to_one_enable = ash::vk::TRUE;
+        self.multisample_state.alpha_to_one_enable = true;
         self
     }
 
-    // TODO: rasterizationSamples and pSampleMask
-
-    /// Sets the fragment shader to use.
-    ///
-    /// The fragment shader is run once for each pixel that is covered by each primitive.
-    // TODO: correct specialization constants
+    /// Sets the depth/stencil state.
+    #[deprecated(since = "0.27", note = "Use `depth_stencil_state` instead")]
     #[inline]
-    pub fn fragment_shader<'fs2, Fss2>(
-        self,
-        shader: GraphicsEntryPoint<'fs2>,
-        specialization_constants: Fss2,
-    ) -> GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs2, Vdef, Vss, Tcss, Tess, Gss, Fss2>
-    where
-        Fss2: SpecializationConstants,
-    {
-        GraphicsPipelineBuilder {
-            vertex_shader: self.vertex_shader,
-            tessellation_shaders: self.tessellation_shaders,
-            geometry_shader: self.geometry_shader,
-            fragment_shader: Some((shader, specialization_constants)),
-
-            vertex_definition: self.vertex_definition,
-            input_assembly: self.input_assembly,
-            input_assembly_topology: self.input_assembly_topology,
-            viewport: self.viewport,
-            raster: self.raster,
-            multisample: self.multisample,
-            depth_stencil: self.depth_stencil,
-            blend: self.blend,
-
-            subpass: self.subpass,
-            cache: self.cache,
-        }
-    }
-
-    /// Sets the depth/stencil configuration. This function may be removed in the future.
-    #[inline]
-    pub fn depth_stencil(mut self, depth_stencil: DepthStencil) -> Self {
-        self.depth_stencil = depth_stencil;
-        self
+    pub fn depth_stencil(self, depth_stencil_state: DepthStencilState) -> Self {
+        self.depth_stencil_state(depth_stencil_state)
     }
 
     /// Sets the depth/stencil tests as disabled.
     ///
     /// > **Note**: This is a shortcut for all the other `depth_*` and `depth_stencil_*` methods
     /// > of the builder.
+    #[deprecated(since = "0.27", note = "Use `depth_stencil_state` instead")]
     #[inline]
     pub fn depth_stencil_disabled(mut self) -> Self {
-        self.depth_stencil = DepthStencil::disabled();
+        self.depth_stencil_state = DepthStencilState::disabled();
         self
     }
 
@@ -1935,76 +1679,115 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is a shortcut for setting the depth test to `Less`, the depth write Into
     /// > ` true` and disable the stencil test.
+    #[deprecated(since = "0.27", note = "Use `depth_stencil_state` instead")]
     #[inline]
     pub fn depth_stencil_simple_depth(mut self) -> Self {
-        self.depth_stencil = DepthStencil::simple_depth_test();
+        self.depth_stencil_state = DepthStencilState::simple_depth_test();
         self
     }
 
     /// Sets whether the depth buffer will be written.
+    #[deprecated(since = "0.27", note = "Use `depth_stencil_state` instead")]
     #[inline]
     pub fn depth_write(mut self, write: bool) -> Self {
-        self.depth_stencil.depth_write = write;
+        let depth_state = self
+            .depth_stencil_state
+            .depth
+            .get_or_insert(Default::default());
+        depth_state.write_enable = StateMode::Fixed(write);
         self
     }
 
-    // TODO: missing tons of depth-stencil stuff
-
+    #[deprecated(since = "0.27", note = "Use `color_blend_state` instead")]
+    // TODO: When this method is removed, also remove the special casing in `with_pipeline_layout`
+    // for self.color_blend_state.attachments.len() == 1
     #[inline]
     pub fn blend_collective(mut self, blend: AttachmentBlend) -> Self {
-        self.blend.attachments = AttachmentsBlend::Collective(blend);
+        self.color_blend_state.attachments = vec![ColorBlendAttachmentState {
+            blend: Some(blend),
+            color_write_mask: ColorComponents::all(),
+            color_write_enable: StateMode::Fixed(true),
+        }];
         self
     }
 
+    #[deprecated(since = "0.27", note = "Use `color_blend_state` instead")]
     #[inline]
     pub fn blend_individual<I>(mut self, blend: I) -> Self
     where
         I: IntoIterator<Item = AttachmentBlend>,
     {
-        self.blend.attachments = AttachmentsBlend::Individual(blend.into_iter().collect());
+        self.color_blend_state.attachments = blend
+            .into_iter()
+            .map(|x| ColorBlendAttachmentState {
+                blend: Some(x),
+                color_write_mask: ColorComponents::all(),
+                color_write_enable: StateMode::Fixed(true),
+            })
+            .collect();
         self
     }
 
     /// Each fragment shader output will have its value directly written to the framebuffer
     /// attachment. This is the default.
+    #[deprecated(since = "0.27", note = "Use `color_blend_state` instead")]
+    // TODO: When this method is removed, also remove the special casing in `with_pipeline_layout`
+    // for self.color_blend_state.attachments.len() == 1
     #[inline]
-    pub fn blend_pass_through(self) -> Self {
-        self.blend_collective(AttachmentBlend::pass_through())
+    pub fn blend_pass_through(mut self) -> Self {
+        self.color_blend_state.attachments = vec![ColorBlendAttachmentState {
+            blend: None,
+            color_write_mask: ColorComponents::all(),
+            color_write_enable: StateMode::Fixed(true),
+        }];
+        self
     }
 
+    #[deprecated(since = "0.27", note = "Use `color_blend_state` instead")]
+    // TODO: When this method is removed, also remove the special casing in `with_pipeline_layout`
+    // for self.color_blend_state.attachments.len() == 1
     #[inline]
-    pub fn blend_alpha_blending(self) -> Self {
-        self.blend_collective(AttachmentBlend::alpha_blending())
+    pub fn blend_alpha_blending(mut self) -> Self {
+        self.color_blend_state.attachments = vec![ColorBlendAttachmentState {
+            blend: Some(AttachmentBlend::alpha()),
+            color_write_mask: ColorComponents::all(),
+            color_write_enable: StateMode::Fixed(true),
+        }];
+        self
     }
 
+    #[deprecated(since = "0.27", note = "Use `color_blend_state` instead")]
     #[inline]
     pub fn blend_logic_op(mut self, logic_op: LogicOp) -> Self {
-        self.blend.logic_op = Some(logic_op);
+        self.color_blend_state.logic_op = Some(StateMode::Fixed(logic_op));
         self
     }
 
     /// Sets the logic operation as disabled. This is the default.
+    #[deprecated(since = "0.27", note = "Use `color_blend_state` instead")]
     #[inline]
     pub fn blend_logic_op_disabled(mut self) -> Self {
-        self.blend.logic_op = None;
+        self.color_blend_state.logic_op = None;
         self
     }
 
     /// Sets the blend constant. The default is `[0.0, 0.0, 0.0, 0.0]`.
     ///
     /// The blend constant is used for some blending calculations. It is irrelevant otherwise.
+    #[deprecated(since = "0.27", note = "Use `color_blend_state` instead")]
     #[inline]
     pub fn blend_constants(mut self, constants: [f32; 4]) -> Self {
-        self.blend.blend_constants = Some(constants);
+        self.color_blend_state.blend_constants = StateMode::Fixed(constants);
         self
     }
 
     /// Sets the blend constant value as dynamic. Its value will need to be set before drawing.
     ///
     /// The blend constant is used for some blending calculations. It is irrelevant otherwise.
+    #[deprecated(since = "0.27", note = "Use `color_blend_state` instead")]
     #[inline]
     pub fn blend_constants_dynamic(mut self) -> Self {
-        self.blend.blend_constants = None;
+        self.color_blend_state.blend_constants = StateMode::Dynamic;
         self
     }
 
@@ -2012,22 +1795,24 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     #[inline]
     pub fn render_pass(self, subpass: Subpass) -> Self {
         GraphicsPipelineBuilder {
+            subpass: Some(subpass),
+            cache: self.cache,
+
             vertex_shader: self.vertex_shader,
             tessellation_shaders: self.tessellation_shaders,
             geometry_shader: self.geometry_shader,
             fragment_shader: self.fragment_shader,
 
             vertex_definition: self.vertex_definition,
-            input_assembly: self.input_assembly,
-            input_assembly_topology: self.input_assembly_topology,
-            viewport: self.viewport,
-            raster: self.raster,
-            multisample: self.multisample,
-            depth_stencil: self.depth_stencil,
-            blend: self.blend,
+            input_assembly_state: self.input_assembly_state,
+            tessellation_state: self.tessellation_state,
+            viewport_state: self.viewport_state,
+            rasterization_state: self.rasterization_state,
+            multisample_state: self.multisample_state,
+            depth_stencil_state: self.depth_stencil_state,
+            color_blend_state: self.color_blend_state,
 
-            subpass: Some(subpass),
-            cache: self.cache,
+            discard_rectangle_state: self.discard_rectangle_state,
         }
     }
 
@@ -2055,22 +1840,24 @@ where
 {
     fn clone(&self) -> Self {
         GraphicsPipelineBuilder {
+            subpass: self.subpass.clone(),
+            cache: self.cache.clone(),
+
             vertex_shader: self.vertex_shader.clone(),
             tessellation_shaders: self.tessellation_shaders.clone(),
             geometry_shader: self.geometry_shader.clone(),
             fragment_shader: self.fragment_shader.clone(),
 
             vertex_definition: self.vertex_definition.clone(),
-            input_assembly: unsafe { ptr::read(&self.input_assembly) },
-            input_assembly_topology: self.input_assembly_topology,
-            viewport: self.viewport.clone(),
-            raster: self.raster.clone(),
-            multisample: self.multisample,
-            depth_stencil: self.depth_stencil.clone(),
-            blend: self.blend.clone(),
+            input_assembly_state: self.input_assembly_state,
+            tessellation_state: self.tessellation_state,
+            viewport_state: self.viewport_state.clone(),
+            rasterization_state: self.rasterization_state.clone(),
+            multisample_state: self.multisample_state,
+            depth_stencil_state: self.depth_stencil_state.clone(),
+            color_blend_state: self.color_blend_state.clone(),
 
-            subpass: self.subpass.clone(),
-            cache: self.cache.clone(),
+            discard_rectangle_state: self.discard_rectangle_state.clone(),
         }
     }
 }

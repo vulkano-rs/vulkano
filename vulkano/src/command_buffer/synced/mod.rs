@@ -65,7 +65,9 @@
 //! queue with a fresh new barrier prototype.
 
 pub use self::builder::CommandBufferState;
-pub use self::builder::StencilState;
+pub use self::builder::SetOrPush;
+pub use self::builder::StencilOpStateDynamic;
+pub use self::builder::StencilStateDynamic;
 pub use self::builder::SyncCommandBufferBuilder;
 pub use self::builder::SyncCommandBufferBuilderBindDescriptorSets;
 pub use self::builder::SyncCommandBufferBuilderBindVertexBuffer;
@@ -76,7 +78,6 @@ use crate::command_buffer::sys::UnsafeCommandBuffer;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilder;
 use crate::command_buffer::CommandBufferExecError;
 use crate::command_buffer::ImageUninitializedSafe;
-use crate::descriptor_set::DescriptorSet;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
@@ -491,7 +492,7 @@ trait Command: Send + Sync {
         panic!()
     }
 
-    fn bound_descriptor_set(&self, set_num: u32) -> (&dyn DescriptorSet, &[u32]) {
+    fn bound_descriptor_set(&self, set_num: u32) -> SetOrPush {
         panic!()
     }
 

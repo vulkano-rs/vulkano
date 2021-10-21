@@ -1,4 +1,4 @@
-// Copyright (c) 2017 The vulkano developers
+// Copyright (c) 2016 The vulkano developers
 // Licensed under the Apache License, Version 2.0
 // <LICENSE-APACHE or
 // https://www.apache.org/licenses/LICENSE-2.0> or the MIT
@@ -6,42 +6,26 @@
 // at your option. All files in the project carrying such
 // notice may not be copied, modified, or distributed except
 // according to those terms.
-//
-// This example demonstrates one way of preparing data structures and loading
-// SPIRV shaders from external source (file system).
-//
-// Note that you will need to do all correctness checking by yourself.
-//
-// vert.glsl and frag.glsl must be built by yourself.
-// One way of building them is to build Khronos' glslang and use
-// glslangValidator tool:
-// $ glslangValidator vert.glsl -V -S vert -o vert.spv
-// $ glslangValidator frag.glsl -V -S frag -o frag.spv
-// Vulkano uses glslangValidator to build your shaders internally.
 
-use std::borrow::Cow;
-use std::ffi::CStr;
-use std::fs::File;
-use std::io::Read;
+use png;
+use std::io::Cursor;
 use std::sync::Arc;
-use vulkano::buffer::cpu_access::CpuAccessibleBuffer;
-use vulkano::buffer::{BufferUsage, TypedBufferAccess};
+use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
+use vulkano::descriptor_set::DescriptorSetBuilder;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::format::Format;
-use vulkano::image::view::ImageView;
-use vulkano::image::{ImageUsage, SwapchainImage};
-use vulkano::instance::Instance;
-use vulkano::pipeline::input_assembly::InputAssemblyState;
-use vulkano::pipeline::rasterization::{CullMode, FrontFace, RasterizationState};
-use vulkano::pipeline::shader::{
-    GraphicsShaderType, ShaderInterface, ShaderInterfaceEntry, ShaderModule,
-    SpecializationConstants,
+use vulkano::image::{
+    view::ImageView, ImageDimensions, ImageUsage, ImmutableImage, MipmapsCount, SwapchainImage,
 };
+use vulkano::instance::Instance;
+use vulkano::pipeline::color_blend::ColorBlendState;
+use vulkano::pipeline::input_assembly::{InputAssemblyState, PrimitiveTopology};
 use vulkano::pipeline::viewport::{Viewport, ViewportState};
-use vulkano::pipeline::GraphicsPipeline;
+use vulkano::pipeline::{GraphicsPipeline, PipelineBindPoint};
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
+use vulkano::sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode};
 use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
 use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano::Version;
@@ -49,14 +33,6 @@ use vulkano_win::VkSurfaceBuild;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
-
-#[derive(Default, Copy, Clone)]
-pub struct Vertex {
-    pub position: [f32; 2],
-    pub color: [f32; 3],
-}
-
-vulkano::impl_vertex!(Vertex, position, color);
 
 fn main() {
     let required_extensions = vulkano_win::required_extensions();
@@ -69,6 +45,7 @@ fn main() {
 
     let device_extensions = DeviceExtensions {
         khr_swapchain: true,
+        khr_push_descriptor: true,
         ..DeviceExtensions::none()
     };
     let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
@@ -85,12 +62,12 @@ fn main() {
             PhysicalDeviceType::Cpu => 3,
             PhysicalDeviceType::Other => 4,
         })
-        .unwrap();
+        .expect("No suitable physical device found");
 
     println!(
         "Using device: {} (type: {:?})",
         physical_device.properties().device_name,
-        physical_device.properties().device_type
+        physical_device.properties().device_type,
     );
 
     let (device, mut queues) = Device::new(
@@ -121,9 +98,40 @@ fn main() {
             .unwrap()
     };
 
+    #[derive(Default, Debug, Clone)]
+    struct Vertex {
+        position: [f32; 2],
+    }
+    vulkano::impl_vertex!(Vertex, position);
+
+    let vertex_buffer = CpuAccessibleBuffer::<[Vertex]>::from_iter(
+        device.clone(),
+        BufferUsage::all(),
+        false,
+        [
+            Vertex {
+                position: [-0.5, -0.5],
+            },
+            Vertex {
+                position: [-0.5, 0.5],
+            },
+            Vertex {
+                position: [0.5, -0.5],
+            },
+            Vertex {
+                position: [0.5, 0.5],
+            },
+        ]
+        .iter()
+        .cloned(),
+    )
+    .unwrap();
+
+    let vs = vs::Shader::load(device.clone()).unwrap();
+    let fs = fs::Shader::load(device.clone()).unwrap();
+
     let render_pass = Arc::new(
-        vulkano::single_pass_renderpass!(
-            device.clone(),
+        vulkano::single_pass_renderpass!(device.clone(),
             attachments: {
                 color: {
                     load: Clear,
@@ -140,150 +148,65 @@ fn main() {
         .unwrap(),
     );
 
-    let vs = {
-        let mut f = File::open("src/bin/runtime-shader/vert.spv")
-            .expect("Can't find file src/bin/runtime-shader/vert.spv This example needs to be run from the root of the example crate.");
-        let mut v = vec![];
-        f.read_to_end(&mut v).unwrap();
-        // Create a ShaderModule on a device the same Shader::load does it.
-        // NOTE: You will have to verify correctness of the data by yourself!
-        unsafe { ShaderModule::new(device.clone(), &v) }.unwrap()
-    };
+    let (texture, tex_future) = {
+        let png_bytes = include_bytes!("image_img.png").to_vec();
+        let cursor = Cursor::new(png_bytes);
+        let decoder = png::Decoder::new(cursor);
+        let mut reader = decoder.read_info().unwrap();
+        let info = reader.info();
+        let dimensions = ImageDimensions::Dim2d {
+            width: info.width,
+            height: info.height,
+            array_layers: 1,
+        };
+        let mut image_data = Vec::new();
+        image_data.resize((info.width * info.height * 4) as usize, 0);
+        reader.next_frame(&mut image_data).unwrap();
 
-    let fs = {
-        let mut f = File::open("src/bin/runtime-shader/frag.spv")
-            .expect("Can't find file src/bin/runtime-shader/frag.spv");
-        let mut v = vec![];
-        f.read_to_end(&mut v).unwrap();
-        unsafe { ShaderModule::new(device.clone(), &v) }.unwrap()
-    };
-
-    // This definition will tell Vulkan how input entries of our vertex shader look like
-    // There are things to consider when giving out entries:
-    // * There must be only one entry per one location, you can't have
-    //   `color' and `position' entries both at 0..1 locations.  They also
-    //   should not overlap.
-    // * Format of each element must be no larger than 128 bits.
-    let vertex_input = unsafe {
-        ShaderInterface::new_unchecked(vec![
-            ShaderInterfaceEntry {
-                location: 1..2,
-                format: Format::R32G32B32_SFLOAT,
-                name: Some(Cow::Borrowed("color")),
-            },
-            ShaderInterfaceEntry {
-                location: 0..1,
-                format: Format::R32G32_SFLOAT,
-                name: Some(Cow::Borrowed("position")),
-            },
-        ])
-    };
-
-    // This definition will tell Vulkan how output entries (those passed to next
-    // stage) of our vertex shader look like.
-    let vertex_output = unsafe {
-        ShaderInterface::new_unchecked(vec![ShaderInterfaceEntry {
-            location: 0..1,
-            format: Format::R32G32B32_SFLOAT,
-            name: Some(Cow::Borrowed("v_color")),
-        }])
-    };
-
-    // Same as with our vertex shader, but for fragment one instead.
-    let fragment_input = unsafe {
-        ShaderInterface::new_unchecked(vec![ShaderInterfaceEntry {
-            location: 0..1,
-            format: Format::R32G32B32_SFLOAT,
-            name: Some(Cow::Borrowed("v_color")),
-        }])
-    };
-
-    // Note that color fragment color entry will be determined
-    // automatically by Vulkano.
-    let fragment_output = unsafe {
-        ShaderInterface::new_unchecked(vec![ShaderInterfaceEntry {
-            location: 0..1,
-            format: Format::R32G32B32A32_SFLOAT,
-            name: Some(Cow::Borrowed("f_color")),
-        }])
-    };
-
-    // NOTE: ShaderModule::*_shader_entry_point calls do not do any error
-    // checking and you have to verify correctness of what you are doing by
-    // yourself.
-    //
-    // You must be extra careful to specify correct entry point, or program will
-    // crash at runtime outside of rust and you will get NO meaningful error
-    // information!
-    let vert_main = unsafe {
-        vs.graphics_entry_point(
-            CStr::from_bytes_with_nul_unchecked(b"main\0"),
-            [],   // No descriptor sets.
-            None, // No push constants.
-            <()>::descriptors(),
-            vertex_input,
-            vertex_output,
-            GraphicsShaderType::Vertex,
+        let (image, future) = ImmutableImage::from_iter(
+            image_data.iter().cloned(),
+            dimensions,
+            MipmapsCount::One,
+            Format::R8G8B8A8_SRGB,
+            queue.clone(),
         )
+        .unwrap();
+        (ImageView::new(image).unwrap(), future)
     };
 
-    let frag_main = unsafe {
-        fs.graphics_entry_point(
-            CStr::from_bytes_with_nul_unchecked(b"main\0"),
-            [],   // No descriptor sets.
-            None, // No push constants.
-            <()>::descriptors(),
-            fragment_input,
-            fragment_output,
-            GraphicsShaderType::Fragment,
-        )
-    };
-
-    let graphics_pipeline = Arc::new(
-        GraphicsPipeline::start()
-            .vertex_input_single_buffer::<Vertex>()
-            .vertex_shader(vert_main, ())
-            .input_assembly_state(InputAssemblyState::new())
-            .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-            .fragment_shader(frag_main, ())
-            .rasterization_state(
-                RasterizationState::new()
-                    .cull_mode(CullMode::Front)
-                    .front_face(FrontFace::CounterClockwise),
-            )
-            .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-            .build(device.clone())
-            .unwrap(),
-    );
-
-    let mut recreate_swapchain = false;
-
-    let vertex_buffer = CpuAccessibleBuffer::from_iter(
+    let sampler = Sampler::new(
         device.clone(),
-        BufferUsage::all(),
-        false,
-        [
-            Vertex {
-                position: [-1.0, 1.0],
-                color: [1.0, 0.0, 0.0],
-            },
-            Vertex {
-                position: [0.0, -1.0],
-                color: [0.0, 1.0, 0.0],
-            },
-            Vertex {
-                position: [1.0, 1.0],
-                color: [0.0, 0.0, 1.0],
-            },
-        ]
-        .iter()
-        .cloned(),
+        Filter::Linear,
+        Filter::Linear,
+        MipmapMode::Nearest,
+        SamplerAddressMode::Repeat,
+        SamplerAddressMode::Repeat,
+        SamplerAddressMode::Repeat,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
     )
     .unwrap();
 
-    // NOTE: We don't create any descriptor sets in this example, but you should
-    // note that passing wrong types, providing sets at wrong indexes will cause
-    // descriptor set builder to return Err!
+    let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
+    let pipeline = Arc::new(
+        GraphicsPipeline::start()
+            .vertex_input_single_buffer::<Vertex>()
+            .vertex_shader(vs.main_entry_point(), ())
+            .input_assembly_state(
+                InputAssemblyState::new().topology(PrimitiveTopology::TriangleStrip),
+            )
+            .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+            .fragment_shader(fs.main_entry_point(), ())
+            .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()).blend_alpha())
+            .render_pass(subpass)
+            .with_auto_layout(device.clone(), |set_descs| {
+                set_descs[0].set_push_descriptor(true);
+                set_descs[0].set_immutable_samplers(0, [sampler]);
+            })
+            .unwrap(),
+    );
 
     let mut viewport = Viewport {
         origin: [0.0, 0.0],
@@ -291,7 +214,9 @@ fn main() {
         depth_range: 0.0..1.0,
     };
     let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
-    let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
+
+    let mut recreate_swapchain = false;
+    let mut previous_frame_end = Some(tex_future.boxed());
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {
@@ -338,11 +263,11 @@ fn main() {
                 recreate_swapchain = true;
             }
 
-            let clear_values = vec![[0.0, 0.0, 0.0, 1.0].into()];
+            let clear_values = vec![[0.0, 0.0, 1.0, 1.0].into()];
             let mut builder = AutoCommandBufferBuilder::primary(
                 device.clone(),
                 queue.family(),
-                CommandBufferUsage::MultipleSubmit,
+                CommandBufferUsage::OneTimeSubmit,
             )
             .unwrap();
             builder
@@ -353,7 +278,13 @@ fn main() {
                 )
                 .unwrap()
                 .set_viewport(0, [viewport.clone()])
-                .bind_pipeline_graphics(graphics_pipeline.clone())
+                .bind_pipeline_graphics(pipeline.clone())
+                .push_descriptor_set(PipelineBindPoint::Graphics, pipeline.layout().clone(), 0, {
+                    let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
+                    let mut set_builder = DescriptorSetBuilder::start(layout.clone());
+                    set_builder.add_image(texture.clone()).unwrap();
+                    set_builder.build().unwrap()
+                })
                 .bind_vertex_buffers(0, vertex_buffer.clone())
                 .draw(vertex_buffer.len() as u32, 1, 0, 0)
                 .unwrap()
@@ -410,4 +341,37 @@ fn window_size_dependent_setup(
             ) as Arc<dyn FramebufferAbstract>
         })
         .collect::<Vec<_>>()
+}
+
+mod vs {
+    vulkano_shaders::shader! {
+        ty: "vertex",
+        src: "
+#version 450
+
+layout(location = 0) in vec2 position;
+layout(location = 0) out vec2 tex_coords;
+
+void main() {
+    gl_Position = vec4(position, 0.0, 1.0);
+    tex_coords = position + vec2(0.5);
+}"
+    }
+}
+
+mod fs {
+    vulkano_shaders::shader! {
+        ty: "fragment",
+        src: "
+#version 450
+
+layout(location = 0) in vec2 tex_coords;
+layout(location = 0) out vec4 f_color;
+
+layout(set = 0, binding = 0) uniform sampler2D tex;
+
+void main() {
+    f_color = texture(tex, tex_coords);
+}"
+    }
 }

@@ -22,6 +22,7 @@ use crate::VulkanObject;
 use std::error;
 use std::fmt;
 #[cfg(any(
+    target_os = "android",
     target_os = "linux",
     target_os = "dragonflybsd",
     target_os = "freebsd",
@@ -36,6 +37,7 @@ use std::ops::DerefMut;
 use std::ops::Range;
 use std::os::raw::c_void;
 #[cfg(any(
+    target_os = "android",
     target_os = "linux",
     target_os = "dragonflybsd",
     target_os = "freebsd",
@@ -197,6 +199,7 @@ impl<'a> DeviceMemoryBuilder<'a> {
     ///
     /// - Panics if the import info has already been set.
     #[cfg(any(
+        target_os = "android",
         target_os = "linux",
         target_os = "dragonflybsd",
         target_os = "freebsd",
@@ -445,6 +448,7 @@ impl DeviceMemory {
     /// Same as `alloc`, but allows exportable file descriptor on Linux/BSD.
     #[inline]
     #[cfg(any(
+        target_os = "android",
         target_os = "linux",
         target_os = "dragonflybsd",
         target_os = "freebsd",
@@ -471,6 +475,7 @@ impl DeviceMemory {
     /// Same as `dedicated_alloc`, but allows exportable file descriptor on Linux/BSD.
     #[inline]
     #[cfg(any(
+        target_os = "android",
         target_os = "linux",
         target_os = "dragonflybsd",
         target_os = "freebsd",
@@ -499,6 +504,7 @@ impl DeviceMemory {
     /// Same as `alloc_and_map`, but allows exportable file descriptor on Linux/BSD.
     #[inline]
     #[cfg(any(
+        target_os = "android",
         target_os = "linux",
         target_os = "dragonflybsd",
         target_os = "freebsd",
@@ -521,6 +527,7 @@ impl DeviceMemory {
     /// Same as `dedicated_alloc_and_map`, but allows exportable file descriptor on Linux/BSD.
     #[inline]
     #[cfg(any(
+        target_os = "android",
         target_os = "linux",
         target_os = "dragonflybsd",
         target_os = "freebsd",
@@ -595,6 +602,7 @@ impl DeviceMemory {
     /// - Panics if the user requests an invalid handle type for this device memory object.
     #[inline]
     #[cfg(any(
+        target_os = "android",
         target_os = "linux",
         target_os = "dragonflybsd",
         target_os = "freebsd",

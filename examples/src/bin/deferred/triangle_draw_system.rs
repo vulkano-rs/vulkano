@@ -8,14 +8,14 @@
 // according to those terms.
 
 use std::sync::Arc;
-use vulkano::buffer::BufferUsage;
-use vulkano::buffer::CpuAccessibleBuffer;
-use vulkano::buffer::TypedBufferAccess;
+use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer,
 };
 use vulkano::device::Queue;
-use vulkano::pipeline::viewport::Viewport;
+use vulkano::pipeline::depth_stencil::DepthStencilState;
+use vulkano::pipeline::input_assembly::InputAssemblyState;
+use vulkano::pipeline::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::Subpass;
 
@@ -60,10 +60,10 @@ impl TriangleDrawSystem {
                 GraphicsPipeline::start()
                     .vertex_input_single_buffer::<Vertex>()
                     .vertex_shader(vs.main_entry_point(), ())
-                    .triangle_list()
-                    .viewports_dynamic_scissors_irrelevant(1)
+                    .input_assembly_state(InputAssemblyState::new())
+                    .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
                     .fragment_shader(fs.main_entry_point(), ())
-                    .depth_stencil_simple_depth()
+                    .depth_stencil_state(DepthStencilState::simple_depth_test())
                     .render_pass(subpass)
                     .build(gfx_queue.device().clone())
                     .unwrap(),

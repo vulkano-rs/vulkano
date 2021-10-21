@@ -37,6 +37,7 @@ use crate::command_buffer::ImageUninitializedSafe;
 use crate::command_buffer::PrimaryCommandBuffer;
 use crate::command_buffer::SecondaryCommandBuffer;
 use crate::command_buffer::SubpassContents;
+use crate::descriptor_set::builder::DescriptorSetBuilderOutput;
 use crate::descriptor_set::DescriptorSetsCollection;
 use crate::device::physical::QueueFamily;
 use crate::device::Device;
@@ -49,10 +50,16 @@ use crate::image::ImageAccess;
 use crate::image::ImageAspect;
 use crate::image::ImageAspects;
 use crate::image::ImageLayout;
+use crate::pipeline::color_blend::LogicOp;
+use crate::pipeline::depth_stencil::CompareOp;
 use crate::pipeline::depth_stencil::StencilFaces;
+use crate::pipeline::depth_stencil::StencilOp;
 use crate::pipeline::input_assembly::Index;
 use crate::pipeline::input_assembly::IndexType;
+use crate::pipeline::input_assembly::PrimitiveTopology;
 use crate::pipeline::layout::PipelineLayout;
+use crate::pipeline::rasterization::CullMode;
+use crate::pipeline::rasterization::FrontFace;
 use crate::pipeline::shader::ShaderStages;
 use crate::pipeline::vertex::VertexBuffersCollection;
 use crate::pipeline::viewport::Scissor;
@@ -70,7 +77,6 @@ use crate::query::QueryType;
 use crate::render_pass::Framebuffer;
 use crate::render_pass::FramebufferAbstract;
 use crate::render_pass::LoadOp;
-use crate::render_pass::RenderPass;
 use crate::render_pass::Subpass;
 use crate::sampler::Filter;
 use crate::sync::AccessCheckError;
@@ -125,7 +131,7 @@ pub struct AutoCommandBufferBuilder<L, P = StandardCommandPoolBuilder> {
 
 // The state of the current render pass, specifying the pass, subpass index and its intended contents.
 struct RenderPassState {
-    subpass: (Arc<RenderPass>, u32),
+    subpass: Subpass,
     contents: SubpassContents,
     framebuffer: ash::vk::Framebuffer, // Always null for secondary command buffers
 }
@@ -289,14 +295,13 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
                         framebuffer,
                     }) => {
                         let render_pass = CommandBufferInheritanceRenderPass {
-                            subpass: Subpass::from(subpass.render_pass().clone(), subpass.index())
-                                .unwrap(),
+                            subpass: subpass.clone(),
                             framebuffer: framebuffer
                                 .as_ref()
                                 .map(|f| Box::new(f.clone()) as Box<_>),
                         };
                         let render_pass_state = RenderPassState {
-                            subpass: (subpass.render_pass().clone(), subpass.index()),
+                            subpass: subpass.clone(),
                             contents: SubpassContents::Inline,
                             framebuffer: ash::vk::Framebuffer::null(), // Only needed for primary command buffers
                         };
@@ -475,7 +480,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
 
         // Subpasses must be the same.
-        if pipeline.subpass().index() != render_pass_state.subpass.1 {
+        if pipeline.subpass().index() != render_pass_state.subpass.index() {
             return Err(AutoCommandBufferBuilderContextError::WrongSubpassIndex);
         }
 
@@ -484,7 +489,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             .subpass()
             .render_pass()
             .desc()
-            .is_compatible_with_desc(&render_pass_state.subpass.0.desc())
+            .is_compatible_with_desc(&render_pass_state.subpass.render_pass().desc())
         {
             return Err(AutoCommandBufferBuilderContextError::IncompatibleRenderPass);
         }
@@ -586,7 +591,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// - Panics if `index_buffer` does not have the
     ///   [`index_buffer`](crate::buffer::BufferUsage::index_buffer) usage enabled.
     /// - If the index buffer contains `u8` indices, panics if the
-    ///   [`ext_index_type_uint8`](crate::device::DeviceExtensions::ext_index_type_uint8) extension is not
+    ///   [`index_type_uint8`](crate::device::Features::index_type_uint8) feature is not
     ///   enabled on the device.
     pub fn bind_index_buffer<Ib, I>(&mut self, index_buffer: Ib) -> &mut Self
     where
@@ -617,7 +622,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         // VkDeviceMemory object
 
         if !self.device().enabled_features().index_type_uint8 {
-            assert!(I::ty() != IndexType::U8, "if the index buffer contains u8 indices, the index_type_uint8 extension must be enabled on the device");
+            assert!(I::ty() != IndexType::U8, "if the index buffer contains u8 indices, the index_type_uint8 feature must be enabled on the device");
         }
 
         unsafe {
@@ -1774,16 +1779,66 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         self
     }
 
+    /// Pushes descriptor data directly into the command buffer for future dispatch or draw calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support `pipeline_bind_point`.
+    /// - Panics if the
+    ///   [`khr_push_descriptor`](crate::device::DeviceExtensions::khr_push_descriptor)
+    ///   extension is not enabled on the device.
+    /// - Panics if `set_num` is not less than the number of sets in `pipeline_layout`.
+    pub fn push_descriptor_set(
+        &mut self,
+        pipeline_bind_point: PipelineBindPoint,
+        pipeline_layout: Arc<PipelineLayout>,
+        set_num: u32,
+        descriptor_writes: DescriptorSetBuilderOutput, // TODO: make partial writes possible
+    ) -> &mut Self {
+        match pipeline_bind_point {
+            PipelineBindPoint::Compute => assert!(
+                self.queue_family().supports_compute(),
+                "the queue family of the command buffer must support compute operations"
+            ),
+            PipelineBindPoint::Graphics => assert!(
+                self.queue_family().supports_graphics(),
+                "the queue family of the command buffer must support graphics operations"
+            ),
+        }
+
+        assert!(
+            self.device().enabled_extensions().khr_push_descriptor,
+            "the khr_push_descriptor extension must be enabled on the device"
+        );
+        assert!(
+            set_num as usize <= pipeline_layout.descriptor_set_layouts().len(),
+            "the descriptor set slot being bound must be less than the number of sets in pipeline_layout"
+        );
+
+        let pipeline_set = &pipeline_layout.descriptor_set_layouts()[set_num as usize];
+        assert!(
+            pipeline_set.is_compatible_with(descriptor_writes.layout()),
+            "descriptor_writes is not compatible with slot {} in pipeline_layout",
+            set_num as usize,
+        );
+
+        unsafe {
+            self.inner.push_descriptor_set(
+                pipeline_bind_point,
+                pipeline_layout,
+                set_num,
+                descriptor_writes,
+            );
+        }
+
+        self
+    }
+
     // Helper function for dynamic state setting.
     fn has_fixed_state(&self, state: DynamicState) -> bool {
         self.state()
             .pipeline_graphics()
-            .map(|pipeline| {
-                matches!(
-                    pipeline.dynamic_state(state),
-                    Some(crate::pipeline::DynamicStateMode::Fixed)
-                )
-            })
+            .map(|pipeline| matches!(pipeline.dynamic_state(state), Some(false)))
             .unwrap_or(false)
     }
 
@@ -1805,6 +1860,152 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
         unsafe {
             self.inner.set_blend_constants(constants);
+        }
+
+        self
+    }
+
+    /// Sets whether dynamic color writes should be enabled for each attachment in the
+    /// framebuffer.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - Panics if the [`color_write_enable`](crate::device::Features::color_write_enable)
+    ///   feature is not enabled on the device.
+    /// - Panics if the currently bound graphics pipeline already contains this state internally.
+    /// - If there is a graphics pipeline with color blend state bound, `enables.len()` must equal
+    /// - [`attachments.len()`](crate::pipeline::color_blend::ColorBlendState::attachments).
+    #[inline]
+    pub fn set_color_write_enable<I>(&mut self, enables: I) -> &mut Self
+    where
+        I: IntoIterator<Item = bool>,
+        I::IntoIter: ExactSizeIterator,
+    {
+        assert!(
+            self.queue_family().supports_graphics(),
+            "the queue family of the command buffer must support graphics operations"
+        );
+        assert!(
+            self.device().enabled_features().color_write_enable,
+            "the color_write_enable feature must be enabled on the device"
+        );
+        assert!(
+            !self.has_fixed_state(DynamicState::ColorWriteEnable),
+            "the currently bound graphics pipeline must not contain this state internally"
+        );
+
+        let enables = enables.into_iter();
+
+        if let Some(color_blend_state) = self
+            .state()
+            .pipeline_graphics()
+            .and_then(|pipeline| pipeline.color_blend_state())
+        {
+            assert!(
+                enables.len() == color_blend_state.attachments.len(),
+                "if there is a graphics pipeline with color blend state bound, enables.len() must equal attachments.len()"
+            );
+        }
+
+        unsafe {
+            self.inner.set_color_write_enable(enables);
+        }
+
+        self
+    }
+
+    /// Sets the dynamic cull mode for future draw calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - Panics if the [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state)
+    ///   feature is not enabled on the device.
+    /// - Panics if the currently bound graphics pipeline already contains this state internally.
+    #[inline]
+    pub fn set_cull_mode(&mut self, cull_mode: CullMode) -> &mut Self {
+        assert!(
+            self.queue_family().supports_graphics(),
+            "the queue family of the command buffer must support graphics operations"
+        );
+        assert!(
+            self.device().enabled_features().extended_dynamic_state,
+            "the extended_dynamic_state feature must be enabled on the device"
+        );
+        assert!(
+            !self.has_fixed_state(DynamicState::CullMode),
+            "the currently bound graphics pipeline must not contain this state internally"
+        );
+
+        unsafe {
+            self.inner.set_cull_mode(cull_mode);
+        }
+
+        self
+    }
+
+    /// Sets the dynamic depth bias values for future draw calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - Panics if the currently bound graphics pipeline already contains this state internally.
+    /// - If the [`depth_bias_clamp`](crate::device::Features::depth_bias_clamp)
+    ///   feature is not enabled on the device, panics if `clamp` is not 0.0.
+    #[inline]
+    pub fn set_depth_bias(
+        &mut self,
+        constant_factor: f32,
+        clamp: f32,
+        slope_factor: f32,
+    ) -> &mut Self {
+        assert!(
+            self.queue_family().supports_graphics(),
+            "the queue family of the command buffer must support graphics operations"
+        );
+        assert!(
+            !self.has_fixed_state(DynamicState::DepthBias),
+            "the currently bound graphics pipeline must not contain this state internally"
+        );
+        assert!(
+            clamp == 0.0 || self.device().enabled_features().depth_bias_clamp,
+            "if the depth_bias_clamp feature is not enabled, clamp must be 0.0"
+        );
+
+        unsafe {
+            self.inner
+                .set_depth_bias(constant_factor, clamp, slope_factor);
+        }
+
+        self
+    }
+
+    /// Sets whether dynamic depth bias is enabled for future draw calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - Panics if the [`extended_dynamic_state2`](crate::device::Features::extended_dynamic_state2)
+    ///   feature is not enabled on the device.
+    /// - Panics if the currently bound graphics pipeline already contains this state internally.
+    #[inline]
+    pub fn set_depth_bias_enable(&mut self, enable: bool) -> &mut Self {
+        assert!(
+            self.queue_family().supports_graphics(),
+            "the queue family of the command buffer must support graphics operations"
+        );
+        assert!(
+            self.device().enabled_features().extended_dynamic_state2,
+            "the extended_dynamic_state2 feature must be enabled on the device"
+        );
+        assert!(
+            !self.has_fixed_state(DynamicState::DepthBiasEnable),
+            "the currently bound graphics pipeline must not contain this state internally"
+        );
+
+        unsafe {
+            self.inner.set_depth_bias_enable(enable);
         }
 
         self
@@ -1847,6 +2048,238 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         self
     }
 
+    /// Sets whether dynamic depth bounds testing is enabled for future draw calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - Panics if the [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state)
+    ///   feature is not enabled on the device.
+    /// - Panics if the currently bound graphics pipeline already contains this state internally.
+    #[inline]
+    pub fn set_depth_bounds_test_enable(&mut self, enable: bool) -> &mut Self {
+        assert!(
+            self.queue_family().supports_graphics(),
+            "the queue family of the command buffer must support graphics operations"
+        );
+        assert!(
+            self.device().enabled_features().extended_dynamic_state,
+            "the extended_dynamic_state feature must be enabled on the device"
+        );
+        assert!(
+            !self.has_fixed_state(DynamicState::DepthBoundsTestEnable),
+            "the currently bound graphics pipeline must not contain this state internally"
+        );
+
+        unsafe {
+            self.inner.set_depth_bounds_test_enable(enable);
+        }
+
+        self
+    }
+
+    /// Sets the dynamic depth compare op for future draw calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - Panics if the [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state)
+    ///   feature is not enabled on the device.
+    /// - Panics if the currently bound graphics pipeline already contains this state internally.
+    #[inline]
+    pub fn set_depth_compare_op(&mut self, compare_op: CompareOp) -> &mut Self {
+        assert!(
+            self.queue_family().supports_graphics(),
+            "the queue family of the command buffer must support graphics operations"
+        );
+        assert!(
+            self.device().enabled_features().extended_dynamic_state,
+            "the extended_dynamic_state feature must be enabled on the device"
+        );
+        assert!(
+            !self.has_fixed_state(DynamicState::DepthCompareOp),
+            "the currently bound graphics pipeline must not contain this state internally"
+        );
+
+        unsafe {
+            self.inner.set_depth_compare_op(compare_op);
+        }
+
+        self
+    }
+
+    /// Sets whether dynamic depth testing is enabled for future draw calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - Panics if the [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state)
+    ///   feature is not enabled on the device.
+    /// - Panics if the currently bound graphics pipeline already contains this state internally.
+    #[inline]
+    pub fn set_depth_test_enable(&mut self, enable: bool) -> &mut Self {
+        assert!(
+            self.queue_family().supports_graphics(),
+            "the queue family of the command buffer must support graphics operations"
+        );
+        assert!(
+            self.device().enabled_features().extended_dynamic_state,
+            "the extended_dynamic_state feature must be enabled on the device"
+        );
+        assert!(
+            !self.has_fixed_state(DynamicState::DepthTestEnable),
+            "the currently bound graphics pipeline must not contain this state internally"
+        );
+
+        unsafe {
+            self.inner.set_depth_test_enable(enable);
+        }
+
+        self
+    }
+
+    /// Sets whether dynamic depth write is enabled for future draw calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - Panics if the [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state)
+    ///   feature is not enabled on the device.
+    /// - Panics if the currently bound graphics pipeline already contains this state internally.
+    #[inline]
+    pub fn set_depth_write_enable(&mut self, enable: bool) -> &mut Self {
+        assert!(
+            self.queue_family().supports_graphics(),
+            "the queue family of the command buffer must support graphics operations"
+        );
+        assert!(
+            self.device().enabled_features().extended_dynamic_state,
+            "the extended_dynamic_state feature must be enabled on the device"
+        );
+        assert!(
+            !self.has_fixed_state(DynamicState::DepthWriteEnable),
+            "the currently bound graphics pipeline must not contain this state internally"
+        );
+
+        unsafe {
+            self.inner.set_depth_write_enable(enable);
+        }
+
+        self
+    }
+
+    /// Sets the dynamic discard rectangles for future draw calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - Panics if the [`ext_discard_rectangles`](crate::device::Features::ext_discard_rectangles)
+    ///   extension is not enabled on the device.
+    /// - Panics if the currently bound graphics pipeline already contains this state internally.
+    /// - Panics if the highest discard rectangle slot being set is greater than the
+    ///   [`max_discard_rectangle`](crate::device::Properties::max_discard_rectangle) device property.
+    pub fn set_discard_rectangle<I>(&mut self, first_rectangle: u32, rectangles: I) -> &mut Self
+    where
+        I: IntoIterator<Item = Scissor>,
+    {
+        assert!(
+            self.queue_family().supports_graphics(),
+            "the queue family of the command buffer must support graphics operations"
+        );
+        assert!(
+            self.device().enabled_extensions().ext_discard_rectangles,
+            "the ext_discard_rectangles extension must be enabled on the device"
+        );
+        assert!(
+            !self.has_fixed_state(DynamicState::DiscardRectangle),
+            "the currently bound graphics pipeline must not contain this state internally"
+        );
+
+        let rectangles: SmallVec<[Scissor; 2]> = rectangles.into_iter().collect();
+
+        assert!(
+            first_rectangle + rectangles.len() as u32 <= self.device().physical_device().properties().max_discard_rectangles.unwrap(),
+            "the highest discard rectangle slot being set must not be higher than the max_discard_rectangles device property"
+        );
+
+        // TODO: VUID-vkCmdSetDiscardRectangleEXT-viewportScissor2D-04788
+        // If this command is recorded in a secondary command buffer with
+        // VkCommandBufferInheritanceViewportScissorInfoNV::viewportScissor2D enabled, then this
+        // function must not be called
+
+        unsafe {
+            self.inner
+                .set_discard_rectangle(first_rectangle, rectangles);
+        }
+
+        self
+    }
+
+    /// Sets the dynamic front face for future draw calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - Panics if the [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state)
+    ///   feature is not enabled on the device.
+    /// - Panics if the currently bound graphics pipeline already contains this state internally.
+    #[inline]
+    pub fn set_front_face(&mut self, face: FrontFace) -> &mut Self {
+        assert!(
+            self.queue_family().supports_graphics(),
+            "the queue family of the command buffer must support graphics operations"
+        );
+        assert!(
+            self.device().enabled_features().extended_dynamic_state,
+            "the extended_dynamic_state feature must be enabled on the device"
+        );
+        assert!(
+            !self.has_fixed_state(DynamicState::FrontFace),
+            "the currently bound graphics pipeline must not contain this state internally"
+        );
+
+        unsafe {
+            self.inner.set_front_face(face);
+        }
+
+        self
+    }
+
+    /// Sets the dynamic line stipple values for future draw calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - Panics if the [`ext_line_rasterization`](crate::device::DeviceExtensions::ext_line_rasterization)
+    ///   extension is not enabled on the device.
+    /// - Panics if the currently bound graphics pipeline already contains this state internally.
+    /// - Panics if `factor` is not between 1 and 256 inclusive.
+    #[inline]
+    pub fn set_line_stipple(&mut self, factor: u32, pattern: u16) -> &mut Self {
+        assert!(
+            self.queue_family().supports_graphics(),
+            "the queue family of the command buffer must support graphics operations"
+        );
+        assert!(
+            self.device().enabled_extensions().ext_line_rasterization,
+            "the ext_line_rasterization extension must be enabled on the device"
+        );
+        assert!(
+            !self.has_fixed_state(DynamicState::LineStipple),
+            "the currently bound graphics pipeline must not contain this state internally"
+        );
+        assert!(
+            factor >= 1 && factor <= 256,
+            "factor must be between 1 and 256 inclusive"
+        );
+
+        unsafe {
+            self.inner.set_line_stipple(factor, pattern);
+        }
+
+        self
+    }
+
     /// Sets the dynamic line width for future draw calls.
     ///
     /// # Panics
@@ -1874,6 +2307,192 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
         unsafe {
             self.inner.set_line_width(line_width);
+        }
+
+        self
+    }
+
+    /// Sets the dynamic logic op for future draw calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - Panics if the
+    ///   [`extended_dynamic_state2_logic_op`](crate::device::Features::extended_dynamic_state2_logic_op)
+    ///   feature is not enabled on the device.
+    /// - Panics if the currently bound graphics pipeline already contains this state internally.
+    #[inline]
+    pub fn set_logic_op(&mut self, logic_op: LogicOp) -> &mut Self {
+        assert!(
+            self.queue_family().supports_graphics(),
+            "the queue family of the command buffer must support graphics operations"
+        );
+        assert!(
+            self.device()
+                .enabled_features()
+                .extended_dynamic_state2_logic_op,
+            "the extended_dynamic_state2_logic_op feature must be enabled on the device"
+        );
+        assert!(
+            !self.has_fixed_state(DynamicState::LogicOp),
+            "the currently bound graphics pipeline must not contain this state internally"
+        );
+
+        unsafe {
+            self.inner.set_logic_op(logic_op);
+        }
+
+        self
+    }
+
+    /// Sets the dynamic number of patch control points for future draw calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - Panics if the
+    ///   [`extended_dynamic_state2_patch_control_points`](crate::device::Features::extended_dynamic_state2_patch_control_points)
+    ///   feature is not enabled on the device.
+    /// - Panics if the currently bound graphics pipeline already contains this state internally.
+    /// - Panics if `num` is 0.
+    /// - Panics if `num` is greater than the
+    ///   [`max_tessellation_patch_size`](crate::device::Properties::max_tessellation_patch_size)
+    ///   property of the device.
+    #[inline]
+    pub fn set_patch_control_points(&mut self, num: u32) -> &mut Self {
+        assert!(
+            self.queue_family().supports_graphics(),
+            "the queue family of the command buffer must support graphics operations"
+        );
+        assert!(
+            self.device().enabled_features().extended_dynamic_state2_patch_control_points,
+            "the extended_dynamic_state2_patch_control_points feature must be enabled on the device"
+        );
+        assert!(
+            !self.has_fixed_state(DynamicState::PatchControlPoints),
+            "the currently bound graphics pipeline must not contain this state internally"
+        );
+        assert!(num > 0, "num must be greater than 0");
+        assert!(
+            num <= self
+                .device()
+                .physical_device()
+                .properties()
+                .max_tessellation_patch_size,
+            "num must be less than or equal to max_tessellation_patch_size"
+        );
+
+        unsafe {
+            self.inner.set_patch_control_points(num);
+        }
+
+        self
+    }
+
+    /// Sets whether dynamic primitive restart is enabled for future draw calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - Panics if the [`extended_dynamic_state2`](crate::device::Features::extended_dynamic_state2)
+    ///   feature is not enabled on the device.
+    /// - Panics if the currently bound graphics pipeline already contains this state internally.
+    #[inline]
+    pub fn set_primitive_restart_enable(&mut self, enable: bool) -> &mut Self {
+        assert!(
+            self.queue_family().supports_graphics(),
+            "the queue family of the command buffer must support graphics operations"
+        );
+        assert!(
+            self.device().enabled_features().extended_dynamic_state2,
+            "the extended_dynamic_state2 feature must be enabled on the device"
+        );
+        assert!(
+            !self.has_fixed_state(DynamicState::PrimitiveRestartEnable),
+            "the currently bound graphics pipeline must not contain this state internally"
+        );
+
+        unsafe {
+            self.inner.set_primitive_restart_enable(enable);
+        }
+
+        self
+    }
+
+    /// Sets the dynamic primitive topology for future draw calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - Panics if the
+    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state)
+    ///   feature is not enabled on the device.
+    /// - Panics if the currently bound graphics pipeline already contains this state internally.
+    /// - If the [`geometry_shader`](crate::device::Features::geometry_shader) feature is not
+    ///   enabled, panics if `topology` is a `WithAdjacency` topology.
+    /// - If the [`tessellation_shader`](crate::device::Features::tessellation_shader) feature is
+    ///   not enabled, panics if `topology` is `PatchList`.
+    #[inline]
+    pub fn set_primitive_topology(&mut self, topology: PrimitiveTopology) -> &mut Self {
+        assert!(
+            self.queue_family().supports_graphics(),
+            "the queue family of the command buffer must support graphics operations"
+        );
+        assert!(
+            self.device().enabled_features().extended_dynamic_state,
+            "the extended_dynamic_state feature must be enabled on the device"
+        );
+        assert!(
+            !self.has_fixed_state(DynamicState::PrimitiveTopology),
+            "the currently bound graphics pipeline must not contain this state internally"
+        );
+
+        if !self.device().enabled_features().geometry_shader {
+            assert!(!matches!(topology, PrimitiveTopology::LineListWithAdjacency
+            | PrimitiveTopology::LineStripWithAdjacency
+            | PrimitiveTopology::TriangleListWithAdjacency
+            | PrimitiveTopology::TriangleStripWithAdjacency), "if the geometry_shader feature is not enabled, topology must not be a WithAdjacency topology");
+        }
+
+        if !self.device().enabled_features().tessellation_shader {
+            assert!(
+                !matches!(topology, PrimitiveTopology::PatchList),
+                "if the tessellation_shader feature is not enabled, topology must not be PatchList"
+            );
+        }
+
+        unsafe {
+            self.inner.set_primitive_topology(topology);
+        }
+
+        self
+    }
+
+    /// Sets whether dynamic rasterizer discard is enabled for future draw calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - Panics if the [`extended_dynamic_state2`](crate::device::Features::extended_dynamic_state2)
+    ///   feature is not enabled on the device.
+    /// - Panics if the currently bound graphics pipeline already contains this state internally.
+    #[inline]
+    pub fn set_rasterizer_discard_enable(&mut self, enable: bool) -> &mut Self {
+        assert!(
+            self.queue_family().supports_graphics(),
+            "the queue family of the command buffer must support graphics operations"
+        );
+        assert!(
+            self.device().enabled_features().extended_dynamic_state2,
+            "the extended_dynamic_state2 feature must be enabled on the device"
+        );
+        assert!(
+            !self.has_fixed_state(DynamicState::RasterizerDiscardEnable),
+            "the currently bound graphics pipeline must not contain this state internally"
+        );
+
+        unsafe {
+            self.inner.set_rasterizer_discard_enable(enable);
         }
 
         self
@@ -1933,6 +2552,62 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         self
     }
 
+    /// Sets the dynamic scissors with count for future draw calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - Panics if the
+    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state)
+    ///   feature is not enabled on the device.
+    /// - Panics if the currently bound graphics pipeline already contains this state internally.
+    /// - Panics if the highest scissor slot being set is greater than the
+    ///   [`max_viewports`](crate::device::Properties::max_viewports) device property.
+    /// - If the [`multi_viewport`](crate::device::Features::multi_viewport) feature is not enabled,
+    ///   panics if more than 1 scissor is provided.
+    #[inline]
+    pub fn set_scissor_with_count<I>(&mut self, scissors: I) -> &mut Self
+    where
+        I: IntoIterator<Item = Scissor>,
+    {
+        assert!(
+            self.queue_family().supports_graphics(),
+            "the queue family of the command buffer must support graphics operations"
+        );
+        assert!(
+            self.device().enabled_features().extended_dynamic_state,
+            "the extended_dynamic_state feature must be enabled on the device"
+        );
+        assert!(
+            !self.has_fixed_state(DynamicState::ScissorWithCount),
+            "the currently bound graphics pipeline must not contain this state internally"
+        );
+
+        let scissors: SmallVec<[Scissor; 2]> = scissors.into_iter().collect();
+
+        assert!(
+            scissors.len() as u32 <= self.device().physical_device().properties().max_viewports,
+            "the highest scissor slot being set must not be higher than the max_viewports device property"
+        );
+
+        if !self.device().enabled_features().multi_viewport {
+            assert!(
+                scissors.len() <= 1,
+                "if the multi_viewport feature is not enabled, no more than 1 scissor must be provided"
+            );
+        }
+
+        // TODO: VUID-vkCmdSetScissorWithCountEXT-commandBuffer-04820
+        // commandBuffer must not have
+        // VkCommandBufferInheritanceViewportScissorInfoNV::viewportScissor2D enabled
+
+        unsafe {
+            self.inner.set_scissor_with_count(scissors);
+        }
+
+        self
+    }
+
     /// Sets the dynamic stencil compare mask on one or both faces for future draw calls.
     ///
     /// # Panics
@@ -1960,6 +2635,45 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         self
     }
 
+    /// Sets the dynamic stencil ops on one or both faces for future draw calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - Panics if the
+    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state)
+    ///   feature is not enabled on the device.
+    /// - Panics if the currently bound graphics pipeline already contains this state internally.
+    #[inline]
+    pub fn set_stencil_op(
+        &mut self,
+        faces: StencilFaces,
+        fail_op: StencilOp,
+        pass_op: StencilOp,
+        depth_fail_op: StencilOp,
+        compare_op: CompareOp,
+    ) -> &mut Self {
+        assert!(
+            self.queue_family().supports_graphics(),
+            "the queue family of the command buffer must support graphics operations"
+        );
+        assert!(
+            self.device().enabled_features().extended_dynamic_state,
+            "the extended_dynamic_state feature must be enabled on the device"
+        );
+        assert!(
+            !self.has_fixed_state(DynamicState::StencilOp),
+            "the currently bound graphics pipeline must not contain this state internally"
+        );
+
+        unsafe {
+            self.inner
+                .set_stencil_op(faces, fail_op, pass_op, depth_fail_op, compare_op);
+        }
+
+        self
+    }
+
     /// Sets the dynamic stencil reference on one or both faces for future draw calls.
     ///
     /// # Panics
@@ -1978,6 +2692,36 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
         unsafe {
             self.inner.set_stencil_reference(faces, reference);
+        }
+
+        self
+    }
+
+    /// Sets whether dynamic stencil testing is enabled for future draw calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - Panics if the [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state)
+    ///   feature is not enabled on the device.
+    /// - Panics if the currently bound graphics pipeline already contains this state internally.
+    #[inline]
+    pub fn set_stencil_test_enable(&mut self, enable: bool) -> &mut Self {
+        assert!(
+            self.queue_family().supports_graphics(),
+            "the queue family of the command buffer must support graphics operations"
+        );
+        assert!(
+            self.device().enabled_features().extended_dynamic_state,
+            "the extended_dynamic_state feature must be enabled on the device"
+        );
+        assert!(
+            !self.has_fixed_state(DynamicState::StencilTestEnable),
+            "the currently bound graphics pipeline must not contain this state internally"
+        );
+
+        unsafe {
+            self.inner.set_stencil_test_enable(enable);
         }
 
         self
@@ -2054,6 +2798,62 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
         unsafe {
             self.inner.set_viewport(first_viewport, viewports);
+        }
+
+        self
+    }
+
+    /// Sets the dynamic viewports with count for future draw calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - Panics if the
+    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state)
+    ///   feature is not enabled on the device.
+    /// - Panics if the currently bound graphics pipeline already contains this state internally.
+    /// - Panics if the highest viewport slot being set is greater than the
+    ///   [`max_viewports`](crate::device::Properties::max_viewports) device property.
+    /// - If the [`multi_viewport`](crate::device::Features::multi_viewport) feature is not enabled,
+    ///   panics if more than 1 viewport is provided.
+    #[inline]
+    pub fn set_viewport_with_count<I>(&mut self, viewports: I) -> &mut Self
+    where
+        I: IntoIterator<Item = Viewport>,
+    {
+        assert!(
+            self.queue_family().supports_graphics(),
+            "the queue family of the command buffer must support graphics operations"
+        );
+        assert!(
+            self.device().enabled_features().extended_dynamic_state,
+            "the extended_dynamic_state feature must be enabled on the device"
+        );
+        assert!(
+            !self.has_fixed_state(DynamicState::ViewportWithCount),
+            "the currently bound graphics pipeline must not contain this state internally"
+        );
+
+        let viewports: SmallVec<[Viewport; 2]> = viewports.into_iter().collect();
+
+        assert!(
+            viewports.len() as u32 <= self.device().physical_device().properties().max_viewports,
+            "the highest viewport slot being set must not be higher than the max_viewports device property"
+        );
+
+        if !self.device().enabled_features().multi_viewport {
+            assert!(
+                viewports.len() <= 1,
+                "if the multi_viewport feature is not enabled, no more than 1 viewport must be provided"
+            );
+        }
+
+        // TODO: VUID-vkCmdSetViewportWithCountEXT-commandBuffer-04819
+        // commandBuffer must not have
+        // VkCommandBufferInheritanceViewportScissorInfoNV::viewportScissor2D enabled
+
+        unsafe {
+            self.inner.set_viewport_with_count(viewports);
         }
 
         self
@@ -2422,7 +3222,7 @@ where
             self.inner
                 .begin_render_pass(framebuffer.clone(), contents, clear_values)?;
             self.render_pass_state = Some(RenderPassState {
-                subpass: (framebuffer.render_pass().clone(), 0),
+                subpass: framebuffer.render_pass().clone().first_subpass(),
                 contents,
                 framebuffer: framebuffer_object,
             });
@@ -2438,12 +3238,15 @@ where
     pub fn end_render_pass(&mut self) -> Result<&mut Self, AutoCommandBufferBuilderContextError> {
         unsafe {
             if let Some(render_pass_state) = self.render_pass_state.as_ref() {
-                let (ref rp, index) = render_pass_state.subpass;
-
-                if rp.desc().subpasses().len() as u32 != index + 1 {
+                if !render_pass_state.subpass.is_last_subpass() {
                     return Err(AutoCommandBufferBuilderContextError::NumSubpassesMismatch {
-                        actual: rp.desc().subpasses().len() as u32,
-                        current: index,
+                        actual: render_pass_state
+                            .subpass
+                            .render_pass()
+                            .desc()
+                            .subpasses()
+                            .len() as u32,
+                        current: render_pass_state.subpass.index(),
                     });
                 }
             } else {
@@ -2587,7 +3390,7 @@ where
         }
 
         // Subpasses must be the same.
-        if render_pass.subpass.index() != render_pass_state.subpass.1 {
+        if render_pass.subpass.index() != render_pass_state.subpass.index() {
             return Err(AutoCommandBufferBuilderContextError::WrongSubpassIndex);
         }
 
@@ -2596,7 +3399,7 @@ where
             .subpass
             .render_pass()
             .desc()
-            .is_compatible_with_desc(render_pass_state.subpass.0.desc())
+            .is_compatible_with_desc(render_pass_state.subpass.render_pass().desc())
         {
             return Err(AutoCommandBufferBuilderContextError::IncompatibleRenderPass);
         }
@@ -2620,19 +3423,22 @@ where
     ) -> Result<&mut Self, AutoCommandBufferBuilderContextError> {
         unsafe {
             if let Some(render_pass_state) = self.render_pass_state.as_mut() {
-                let (ref rp, ref mut index) = render_pass_state.subpass;
-
-                if *index + 1 >= rp.desc().subpasses().len() as u32 {
-                    return Err(AutoCommandBufferBuilderContextError::NumSubpassesMismatch {
-                        actual: rp.desc().subpasses().len() as u32,
-                        current: *index,
-                    });
-                } else {
-                    *index += 1;
+                if render_pass_state.subpass.try_next_subpass() {
                     render_pass_state.contents = contents;
+                } else {
+                    return Err(AutoCommandBufferBuilderContextError::NumSubpassesMismatch {
+                        actual: render_pass_state
+                            .subpass
+                            .render_pass()
+                            .desc()
+                            .subpasses()
+                            .len() as u32,
+                        current: render_pass_state.subpass.index(),
+                    });
                 }
 
-                if let Some(multiview) = rp.desc().multiview() {
+                if let Some(multiview) = render_pass_state.subpass.render_pass().desc().multiview()
+                {
                     // When multiview is enabled, at the beginning of each subpass all non-render pass state is undefined
                     self.inner.reset_state();
                 }

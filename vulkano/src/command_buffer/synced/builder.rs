@@ -23,24 +23,39 @@ use crate::command_buffer::CommandBufferExecError;
 use crate::command_buffer::CommandBufferLevel;
 use crate::command_buffer::CommandBufferUsage;
 use crate::command_buffer::ImageUninitializedSafe;
+use crate::descriptor_set::builder::DescriptorSetBuilderOutput;
+use crate::descriptor_set::layout::DescriptorSetLayout;
 use crate::descriptor_set::DescriptorSet;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::image::ImageLayout;
+use crate::image::ImageViewAbstract;
+use crate::pipeline::color_blend::LogicOp;
+use crate::pipeline::depth_stencil::CompareOp;
+use crate::pipeline::depth_stencil::StencilOp;
+use crate::pipeline::depth_stencil::StencilOps;
 use crate::pipeline::input_assembly::IndexType;
+use crate::pipeline::input_assembly::PrimitiveTopology;
 use crate::pipeline::layout::PipelineLayout;
+use crate::pipeline::rasterization::CullMode;
+use crate::pipeline::rasterization::DepthBias;
+use crate::pipeline::rasterization::FrontFace;
+use crate::pipeline::rasterization::LineStipple;
 use crate::pipeline::viewport::Scissor;
 use crate::pipeline::viewport::Viewport;
 use crate::pipeline::ComputePipeline;
 use crate::pipeline::DynamicState;
 use crate::pipeline::GraphicsPipeline;
 use crate::pipeline::PipelineBindPoint;
+use crate::range_set::RangeSet;
 use crate::render_pass::FramebufferAbstract;
 use crate::sync::AccessFlags;
 use crate::sync::PipelineMemoryAccess;
 use crate::sync::PipelineStages;
 use crate::OomError;
+use crate::VulkanObject;
 use fnv::FnvHashMap;
+use smallvec::SmallVec;
 use std::borrow::Cow;
 use std::collections::hash_map::Entry;
 use std::error;
@@ -720,35 +735,144 @@ struct CurrentState {
     pipeline_graphics: Option<Arc<dyn Command>>,
     vertex_buffers: FnvHashMap<u32, Arc<dyn Command>>,
 
-    push_constants: Option<PushConstantState>,
+    push_constants: RangeSet<u32>,
+    push_constants_pipeline_layout: Option<Arc<PipelineLayout>>,
 
     blend_constants: Option<[f32; 4]>,
-    depth_bias: Option<(f32, f32, f32)>,
+    color_write_enable: Option<SmallVec<[bool; 4]>>,
+    cull_mode: Option<CullMode>,
+    depth_bias: Option<DepthBias>,
+    depth_bias_enable: Option<bool>,
     depth_bounds: Option<(f32, f32)>,
+    depth_bounds_test_enable: Option<bool>,
+    depth_compare_op: Option<CompareOp>,
+    depth_test_enable: Option<bool>,
+    depth_write_enable: Option<bool>,
+    discard_rectangle: FnvHashMap<u32, Scissor>,
+    front_face: Option<FrontFace>,
+    line_stipple: Option<LineStipple>,
     line_width: Option<f32>,
-    stencil_compare_mask: StencilState,
-    stencil_reference: StencilState,
-    stencil_write_mask: StencilState,
+    logic_op: Option<LogicOp>,
+    patch_control_points: Option<u32>,
+    primitive_restart_enable: Option<bool>,
+    primitive_topology: Option<PrimitiveTopology>,
+    rasterizer_discard_enable: Option<bool>,
     scissor: FnvHashMap<u32, Scissor>,
+    scissor_with_count: Option<SmallVec<[Scissor; 2]>>,
+    stencil_compare_mask: StencilStateDynamic,
+    stencil_op: StencilOpStateDynamic,
+    stencil_reference: StencilStateDynamic,
+    stencil_test_enable: Option<bool>,
+    stencil_write_mask: StencilStateDynamic,
     viewport: FnvHashMap<u32, Viewport>,
+    viewport_with_count: Option<SmallVec<[Viewport; 2]>>,
 }
 
 impl CurrentState {
     fn reset_dynamic_states(&mut self, states: impl IntoIterator<Item = DynamicState>) {
         for state in states {
-            // TODO: If more dynamic states are added to CurrentState, add match arms here
             match state {
                 DynamicState::BlendConstants => self.blend_constants = None,
+                DynamicState::ColorWriteEnable => self.color_write_enable = None,
+                DynamicState::CullMode => self.cull_mode = None,
                 DynamicState::DepthBias => self.depth_bias = None,
+                DynamicState::DepthBiasEnable => self.depth_bias_enable = None,
                 DynamicState::DepthBounds => self.depth_bounds = None,
+                DynamicState::DepthBoundsTestEnable => self.depth_bounds_test_enable = None,
+                DynamicState::DepthCompareOp => self.depth_compare_op = None,
+                DynamicState::DepthTestEnable => self.depth_test_enable = None,
+                DynamicState::DepthWriteEnable => self.depth_write_enable = None,
+                DynamicState::DiscardRectangle => self.discard_rectangle.clear(),
+                DynamicState::ExclusiveScissor => (), // TODO;
+                DynamicState::FragmentShadingRate => (), // TODO:
+                DynamicState::FrontFace => self.front_face = None,
+                DynamicState::LineStipple => self.line_stipple = None,
                 DynamicState::LineWidth => self.line_width = None,
-                DynamicState::StencilCompareMask => self.stencil_compare_mask = Default::default(),
-                DynamicState::StencilReference => self.stencil_reference = Default::default(),
-                DynamicState::StencilWriteMask => self.stencil_write_mask = Default::default(),
+                DynamicState::LogicOp => self.logic_op = None,
+                DynamicState::PatchControlPoints => self.patch_control_points = None,
+                DynamicState::PrimitiveRestartEnable => self.primitive_restart_enable = None,
+                DynamicState::PrimitiveTopology => self.primitive_topology = None,
+                DynamicState::RasterizerDiscardEnable => self.rasterizer_discard_enable = None,
+                DynamicState::RayTracingPipelineStackSize => (), // TODO:
+                DynamicState::SampleLocations => (),             // TODO:
                 DynamicState::Scissor => self.scissor.clear(),
+                DynamicState::ScissorWithCount => self.scissor_with_count = None,
+                DynamicState::StencilCompareMask => self.stencil_compare_mask = Default::default(),
+                DynamicState::StencilOp => self.stencil_op = Default::default(),
+                DynamicState::StencilReference => self.stencil_reference = Default::default(),
+                DynamicState::StencilTestEnable => self.stencil_test_enable = None,
+                DynamicState::StencilWriteMask => self.stencil_write_mask = Default::default(),
+                DynamicState::VertexInput => (), // TODO:
+                DynamicState::VertexInputBindingStride => (), // TODO:
                 DynamicState::Viewport => self.viewport.clear(),
-                _ => (),
+                DynamicState::ViewportCoarseSampleOrder => (), // TODO:
+                DynamicState::ViewportShadingRatePalette => (), // TODO:
+                DynamicState::ViewportWScaling => (),          // TODO:
+                DynamicState::ViewportWithCount => self.viewport_with_count = None,
             }
+        }
+    }
+
+    fn invalidate_descriptor_sets(
+        &mut self,
+        pipeline_bind_point: PipelineBindPoint,
+        pipeline_layout: Arc<PipelineLayout>,
+        first_set: u32,
+        num_descriptor_sets: u32,
+        cmd: &Arc<dyn Command>,
+    ) {
+        let state = match self.descriptor_sets.entry(pipeline_bind_point) {
+            Entry::Vacant(entry) => entry.insert(DescriptorSetState {
+                descriptor_sets: Default::default(),
+                pipeline_layout,
+            }),
+            Entry::Occupied(entry) => {
+                let state = entry.into_mut();
+
+                let invalidate_from = if state.pipeline_layout.internal_object()
+                    == pipeline_layout.internal_object()
+                {
+                    // If we're still using the exact same layout, then of course it's compatible.
+                    None
+                } else if state.pipeline_layout.push_constant_ranges()
+                    != pipeline_layout.push_constant_ranges()
+                {
+                    // If the push constant ranges don't match,
+                    // all bound descriptor sets are disturbed.
+                    Some(0)
+                } else {
+                    // Find the first descriptor set layout in the current pipeline layout that
+                    // isn't compatible with the corresponding set in the new pipeline layout.
+                    // If an incompatible set was found, all bound sets from that slot onwards will
+                    // be disturbed.
+                    let current_layouts = state.pipeline_layout.descriptor_set_layouts();
+                    let new_layouts = pipeline_layout.descriptor_set_layouts();
+                    let max = (current_layouts.len() as u32).min(first_set + num_descriptor_sets);
+                    (0..max).find(|&num| {
+                        let num = num as usize;
+                        !current_layouts[num].is_compatible_with(&new_layouts[num])
+                    })
+                };
+
+                if let Some(invalidate_from) = invalidate_from {
+                    // Remove disturbed sets and set new pipeline layout.
+                    state
+                        .descriptor_sets
+                        .retain(|&num, _| num < invalidate_from);
+                    state.pipeline_layout = pipeline_layout;
+                } else if (first_set + num_descriptor_sets) as usize
+                    >= state.pipeline_layout.descriptor_set_layouts().len()
+                {
+                    // New layout is a superset of the old one.
+                    state.pipeline_layout = pipeline_layout;
+                }
+
+                state
+            }
+        };
+
+        for i in 0..num_descriptor_sets {
+            state.descriptor_sets.insert(first_set + i, cmd.clone());
         }
     }
 }
@@ -756,11 +880,6 @@ impl CurrentState {
 #[derive(Debug)]
 struct DescriptorSetState {
     descriptor_sets: FnvHashMap<u32, Arc<dyn Command>>,
-    pipeline_layout: Arc<PipelineLayout>,
-}
-
-#[derive(Debug)]
-struct PushConstantState {
     pipeline_layout: Arc<PipelineLayout>,
 }
 
@@ -773,20 +892,23 @@ pub struct CommandBufferState<'a> {
 impl<'a> CommandBufferState<'a> {
     /// Returns the descriptor set currently bound to a given set number, or `None` if nothing has
     /// been bound yet.
+    #[inline]
     pub fn descriptor_set(
         &self,
         pipeline_bind_point: PipelineBindPoint,
         set_num: u32,
-    ) -> Option<(&'a dyn DescriptorSet, &'a [u32])> {
-        self.current_state
-            .descriptor_sets
-            .get(&pipeline_bind_point)
-            .and_then(|state| {
+    ) -> Option<SetOrPush<'a>> {
+        let state =
+            if let Some(state) = self.current_state.descriptor_sets.get(&pipeline_bind_point) {
                 state
-                    .descriptor_sets
-                    .get(&set_num)
-                    .map(|cmd| cmd.bound_descriptor_set(set_num))
-            })
+            } else {
+                return None;
+            };
+
+        state
+            .descriptor_sets
+            .get(&set_num)
+            .map(|cmd| cmd.bound_descriptor_set(set_num))
     }
 
     /// Returns the pipeline layout that describes all currently bound descriptor sets.
@@ -805,6 +927,7 @@ impl<'a> CommandBufferState<'a> {
     }
 
     /// Returns the index buffer currently bound, or `None` if nothing has been bound yet.
+    #[inline]
     pub fn index_buffer(&self) -> Option<(&'a dyn BufferAccess, IndexType)> {
         self.current_state
             .index_buffer
@@ -813,6 +936,7 @@ impl<'a> CommandBufferState<'a> {
     }
 
     /// Returns the compute pipeline currently bound, or `None` if nothing has been bound yet.
+    #[inline]
     pub fn pipeline_compute(&self) -> Option<&'a Arc<ComputePipeline>> {
         self.current_state
             .pipeline_compute
@@ -821,6 +945,7 @@ impl<'a> CommandBufferState<'a> {
     }
 
     /// Returns the graphics pipeline currently bound, or `None` if nothing has been bound yet.
+    #[inline]
     pub fn pipeline_graphics(&self) -> Option<&'a Arc<GraphicsPipeline>> {
         self.current_state
             .pipeline_graphics
@@ -830,6 +955,7 @@ impl<'a> CommandBufferState<'a> {
 
     /// Returns the vertex buffer currently bound to a given binding slot number, or `None` if
     /// nothing has been bound yet.
+    #[inline]
     pub fn vertex_buffer(&self, binding_num: u32) -> Option<&'a dyn BufferAccess> {
         self.current_state
             .vertex_buffers
@@ -837,15 +963,18 @@ impl<'a> CommandBufferState<'a> {
             .map(|cmd| cmd.bound_vertex_buffer(binding_num))
     }
 
+    /// Returns a set containing push constant bytes that have been set.
+    #[inline]
+    pub fn push_constants(&self) -> &'a RangeSet<u32> {
+        &self.current_state.push_constants
+    }
+
     /// Returns the pipeline layout that describes the current push constants.
     ///
     /// This is the layout used to perform the last push constant write operation.
     #[inline]
     pub fn push_constants_pipeline_layout(&self) -> Option<&'a Arc<PipelineLayout>> {
-        self.current_state
-            .push_constants
-            .as_ref()
-            .map(|state| &state.pipeline_layout)
+        self.current_state.push_constants_pipeline_layout.as_ref()
     }
 
     /// Returns the current blend constants, or `None` if nothing has been set yet.
@@ -854,10 +983,31 @@ impl<'a> CommandBufferState<'a> {
         self.current_state.blend_constants
     }
 
+    /// Returns the current color write enable settings, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn color_write_enable(&self) -> Option<&'a [bool]> {
+        self.current_state
+            .color_write_enable
+            .as_ref()
+            .map(|x| x.as_slice())
+    }
+
+    /// Returns the current cull mode, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn cull_mode(&self) -> Option<CullMode> {
+        self.current_state.cull_mode
+    }
+
     /// Returns the current depth bias settings, or `None` if nothing has been set yet.
     #[inline]
-    pub fn depth_bias(&self) -> Option<(f32, f32, f32)> {
+    pub fn depth_bias(&self) -> Option<DepthBias> {
         self.current_state.depth_bias
+    }
+
+    /// Returns whether depth bias is enabled, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn depth_bias_enable(&self) -> Option<bool> {
+        self.current_state.depth_bias_enable
     }
 
     /// Returns the current depth bounds settings, or `None` if nothing has been set yet.
@@ -866,27 +1016,126 @@ impl<'a> CommandBufferState<'a> {
         self.current_state.depth_bounds
     }
 
+    /// Returns whether depth bound testing is enabled, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn depth_bounds_test_enable(&self) -> Option<bool> {
+        self.current_state.depth_bias_enable
+    }
+
+    /// Returns the current depth compare op, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn depth_compare_op(&self) -> Option<CompareOp> {
+        self.current_state.depth_compare_op
+    }
+
+    /// Returns whether depth testing is enabled, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn depth_test_enable(&self) -> Option<bool> {
+        self.current_state.depth_test_enable
+    }
+
+    /// Returns whether depth write is enabled, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn depth_write_enable(&self) -> Option<bool> {
+        self.current_state.depth_write_enable
+    }
+
+    /// Returns the current discard rectangles, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn discard_rectangle(&self, num: u32) -> Option<&'a Scissor> {
+        self.current_state.discard_rectangle.get(&num)
+    }
+
+    /// Returns the current front face, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn front_face(&self) -> Option<FrontFace> {
+        self.current_state.front_face
+    }
+
+    /// Returns the current line stipple settings, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn line_stipple(&self) -> Option<LineStipple> {
+        self.current_state.line_stipple
+    }
+
     /// Returns the current line width, or `None` if nothing has been set yet.
     #[inline]
     pub fn line_width(&self) -> Option<f32> {
         self.current_state.line_width
     }
 
+    /// Returns the current logic op, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn logic_op(&self) -> Option<LogicOp> {
+        self.current_state.logic_op
+    }
+
+    /// Returns the current number of patch control points, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn patch_control_points(&self) -> Option<u32> {
+        self.current_state.patch_control_points
+    }
+
+    /// Returns whether primitive restart is enabled, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn primitive_restart_enable(&self) -> Option<bool> {
+        self.current_state.primitive_restart_enable
+    }
+
+    /// Returns the current primitive topology, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn primitive_topology(&self) -> Option<PrimitiveTopology> {
+        self.current_state.primitive_topology
+    }
+
+    /// Returns whether rasterizer discard is enabled, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn rasterizer_discard_enable(&self) -> Option<bool> {
+        self.current_state.rasterizer_discard_enable
+    }
+
+    /// Returns the current scissor for a given viewport slot, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn scissor(&self, num: u32) -> Option<&'a Scissor> {
+        self.current_state.scissor.get(&num)
+    }
+
+    /// Returns the current viewport-with-count settings, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn scissor_with_count(&self) -> Option<&'a [Scissor]> {
+        self.current_state
+            .scissor_with_count
+            .as_ref()
+            .map(|x| x.as_slice())
+    }
+
     /// Returns the current stencil compare masks.
     #[inline]
-    pub fn stencil_compare_mask(&self) -> StencilState {
+    pub fn stencil_compare_mask(&self) -> StencilStateDynamic {
         self.current_state.stencil_compare_mask
+    }
+
+    /// Returns the current stencil ops.
+    #[inline]
+    pub fn stencil_op(&self) -> StencilOpStateDynamic {
+        self.current_state.stencil_op
     }
 
     /// Returns the current stencil references.
     #[inline]
-    pub fn stencil_reference(&self) -> StencilState {
+    pub fn stencil_reference(&self) -> StencilStateDynamic {
         self.current_state.stencil_reference
+    }
+
+    /// Returns whether stencil testing is enabled, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn stencil_test_enable(&self) -> Option<bool> {
+        self.current_state.stencil_test_enable
     }
 
     /// Returns the current stencil write masks.
     #[inline]
-    pub fn stencil_write_mask(&self) -> StencilState {
+    pub fn stencil_write_mask(&self) -> StencilStateDynamic {
         self.current_state.stencil_write_mask
     }
 
@@ -896,16 +1145,73 @@ impl<'a> CommandBufferState<'a> {
         self.current_state.viewport.get(&num)
     }
 
-    /// Returns the current scissor for a given viewport slot, or `None` if nothing has been set yet.
+    /// Returns the current viewport-with-count settings, or `None` if nothing has been set yet.
     #[inline]
-    pub fn scissor(&self, num: u32) -> Option<&'a Scissor> {
-        self.current_state.scissor.get(&num)
+    pub fn viewport_with_count(&self) -> Option<&'a [Viewport]> {
+        self.current_state
+            .viewport_with_count
+            .as_ref()
+            .map(|x| x.as_slice())
+    }
+}
+
+#[derive(Clone)]
+pub enum SetOrPush<'a> {
+    Set(&'a dyn DescriptorSet, &'a [u32]),
+    Push(&'a DescriptorSetBuilderOutput),
+}
+
+impl<'a> SetOrPush<'a> {
+    pub fn layout(&self) -> &'a Arc<DescriptorSetLayout> {
+        match *self {
+            Self::Set(set, offsets) => set.layout(),
+            Self::Push(writes) => writes.layout(),
+        }
+    }
+
+    #[inline]
+    pub fn num_buffers(&self) -> usize {
+        match self {
+            Self::Set(set, offsets) => set.num_buffers(),
+            Self::Push(writes) => writes.resources().num_buffers(),
+        }
+    }
+
+    #[inline]
+    pub fn buffer(&self, num: usize) -> Option<(&'a dyn BufferAccess, u32)> {
+        match *self {
+            Self::Set(set, offsets) => set.buffer(num),
+            Self::Push(writes) => writes.resources().buffer(num),
+        }
+    }
+
+    #[inline]
+    pub fn num_images(&self) -> usize {
+        match self {
+            Self::Set(set, offsets) => set.num_images(),
+            Self::Push(writes) => writes.resources().num_images(),
+        }
+    }
+
+    #[inline]
+    pub fn image(&self, num: usize) -> Option<(&'a dyn ImageViewAbstract, u32)> {
+        match *self {
+            Self::Set(set, offsets) => set.image(num),
+            Self::Push(writes) => writes.resources().image(num),
+        }
     }
 }
 
 /// Holds the current stencil state of a command buffer builder.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct StencilState {
+pub struct StencilStateDynamic {
     pub front: Option<u32>,
     pub back: Option<u32>,
+}
+
+/// Holds the current per-face stencil op state of a command buffer builder.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct StencilOpStateDynamic {
+    pub front: Option<StencilOps>,
+    pub back: Option<StencilOps>,
 }

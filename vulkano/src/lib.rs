@@ -89,6 +89,7 @@ pub mod instance;
 pub mod memory;
 pub mod pipeline;
 pub mod query;
+pub mod range_set;
 pub mod sampler;
 pub mod spirv;
 pub mod swapchain;

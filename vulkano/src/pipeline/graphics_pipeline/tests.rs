@@ -130,7 +130,7 @@ fn bad_primitive_restart() {
     );
 
     match result {
-        Err(GraphicsPipelineCreationError::PrimitiveDoesntSupportPrimitiveRestart { .. }) => (),
+        Err(GraphicsPipelineCreationError::FeatureNotEnabled { .. }) => (),
         _ => panic!(),
     }
 }

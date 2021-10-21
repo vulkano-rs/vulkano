@@ -12,8 +12,7 @@ use examples::{Normal, Vertex, INDICES, NORMALS, VERTICES};
 use std::sync::Arc;
 use std::time::Instant;
 use vulkano::buffer::cpu_pool::CpuBufferPool;
-use vulkano::buffer::TypedBufferAccess;
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
+use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
 use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
@@ -23,14 +22,14 @@ use vulkano::image::attachment::AttachmentImage;
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
+use vulkano::pipeline::depth_stencil::DepthStencilState;
+use vulkano::pipeline::input_assembly::InputAssemblyState;
 use vulkano::pipeline::vertex::BuffersDefinition;
-use vulkano::pipeline::viewport::Viewport;
+use vulkano::pipeline::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::{GraphicsPipeline, PipelineBindPoint};
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
-use vulkano::swapchain;
-use vulkano::swapchain::{AcquireError, Swapchain, SwapchainCreationError};
-use vulkano::sync;
-use vulkano::sync::{FlushError, GpuFuture};
+use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
+use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano::Version;
 use vulkano_win::VkSurfaceBuild;
 use winit::event::{Event, WindowEvent};
@@ -344,15 +343,16 @@ fn window_size_dependent_setup(
                     .vertex::<Normal>(),
             )
             .vertex_shader(vs.main_entry_point(), ())
-            .triangle_list()
-            .viewports_dynamic_scissors_irrelevant(1)
-            .viewports([Viewport {
-                origin: [0.0, 0.0],
-                dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-                depth_range: 0.0..1.0,
-            }])
+            .input_assembly_state(InputAssemblyState::new())
+            .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([
+                Viewport {
+                    origin: [0.0, 0.0],
+                    dimensions: [dimensions[0] as f32, dimensions[1] as f32],
+                    depth_range: 0.0..1.0,
+                },
+            ]))
             .fragment_shader(fs.main_entry_point(), ())
-            .depth_stencil_simple_depth()
+            .depth_stencil_state(DepthStencilState::simple_depth_test())
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
             .build(device.clone())
             .unwrap(),

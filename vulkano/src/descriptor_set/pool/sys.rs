@@ -160,16 +160,16 @@ impl UnsafeDescriptorPool {
 
         let layouts: SmallVec<[_; 8]> = layouts
             .into_iter()
-            .map(|l| {
+            .map(|layout| {
                 assert_eq!(
                     self.device.internal_object(),
-                    l.device().internal_object(),
-                    "Tried to allocate from a pool with a set layout of a different \
-                                 device"
+                    layout.device().internal_object(),
+                    "Tried to allocate from a pool with a set layout of a different device"
                 );
+                debug_assert!(!layout.desc().is_push_descriptor());
 
-                variable_descriptor_counts.push(l.variable_descriptor_count());
-                l.internal_object()
+                variable_descriptor_counts.push(layout.variable_descriptor_count());
+                layout.internal_object()
             })
             .collect();
 
