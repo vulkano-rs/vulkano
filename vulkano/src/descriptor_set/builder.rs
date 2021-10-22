@@ -47,22 +47,7 @@ impl DescriptorSetBuilder {
 
         for binding_i in 0..layout.num_bindings() {
             if let Some(desc) = layout.descriptor(binding_i) {
-                let descriptor_count = desc.descriptor_count as usize;
-                let (num_bufs, num_imgs) = match desc.ty {
-                    DescriptorDescTy::Sampler { .. } => (0, 0),
-                    DescriptorDescTy::CombinedImageSampler { .. } => (0, 1),
-                    DescriptorDescTy::SampledImage { .. } => (0, 1),
-                    DescriptorDescTy::InputAttachment { .. } => (0, 1),
-                    DescriptorDescTy::StorageImage { .. } => (0, 1),
-                    DescriptorDescTy::UniformTexelBuffer { .. } => (1, 0),
-                    DescriptorDescTy::StorageTexelBuffer { .. } => (1, 0),
-                    DescriptorDescTy::UniformBuffer => (1, 0),
-                    DescriptorDescTy::StorageBuffer => (1, 0),
-                    DescriptorDescTy::UniformBufferDynamic => (1, 0),
-                    DescriptorDescTy::StorageBufferDynamic => (1, 0),
-                };
-
-                desc_writes_capacity += descriptor_count;
+                desc_writes_capacity += desc.descriptor_count as usize;
                 descriptors.push(BuilderDescriptor {
                     desc: Some(desc),
                     array_element: 0,
