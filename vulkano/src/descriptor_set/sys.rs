@@ -128,15 +128,7 @@ impl fmt::Debug for UnsafeDescriptorSet {
 pub struct DescriptorWrite {
     pub(crate) binding_num: u32,
     first_array_element: u32,
-    elements: DescriptorWriteOwnedElements,
-}
-
-enum DescriptorWriteOwnedElements {
-    Buffer(SmallVec<[Arc<dyn BufferAccess>; 1]>),
-    BufferView(SmallVec<[Arc<dyn BufferViewAbstract>; 1]>),
-    ImageView(SmallVec<[Arc<dyn ImageViewAbstract>; 1]>),
-    ImageViewSampler(SmallVec<[(Arc<dyn ImageViewAbstract>, Arc<Sampler>); 1]>),
-    Sampler(SmallVec<[Arc<Sampler>; 1]>),
+    elements: DescriptorWriteElements,
 }
 
 impl DescriptorWrite {
@@ -151,7 +143,7 @@ impl DescriptorWrite {
         Self {
             binding_num,
             first_array_element,
-            elements: DescriptorWriteOwnedElements::Buffer(elements),
+            elements: DescriptorWriteElements::Buffer(elements),
         }
     }
 
@@ -166,7 +158,7 @@ impl DescriptorWrite {
         Self {
             binding_num,
             first_array_element,
-            elements: DescriptorWriteOwnedElements::BufferView(elements),
+            elements: DescriptorWriteElements::BufferView(elements),
         }
     }
 
@@ -181,7 +173,7 @@ impl DescriptorWrite {
         Self {
             binding_num,
             first_array_element,
-            elements: DescriptorWriteOwnedElements::ImageView(elements),
+            elements: DescriptorWriteElements::ImageView(elements),
         }
     }
 
@@ -196,7 +188,7 @@ impl DescriptorWrite {
         Self {
             binding_num,
             first_array_element,
-            elements: DescriptorWriteOwnedElements::ImageViewSampler(elements),
+            elements: DescriptorWriteElements::ImageViewSampler(elements),
         }
     }
 
@@ -211,7 +203,7 @@ impl DescriptorWrite {
         Self {
             binding_num,
             first_array_element,
-            elements: DescriptorWriteOwnedElements::Sampler(elements),
+            elements: DescriptorWriteElements::Sampler(elements),
         }
     }
 
@@ -229,29 +221,13 @@ impl DescriptorWrite {
 
     /// Returns a reference to the elements held by this descriptor write.
     #[inline]
-    pub fn elements(&self) -> DescriptorWriteElements {
-        match &self.elements {
-            DescriptorWriteOwnedElements::Buffer(elements) => {
-                DescriptorWriteElements::Buffer(elements)
-            }
-            DescriptorWriteOwnedElements::BufferView(elements) => {
-                DescriptorWriteElements::BufferView(elements)
-            }
-            DescriptorWriteOwnedElements::ImageView(elements) => {
-                DescriptorWriteElements::ImageView(elements)
-            }
-            DescriptorWriteOwnedElements::ImageViewSampler(elements) => {
-                DescriptorWriteElements::ImageViewSampler(elements)
-            }
-            DescriptorWriteOwnedElements::Sampler(elements) => {
-                DescriptorWriteElements::Sampler(elements)
-            }
-        }
+    pub fn elements(&self) -> &DescriptorWriteElements {
+        &self.elements
     }
 
     pub(crate) fn to_vulkan_info(&self, descriptor_type: DescriptorType) -> DescriptorWriteInfo {
         match &self.elements {
-            DescriptorWriteOwnedElements::Buffer(elements) => {
+            DescriptorWriteElements::Buffer(elements) => {
                 debug_assert!(matches!(
                     descriptor_type,
                     DescriptorType::UniformBuffer
@@ -292,7 +268,7 @@ impl DescriptorWrite {
                         .collect(),
                 )
             }
-            DescriptorWriteOwnedElements::BufferView(elements) => {
+            DescriptorWriteElements::BufferView(elements) => {
                 debug_assert!(matches!(
                     descriptor_type,
                     DescriptorType::UniformTexelBuffer | DescriptorType::StorageTexelBuffer
@@ -304,7 +280,7 @@ impl DescriptorWrite {
                         .collect(),
                 )
             }
-            DescriptorWriteOwnedElements::ImageView(elements) => {
+            DescriptorWriteElements::ImageView(elements) => {
                 // Note: combined image sampler can occur with immutable samplers
                 debug_assert!(matches!(
                     descriptor_type,
@@ -329,7 +305,7 @@ impl DescriptorWrite {
                         .collect(),
                 )
             }
-            DescriptorWriteOwnedElements::ImageViewSampler(elements) => {
+            DescriptorWriteElements::ImageViewSampler(elements) => {
                 debug_assert!(matches!(
                     descriptor_type,
                     DescriptorType::CombinedImageSampler
@@ -350,7 +326,7 @@ impl DescriptorWrite {
                         .collect(),
                 )
             }
-            DescriptorWriteOwnedElements::Sampler(elements) => {
+            DescriptorWriteElements::Sampler(elements) => {
                 debug_assert!(matches!(descriptor_type, DescriptorType::Sampler));
                 DescriptorWriteInfo::Image(
                     elements
@@ -385,16 +361,16 @@ impl DescriptorWrite {
     }
 }
 
-/// A reference to the elements held by a descriptor write.
-pub enum DescriptorWriteElements<'a> {
-    Buffer(&'a [Arc<dyn BufferAccess>]),
-    BufferView(&'a [Arc<dyn BufferViewAbstract>]),
-    ImageView(&'a [Arc<dyn ImageViewAbstract>]),
-    ImageViewSampler(&'a [(Arc<dyn ImageViewAbstract>, Arc<Sampler>)]),
-    Sampler(&'a [Arc<Sampler>]),
+/// The elements held by a descriptor write.
+pub enum DescriptorWriteElements {
+    Buffer(SmallVec<[Arc<dyn BufferAccess>; 1]>),
+    BufferView(SmallVec<[Arc<dyn BufferViewAbstract>; 1]>),
+    ImageView(SmallVec<[Arc<dyn ImageViewAbstract>; 1]>),
+    ImageViewSampler(SmallVec<[(Arc<dyn ImageViewAbstract>, Arc<Sampler>); 1]>),
+    Sampler(SmallVec<[Arc<Sampler>; 1]>),
 }
 
-impl<'a> DescriptorWriteElements<'a> {
+impl DescriptorWriteElements {
     /// Returns the number of elements.
     #[inline]
     pub fn len(&self) -> u32 {
