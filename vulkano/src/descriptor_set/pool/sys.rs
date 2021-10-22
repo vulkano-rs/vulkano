@@ -148,7 +148,6 @@ impl UnsafeDescriptorPool {
     /// - You must ensure that the allocated descriptor sets are no longer in use when the pool
     ///   is destroyed, as destroying the pool is equivalent to freeing all the sets.
     ///
-    #[inline]
     pub unsafe fn alloc<'l, I>(
         &mut self,
         layouts: I,
@@ -172,16 +171,6 @@ impl UnsafeDescriptorPool {
                 layout.internal_object()
             })
             .collect();
-
-        self.alloc_impl(&layouts, &variable_descriptor_counts)
-    }
-
-    // Actual implementation of `alloc`. Separated so that it is not inlined.
-    unsafe fn alloc_impl(
-        &mut self,
-        layouts: &SmallVec<[ash::vk::DescriptorSetLayout; 8]>,
-        variable_descriptor_counts: &SmallVec<[u32; 8]>,
-    ) -> Result<impl ExactSizeIterator<Item = UnsafeDescriptorSet>, DescriptorPoolAllocError> {
         let num = layouts.len();
 
         let output = if num == 0 {
@@ -242,7 +231,9 @@ impl UnsafeDescriptorPool {
             output
         };
 
-        Ok(output.into_iter().map(|s| UnsafeDescriptorSet { set: s }))
+        Ok(output
+            .into_iter()
+            .map(|handle| UnsafeDescriptorSet::new(handle)))
     }
 
     /// Frees some descriptor sets.
@@ -435,7 +426,7 @@ mod tests {
 
         let mut pool = UnsafeDescriptorPool::new(device, &desc, 10, false).unwrap();
         unsafe {
-            let sets = pool.alloc(iter::once(&set_layout)).unwrap();
+            let sets = pool.alloc([&set_layout]).unwrap();
             assert_eq!(sets.count(), 1);
         }
     }
@@ -469,7 +460,7 @@ mod tests {
                 let mut pool = UnsafeDescriptorPool::new(device2, &desc, 10, false).unwrap();
 
                 unsafe {
-                    let _ = pool.alloc(iter::once(&set_layout));
+                    let _ = pool.alloc([&set_layout]);
                 }
             }
         );

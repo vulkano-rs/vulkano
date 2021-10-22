@@ -1172,32 +1172,32 @@ impl<'a> SetOrPush<'a> {
     #[inline]
     pub fn num_buffers(&self) -> usize {
         match self {
-            Self::Set(set, offsets) => set.num_buffers(),
-            Self::Push(writes) => writes.resources().num_buffers(),
+            Self::Set(set, offsets) => set.resources().num_buffers(),
+            Self::Push(writes) => writes.num_buffers(),
         }
     }
 
     #[inline]
     pub fn buffer(&self, num: usize) -> Option<(&'a dyn BufferAccess, u32)> {
         match *self {
-            Self::Set(set, offsets) => set.buffer(num),
-            Self::Push(writes) => writes.resources().buffer(num),
+            Self::Set(set, offsets) => set.resources().buffer(num),
+            Self::Push(writes) => writes.buffer(num),
         }
     }
 
     #[inline]
     pub fn num_images(&self) -> usize {
         match self {
-            Self::Set(set, offsets) => set.num_images(),
-            Self::Push(writes) => writes.resources().num_images(),
+            Self::Set(set, offsets) => set.resources().num_images(),
+            Self::Push(writes) => writes.num_images(),
         }
     }
 
     #[inline]
     pub fn image(&self, num: usize) -> Option<(&'a dyn ImageViewAbstract, u32)> {
         match *self {
-            Self::Set(set, offsets) => set.image(num),
-            Self::Push(writes) => writes.resources().image(num),
+            Self::Set(set, offsets) => set.resources().image(num),
+            Self::Push(writes) => writes.image(num),
         }
     }
 }

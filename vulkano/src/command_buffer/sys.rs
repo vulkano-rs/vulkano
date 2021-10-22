@@ -18,6 +18,7 @@ use crate::command_buffer::CommandBufferUsage;
 use crate::command_buffer::SecondaryCommandBuffer;
 use crate::command_buffer::SubpassContents;
 use crate::descriptor_set::sys::DescriptorWrite;
+use crate::descriptor_set::sys::DescriptorWriteInfo;
 use crate::descriptor_set::sys::UnsafeDescriptorSet;
 use crate::device::Device;
 use crate::device::DeviceOwned;
@@ -1372,21 +1373,51 @@ impl UnsafeCommandBufferBuilder {
             return;
         }
 
+        let (infos, mut writes): (SmallVec<[_; 8]>, SmallVec<[_; 8]>) = descriptor_writes
+            .into_iter()
+            .map(|write| {
+                let descriptor = pipeline_layout.descriptor_set_layouts()[set_num as usize]
+                    .descriptor(write.binding_num)
+                    .unwrap();
+                let descriptor_type = descriptor.ty.ty();
+
+                (
+                    write.to_vulkan_info(descriptor_type),
+                    write.to_vulkan(ash::vk::DescriptorSet::null(), descriptor_type),
+                )
+            })
+            .unzip();
+
+        // Set the info pointers separately.
+        for (info, write) in infos.iter().zip(writes.iter_mut()) {
+            match info {
+                DescriptorWriteInfo::Image(info) => {
+                    write.descriptor_count = info.len() as u32;
+                    write.p_image_info = info.as_ptr();
+                }
+                DescriptorWriteInfo::Buffer(info) => {
+                    write.descriptor_count = info.len() as u32;
+                    write.p_buffer_info = info.as_ptr();
+                }
+                DescriptorWriteInfo::BufferView(info) => {
+                    write.descriptor_count = info.len() as u32;
+                    write.p_texel_buffer_view = info.as_ptr();
+                }
+            }
+
+            debug_assert!(write.descriptor_count != 0);
+        }
+
         let fns = self.device().fns();
         let cmd = self.internal_object();
-
-        let raw_writes: SmallVec<[_; 8]> = descriptor_writes
-            .iter()
-            .map(|write| write.to_vulkan(ash::vk::DescriptorSet::null()))
-            .collect();
 
         fns.khr_push_descriptor.cmd_push_descriptor_set_khr(
             cmd,
             pipeline_bind_point.into(),
             pipeline_layout.internal_object(),
             set_num,
-            raw_writes.len() as u32,
-            raw_writes.as_ptr(),
+            writes.len() as u32,
+            writes.as_ptr(),
         );
     }
 

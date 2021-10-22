@@ -236,34 +236,42 @@ where
     }
 }
 
-pub unsafe trait BufferViewRef {
-    type BufferAccess: BufferAccess;
+pub unsafe trait BufferViewAbstract: Send + Sync {
+    /// Returns the inner handle used by this buffer view.
+    fn inner(&self) -> ash::vk::BufferView;
 
-    fn view(&self) -> &BufferView<Self::BufferAccess>;
+    /// Returns the wrapped buffer that this buffer view was created from.
+    fn buffer(&self) -> &dyn BufferAccess;
 }
 
-unsafe impl<B> BufferViewRef for BufferView<B>
+unsafe impl<B> BufferViewAbstract for BufferView<B>
 where
     B: BufferAccess,
 {
-    type BufferAccess = B;
+    #[inline]
+    fn inner(&self) -> ash::vk::BufferView {
+        self.handle
+    }
 
     #[inline]
-    fn view(&self) -> &BufferView<B> {
-        self
+    fn buffer(&self) -> &dyn BufferAccess {
+        &self.buffer
     }
 }
 
-unsafe impl<T, B> BufferViewRef for T
+unsafe impl<T> BufferViewAbstract for T
 where
-    T: SafeDeref<Target = BufferView<B>>,
-    B: BufferAccess,
+    T: SafeDeref + Send + Sync,
+    T::Target: BufferViewAbstract,
 {
-    type BufferAccess = B;
+    #[inline]
+    fn inner(&self) -> ash::vk::BufferView {
+        (**self).inner()
+    }
 
     #[inline]
-    fn view(&self) -> &BufferView<B> {
-        &**self
+    fn buffer(&self) -> &dyn BufferAccess {
+        (**self).buffer()
     }
 }
 

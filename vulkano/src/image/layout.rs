@@ -7,6 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::descriptor_set::layout::DescriptorType;
+
 /// Layout of an image.
 ///
 /// > **Note**: In vulkano, image layouts are mostly a low-level detail. You can ignore them,
@@ -57,4 +59,19 @@ pub struct ImageDescriptorLayouts {
     pub sampled_image: ImageLayout,
     /// The image layout to use in a descriptor as an input attachment.
     pub input_attachment: ImageLayout,
+}
+
+impl ImageDescriptorLayouts {
+    /// Returns the layout for the given descriptor type. Panics if `descriptor_type` is not an
+    /// image descriptor type.
+    #[inline]
+    pub fn layout_for(&self, descriptor_type: DescriptorType) -> ImageLayout {
+        match descriptor_type {
+            DescriptorType::CombinedImageSampler => self.combined_image_sampler,
+            DescriptorType::SampledImage => self.sampled_image,
+            DescriptorType::StorageImage => self.storage_image,
+            DescriptorType::InputAttachment => self.input_attachment,
+            _ => panic!("{:?} is not an image descriptor type", descriptor_type),
+        }
+    }
 }
