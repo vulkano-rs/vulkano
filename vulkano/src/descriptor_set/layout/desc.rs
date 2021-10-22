@@ -262,8 +262,11 @@ impl DescriptorSetDesc {
         })
     }
 
-    /// Checks whether the descriptor of a pipeline layout `self` is compatible with the descriptor
-    /// of a descriptor set being bound `other`.
+    /// Checks whether the descriptor set of a pipeline layout `self` is compatible with the
+    /// descriptor set being bound `other`.
+    ///
+    /// This performs the same check as `is_compatible_with`, but additionally ensures that the
+    /// shader can accept the binding.
     pub fn ensure_compatible_with_bind(
         &self,
         other: &DescriptorSetDesc,
