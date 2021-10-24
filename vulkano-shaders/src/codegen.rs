@@ -870,29 +870,7 @@ mod tests {
         let spirv = Spirv::new(comp.as_binary()).unwrap();
         structs::write_structs("", &spirv, &TypesMeta::default(), &mut HashMap::new());
     }
-    #[test]
-    fn test_vector_double_attributes() {
-        let includes: [PathBuf; 0] = [];
-        let defines: [(String, String); 0] = [];
-        let (comp, _) = compile(
-            None,
-            &Path::new(""),
-            "
-        #version 450
-        layout( location = 0 ) in dvec4 d4v;
-        layout( location = 2 ) in double d4a[4];
-        void main() {}
-        ",
-            ShaderKind::Vertex,
-            &includes,
-            &defines,
-            None,
-            None,
-        )
-        .unwrap();
-        let spirv = Spirv::new(comp.as_binary()).unwrap();
-        structs::write_structs("", &spirv, &TypesMeta::default(), &mut HashMap::new());
-    }
+
 
     #[test]
     fn test_include_resolution() {
