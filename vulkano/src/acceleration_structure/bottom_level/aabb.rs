@@ -7,15 +7,15 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::mem::size_of;
-use std::sync::Arc;
-use crate::buffer::TypedBufferAccess;
+use super::{AccelerationStructure, BottomLevelAccelerationStructure, BottomLevelData};
 use crate::buffer::BufferAccess;
+use crate::buffer::TypedBufferAccess;
 use crate::device::Device;
 use crate::VulkanObject;
 use ash::vk;
 use ash::vk::Handle;
-use super::{BottomLevelAccelerationStructure, BottomLevelData, AccelerationStructure};
+use std::mem::size_of;
+use std::sync::Arc;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -47,17 +47,17 @@ impl BottomLevelAccelerationStructure {
         let geometry_data = vk::AccelerationStructureGeometryDataKHR {
             aabbs: make_aabb_data(&aabbs_buffer),
         };
-    
+
         let geometry = vk::AccelerationStructureGeometryKHR::builder()
             .geometry_type(vk::GeometryTypeKHR::AABBS)
             .geometry(geometry_data)
             .build();
-    
+
         let acceleration_structure = AccelerationStructure::new(
-            device, 
+            device,
             std::slice::from_ref(&geometry),
             std::iter::once(aabbs_buffer.len() as u32),
-            vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL
+            vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
         );
 
         let data = BottomLevelData::Aabb {

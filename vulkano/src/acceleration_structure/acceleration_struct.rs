@@ -7,16 +7,16 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::mem::MaybeUninit;
-use std::ptr;
-use std::sync::Arc;
 use crate::buffer::DeviceLocalBuffer;
 use crate::buffer::{BufferAccess, BufferUsage};
-use crate::device::Device;
 use crate::check_errors;
+use crate::device::Device;
 use crate::VulkanObject;
 use ash::vk;
 use ash::vk::Handle;
+use std::mem::MaybeUninit;
+use std::ptr;
+use std::sync::Arc;
 
 pub(crate) struct AccelerationStructure {
     pub(crate) inner: vk::AccelerationStructureKHR,
@@ -33,76 +33,81 @@ impl AccelerationStructure {
         ty: vk::AccelerationStructureTypeKHR,
     ) -> AccelerationStructure {
         let fns = device.fns();
-    
+
         let build_info = vk::AccelerationStructureBuildGeometryInfoKHR::builder()
             .ty(ty)
             .flags(vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
             .geometries(geometries);
-    
+
         let size = unsafe {
             let mut output = MaybeUninit::uninit();
-            fns.khr_acceleration_structure.get_acceleration_structure_build_sizes_khr(
-                device.internal_object(),
-                vk::AccelerationStructureBuildTypeKHR::HOST,
-                &*build_info as *const _,
-                &(geometries.len() as u32) as *const _,
-                output.as_mut_ptr()
-            );
+            fns.khr_acceleration_structure
+                .get_acceleration_structure_build_sizes_khr(
+                    device.internal_object(),
+                    vk::AccelerationStructureBuildTypeKHR::HOST,
+                    &*build_info as *const _,
+                    &(geometries.len() as u32) as *const _,
+                    output.as_mut_ptr(),
+                );
             output.assume_init()
         };
-    
+
         let buffer_usage = BufferUsage {
             device_address: true,
             acceleration_structure_storage: true,
             ..BufferUsage::none()
         };
-    
+
         let buffer = unsafe {
             DeviceLocalBuffer::raw(
-                device.clone(), 
+                device.clone(),
                 size.acceleration_structure_size,
                 buffer_usage,
                 device.active_queue_families(),
-            ).unwrap()
+            )
+            .unwrap()
         };
-    
+
         let create_info = vk::AccelerationStructureCreateInfoKHR::builder()
             .buffer(buffer.inner().buffer.internal_object())
             .size(size.acceleration_structure_size)
             .ty(ty)
             .build();
-    
+
         let acceleration_structure = unsafe {
             let mut output = MaybeUninit::uninit();
-            let result = fns.khr_acceleration_structure.create_acceleration_structure_khr(
-                device.internal_object(),
-                &create_info as *const _,
-                ptr::null(),
-                output.as_mut_ptr()
-            );
+            let result = fns
+                .khr_acceleration_structure
+                .create_acceleration_structure_khr(
+                    device.internal_object(),
+                    &create_info as *const _,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                );
             check_errors(result).unwrap();
             output.assume_init()
         };
-    
+
         let scratch_buffer_usage = BufferUsage {
             storage_buffer: true,
             device_address: true,
             ..BufferUsage::none()
         };
-    
+
         let scratch_buffer = unsafe {
             DeviceLocalBuffer::<[u8]>::raw(
-                device.clone(), 
+                device.clone(),
                 size.build_scratch_size,
                 scratch_buffer_usage,
                 device.active_queue_families(),
-            ).unwrap()
+            )
+            .unwrap()
         };
-    
+
         let scratch_buffer_address = vk::DeviceOrHostAddressKHR {
             device_address: scratch_buffer.inner().buffer.internal_object().as_raw(),
         };
-    
+
         let build_info = build_info
             .mode(vk::BuildAccelerationStructureModeKHR::BUILD)
             .dst_acceleration_structure(acceleration_structure)
@@ -120,21 +125,23 @@ impl AccelerationStructure {
         assert_eq!(build_ranges.len(), geometries.len());
 
         let build_ranges_ptr = build_ranges.as_ptr();
-    
+
         unsafe {
-            let result = fns.khr_acceleration_structure.build_acceleration_structures_khr(
-                device.internal_object(),
-                vk::DeferredOperationKHR::null(),
-                1,
-                &build_info as *const _,
-                &build_ranges_ptr as *const *const _,
-            );
+            let result = fns
+                .khr_acceleration_structure
+                .build_acceleration_structures_khr(
+                    device.internal_object(),
+                    vk::DeferredOperationKHR::null(),
+                    1,
+                    &build_info as *const _,
+                    &build_ranges_ptr as *const *const _,
+                );
             check_errors(result).unwrap();
         };
 
         AccelerationStructure {
             inner: acceleration_structure,
-            buffer
+            buffer,
         }
     }
 }

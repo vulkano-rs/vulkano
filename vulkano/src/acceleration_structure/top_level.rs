@@ -7,12 +7,12 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::mem::size_of;
-use std::sync::Arc;
-use crate::device::Device;
-use ash::vk;
 use super::acceleration_struct::AccelerationStructure;
 use super::BottomLevelAccelerationStructure;
+use crate::device::Device;
+use ash::vk;
+use std::mem::size_of;
+use std::sync::Arc;
 
 pub struct TopLevelAccelerationStructure {
     acceleration_structure: AccelerationStructure,
@@ -22,11 +22,9 @@ pub struct TopLevelAccelerationStructure {
 
 fn make_instance(
     transform: [[f32; 4]; 3],
-    bottom: vk::AccelerationStructureKHR
+    bottom: vk::AccelerationStructureKHR,
 ) -> vk::AccelerationStructureInstanceKHR {
-    let matrix: [f32; 12] = unsafe {
-        std::mem::transmute(transform)
-    };
+    let matrix: [f32; 12] = unsafe { std::mem::transmute(transform) };
 
     let transform = vk::TransformMatrixKHR { matrix };
 
@@ -82,27 +80,28 @@ impl TopLevelAccelerationStructure {
         //
         // Instances are stored in the boxed slice
         // and dropped only when this struct is dropped
-        // 
-        let instances_data = unsafe {
-            make_instances_data(instances.as_ptr())
-        };
-        
+        //
+        let instances_data = unsafe { make_instances_data(instances.as_ptr()) };
+
         let geometry_data = vk::AccelerationStructureGeometryDataKHR {
             instances: instances_data,
         };
-    
+
         let geometry = vk::AccelerationStructureGeometryKHR::builder()
             .geometry_type(vk::GeometryTypeKHR::INSTANCES)
             .geometry(geometry_data)
             .build();
-    
+
         let acceleration_structure = AccelerationStructure::new(
-            device, 
+            device,
             std::slice::from_ref(&geometry),
             std::iter::once(instances.len() as u32),
-            vk::AccelerationStructureTypeKHR::TOP_LEVEL
+            vk::AccelerationStructureTypeKHR::TOP_LEVEL,
         );
 
-        Self { acceleration_structure, instances }
+        Self {
+            acceleration_structure,
+            instances,
+        }
     }
 }

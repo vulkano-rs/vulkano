@@ -9,16 +9,16 @@
 
 mod aabb;
 
-use std::sync::Arc;
-use crate::buffer::TypedBufferAccess;
 use super::acceleration_struct::AccelerationStructure;
+use crate::buffer::TypedBufferAccess;
+use std::sync::Arc;
 
 pub use aabb::AabbPosition;
 
 enum BottomLevelData {
     Aabb {
-        buffer: Arc<dyn TypedBufferAccess<Content = [AabbPosition]>>
-    }
+        buffer: Arc<dyn TypedBufferAccess<Content = [AabbPosition]>>,
+    },
 }
 
 pub struct BottomLevelAccelerationStructure {

@@ -16,7 +16,6 @@ use crate::OomError;
 pub use bottom_level::*;
 pub use top_level::*;
 
-
 #[derive(Debug, Clone)]
 pub enum AccelerationStructureCreationError {
     /// Out of memory.
