@@ -242,7 +242,7 @@ impl BitOr for BufferUsage {
             vertex_buffer: self.vertex_buffer || rhs.vertex_buffer,
             indirect_buffer: self.indirect_buffer || rhs.indirect_buffer,
             device_address: self.device_address || rhs.device_address,
-            acceleration_structure_storage: self.acceleration_structure_storage | rhs.acceleration_structure_storage,
+            acceleration_structure_storage: self.acceleration_structure_storage || rhs.acceleration_structure_storage,
         }
     }
 }
