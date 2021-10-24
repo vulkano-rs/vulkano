@@ -51,13 +51,14 @@ pub fn format_from_id(spirv: &Spirv, searched: Id, ignore_first_array: bool) -> 
         } => {
             assert!(!ignore_first_array);
             let (format, sz) = format_from_id(spirv, component_type, false);
-            assert!(format.starts_with("R32"));
+            assert!(format.starts_with("R32") || format.starts_with("R64"));
+            let format_bits = (&format[1..3]).clone();
             assert_eq!(sz, 1);
             let format = match component_count {
                 1 => format,
-                2 => format!("R32G32{}", &format[3..]),
-                3 => format!("R32G32B32{}", &format[3..]),
-                4 => format!("R32G32B32A32{}", &format[3..]),
+                2 => format!("R{0}G{0}{1}", format_bits, &format[3..]),
+                3 => format!("R{0}G{0}B{0}{1}", format_bits, &format[3..]),
+                4 => format!("R{0}G{0}B{0}A{0}{1}", format_bits, &format[3..]),
                 _ => panic!("Found vector type with more than 4 elements"),
             };
             (format, sz)
