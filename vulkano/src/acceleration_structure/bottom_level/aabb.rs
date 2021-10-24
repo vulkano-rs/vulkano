@@ -12,7 +12,6 @@ use crate::buffer::BufferAccess;
 use crate::buffer::TypedBufferAccess;
 use crate::device::Device;
 use crate::VulkanObject;
-use ash::vk;
 use ash::vk::Handle;
 use std::mem::size_of;
 use std::sync::Arc;
@@ -24,16 +23,16 @@ pub struct AabbPosition {
     pub max: [f32; 3],
 }
 
-fn make_aabb_data(aabb: &dyn BufferAccess) -> vk::AccelerationStructureGeometryAabbsDataKHR {
-    let data = vk::DeviceOrHostAddressConstKHR {
+fn make_aabb_data(aabb: &dyn BufferAccess) -> ash::vk::AccelerationStructureGeometryAabbsDataKHR {
+    let data = ash::vk::DeviceOrHostAddressConstKHR {
         device_address: aabb.inner().buffer.internal_object().as_raw(),
     };
 
-    debug_assert_eq!(size_of::<AabbPosition>(), size_of::<vk::AabbPositionsKHR>());
+    debug_assert_eq!(size_of::<AabbPosition>(), size_of::<ash::vk::AabbPositionsKHR>());
 
     let stride = size_of::<AabbPosition>() as u64;
 
-    vk::AccelerationStructureGeometryAabbsDataKHR::builder()
+    ash::vk::AccelerationStructureGeometryAabbsDataKHR::builder()
         .data(data)
         .stride(stride)
         .build()
@@ -44,12 +43,12 @@ impl BottomLevelAccelerationStructure {
         device: Arc<Device>,
         aabbs_buffer: Arc<dyn TypedBufferAccess<Content = [AabbPosition]>>,
     ) -> Self {
-        let geometry_data = vk::AccelerationStructureGeometryDataKHR {
+        let geometry_data = ash::vk::AccelerationStructureGeometryDataKHR {
             aabbs: make_aabb_data(&aabbs_buffer),
         };
 
-        let geometry = vk::AccelerationStructureGeometryKHR::builder()
-            .geometry_type(vk::GeometryTypeKHR::AABBS)
+        let geometry = ash::vk::AccelerationStructureGeometryKHR::builder()
+            .geometry_type(ash::vk::GeometryTypeKHR::AABBS)
             .geometry(geometry_data)
             .build();
 
@@ -57,7 +56,7 @@ impl BottomLevelAccelerationStructure {
             device,
             std::slice::from_ref(&geometry),
             std::iter::once(aabbs_buffer.len() as u32),
-            vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
+            ash::vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
         );
 
         let data = BottomLevelData::Aabb {

@@ -10,34 +10,33 @@
 use super::acceleration_struct::AccelerationStructure;
 use super::BottomLevelAccelerationStructure;
 use crate::device::Device;
-use ash::vk;
 use std::mem::size_of;
 use std::sync::Arc;
 
 pub struct TopLevelAccelerationStructure {
     acceleration_structure: AccelerationStructure,
     /// Here are stored instances of bottom level acceleration structures
-    instances: Box<[vk::AccelerationStructureInstanceKHR]>,
+    instances: Box<[ash::vk::AccelerationStructureInstanceKHR]>,
 }
 
 fn make_instance(
     transform: [[f32; 4]; 3],
-    bottom: vk::AccelerationStructureKHR,
-) -> vk::AccelerationStructureInstanceKHR {
+    bottom: ash::vk::AccelerationStructureKHR,
+) -> ash::vk::AccelerationStructureInstanceKHR {
     let matrix: [f32; 12] = unsafe { std::mem::transmute(transform) };
 
-    let transform = vk::TransformMatrixKHR { matrix };
+    let transform = ash::vk::TransformMatrixKHR { matrix };
 
     let custom_index = 0;
     let mask = 0xFF;
     let shader_offset = 0;
     let flags = 0;
 
-    let bottom_ref = vk::AccelerationStructureReferenceKHR {
+    let bottom_ref = ash::vk::AccelerationStructureReferenceKHR {
         host_handle: bottom,
     };
 
-    vk::AccelerationStructureInstanceKHR {
+    ash::vk::AccelerationStructureInstanceKHR {
         transform,
         instance_custom_index_and_mask: (mask << 24) | custom_index,
         instance_shader_binding_table_record_offset_and_flags: (flags << 24) | shader_offset,
@@ -46,15 +45,15 @@ fn make_instance(
 }
 
 unsafe fn make_instances_data(
-    instances: *const vk::AccelerationStructureInstanceKHR,
-) -> vk::AccelerationStructureGeometryInstancesDataKHR {
-    let data = vk::DeviceOrHostAddressConstKHR {
+    instances: *const ash::vk::AccelerationStructureInstanceKHR,
+) -> ash::vk::AccelerationStructureGeometryInstancesDataKHR {
+    let data = ash::vk::DeviceOrHostAddressConstKHR {
         host_address: instances as *const _,
     };
 
-    let stride = size_of::<vk::AccelerationStructureGeometryInstancesDataKHR>() as u64;
+    let stride = size_of::<ash::vk::AccelerationStructureGeometryInstancesDataKHR>() as u64;
 
-    vk::AccelerationStructureGeometryInstancesDataKHR::builder()
+    ash::vk::AccelerationStructureGeometryInstancesDataKHR::builder()
         .array_of_pointers(false)
         .data(data)
         .build()
@@ -83,12 +82,12 @@ impl TopLevelAccelerationStructure {
         //
         let instances_data = unsafe { make_instances_data(instances.as_ptr()) };
 
-        let geometry_data = vk::AccelerationStructureGeometryDataKHR {
+        let geometry_data = ash::vk::AccelerationStructureGeometryDataKHR {
             instances: instances_data,
         };
 
-        let geometry = vk::AccelerationStructureGeometryKHR::builder()
-            .geometry_type(vk::GeometryTypeKHR::INSTANCES)
+        let geometry = ash::vk::AccelerationStructureGeometryKHR::builder()
+            .geometry_type(ash::vk::GeometryTypeKHR::INSTANCES)
             .geometry(geometry_data)
             .build();
 
@@ -96,7 +95,7 @@ impl TopLevelAccelerationStructure {
             device,
             std::slice::from_ref(&geometry),
             std::iter::once(instances.len() as u32),
-            vk::AccelerationStructureTypeKHR::TOP_LEVEL,
+            ash::vk::AccelerationStructureTypeKHR::TOP_LEVEL,
         );
 
         Self {

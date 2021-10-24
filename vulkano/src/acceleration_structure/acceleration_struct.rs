@@ -12,14 +12,13 @@ use crate::buffer::{BufferAccess, BufferUsage};
 use crate::check_errors;
 use crate::device::Device;
 use crate::VulkanObject;
-use ash::vk;
 use ash::vk::Handle;
 use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
 pub(crate) struct AccelerationStructure {
-    pub(crate) inner: vk::AccelerationStructureKHR,
+    pub(crate) inner: ash::vk::AccelerationStructureKHR,
 
     /// Buffer in which the acceleration struct is stored
     buffer: Arc<DeviceLocalBuffer<[u8]>>,
@@ -28,15 +27,15 @@ pub(crate) struct AccelerationStructure {
 impl AccelerationStructure {
     pub(crate) fn new(
         device: Arc<Device>,
-        geometries: &[vk::AccelerationStructureGeometryKHR],
+        geometries: &[ash::vk::AccelerationStructureGeometryKHR],
         primitives_count: impl Iterator<Item = u32>,
-        ty: vk::AccelerationStructureTypeKHR,
+        ty: ash::vk::AccelerationStructureTypeKHR,
     ) -> AccelerationStructure {
         let fns = device.fns();
 
-        let build_info = vk::AccelerationStructureBuildGeometryInfoKHR::builder()
+        let build_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::builder()
             .ty(ty)
-            .flags(vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
+            .flags(ash::vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
             .geometries(geometries);
 
         let size = unsafe {
@@ -44,7 +43,7 @@ impl AccelerationStructure {
             fns.khr_acceleration_structure
                 .get_acceleration_structure_build_sizes_khr(
                     device.internal_object(),
-                    vk::AccelerationStructureBuildTypeKHR::HOST,
+                    ash::vk::AccelerationStructureBuildTypeKHR::HOST,
                     &*build_info as *const _,
                     &(geometries.len() as u32) as *const _,
                     output.as_mut_ptr(),
@@ -68,7 +67,7 @@ impl AccelerationStructure {
             .unwrap()
         };
 
-        let create_info = vk::AccelerationStructureCreateInfoKHR::builder()
+        let create_info = ash::vk::AccelerationStructureCreateInfoKHR::builder()
             .buffer(buffer.inner().buffer.internal_object())
             .size(size.acceleration_structure_size)
             .ty(ty)
@@ -104,19 +103,19 @@ impl AccelerationStructure {
             .unwrap()
         };
 
-        let scratch_buffer_address = vk::DeviceOrHostAddressKHR {
+        let scratch_buffer_address = ash::vk::DeviceOrHostAddressKHR {
             device_address: scratch_buffer.inner().buffer.internal_object().as_raw(),
         };
 
         let build_info = build_info
-            .mode(vk::BuildAccelerationStructureModeKHR::BUILD)
+            .mode(ash::vk::BuildAccelerationStructureModeKHR::BUILD)
             .dst_acceleration_structure(acceleration_structure)
             .scratch_data(scratch_buffer_address)
             .build();
 
         let build_ranges: Vec<_> = primitives_count
             .map(|count| {
-                vk::AccelerationStructureBuildRangeInfoKHR::builder()
+                ash::vk::AccelerationStructureBuildRangeInfoKHR::builder()
                     .primitive_count(count)
                     .build()
             })
@@ -131,7 +130,7 @@ impl AccelerationStructure {
                 .khr_acceleration_structure
                 .build_acceleration_structures_khr(
                     device.internal_object(),
-                    vk::DeferredOperationKHR::null(),
+                    ash::vk::DeferredOperationKHR::null(),
                     1,
                     &build_info as *const _,
                     &build_ranges_ptr as *const *const _,
