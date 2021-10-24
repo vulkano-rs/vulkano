@@ -870,7 +870,44 @@ mod tests {
         let spirv = Spirv::new(comp.as_binary()).unwrap();
         structs::write_structs("", &spirv, &TypesMeta::default(), &mut HashMap::new());
     }
+    #[test]
+    fn test_vector_double_attributes() {
+        let source_code = "
+        #version 450
+        layout( location = 0 ) in dvec4 d4v;
+        layout( location = 2 ) in double d4a[4];
+        void main() {}
+        ";
+        let root = std::env::var("CARGO_MANIFEST_DIR").unwrap_or(".".into());
+        let root_path = Path::new(&root);
 
+        let include_directories: Vec<Box<Path>> = vec![];
+        let macro_defines: [(String, String); 0] = [];
+
+        let (content, _) = crate::codegen::compile(
+            None,
+            &root_path,
+            &source_code,
+            ShaderKind::Vertex,
+            &include_directories,
+            &macro_defines,
+            None,
+            None,
+        )
+        .unwrap();
+
+        let mut types_registry = HashMap::new();
+        crate::codegen::reflect(
+            "",
+            content.as_binary(),
+            &TypesMeta::default(),
+            [],
+            false,
+            false,
+            &mut types_registry,
+        )
+        .unwrap();
+    }
 
     #[test]
     fn test_include_resolution() {
