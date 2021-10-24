@@ -93,6 +93,7 @@ pub mod sampler;
 pub mod spirv;
 pub mod swapchain;
 pub mod sync;
+pub mod acceleration_structure;
 
 /// Represents memory size and offset values on a Vulkan device.
 /// Analogous to the Rust `usize` type on the host.

@@ -29,6 +29,8 @@ pub struct BufferUsage {
     /// Requires the `buffer_device_address` feature. If that feature is not enabled, this will
     /// be silently ignored.
     pub device_address: bool,
+    
+    pub acceleration_structure_storage: bool,
 }
 
 impl BufferUsage {
@@ -46,6 +48,7 @@ impl BufferUsage {
             vertex_buffer: false,
             indirect_buffer: false,
             device_address: false,
+            acceleration_structure_storage: false,
         }
     }
 
@@ -63,6 +66,7 @@ impl BufferUsage {
             vertex_buffer: true,
             indirect_buffer: true,
             device_address: true,
+            acceleration_structure_storage: true,
         }
     }
 
@@ -215,6 +219,9 @@ impl From<BufferUsage> for ash::vk::BufferUsageFlags {
         if val.device_address {
             result |= ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS;
         }
+        if val.acceleration_structure_storage {
+            result |= ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR;
+        }
         result
     }
 }
@@ -235,6 +242,7 @@ impl BitOr for BufferUsage {
             vertex_buffer: self.vertex_buffer || rhs.vertex_buffer,
             indirect_buffer: self.indirect_buffer || rhs.indirect_buffer,
             device_address: self.device_address || rhs.device_address,
+            acceleration_structure_storage: self.acceleration_structure_storage | rhs.acceleration_structure_storage,
         }
     }
 }
