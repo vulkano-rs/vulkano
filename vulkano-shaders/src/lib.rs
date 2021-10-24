@@ -112,6 +112,12 @@
 //! * `tess_ctrl`
 //! * `tess_eval`
 //! * `compute`
+//! * `ray_generation`
+//! * `intersection`
+//! * `any_hit`
+//! * `closest_hit`
+//! * `miss`
+//! * `callable`
 //!
 //! For details on what these shader types mean, [see Vulkano's documentation][pipeline].
 //!
@@ -410,7 +416,14 @@ impl Parse for MacroInput {
                         "tess_ctrl" => ShaderKind::TessControl,
                         "tess_eval" => ShaderKind::TessEvaluation,
                         "compute" => ShaderKind::Compute,
-                        _ => panic!("Unexpected shader type, valid values: vertex, fragment, geometry, tess_ctrl, tess_eval, compute")
+                        "ray_generation" => ShaderKind::RayGeneration,
+                        "intersection" => ShaderKind::Intersection,
+                        "any_hit" => ShaderKind::AnyHit,
+                        "closest_hit" => ShaderKind::ClosestHit,
+                        "miss" => ShaderKind::Miss,
+                        "callable" => ShaderKind::Callable,
+                        _ => panic!("Unexpected shader type, valid values: vertex, fragment, geometry, tess_ctrl, tess_eval, compute, \
+                                     ray_generation, intersection, any_hit, closest_hit, miss, callable")
                     };
 
                     output.0 = Some(ty);

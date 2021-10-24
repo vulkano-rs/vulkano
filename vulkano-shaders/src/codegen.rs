@@ -736,12 +736,24 @@ fn storage_class_requirement(storage_class: &StorageClass) -> &'static [DeviceRe
         StorageClass::StorageBuffer => &[DeviceRequirement::Extension(
             "khr_storage_buffer_storage_class",
         )],
-        StorageClass::CallableDataKHR => todo!(),
-        StorageClass::IncomingCallableDataKHR => todo!(),
-        StorageClass::RayPayloadKHR => todo!(),
-        StorageClass::HitAttributeKHR => todo!(),
-        StorageClass::IncomingRayPayloadKHR => todo!(),
-        StorageClass::ShaderRecordBufferKHR => todo!(),
+        StorageClass::CallableDataKHR => &[DeviceRequirement::Extension(
+            "khr_ray_tracing",
+        )]
+        StorageClass::IncomingCallableDataKHR => &[DeviceRequirement::Extension(
+            "khr_ray_tracing",
+        )]
+        StorageClass::RayPayloadKHR => &[DeviceRequirement::Extension(
+            "khr_ray_tracing",
+        )]
+        StorageClass::HitAttributeKHR => &[DeviceRequirement::Extension(
+            "khr_ray_tracing",
+        )]
+        StorageClass::IncomingRayPayloadKHR => &[DeviceRequirement::Extension(
+            "khr_ray_tracing",
+        )]
+        StorageClass::ShaderRecordBufferKHR => &[DeviceRequirement::Extension(
+            "khr_ray_tracing",
+        )]
         StorageClass::PhysicalStorageBuffer => todo!(),
         StorageClass::CodeSectionINTEL => todo!(),
     }
