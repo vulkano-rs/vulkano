@@ -71,6 +71,14 @@ impl VertexMemberTy {
             Some(s) => s,
         } as usize;
 
-        array_size * my_size == format_size * num_locs as usize
+        let is_vector_type = format.components().iter().skip(1).any(|c| c.ne(&0u8));
+
+        if is_vector_type {
+            array_size * my_size == format_size
+        } else { // array type; each component is an entire location
+            array_size * my_size == format_size * num_locs as usize
+        }
+        
+        
     }
 }
