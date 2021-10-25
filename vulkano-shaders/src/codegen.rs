@@ -956,10 +956,6 @@ mod tests {
     }
 
     #[test]
-    // this test's panic comes from the glsl to spirv compiler, not from the codegen.
-    // The expected error message seems fragile so it is not specified, but
-    // is probably something like:
-    //    
     fn test_overlapping_component_assignment() {
         let res = compile_and_check_spirv( "
         #version 450
