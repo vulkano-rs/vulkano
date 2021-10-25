@@ -13,6 +13,15 @@
 - **Breaking** The presence of dynamic state in the pipeline state is now expressed more explicitly with two new types, `StateMode` and `PartialStateMode`.
 - **Breaking** The `PersistentDescriptorSet::start` and `SingleLayoutDescSetPool::new` functions now return `Result`.
 - **Breaking** `DescriptorWrite` now takes an iterator instead of a single item, allowing arrayed descriptors to be written in one operation.
+- **Breaking** Removed the `EntryPointAbstract` trait, which was unused.
+- **Breaking** `ComputeEntryPoint` and `GraphicsEntryPoint` now hold a list of `DescriptorRequirements` instead of `DescriptorSetDesc`.
+- **Breaking** Removed `union`, `union_multiple` and `ensure_compatible_with_shader` from `DescriptorSetDesc`, and `union` from `DescriptorDesc`. This is now handled by `DescriptorRequirements`.
+- **Breaking** `DescriptorDesc::ensure_compatibility_with_shader` now takes `DescriptorRequirements` instead of another `DescriptorDesc`.
+- **Breaking** When the shader's layout specifies a descriptor with runtime array, its upper bound from now on interprets as zero by default(previously it was `1`).
+- Added a new `DescriptorRequirements` type, which contains requirements imposed by a shader onto a descriptor and the resources bound to it.
+  - `DescriptorDesc` can be created from `DescriptorRequirements` with the `From` trait.
+  - `DescriptorSetDesc`s can be created from the requirements with the `from_requirement` constructor.
+  - The descriptor requirements of a pipeline can be queried using a new `descriptor_requirements` method.
 - Added basic support for the `khr_push_descriptor` extension, with an example of how it's used. The implementation is somewhat limited and some of the details may change in a future update.
 - Added support for lots more dynamic state, most of which requires features or extensions to use.
 - Added support for discard rectangles, in the `pipeline::discard_rectangle` module.
