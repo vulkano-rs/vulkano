@@ -870,18 +870,12 @@ mod tests {
         let spirv = Spirv::new(comp.as_binary()).unwrap();
         structs::write_structs("", &spirv, &TypesMeta::default(), &mut HashMap::new());
     }
-    #[test]
-    fn test_vector_double_attributes() {
-        let source_code = "
-        #version 450
-        layout( location = 0 ) in dvec4 d4v;
-        layout( location = 2 ) in double d4a[4];
-        void main() {}
-        ";
+
+    fn compile_and_check_spirv(source_code: &str) -> Result<Result<(TokenStream, TokenStream), Error>, std::string::String> {
         let root = std::env::var("CARGO_MANIFEST_DIR").unwrap_or(".".into());
         let root_path = Path::new(&root);
 
-        let include_directories: Vec<Box<Path>> = vec![];
+        let include_directories: [PathBuf; 0] = [];
         let macro_defines: [(String, String); 0] = [];
 
         let (content, _) = crate::codegen::compile(
@@ -893,11 +887,10 @@ mod tests {
             &macro_defines,
             None,
             None,
-        )
-        .unwrap();
+        )?;
 
         let mut types_registry = HashMap::new();
-        crate::codegen::reflect(
+        Ok(crate::codegen::reflect(
             "",
             content.as_binary(),
             &TypesMeta::default(),
@@ -905,8 +898,77 @@ mod tests {
             false,
             false,
             &mut types_registry,
-        )
-        .unwrap();
+        ))
+    }
+
+    #[test]
+    fn test_vector_double_attributes() {
+        compile_and_check_spirv( "
+        #version 450
+        layout( location = 0 ) in dvec4 d4v;
+        layout( location = 2 ) in double d4a[4];
+        void main() {}
+        ").unwrap().unwrap();
+    }
+
+    #[test]
+    #[should_panic( expected = "The components of attributes `a` (loc=0, mask at loc=0x000f) and `b` (loc=1, mask at loc=0x000f) overlap" )]
+    fn test_vector_double_attributes_size_constraint() {
+        compile_and_check_spirv( "
+        #version 450
+        layout( location = 0 ) in dvec4 a;
+        layout( location = 1 ) in vec4 b;
+        void main() {}
+        ").unwrap().unwrap();
+    }
+
+    #[test]
+    fn test_vector_attributes() {
+        compile_and_check_spirv( "
+        #version 450
+        layout( location = 0 ) in ivec4 i4v;
+        layout( location = 1 ) in uvec4 u4v;
+        layout( location = 2 ) in vec4 f4v;
+        void main() {}
+        ").unwrap().unwrap();
+    }
+
+    #[test]
+    fn test_component_assignment_attributes() {
+        compile_and_check_spirv( "
+        #version 450
+        layout( location = 0 ) in vec2 f2v;
+        layout( location = 0, component = 2 ) in int i;
+        layout( location = 0, component = 3 ) in float f;
+        void main() {}
+        ").unwrap().unwrap();
+    }
+
+    #[test]
+    #[should_panic( expected = "The components of attributes `d3v` (loc=0, mask at loc=0x0003) and `f` (loc=1, mask at loc=0x0001) overlap" )]
+    fn test_vector_double_overlapping_attributes() {
+        compile_and_check_spirv( "
+        #version 450
+        layout( location = 0 ) in dvec3 d3v;
+        layout( location = 1 ) in float f;
+        void main() {}
+        ").unwrap().unwrap();
+    }
+
+    #[test]
+    // this test's panic comes from the glsl to spirv compiler, not from the codegen.
+    // The expected error message seems fragile so it is not specified, but
+    // is probably something like:
+    //    
+    fn test_overlapping_component_assignment() {
+        let res = compile_and_check_spirv( "
+        #version 450
+        layout( location = 0 ) in vec2 a;
+        layout( location = 0, component = 1 ) in vec2 b;
+        void main() {}
+        ");
+        assert!(res.is_err());
+        assert_eq!(res.err().unwrap().to_string(), "compilation error:\nshader.glsl:4: error: 'location' : overlapping use of location 0\n");
     }
 
     #[test]

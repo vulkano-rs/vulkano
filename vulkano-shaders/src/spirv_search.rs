@@ -9,40 +9,47 @@
 
 use vulkano::spirv::{Decoration, Id, Instruction, Spirv};
 
-/// Returns the vulkano `Format` and number of occupied locations from an id.
+/// Returns the vulkano `Format`, the number of occupied locations, and the number of components from an id.
 ///
 /// If `ignore_first_array` is true, the function expects the outermost instruction to be
 /// `OpTypeArray`. If it's the case, the OpTypeArray will be ignored. If not, the function will
 /// panic.
-pub fn format_from_id(spirv: &Spirv, searched: Id, ignore_first_array: bool) -> (String, usize) {
+pub fn format_from_id(spirv: &Spirv, searched: Id, ignore_first_array: bool, component: Option<u32>) -> (String, usize, Option<u32>) {
     let id_info = spirv.id(searched);
+    let component_idx = component.unwrap_or(0);
 
     match id_info.instruction() {
         &Instruction::TypeInt {
             width, signedness, ..
         } => {
             assert!(!ignore_first_array);
-            let format = match (width, signedness) {
-                (8, 1) => "R8_SINT",
-                (8, 0) => "R8_UINT",
-                (16, 1) => "R16_SINT",
-                (16, 0) => "R16_UINT",
-                (32, 1) => "R32_SINT",
-                (32, 0) => "R32_UINT",
-                (64, 1) => "R64_SINT",
-                (64, 0) => "R64_UINT",
-                _ => panic!(),
+            assert!([0u32, 1u32].contains(&signedness));
+            assert!([8u32, 16u32, 32u32, 64u32].contains(&width));
+            let format_sign = if signedness == 1 {
+                "S"
+            } else {
+                "U"
             };
-            (format.to_string(), 1)
+            let format = format!("R{}_{}INT", width, format_sign);
+            let components = if width == 64 {
+                assert_eq!(component_idx, 0);
+                0b1111
+            } else {
+                0b0001 << component_idx
+            };
+            (format.to_string(), 1, Some(components))
         }
         &Instruction::TypeFloat { width, .. } => {
             assert!(!ignore_first_array);
-            let format = match width {
-                32 => "R32_SFLOAT",
-                64 => "R64_SFLOAT",
-                _ => panic!(),
+            assert!([32u32, 64u32].contains(&width));
+            let format = format!("R{}_SFLOAT", width);
+            let components = if width == 64 {
+                assert_eq!(component_idx, 0);
+                0b1111
+            } else {
+                0b0001 << component_idx
             };
-            (format.to_string(), 1)
+            (format.to_string(), 1,  Some(components))
         }
         &Instruction::TypeVector {
             component_type,
@@ -50,18 +57,53 @@ pub fn format_from_id(spirv: &Spirv, searched: Id, ignore_first_array: bool) -> 
             ..
         } => {
             assert!(!ignore_first_array);
-            let (format, sz) = format_from_id(spirv, component_type, false);
-            assert!(format.starts_with("R32") || format.starts_with("R64"));
-            let format_bits = (&format[1..3]).clone();
-            assert_eq!(sz, 1);
+            let (component_format, component_location_size, component_mask) = format_from_id(spirv, component_type, false, None);
+            assert_eq!(component_location_size, 1);
+            assert!(component_mask.unwrap() <= 0b1111);
+            let is_single = component_format.starts_with("R32");
+            let is_double = component_format.starts_with("R64");
+            assert!(is_single || is_double);
+            let format_bits = (&component_format[1..3]).clone();
             let format = match component_count {
-                1 => format,
-                2 => format!("R{0}G{0}{1}", format_bits, &format[3..]),
-                3 => format!("R{0}G{0}B{0}{1}", format_bits, &format[3..]),
-                4 => format!("R{0}G{0}B{0}A{0}{1}", format_bits, &format[3..]),
+                1 => component_format,
+                2 => format!("R{0}G{0}{1}", format_bits, &component_format[3..]),
+                3 => format!("R{0}G{0}B{0}{1}", format_bits, &component_format[3..]),
+                4 => format!("R{0}G{0}B{0}A{0}{1}", format_bits, &component_format[3..]),
                 _ => panic!("Found vector type with more than 4 elements"),
             };
-            (format, sz)
+            let components_used: u32 = if is_single {
+                assert!(component_idx <= (4 - component_count), "Single precision vectors cannot be shifted into more than one location.");
+                ((2 << (component_count-1)) - 1) << component_idx
+            } else {
+                match component_count {
+                    1 => {
+                        assert!(component_idx == 0 || component_idx == 2);
+                        0b0000_0011 << component_idx
+                    },
+                    2 => {
+                        assert_eq!(component_idx, 0);
+                        0b0000_1111
+                    },
+                    3 => {
+                        assert_eq!(component, None);
+                        0b0011_1111
+                    },
+                    4 => {
+                        assert_eq!(component, None);
+                        0b1111_1111
+                    },
+                    _ => panic!("Found vector type with more than 4 elements"),
+                }
+            };
+            let locations_used =
+                if is_single || component_count < 3  {
+                    assert!(components_used <= 0x0000_1111);
+                    1
+                } else {
+                    assert!(components_used <= 0x1111_1111);
+                    2
+                };
+            (format, locations_used, Some(components_used))
         }
         &Instruction::TypeMatrix {
             column_type,
@@ -69,8 +111,16 @@ pub fn format_from_id(spirv: &Spirv, searched: Id, ignore_first_array: bool) -> 
             ..
         } => {
             assert!(!ignore_first_array);
-            let (format, sz) = format_from_id(spirv, column_type, false);
-            (format, sz * column_count as usize)
+            assert_eq!(component, None, "Matricies cannot have a specified component.");
+            let (format, column_locations, column_mask) = format_from_id(spirv, column_type, false, None);
+            let locations = column_locations*column_count as usize;
+            assert!(column_locations <= 2); // the maximum number of locations in a column is a dvec4 (2 locations)
+            // matrix columns take up consecutive locations
+            let components = 
+                (0..column_count).into_iter().fold(0, |acc: u32, i: u32| {
+                    acc | column_mask.unwrap() << (i*4*column_locations as u32)
+                });
+            (format, locations, Some(components))
         }
         &Instruction::TypeArray {
             element_type,
@@ -78,9 +128,9 @@ pub fn format_from_id(spirv: &Spirv, searched: Id, ignore_first_array: bool) -> 
             ..
         } => {
             if ignore_first_array {
-                format_from_id(spirv, element_type, false)
+                format_from_id(spirv, element_type, false, None)
             } else {
-                let (format, sz) = format_from_id(spirv, element_type, false);
+                let (format, elem_locations, _) = format_from_id(spirv, element_type, false, None);
                 let len = spirv
                     .instructions()
                     .iter()
@@ -95,10 +145,13 @@ pub fn format_from_id(spirv: &Spirv, searched: Id, ignore_first_array: bool) -> 
                     .next()
                     .expect("failed to find array length");
                 let len = len.iter().rev().fold(0u64, |a, &b| (a << 32) | b as u64);
-                (format, sz * len as usize)
+                // array elements, like matricies, take up consecutive locations
+                // unlike matricies or vectors, we can't use component binding.
+                // This return value represents a full mask of length `len`, which may be large.
+                (format, elem_locations * len as usize, None)
             }
         }
-        &Instruction::TypePointer { ty, .. } => format_from_id(spirv, ty, ignore_first_array),
+        &Instruction::TypePointer { ty, .. } => format_from_id(spirv, ty, ignore_first_array, component),
         _ => panic!("Type #{} not found or invalid", searched),
     }
 }

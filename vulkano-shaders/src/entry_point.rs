@@ -226,6 +226,18 @@ struct Element {
     name: String,
     format: String,
     location_len: usize,
+    // The component mask represents which components in each of up to eight locations (dmat4 aka matrix 4 by 4 of double)
+    // consumed by the element in the vertex input.
+    // The order of the mask is such that the least significant bit corresponds to the first
+    // component in the first location, the next bit corresponds to the second component, etc.
+    // For example, if the element is a vec4, it consumes all four components of one location, and the
+    // mask would be 0x000F or 0b0000_0000_0000_1111.
+    // This is a mask because the components consumed are not always consecutive. Otherwise,
+    // a length would be sufficient.
+    // A None value means that the element consumes all components of every location for some length N, N may be large,
+    // and is not able to be bound per-component. This is distinct from a filled mask, which means that the element 
+    // consumes for at most eight locations.
+    component_mask: Option<u32>,
 }
 
 fn write_interfaces(
@@ -286,13 +298,27 @@ fn write_interfaces(
                         )
                     });
 
-                let (format, location_len) =
-                    spirv_search::format_from_id(spirv, result_type_id, ignore_first_array);
+                let component = id_info
+                    .iter_decoration()
+                    .find_map(|instruction| match instruction {
+                        Instruction::Decorate {
+                            decoration: Decoration::Component { component },
+                            ..
+                        } => Some(*component),
+                        _ => None,
+                    });
+                // this assertion is insufficient by itself, format_from_id() will panic if the
+                // component is not valid for the type.
+                assert!(component.unwrap_or(0) < 4, "There are only four components in a location.");
+
+                let (format, location_len, component_mask) =
+                    spirv_search::format_from_id(spirv, result_type_id, ignore_first_array, component);
                 to_write.push(Element {
                     location,
                     name: name.to_owned(),
                     format,
                     location_len,
+                    component_mask
                 });
             }
             _ => (),
@@ -315,16 +341,47 @@ fn write_interface(attributes: &[Element]) -> TokenStream {
                 || (element2.location < element1.location
                     && element2.location + element2.location_len as u32 > element1.location)
             {
-                panic!(
-                    "The locations of attributes `{}` (start={}, size={}) \
-                    and `{}` (start={}, size={}) overlap",
-                    element1.name,
-                    element1.location,
-                    element1.location_len,
-                    element2.name,
-                    element2.location,
-                    element2.location_len
-                );
+                if element1.component_mask.is_none() || element1.component_mask.is_none() {
+                    panic!(
+                        "The locations of attributes `{}` (start={}, len={}) \
+                        and `{}` (start={}, len={}) overlap",
+                        element1.name,
+                        element1.location,
+                        element1.location_len,
+                        element2.name,
+                        element2.location,
+                        element2.location_len
+                    );
+                }
+                else {
+
+                    let mask1_at_loc = element1.component_mask.unwrap() >> (element2.location.checked_sub(element1.location).unwrap_or(0)) * 4;
+                    let mask2_at_loc = element2.component_mask.unwrap() >> (element1.location.checked_sub(element2.location).unwrap_or(0)) * 4;
+                    if mask1_at_loc & mask2_at_loc != 0 {
+                        panic!(
+                            "The components of attributes `{}` (loc={}, mask at loc={:#06x}) \
+                            and `{}` (loc={}, mask at loc={:#06x}) overlap",
+                            element1.name,
+                            element1.location,
+                            mask1_at_loc,
+                            element2.name,
+                            element2.location,
+                            mask2_at_loc
+                        );
+                    }
+                    else {
+                        println!(
+                            "The components of attributes `{}` (start={}, mask={:#08x}) \
+                            and `{}` (start={}, mask={:#08x}) do not overlap",
+                            element1.name,
+                            element1.location,
+                            mask1_at_loc,
+                            element2.name,
+                            element2.location,
+                            mask2_at_loc
+                        );
+                    }
+                }
             }
         }
     }
