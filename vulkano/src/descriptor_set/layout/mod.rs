@@ -17,6 +17,7 @@ pub use self::desc::DescriptorCompatibilityError;
 pub use self::desc::DescriptorDesc;
 pub use self::desc::DescriptorDescImage;
 pub use self::desc::DescriptorDescTy;
+pub use self::desc::DescriptorRequirementsNotMet;
 pub use self::desc::DescriptorSetCompatibilityError;
 pub use self::desc::DescriptorSetDesc;
 pub use self::desc::DescriptorType;

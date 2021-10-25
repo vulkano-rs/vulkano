@@ -9,19 +9,18 @@
 
 use super::limits_check;
 use crate::check_errors;
-use crate::descriptor_set::layout::DescriptorSetCompatibilityError;
-use crate::descriptor_set::layout::DescriptorSetDesc;
+use crate::descriptor_set::layout::DescriptorRequirementsNotMet;
 use crate::descriptor_set::layout::DescriptorSetLayout;
 use crate::descriptor_set::layout::DescriptorSetLayoutError;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::pipeline::layout::PipelineLayoutLimitsError;
+use crate::pipeline::shader::DescriptorRequirements;
 use crate::pipeline::shader::ShaderStages;
 use crate::Error;
 use crate::OomError;
 use crate::VulkanObject;
 use smallvec::SmallVec;
-use std::cmp;
 use std::error;
 use std::fmt;
 use std::mem::MaybeUninit;
@@ -190,32 +189,32 @@ impl PipelineLayout {
 
     /// Makes sure that `self` is a superset of the provided descriptor set layouts and push
     /// constant ranges. Returns an `Err` if this is not the case.
-    pub fn ensure_compatible_with_shader(
+    pub fn ensure_compatible_with_shader<'a>(
         &self,
-        descriptor_set_layout_descs: &[DescriptorSetDesc],
+        descriptor_requirements: impl IntoIterator<Item = ((u32, u32), &'a DescriptorRequirements)>,
         push_constant_range: &Option<PipelineLayoutPcRange>,
     ) -> Result<(), PipelineLayoutSupersetError> {
-        // Ewwwwwww
-        let empty = DescriptorSetDesc::empty();
-        let num_sets = cmp::max(
-            self.descriptor_set_layouts.len(),
-            descriptor_set_layout_descs.len(),
-        );
-
-        for set_num in 0..num_sets {
-            let first = self
+        for ((set_num, binding_num), reqs) in descriptor_requirements.into_iter() {
+            let descriptor_desc = self
                 .descriptor_set_layouts
-                .get(set_num)
-                .map(|set| set.desc())
-                .unwrap_or_else(|| &empty);
-            let second = descriptor_set_layout_descs
-                .get(set_num)
-                .unwrap_or_else(|| &empty);
+                .get(set_num as usize)
+                .and_then(|set_desc| set_desc.descriptor(binding_num));
 
-            if let Err(error) = first.ensure_compatible_with_shader(second) {
-                return Err(PipelineLayoutSupersetError::DescriptorSet {
+            let descriptor_desc = match descriptor_desc {
+                Some(x) => x,
+                None => {
+                    return Err(PipelineLayoutSupersetError::DescriptorMissing {
+                        set_num,
+                        binding_num,
+                    })
+                }
+            };
+
+            if let Err(error) = descriptor_desc.ensure_compatible_with_shader(reqs) {
+                return Err(PipelineLayoutSupersetError::DescriptorRequirementsNotMet {
+                    set_num,
+                    binding_num,
                     error,
-                    set_num: set_num as u32,
                 });
             }
         }
@@ -379,9 +378,14 @@ impl From<Error> for PipelineLayoutCreationError {
 /// Error when checking whether a pipeline layout is a superset of another one.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PipelineLayoutSupersetError {
-    DescriptorSet {
-        error: DescriptorSetCompatibilityError,
+    DescriptorMissing {
         set_num: u32,
+        binding_num: u32,
+    },
+    DescriptorRequirementsNotMet {
+        set_num: u32,
+        binding_num: u32,
+        error: DescriptorRequirementsNotMet,
     },
     PushConstantRange {
         first_range: PipelineLayoutPcRange,
@@ -393,8 +397,10 @@ impl error::Error for PipelineLayoutSupersetError {
     #[inline]
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
-            PipelineLayoutSupersetError::DescriptorSet { ref error, .. } => Some(error),
-            ref error @ PipelineLayoutSupersetError::PushConstantRange { .. } => Some(error),
+            PipelineLayoutSupersetError::DescriptorRequirementsNotMet { ref error, .. } => {
+                Some(error)
+            }
+            _ => None,
         }
     }
 }
@@ -402,10 +408,20 @@ impl error::Error for PipelineLayoutSupersetError {
 impl fmt::Display for PipelineLayoutSupersetError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match *self {
-            PipelineLayoutSupersetError::DescriptorSet { .. } => {
-                write!(fmt, "the descriptor set was not a superset of the other")
-            }
+        match self {
+            PipelineLayoutSupersetError::DescriptorRequirementsNotMet { set_num, binding_num, .. } => write!(
+                fmt,
+                "the descriptor at set {} binding {} does not meet the requirements",
+                set_num, binding_num
+            ),
+            PipelineLayoutSupersetError::DescriptorMissing {
+                set_num,
+                binding_num,
+            } => write!(
+                fmt,
+                "a descriptor at set {} binding {} is required by the shaders, but is missing from the pipeline layout",
+                set_num, binding_num
+            ),
             PipelineLayoutSupersetError::PushConstantRange {
                 first_range,
                 second_range,

@@ -12,7 +12,9 @@ use std::io::Cursor;
 use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
-use vulkano::descriptor_set::layout::{DescriptorSetLayout, DescriptorSetLayoutError};
+use vulkano::descriptor_set::layout::{
+    DescriptorSetDesc, DescriptorSetLayout, DescriptorSetLayoutError,
+};
 use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
@@ -23,7 +25,6 @@ use vulkano::image::{
 use vulkano::instance::Instance;
 use vulkano::pipeline::color_blend::ColorBlendState;
 use vulkano::pipeline::layout::PipelineLayout;
-use vulkano::pipeline::shader::EntryPointAbstract;
 use vulkano::pipeline::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::{GraphicsPipeline, PipelineBindPoint};
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
@@ -281,11 +282,8 @@ fn main() {
     .unwrap();
 
     let pipeline_layout = {
-        let mut descriptor_set_descs: Vec<_> = (&fs.main_entry_point() as &dyn EntryPointAbstract)
-            .descriptor_set_layout_descs()
-            .iter()
-            .cloned()
-            .collect();
+        let mut descriptor_set_descs: Vec<_> =
+            DescriptorSetDesc::from_requirements(fs.main_entry_point().descriptor_requirements());
 
         // Set 0, Binding 0
         descriptor_set_descs[0].set_variable_descriptor_count(0, 2);
@@ -305,10 +303,7 @@ fn main() {
             PipelineLayout::new(
                 device.clone(),
                 descriptor_set_layouts,
-                (&fs.main_entry_point() as &dyn EntryPointAbstract)
-                    .push_constant_range()
-                    .iter()
-                    .cloned(),
+                fs.main_entry_point().push_constant_range().iter().cloned(),
             )
             .unwrap(),
         )

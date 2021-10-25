@@ -8,80 +8,99 @@
 // according to those terms.
 
 use crate::TypesMeta;
+use fnv::FnvHashMap;
 use proc_macro2::TokenStream;
 use std::cmp;
 use std::collections::HashSet;
-use vulkano::spirv::{Decoration, Dim, Id, ImageFormat, Instruction, Spirv, StorageClass};
+use vulkano::{
+    descriptor_set::layout::DescriptorType,
+    format::Format,
+    image::view::ImageViewType,
+    pipeline::shader::DescriptorRequirements,
+    spirv::{Decoration, Dim, Id, ImageFormat, Instruction, Spirv, StorageClass},
+};
 
-#[derive(Debug)]
-struct Descriptor {
-    set_num: u32,
-    binding_num: u32,
-    desc_ty: TokenStream,
-    descriptor_count: u64,
-    variable_count: bool,
-    mutable: bool,
-}
-
-pub(super) fn write_descriptor_set_layout_descs(
+pub(super) fn write_descriptor_requirements(
     spirv: &Spirv,
     entrypoint_id: Id,
     interface: &[Id],
     exact_entrypoint_interface: bool,
     stages: &TokenStream,
 ) -> TokenStream {
-    // TODO: somewhat implemented correctly
+    let descriptor_requirements =
+        find_descriptors(spirv, entrypoint_id, interface, exact_entrypoint_interface);
 
-    // Finding all the descriptors.
-    let descriptors = find_descriptors(spirv, entrypoint_id, interface, exact_entrypoint_interface);
-    let num_sets = descriptors.iter().map(|d| d.set_num + 1).max().unwrap_or(0);
-    let sets: Vec<_> = (0..num_sets)
-        .map(|set_num| {
-            let num_bindings = descriptors
-                .iter()
-                .filter(|d| d.set_num == set_num)
-                .map(|d| d.binding_num + 1)
-                .max()
-                .unwrap_or(0);
-            let bindings: Vec<_> = (0..num_bindings)
-                .map(|binding_num| {
-                    match descriptors
-                        .iter()
-                        .find(|d| d.set_num == set_num && d.binding_num == binding_num)
-                    {
-                        Some(d) => {
-                            let desc_ty = &d.desc_ty;
-                            let descriptor_count = d.descriptor_count as u32;
-                            let mutable = d.mutable;
-                            let variable_count = d.variable_count;
-                            quote! {
-                                Some(DescriptorDesc {
-                                    ty: #desc_ty,
-                                    descriptor_count: #descriptor_count,
-                                    stages: #stages,
-                                    variable_count: #variable_count,
-                                    mutable: #mutable,
-                                }),
-                            }
-                        }
-                        None => quote! {
-                            None,
-                        },
-                    }
-                })
-                .collect();
+    let descriptor_requirements = descriptor_requirements.into_iter().map(|(loc, reqs)| {
+        let (set_num, binding_num) = loc;
+        let DescriptorRequirements {
+            descriptor_types,
+            descriptor_count,
+            format,
+            image_view_type,
+            multisampled,
+            mutable,
+            stages: _,
+        } = reqs;
+
+        let descriptor_types = descriptor_types.into_iter().map(|ty| {
+            let ident = format_ident!("{}", format!("{:?}", ty));
+            quote! { DescriptorType::#ident }
+        });
+        let format = match format {
+            Some(format) => {
+                let ident = format_ident!("{}", format!("{:?}", format));
+                quote! { Some(Format::#ident) }
+            }
+            None => quote! { None },
+        };
+        let image_view_type = match image_view_type {
+            Some(image_view_type) => {
+                let ident = format_ident!("{}", format!("{:?}", image_view_type));
+                quote! { Some(ImageViewType::#ident) }
+            }
+            None => quote! { None },
+        };
+        /*let stages = {
+            let ShaderStages {
+                vertex,
+                tessellation_control,
+                tessellation_evaluation,
+                geometry,
+                fragment,
+                compute,
+            } = stages;
 
             quote! {
-                DescriptorSetDesc::new(
-                    [#( #bindings )*]
-                ),
+                ShaderStages {
+                    vertex: #vertex,
+                    tessellation_control: #tessellation_control,
+                    tessellation_evaluation: #tessellation_evaluation,
+                    geometry: #geometry,
+                    fragment: #fragment,
+                    compute: #compute,
+                }
             }
-        })
-        .collect();
+        };*/
+
+        quote! {
+            (
+                (#set_num, #binding_num),
+                DescriptorRequirements {
+                    descriptor_types: vec![#(#descriptor_types),*],
+                    descriptor_count: #descriptor_count,
+                    format: #format,
+                    image_view_type: #image_view_type,
+                    multisampled: #multisampled,
+                    mutable: #mutable,
+                    stages: #stages,
+                },
+            ),
+        }
+    });
 
     quote! {
         [
-            #( #sets )*
+            #( #descriptor_requirements )*
         ]
     }
 }
@@ -134,7 +153,7 @@ fn find_descriptors(
     entrypoint_id: Id,
     interface: &[Id],
     exact: bool,
-) -> Vec<Descriptor> {
+) -> FnvHashMap<(u32, u32), DescriptorRequirements> {
     // For SPIR-V 1.4+, the entrypoint interface can specify variables of all storage classes,
     // and most tools will put all used variables in the entrypoint interface. However,
     // SPIR-V 1.0-1.3 do not specify variables other than Input/Output ones in the interface,
@@ -228,20 +247,15 @@ fn find_descriptors(
             });
 
             // Find information about the kind of binding for this descriptor.
-            let (desc_ty, mutable, descriptor_count, variable_count) =
-                descriptor_infos(spirv, variable_type_id, storage_class, false).expect(&format!(
-                "Couldn't find relevant type for uniform `{}` (type {}, maybe unimplemented)",
+            let mut reqs =
+                descriptor_requirements(spirv, variable_type_id, storage_class, false).expect(&format!(
+                "Couldn't find relevant type for global variable `{}` (type {}, maybe unimplemented)",
                 name, variable_type_id,
             ));
 
-            Some(Descriptor {
-                desc_ty,
-                set_num,
-                binding_num,
-                descriptor_count,
-                mutable: !nonwritable && mutable,
-                variable_count: variable_count,
-            })
+            reqs.mutable &= !nonwritable;
+
+            Some(((set_num, binding_num), reqs))
         })
         .collect()
 }
@@ -359,16 +373,15 @@ fn find_variables_in_function(
     }
 }
 
-/// Returns a `DescriptorDescTy` constructor, a bool indicating whether the descriptor is
-/// read-only, and the number of array elements.
+/// Returns a `DescriptorRequirements` value for the pointed type.
 ///
 /// See also section 14.5.2 of the Vulkan specs: Descriptor Set Interface
-fn descriptor_infos(
+fn descriptor_requirements(
     spirv: &Spirv,
     pointed_ty: Id,
     pointer_storage: &StorageClass,
     force_combined_image_sampled: bool,
-) -> Option<(TokenStream, bool, u64, bool)> {
+) -> Option<DescriptorRequirements> {
     let id_info = spirv.id(pointed_ty);
 
     match id_info.instruction() {
@@ -398,10 +411,14 @@ fn descriptor_infos(
                 "Structs in shader interface are expected to be decorated with one of Block or BufferBlock"
             );
 
-            let (ty, mutable) = if decoration_buffer_block
+            let mut reqs = DescriptorRequirements {
+                descriptor_count: 1,
+                ..Default::default()
+            };
+
+            if decoration_buffer_block
                 || decoration_block && *pointer_storage == StorageClass::StorageBuffer
             {
-                // VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
                 // Determine whether all members have a NonWritable decoration.
                 let nonwritable = id_info.iter_members().all(|member_info| {
                     member_info.iter_decoration().any(|instruction| {
@@ -415,13 +432,19 @@ fn descriptor_infos(
                     })
                 });
 
-                (quote! { DescriptorDescTy::StorageBuffer }, !nonwritable)
+                reqs.descriptor_types = vec![
+                    DescriptorType::StorageBuffer,
+                    DescriptorType::StorageBufferDynamic,
+                ];
+                reqs.mutable = !nonwritable;
             } else {
-                // VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
-                (quote! { DescriptorDescTy::UniformBuffer }, false) // Uniforms are never mutable.
+                reqs.descriptor_types = vec![
+                    DescriptorType::UniformBuffer,
+                    DescriptorType::UniformBufferDynamic,
+                ];
             };
 
-            Some((ty, mutable, 1, false))
+            Some(reqs)
         }
         &Instruction::TypeImage {
             ref dim,
@@ -431,13 +454,12 @@ fn descriptor_infos(
             ref image_format,
             ..
         } => {
-            let ms = ms != 0;
+            let multisampled = ms != 0;
             assert!(sampled != 0, "Vulkan requires that variables of type OpTypeImage have a Sampled operand of 1 or 2");
-            let vulkan_format = to_vulkan_format(image_format);
+            let format: Option<Format> = image_format.clone().into();
 
             match dim {
                 Dim::SubpassData => {
-                    // VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT
                     assert!(
                         !force_combined_image_sampled,
                         "An OpTypeSampledImage can't point to \
@@ -451,138 +473,118 @@ fn descriptor_infos(
                     assert!(sampled == 2, "If Dim is SubpassData, Sampled must be 2");
                     assert!(arrayed == 0, "If Dim is SubpassData, Arrayed must be 0");
 
-                    let desc = quote! {
-                        DescriptorDescTy::InputAttachment {
-                            multisampled: #ms,
-                        }
-                    };
-
-                    Some((desc, true, 1, false)) // Never writable.
+                    Some(DescriptorRequirements {
+                        descriptor_types: vec![DescriptorType::InputAttachment],
+                        descriptor_count: 1,
+                        multisampled,
+                        ..Default::default()
+                    })
                 }
                 Dim::Buffer => {
-                    let (ty, mutable) = if sampled == 1 {
-                        // VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER
-                        (quote! { DescriptorDescTy::UniformTexelBuffer }, false)
-                    // Uniforms are never mutable.
+                    let mut reqs = DescriptorRequirements {
+                        descriptor_count: 1,
+                        format,
+                        ..Default::default()
+                    };
+
+                    if sampled == 1 {
+                        reqs.descriptor_types = vec![DescriptorType::UniformTexelBuffer];
                     } else {
-                        // VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER
-                        (quote! { DescriptorDescTy::StorageTexelBuffer }, true)
-                    };
+                        reqs.descriptor_types = vec![DescriptorType::StorageTexelBuffer];
+                        reqs.mutable = true;
+                    }
 
-                    let desc = quote! {
-                        #ty {
-                            format: #vulkan_format,
-                        }
-                    };
-
-                    Some((desc, mutable, 1, false))
+                    Some(reqs)
                 }
                 _ => {
-                    let view_type = match (dim, arrayed) {
-                        (Dim::Dim1D, 0) => quote! { ImageViewType::Dim1d },
-                        (Dim::Dim1D, 1) => quote! { ImageViewType::Dim1dArray },
-                        (Dim::Dim2D, 0) => quote! { ImageViewType::Dim2d },
-                        (Dim::Dim2D, 1) => quote! { ImageViewType::Dim2dArray },
-                        (Dim::Dim3D, 0) => quote! { ImageViewType::Dim3d },
+                    let image_view_type = Some(match (dim, arrayed) {
+                        (Dim::Dim1D, 0) => ImageViewType::Dim1d,
+                        (Dim::Dim1D, 1) => ImageViewType::Dim1dArray,
+                        (Dim::Dim2D, 0) => ImageViewType::Dim2d,
+                        (Dim::Dim2D, 1) => ImageViewType::Dim2dArray,
+                        (Dim::Dim3D, 0) => ImageViewType::Dim3d,
                         (Dim::Dim3D, 1) => panic!("Vulkan doesn't support arrayed 3D textures"),
-                        (Dim::Cube, 0) => quote! { ImageViewType::Cube },
-                        (Dim::Cube, 1) => quote! { ImageViewType::CubeArray },
+                        (Dim::Cube, 0) => ImageViewType::Cube,
+                        (Dim::Cube, 1) => ImageViewType::CubeArray,
                         (Dim::Rect, _) => panic!("Vulkan doesn't support rectangle textures"),
                         _ => unreachable!(),
+                    });
+
+                    let mut reqs = DescriptorRequirements {
+                        descriptor_count: 1,
+                        format,
+                        multisampled,
+                        image_view_type,
+                        ..Default::default()
                     };
 
-                    let image_desc = quote! {
-                        DescriptorDescImage {
-                            format: #vulkan_format,
-                            multisampled: #ms,
-                            view_type: #view_type,
-                        }
-                    };
-
-                    let (desc, mutable) = if force_combined_image_sampled {
-                        // VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
-                        // Never writable.
+                    if force_combined_image_sampled {
                         assert!(
                             sampled == 1,
                             "A combined image sampler must not reference a storage image"
                         );
 
-                        (
-                            quote! {
-                                DescriptorDescTy::CombinedImageSampler {
-                                    image_desc: #image_desc,
-                                    immutable_samplers: Vec::new(),
-                                }
-                            },
-                            false, // Sampled images are never mutable.
-                        )
+                        reqs.descriptor_types = vec![DescriptorType::CombinedImageSampler];
                     } else {
-                        let (ty, mutable) = if sampled == 1 {
-                            // VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
-                            (quote! { DescriptorDescTy::SampledImage }, false) // Sampled images are never mutable.
+                        if sampled == 1 {
+                            reqs.descriptor_types = vec![DescriptorType::SampledImage];
                         } else {
-                            // VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
-                            (quote! { DescriptorDescTy::StorageImage }, true)
-                        };
-
-                        (
-                            quote! {
-                                #ty {
-                                    image_desc: #image_desc,
-                                }
-                            },
-                            mutable,
-                        )
+                            reqs.descriptor_types = vec![DescriptorType::StorageImage];
+                            reqs.mutable = true;
+                        }
                     };
 
-                    Some((desc, mutable, 1, false))
+                    Some(reqs)
                 }
             }
         }
 
         &Instruction::TypeSampledImage { image_type, .. } => {
-            descriptor_infos(spirv, image_type, pointer_storage, true)
+            descriptor_requirements(spirv, image_type, pointer_storage, true)
         }
 
-        &Instruction::TypeSampler { .. } => {
-            let desc = quote! { DescriptorDescTy::Sampler { immutable_samplers: Vec::new() } };
-            Some((desc, false, 1, false))
-        }
+        &Instruction::TypeSampler { .. } => Some(DescriptorRequirements {
+            descriptor_types: vec![DescriptorType::Sampler],
+            descriptor_count: 1,
+            ..Default::default()
+        }),
 
         &Instruction::TypeArray {
             element_type,
             length,
             ..
         } => {
-            let (desc, mutable, arr, variable_count) =
-                match descriptor_infos(spirv, element_type, pointer_storage, false) {
-                    None => return None,
-                    Some(v) => v,
-                };
-            assert_eq!(arr, 1); // TODO: implement?
-            assert!(!variable_count); // TODO: Is this even a thing?
+            let reqs = match descriptor_requirements(spirv, element_type, pointer_storage, false) {
+                None => return None,
+                Some(v) => v,
+            };
+            assert_eq!(reqs.descriptor_count, 1); // TODO: implement?
             let len = match spirv.id(length).instruction() {
                 &Instruction::Constant { ref value, .. } => value,
                 _ => panic!("failed to find array length"),
             };
             let len = len.iter().rev().fold(0, |a, &b| (a << 32) | b as u64);
 
-            Some((desc, mutable, len, false))
+            Some(DescriptorRequirements {
+                descriptor_count: len as u32,
+                ..reqs
+            })
         }
 
         &Instruction::TypeRuntimeArray { element_type, .. } => {
-            let (desc, mutable, arr, variable_count) =
-                match descriptor_infos(spirv, element_type, pointer_storage, false) {
-                    None => return None,
-                    Some(v) => v,
-                };
-            assert_eq!(arr, 1); // TODO: implement?
-            assert!(!variable_count); // TODO: Don't think this is possible?
+            let reqs = match descriptor_requirements(spirv, element_type, pointer_storage, false) {
+                None => return None,
+                Some(v) => v,
+            };
+            assert_eq!(reqs.descriptor_count, 1); // TODO: implement?
 
-            Some((desc, mutable, 1, true))
+            Some(DescriptorRequirements {
+                descriptor_count: 0,
+                ..reqs
+            })
         }
 
-        _ => None, // TODO: other types
+        _ => None,
     }
 }
 
@@ -682,8 +684,8 @@ mod tests {
         // Check first entrypoint
         let e1_descriptors = descriptors.get(0).expect("Could not find entrypoint1");
         let mut e1_bindings = Vec::new();
-        for d in e1_descriptors {
-            e1_bindings.push((d.set_num, d.binding_num));
+        for (loc, _reqs) in e1_descriptors {
+            e1_bindings.push(*loc);
         }
         assert_eq!(e1_bindings.len(), 5);
         assert!(e1_bindings.contains(&(0, 0)));
@@ -695,8 +697,8 @@ mod tests {
         // Check second entrypoint
         let e2_descriptors = descriptors.get(1).expect("Could not find entrypoint2");
         let mut e2_bindings = Vec::new();
-        for d in e2_descriptors {
-            e2_bindings.push((d.set_num, d.binding_num));
+        for (loc, _reqs) in e2_descriptors {
+            e2_bindings.push(*loc);
         }
         assert_eq!(e2_bindings.len(), 3);
         assert!(e2_bindings.contains(&(0, 0)));
@@ -755,8 +757,8 @@ mod tests {
             {
                 let descriptors = find_descriptors(&spirv, entry_point, interface, true);
                 let mut bindings = Vec::new();
-                for d in descriptors {
-                    bindings.push((d.set_num, d.binding_num));
+                for (loc, _reqs) in descriptors {
+                    bindings.push(loc);
                 }
                 assert_eq!(bindings.len(), 4);
                 assert!(bindings.contains(&(1, 0)));
@@ -768,52 +770,5 @@ mod tests {
             }
         }
         panic!("Could not find entrypoint");
-    }
-}
-
-fn to_vulkan_format(spirv_format: &ImageFormat) -> TokenStream {
-    match spirv_format {
-        ImageFormat::Unknown => quote! { None },
-        ImageFormat::Rgba32f => quote! { Some(Format::R32G32B32A32_SFLOAT) },
-        ImageFormat::Rgba16f => quote! { Some(Format::R16G16B16A16_SFLOAT) },
-        ImageFormat::R32f => quote! { Some(Format::R32_SFLOAT) },
-        ImageFormat::Rgba8 => quote! { Some(Format::R8G8B8A8_UNORM) },
-        ImageFormat::Rgba8Snorm => quote! { Some(Format::R8G8B8A8_SNORM) },
-        ImageFormat::Rg32f => quote! { Some(Format::R32G32_SFLOAT) },
-        ImageFormat::Rg16f => quote! { Some(Format::R16G16_SFLOAT) },
-        ImageFormat::R11fG11fB10f => quote! { Some(Format::B10G11R11_UFLOAT_PACK32) },
-        ImageFormat::R16f => quote! { Some(Format::R16_SFLOAT) },
-        ImageFormat::Rgba16 => quote! { Some(Format::R16G16B16A16_UNORM) },
-        ImageFormat::Rgb10A2 => quote! { Some(Format::A2B10G10R10_UNORMPack32) },
-        ImageFormat::Rg16 => quote! { Some(Format::R16G16_UNORM) },
-        ImageFormat::Rg8 => quote! { Some(Format::R8G8_UNORM) },
-        ImageFormat::R16 => quote! { Some(Format::R16_UNORM) },
-        ImageFormat::R8 => quote! { Some(Format::R8_UNORM) },
-        ImageFormat::Rgba16Snorm => quote! { Some(Format::R16G16B16A16_SNORM) },
-        ImageFormat::Rg16Snorm => quote! { Some(Format::R16G16_SNORM) },
-        ImageFormat::Rg8Snorm => quote! { Some(Format::R8G8_SNORM) },
-        ImageFormat::R16Snorm => quote! { Some(Format::R16_SNORM) },
-        ImageFormat::R8Snorm => quote! { Some(Format::R8_SNORM) },
-        ImageFormat::Rgba32i => quote! { Some(Format::R32G32B32A32_SINT) },
-        ImageFormat::Rgba16i => quote! { Some(Format::R16G16B16A16_SINT) },
-        ImageFormat::Rgba8i => quote! { Some(Format::R8G8B8A8_SINT) },
-        ImageFormat::R32i => quote! { Some(Format::R32_SINT) },
-        ImageFormat::Rg32i => quote! { Some(Format::R32G32_SINT) },
-        ImageFormat::Rg16i => quote! { Some(Format::R16G16_SINT) },
-        ImageFormat::Rg8i => quote! { Some(Format::R8G8_SINT) },
-        ImageFormat::R16i => quote! { Some(Format::R16_SINT) },
-        ImageFormat::R8i => quote! { Some(Format::R8_SINT) },
-        ImageFormat::Rgba32ui => quote! { Some(Format::R32G32B32A32_UINT) },
-        ImageFormat::Rgba16ui => quote! { Some(Format::R16G16B16A16_UINT) },
-        ImageFormat::Rgba8ui => quote! { Some(Format::R8G8B8A8_UINT) },
-        ImageFormat::R32ui => quote! { Some(Format::R32_UINT) },
-        ImageFormat::Rgb10a2ui => quote! { Some(Format::A2B10G10R10_UINT_PACK32) },
-        ImageFormat::Rg32ui => quote! { Some(Format::R32G32_UINT) },
-        ImageFormat::Rg16ui => quote! { Some(Format::R16G16_UINT) },
-        ImageFormat::Rg8ui => quote! { Some(Format::R8G8_UINT) },
-        ImageFormat::R16ui => quote! { Some(Format::R16_UINT) },
-        ImageFormat::R8ui => quote! { Some(Format::R8_UINT) },
-        ImageFormat::R64ui => quote! { Some(Format::R64_UINT) },
-        ImageFormat::R64i => quote! { Some(Format::R64_SINT) },
     }
 }
