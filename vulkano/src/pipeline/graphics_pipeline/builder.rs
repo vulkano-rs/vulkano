@@ -28,7 +28,7 @@ use crate::pipeline::layout::{PipelineLayout, PipelineLayoutCreationError, Pipel
 use crate::pipeline::multisample::MultisampleState;
 use crate::pipeline::rasterization::{CullMode, FrontFace, PolygonMode, RasterizationState};
 use crate::pipeline::shader::{
-    EntryPointAbstract, GraphicsEntryPoint, GraphicsShaderType, ShaderStage,
+    DescriptorRequirements, GraphicsEntryPoint, GraphicsShaderType, ShaderStage,
     SpecializationConstants,
 };
 use crate::pipeline::tessellation::TessellationState;
@@ -163,12 +163,39 @@ where
                 }
             }
 
-            let mut descriptor_set_layout_descs = stages
+            // Produce `DescriptorRequirements` for each binding, by iterating over all shaders
+            // and adding the requirements of each.
+            let mut descriptor_requirements: FnvHashMap<(u32, u32), DescriptorRequirements> =
+                HashMap::default();
+
+            for (loc, reqs) in stages
                 .iter()
-                .try_fold(vec![], |total, shader| -> Result<_, ()> {
-                    DescriptorSetDesc::union_multiple(&total, shader.descriptor_set_layout_descs())
-                })
-                .expect("Can't be union'd");
+                .map(|shader| shader.descriptor_requirements())
+                .flatten()
+            {
+                match descriptor_requirements.entry(loc) {
+                    Entry::Occupied(entry) => {
+                        // Previous shaders already added requirements, so we produce the
+                        // intersection of the previous requirements and those of the
+                        // current shader.
+                        let previous = entry.into_mut();
+                        *previous = previous.intersection(reqs).expect("Could not produce an intersection of the shader descriptor requirements");
+                    }
+                    Entry::Vacant(entry) => {
+                        // No previous shader had this descriptor yet, so we just insert the
+                        // requirements.
+                        entry.insert(reqs.clone());
+                    }
+                }
+            }
+
+            // Build a description of a descriptor set layout from the shader requirements, then
+            // feed it to the user-provided closure to allow tweaking.
+            let mut descriptor_set_layout_descs = DescriptorSetDesc::from_requirements(
+                descriptor_requirements
+                    .iter()
+                    .map(|(&loc, reqs)| (loc, reqs)),
+            );
             func(&mut descriptor_set_layout_descs);
 
             // We want to union each push constant range into a set of ranges that do not have intersecting stage flags.
@@ -227,47 +254,104 @@ where
 
         // Checking that the pipeline layout matches the shader stages.
         // TODO: more details in the errors
+        let mut descriptor_requirements: FnvHashMap<(u32, u32), DescriptorRequirements> =
+            HashMap::default();
 
         {
             let shader = &self.vertex_shader.as_ref().unwrap().0;
             pipeline_layout.ensure_compatible_with_shader(
-                shader.descriptor_set_layout_descs(),
+                shader.descriptor_requirements(),
                 shader.push_constant_range(),
             )?;
+            for (loc, reqs) in shader.descriptor_requirements() {
+                match descriptor_requirements.entry(loc) {
+                    Entry::Occupied(entry) => {
+                        let previous = entry.into_mut();
+                        *previous = previous.intersection(reqs).expect("Could not produce an intersection of the shader descriptor requirements");
+                    }
+                    Entry::Vacant(entry) => {
+                        entry.insert(reqs.clone());
+                    }
+                }
+            }
         }
 
         if let Some(ref geometry_shader) = self.geometry_shader {
             let shader = &geometry_shader.0;
             pipeline_layout.ensure_compatible_with_shader(
-                shader.descriptor_set_layout_descs(),
+                shader.descriptor_requirements(),
                 shader.push_constant_range(),
             )?;
+            for (loc, reqs) in shader.descriptor_requirements() {
+                match descriptor_requirements.entry(loc) {
+                    Entry::Occupied(entry) => {
+                        let previous = entry.into_mut();
+                        *previous = previous.intersection(reqs).expect("Could not produce an intersection of the shader descriptor requirements");
+                    }
+                    Entry::Vacant(entry) => {
+                        entry.insert(reqs.clone());
+                    }
+                }
+            }
         }
 
         if let Some(ref tess) = self.tessellation_shaders {
             {
                 let shader = &tess.tessellation_control_shader.0;
                 pipeline_layout.ensure_compatible_with_shader(
-                    shader.descriptor_set_layout_descs(),
+                    shader.descriptor_requirements(),
                     shader.push_constant_range(),
                 )?;
+                for (loc, reqs) in shader.descriptor_requirements() {
+                    match descriptor_requirements.entry(loc) {
+                        Entry::Occupied(entry) => {
+                            let previous = entry.into_mut();
+                            *previous = previous.intersection(reqs).expect("Could not produce an intersection of the shader descriptor requirements");
+                        }
+                        Entry::Vacant(entry) => {
+                            entry.insert(reqs.clone());
+                        }
+                    }
+                }
             }
 
             {
                 let shader = &tess.tessellation_evaluation_shader.0;
                 pipeline_layout.ensure_compatible_with_shader(
-                    shader.descriptor_set_layout_descs(),
+                    shader.descriptor_requirements(),
                     shader.push_constant_range(),
                 )?;
+                for (loc, reqs) in shader.descriptor_requirements() {
+                    match descriptor_requirements.entry(loc) {
+                        Entry::Occupied(entry) => {
+                            let previous = entry.into_mut();
+                            *previous = previous.intersection(reqs).expect("Could not produce an intersection of the shader descriptor requirements");
+                        }
+                        Entry::Vacant(entry) => {
+                            entry.insert(reqs.clone());
+                        }
+                    }
+                }
             }
         }
 
         if let Some(ref fragment_shader) = self.fragment_shader {
             let shader = &fragment_shader.0;
             pipeline_layout.ensure_compatible_with_shader(
-                shader.descriptor_set_layout_descs(),
+                shader.descriptor_requirements(),
                 shader.push_constant_range(),
             )?;
+            for (loc, reqs) in shader.descriptor_requirements() {
+                match descriptor_requirements.entry(loc) {
+                    Entry::Occupied(entry) => {
+                        let previous = entry.into_mut();
+                        *previous = previous.intersection(reqs).expect("Could not produce an intersection of the shader descriptor requirements");
+                    }
+                    Entry::Vacant(entry) => {
+                        entry.insert(reqs.clone());
+                    }
+                }
+            }
 
             // Check that the subpass can accept the output of the fragment shader.
             // TODO: If there is no fragment shader, what should be checked then? The previous stage?
@@ -938,6 +1022,7 @@ where
             layout: pipeline_layout,
             subpass,
             shaders,
+            descriptor_requirements,
 
             vertex_input, // Can be None if there's a mesh shader, but we don't support that yet
             input_assembly_state: self.input_assembly_state, // Can be None if there's a mesh shader, but we don't support that yet

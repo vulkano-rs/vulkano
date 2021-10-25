@@ -920,17 +920,7 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         #[allow(unused_imports)]
         use vulkano::device::Device;
         #[allow(unused_imports)]
-        use vulkano::descriptor_set::layout::DescriptorDesc;
-        #[allow(unused_imports)]
-        use vulkano::descriptor_set::layout::DescriptorDescTy;
-        #[allow(unused_imports)]
-        use vulkano::descriptor_set::layout::DescriptorDescImage;
-        #[allow(unused_imports)]
-        use vulkano::descriptor_set::layout::DescriptorSetDesc;
-        #[allow(unused_imports)]
-        use vulkano::descriptor_set::layout::DescriptorSetLayout;
-        #[allow(unused_imports)]
-        use vulkano::descriptor_set::DescriptorSet;
+        use vulkano::descriptor_set::layout::DescriptorType;
         #[allow(unused_imports)]
         use vulkano::format::Format;
         #[allow(unused_imports)]
@@ -939,6 +929,8 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         use vulkano::pipeline::layout::PipelineLayout;
         #[allow(unused_imports)]
         use vulkano::pipeline::layout::PipelineLayoutPcRange;
+        #[allow(unused_imports)]
+        use vulkano::pipeline::shader::DescriptorRequirements;
         #[allow(unused_imports)]
         use vulkano::pipeline::shader::ShaderStages;
         #[allow(unused_imports)]
