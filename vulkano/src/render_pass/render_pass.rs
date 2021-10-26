@@ -23,7 +23,6 @@ use crate::VulkanObject;
 use smallvec::SmallVec;
 use std::error;
 use std::fmt;
-use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
@@ -83,7 +82,7 @@ use std::sync::Mutex;
 /// See the documentation of the macro for more details. TODO: put link here
 pub struct RenderPass {
     // The internal Vulkan object.
-    render_pass: ash::vk::RenderPass,
+    handle: ash::vk::RenderPass,
 
     // Device this render pass was created from.
     device: Arc<Device>,
@@ -107,7 +106,7 @@ impl RenderPass {
     pub fn new(
         device: Arc<Device>,
         description: RenderPassDesc,
-    ) -> Result<RenderPass, RenderPassCreationError> {
+    ) -> Result<Arc<RenderPass>, RenderPassCreationError> {
         let fns = device.fns();
 
         // If the first use of an attachment in this render pass is as an input attachment, and
@@ -455,7 +454,7 @@ impl RenderPass {
             None => ash::vk::RenderPassMultiviewCreateInfo::default(),
         };
 
-        let render_pass = unsafe {
+        let handle = unsafe {
             let infos = ash::vk::RenderPassCreateInfo {
                 p_next: if description.multiview().is_none() {
                     ptr::null()
@@ -494,25 +493,22 @@ impl RenderPass {
             output.assume_init()
         };
 
-        Ok(RenderPass {
+        Ok(Arc::new(RenderPass {
+            handle,
             device: device.clone(),
-            render_pass,
             desc: description,
             granularity: Mutex::new(None),
-        })
+        }))
     }
 
     /// Builds a render pass with one subpass and no attachment.
     ///
     /// This method is useful for quick tests.
     #[inline]
-    pub fn empty_single_pass(device: Arc<Device>) -> Result<RenderPass, RenderPassCreationError> {
+    pub fn empty_single_pass(
+        device: Arc<Device>,
+    ) -> Result<Arc<RenderPass>, RenderPassCreationError> {
         RenderPass::new(device, RenderPassDesc::empty())
-    }
-
-    #[inline]
-    pub fn inner(&self) -> RenderPassSys {
-        RenderPassSys(self.render_pass, PhantomData)
     }
 
     /// Returns the granularity of this render pass.
@@ -532,7 +528,7 @@ impl RenderPass {
             let mut out = MaybeUninit::uninit();
             fns.v1_0.get_render_area_granularity(
                 self.device.internal_object(),
-                self.render_pass,
+                self.handle,
                 out.as_mut_ptr(),
             );
 
@@ -571,7 +567,7 @@ unsafe impl DeviceOwned for RenderPass {
 impl fmt::Debug for RenderPass {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         fmt.debug_struct("RenderPass")
-            .field("raw", &self.render_pass)
+            .field("handle", &self.handle)
             .field("device", &self.device)
             .field("desc", &self.desc)
             .finish()
@@ -583,25 +579,18 @@ impl Drop for RenderPass {
     fn drop(&mut self) {
         unsafe {
             let fns = self.device.fns();
-            fns.v1_0.destroy_render_pass(
-                self.device.internal_object(),
-                self.render_pass,
-                ptr::null(),
-            );
+            fns.v1_0
+                .destroy_render_pass(self.device.internal_object(), self.handle, ptr::null());
         }
     }
 }
 
-/// Opaque object that represents the render pass' internals.
-#[derive(Debug, Copy, Clone)]
-pub struct RenderPassSys<'a>(ash::vk::RenderPass, PhantomData<&'a ()>);
-
-unsafe impl<'a> VulkanObject for RenderPassSys<'a> {
+unsafe impl VulkanObject for RenderPass {
     type Object = ash::vk::RenderPass;
 
     #[inline]
     fn internal_object(&self) -> ash::vk::RenderPass {
-        self.0
+        self.handle
     }
 }
 

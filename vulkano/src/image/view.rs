@@ -22,7 +22,6 @@ use crate::image::ImageDimensions;
 use crate::memory::DeviceMemoryAllocError;
 use crate::sampler::Sampler;
 use crate::OomError;
-use crate::SafeDeref;
 use crate::VulkanObject;
 use std::error;
 use std::fmt;
@@ -39,7 +38,7 @@ where
     I: ImageAccess,
 {
     inner: UnsafeImageView,
-    image: I,
+    image: Arc<I>,
 
     array_layers: Range<u32>,
     component_mapping: ComponentMapping,
@@ -53,12 +52,12 @@ where
 {
     /// Creates a default `ImageView`. Equivalent to `ImageView::start(image).build()`.
     #[inline]
-    pub fn new(image: I) -> Result<Arc<ImageView<I>>, ImageViewCreationError> {
+    pub fn new(image: Arc<I>) -> Result<Arc<ImageView<I>>, ImageViewCreationError> {
         Self::start(image).build()
     }
 
     /// Begins building an `ImageView`.
-    pub fn start(image: I) -> ImageViewBuilder<I> {
+    pub fn start(image: Arc<I>) -> ImageViewBuilder<I> {
         let ty = match image.dimensions() {
             ImageDimensions::Dim1d {
                 array_layers: 1, ..
@@ -98,7 +97,7 @@ pub struct ImageViewBuilder<I> {
     mipmap_levels: Range<u32>,
     ty: ImageViewType,
 
-    image: I,
+    image: Arc<I>,
 }
 
 impl<I> ImageViewBuilder<I>
@@ -584,7 +583,7 @@ impl Default for ComponentSwizzle {
 /// Trait for types that represent the GPU can access an image view.
 pub unsafe trait ImageViewAbstract: Send + Sync {
     /// Returns the wrapped image that this image view was created from.
-    fn image(&self) -> &dyn ImageAccess;
+    fn image(&self) -> Arc<dyn ImageAccess>;
 
     /// Returns the inner unsafe image view object used by this image view.
     fn inner(&self) -> &UnsafeImageView;
@@ -613,11 +612,11 @@ pub unsafe trait ImageViewAbstract: Send + Sync {
 
 unsafe impl<I> ImageViewAbstract for ImageView<I>
 where
-    I: ImageAccess,
+    I: ImageAccess + 'static,
 {
     #[inline]
-    fn image(&self) -> &dyn ImageAccess {
-        &self.image
+    fn image(&self) -> Arc<dyn ImageAccess> {
+        self.image.clone() as Arc<_>
     }
 
     #[inline]
@@ -644,47 +643,6 @@ where
     #[inline]
     fn ty(&self) -> ImageViewType {
         self.ty
-    }
-}
-
-unsafe impl<T> ImageViewAbstract for T
-where
-    T: SafeDeref + Send + Sync,
-    T::Target: ImageViewAbstract,
-{
-    #[inline]
-    fn image(&self) -> &dyn ImageAccess {
-        (**self).image()
-    }
-
-    #[inline]
-    fn inner(&self) -> &UnsafeImageView {
-        (**self).inner()
-    }
-
-    #[inline]
-    fn array_layers(&self) -> Range<u32> {
-        (**self).array_layers()
-    }
-
-    #[inline]
-    fn format(&self) -> Format {
-        (**self).format()
-    }
-
-    #[inline]
-    fn component_mapping(&self) -> ComponentMapping {
-        (**self).component_mapping()
-    }
-
-    #[inline]
-    fn ty(&self) -> ImageViewType {
-        (**self).ty()
-    }
-
-    #[inline]
-    fn can_be_sampled(&self, sampler: &Sampler) -> bool {
-        (**self).can_be_sampled(sampler)
     }
 }
 

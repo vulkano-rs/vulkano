@@ -134,12 +134,12 @@ impl DescriptorSetResources {
         self.buffers.len()
     }
 
-    pub(crate) fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, u32)> {
+    pub(crate) fn buffer(&self, index: usize) -> Option<(Arc<dyn BufferAccess>, u32)> {
         self.buffers
             .get(index)
             .and_then(|&(binding, index)| match &self.descriptors[&binding] {
                 DescriptorBindingResources::Buffer(resources) => {
-                    resources[index].as_ref().map(|r| (r.as_ref(), binding))
+                    resources[index].as_ref().map(|r| (r.clone(), binding))
                 }
                 DescriptorBindingResources::BufferView(resources) => {
                     resources[index].as_ref().map(|r| (r.buffer(), binding))
@@ -152,15 +152,15 @@ impl DescriptorSetResources {
         self.images.len()
     }
 
-    pub(crate) fn image(&self, index: usize) -> Option<(&dyn ImageViewAbstract, u32)> {
+    pub(crate) fn image(&self, index: usize) -> Option<(Arc<dyn ImageViewAbstract>, u32)> {
         self.images
             .get(index)
             .and_then(|&(binding, index)| match &self.descriptors[&binding] {
                 DescriptorBindingResources::ImageView(resources) => {
-                    resources[index].as_ref().map(|r| (r.as_ref(), binding))
+                    resources[index].as_ref().map(|r| (r.clone(), binding))
                 }
                 DescriptorBindingResources::ImageViewSampler(resources) => {
-                    resources[index].as_ref().map(|r| (r.0.as_ref(), binding))
+                    resources[index].as_ref().map(|r| (r.0.clone(), binding))
                 }
                 _ => unreachable!(),
             })

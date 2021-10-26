@@ -18,7 +18,6 @@ use crate::device::DeviceOwned;
 use crate::device::Queue;
 use crate::image::ImageAccess;
 use crate::image::ImageLayout;
-use crate::render_pass::FramebufferAbstract;
 use crate::sync::now;
 use crate::sync::AccessCheckError;
 use crate::sync::AccessError;
@@ -222,7 +221,7 @@ pub unsafe trait SecondaryCommandBuffer: DeviceOwned + Send + Sync {
 
     /// Returns a `CommandBufferInheritance` value describing the properties that the command
     /// buffer inherits from its parent primary command buffer.
-    fn inheritance(&self) -> CommandBufferInheritance<&dyn FramebufferAbstract>;
+    fn inheritance(&self) -> &CommandBufferInheritance;
 
     /// Returns the number of buffers accessed by this command buffer.
     fn num_buffers(&self) -> usize;
@@ -230,7 +229,7 @@ pub unsafe trait SecondaryCommandBuffer: DeviceOwned + Send + Sync {
     /// Returns the `index`th buffer of this command buffer, or `None` if out of range.
     ///
     /// The valid range is between 0 and `num_buffers()`.
-    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, PipelineMemoryAccess)>;
+    fn buffer(&self, index: usize) -> Option<(&Arc<dyn BufferAccess>, PipelineMemoryAccess)>;
 
     /// Returns the number of images accessed by this command buffer.
     fn num_images(&self) -> usize;
@@ -242,7 +241,7 @@ pub unsafe trait SecondaryCommandBuffer: DeviceOwned + Send + Sync {
         &self,
         index: usize,
     ) -> Option<(
-        &dyn ImageAccess,
+        &Arc<dyn ImageAccess>,
         PipelineMemoryAccess,
         ImageLayout,
         ImageLayout,
@@ -271,7 +270,7 @@ where
     }
 
     #[inline]
-    fn inheritance(&self) -> CommandBufferInheritance<&dyn FramebufferAbstract> {
+    fn inheritance(&self) -> &CommandBufferInheritance {
         (**self).inheritance()
     }
 
@@ -281,7 +280,7 @@ where
     }
 
     #[inline]
-    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, PipelineMemoryAccess)> {
+    fn buffer(&self, index: usize) -> Option<(&Arc<dyn BufferAccess>, PipelineMemoryAccess)> {
         (**self).buffer(index)
     }
 
@@ -295,7 +294,7 @@ where
         &self,
         index: usize,
     ) -> Option<(
-        &dyn ImageAccess,
+        &Arc<dyn ImageAccess>,
         PipelineMemoryAccess,
         ImageLayout,
         ImageLayout,

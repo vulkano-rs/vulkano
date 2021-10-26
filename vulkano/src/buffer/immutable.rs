@@ -114,12 +114,12 @@ impl<T: ?Sized> ImmutableBuffer<T> {
     /// either submit your operation after this future, or execute this future and wait for it to
     /// be finished before submitting your own operation.
     pub fn from_buffer<B>(
-        source: B,
+        source: Arc<B>,
         usage: BufferUsage,
         queue: Arc<Queue>,
     ) -> Result<(Arc<ImmutableBuffer<T>>, ImmutableBufferFromBufferFuture), DeviceMemoryAllocError>
     where
-        B: TypedBufferAccess<Content = T> + Clone + 'static,
+        B: TypedBufferAccess<Content = T> + 'static,
         T: Send + Sync + 'static,
     {
         unsafe {
@@ -175,8 +175,13 @@ impl<T> ImmutableBuffer<T> {
     pub unsafe fn uninitialized(
         device: Arc<Device>,
         usage: BufferUsage,
-    ) -> Result<(Arc<ImmutableBuffer<T>>, ImmutableBufferInitialization<T>), DeviceMemoryAllocError>
-    {
+    ) -> Result<
+        (
+            Arc<ImmutableBuffer<T>>,
+            Arc<ImmutableBufferInitialization<T>>,
+        ),
+        DeviceMemoryAllocError,
+    > {
         ImmutableBuffer::raw(
             device.clone(),
             mem::size_of::<T>() as DeviceSize,
@@ -230,7 +235,7 @@ impl<T> ImmutableBuffer<[T]> {
     ) -> Result<
         (
             Arc<ImmutableBuffer<[T]>>,
-            ImmutableBufferInitialization<[T]>,
+            Arc<ImmutableBufferInitialization<[T]>>,
         ),
         DeviceMemoryAllocError,
     > {
@@ -265,7 +270,13 @@ impl<T: ?Sized> ImmutableBuffer<T> {
         size: DeviceSize,
         usage: BufferUsage,
         queue_families: I,
-    ) -> Result<(Arc<ImmutableBuffer<T>>, ImmutableBufferInitialization<T>), DeviceMemoryAllocError>
+    ) -> Result<
+        (
+            Arc<ImmutableBuffer<T>>,
+            Arc<ImmutableBufferInitialization<T>>,
+        ),
+        DeviceMemoryAllocError,
+    >
     where
         I: IntoIterator<Item = QueueFamily<'a>>,
     {
@@ -280,8 +291,13 @@ impl<T: ?Sized> ImmutableBuffer<T> {
         size: DeviceSize,
         usage: BufferUsage,
         queue_families: SmallVec<[u32; 4]>,
-    ) -> Result<(Arc<ImmutableBuffer<T>>, ImmutableBufferInitialization<T>), DeviceMemoryAllocError>
-    {
+    ) -> Result<
+        (
+            Arc<ImmutableBuffer<T>>,
+            Arc<ImmutableBufferInitialization<T>>,
+        ),
+        DeviceMemoryAllocError,
+    > {
         let (buffer, mem_reqs) = {
             let sharing = if queue_families.len() >= 2 {
                 Sharing::Concurrent(queue_families.iter().cloned())
@@ -322,10 +338,10 @@ impl<T: ?Sized> ImmutableBuffer<T> {
             marker: PhantomData,
         });
 
-        let initialization = ImmutableBufferInitialization {
+        let initialization = Arc::new(ImmutableBufferInitialization {
             buffer: final_buf.clone(),
             used: Arc::new(AtomicBool::new(false)),
-        };
+        });
 
         Ok((final_buf, initialization))
     }

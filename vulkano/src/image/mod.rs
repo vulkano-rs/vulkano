@@ -586,6 +586,7 @@ impl ImageDimensions {
 #[cfg(test)]
 mod tests {
     use crate::format::Format;
+    use crate::image::ImageAccess;
     use crate::image::ImageDimensions;
     use crate::image::ImmutableImage;
     use crate::image::MipmapsCount;

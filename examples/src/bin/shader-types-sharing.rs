@@ -176,7 +176,7 @@ fn main() {
 
         set_builder.add_buffer(data_buffer.clone()).unwrap();
 
-        let set = Arc::new(set_builder.build().unwrap());
+        let set = set_builder.build().unwrap();
 
         let mut builder = AutoCommandBufferBuilder::primary(
             queue.device().clone(),
@@ -214,32 +214,28 @@ fn main() {
     };
 
     // Loading the first shader, and creating a Pipeline for the shader
-    let mult_pipeline = Arc::new(
-        ComputePipeline::new(
-            device.clone(),
-            &shaders::MultShader::load(device.clone())
-                .unwrap()
-                .main_entry_point(),
-            &shaders::SpecializationConstants { enabled: 1 },
-            None,
-            |_| {},
-        )
-        .unwrap(),
-    );
+    let mult_pipeline = ComputePipeline::new(
+        device.clone(),
+        &shaders::MultShader::load(device.clone())
+            .unwrap()
+            .main_entry_point(),
+        &shaders::SpecializationConstants { enabled: 1 },
+        None,
+        |_| {},
+    )
+    .unwrap();
 
     // Loading the second shader, and creating a Pipeline for the shader
-    let add_pipeline = Arc::new(
-        ComputePipeline::new(
-            device.clone(),
-            &shaders::AddShader::load(device.clone())
-                .unwrap()
-                .main_entry_point(),
-            &shaders::SpecializationConstants { enabled: 1 },
-            None,
-            |_| {},
-        )
-        .unwrap(),
-    );
+    let add_pipeline = ComputePipeline::new(
+        device.clone(),
+        &shaders::AddShader::load(device.clone())
+            .unwrap()
+            .main_entry_point(),
+        &shaders::SpecializationConstants { enabled: 1 },
+        None,
+        |_| {},
+    )
+    .unwrap();
 
     // Multiply each value by 2
     run_shader(

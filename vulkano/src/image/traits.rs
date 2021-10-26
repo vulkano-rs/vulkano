@@ -15,9 +15,9 @@ use crate::image::ImageDimensions;
 use crate::image::ImageLayout;
 use crate::image::SampleCount;
 use crate::sync::AccessError;
-use crate::SafeDeref;
 use std::hash::Hash;
 use std::hash::Hasher;
+use std::sync::Arc;
 
 /// Trait for types that represent the way a GPU can access an image.
 pub unsafe trait ImageAccess: Send + Sync {
@@ -111,14 +111,14 @@ pub unsafe trait ImageAccess: Send + Sync {
     unsafe fn forced_undefined_initial_layout(
         self,
         preinitialized: bool,
-    ) -> ImageAccessFromUndefinedLayout<Self>
+    ) -> Arc<ImageAccessFromUndefinedLayout<Self>>
     where
         Self: Sized,
     {
-        ImageAccessFromUndefinedLayout {
+        Arc::new(ImageAccessFromUndefinedLayout {
             image: self,
             preinitialized,
-        }
+        })
     }
 
     /// Returns an [`ImageDescriptorLayouts`] structure specifying the image layout to use
@@ -218,75 +218,6 @@ pub struct ImageInner<'a> {
 
     /// The number of mipmap levels of `image` to consider.
     pub num_mipmap_levels: usize,
-}
-
-unsafe impl<T> ImageAccess for T
-where
-    T: SafeDeref + Send + Sync,
-    T::Target: ImageAccess,
-{
-    #[inline]
-    fn inner(&self) -> ImageInner {
-        (**self).inner()
-    }
-
-    #[inline]
-    fn initial_layout_requirement(&self) -> ImageLayout {
-        (**self).initial_layout_requirement()
-    }
-
-    #[inline]
-    fn final_layout_requirement(&self) -> ImageLayout {
-        (**self).final_layout_requirement()
-    }
-
-    #[inline]
-    fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
-        (**self).descriptor_layouts()
-    }
-
-    #[inline]
-    fn conflict_key(&self) -> u64 {
-        (**self).conflict_key()
-    }
-
-    #[inline]
-    fn try_gpu_lock(
-        &self,
-        exclusive_access: bool,
-        uninitialized_safe: bool,
-        expected_layout: ImageLayout,
-    ) -> Result<(), AccessError> {
-        (**self).try_gpu_lock(exclusive_access, uninitialized_safe, expected_layout)
-    }
-
-    #[inline]
-    unsafe fn increase_gpu_lock(&self) {
-        (**self).increase_gpu_lock()
-    }
-
-    #[inline]
-    unsafe fn unlock(&self, transitioned_layout: Option<ImageLayout>) {
-        (**self).unlock(transitioned_layout)
-    }
-
-    #[inline]
-    unsafe fn layout_initialized(&self) {
-        (**self).layout_initialized();
-    }
-
-    #[inline]
-    fn is_layout_initialized(&self) -> bool {
-        (**self).is_layout_initialized()
-    }
-
-    fn current_miplevels_access(&self) -> std::ops::Range<u32> {
-        (**self).current_miplevels_access()
-    }
-
-    fn current_layer_levels_access(&self) -> std::ops::Range<u32> {
-        (**self).current_layer_levels_access()
-    }
 }
 
 impl PartialEq for dyn ImageAccess {

@@ -21,7 +21,6 @@ use crate::VulkanObject;
 use fnv::FnvHashMap;
 use std::error;
 use std::fmt;
-use std::marker::PhantomData;
 use std::mem;
 use std::mem::MaybeUninit;
 use std::ptr;
@@ -32,21 +31,14 @@ use std::sync::Arc;
 ///
 /// The template parameter contains the descriptor set to use with this pipeline.
 ///
-/// All compute pipeline objects implement the `ComputePipelineAbstract` trait. You can turn any
-/// `Arc<ComputePipeline>` into an `Arc<ComputePipelineAbstract>` if necessary.
-///
 /// Pass an optional `Arc` to a `PipelineCache` to enable pipeline caching. The vulkan
 /// implementation will handle the `PipelineCache` and check if it is available.
 /// Check the documentation of the `PipelineCache` for more information.
 pub struct ComputePipeline {
-    inner: Inner,
+    handle: ash::vk::Pipeline,
+    device: Arc<Device>,
     pipeline_layout: Arc<PipelineLayout>,
     descriptor_requirements: FnvHashMap<(u32, u32), DescriptorRequirements>,
-}
-
-struct Inner {
-    pipeline: ash::vk::Pipeline,
-    device: Arc<Device>,
 }
 
 impl ComputePipeline {
@@ -61,7 +53,7 @@ impl ComputePipeline {
         spec_constants: &Css,
         cache: Option<Arc<PipelineCache>>,
         func: F,
-    ) -> Result<ComputePipeline, ComputePipelineCreationError>
+    ) -> Result<Arc<ComputePipeline>, ComputePipelineCreationError>
     where
         Css: SpecializationConstants,
         F: FnOnce(&mut [DescriptorSetDesc]),
@@ -106,7 +98,7 @@ impl ComputePipeline {
         spec_constants: &Css,
         pipeline_layout: Arc<PipelineLayout>,
         cache: Option<Arc<PipelineCache>>,
-    ) -> Result<ComputePipeline, ComputePipelineCreationError>
+    ) -> Result<Arc<ComputePipeline>, ComputePipelineCreationError>
     where
         Css: SpecializationConstants,
     {
@@ -137,13 +129,13 @@ impl ComputePipeline {
         spec_constants: &Css,
         pipeline_layout: Arc<PipelineLayout>,
         cache: Option<Arc<PipelineCache>>,
-    ) -> Result<ComputePipeline, ComputePipelineCreationError>
+    ) -> Result<Arc<ComputePipeline>, ComputePipelineCreationError>
     where
         Css: SpecializationConstants,
     {
         let fns = device.fns();
 
-        let pipeline = {
+        let handle = {
             let spec_descriptors = Css::descriptors();
             let specialization = ash::vk::SpecializationInfo {
                 map_entry_count: spec_descriptors.len() as u32,
@@ -191,23 +183,21 @@ impl ComputePipeline {
             output.assume_init()
         };
 
-        Ok(ComputePipeline {
-            inner: Inner {
-                device: device.clone(),
-                pipeline: pipeline,
-            },
+        Ok(Arc::new(ComputePipeline {
+            handle,
+            device: device.clone(),
             pipeline_layout: pipeline_layout,
             descriptor_requirements: shader
                 .descriptor_requirements()
                 .map(|(loc, reqs)| (loc, reqs.clone()))
                 .collect(),
-        })
+        }))
     }
 
     /// Returns the `Device` this compute pipeline was created with.
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
-        &self.inner.device
+        &self.device
     }
 
     /// Returns the pipeline layout used in this compute pipeline.
@@ -230,7 +220,7 @@ impl ComputePipeline {
 impl fmt::Debug for ComputePipeline {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "<Vulkan compute pipeline {:?}>", self.inner.pipeline)
+        write!(fmt, "<Vulkan compute pipeline {:?}>", self.handle)
     }
 }
 
@@ -243,17 +233,12 @@ impl PartialEq for ComputePipeline {
 
 impl Eq for ComputePipeline {}
 
-/// Opaque object that represents the inside of the compute pipeline. Can be made into a trait
-/// object.
-#[derive(Debug, Copy, Clone)]
-pub struct ComputePipelineSys<'a>(ash::vk::Pipeline, PhantomData<&'a ()>);
-
-unsafe impl<'a> VulkanObject for ComputePipelineSys<'a> {
+unsafe impl VulkanObject for ComputePipeline {
     type Object = ash::vk::Pipeline;
 
     #[inline]
     fn internal_object(&self) -> ash::vk::Pipeline {
-        self.0
+        self.handle
     }
 }
 
@@ -264,22 +249,13 @@ unsafe impl DeviceOwned for ComputePipeline {
     }
 }
 
-unsafe impl VulkanObject for ComputePipeline {
-    type Object = ash::vk::Pipeline;
-
-    #[inline]
-    fn internal_object(&self) -> ash::vk::Pipeline {
-        self.inner.pipeline
-    }
-}
-
-impl Drop for Inner {
+impl Drop for ComputePipeline {
     #[inline]
     fn drop(&mut self) {
         unsafe {
             let fns = self.device.fns();
             fns.v1_0
-                .destroy_pipeline(self.device.internal_object(), self.pipeline, ptr::null());
+                .destroy_pipeline(self.device.internal_object(), self.handle, ptr::null());
         }
     }
 }
@@ -385,7 +361,6 @@ mod tests {
     use crate::sync::now;
     use crate::sync::GpuFuture;
     use std::ffi::CStr;
-    use std::sync::Arc;
 
     // TODO: test for basic creation
     // TODO: test for pipeline layout error
@@ -479,16 +454,14 @@ mod tests {
             }
         }
 
-        let pipeline = Arc::new(
-            ComputePipeline::new(
-                device.clone(),
-                &shader,
-                &SpecConsts { VALUE: 0x12345678 },
-                None,
-                |_| {},
-            )
-            .unwrap(),
-        );
+        let pipeline = ComputePipeline::new(
+            device.clone(),
+            &shader,
+            &SpecConsts { VALUE: 0x12345678 },
+            None,
+            |_| {},
+        )
+        .unwrap();
 
         let data_buffer =
             CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), false, 0).unwrap();

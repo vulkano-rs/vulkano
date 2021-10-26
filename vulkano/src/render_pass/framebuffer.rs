@@ -12,18 +12,15 @@ use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::image::view::ImageViewAbstract;
 use crate::render_pass::ensure_image_view_compatible;
-use crate::render_pass::AttachmentsList;
 use crate::render_pass::IncompatibleRenderPassAttachmentError;
 use crate::render_pass::RenderPass;
 use crate::Error;
 use crate::OomError;
-use crate::SafeDeref;
 use crate::VulkanObject;
 use smallvec::SmallVec;
 use std::cmp;
 use std::error;
 use std::fmt;
-use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
@@ -48,7 +45,7 @@ use std::sync::Arc;
 /// use vulkano::render_pass::Framebuffer;
 ///
 /// # let render_pass: Arc<RenderPass> = return;
-/// # let view: Arc<vulkano::image::view::ImageView<Arc<vulkano::image::AttachmentImage>>> = return;
+/// # let view: Arc<vulkano::image::view::ImageView<vulkano::image::AttachmentImage>> = return;
 /// // let render_pass: Arc<_> = ...;
 /// let framebuffer = Framebuffer::start(render_pass.clone())
 ///     .add(view).unwrap()
@@ -72,34 +69,33 @@ use std::sync::Arc;
 /// If the dimensions of the framebuffer don't match the dimensions of one of its attachment, then
 /// only the top-left hand corner of the image will be drawn to.
 ///
-#[derive(Debug)]
-pub struct Framebuffer<A> {
+pub struct Framebuffer {
+    handle: ash::vk::Framebuffer,
     device: Arc<Device>,
     render_pass: Arc<RenderPass>,
-    framebuffer: ash::vk::Framebuffer,
     dimensions: [u32; 3],
-    resources: A,
+    resources: SmallVec<[Arc<dyn ImageViewAbstract>; 4]>,
 }
 
-impl Framebuffer<()> {
+impl Framebuffer {
     /// Starts building a framebuffer.
-    pub fn start(render_pass: Arc<RenderPass>) -> FramebufferBuilder<()> {
+    pub fn start(render_pass: Arc<RenderPass>) -> FramebufferBuilder {
         FramebufferBuilder {
             render_pass,
             raw_ids: SmallVec::new(),
             dimensions: FramebufferBuilderDimensions::AutoIdentical(None),
-            attachments: (),
+            attachments: SmallVec::new(),
         }
     }
 
     /// Starts building a framebuffer. The dimensions of the framebuffer will automatically be
     /// the intersection of the dimensions of all the attachments.
-    pub fn with_intersecting_dimensions(render_pass: Arc<RenderPass>) -> FramebufferBuilder<()> {
+    pub fn with_intersecting_dimensions(render_pass: Arc<RenderPass>) -> FramebufferBuilder {
         FramebufferBuilder {
             render_pass,
             raw_ids: SmallVec::new(),
             dimensions: FramebufferBuilderDimensions::AutoSmaller(None),
-            attachments: (),
+            attachments: SmallVec::new(),
         }
     }
 
@@ -107,36 +103,93 @@ impl Framebuffer<()> {
     pub fn with_dimensions(
         render_pass: Arc<RenderPass>,
         dimensions: [u32; 3],
-    ) -> FramebufferBuilder<()> {
+    ) -> FramebufferBuilder {
         FramebufferBuilder {
             render_pass,
             raw_ids: SmallVec::new(),
             dimensions: FramebufferBuilderDimensions::Specific(dimensions),
-            attachments: (),
+            attachments: SmallVec::new(),
+        }
+    }
+
+    /// Returns the width, height and layers of this framebuffer.
+    #[inline]
+    pub fn dimensions(&self) -> [u32; 3] {
+        self.dimensions
+    }
+
+    /// Returns the width of the framebuffer in pixels.
+    #[inline]
+    pub fn width(&self) -> u32 {
+        self.dimensions[0]
+    }
+
+    /// Returns the height of the framebuffer in pixels.
+    #[inline]
+    pub fn height(&self) -> u32 {
+        self.dimensions[1]
+    }
+
+    /// Returns the number of layers (or depth) of the framebuffer.
+    #[inline]
+    pub fn layers(&self) -> u32 {
+        self.dimensions[2]
+    }
+
+    /// Returns the device that was used to create this framebuffer.
+    #[inline]
+    pub fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+
+    /// Returns the renderpass that was used to create this framebuffer.
+    #[inline]
+    pub fn render_pass(&self) -> &Arc<RenderPass> {
+        &self.render_pass
+    }
+
+    /// Returns the attachment of the framebuffer with the given index.
+    ///
+    /// If the `index` is not between `0` and `num_attachments`, then `None` should be returned.
+    #[inline]
+    pub fn attached_image_view(&self, index: usize) -> Option<&Arc<dyn ImageViewAbstract>> {
+        self.resources.get(index)
+    }
+}
+
+unsafe impl DeviceOwned for Framebuffer {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
+
+unsafe impl VulkanObject for Framebuffer {
+    type Object = ash::vk::Framebuffer;
+
+    #[inline]
+    fn internal_object(&self) -> ash::vk::Framebuffer {
+        self.handle
+    }
+}
+
+impl Drop for Framebuffer {
+    #[inline]
+    fn drop(&mut self) {
+        unsafe {
+            let fns = self.device.fns();
+            fns.v1_0
+                .destroy_framebuffer(self.device.internal_object(), self.handle, ptr::null());
         }
     }
 }
 
 /// Prototype of a framebuffer.
-pub struct FramebufferBuilder<A> {
+pub struct FramebufferBuilder {
     render_pass: Arc<RenderPass>,
-    raw_ids: SmallVec<[ash::vk::ImageView; 8]>,
+    raw_ids: SmallVec<[ash::vk::ImageView; 4]>,
     dimensions: FramebufferBuilderDimensions,
-    attachments: A,
-}
-
-impl<A> fmt::Debug for FramebufferBuilder<A>
-where
-    A: fmt::Debug,
-{
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        fmt.debug_struct("FramebufferBuilder")
-            .field("render_pass", &self.render_pass)
-            .field("dimensions", &self.dimensions)
-            .field("attachments", &self.attachments)
-            .finish()
-    }
+    attachments: SmallVec<[Arc<dyn ImageViewAbstract>; 4]>,
 }
 
 #[derive(Debug)]
@@ -146,20 +199,14 @@ enum FramebufferBuilderDimensions {
     Specific([u32; 3]),
 }
 
-impl<A> FramebufferBuilder<A>
-where
-    A: AttachmentsList,
-{
+impl FramebufferBuilder {
     /// Appends an attachment to the prototype of the framebuffer.
     ///
     /// Attachments must be added in the same order as the one defined in the render pass.
-    pub fn add<T>(
+    pub fn add(
         self,
-        attachment: T,
-    ) -> Result<FramebufferBuilder<(A, T)>, FramebufferCreationError>
-    where
-        T: ImageViewAbstract,
-    {
+        attachment: Arc<dyn ImageViewAbstract>,
+    ) -> Result<Self, FramebufferCreationError> {
         if self.raw_ids.len() >= self.render_pass.desc().attachments().len() {
             return Err(FramebufferCreationError::AttachmentsCountMismatch {
                 expected: self.render_pass.desc().attachments().len(),
@@ -167,8 +214,11 @@ where
             });
         }
 
-        match ensure_image_view_compatible(self.render_pass.desc(), self.raw_ids.len(), &attachment)
-        {
+        match ensure_image_view_compatible(
+            self.render_pass.desc(),
+            self.raw_ids.len(),
+            attachment.as_ref(),
+        ) {
             Ok(()) => (),
             Err(err) => return Err(FramebufferCreationError::IncompatibleAttachment(err)),
         };
@@ -227,36 +277,19 @@ where
         let mut raw_ids = self.raw_ids;
         raw_ids.push(attachment.inner().internal_object());
 
+        let mut attachments = self.attachments;
+        attachments.push(attachment);
+
         Ok(FramebufferBuilder {
             render_pass: self.render_pass,
             raw_ids,
             dimensions,
-            attachments: (self.attachments, attachment),
+            attachments,
         })
     }
 
-    /// Turns this builder into a `FramebufferBuilder<Rp, Box<AttachmentsList>>`.
-    ///
-    /// This allows you to store the builder in situations where you don't know in advance the
-    /// number of attachments.
-    ///
-    /// > **Note**: This is a very rare corner case and you shouldn't have to use this function
-    /// > in most situations.
-    #[inline]
-    pub fn boxed(self) -> FramebufferBuilder<Box<dyn AttachmentsList>>
-    where
-        A: 'static,
-    {
-        FramebufferBuilder {
-            render_pass: self.render_pass,
-            raw_ids: self.raw_ids,
-            dimensions: self.dimensions,
-            attachments: Box::new(self.attachments) as Box<_>,
-        }
-    }
-
     /// Builds the framebuffer.
-    pub fn build(self) -> Result<Framebuffer<A>, FramebufferCreationError> {
+    pub fn build(self) -> Result<Arc<Framebuffer>, FramebufferCreationError> {
         let device = self.render_pass.device().clone();
 
         // Check the number of attachments.
@@ -312,12 +345,12 @@ where
             }
         }
 
-        let framebuffer = unsafe {
+        let handle = unsafe {
             let fns = device.fns();
 
             let infos = ash::vk::FramebufferCreateInfo {
                 flags: ash::vk::FramebufferCreateFlags::empty(),
-                render_pass: self.render_pass.inner().internal_object(),
+                render_pass: self.render_pass.internal_object(),
                 attachment_count: self.raw_ids.len() as u32,
                 p_attachments: self.raw_ids.as_ptr(),
                 width: dimensions[0],
@@ -336,174 +369,13 @@ where
             output.assume_init()
         };
 
-        Ok(Framebuffer {
+        Ok(Arc::new(Framebuffer {
+            handle,
             device,
             render_pass: self.render_pass,
-            framebuffer,
             dimensions,
             resources: self.attachments,
-        })
-    }
-}
-
-impl<A> Framebuffer<A> {
-    /// Returns the width, height and layers of this framebuffer.
-    #[inline]
-    pub fn dimensions(&self) -> [u32; 3] {
-        self.dimensions
-    }
-
-    /// Returns the width of the framebuffer in pixels.
-    #[inline]
-    pub fn width(&self) -> u32 {
-        self.dimensions[0]
-    }
-
-    /// Returns the height of the framebuffer in pixels.
-    #[inline]
-    pub fn height(&self) -> u32 {
-        self.dimensions[1]
-    }
-
-    /// Returns the number of layers (or depth) of the framebuffer.
-    #[inline]
-    pub fn layers(&self) -> u32 {
-        self.dimensions[2]
-    }
-
-    /// Returns the device that was used to create this framebuffer.
-    #[inline]
-    pub fn device(&self) -> &Arc<Device> {
-        &self.device
-    }
-
-    /// Returns the renderpass that was used to create this framebuffer.
-    #[inline]
-    pub fn render_pass(&self) -> &Arc<RenderPass> {
-        &self.render_pass
-    }
-}
-
-/// Trait for objects that contain a Vulkan framebuffer object.
-///
-/// Any `Framebuffer` object implements this trait. You can therefore turn a `Arc<Framebuffer<_>>`
-/// into a `Arc<FramebufferAbstract>` for easier storage.
-pub unsafe trait FramebufferAbstract: Send + Sync {
-    /// Returns an opaque struct that represents the framebuffer's internals.
-    fn inner(&self) -> FramebufferSys;
-
-    /// Returns the width, height and array layers of the framebuffer.
-    fn dimensions(&self) -> [u32; 3];
-
-    /// Returns the render pass this framebuffer was created for.
-    fn render_pass(&self) -> &Arc<RenderPass>;
-
-    /// Returns the attachment of the framebuffer with the given index.
-    ///
-    /// If the `index` is not between `0` and `num_attachments`, then `None` should be returned.
-    fn attached_image_view(&self, index: usize) -> Option<&dyn ImageViewAbstract>;
-
-    /// Returns the width of the framebuffer in pixels.
-    #[inline]
-    fn width(&self) -> u32 {
-        self.dimensions()[0]
-    }
-
-    /// Returns the height of the framebuffer in pixels.
-    #[inline]
-    fn height(&self) -> u32 {
-        self.dimensions()[1]
-    }
-
-    /// Returns the number of layers (or depth) of the framebuffer.
-    #[inline]
-    fn layers(&self) -> u32 {
-        self.dimensions()[2]
-    }
-}
-
-unsafe impl<T> FramebufferAbstract for T
-where
-    T: SafeDeref + Send + Sync,
-    T::Target: FramebufferAbstract,
-{
-    #[inline]
-    fn inner(&self) -> FramebufferSys {
-        (**self).inner()
-    }
-
-    #[inline]
-    fn dimensions(&self) -> [u32; 3] {
-        (**self).dimensions()
-    }
-
-    #[inline]
-    fn render_pass(&self) -> &Arc<RenderPass> {
-        (**self).render_pass()
-    }
-
-    #[inline]
-    fn attached_image_view(&self, index: usize) -> Option<&dyn ImageViewAbstract> {
-        (**self).attached_image_view(index)
-    }
-}
-
-unsafe impl<A> FramebufferAbstract for Framebuffer<A>
-where
-    A: AttachmentsList,
-{
-    #[inline]
-    fn inner(&self) -> FramebufferSys {
-        FramebufferSys(self.framebuffer, PhantomData)
-    }
-
-    #[inline]
-    fn dimensions(&self) -> [u32; 3] {
-        self.dimensions
-    }
-
-    #[inline]
-    fn render_pass(&self) -> &Arc<RenderPass> {
-        &self.render_pass
-    }
-
-    #[inline]
-    fn attached_image_view(&self, index: usize) -> Option<&dyn ImageViewAbstract> {
-        self.resources.as_image_view_access(index)
-    }
-}
-
-unsafe impl<A> DeviceOwned for Framebuffer<A> {
-    #[inline]
-    fn device(&self) -> &Arc<Device> {
-        &self.device
-    }
-}
-
-impl<A> Drop for Framebuffer<A> {
-    #[inline]
-    fn drop(&mut self) {
-        unsafe {
-            let fns = self.device.fns();
-            fns.v1_0.destroy_framebuffer(
-                self.device.internal_object(),
-                self.framebuffer,
-                ptr::null(),
-            );
-        }
-    }
-}
-
-/// Opaque object that represents the internals of a framebuffer.
-#[derive(Debug, Copy, Clone)]
-pub struct FramebufferSys<'a>(ash::vk::Framebuffer, PhantomData<&'a ()>);
-
-unsafe impl<'a> VulkanObject for FramebufferSys<'a> {
-    type Object = ash::vk::Framebuffer;
-
-    #[inline]
-    fn internal_object(&self) -> ash::vk::Framebuffer {
-        self.0
+        }))
     }
 }
 
@@ -607,29 +479,26 @@ mod tests {
     use crate::render_pass::Framebuffer;
     use crate::render_pass::FramebufferCreationError;
     use crate::render_pass::RenderPass;
-    use std::sync::Arc;
 
     #[test]
     fn simple_create() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let render_pass = Arc::new(
-            single_pass_renderpass!(device.clone(),
-                attachments: {
-                    color: {
-                        load: Clear,
-                        store: DontCare,
-                        format: Format::R8G8B8A8_UNORM,
-                        samples: 1,
-                    }
-                },
-                pass: {
-                    color: [color],
-                    depth_stencil: {}
+        let render_pass = single_pass_renderpass!(device.clone(),
+            attachments: {
+                color: {
+                    load: Clear,
+                    store: DontCare,
+                    format: Format::R8G8B8A8_UNORM,
+                    samples: 1,
                 }
-            )
-            .unwrap(),
-        );
+            },
+            pass: {
+                color: [color],
+                depth_stencil: {}
+            }
+        )
+        .unwrap();
 
         let view = ImageView::new(
             AttachmentImage::new(device.clone(), [1024, 768], Format::R8G8B8A8_UNORM).unwrap(),
@@ -646,7 +515,7 @@ mod tests {
     fn check_device_limits() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let rp = Arc::new(RenderPass::empty_single_pass(device).unwrap());
+        let rp = RenderPass::empty_single_pass(device).unwrap();
         let res = Framebuffer::with_dimensions(rp, [0xffffffff, 0xffffffff, 0xffffffff]).build();
         match res {
             Err(FramebufferCreationError::DimensionsTooLarge) => (),
@@ -658,23 +527,21 @@ mod tests {
     fn attachment_format_mismatch() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let render_pass = Arc::new(
-            single_pass_renderpass!(device.clone(),
-                attachments: {
-                    color: {
-                        load: Clear,
-                        store: DontCare,
-                        format: Format::R8G8B8A8_UNORM,
-                        samples: 1,
-                    }
-                },
-                pass: {
-                    color: [color],
-                    depth_stencil: {}
+        let render_pass = single_pass_renderpass!(device.clone(),
+            attachments: {
+                color: {
+                    load: Clear,
+                    store: DontCare,
+                    format: Format::R8G8B8A8_UNORM,
+                    samples: 1,
                 }
-            )
-            .unwrap(),
-        );
+            },
+            pass: {
+                color: [color],
+                depth_stencil: {}
+            }
+        )
+        .unwrap();
 
         let view = ImageView::new(
             AttachmentImage::new(device.clone(), [1024, 768], Format::R8_UNORM).unwrap(),
@@ -693,23 +560,21 @@ mod tests {
     fn attachment_dims_larger_than_specified_valid() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let render_pass = Arc::new(
-            single_pass_renderpass!(device.clone(),
-                attachments: {
-                    color: {
-                        load: Clear,
-                        store: DontCare,
-                        format: Format::R8G8B8A8_UNORM,
-                        samples: 1,
-                    }
-                },
-                pass: {
-                    color: [color],
-                    depth_stencil: {}
+        let render_pass = single_pass_renderpass!(device.clone(),
+            attachments: {
+                color: {
+                    load: Clear,
+                    store: DontCare,
+                    format: Format::R8G8B8A8_UNORM,
+                    samples: 1,
                 }
-            )
-            .unwrap(),
-        );
+            },
+            pass: {
+                color: [color],
+                depth_stencil: {}
+            }
+        )
+        .unwrap();
 
         let view = ImageView::new(
             AttachmentImage::new(device.clone(), [600, 600], Format::R8G8B8A8_UNORM).unwrap(),
@@ -727,23 +592,21 @@ mod tests {
     fn attachment_dims_smaller_than_specified() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let render_pass = Arc::new(
-            single_pass_renderpass!(device.clone(),
-                attachments: {
-                    color: {
-                        load: Clear,
-                        store: DontCare,
-                        format: Format::R8G8B8A8_UNORM,
-                        samples: 1,
-                    }
-                },
-                pass: {
-                    color: [color],
-                    depth_stencil: {}
+        let render_pass = single_pass_renderpass!(device.clone(),
+            attachments: {
+                color: {
+                    load: Clear,
+                    store: DontCare,
+                    format: Format::R8G8B8A8_UNORM,
+                    samples: 1,
                 }
-            )
-            .unwrap(),
-        );
+            },
+            pass: {
+                color: [color],
+                depth_stencil: {}
+            }
+        )
+        .unwrap();
 
         let view = ImageView::new(
             AttachmentImage::new(device.clone(), [512, 700], Format::R8G8B8A8_UNORM).unwrap(),
@@ -766,29 +629,27 @@ mod tests {
     fn multi_attachments_dims_not_identical() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let render_pass = Arc::new(
-            single_pass_renderpass!(device.clone(),
-                attachments: {
-                    a: {
-                        load: Clear,
-                        store: DontCare,
-                        format: Format::R8G8B8A8_UNORM,
-                        samples: 1,
-                    },
-                    b: {
-                        load: Clear,
-                        store: DontCare,
-                        format: Format::R8G8B8A8_UNORM,
-                        samples: 1,
-                    }
+        let render_pass = single_pass_renderpass!(device.clone(),
+            attachments: {
+                a: {
+                    load: Clear,
+                    store: DontCare,
+                    format: Format::R8G8B8A8_UNORM,
+                    samples: 1,
                 },
-                pass: {
-                    color: [a, b],
-                    depth_stencil: {}
+                b: {
+                    load: Clear,
+                    store: DontCare,
+                    format: Format::R8G8B8A8_UNORM,
+                    samples: 1,
                 }
-            )
-            .unwrap(),
-        );
+            },
+            pass: {
+                color: [a, b],
+                depth_stencil: {}
+            }
+        )
+        .unwrap();
 
         let a = ImageView::new(
             AttachmentImage::new(device.clone(), [512, 512], Format::R8G8B8A8_UNORM).unwrap(),
@@ -815,29 +676,27 @@ mod tests {
     fn multi_attachments_auto_smaller() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let render_pass = Arc::new(
-            single_pass_renderpass!(device.clone(),
-                attachments: {
-                    a: {
-                        load: Clear,
-                        store: DontCare,
-                        format: Format::R8G8B8A8_UNORM,
-                        samples: 1,
-                    },
-                    b: {
-                        load: Clear,
-                        store: DontCare,
-                        format: Format::R8G8B8A8_UNORM,
-                        samples: 1,
-                    }
+        let render_pass = single_pass_renderpass!(device.clone(),
+            attachments: {
+                a: {
+                    load: Clear,
+                    store: DontCare,
+                    format: Format::R8G8B8A8_UNORM,
+                    samples: 1,
                 },
-                pass: {
-                    color: [a, b],
-                    depth_stencil: {}
+                b: {
+                    load: Clear,
+                    store: DontCare,
+                    format: Format::R8G8B8A8_UNORM,
+                    samples: 1,
                 }
-            )
-            .unwrap(),
-        );
+            },
+            pass: {
+                color: [a, b],
+                depth_stencil: {}
+            }
+        )
+        .unwrap();
 
         let a = ImageView::new(
             AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8_UNORM).unwrap(),
@@ -866,29 +725,27 @@ mod tests {
     fn not_enough_attachments() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let render_pass = Arc::new(
-            single_pass_renderpass!(device.clone(),
-                attachments: {
-                    a: {
-                        load: Clear,
-                        store: DontCare,
-                        format: Format::R8G8B8A8_UNORM,
-                        samples: 1,
-                    },
-                    b: {
-                        load: Clear,
-                        store: DontCare,
-                        format: Format::R8G8B8A8_UNORM,
-                        samples: 1,
-                    }
+        let render_pass = single_pass_renderpass!(device.clone(),
+            attachments: {
+                a: {
+                    load: Clear,
+                    store: DontCare,
+                    format: Format::R8G8B8A8_UNORM,
+                    samples: 1,
                 },
-                pass: {
-                    color: [a, b],
-                    depth_stencil: {}
+                b: {
+                    load: Clear,
+                    store: DontCare,
+                    format: Format::R8G8B8A8_UNORM,
+                    samples: 1,
                 }
-            )
-            .unwrap(),
-        );
+            },
+            pass: {
+                color: [a, b],
+                depth_stencil: {}
+            }
+        )
+        .unwrap();
 
         let view = ImageView::new(
             AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8_UNORM).unwrap(),
@@ -913,23 +770,21 @@ mod tests {
     fn too_many_attachments() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let render_pass = Arc::new(
-            single_pass_renderpass!(device.clone(),
-                attachments: {
-                    a: {
-                        load: Clear,
-                        store: DontCare,
-                        format: Format::R8G8B8A8_UNORM,
-                        samples: 1,
-                    }
-                },
-                pass: {
-                    color: [a],
-                    depth_stencil: {}
+        let render_pass = single_pass_renderpass!(device.clone(),
+            attachments: {
+                a: {
+                    load: Clear,
+                    store: DontCare,
+                    format: Format::R8G8B8A8_UNORM,
+                    samples: 1,
                 }
-            )
-            .unwrap(),
-        );
+            },
+            pass: {
+                color: [a],
+                depth_stencil: {}
+            }
+        )
+        .unwrap();
 
         let a = ImageView::new(
             AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8_UNORM).unwrap(),
@@ -958,7 +813,7 @@ mod tests {
     fn empty_working() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let rp = Arc::new(RenderPass::empty_single_pass(device).unwrap());
+        let rp = RenderPass::empty_single_pass(device).unwrap();
         let _ = Framebuffer::with_dimensions(rp, [512, 512, 1])
             .build()
             .unwrap();
@@ -968,7 +823,7 @@ mod tests {
     fn cant_determine_dimensions_auto() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let rp = Arc::new(RenderPass::empty_single_pass(device).unwrap());
+        let rp = RenderPass::empty_single_pass(device).unwrap();
         let res = Framebuffer::start(rp).build();
         match res {
             Err(FramebufferCreationError::CantDetermineDimensions) => (),
@@ -980,7 +835,7 @@ mod tests {
     fn cant_determine_dimensions_intersect() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let rp = Arc::new(RenderPass::empty_single_pass(device).unwrap());
+        let rp = RenderPass::empty_single_pass(device).unwrap();
         let res = Framebuffer::with_intersecting_dimensions(rp).build();
         match res {
             Err(FramebufferCreationError::CantDetermineDimensions) => (),

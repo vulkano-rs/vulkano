@@ -22,10 +22,10 @@ use vulkano::device::Queue;
 use vulkano::format::Format;
 use vulkano::image::view::ImageView;
 use vulkano::image::AttachmentImage;
+use vulkano::image::ImageAccess;
 use vulkano::image::ImageUsage;
 use vulkano::image::ImageViewAbstract;
 use vulkano::render_pass::Framebuffer;
-use vulkano::render_pass::FramebufferAbstract;
 use vulkano::render_pass::RenderPass;
 use vulkano::render_pass::Subpass;
 use vulkano::sync::GpuFuture;
@@ -41,14 +41,14 @@ pub struct FrameSystem {
     render_pass: Arc<RenderPass>,
 
     // Intermediate render target that will contain the albedo of each pixel of the scene.
-    diffuse_buffer: Arc<ImageView<Arc<AttachmentImage>>>,
+    diffuse_buffer: Arc<ImageView<AttachmentImage>>,
     // Intermediate render target that will contain the normal vector in world coordinates of each
     // pixel of the scene.
     // The normal vector is the vector perpendicular to the surface of the object at this point.
-    normals_buffer: Arc<ImageView<Arc<AttachmentImage>>>,
+    normals_buffer: Arc<ImageView<AttachmentImage>>,
     // Intermediate render target that will contain the depth of each pixel of the scene.
     // This is a traditional depth buffer. `0.0` means "near", and `1.0` means "far".
-    depth_buffer: Arc<ImageView<Arc<AttachmentImage>>>,
+    depth_buffer: Arc<ImageView<AttachmentImage>>,
 
     // Will allow us to add an ambient lighting to a scene during the second subpass.
     ambient_lighting_system: AmbientLightingSystem,
@@ -95,56 +95,54 @@ impl FrameSystem {
         // currently being processed by the fragment shader. If you want to read from attachments
         // but can't deal with these restrictions, then you should create multiple render passes
         // instead.
-        let render_pass = Arc::new(
-            vulkano::ordered_passes_renderpass!(gfx_queue.device().clone(),
-                attachments: {
-                    // The image that will contain the final rendering (in this example the swapchain
-                    // image, but it could be another image).
-                    final_color: {
-                        load: Clear,
-                        store: Store,
-                        format: final_output_format,
-                        samples: 1,
-                    },
-                    // Will be bound to `self.diffuse_buffer`.
-                    diffuse: {
-                        load: Clear,
-                        store: DontCare,
-                        format: Format::A2B10G10R10_UNORM_PACK32,
-                        samples: 1,
-                    },
-                    // Will be bound to `self.normals_buffer`.
-                    normals: {
-                        load: Clear,
-                        store: DontCare,
-                        format: Format::R16G16B16A16_SFLOAT,
-                        samples: 1,
-                    },
-                    // Will be bound to `self.depth_buffer`.
-                    depth: {
-                        load: Clear,
-                        store: DontCare,
-                        format: Format::D16_UNORM,
-                        samples: 1,
-                    }
+        let render_pass = vulkano::ordered_passes_renderpass!(gfx_queue.device().clone(),
+            attachments: {
+                // The image that will contain the final rendering (in this example the swapchain
+                // image, but it could be another image).
+                final_color: {
+                    load: Clear,
+                    store: Store,
+                    format: final_output_format,
+                    samples: 1,
                 },
-                passes: [
-                    // Write to the diffuse, normals and depth attachments.
-                    {
-                        color: [diffuse, normals],
-                        depth_stencil: {depth},
-                        input: []
-                    },
-                    // Apply lighting by reading these three attachments and writing to `final_color`.
-                    {
-                        color: [final_color],
-                        depth_stencil: {},
-                        input: [diffuse, normals, depth]
-                    }
-                ]
-            )
-            .unwrap(),
-        );
+                // Will be bound to `self.diffuse_buffer`.
+                diffuse: {
+                    load: Clear,
+                    store: DontCare,
+                    format: Format::A2B10G10R10_UNORM_PACK32,
+                    samples: 1,
+                },
+                // Will be bound to `self.normals_buffer`.
+                normals: {
+                    load: Clear,
+                    store: DontCare,
+                    format: Format::R16G16B16A16_SFLOAT,
+                    samples: 1,
+                },
+                // Will be bound to `self.depth_buffer`.
+                depth: {
+                    load: Clear,
+                    store: DontCare,
+                    format: Format::D16_UNORM,
+                    samples: 1,
+                }
+            },
+            passes: [
+                // Write to the diffuse, normals and depth attachments.
+                {
+                    color: [diffuse, normals],
+                    depth_stencil: {depth},
+                    input: []
+                },
+                // Apply lighting by reading these three attachments and writing to `final_color`.
+                {
+                    color: [final_color],
+                    depth_stencil: {},
+                    input: [diffuse, normals, depth]
+                }
+            ]
+        )
+        .unwrap();
 
         // For now we create three temporary images with a dimension of 1 by 1 pixel.
         // These images will be replaced the first time we call `frame()`.
@@ -196,7 +194,7 @@ impl FrameSystem {
 
         FrameSystem {
             gfx_queue,
-            render_pass: render_pass as Arc<_>,
+            render_pass,
             diffuse_buffer,
             normals_buffer,
             depth_buffer,
@@ -283,19 +281,17 @@ impl FrameSystem {
 
         // Build the framebuffer. The image must be attached in the same order as they were defined
         // with the `ordered_passes_renderpass!` macro.
-        let framebuffer = Arc::new(
-            Framebuffer::start(self.render_pass.clone())
-                .add(final_image.clone())
-                .unwrap()
-                .add(self.diffuse_buffer.clone())
-                .unwrap()
-                .add(self.normals_buffer.clone())
-                .unwrap()
-                .add(self.depth_buffer.clone())
-                .unwrap()
-                .build()
-                .unwrap(),
-        );
+        let framebuffer = Framebuffer::start(self.render_pass.clone())
+            .add(final_image.clone())
+            .unwrap()
+            .add(self.diffuse_buffer.clone())
+            .unwrap()
+            .add(self.normals_buffer.clone())
+            .unwrap()
+            .add(self.depth_buffer.clone())
+            .unwrap()
+            .build()
+            .unwrap();
 
         // Start the command buffer builder that will be filled throughout the frame handling.
         let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
@@ -347,7 +343,7 @@ pub struct Frame<'a> {
     // Future to wait upon before the main rendering.
     before_main_cb_future: Option<Box<dyn GpuFuture>>,
     // Framebuffer that was used when starting the render pass.
-    framebuffer: Arc<dyn FramebufferAbstract>,
+    framebuffer: Arc<Framebuffer>,
     // The command buffer builder that will be built during the lifetime of this object.
     command_buffer_builder: Option<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>>,
     // Matrix that was passed to `frame()`.

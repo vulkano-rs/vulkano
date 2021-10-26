@@ -153,7 +153,7 @@ impl PersistentDescriptorSetBuilder {
     #[inline]
     pub fn add_buffer(
         &mut self,
-        buffer: Arc<dyn BufferAccess + 'static>,
+        buffer: Arc<dyn BufferAccess>,
     ) -> Result<&mut Self, DescriptorSetError> {
         self.inner.add_buffer(buffer)?;
         Ok(self)
@@ -180,7 +180,7 @@ impl PersistentDescriptorSetBuilder {
     #[inline]
     pub fn add_image(
         &mut self,
-        image_view: Arc<dyn ImageViewAbstract + 'static>,
+        image_view: Arc<dyn ImageViewAbstract>,
     ) -> Result<&mut Self, DescriptorSetError> {
         self.inner.add_image(image_view)?;
         Ok(self)
@@ -195,7 +195,7 @@ impl PersistentDescriptorSetBuilder {
     #[inline]
     pub fn add_sampled_image(
         &mut self,
-        image_view: Arc<dyn ImageViewAbstract + 'static>,
+        image_view: Arc<dyn ImageViewAbstract>,
         sampler: Arc<Sampler>,
     ) -> Result<&mut Self, DescriptorSetError> {
         self.inner.add_sampled_image(image_view, sampler)?;
@@ -215,7 +215,7 @@ impl PersistentDescriptorSetBuilder {
     #[inline]
     pub fn build(
         self,
-    ) -> Result<PersistentDescriptorSet<StdDescriptorPoolAlloc>, DescriptorSetError> {
+    ) -> Result<Arc<PersistentDescriptorSet<StdDescriptorPoolAlloc>>, DescriptorSetError> {
         let mut pool = Device::standard_descriptor_pool(self.inner.device());
         self.build_with_pool(&mut pool)
     }
@@ -224,7 +224,7 @@ impl PersistentDescriptorSetBuilder {
     pub fn build_with_pool<P>(
         self,
         pool: &mut P,
-    ) -> Result<PersistentDescriptorSet<P::Alloc>, DescriptorSetError>
+    ) -> Result<Arc<PersistentDescriptorSet<P::Alloc>>, DescriptorSetError>
     where
         P: ?Sized + DescriptorPool,
     {
@@ -237,10 +237,10 @@ impl PersistentDescriptorSetBuilder {
         let mut resources = DescriptorSetResources::new(writes.layout());
         resources.update(writes.writes());
 
-        Ok(PersistentDescriptorSet {
+        Ok(Arc::new(PersistentDescriptorSet {
             inner: set,
             resources,
             layout: writes.layout().clone(),
-        })
+        }))
     }
 }

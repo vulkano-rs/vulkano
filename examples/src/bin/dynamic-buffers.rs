@@ -15,7 +15,6 @@
 // rebind descriptor sets.
 
 use std::mem;
-use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
 use vulkano::descriptor_set::{DescriptorSet, PersistentDescriptorSet};
@@ -97,18 +96,16 @@ fn main() {
     }
 
     let shader = shader::Shader::load(device.clone()).unwrap();
-    let pipeline = Arc::new(
-        ComputePipeline::new(
-            device.clone(),
-            &shader.main_entry_point(),
-            &(),
-            None,
-            |set_descs| {
-                set_descs[0].set_buffer_dynamic(0);
-            },
-        )
-        .unwrap(),
-    );
+    let pipeline = ComputePipeline::new(
+        device.clone(),
+        &shader.main_entry_point(),
+        &(),
+        None,
+        |set_descs| {
+            set_descs[0].set_buffer_dynamic(0);
+        },
+    )
+    .unwrap();
 
     // Declare input buffer.
     // Data in a dynamic buffer **MUST** be aligned to min_uniform_buffer_offset_align
@@ -166,7 +163,7 @@ fn main() {
         .add_buffer(output_buffer.clone())
         .unwrap();
 
-    let set = Arc::new(set_builder.build().unwrap());
+    let set = set_builder.build().unwrap();
 
     // Build the command buffer, using different offsets for each call.
     let mut builder = AutoCommandBufferBuilder::primary(

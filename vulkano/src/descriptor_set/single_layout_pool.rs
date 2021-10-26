@@ -259,7 +259,7 @@ impl<'a> SingleLayoutDescSetBuilder<'a> {
     #[inline]
     pub fn add_buffer(
         &mut self,
-        buffer: Arc<dyn BufferAccess + 'static>,
+        buffer: Arc<dyn BufferAccess>,
     ) -> Result<&mut Self, DescriptorSetError> {
         self.inner.add_buffer(buffer)?;
         Ok(self)
@@ -318,7 +318,7 @@ impl<'a> SingleLayoutDescSetBuilder<'a> {
     }
 
     /// Builds a `SingleLayoutDescSet` from the builder.
-    pub fn build(self) -> Result<SingleLayoutDescSet, DescriptorSetError> {
+    pub fn build(self) -> Result<Arc<SingleLayoutDescSet>, DescriptorSetError> {
         let writes = self.inner.build()?;
         let mut alloc = self.pool.next_alloc()?;
         unsafe {
@@ -327,10 +327,10 @@ impl<'a> SingleLayoutDescSetBuilder<'a> {
         let mut resources = DescriptorSetResources::new(writes.layout());
         resources.update(writes.writes());
 
-        Ok(SingleLayoutDescSet {
+        Ok(Arc::new(SingleLayoutDescSet {
             inner: alloc,
             resources,
             layout: writes.layout().clone(),
-        })
+        }))
     }
 }

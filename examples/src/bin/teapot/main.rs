@@ -20,14 +20,14 @@ use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::format::Format;
 use vulkano::image::attachment::AttachmentImage;
 use vulkano::image::view::ImageView;
-use vulkano::image::{ImageUsage, SwapchainImage};
+use vulkano::image::{ImageAccess, ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
 use vulkano::pipeline::depth_stencil::DepthStencilState;
 use vulkano::pipeline::input_assembly::InputAssemblyState;
 use vulkano::pipeline::vertex::BuffersDefinition;
 use vulkano::pipeline::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::{GraphicsPipeline, PipelineBindPoint};
-use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
+use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
 use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
 use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano::Version;
@@ -122,29 +122,27 @@ fn main() {
     let vs = vs::Shader::load(device.clone()).unwrap();
     let fs = fs::Shader::load(device.clone()).unwrap();
 
-    let render_pass = Arc::new(
-        vulkano::single_pass_renderpass!(device.clone(),
-            attachments: {
-                color: {
-                    load: Clear,
-                    store: Store,
-                    format: swapchain.format(),
-                    samples: 1,
-                },
-                depth: {
-                    load: Clear,
-                    store: DontCare,
-                    format: Format::D16_UNORM,
-                    samples: 1,
-                }
+    let render_pass = vulkano::single_pass_renderpass!(device.clone(),
+        attachments: {
+            color: {
+                load: Clear,
+                store: Store,
+                format: swapchain.format(),
+                samples: 1,
             },
-            pass: {
-                color: [color],
-                depth_stencil: {depth}
+            depth: {
+                load: Clear,
+                store: DontCare,
+                format: Format::D16_UNORM,
+                samples: 1,
             }
-        )
-        .unwrap(),
-    );
+        },
+        pass: {
+            color: [color],
+            depth_stencil: {depth}
+        }
+    )
+    .unwrap();
 
     let (mut pipeline, mut framebuffers) =
         window_size_dependent_setup(device.clone(), &vs, &fs, &images, render_pass.clone());
@@ -220,7 +218,7 @@ fn main() {
                         proj: proj.into(),
                     };
 
-                    Arc::new(uniform_buffer.next(uniform_data).unwrap())
+                    uniform_buffer.next(uniform_data).unwrap()
                 };
 
                 let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
@@ -228,7 +226,7 @@ fn main() {
 
                 set_builder.add_buffer(uniform_buffer_subbuffer).unwrap();
 
-                let set = Arc::new(set_builder.build().unwrap());
+                let set = set_builder.build().unwrap();
 
                 let (image_num, suboptimal, acquire_future) =
                     match swapchain::acquire_next_image(swapchain.clone(), None) {
@@ -307,8 +305,8 @@ fn window_size_dependent_setup(
     fs: &fs::Shader,
     images: &[Arc<SwapchainImage<Window>>],
     render_pass: Arc<RenderPass>,
-) -> (Arc<GraphicsPipeline>, Vec<Arc<dyn FramebufferAbstract>>) {
-    let dimensions = images[0].dimensions();
+) -> (Arc<GraphicsPipeline>, Vec<Arc<Framebuffer>>) {
+    let dimensions = images[0].dimensions().width_height();
 
     let depth_buffer = ImageView::new(
         AttachmentImage::transient(device.clone(), dimensions, Format::D16_UNORM).unwrap(),
@@ -319,15 +317,13 @@ fn window_size_dependent_setup(
         .iter()
         .map(|image| {
             let view = ImageView::new(image.clone()).unwrap();
-            Arc::new(
-                Framebuffer::start(render_pass.clone())
-                    .add(view)
-                    .unwrap()
-                    .add(depth_buffer.clone())
-                    .unwrap()
-                    .build()
-                    .unwrap(),
-            ) as Arc<dyn FramebufferAbstract>
+            Framebuffer::start(render_pass.clone())
+                .add(view)
+                .unwrap()
+                .add(depth_buffer.clone())
+                .unwrap()
+                .build()
+                .unwrap()
         })
         .collect::<Vec<_>>();
 
@@ -335,28 +331,26 @@ fn window_size_dependent_setup(
     // However in the teapot example, we recreate the pipelines with a hardcoded viewport instead.
     // This allows the driver to optimize things, at the cost of slower window resizes.
     // https://computergraphics.stackexchange.com/questions/5742/vulkan-best-way-of-updating-pipeline-viewport
-    let pipeline = Arc::new(
-        GraphicsPipeline::start()
-            .vertex_input(
-                BuffersDefinition::new()
-                    .vertex::<Vertex>()
-                    .vertex::<Normal>(),
-            )
-            .vertex_shader(vs.main_entry_point(), ())
-            .input_assembly_state(InputAssemblyState::new())
-            .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([
-                Viewport {
-                    origin: [0.0, 0.0],
-                    dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-                    depth_range: 0.0..1.0,
-                },
-            ]))
-            .fragment_shader(fs.main_entry_point(), ())
-            .depth_stencil_state(DepthStencilState::simple_depth_test())
-            .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-            .build(device.clone())
-            .unwrap(),
-    );
+    let pipeline = GraphicsPipeline::start()
+        .vertex_input(
+            BuffersDefinition::new()
+                .vertex::<Vertex>()
+                .vertex::<Normal>(),
+        )
+        .vertex_shader(vs.main_entry_point(), ())
+        .input_assembly_state(InputAssemblyState::new())
+        .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([
+            Viewport {
+                origin: [0.0, 0.0],
+                dimensions: [dimensions[0] as f32, dimensions[1] as f32],
+                depth_range: 0.0..1.0,
+            },
+        ]))
+        .fragment_shader(fs.main_entry_point(), ())
+        .depth_stencil_state(DepthStencilState::simple_depth_test())
+        .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+        .build(device.clone())
+        .unwrap();
 
     (pipeline, framebuffers)
 }

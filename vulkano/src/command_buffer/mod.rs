@@ -109,8 +109,9 @@ pub use self::traits::PrimaryCommandBuffer;
 pub use self::traits::SecondaryCommandBuffer;
 use crate::query::QueryControlFlags;
 use crate::query::QueryPipelineStatisticFlags;
-use crate::render_pass::{Framebuffer, Subpass};
+use crate::render_pass::Subpass;
 use std::sync::Arc;
+use crate::render_pass::Framebuffer;
 
 mod auto;
 pub mod pool;
@@ -180,26 +181,26 @@ impl From<SubpassContents> for ash::vk::SubpassContents {
 }
 
 /// Determines the kind of command buffer to create.
-#[derive(Debug, Clone)]
-pub enum CommandBufferLevel<F> {
+#[derive(Clone)]
+pub enum CommandBufferLevel {
     /// Primary command buffers can be executed on a queue, and can call secondary command buffers.
     /// Render passes must begin and end within the same primary command buffer.
     Primary,
 
     /// Secondary command buffers cannot be executed on a queue, but can be executed by a primary
     /// command buffer. If created for a render pass, they must fit within a single render subpass.
-    Secondary(CommandBufferInheritance<F>),
+    Secondary(CommandBufferInheritance),
 }
 
 /// The context that a secondary command buffer can inherit from the primary command
 /// buffer it's executed in.
-#[derive(Clone, Debug, Default)]
-pub struct CommandBufferInheritance<F> {
+#[derive(Clone, Default)]
+pub struct CommandBufferInheritance {
     /// If `Some`, the secondary command buffer is required to be executed within a specific
     /// render subpass, and can only call draw operations.
     /// If `None`, it must be executed outside a render pass, and can execute dispatch and transfer
     /// operations, but not drawing operations.
-    render_pass: Option<CommandBufferInheritanceRenderPass<F>>,
+    render_pass: Option<CommandBufferInheritanceRenderPass>,
 
     /// If `Some`, the secondary command buffer is allowed to be executed within a primary that has
     /// an occlusion query active. The inner `QueryControlFlags` specifies which flags the
@@ -219,24 +220,24 @@ pub struct CommandBufferInheritance<F> {
 }
 
 /// The render pass context that a secondary command buffer is created for.
-#[derive(Debug, Clone)]
-pub struct CommandBufferInheritanceRenderPass<F> {
+#[derive(Clone)]
+pub struct CommandBufferInheritanceRenderPass {
     /// The render subpass that this secondary command buffer must be executed within.
     pub subpass: Subpass,
 
     /// The framebuffer object that will be used when calling the command buffer.
     /// This parameter is optional and is an optimization hint for the implementation.
-    pub framebuffer: Option<F>,
+    pub framebuffer: Option<Arc<Framebuffer>>,
 }
 
-impl CommandBufferLevel<Framebuffer<()>> {
+impl CommandBufferLevel {
     /// Equivalent to `Kind::Primary`.
     ///
     /// > **Note**: If you use `let kind = Kind::Primary;` in your code, you will probably get a
     /// > compilation error because the Rust compiler couldn't determine the template parameters
     /// > of `Kind`. To solve that problem in an easy way you can use this function instead.
     #[inline]
-    pub fn primary() -> CommandBufferLevel<Arc<Framebuffer<()>>> {
+    pub fn primary() -> CommandBufferLevel {
         CommandBufferLevel::Primary
     }
 
@@ -249,7 +250,7 @@ impl CommandBufferLevel<Framebuffer<()>> {
     pub fn secondary(
         occlusion_query: Option<QueryControlFlags>,
         query_statistics_flags: QueryPipelineStatisticFlags,
-    ) -> CommandBufferLevel<Arc<Framebuffer<()>>> {
+    ) -> CommandBufferLevel {
         CommandBufferLevel::Secondary(CommandBufferInheritance {
             render_pass: None,
             occlusion_query,

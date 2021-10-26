@@ -20,9 +20,7 @@ use crate::pipeline::color_blend::{
 };
 use crate::pipeline::depth_stencil::DepthStencilState;
 use crate::pipeline::discard_rectangle::DiscardRectangleState;
-use crate::pipeline::graphics_pipeline::{
-    GraphicsPipeline, GraphicsPipelineCreationError, Inner as GraphicsPipelineInner,
-};
+use crate::pipeline::graphics_pipeline::{GraphicsPipeline, GraphicsPipelineCreationError};
 use crate::pipeline::input_assembly::{InputAssemblyState, PrimitiveTopology};
 use crate::pipeline::layout::{PipelineLayout, PipelineLayoutCreationError, PipelineLayoutPcRange};
 use crate::pipeline::multisample::MultisampleState;
@@ -127,7 +125,7 @@ where
     pub fn build(
         self,
         device: Arc<Device>,
-    ) -> Result<GraphicsPipeline, GraphicsPipelineCreationError> {
+    ) -> Result<Arc<GraphicsPipeline>, GraphicsPipelineCreationError> {
         self.with_auto_layout(device, |_| {})
     }
 
@@ -138,7 +136,7 @@ where
         self,
         device: Arc<Device>,
         func: F,
-    ) -> Result<GraphicsPipeline, GraphicsPipelineCreationError>
+    ) -> Result<Arc<GraphicsPipeline>, GraphicsPipelineCreationError>
     where
         F: FnOnce(&mut [DescriptorSetDesc]),
     {
@@ -246,7 +244,7 @@ where
         mut self,
         device: Arc<Device>,
         pipeline_layout: Arc<PipelineLayout>,
-    ) -> Result<GraphicsPipeline, GraphicsPipelineCreationError> {
+    ) -> Result<Arc<GraphicsPipeline>, GraphicsPipelineCreationError> {
         // TODO: return errors instead of panicking if missing param
 
         let fns = device.fns();
@@ -936,7 +934,7 @@ where
             }
         }
 
-        let pipeline = unsafe {
+        let handle = unsafe {
             let mut create_info = ash::vk::GraphicsPipelineCreateInfo {
                 flags: ash::vk::PipelineCreateFlags::empty(), // TODO: some flags are available but none are critical
                 stage_count: stages.len() as u32,
@@ -978,7 +976,7 @@ where
                     .map(|s| s as *const _)
                     .unwrap_or(ptr::null()),
                 layout: pipeline_layout.internal_object(),
-                render_pass: subpass.render_pass().inner().internal_object(),
+                render_pass: subpass.render_pass().internal_object(),
                 subpass: subpass.index(),
                 base_pipeline_handle: ash::vk::Pipeline::null(), // TODO:
                 base_pipeline_index: -1,                         // TODO:
@@ -1010,15 +1008,13 @@ where
         // Some drivers return `VK_SUCCESS` but provide a null handle if they
         // fail to create the pipeline (due to invalid shaders, etc)
         // This check ensures that we don't create an invalid `GraphicsPipeline` instance
-        if pipeline == ash::vk::Pipeline::null() {
+        if handle == ash::vk::Pipeline::null() {
             panic!("vkCreateGraphicsPipelines provided a NULL handle");
         }
 
-        Ok(GraphicsPipeline {
-            inner: GraphicsPipelineInner {
-                device: device.clone(),
-                pipeline,
-            },
+        Ok(Arc::new(GraphicsPipeline {
+            handle,
+            device: device.clone(),
             layout: pipeline_layout,
             subpass,
             shaders,
@@ -1058,7 +1054,7 @@ where
                 None
             },
             dynamic_state: dynamic_state_modes,
-        })
+        }))
     }
 
     // TODO: add build_with_cache method

@@ -25,7 +25,6 @@
 //! Consequently you can create graphics pipelines from a render pass object alone.
 //! A `Framebuffer` object is only needed when you actually add draw commands to a command buffer.
 
-pub use self::attachments_list::AttachmentsList;
 pub use self::compat_atch::ensure_image_view_compatible;
 pub use self::compat_atch::IncompatibleRenderPassAttachmentError;
 pub use self::desc::AttachmentDesc;
@@ -38,18 +37,14 @@ pub use self::desc::StoreOp;
 pub use self::desc::SubpassDependencyDesc;
 pub use self::desc::SubpassDesc;
 pub use self::framebuffer::Framebuffer;
-pub use self::framebuffer::FramebufferAbstract;
 pub use self::framebuffer::FramebufferBuilder;
 pub use self::framebuffer::FramebufferCreationError;
-pub use self::framebuffer::FramebufferSys;
 pub use self::render_pass::RenderPass;
 pub use self::render_pass::RenderPassCreationError;
-pub use self::render_pass::RenderPassSys;
 pub use self::render_pass::Subpass;
 
 #[macro_use]
 mod macros;
-mod attachments_list;
 mod compat_atch;
 mod desc;
 mod framebuffer;

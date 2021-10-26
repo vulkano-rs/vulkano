@@ -16,7 +16,7 @@ use vulkano::command_buffer::PrimaryCommandBuffer;
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
 use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::Queue;
-use vulkano::image::ImageViewAbstract;
+use vulkano::image::ImageAccess;
 use vulkano::pipeline::{ComputePipeline, PipelineBindPoint};
 use vulkano::sync::GpuFuture;
 
@@ -49,16 +49,14 @@ impl FractalComputePipeline {
 
         let pipeline = {
             let shader = cs::Shader::load(gfx_queue.device().clone()).unwrap();
-            Arc::new(
-                ComputePipeline::new(
-                    gfx_queue.device().clone(),
-                    &shader.main_entry_point(),
-                    &(),
-                    None,
-                    |_| {},
-                )
-                .unwrap(),
+            ComputePipeline::new(
+                gfx_queue.device().clone(),
+                &shader.main_entry_point(),
+                &(),
+                None,
+                |_| {},
             )
+            .unwrap()
         };
         FractalComputePipeline {
             gfx_queue,

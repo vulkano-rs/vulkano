@@ -227,36 +227,32 @@ fn main() {
         },
     );
 
-    let render_pass = Arc::new(RenderPass::new(device.clone(), render_pass_description).unwrap());
+    let render_pass = RenderPass::new(device.clone(), render_pass_description).unwrap();
 
-    let framebuffer = Arc::new(
-        Framebuffer::start(render_pass.clone())
-            .add(image_view)
-            .unwrap()
-            .build()
-            .unwrap(),
-    );
+    let framebuffer = Framebuffer::start(render_pass.clone())
+        .add(image_view)
+        .unwrap()
+        .build()
+        .unwrap();
 
-    let pipeline = Arc::new(
-        GraphicsPipeline::start()
-            .vertex_input_single_buffer::<Vertex>()
-            .vertex_shader(vs.main_entry_point(), ())
-            .input_assembly_state(InputAssemblyState::new())
-            .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([
-                Viewport {
-                    origin: [0.0, 0.0],
-                    dimensions: [
-                        image.dimensions().width() as f32,
-                        image.dimensions().height() as f32,
-                    ],
-                    depth_range: 0.0..1.0,
-                },
-            ]))
-            .fragment_shader(fs.main_entry_point(), ())
-            .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-            .build(device.clone())
-            .unwrap(),
-    );
+    let pipeline = GraphicsPipeline::start()
+        .vertex_input_single_buffer::<Vertex>()
+        .vertex_shader(vs.main_entry_point(), ())
+        .input_assembly_state(InputAssemblyState::new())
+        .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([
+            Viewport {
+                origin: [0.0, 0.0],
+                dimensions: [
+                    image.dimensions().width() as f32,
+                    image.dimensions().height() as f32,
+                ],
+                depth_range: 0.0..1.0,
+            },
+        ]))
+        .fragment_shader(fs.main_entry_point(), ())
+        .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+        .build(device.clone())
+        .unwrap();
 
     let clear_values = vec![[0.0, 0.0, 1.0, 1.0].into()];
 
