@@ -77,13 +77,13 @@ pub use self::builder::DescriptorSetBuilder;
 pub use self::collection::DescriptorSetsCollection;
 use self::layout::DescriptorSetLayout;
 pub use self::persistent::PersistentDescriptorSet;
+pub use self::resources::{DescriptorBindingResources, DescriptorSetResources};
 pub use self::single_layout_pool::SingleLayoutDescSetPool;
 use self::sys::UnsafeDescriptorSet;
 use crate::buffer::BufferAccess;
 use crate::descriptor_set::layout::DescriptorDescTy;
 use crate::device::DeviceOwned;
 use crate::format::Format;
-use crate::image::view::ImageViewAbstract;
 use crate::image::view::ImageViewType;
 use crate::OomError;
 use crate::SafeDeref;
@@ -123,23 +123,8 @@ pub unsafe trait DescriptorSet: DeviceOwned + Send + Sync {
         DescriptorSetWithOffsets::new(self, dynamic_offsets)
     }
 
-    /// Returns the number of buffers within this descriptor set.
-    fn num_buffers(&self) -> usize;
-
-    /// Returns the `index`th buffer of this descriptor set, or `None` if out of range. Also
-    /// returns the index of the descriptor that uses this buffer.
-    ///
-    /// The valid range is between 0 and `num_buffers()`.
-    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, u32)>;
-
-    /// Returns the number of images within this descriptor set.
-    fn num_images(&self) -> usize;
-
-    /// Returns the `index`th image of this descriptor set, or `None` if out of range. Also returns
-    /// the index of the descriptor that uses this image.
-    ///
-    /// The valid range is between 0 and `num_images()`.
-    fn image(&self, index: usize) -> Option<(&dyn ImageViewAbstract, u32)>;
+    /// Returns the resources bound to this descriptor set.
+    fn resources(&self) -> &DescriptorSetResources;
 }
 
 unsafe impl<T> DescriptorSet for T
@@ -158,23 +143,8 @@ where
     }
 
     #[inline]
-    fn num_buffers(&self) -> usize {
-        (**self).num_buffers()
-    }
-
-    #[inline]
-    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, u32)> {
-        (**self).buffer(index)
-    }
-
-    #[inline]
-    fn num_images(&self) -> usize {
-        (**self).num_images()
-    }
-
-    #[inline]
-    fn image(&self, index: usize) -> Option<(&dyn ImageViewAbstract, u32)> {
-        (**self).image(index)
+    fn resources(&self) -> &DescriptorSetResources {
+        (**self).resources()
     }
 }
 

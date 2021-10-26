@@ -781,7 +781,7 @@ impl DescriptorDescTy {
     }
 
     #[inline]
-    pub(super) fn immutable_samplers(&self) -> &[Arc<Sampler>] {
+    pub(crate) fn immutable_samplers(&self) -> &[Arc<Sampler>] {
         match self {
             Self::Sampler {
                 immutable_samplers, ..
