@@ -18,6 +18,10 @@
 - **Breaking** Removed `union`, `union_multiple` and `ensure_compatible_with_shader` from `DescriptorSetDesc`, and `union` from `DescriptorDesc`. This is now handled by `DescriptorRequirements`.
 - **Breaking** `DescriptorDesc::ensure_compatibility_with_shader` now takes `DescriptorRequirements` instead of another `DescriptorDesc`.
 - **Breaking** When the shader's layout specifies a descriptor with runtime array, its upper bound from now on interprets as zero by default(previously it was `1`).
+- **Breaking** The `DescriptorSet` trait now has a `resources` method, which returns a reference to a `DescriptorSetResources` object. It no longer has the `num_buffers`, `buffer`, `num_images` and `image` methods.
+- **Breaking** `BufferViewRef` is replaced with `BufferViewAbstract`, similar to the existing `ImageViewAbstract`.
+- **Breaking** `UnsafeDescriptorSet::write` takes a `DescriptorSetLayout` instead of `Device`.
+- **Breaking** `DescriptorWrite` is now constructed based on the resources stored instead of the descriptor type. The descriptor type is inferred from the descriptor set layout.
 - Added a new `DescriptorRequirements` type, which contains requirements imposed by a shader onto a descriptor and the resources bound to it.
   - `DescriptorDesc` can be created from `DescriptorRequirements` with the `From` trait.
   - `DescriptorSetDesc`s can be created from the requirements with the `from_requirement` constructor.
