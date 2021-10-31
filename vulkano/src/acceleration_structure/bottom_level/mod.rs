@@ -8,9 +8,10 @@
 // according to those terms.
 
 mod aabb;
+mod triangles;
 
 use super::acceleration_struct::AccelerationStructure;
-use crate::buffer::TypedBufferAccess;
+use crate::buffer::{BufferAccess, TypedBufferAccess};
 use std::sync::Arc;
 
 pub use aabb::AabbPosition;
@@ -18,6 +19,10 @@ pub use aabb::AabbPosition;
 enum BottomLevelData {
     Aabb {
         buffer: Arc<dyn TypedBufferAccess<Content = [AabbPosition]>>,
+    },
+    Triangles {
+        vertex_buffer: Arc<dyn BufferAccess>,
+        index_buffer: Arc<dyn BufferAccess>, 
     },
 }
 
