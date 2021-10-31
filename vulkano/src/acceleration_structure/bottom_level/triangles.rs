@@ -11,12 +11,12 @@ use super::{AccelerationStructure, BottomLevelAccelerationStructure, BottomLevel
 use crate::buffer::BufferAccess;
 use crate::buffer::TypedBufferAccess;
 use crate::device::Device;
-use crate::VulkanObject;
-use crate::pipeline::input_assembly::Index;
 use crate::format::Format;
+use crate::pipeline::input_assembly::Index;
+use crate::DeviceSize;
+use crate::VulkanObject;
 use ash::vk::Handle;
 use std::sync::Arc;
-use crate::DeviceSize;
 
 /// Return data contrains references to input buffers
 unsafe fn make_triangles_data<I: Index>(
@@ -49,7 +49,7 @@ impl BottomLevelAccelerationStructure {
         device: Arc<Device>,
         vertex_buffer: Arc<dyn BufferAccess>,
         vertex_format: Format,
-        index_buffer: Arc<Ib>, 
+        index_buffer: Arc<Ib>,
     ) -> Self
     where
         Ib: BufferAccess + TypedBufferAccess<Content = [I]> + Send + Sync + 'static,
@@ -64,10 +64,8 @@ impl BottomLevelAccelerationStructure {
                 &index_buffer,
             )
         };
-        
-        let geometry_data = ash::vk::AccelerationStructureGeometryDataKHR {
-            triangles,
-        };
+
+        let geometry_data = ash::vk::AccelerationStructureGeometryDataKHR { triangles };
 
         let geometry = ash::vk::AccelerationStructureGeometryKHR::builder()
             .geometry_type(ash::vk::GeometryTypeKHR::TRIANGLES)

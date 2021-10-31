@@ -28,7 +28,10 @@ fn make_aabb_data(aabb: &dyn BufferAccess) -> ash::vk::AccelerationStructureGeom
         device_address: aabb.inner().buffer.internal_object().as_raw(),
     };
 
-    debug_assert_eq!(size_of::<AabbPosition>(), size_of::<ash::vk::AabbPositionsKHR>());
+    debug_assert_eq!(
+        size_of::<AabbPosition>(),
+        size_of::<ash::vk::AabbPositionsKHR>()
+    );
 
     let stride = size_of::<AabbPosition>() as u64;
 

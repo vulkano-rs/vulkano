@@ -22,7 +22,7 @@ enum BottomLevelData {
     },
     Triangles {
         vertex_buffer: Arc<dyn BufferAccess>,
-        index_buffer: Arc<dyn BufferAccess>, 
+        index_buffer: Arc<dyn BufferAccess>,
     },
 }
 
