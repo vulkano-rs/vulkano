@@ -55,7 +55,7 @@ impl BottomLevelAccelerationStructure {
         Ib: BufferAccess + TypedBufferAccess<Content = [I]> + Send + Sync + 'static,
         I: Index + 'static,
     {
-        // SAFETY: we prevent buffers from deallocate by storing them `BottomLevelData`
+        // SAFETY: we prevent buffers from deallocate by storing them in `BottomLevelData`
         let triangles = unsafe {
             make_triangles_data::<I>(
                 &vertex_buffer,
