@@ -39,7 +39,7 @@ fn make_aabb_data(aabb: &dyn BufferAccess) -> ash::vk::AccelerationStructureGeom
 }
 
 impl BottomLevelAccelerationStructure {
-    pub fn new_aabb(
+    pub fn new_aabbs(
         device: Arc<Device>,
         aabbs_buffer: Arc<dyn TypedBufferAccess<Content = [AabbPosition]>>,
     ) -> Self {
@@ -59,7 +59,7 @@ impl BottomLevelAccelerationStructure {
             ash::vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
         );
 
-        let data = BottomLevelData::Aabb {
+        let data = BottomLevelData::Aabbs {
             buffer: aabbs_buffer,
         };
 

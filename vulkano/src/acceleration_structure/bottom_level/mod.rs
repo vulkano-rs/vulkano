@@ -17,7 +17,7 @@ use std::sync::Arc;
 pub use aabb::AabbPosition;
 
 enum BottomLevelData {
-    Aabb {
+    Aabbs {
         buffer: Arc<dyn TypedBufferAccess<Content = [AabbPosition]>>,
     },
     Triangles {
