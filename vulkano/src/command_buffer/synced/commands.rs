@@ -45,7 +45,7 @@ use crate::query::QueryControlFlags;
 use crate::query::QueryPool;
 use crate::query::QueryResultElement;
 use crate::query::QueryResultFlags;
-use crate::render_pass::FramebufferAbstract;
+use crate::render_pass::Framebuffer;
 use crate::render_pass::LoadOp;
 use crate::sampler::Filter;
 use crate::sync::AccessFlags;
@@ -95,7 +95,7 @@ impl SyncCommandBufferBuilder {
                 query,
                 flags,
             },
-            &[],
+            [],
         )
         .unwrap();
     }
@@ -105,25 +105,23 @@ impl SyncCommandBufferBuilder {
     // TODO: after begin_render_pass has been called, flushing should be forbidden and an error
     //       returned if conflict
     #[inline]
-    pub unsafe fn begin_render_pass<F, I>(
+    pub unsafe fn begin_render_pass<I>(
         &mut self,
-        framebuffer: F,
+        framebuffer: Arc<Framebuffer>,
         subpass_contents: SubpassContents,
         clear_values: I,
     ) -> Result<(), SyncCommandBufferBuilderError>
     where
-        F: FramebufferAbstract + 'static,
         I: IntoIterator<Item = ClearValue> + Send + Sync + 'static,
     {
-        struct Cmd<F, I> {
-            framebuffer: F,
+        struct Cmd<I> {
+            framebuffer: Arc<Framebuffer>,
             subpass_contents: SubpassContents,
             clear_values: Mutex<Option<I>>,
         }
 
-        impl<F, I> Command for Cmd<F, I>
+        impl<I> Command for Cmd<I>
         where
-            F: FramebufferAbstract + 'static,
             I: IntoIterator<Item = ClearValue> + Send + Sync,
         {
             fn name(&self) -> &'static str {
@@ -132,18 +130,10 @@ impl SyncCommandBufferBuilder {
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.begin_render_pass(
-                    &self.framebuffer,
+                    self.framebuffer.as_ref(),
                     self.subpass_contents,
                     self.clear_values.lock().unwrap().take().unwrap(),
                 );
-            }
-
-            fn image(&self, num: usize) -> &dyn ImageAccess {
-                self.framebuffer.attached_image_view(num).unwrap().image()
-            }
-
-            fn image_name(&self, num: usize) -> Cow<'static, str> {
-                format!("attachment {}", num).into()
             }
         }
 
@@ -152,9 +142,11 @@ impl SyncCommandBufferBuilder {
             .desc()
             .attachments()
             .iter()
-            .map(|desc| {
+            .enumerate()
+            .map(|(num, desc)| {
                 (
-                    KeyTy::Image,
+                    KeyTy::Image(framebuffer.attached_image_view(num).unwrap().image()),
+                    format!("attachment {}", num).into(),
                     Some((
                         PipelineMemoryAccess {
                             stages: PipelineStages {
@@ -186,11 +178,11 @@ impl SyncCommandBufferBuilder {
 
         self.append_command(
             Cmd {
-                framebuffer,
+                framebuffer: framebuffer,
                 subpass_contents,
                 clear_values: Mutex::new(Some(clear_values)),
             },
-            &resources,
+            resources,
         )?;
 
         self.latest_render_pass_enter = Some(self.commands.len() - 1);
@@ -209,34 +201,24 @@ impl SyncCommandBufferBuilder {
 
     /// Calls `vkCmdBindIndexBuffer` on the builder.
     #[inline]
-    pub unsafe fn bind_index_buffer<B>(&mut self, buffer: B, index_ty: IndexType)
-    where
-        B: BufferAccess + 'static,
-    {
-        struct Cmd<B> {
-            buffer: B,
+    pub unsafe fn bind_index_buffer(&mut self, buffer: Arc<dyn BufferAccess>, index_ty: IndexType) {
+        struct Cmd {
+            buffer: Arc<dyn BufferAccess>,
             index_ty: IndexType,
         }
 
-        impl<B> Command for Cmd<B>
-        where
-            B: BufferAccess + 'static,
-        {
+        impl Command for Cmd {
             fn name(&self) -> &'static str {
                 "vkCmdBindIndexBuffer"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.bind_index_buffer(&self.buffer, self.index_ty);
-            }
-
-            fn bound_index_buffer(&self) -> (&dyn BufferAccess, IndexType) {
-                (&self.buffer, self.index_ty)
+                out.bind_index_buffer(self.buffer.as_ref(), self.index_ty);
             }
         }
 
-        self.append_command(Cmd { buffer, index_ty }, &[]).unwrap();
-        self.current_state.index_buffer = self.commands.last().cloned();
+        self.current_state.index_buffer = Some((buffer.clone(), index_ty));
+        self.append_command(Cmd { buffer, index_ty }, []).unwrap();
     }
 
     /// Calls `vkCmdBindPipeline` on the builder with a compute pipeline.
@@ -254,14 +236,10 @@ impl SyncCommandBufferBuilder {
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.bind_pipeline_compute(&self.pipeline);
             }
-
-            fn bound_pipeline_compute(&self) -> &Arc<ComputePipeline> {
-                &self.pipeline
-            }
         }
 
-        self.append_command(Cmd { pipeline }, &[]).unwrap();
-        self.current_state.pipeline_compute = self.commands.last().cloned();
+        self.current_state.pipeline_compute = Some(pipeline.clone());
+        self.append_command(Cmd { pipeline }, []).unwrap();
     }
 
     /// Calls `vkCmdBindPipeline` on the builder with a graphics pipeline.
@@ -279,10 +257,6 @@ impl SyncCommandBufferBuilder {
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.bind_pipeline_graphics(&self.pipeline);
             }
-
-            fn bound_pipeline_graphics(&self) -> &Arc<GraphicsPipeline> {
-                &self.pipeline
-            }
         }
 
         // Reset any states that are fixed in the new pipeline. The pipeline bind command will
@@ -293,8 +267,8 @@ impl SyncCommandBufferBuilder {
                 .filter(|(_, d)| !d) // not dynamic
                 .map(|(s, _)| s),
         );
-        self.append_command(Cmd { pipeline }, &[]).unwrap();
-        self.current_state.pipeline_graphics = self.commands.last().cloned();
+        self.current_state.pipeline_graphics = Some(pipeline.clone());
+        self.append_command(Cmd { pipeline }, []).unwrap();
     }
 
     /// Starts the process of binding vertex buffers. Returns an intermediate struct which can be
@@ -313,31 +287,27 @@ impl SyncCommandBufferBuilder {
     /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
     /// usage of the command anyway.
     #[inline]
-    pub unsafe fn copy_image<S, D, R>(
+    pub unsafe fn copy_image<R>(
         &mut self,
-        source: S,
+        source: Arc<dyn ImageAccess>,
         source_layout: ImageLayout,
-        destination: D,
+        destination: Arc<dyn ImageAccess>,
         destination_layout: ImageLayout,
         regions: R,
     ) -> Result<(), SyncCommandBufferBuilderError>
     where
-        S: ImageAccess + 'static,
-        D: ImageAccess + 'static,
         R: IntoIterator<Item = UnsafeCommandBufferBuilderImageCopy> + Send + Sync + 'static,
     {
-        struct Cmd<S, D, R> {
-            source: S,
+        struct Cmd<R> {
+            source: Arc<dyn ImageAccess>,
             source_layout: ImageLayout,
-            destination: D,
+            destination: Arc<dyn ImageAccess>,
             destination_layout: ImageLayout,
             regions: Mutex<Option<R>>,
         }
 
-        impl<S, D, R> Command for Cmd<S, D, R>
+        impl<R> Command for Cmd<R>
         where
-            S: ImageAccess + 'static,
-            D: ImageAccess + 'static,
             R: IntoIterator<Item = UnsafeCommandBufferBuilderImageCopy> + Send + Sync,
         {
             fn name(&self) -> &'static str {
@@ -346,46 +316,27 @@ impl SyncCommandBufferBuilder {
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.copy_image(
-                    &self.source,
+                    self.source.as_ref(),
                     self.source_layout,
-                    &self.destination,
+                    self.destination.as_ref(),
                     self.destination_layout,
                     self.regions.lock().unwrap().take().unwrap(),
                 );
-            }
-
-            fn image(&self, num: usize) -> &dyn ImageAccess {
-                if num == 0 {
-                    &self.source
-                } else if num == 1 {
-                    &self.destination
-                } else {
-                    panic!()
-                }
-            }
-
-            fn image_name(&self, num: usize) -> Cow<'static, str> {
-                if num == 0 {
-                    "source".into()
-                } else if num == 1 {
-                    "destination".into()
-                } else {
-                    panic!()
-                }
             }
         }
 
         self.append_command(
             Cmd {
-                source,
+                source: source.clone(),
                 source_layout,
-                destination,
+                destination: destination.clone(),
                 destination_layout,
                 regions: Mutex::new(Some(regions)),
             },
-            &[
+            [
                 (
-                    KeyTy::Image,
+                    KeyTy::Image(source),
+                    "source".into(),
                     Some((
                         PipelineMemoryAccess {
                             stages: PipelineStages {
@@ -404,7 +355,8 @@ impl SyncCommandBufferBuilder {
                     )),
                 ),
                 (
-                    KeyTy::Image,
+                    KeyTy::Image(destination),
+                    "destination".into(),
                     Some((
                         PipelineMemoryAccess {
                             stages: PipelineStages {
@@ -433,33 +385,29 @@ impl SyncCommandBufferBuilder {
     /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
     /// usage of the command anyway.
     #[inline]
-    pub unsafe fn blit_image<S, D, R>(
+    pub unsafe fn blit_image<R>(
         &mut self,
-        source: S,
+        source: Arc<dyn ImageAccess>,
         source_layout: ImageLayout,
-        destination: D,
+        destination: Arc<dyn ImageAccess>,
         destination_layout: ImageLayout,
         regions: R,
         filter: Filter,
     ) -> Result<(), SyncCommandBufferBuilderError>
     where
-        S: ImageAccess + 'static,
-        D: ImageAccess + 'static,
         R: IntoIterator<Item = UnsafeCommandBufferBuilderImageBlit> + Send + Sync + 'static,
     {
-        struct Cmd<S, D, R> {
-            source: S,
+        struct Cmd<R> {
+            source: Arc<dyn ImageAccess>,
             source_layout: ImageLayout,
-            destination: D,
+            destination: Arc<dyn ImageAccess>,
             destination_layout: ImageLayout,
             regions: Mutex<Option<R>>,
             filter: Filter,
         }
 
-        impl<S, D, R> Command for Cmd<S, D, R>
+        impl<R> Command for Cmd<R>
         where
-            S: ImageAccess + 'static,
-            D: ImageAccess + 'static,
             R: IntoIterator<Item = UnsafeCommandBufferBuilderImageBlit> + Send + Sync,
         {
             fn name(&self) -> &'static str {
@@ -468,48 +416,29 @@ impl SyncCommandBufferBuilder {
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.blit_image(
-                    &self.source,
+                    self.source.as_ref(),
                     self.source_layout,
-                    &self.destination,
+                    self.destination.as_ref(),
                     self.destination_layout,
                     self.regions.lock().unwrap().take().unwrap(),
                     self.filter,
                 );
             }
-
-            fn image(&self, num: usize) -> &dyn ImageAccess {
-                if num == 0 {
-                    &self.source
-                } else if num == 1 {
-                    &self.destination
-                } else {
-                    panic!()
-                }
-            }
-
-            fn image_name(&self, num: usize) -> Cow<'static, str> {
-                if num == 0 {
-                    "source".into()
-                } else if num == 1 {
-                    "destination".into()
-                } else {
-                    panic!()
-                }
-            }
         }
 
         self.append_command(
             Cmd {
-                source,
+                source: source.clone(),
                 source_layout,
-                destination,
+                destination: destination.clone(),
                 destination_layout,
                 regions: Mutex::new(Some(regions)),
                 filter,
             },
-            &[
+            [
                 (
-                    KeyTy::Image,
+                    KeyTy::Image(source),
+                    "source".into(),
                     Some((
                         PipelineMemoryAccess {
                             stages: PipelineStages {
@@ -528,7 +457,8 @@ impl SyncCommandBufferBuilder {
                     )),
                 ),
                 (
-                    KeyTy::Image,
+                    KeyTy::Image(destination),
+                    "destination".into(),
                     Some((
                         PipelineMemoryAccess {
                             stages: PipelineStages {
@@ -556,27 +486,25 @@ impl SyncCommandBufferBuilder {
     ///
     /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
     /// usage of the command anyway.
-    pub unsafe fn clear_color_image<I, R>(
+    pub unsafe fn clear_color_image<R>(
         &mut self,
-        image: I,
+        image: Arc<dyn ImageAccess>,
         layout: ImageLayout,
         color: ClearValue,
         regions: R,
     ) -> Result<(), SyncCommandBufferBuilderError>
     where
-        I: ImageAccess + 'static,
         R: IntoIterator<Item = UnsafeCommandBufferBuilderColorImageClear> + Send + Sync + 'static,
     {
-        struct Cmd<I, R> {
-            image: I,
+        struct Cmd<R> {
+            image: Arc<dyn ImageAccess>,
             layout: ImageLayout,
             color: ClearValue,
             regions: Mutex<Option<R>>,
         }
 
-        impl<I, R> Command for Cmd<I, R>
+        impl<R> Command for Cmd<R>
         where
-            I: ImageAccess + 'static,
             R: IntoIterator<Item = UnsafeCommandBufferBuilderColorImageClear>
                 + Send
                 + Sync
@@ -588,33 +516,24 @@ impl SyncCommandBufferBuilder {
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.clear_color_image(
-                    &self.image,
+                    self.image.as_ref(),
                     self.layout,
                     self.color,
                     self.regions.lock().unwrap().take().unwrap(),
                 );
             }
-
-            fn image(&self, num: usize) -> &dyn ImageAccess {
-                assert_eq!(num, 0);
-                &self.image
-            }
-
-            fn image_name(&self, num: usize) -> Cow<'static, str> {
-                assert_eq!(num, 0);
-                "target".into()
-            }
         }
 
         self.append_command(
             Cmd {
-                image,
+                image: image.clone(),
                 layout,
                 color,
                 regions: Mutex::new(Some(regions)),
             },
-            &[(
-                KeyTy::Image,
+            [(
+                KeyTy::Image(image),
+                "target".into(),
                 Some((
                     PipelineMemoryAccess {
                         stages: PipelineStages {
@@ -641,30 +560,28 @@ impl SyncCommandBufferBuilder {
     ///
     /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
     /// usage of the command anyway.
-    pub unsafe fn clear_depth_stencil_image<I, R>(
+    pub unsafe fn clear_depth_stencil_image<R>(
         &mut self,
-        image: I,
+        image: Arc<dyn ImageAccess>,
         layout: ImageLayout,
         clear_value: ClearValue,
         regions: R,
     ) -> Result<(), SyncCommandBufferBuilderError>
     where
-        I: ImageAccess + 'static,
         R: IntoIterator<Item = UnsafeCommandBufferBuilderDepthStencilImageClear>
             + Send
             + Sync
             + 'static,
     {
-        struct Cmd<I, R> {
-            image: I,
+        struct Cmd<R> {
+            image: Arc<dyn ImageAccess>,
             layout: ImageLayout,
             clear_value: ClearValue,
             regions: Mutex<Option<R>>,
         }
 
-        impl<I, R> Command for Cmd<I, R>
+        impl<R> Command for Cmd<R>
         where
-            I: ImageAccess + 'static,
             R: IntoIterator<Item = UnsafeCommandBufferBuilderDepthStencilImageClear>
                 + Send
                 + Sync
@@ -676,33 +593,24 @@ impl SyncCommandBufferBuilder {
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.clear_depth_stencil_image(
-                    &self.image,
+                    self.image.as_ref(),
                     self.layout,
                     self.clear_value,
                     self.regions.lock().unwrap().take().unwrap(),
                 );
             }
-
-            fn image(&self, num: usize) -> &dyn ImageAccess {
-                assert_eq!(num, 0);
-                &self.image
-            }
-
-            fn image_name(&self, num: usize) -> Cow<'static, str> {
-                assert_eq!(num, 0);
-                "target".into()
-            }
         }
 
         self.append_command(
             Cmd {
-                image,
+                image: image.clone(),
                 layout,
                 clear_value,
                 regions: Mutex::new(Some(regions)),
             },
-            &[(
-                KeyTy::Image,
+            [(
+                KeyTy::Image(image),
+                "target".into(),
                 Some((
                     PipelineMemoryAccess {
                         stages: PipelineStages {
@@ -730,27 +638,23 @@ impl SyncCommandBufferBuilder {
     /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
     /// usage of the command anyway.
     #[inline]
-    pub unsafe fn copy_buffer<S, D, R>(
+    pub unsafe fn copy_buffer<R>(
         &mut self,
-        source: S,
-        destination: D,
+        source: Arc<dyn BufferAccess>,
+        destination: Arc<dyn BufferAccess>,
         regions: R,
     ) -> Result<(), SyncCommandBufferBuilderError>
     where
-        S: BufferAccess + 'static,
-        D: BufferAccess + 'static,
         R: IntoIterator<Item = (DeviceSize, DeviceSize, DeviceSize)> + Send + Sync + 'static,
     {
-        struct Cmd<S, D, R> {
-            source: S,
-            destination: D,
+        struct Cmd<R> {
+            source: Arc<dyn BufferAccess>,
+            destination: Arc<dyn BufferAccess>,
             regions: Mutex<Option<R>>,
         }
 
-        impl<S, D, R> Command for Cmd<S, D, R>
+        impl<R> Command for Cmd<R>
         where
-            S: BufferAccess + 'static,
-            D: BufferAccess + 'static,
             R: IntoIterator<Item = (DeviceSize, DeviceSize, DeviceSize)> + Send + Sync,
         {
             fn name(&self) -> &'static str {
@@ -759,38 +663,23 @@ impl SyncCommandBufferBuilder {
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.copy_buffer(
-                    &self.source,
-                    &self.destination,
+                    self.source.as_ref(),
+                    self.destination.as_ref(),
                     self.regions.lock().unwrap().take().unwrap(),
                 );
-            }
-
-            fn buffer(&self, num: usize) -> &dyn BufferAccess {
-                match num {
-                    0 => &self.source,
-                    1 => &self.destination,
-                    _ => panic!(),
-                }
-            }
-
-            fn buffer_name(&self, num: usize) -> Cow<'static, str> {
-                match num {
-                    0 => "source".into(),
-                    1 => "destination".into(),
-                    _ => panic!(),
-                }
             }
         }
 
         self.append_command(
             Cmd {
-                source,
-                destination,
+                source: source.clone(),
+                destination: destination.clone(),
                 regions: Mutex::new(Some(regions)),
             },
-            &[
+            [
                 (
-                    KeyTy::Buffer,
+                    KeyTy::Buffer(source),
+                    "source".into(),
                     Some((
                         PipelineMemoryAccess {
                             stages: PipelineStages {
@@ -809,7 +698,8 @@ impl SyncCommandBufferBuilder {
                     )),
                 ),
                 (
-                    KeyTy::Buffer,
+                    KeyTy::Buffer(destination),
+                    "destination".into(),
                     Some((
                         PipelineMemoryAccess {
                             stages: PipelineStages {
@@ -838,29 +728,25 @@ impl SyncCommandBufferBuilder {
     /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
     /// usage of the command anyway.
     #[inline]
-    pub unsafe fn copy_buffer_to_image<S, D, R>(
+    pub unsafe fn copy_buffer_to_image<R>(
         &mut self,
-        source: S,
-        destination: D,
+        source: Arc<dyn BufferAccess>,
+        destination: Arc<dyn ImageAccess>,
         destination_layout: ImageLayout,
         regions: R,
     ) -> Result<(), SyncCommandBufferBuilderError>
     where
-        S: BufferAccess + 'static,
-        D: ImageAccess + 'static,
         R: IntoIterator<Item = UnsafeCommandBufferBuilderBufferImageCopy> + Send + Sync + 'static,
     {
-        struct Cmd<S, D, R> {
-            source: S,
-            destination: D,
+        struct Cmd<R> {
+            source: Arc<dyn BufferAccess>,
+            destination: Arc<dyn ImageAccess>,
             destination_layout: ImageLayout,
             regions: Mutex<Option<R>>,
         }
 
-        impl<S, D, R> Command for Cmd<S, D, R>
+        impl<R> Command for Cmd<R>
         where
-            S: BufferAccess + 'static,
-            D: ImageAccess + 'static,
             R: IntoIterator<Item = UnsafeCommandBufferBuilderBufferImageCopy> + Send + Sync,
         {
             fn name(&self) -> &'static str {
@@ -869,44 +755,25 @@ impl SyncCommandBufferBuilder {
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.copy_buffer_to_image(
-                    &self.source,
-                    &self.destination,
+                    self.source.as_ref(),
+                    self.destination.as_ref(),
                     self.destination_layout,
                     self.regions.lock().unwrap().take().unwrap(),
                 );
-            }
-
-            fn buffer(&self, num: usize) -> &dyn BufferAccess {
-                assert_eq!(num, 0);
-                &self.source
-            }
-
-            fn buffer_name(&self, num: usize) -> Cow<'static, str> {
-                assert_eq!(num, 0);
-                "source".into()
-            }
-
-            fn image(&self, num: usize) -> &dyn ImageAccess {
-                assert_eq!(num, 0);
-                &self.destination
-            }
-
-            fn image_name(&self, num: usize) -> Cow<'static, str> {
-                assert_eq!(num, 0);
-                "destination".into()
             }
         }
 
         self.append_command(
             Cmd {
-                source,
-                destination,
+                source: source.clone(),
+                destination: destination.clone(),
                 destination_layout,
                 regions: Mutex::new(Some(regions)),
             },
-            &[
+            [
                 (
-                    KeyTy::Buffer,
+                    KeyTy::Buffer(source),
+                    "source".into(),
                     Some((
                         PipelineMemoryAccess {
                             stages: PipelineStages {
@@ -925,7 +792,8 @@ impl SyncCommandBufferBuilder {
                     )),
                 ),
                 (
-                    KeyTy::Image,
+                    KeyTy::Image(destination),
+                    "destination".into(),
                     Some((
                         PipelineMemoryAccess {
                             stages: PipelineStages {
@@ -954,29 +822,25 @@ impl SyncCommandBufferBuilder {
     /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
     /// usage of the command anyway.
     #[inline]
-    pub unsafe fn copy_image_to_buffer<S, D, R>(
+    pub unsafe fn copy_image_to_buffer<R>(
         &mut self,
-        source: S,
+        source: Arc<dyn ImageAccess>,
         source_layout: ImageLayout,
-        destination: D,
+        destination: Arc<dyn BufferAccess>,
         regions: R,
     ) -> Result<(), SyncCommandBufferBuilderError>
     where
-        S: ImageAccess + 'static,
-        D: BufferAccess + 'static,
         R: IntoIterator<Item = UnsafeCommandBufferBuilderBufferImageCopy> + Send + Sync + 'static,
     {
-        struct Cmd<S, D, R> {
-            source: S,
+        struct Cmd<R> {
+            source: Arc<dyn ImageAccess>,
             source_layout: ImageLayout,
-            destination: D,
+            destination: Arc<dyn BufferAccess>,
             regions: Mutex<Option<R>>,
         }
 
-        impl<S, D, R> Command for Cmd<S, D, R>
+        impl<R> Command for Cmd<R>
         where
-            S: ImageAccess + 'static,
-            D: BufferAccess + 'static,
             R: IntoIterator<Item = UnsafeCommandBufferBuilderBufferImageCopy> + Send + Sync,
         {
             fn name(&self) -> &'static str {
@@ -985,44 +849,25 @@ impl SyncCommandBufferBuilder {
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.copy_image_to_buffer(
-                    &self.source,
+                    self.source.as_ref(),
                     self.source_layout,
-                    &self.destination,
+                    self.destination.as_ref(),
                     self.regions.lock().unwrap().take().unwrap(),
                 );
-            }
-
-            fn buffer(&self, num: usize) -> &dyn BufferAccess {
-                assert_eq!(num, 0);
-                &self.destination
-            }
-
-            fn buffer_name(&self, num: usize) -> Cow<'static, str> {
-                assert_eq!(num, 0);
-                "destination".into()
-            }
-
-            fn image(&self, num: usize) -> &dyn ImageAccess {
-                assert_eq!(num, 0);
-                &self.source
-            }
-
-            fn image_name(&self, num: usize) -> Cow<'static, str> {
-                assert_eq!(num, 0);
-                "source".into()
             }
         }
 
         self.append_command(
             Cmd {
-                source,
-                destination,
+                source: source.clone(),
+                destination: destination.clone(),
                 source_layout,
                 regions: Mutex::new(Some(regions)),
             },
-            &[
+            [
                 (
-                    KeyTy::Image,
+                    KeyTy::Image(source),
+                    "source".into(),
                     Some((
                         PipelineMemoryAccess {
                             stages: PipelineStages {
@@ -1041,7 +886,8 @@ impl SyncCommandBufferBuilder {
                     )),
                 ),
                 (
-                    KeyTy::Buffer,
+                    KeyTy::Buffer(destination),
+                    "destination".into(),
                     Some((
                         PipelineMemoryAccess {
                             stages: PipelineStages {
@@ -1073,7 +919,7 @@ impl SyncCommandBufferBuilder {
         &mut self,
         query_pool: Arc<QueryPool>,
         queries: Range<u32>,
-        destination: D,
+        destination: Arc<D>,
         stride: DeviceSize,
         flags: QueryResultFlags,
     ) -> Result<(), SyncCommandBufferBuilderError>
@@ -1084,7 +930,7 @@ impl SyncCommandBufferBuilder {
         struct Cmd<D> {
             query_pool: Arc<QueryPool>,
             queries: Range<u32>,
-            destination: D,
+            destination: Arc<D>,
             stride: DeviceSize,
             flags: QueryResultFlags,
         }
@@ -1101,20 +947,10 @@ impl SyncCommandBufferBuilder {
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.copy_query_pool_results(
                     self.query_pool.queries_range(self.queries.clone()).unwrap(),
-                    &self.destination,
+                    self.destination.as_ref(),
                     self.stride,
                     self.flags,
                 );
-            }
-
-            fn buffer(&self, num: usize) -> &dyn BufferAccess {
-                assert_eq!(num, 0);
-                &self.destination
-            }
-
-            fn buffer_name(&self, num: usize) -> Cow<'static, str> {
-                assert_eq!(num, 0);
-                "destination".into()
             }
         }
 
@@ -1122,12 +958,13 @@ impl SyncCommandBufferBuilder {
             Cmd {
                 query_pool,
                 queries,
-                destination,
+                destination: destination.clone(),
                 stride,
                 flags,
             },
-            &[(
-                KeyTy::Buffer,
+            [(
+                KeyTy::Buffer(destination),
+                "destination".into(),
                 Some((
                     PipelineMemoryAccess {
                         stages: PipelineStages {
@@ -1172,7 +1009,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { name, color }, &[]).unwrap();
+        self.append_command(Cmd { name, color }, []).unwrap();
     }
 
     /// Calls `vkCmdEndDebugUtilsLabelEXT` on the builder.
@@ -1196,7 +1033,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd {}, &[]).unwrap();
+        self.append_command(Cmd {}, []).unwrap();
     }
 
     /// Calls `vkCmdInsertDebugUtilsLabelEXT` on the builder.
@@ -1221,7 +1058,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { name, color }, &[]).unwrap();
+        self.append_command(Cmd { name, color }, []).unwrap();
     }
 
     /// Calls `vkCmdDispatch` on the builder.
@@ -1240,76 +1077,9 @@ impl SyncCommandBufferBuilder {
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.dispatch(self.group_counts);
             }
-
-            fn buffer(&self, mut num: usize) -> &dyn BufferAccess {
-                for set in self
-                    .descriptor_sets
-                    .iter()
-                    .enumerate()
-                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32))
-                {
-                    if let Some(buf) = set.buffer(num) {
-                        return buf.0;
-                    }
-                    num -= set.num_buffers();
-                }
-                panic!()
-            }
-
-            fn buffer_name(&self, mut num: usize) -> Cow<'static, str> {
-                for (set_num, set) in self
-                    .descriptor_sets
-                    .iter()
-                    .enumerate()
-                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32)))
-                {
-                    if let Some(buf) = set.buffer(num) {
-                        return format!("Buffer bound to set {} descriptor {}", set_num, buf.1)
-                            .into();
-                    }
-                    num -= set.num_buffers();
-                }
-                panic!()
-            }
-
-            fn image(&self, mut num: usize) -> &dyn ImageAccess {
-                for set in self
-                    .descriptor_sets
-                    .iter()
-                    .enumerate()
-                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32))
-                {
-                    if let Some(img) = set.image(num) {
-                        return img.0.image();
-                    }
-                    num -= set.num_images();
-                }
-                panic!()
-            }
-
-            fn image_name(&self, mut num: usize) -> Cow<'static, str> {
-                for (set_num, set) in self
-                    .descriptor_sets
-                    .iter()
-                    .enumerate()
-                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32)))
-                {
-                    if let Some(img) = set.image(num) {
-                        return format!("Image bound to set {} descriptor {}", set_num, img.1)
-                            .into();
-                    }
-                    num -= set.num_images();
-                }
-                panic!()
-            }
         }
 
-        let pipeline = self
-            .current_state
-            .pipeline_compute
-            .as_ref()
-            .unwrap()
-            .bound_pipeline_compute();
+        let pipeline = self.current_state.pipeline_compute.as_ref().unwrap();
 
         let mut resources = Vec::new();
         let descriptor_sets = self.add_descriptor_set_resources(
@@ -1323,112 +1093,33 @@ impl SyncCommandBufferBuilder {
                 group_counts,
                 descriptor_sets,
             },
-            &resources,
+            resources,
         )
         .unwrap();
     }
 
     /// Calls `vkCmdDispatchIndirect` on the builder.
     #[inline]
-    pub unsafe fn dispatch_indirect<B>(
+    pub unsafe fn dispatch_indirect(
         &mut self,
-        indirect_buffer: B,
-    ) -> Result<(), SyncCommandBufferBuilderError>
-    where
-        B: BufferAccess + 'static,
-    {
-        struct Cmd<B> {
+        indirect_buffer: Arc<dyn BufferAccess>,
+    ) -> Result<(), SyncCommandBufferBuilderError> {
+        struct Cmd {
             descriptor_sets: SmallVec<[Arc<dyn Command>; 12]>,
-            indirect_buffer: B,
+            indirect_buffer: Arc<dyn BufferAccess>,
         }
 
-        impl<B> Command for Cmd<B>
-        where
-            B: BufferAccess + 'static,
-        {
+        impl Command for Cmd {
             fn name(&self) -> &'static str {
                 "vkCmdDispatchIndirect"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.dispatch_indirect(&self.indirect_buffer);
-            }
-
-            fn buffer(&self, mut num: usize) -> &dyn BufferAccess {
-                for set in self
-                    .descriptor_sets
-                    .iter()
-                    .enumerate()
-                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32))
-                {
-                    if let Some(buf) = set.buffer(num) {
-                        return buf.0;
-                    }
-                    num -= set.num_buffers();
-                }
-                if num == 0 {
-                    return &self.indirect_buffer;
-                }
-                panic!()
-            }
-
-            fn buffer_name(&self, mut num: usize) -> Cow<'static, str> {
-                for (set_num, set) in self
-                    .descriptor_sets
-                    .iter()
-                    .enumerate()
-                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32)))
-                {
-                    if let Some(buf) = set.buffer(num) {
-                        return format!("Buffer bound to set {} descriptor {}", set_num, buf.1)
-                            .into();
-                    }
-                    num -= set.num_buffers();
-                }
-                if num == 0 {
-                    return "indirect buffer".into();
-                }
-                panic!()
-            }
-
-            fn image(&self, mut num: usize) -> &dyn ImageAccess {
-                for set in self
-                    .descriptor_sets
-                    .iter()
-                    .enumerate()
-                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32))
-                {
-                    if let Some(img) = set.image(num) {
-                        return img.0.image();
-                    }
-                    num -= set.num_images();
-                }
-                panic!()
-            }
-
-            fn image_name(&self, mut num: usize) -> Cow<'static, str> {
-                for (set_num, set) in self
-                    .descriptor_sets
-                    .iter()
-                    .enumerate()
-                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32)))
-                {
-                    if let Some(img) = set.image(num) {
-                        return format!("Image bound to set {} descriptor {}", set_num, img.1)
-                            .into();
-                    }
-                    num -= set.num_images();
-                }
-                panic!()
+                out.dispatch_indirect(self.indirect_buffer.as_ref());
             }
         }
 
-        let pipeline = self
-            .current_state
-            .pipeline_compute
-            .as_ref()
-            .unwrap()
-            .bound_pipeline_compute();
+        let pipeline = self.current_state.pipeline_compute.as_ref().unwrap();
 
         let mut resources = Vec::new();
         let descriptor_sets = self.add_descriptor_set_resources(
@@ -1436,14 +1127,14 @@ impl SyncCommandBufferBuilder {
             pipeline.layout(),
             PipelineBindPoint::Compute,
         );
-        self.add_indirect_buffer_resources(&mut resources);
+        self.add_indirect_buffer_resources(&mut resources, indirect_buffer.clone());
 
         self.append_command(
             Cmd {
                 descriptor_sets,
                 indirect_buffer,
             },
-            &resources,
+            resources,
         )?;
 
         Ok(())
@@ -1460,7 +1151,7 @@ impl SyncCommandBufferBuilder {
     ) {
         struct Cmd {
             descriptor_sets: SmallVec<[Arc<dyn Command>; 12]>,
-            vertex_buffers: SmallVec<[(u32, Arc<dyn Command>); 4]>,
+            vertex_buffers: SmallVec<[(u32, Arc<dyn BufferAccess>); 4]>,
             vertex_count: u32,
             instance_count: u32,
             first_vertex: u32,
@@ -1480,100 +1171,9 @@ impl SyncCommandBufferBuilder {
                     self.first_instance,
                 );
             }
-
-            fn buffer(&self, mut num: usize) -> &dyn BufferAccess {
-                for set in self
-                    .descriptor_sets
-                    .iter()
-                    .enumerate()
-                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32))
-                {
-                    if let Some(buf) = set.buffer(num) {
-                        return buf.0;
-                    }
-                    num -= set.num_buffers();
-                }
-
-                for buffer in self
-                    .vertex_buffers
-                    .iter()
-                    .map(|(binding_num, cmd)| cmd.bound_vertex_buffer(*binding_num))
-                {
-                    if num == 0 {
-                        return buffer;
-                    }
-                    num -= 1;
-                }
-
-                panic!()
-            }
-
-            fn buffer_name(&self, mut num: usize) -> Cow<'static, str> {
-                for (set_num, set) in self
-                    .descriptor_sets
-                    .iter()
-                    .enumerate()
-                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32)))
-                {
-                    if let Some(buf) = set.buffer(num) {
-                        return format!("Buffer bound to set {} descriptor {}", set_num, buf.1)
-                            .into();
-                    }
-                    num -= set.num_buffers();
-                }
-
-                for binding_num in self
-                    .vertex_buffers
-                    .iter()
-                    .map(|(binding_num, _)| *binding_num)
-                {
-                    if num == 0 {
-                        return format!("Vertex buffer binding {}", binding_num).into();
-                    }
-                    num -= 1;
-                }
-
-                panic!()
-            }
-
-            fn image(&self, mut num: usize) -> &dyn ImageAccess {
-                for set in self
-                    .descriptor_sets
-                    .iter()
-                    .enumerate()
-                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32))
-                {
-                    if let Some(img) = set.image(num) {
-                        return img.0.image();
-                    }
-                    num -= set.num_images();
-                }
-                panic!()
-            }
-
-            fn image_name(&self, mut num: usize) -> Cow<'static, str> {
-                for (set_num, set) in self
-                    .descriptor_sets
-                    .iter()
-                    .enumerate()
-                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32)))
-                {
-                    if let Some(img) = set.image(num) {
-                        return format!("Image bound to set {} descriptor {}", set_num, img.1)
-                            .into();
-                    }
-                    num -= set.num_images();
-                }
-                panic!()
-            }
         }
 
-        let pipeline = self
-            .current_state
-            .pipeline_graphics
-            .as_ref()
-            .unwrap()
-            .bound_pipeline_graphics();
+        let pipeline = self.current_state.pipeline_graphics.as_ref().unwrap();
 
         let mut resources = Vec::new();
         let descriptor_sets = self.add_descriptor_set_resources(
@@ -1593,7 +1193,7 @@ impl SyncCommandBufferBuilder {
                 first_vertex,
                 first_instance,
             },
-            &resources,
+            resources,
         )
         .unwrap();
     }
@@ -1610,8 +1210,8 @@ impl SyncCommandBufferBuilder {
     ) {
         struct Cmd {
             descriptor_sets: SmallVec<[Arc<dyn Command>; 12]>,
-            vertex_buffers: SmallVec<[(u32, Arc<dyn Command>); 4]>,
-            index_buffer: Arc<dyn Command>,
+            vertex_buffers: SmallVec<[(u32, Arc<dyn BufferAccess>); 4]>,
+            index_buffer: Arc<dyn BufferAccess>,
             index_count: u32,
             instance_count: u32,
             first_index: u32,
@@ -1633,108 +1233,9 @@ impl SyncCommandBufferBuilder {
                     self.first_instance,
                 );
             }
-
-            fn buffer(&self, mut num: usize) -> &dyn BufferAccess {
-                for set in self
-                    .descriptor_sets
-                    .iter()
-                    .enumerate()
-                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32))
-                {
-                    if let Some(buf) = set.buffer(num) {
-                        return buf.0;
-                    }
-                    num -= set.num_buffers();
-                }
-
-                for buffer in self
-                    .vertex_buffers
-                    .iter()
-                    .map(|(binding_num, cmd)| cmd.bound_vertex_buffer(*binding_num))
-                {
-                    if num == 0 {
-                        return buffer;
-                    }
-                    num -= 1;
-                }
-
-                if num == 0 {
-                    return self.index_buffer.bound_index_buffer().0;
-                }
-
-                panic!()
-            }
-
-            fn buffer_name(&self, mut num: usize) -> Cow<'static, str> {
-                for (set_num, set) in self
-                    .descriptor_sets
-                    .iter()
-                    .enumerate()
-                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32)))
-                {
-                    if let Some(buf) = set.buffer(num) {
-                        return format!("Buffer bound to set {} descriptor {}", set_num, buf.1)
-                            .into();
-                    }
-                    num -= set.num_buffers();
-                }
-
-                for binding_num in self
-                    .vertex_buffers
-                    .iter()
-                    .map(|(binding_num, _)| *binding_num)
-                {
-                    if num == 0 {
-                        return format!("Vertex buffer binding {}", binding_num).into();
-                    }
-                    num -= 1;
-                }
-
-                if num == 0 {
-                    return "index buffer".into();
-                }
-
-                panic!()
-            }
-
-            fn image(&self, mut num: usize) -> &dyn ImageAccess {
-                for set in self
-                    .descriptor_sets
-                    .iter()
-                    .enumerate()
-                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32))
-                {
-                    if let Some(img) = set.image(num) {
-                        return img.0.image();
-                    }
-                    num -= set.num_images();
-                }
-                panic!()
-            }
-
-            fn image_name(&self, mut num: usize) -> Cow<'static, str> {
-                for (set_num, set) in self
-                    .descriptor_sets
-                    .iter()
-                    .enumerate()
-                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32)))
-                {
-                    if let Some(img) = set.image(num) {
-                        return format!("Image bound to set {} descriptor {}", set_num, img.1)
-                            .into();
-                    }
-                    num -= set.num_images();
-                }
-                panic!()
-            }
         }
 
-        let pipeline = self
-            .current_state
-            .pipeline_graphics
-            .as_ref()
-            .unwrap()
-            .bound_pipeline_graphics();
+        let pipeline = self.current_state.pipeline_graphics.as_ref().unwrap();
 
         let mut resources = Vec::new();
         let descriptor_sets = self.add_descriptor_set_resources(
@@ -1757,143 +1258,38 @@ impl SyncCommandBufferBuilder {
                 vertex_offset,
                 first_instance,
             },
-            &resources,
+            resources,
         )
         .unwrap();
     }
 
     /// Calls `vkCmdDrawIndirect` on the builder.
     #[inline]
-    pub unsafe fn draw_indirect<B>(
+    pub unsafe fn draw_indirect(
         &mut self,
-        indirect_buffer: B,
+        indirect_buffer: Arc<dyn BufferAccess>,
         draw_count: u32,
         stride: u32,
-    ) -> Result<(), SyncCommandBufferBuilderError>
-    where
-        B: BufferAccess + 'static,
-    {
-        struct Cmd<B> {
+    ) -> Result<(), SyncCommandBufferBuilderError> {
+        struct Cmd {
             descriptor_sets: SmallVec<[Arc<dyn Command>; 12]>,
-            vertex_buffers: SmallVec<[(u32, Arc<dyn Command>); 4]>,
-            indirect_buffer: B,
+            vertex_buffers: SmallVec<[(u32, Arc<dyn BufferAccess>); 4]>,
+            indirect_buffer: Arc<dyn BufferAccess>,
             draw_count: u32,
             stride: u32,
         }
 
-        impl<B> Command for Cmd<B>
-        where
-            B: BufferAccess + 'static,
-        {
+        impl Command for Cmd {
             fn name(&self) -> &'static str {
                 "vkCmdDrawIndirect"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.draw_indirect(&self.indirect_buffer, self.draw_count, self.stride);
-            }
-
-            fn buffer(&self, mut num: usize) -> &dyn BufferAccess {
-                for set in self
-                    .descriptor_sets
-                    .iter()
-                    .enumerate()
-                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32))
-                {
-                    if let Some(buf) = set.buffer(num) {
-                        return buf.0;
-                    }
-                    num -= set.num_buffers();
-                }
-
-                for buffer in self
-                    .vertex_buffers
-                    .iter()
-                    .map(|(binding_num, cmd)| cmd.bound_vertex_buffer(*binding_num))
-                {
-                    if num == 0 {
-                        return buffer;
-                    }
-                    num -= 1;
-                }
-
-                if num == 0 {
-                    return &self.indirect_buffer;
-                }
-
-                panic!()
-            }
-
-            fn buffer_name(&self, mut num: usize) -> Cow<'static, str> {
-                for (set_num, set) in self
-                    .descriptor_sets
-                    .iter()
-                    .enumerate()
-                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32)))
-                {
-                    if let Some(buf) = set.buffer(num) {
-                        return format!("Buffer bound to set {} descriptor {}", set_num, buf.1)
-                            .into();
-                    }
-                    num -= set.num_buffers();
-                }
-
-                for binding_num in self
-                    .vertex_buffers
-                    .iter()
-                    .map(|(binding_num, _)| *binding_num)
-                {
-                    if num == 0 {
-                        return format!("Vertex buffer binding {}", binding_num).into();
-                    }
-                    num -= 1;
-                }
-
-                if num == 0 {
-                    return "indirect buffer".into();
-                }
-
-                panic!()
-            }
-
-            fn image(&self, mut num: usize) -> &dyn ImageAccess {
-                for set in self
-                    .descriptor_sets
-                    .iter()
-                    .enumerate()
-                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32))
-                {
-                    if let Some(img) = set.image(num) {
-                        return img.0.image();
-                    }
-                    num -= set.num_images();
-                }
-                panic!()
-            }
-
-            fn image_name(&self, mut num: usize) -> Cow<'static, str> {
-                for (set_num, set) in self
-                    .descriptor_sets
-                    .iter()
-                    .enumerate()
-                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32)))
-                {
-                    if let Some(img) = set.image(num) {
-                        return format!("Image bound to set {} descriptor {}", set_num, img.1)
-                            .into();
-                    }
-                    num -= set.num_images();
-                }
-                panic!()
+                out.draw_indirect(self.indirect_buffer.as_ref(), self.draw_count, self.stride);
             }
         }
 
-        let pipeline = self
-            .current_state
-            .pipeline_graphics
-            .as_ref()
-            .unwrap()
-            .bound_pipeline_graphics();
+        let pipeline = self.current_state.pipeline_graphics.as_ref().unwrap();
 
         let mut resources = Vec::new();
         let descriptor_sets = self.add_descriptor_set_resources(
@@ -1903,7 +1299,7 @@ impl SyncCommandBufferBuilder {
         );
         let vertex_buffers =
             self.add_vertex_buffer_resources(&mut resources, pipeline.vertex_input());
-        self.add_indirect_buffer_resources(&mut resources);
+        self.add_indirect_buffer_resources(&mut resources, indirect_buffer.clone());
 
         self.append_command(
             Cmd {
@@ -1913,7 +1309,7 @@ impl SyncCommandBufferBuilder {
                 draw_count,
                 stride,
             },
-            &resources,
+            resources,
         )?;
 
         Ok(())
@@ -1921,141 +1317,36 @@ impl SyncCommandBufferBuilder {
 
     /// Calls `vkCmdDrawIndexedIndirect` on the builder.
     #[inline]
-    pub unsafe fn draw_indexed_indirect<B>(
+    pub unsafe fn draw_indexed_indirect(
         &mut self,
-        indirect_buffer: B,
+        indirect_buffer: Arc<dyn BufferAccess>,
         draw_count: u32,
         stride: u32,
-    ) -> Result<(), SyncCommandBufferBuilderError>
-    where
-        B: BufferAccess + 'static,
-    {
-        struct Cmd<B> {
+    ) -> Result<(), SyncCommandBufferBuilderError> {
+        struct Cmd {
             descriptor_sets: SmallVec<[Arc<dyn Command>; 12]>,
-            vertex_buffers: SmallVec<[(u32, Arc<dyn Command>); 4]>,
-            index_buffer: Arc<dyn Command>,
-            indirect_buffer: B,
+            vertex_buffers: SmallVec<[(u32, Arc<dyn BufferAccess>); 4]>,
+            index_buffer: Arc<dyn BufferAccess>,
+            indirect_buffer: Arc<dyn BufferAccess>,
             draw_count: u32,
             stride: u32,
         }
 
-        impl<B> Command for Cmd<B>
-        where
-            B: BufferAccess + 'static,
-        {
+        impl Command for Cmd {
             fn name(&self) -> &'static str {
                 "vkCmdDrawIndexedIndirect"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.draw_indexed_indirect(&self.indirect_buffer, self.draw_count, self.stride);
-            }
-
-            fn buffer(&self, mut num: usize) -> &dyn BufferAccess {
-                for set in self
-                    .descriptor_sets
-                    .iter()
-                    .enumerate()
-                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32))
-                {
-                    if let Some(buf) = set.buffer(num) {
-                        return buf.0;
-                    }
-                    num -= set.num_buffers();
-                }
-
-                for buffer in self
-                    .vertex_buffers
-                    .iter()
-                    .map(|(binding_num, cmd)| cmd.bound_vertex_buffer(*binding_num))
-                {
-                    if num == 0 {
-                        return buffer;
-                    }
-                    num -= 1;
-                }
-
-                if num == 0 {
-                    return self.index_buffer.bound_index_buffer().0;
-                } else if num == 1 {
-                    return &self.indirect_buffer;
-                }
-
-                panic!()
-            }
-
-            fn buffer_name(&self, mut num: usize) -> Cow<'static, str> {
-                for (set_num, set) in self
-                    .descriptor_sets
-                    .iter()
-                    .enumerate()
-                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32)))
-                {
-                    if let Some(buf) = set.buffer(num) {
-                        return format!("Buffer bound to set {} descriptor {}", set_num, buf.1)
-                            .into();
-                    }
-                    num -= set.num_buffers();
-                }
-
-                for binding_num in self
-                    .vertex_buffers
-                    .iter()
-                    .map(|(binding_num, _)| *binding_num)
-                {
-                    if num == 0 {
-                        return format!("Vertex buffer binding {}", binding_num).into();
-                    }
-                    num -= 1;
-                }
-
-                if num == 0 {
-                    return "index buffer".into();
-                } else if num == 1 {
-                    return "indirect buffer".into();
-                }
-
-                panic!()
-            }
-
-            fn image(&self, mut num: usize) -> &dyn ImageAccess {
-                for set in self
-                    .descriptor_sets
-                    .iter()
-                    .enumerate()
-                    .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32))
-                {
-                    if let Some(img) = set.image(num) {
-                        return img.0.image();
-                    }
-                    num -= set.num_images();
-                }
-                panic!()
-            }
-
-            fn image_name(&self, mut num: usize) -> Cow<'static, str> {
-                for (set_num, set) in self
-                    .descriptor_sets
-                    .iter()
-                    .enumerate()
-                    .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32)))
-                {
-                    if let Some(img) = set.image(num) {
-                        return format!("Image bound to set {} descriptor {}", set_num, img.1)
-                            .into();
-                    }
-                    num -= set.num_images();
-                }
-                panic!()
+                out.draw_indexed_indirect(
+                    self.indirect_buffer.as_ref(),
+                    self.draw_count,
+                    self.stride,
+                );
             }
         }
 
-        let pipeline = self
-            .current_state
-            .pipeline_graphics
-            .as_ref()
-            .unwrap()
-            .bound_pipeline_graphics();
+        let pipeline = self.current_state.pipeline_graphics.as_ref().unwrap();
 
         let mut resources = Vec::new();
         let descriptor_sets = self.add_descriptor_set_resources(
@@ -2066,7 +1357,7 @@ impl SyncCommandBufferBuilder {
         let vertex_buffers =
             self.add_vertex_buffer_resources(&mut resources, pipeline.vertex_input());
         let index_buffer = self.add_index_buffer_resources(&mut resources);
-        self.add_indirect_buffer_resources(&mut resources);
+        self.add_indirect_buffer_resources(&mut resources, indirect_buffer.clone());
 
         self.append_command(
             Cmd {
@@ -2077,7 +1368,7 @@ impl SyncCommandBufferBuilder {
                 draw_count,
                 stride,
             },
-            &resources,
+            resources,
         )?;
 
         Ok(())
@@ -2101,7 +1392,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { query_pool, query }, &[]).unwrap();
+        self.append_command(Cmd { query_pool, query }, []).unwrap();
     }
 
     /// Calls `vkCmdEndRenderPass` on the builder.
@@ -2119,7 +1410,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd, &[]).unwrap();
+        self.append_command(Cmd, []).unwrap();
         debug_assert!(self.latest_render_pass_enter.is_some());
         self.latest_render_pass_enter = None;
     }
@@ -2136,41 +1427,30 @@ impl SyncCommandBufferBuilder {
 
     /// Calls `vkCmdFillBuffer` on the builder.
     #[inline]
-    pub unsafe fn fill_buffer<B>(&mut self, buffer: B, data: u32)
-    where
-        B: BufferAccess + 'static,
-    {
-        struct Cmd<B> {
-            buffer: B,
+    pub unsafe fn fill_buffer(&mut self, buffer: Arc<dyn BufferAccess>, data: u32) {
+        struct Cmd {
+            buffer: Arc<dyn BufferAccess>,
             data: u32,
         }
 
-        impl<B> Command for Cmd<B>
-        where
-            B: BufferAccess + 'static,
-        {
+        impl Command for Cmd {
             fn name(&self) -> &'static str {
                 "vkCmdFillBuffer"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.fill_buffer(&self.buffer, self.data);
-            }
-
-            fn buffer(&self, num: usize) -> &dyn BufferAccess {
-                assert_eq!(num, 0);
-                &self.buffer
-            }
-
-            fn buffer_name(&self, _: usize) -> Cow<'static, str> {
-                "destination".into()
+                out.fill_buffer(self.buffer.as_ref(), self.data);
             }
         }
 
         self.append_command(
-            Cmd { buffer, data },
-            &[(
-                KeyTy::Buffer,
+            Cmd {
+                buffer: buffer.clone(),
+                data,
+            },
+            [(
+                KeyTy::Buffer(buffer),
+                "destination".into(),
                 Some((
                     PipelineMemoryAccess {
                         stages: PipelineStages {
@@ -2209,7 +1489,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { subpass_contents }, &[]).unwrap();
+        self.append_command(Cmd { subpass_contents }, []).unwrap();
     }
 
     /// Calls `vkCmdPushConstants` on the builder.
@@ -2266,7 +1546,7 @@ impl SyncCommandBufferBuilder {
                 size,
                 data: out.into(),
             },
-            &[],
+            [],
         )
         .unwrap();
 
@@ -2323,7 +1603,7 @@ impl SyncCommandBufferBuilder {
                 set_num,
                 descriptor_writes,
             },
-            &[],
+            [],
         )
         .unwrap();
 
@@ -2354,7 +1634,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { event, stages }, &[]).unwrap();
+        self.append_command(Cmd { event, stages }, []).unwrap();
     }
 
     /// Calls `vkCmdResetQueryPool` on the builder.
@@ -2380,7 +1660,7 @@ impl SyncCommandBufferBuilder {
                 query_pool,
                 queries,
             },
-            &[],
+            [],
         )
         .unwrap();
     }
@@ -2402,7 +1682,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { constants }, &[]).unwrap();
+        self.append_command(Cmd { constants }, []).unwrap();
         self.current_state.blend_constants = Some(constants);
     }
 
@@ -2437,7 +1717,7 @@ impl SyncCommandBufferBuilder {
             Cmd {
                 enables: Mutex::new(Some(enables)),
             },
-            &[],
+            [],
         )
         .unwrap();
     }
@@ -2459,7 +1739,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { cull_mode }, &[]).unwrap();
+        self.append_command(Cmd { cull_mode }, []).unwrap();
         self.current_state.cull_mode = Some(cull_mode);
     }
 
@@ -2488,7 +1768,7 @@ impl SyncCommandBufferBuilder {
                 clamp,
                 slope_factor,
             },
-            &[],
+            [],
         )
         .unwrap();
         self.current_state.depth_bias = Some(DepthBias {
@@ -2515,7 +1795,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { enable }, &[]).unwrap();
+        self.append_command(Cmd { enable }, []).unwrap();
         self.current_state.depth_bias_enable = Some(enable);
     }
 
@@ -2537,7 +1817,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { min, max }, &[]).unwrap();
+        self.append_command(Cmd { min, max }, []).unwrap();
         self.current_state.depth_bounds = Some((min, max));
     }
 
@@ -2558,7 +1838,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { enable }, &[]).unwrap();
+        self.append_command(Cmd { enable }, []).unwrap();
         self.current_state.depth_bounds_test_enable = Some(enable);
     }
 
@@ -2579,7 +1859,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { compare_op }, &[]).unwrap();
+        self.append_command(Cmd { compare_op }, []).unwrap();
         self.current_state.depth_compare_op = Some(compare_op);
     }
 
@@ -2600,7 +1880,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { enable }, &[]).unwrap();
+        self.append_command(Cmd { enable }, []).unwrap();
         self.current_state.depth_test_enable = Some(enable);
     }
 
@@ -2621,7 +1901,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { enable }, &[]).unwrap();
+        self.append_command(Cmd { enable }, []).unwrap();
         self.current_state.depth_write_enable = Some(enable);
     }
 
@@ -2665,7 +1945,7 @@ impl SyncCommandBufferBuilder {
                 first_rectangle,
                 rectangles: Mutex::new(rectangles),
             },
-            &[],
+            [],
         )
         .unwrap();
     }
@@ -2688,7 +1968,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { event, stages }, &[]).unwrap();
+        self.append_command(Cmd { event, stages }, []).unwrap();
     }
 
     /// Calls `vkCmdSetFrontFaceEXT` on the builder.
@@ -2708,7 +1988,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { face }, &[]).unwrap();
+        self.append_command(Cmd { face }, []).unwrap();
         self.current_state.front_face = Some(face);
     }
 
@@ -2730,7 +2010,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { factor, pattern }, &[]).unwrap();
+        self.append_command(Cmd { factor, pattern }, []).unwrap();
         self.current_state.line_stipple = Some(LineStipple { factor, pattern });
     }
 
@@ -2751,7 +2031,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { line_width }, &[]).unwrap();
+        self.append_command(Cmd { line_width }, []).unwrap();
         self.current_state.line_width = Some(line_width);
     }
 
@@ -2772,7 +2052,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { logic_op }, &[]).unwrap();
+        self.append_command(Cmd { logic_op }, []).unwrap();
         self.current_state.logic_op = Some(logic_op);
     }
 
@@ -2793,7 +2073,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { num }, &[]).unwrap();
+        self.append_command(Cmd { num }, []).unwrap();
         self.current_state.patch_control_points = Some(num);
     }
 
@@ -2814,7 +2094,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { enable }, &[]).unwrap();
+        self.append_command(Cmd { enable }, []).unwrap();
         self.current_state.primitive_restart_enable = Some(enable);
     }
 
@@ -2835,7 +2115,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { topology }, &[]).unwrap();
+        self.append_command(Cmd { topology }, []).unwrap();
         self.current_state.primitive_topology = Some(topology);
     }
 
@@ -2856,7 +2136,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { enable }, &[]).unwrap();
+        self.append_command(Cmd { enable }, []).unwrap();
         self.current_state.rasterizer_discard_enable = Some(enable);
     }
 
@@ -2883,7 +2163,7 @@ impl SyncCommandBufferBuilder {
                 faces,
                 compare_mask,
             },
-            &[],
+            [],
         )
         .unwrap();
 
@@ -2940,7 +2220,7 @@ impl SyncCommandBufferBuilder {
                 depth_fail_op,
                 compare_op,
             },
-            &[],
+            [],
         )
         .unwrap();
 
@@ -2983,7 +2263,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { faces, reference }, &[]).unwrap();
+        self.append_command(Cmd { faces, reference }, []).unwrap();
 
         let faces = ash::vk::StencilFaceFlags::from(faces);
 
@@ -3013,7 +2293,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { enable }, &[]).unwrap();
+        self.append_command(Cmd { enable }, []).unwrap();
         self.current_state.stencil_test_enable = Some(enable);
     }
 
@@ -3035,7 +2315,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { faces, write_mask }, &[]).unwrap();
+        self.append_command(Cmd { faces, write_mask }, []).unwrap();
 
         let faces = ash::vk::StencilFaceFlags::from(faces);
 
@@ -3083,7 +2363,7 @@ impl SyncCommandBufferBuilder {
                 first_scissor,
                 scissors: Mutex::new(scissors),
             },
-            &[],
+            [],
         )
         .unwrap();
     }
@@ -3116,7 +2396,7 @@ impl SyncCommandBufferBuilder {
             Cmd {
                 scissors: Mutex::new(scissors),
             },
-            &[],
+            [],
         )
         .unwrap();
     }
@@ -3159,7 +2439,7 @@ impl SyncCommandBufferBuilder {
                 first_viewport,
                 viewports: Mutex::new(viewports),
             },
-            &[],
+            [],
         )
         .unwrap();
     }
@@ -3192,27 +2472,25 @@ impl SyncCommandBufferBuilder {
             Cmd {
                 viewports: Mutex::new(viewports),
             },
-            &[],
+            [],
         )
         .unwrap();
     }
 
     /// Calls `vkCmdUpdateBuffer` on the builder.
     #[inline]
-    pub unsafe fn update_buffer<B, D, Dd>(&mut self, buffer: B, data: Dd)
+    pub unsafe fn update_buffer<D, Dd>(&mut self, buffer: Arc<dyn BufferAccess>, data: Dd)
     where
-        B: BufferAccess + 'static,
         D: ?Sized,
         Dd: SafeDeref<Target = D> + Send + Sync + 'static,
     {
-        struct Cmd<B, Dd> {
-            buffer: B,
+        struct Cmd<Dd> {
+            buffer: Arc<dyn BufferAccess>,
             data: Dd,
         }
 
-        impl<B, D, Dd> Command for Cmd<B, Dd>
+        impl<D, Dd> Command for Cmd<Dd>
         where
-            B: BufferAccess + 'static,
             D: ?Sized,
             Dd: SafeDeref<Target = D> + Send + Sync + 'static,
         {
@@ -3221,23 +2499,18 @@ impl SyncCommandBufferBuilder {
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.update_buffer(&self.buffer, self.data.deref());
-            }
-
-            fn buffer(&self, num: usize) -> &dyn BufferAccess {
-                assert_eq!(num, 0);
-                &self.buffer
-            }
-
-            fn buffer_name(&self, _: usize) -> Cow<'static, str> {
-                "destination".into()
+                out.update_buffer(self.buffer.as_ref(), self.data.deref());
             }
         }
 
         self.append_command(
-            Cmd { buffer, data },
-            &[(
-                KeyTy::Buffer,
+            Cmd {
+                buffer: buffer.clone(),
+                data,
+            },
+            [(
+                KeyTy::Buffer(buffer),
+                "destination".into(),
                 Some((
                     PipelineMemoryAccess {
                         stages: PipelineStages {
@@ -3289,7 +2562,7 @@ impl SyncCommandBufferBuilder {
                 query,
                 stage,
             },
-            &[],
+            [],
         )
         .unwrap();
     }
@@ -3298,6 +2571,7 @@ impl SyncCommandBufferBuilder {
         &self,
         resources: &mut Vec<(
             KeyTy,
+            Cow<'static, str>,
             Option<(
                 PipelineMemoryAccess,
                 ImageLayout,
@@ -3317,20 +2591,19 @@ impl SyncCommandBufferBuilder {
             })
             .collect();
 
-        for ds in descriptor_sets
+        for (set_num, ds) in descriptor_sets
             .iter()
             .enumerate()
-            .map(|(set_num, cmd)| cmd.bound_descriptor_set(set_num as u32))
+            .map(|(set_num, cmd)| (set_num, cmd.bound_descriptor_set(set_num as u32)))
         {
             for buf_num in 0..ds.num_buffers() {
-                let desc = ds
-                    .layout()
-                    .descriptor(ds.buffer(buf_num).unwrap().1)
-                    .unwrap();
+                let (buffer, desc_num) = ds.buffer(buf_num).unwrap();
+                let desc = ds.layout().descriptor(desc_num).unwrap();
                 let exclusive = desc.mutable;
                 let (stages, access) = desc.pipeline_stages_and_access();
                 resources.push((
-                    KeyTy::Buffer,
+                    KeyTy::Buffer(buffer),
+                    format!("Buffer bound to set {} descriptor {}", set_num, desc_num).into(),
                     Some((
                         PipelineMemoryAccess {
                             stages,
@@ -3349,8 +2622,8 @@ impl SyncCommandBufferBuilder {
                 let exclusive = desc.mutable;
                 let (stages, access) = desc.pipeline_stages_and_access();
                 let mut ignore_me_hack = false;
-                let layouts = image_view
-                    .image()
+                let image = image_view.image();
+                let layouts = image
                     .descriptor_layouts()
                     .expect("descriptor_layouts must return Some when used in an image view");
                 let layout = match desc.ty {
@@ -3369,7 +2642,8 @@ impl SyncCommandBufferBuilder {
                     _ => panic!("Tried to bind an image to a non-image descriptor"),
                 };
                 resources.push((
-                    KeyTy::Image,
+                    KeyTy::Image(image),
+                    format!("Image bound to set {} descriptor {}", set_num, desc_num).into(),
                     if ignore_me_hack {
                         None
                     } else {
@@ -3395,6 +2669,7 @@ impl SyncCommandBufferBuilder {
         &self,
         resources: &mut Vec<(
             KeyTy,
+            Cow<'static, str>,
             Option<(
                 PipelineMemoryAccess,
                 ImageLayout,
@@ -3403,8 +2678,8 @@ impl SyncCommandBufferBuilder {
             )>,
         )>,
         vertex_input: &VertexInput,
-    ) -> SmallVec<[(u32, Arc<dyn Command>); 4]> {
-        let vertex_buffers: SmallVec<[(u32, Arc<dyn Command>); 4]> = vertex_input
+    ) -> SmallVec<[(u32, Arc<dyn BufferAccess>); 4]> {
+        let vertex_buffers: SmallVec<[(u32, Arc<dyn BufferAccess>); 4]> = vertex_input
             .bindings()
             .map(|(binding_num, _)| {
                 (
@@ -3414,9 +2689,10 @@ impl SyncCommandBufferBuilder {
             })
             .collect();
 
-        resources.extend(vertex_buffers.iter().map(|_| {
+        resources.extend(vertex_buffers.iter().map(|(binding_num, buffer)| {
             (
-                KeyTy::Buffer,
+                KeyTy::Buffer(buffer.clone()),
+                format!("Vertex buffer binding {}", binding_num).into(),
                 Some((
                     PipelineMemoryAccess {
                         stages: PipelineStages {
@@ -3443,6 +2719,7 @@ impl SyncCommandBufferBuilder {
         &self,
         resources: &mut Vec<(
             KeyTy,
+            Cow<'static, str>,
             Option<(
                 PipelineMemoryAccess,
                 ImageLayout,
@@ -3450,11 +2727,11 @@ impl SyncCommandBufferBuilder {
                 ImageUninitializedSafe,
             )>,
         )>,
-    ) -> Arc<dyn Command> {
-        let index_buffer = self.current_state.index_buffer.as_ref().unwrap().clone();
-
+    ) -> Arc<dyn BufferAccess> {
+        let index_buffer = self.current_state.index_buffer.as_ref().unwrap().0.clone();
         resources.push((
-            KeyTy::Buffer,
+            KeyTy::Buffer(index_buffer.clone()),
+            "index buffer".into(),
             Some((
                 PipelineMemoryAccess {
                     stages: PipelineStages {
@@ -3472,7 +2749,6 @@ impl SyncCommandBufferBuilder {
                 ImageUninitializedSafe::Unsafe,
             )),
         ));
-
         index_buffer
     }
 
@@ -3480,6 +2756,7 @@ impl SyncCommandBufferBuilder {
         &self,
         resources: &mut Vec<(
             KeyTy,
+            Cow<'static, str>,
             Option<(
                 PipelineMemoryAccess,
                 ImageLayout,
@@ -3487,9 +2764,11 @@ impl SyncCommandBufferBuilder {
                 ImageUninitializedSafe,
             )>,
         )>,
+        indirect_buffer: Arc<dyn BufferAccess>,
     ) {
         resources.push((
-            KeyTy::Buffer,
+            KeyTy::Buffer(indirect_buffer),
+            "indirect buffer".into(),
             Some((
                 PipelineMemoryAccess {
                     stages: PipelineStages {
@@ -3581,7 +2860,7 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
                     pipeline_layout: pipeline_layout.clone(),
                     first_set,
                 },
-                &[],
+                [],
             )
             .unwrap();
 
@@ -3599,18 +2878,15 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
 pub struct SyncCommandBufferBuilderBindVertexBuffer<'a> {
     builder: &'a mut SyncCommandBufferBuilder,
     inner: UnsafeCommandBufferBuilderBindVertexBuffer,
-    buffers: SmallVec<[Box<dyn BufferAccess>; 4]>,
+    buffers: SmallVec<[Arc<dyn BufferAccess>; 4]>,
 }
 
 impl<'a> SyncCommandBufferBuilderBindVertexBuffer<'a> {
     /// Adds a buffer to the list.
     #[inline]
-    pub fn add<B>(&mut self, buffer: B)
-    where
-        B: BufferAccess + 'static,
-    {
-        self.inner.add(&buffer);
-        self.buffers.push(Box::new(buffer));
+    pub fn add(&mut self, buffer: Arc<dyn BufferAccess>) {
+        self.inner.add(buffer.as_ref());
+        self.buffers.push(buffer);
     }
 
     #[inline]
@@ -3618,7 +2894,7 @@ impl<'a> SyncCommandBufferBuilderBindVertexBuffer<'a> {
         struct Cmd {
             first_set: u32,
             inner: Mutex<Option<UnsafeCommandBufferBuilderBindVertexBuffer>>,
-            buffers: SmallVec<[Box<dyn BufferAccess>; 4]>,
+            buffers: SmallVec<[Arc<dyn BufferAccess>; 4]>,
         }
 
         impl Command for Cmd {
@@ -3629,14 +2905,15 @@ impl<'a> SyncCommandBufferBuilderBindVertexBuffer<'a> {
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.bind_vertex_buffers(self.first_set, self.inner.lock().unwrap().take().unwrap());
             }
-
-            fn bound_vertex_buffer(&self, binding_num: u32) -> &dyn BufferAccess {
-                let index = binding_num.checked_sub(self.first_set).unwrap() as usize;
-                &self.buffers[index]
-            }
         }
 
-        let num_buffers = self.buffers.len() as u32;
+        for (i, buffer) in self.buffers.iter().enumerate() {
+            self.builder
+                .current_state
+                .vertex_buffers
+                .insert(first_set + i as u32, buffer.clone());
+        }
+
         self.builder
             .append_command(
                 Cmd {
@@ -3644,17 +2921,9 @@ impl<'a> SyncCommandBufferBuilderBindVertexBuffer<'a> {
                     inner: Mutex::new(Some(self.inner)),
                     buffers: self.buffers,
                 },
-                &[],
+                [],
             )
             .unwrap();
-
-        let cmd = self.builder.commands.last().unwrap();
-        for i in 0..num_buffers {
-            self.builder
-                .current_state
-                .vertex_buffers
-                .insert(first_set + i, cmd.clone());
-        }
     }
 }
 
@@ -3708,56 +2977,15 @@ impl<'a> SyncCommandBufferBuilderExecuteCommands<'a> {
                     .for_each(|cbuf| execute.add_raw(cbuf.inner().internal_object()));
                 out.execute_commands(execute);
             }
-
-            fn buffer(&self, mut num: usize) -> &dyn BufferAccess {
-                for cbuf in self.0.iter() {
-                    if let Some(buf) = cbuf.buffer(num) {
-                        return buf.0;
-                    }
-                    num -= cbuf.num_buffers();
-                }
-                panic!()
-            }
-
-            fn buffer_name(&self, mut num: usize) -> Cow<'static, str> {
-                for (cbuf_num, cbuf) in self.0.iter().enumerate() {
-                    if let Some(buf) = cbuf.buffer(num) {
-                        return format!("Buffer bound to secondary command buffer {}", cbuf_num)
-                            .into();
-                    }
-                    num -= cbuf.num_buffers();
-                }
-                panic!()
-            }
-
-            fn image(&self, mut num: usize) -> &dyn ImageAccess {
-                for cbuf in self.0.iter() {
-                    if let Some(img) = cbuf.image(num) {
-                        return img.0;
-                    }
-                    num -= cbuf.num_images();
-                }
-                panic!()
-            }
-
-            fn image_name(&self, mut num: usize) -> Cow<'static, str> {
-                for (cbuf_num, cbuf) in self.0.iter().enumerate() {
-                    if let Some(img) = cbuf.image(num) {
-                        return format!("Image bound to secondary command buffer {}", cbuf_num)
-                            .into();
-                    }
-                    num -= cbuf.num_images();
-                }
-                panic!()
-            }
         }
 
         let resources = {
             let mut resources = Vec::new();
-            for cbuf in self.inner.iter() {
+            for (cbuf_num, cbuf) in self.inner.iter().enumerate() {
                 for buf_num in 0..cbuf.num_buffers() {
                     resources.push((
-                        KeyTy::Buffer,
+                        KeyTy::Buffer(cbuf.buffer(buf_num).unwrap().0.clone()),
+                        format!("Buffer bound to secondary command buffer {}", cbuf_num).into(),
                         Some((
                             cbuf.buffer(buf_num).unwrap().1,
                             ImageLayout::Undefined,
@@ -3770,7 +2998,8 @@ impl<'a> SyncCommandBufferBuilderExecuteCommands<'a> {
                     let (_, memory, start_layout, end_layout, image_uninitialized_safe) =
                         cbuf.image(img_num).unwrap();
                     resources.push((
-                        KeyTy::Image,
+                        KeyTy::Image(cbuf.image(img_num).unwrap().0.clone()),
+                        format!("Image bound to secondary command buffer {}", cbuf_num).into(),
                         Some((memory, start_layout, end_layout, image_uninitialized_safe)),
                     ));
                 }
@@ -3787,7 +3016,7 @@ impl<'a> SyncCommandBufferBuilderExecuteCommands<'a> {
                     Ok(DropUnlock(cbuf))
                 })
                 .collect::<Result<Vec<_>, CommandBufferExecError>>()?),
-            &resources,
+            resources,
         )?;
 
         Ok(())

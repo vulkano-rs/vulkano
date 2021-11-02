@@ -108,7 +108,7 @@ mod tests {
         )
         .unwrap();
 
-        match check_update_buffer(&device, &buffer, &0) {
+        match check_update_buffer(&device, buffer.as_ref(), &0) {
             Err(CheckUpdateBufferError::BufferMissingUsage) => (),
             _ => panic!(),
         }
@@ -126,7 +126,7 @@ mod tests {
         .unwrap();
         let data = (0..65536).collect::<Vec<u32>>();
 
-        match check_update_buffer(&device, &buffer, &data[..]) {
+        match check_update_buffer(&device, buffer.as_ref(), &data[..]) {
             Err(CheckUpdateBufferError::DataTooLarge) => (),
             _ => panic!(),
         }
@@ -144,7 +144,7 @@ mod tests {
         .unwrap();
         let data = (0..65536).map(|_| 0).collect::<Vec<u8>>();
 
-        match check_update_buffer(&device, &buffer, &data[..]) {
+        match check_update_buffer(&device, buffer.as_ref(), &data[..]) {
             Ok(_) => (),
             _ => panic!(),
         }
@@ -162,7 +162,7 @@ mod tests {
         .unwrap();
         let data = (0..30).collect::<Vec<u8>>();
 
-        match check_update_buffer(&device, &buffer.slice(1..50).unwrap(), &data[..]) {
+        match check_update_buffer(&device, buffer.slice(1..50).unwrap().as_ref(), &data[..]) {
             Err(CheckUpdateBufferError::WrongAlignment) => (),
             _ => panic!(),
         }
@@ -175,7 +175,7 @@ mod tests {
         let buffer = CpuAccessibleBuffer::from_data(dev1, BufferUsage::all(), false, 0u32).unwrap();
 
         assert_should_panic!({
-            let _ = check_update_buffer(&dev2, &buffer, &0);
+            let _ = check_update_buffer(&dev2, buffer.as_ref(), &0);
         });
     }
 }

@@ -14,11 +14,12 @@ use crate::device::Queue;
 use crate::memory::Content;
 use crate::sync::AccessError;
 use crate::DeviceSize;
-use crate::{SafeDeref, VulkanObject};
+use crate::VulkanObject;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::num::NonZeroU64;
 use std::ops::Range;
+use std::sync::Arc;
 
 /// Trait for objects that represent a way for the GPU to have access to a buffer or a slice of a
 /// buffer.
@@ -31,54 +32,38 @@ pub unsafe trait BufferAccess: DeviceOwned + Send + Sync {
     /// Returns the size of the buffer in bytes.
     fn size(&self) -> DeviceSize;
 
-    /// Builds a `BufferSlice` object holding the buffer by reference.
+    /// Returns a `BufferSlice` covering the whole buffer.
     #[inline]
-    fn as_buffer_slice(&self) -> BufferSlice<Self::Content, &Self>
+    fn into_buffer_slice(self: &Arc<Self>) -> Arc<BufferSlice<Self::Content, Self>>
     where
         Self: Sized + TypedBufferAccess,
     {
-        BufferSlice::from_typed_buffer_access(self)
+        BufferSlice::from_typed_buffer_access(self.clone())
     }
 
-    /// Builds a `BufferSlice` object holding part of the buffer by reference.
-    ///
-    /// This method can only be called for buffers whose type is known to be an array.
+    /// Returns a `BufferSlice` for a subrange of elements in the buffer. Returns `None` if
+    /// out of range.
     ///
     /// This method can be used when you want to perform an operation on some part of the buffer
     /// and not on the whole buffer.
-    ///
-    /// Returns `None` if out of range.
     #[inline]
-    fn slice<T>(&self, range: Range<DeviceSize>) -> Option<BufferSlice<[T], &Self>>
+    fn slice<T>(self: &Arc<Self>, range: Range<DeviceSize>) -> Option<Arc<BufferSlice<[T], Self>>>
     where
         Self: Sized + TypedBufferAccess<Content = [T]>,
     {
-        BufferSlice::slice(self.as_buffer_slice(), range)
+        BufferSlice::slice(&self.into_buffer_slice(), range)
     }
 
-    /// Builds a `BufferSlice` object holding the buffer by value.
-    #[inline]
-    fn into_buffer_slice(self) -> BufferSlice<Self::Content, Self>
-    where
-        Self: Sized + TypedBufferAccess,
-    {
-        BufferSlice::from_typed_buffer_access(self)
-    }
-
-    /// Builds a `BufferSlice` object holding part of the buffer by reference.
-    ///
-    /// This method can only be called for buffers whose type is known to be an array.
+    /// Returns a `BufferSlice` for a single element in the buffer. Returns `None` if out of range.
     ///
     /// This method can be used when you want to perform an operation on a specific element of the
     /// buffer and not on the whole buffer.
-    ///
-    /// Returns `None` if out of range.
     #[inline]
-    fn index<T>(&self, index: DeviceSize) -> Option<BufferSlice<[T], &Self>>
+    fn index<T>(self: &Arc<Self>, index: DeviceSize) -> Option<Arc<BufferSlice<T, Self>>>
     where
         Self: Sized + TypedBufferAccess<Content = [T]>,
     {
-        self.slice(index..(index + 1))
+        BufferSlice::index(&self.into_buffer_slice(), index)
     }
 
     /// Returns a key that uniquely identifies the buffer. Two buffers or images that potentially
@@ -164,42 +149,6 @@ pub struct BufferInner<'a> {
     pub offset: DeviceSize,
 }
 
-unsafe impl<T> BufferAccess for T
-where
-    T: SafeDeref + Send + Sync,
-    T::Target: BufferAccess,
-{
-    #[inline]
-    fn inner(&self) -> BufferInner {
-        (**self).inner()
-    }
-
-    #[inline]
-    fn size(&self) -> DeviceSize {
-        (**self).size()
-    }
-
-    #[inline]
-    fn conflict_key(&self) -> (u64, u64) {
-        (**self).conflict_key()
-    }
-
-    #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError> {
-        (**self).try_gpu_lock(exclusive_access, queue)
-    }
-
-    #[inline]
-    unsafe fn increase_gpu_lock(&self) {
-        (**self).increase_gpu_lock()
-    }
-
-    #[inline]
-    unsafe fn unlock(&self) {
-        (**self).unlock()
-    }
-}
-
 /// Extension trait for `BufferAccess`. Indicates the type of the content of the buffer.
 pub unsafe trait TypedBufferAccess: BufferAccess {
     /// The type of the content.
@@ -215,14 +164,6 @@ pub unsafe trait TypedBufferAccess: BufferAccess {
     {
         self.size() / <Self::Content as Content>::indiv_size()
     }
-}
-
-unsafe impl<T> TypedBufferAccess for T
-where
-    T: SafeDeref + Send + Sync,
-    T::Target: TypedBufferAccess,
-{
-    type Content = <T::Target as TypedBufferAccess>::Content;
 }
 
 impl PartialEq for dyn BufferAccess {

@@ -11,7 +11,6 @@
 // shader source code. The boilerplate is taken from the "basic-compute-shader.rs" example, where
 // most of the boilerplate is explained.
 
-use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
 use vulkano::descriptor_set::PersistentDescriptorSet;
@@ -62,7 +61,7 @@ fn main() {
     .unwrap();
     let queue = queues.next().unwrap();
 
-    let pipeline = Arc::new({
+    let pipeline = {
         mod cs {
             vulkano_shaders::shader! {
                  ty: "compute",
@@ -100,7 +99,7 @@ fn main() {
             |_| {},
         )
         .unwrap()
-    });
+    };
 
     let data_buffer = {
         let data_iter = (0..65536u32).map(|n| n);
@@ -113,7 +112,7 @@ fn main() {
 
     set_builder.add_buffer(data_buffer.clone()).unwrap();
 
-    let set = Arc::new(set_builder.build().unwrap());
+    let set = set_builder.build().unwrap();
 
     let mut builder = AutoCommandBufferBuilder::primary(
         device.clone(),

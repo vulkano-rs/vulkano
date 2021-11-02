@@ -31,7 +31,6 @@ use std::fs;
 use std::fs::File;
 use std::io::Read;
 use std::io::Write;
-use std::sync::Arc;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::instance::{Instance, InstanceExtensions};
@@ -93,7 +92,7 @@ fn main() {
     // Pass the PipelineCache as an optional parameter to the ComputePipeline constructor.
     // For GraphicPipelines you can use the GraphicPipelineBuilder that has a method
     // `build_with_cache(cache: Arc<PipelineCache>)`
-    let _pipeline = Arc::new({
+    let _pipeline = {
         mod cs {
             vulkano_shaders::shader! {
                 ty: "compute",
@@ -122,7 +121,7 @@ fn main() {
             |_| {},
         )
         .unwrap()
-    });
+    };
 
     // Normally you would use your pipeline for computing, but we just want to focus on the
     // cache functionality.

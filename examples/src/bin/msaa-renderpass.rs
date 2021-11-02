@@ -68,7 +68,6 @@ use png;
 use std::fs::File;
 use std::io::BufWriter;
 use std::path::Path;
-use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBuffer, SubpassContents,
@@ -162,50 +161,46 @@ fn main() {
     // into a non-multisampled one) as part of the render pass. This is the preferred method of
     // doing so, as it the advantage that the Vulkan implementation doesn't have to write the
     // content of the multisampled image back to memory at the end.
-    let render_pass = Arc::new(
-        vulkano::single_pass_renderpass!(
-            device.clone(),
-            attachments: {
-                // The first framebuffer attachment is the intermediary image.
-                intermediary: {
-                    load: Clear,
-                    store: DontCare,
-                    format: Format::R8G8B8A8_UNORM,
-                    samples: 4,     // This has to match the image definition.
-                },
-                // The second framebuffer attachment is the final image.
-                color: {
-                    load: DontCare,
-                    store: Store,
-                    format: Format::R8G8B8A8_UNORM,
-                    samples: 1,     // Same here, this has to match.
-                }
+    let render_pass = vulkano::single_pass_renderpass!(
+        device.clone(),
+        attachments: {
+            // The first framebuffer attachment is the intermediary image.
+            intermediary: {
+                load: Clear,
+                store: DontCare,
+                format: Format::R8G8B8A8_UNORM,
+                samples: 4,     // This has to match the image definition.
             },
-            pass: {
-                // When drawing, we have only one output which is the intermediary image.
-                color: [intermediary],
-                depth_stencil: {},
-                // The `resolve` array here must contain either zero entry (if you don't use
-                // multisampling), or one entry per color attachment. At the end of the pass, each
-                // color attachment will be *resolved* into the given image. In other words, here, at
-                // the end of the pass, the `intermediary` attachment will be copied to the attachment
-                // named `color`.
-                resolve: [color],
+            // The second framebuffer attachment is the final image.
+            color: {
+                load: DontCare,
+                store: Store,
+                format: Format::R8G8B8A8_UNORM,
+                samples: 1,     // Same here, this has to match.
             }
-        )
-        .unwrap(),
-    );
+        },
+        pass: {
+            // When drawing, we have only one output which is the intermediary image.
+            color: [intermediary],
+            depth_stencil: {},
+            // The `resolve` array here must contain either zero entry (if you don't use
+            // multisampling), or one entry per color attachment. At the end of the pass, each
+            // color attachment will be *resolved* into the given image. In other words, here, at
+            // the end of the pass, the `intermediary` attachment will be copied to the attachment
+            // named `color`.
+            resolve: [color],
+        }
+    )
+    .unwrap();
 
     // Creating the framebuffer, the calls to `add` match the list of attachments in order.
-    let framebuffer = Arc::new(
-        Framebuffer::start(render_pass.clone())
-            .add(intermediary.clone())
-            .unwrap()
-            .add(view.clone())
-            .unwrap()
-            .build()
-            .unwrap(),
-    );
+    let framebuffer = Framebuffer::start(render_pass.clone())
+        .add(intermediary.clone())
+        .unwrap()
+        .add(view.clone())
+        .unwrap()
+        .build()
+        .unwrap();
 
     // Here is the "end" of the multisampling example, as starting from here everything is the same
     // as in any other example.
@@ -269,16 +264,14 @@ fn main() {
     )
     .unwrap();
 
-    let pipeline = Arc::new(
-        GraphicsPipeline::start()
-            .vertex_input_single_buffer::<Vertex>()
-            .vertex_shader(vs.main_entry_point(), ())
-            .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-            .fragment_shader(fs.main_entry_point(), ())
-            .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-            .build(device.clone())
-            .unwrap(),
-    );
+    let pipeline = GraphicsPipeline::start()
+        .vertex_input_single_buffer::<Vertex>()
+        .vertex_shader(vs.main_entry_point(), ())
+        .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+        .fragment_shader(fs.main_entry_point(), ())
+        .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+        .build(device.clone())
+        .unwrap();
 
     let viewport = Viewport {
         origin: [0.0, 0.0],

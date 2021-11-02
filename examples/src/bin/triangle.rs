@@ -22,12 +22,12 @@ use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, Subp
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::image::view::ImageView;
-use vulkano::image::{ImageUsage, SwapchainImage};
+use vulkano::image::{ImageAccess, ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
 use vulkano::pipeline::input_assembly::InputAssemblyState;
 use vulkano::pipeline::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::GraphicsPipeline;
-use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
+use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
 use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
 use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano::Version;
@@ -282,62 +282,58 @@ fn main() {
     // The next step is to create a *render pass*, which is an object that describes where the
     // output of the graphics pipeline will go. It describes the layout of the images
     // where the colors, depth and/or stencil information will be written.
-    let render_pass = Arc::new(
-        vulkano::single_pass_renderpass!(
-            device.clone(),
-            attachments: {
-                // `color` is a custom name we give to the first and only attachment.
-                color: {
-                    // `load: Clear` means that we ask the GPU to clear the content of this
-                    // attachment at the start of the drawing.
-                    load: Clear,
-                    // `store: Store` means that we ask the GPU to store the output of the draw
-                    // in the actual image. We could also ask it to discard the result.
-                    store: Store,
-                    // `format: <ty>` indicates the type of the format of the image. This has to
-                    // be one of the types of the `vulkano::format` module (or alternatively one
-                    // of your structs that implements the `FormatDesc` trait). Here we use the
-                    // same format as the swapchain.
-                    format: swapchain.format(),
-                    // TODO:
-                    samples: 1,
-                }
-            },
-            pass: {
-                // We use the attachment named `color` as the one and only color attachment.
-                color: [color],
-                // No depth-stencil attachment is indicated with empty brackets.
-                depth_stencil: {}
+    let render_pass = vulkano::single_pass_renderpass!(
+        device.clone(),
+        attachments: {
+            // `color` is a custom name we give to the first and only attachment.
+            color: {
+                // `load: Clear` means that we ask the GPU to clear the content of this
+                // attachment at the start of the drawing.
+                load: Clear,
+                // `store: Store` means that we ask the GPU to store the output of the draw
+                // in the actual image. We could also ask it to discard the result.
+                store: Store,
+                // `format: <ty>` indicates the type of the format of the image. This has to
+                // be one of the types of the `vulkano::format` module (or alternatively one
+                // of your structs that implements the `FormatDesc` trait). Here we use the
+                // same format as the swapchain.
+                format: swapchain.format(),
+                // TODO:
+                samples: 1,
             }
-        )
-        .unwrap(),
-    );
+        },
+        pass: {
+            // We use the attachment named `color` as the one and only color attachment.
+            color: [color],
+            // No depth-stencil attachment is indicated with empty brackets.
+            depth_stencil: {}
+        }
+    )
+    .unwrap();
 
     // Before we draw we have to create what is called a pipeline. This is similar to an OpenGL
     // program, but much more specific.
-    let pipeline = Arc::new(
-        GraphicsPipeline::start()
-            // We need to indicate the layout of the vertices.
-            // The type `SingleBufferDefinition` actually contains a template parameter corresponding
-            // to the type of each vertex. But in this code it is automatically inferred.
-            .vertex_input_single_buffer::<Vertex>()
-            // A Vulkan shader can in theory contain multiple entry points, so we have to specify
-            // which one. The `main` word of `main_entry_point` actually corresponds to the name of
-            // the entry point.
-            .vertex_shader(vs.main_entry_point(), ())
-            // The content of the vertex buffer describes a list of triangles.
-            .input_assembly_state(InputAssemblyState::new())
-            // Use a resizable viewport set to draw over the entire window
-            .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-            // See `vertex_shader`.
-            .fragment_shader(fs.main_entry_point(), ())
-            // We have to indicate which subpass of which render pass this pipeline is going to be used
-            // in. The pipeline will only be usable from this particular subpass.
-            .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-            // Now that our builder is filled, we call `build()` to obtain an actual pipeline.
-            .build(device.clone())
-            .unwrap(),
-    );
+    let pipeline = GraphicsPipeline::start()
+        // We need to indicate the layout of the vertices.
+        // The type `SingleBufferDefinition` actually contains a template parameter corresponding
+        // to the type of each vertex. But in this code it is automatically inferred.
+        .vertex_input_single_buffer::<Vertex>()
+        // A Vulkan shader can in theory contain multiple entry points, so we have to specify
+        // which one. The `main` word of `main_entry_point` actually corresponds to the name of
+        // the entry point.
+        .vertex_shader(vs.main_entry_point(), ())
+        // The content of the vertex buffer describes a list of triangles.
+        .input_assembly_state(InputAssemblyState::new())
+        // Use a resizable viewport set to draw over the entire window
+        .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+        // See `vertex_shader`.
+        .fragment_shader(fs.main_entry_point(), ())
+        // We have to indicate which subpass of which render pass this pipeline is going to be used
+        // in. The pipeline will only be usable from this particular subpass.
+        .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+        // Now that our builder is filled, we call `build()` to obtain an actual pipeline.
+        .build(device.clone())
+        .unwrap();
 
     // Dynamic viewports allow us to recreate just the viewport when the window is resized
     // Otherwise we would have to recreate the whole pipeline.
@@ -535,21 +531,19 @@ fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage<Window>>],
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
-) -> Vec<Arc<dyn FramebufferAbstract>> {
-    let dimensions = images[0].dimensions();
+) -> Vec<Arc<Framebuffer>> {
+    let dimensions = images[0].dimensions().width_height();
     viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
 
     images
         .iter()
         .map(|image| {
             let view = ImageView::new(image.clone()).unwrap();
-            Arc::new(
-                Framebuffer::start(render_pass.clone())
-                    .add(view)
-                    .unwrap()
-                    .build()
-                    .unwrap(),
-            ) as Arc<dyn FramebufferAbstract>
+            Framebuffer::start(render_pass.clone())
+                .add(view)
+                .unwrap()
+                .build()
+                .unwrap()
         })
         .collect::<Vec<_>>()
 }

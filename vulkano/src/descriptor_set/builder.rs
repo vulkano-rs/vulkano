@@ -212,7 +212,7 @@ impl DescriptorSetBuilder {
     /// Binds a buffer as the next descriptor or array element.
     pub fn add_buffer(
         &mut self,
-        buffer: Arc<dyn BufferAccess + 'static>,
+        buffer: Arc<dyn BufferAccess>,
     ) -> Result<&mut Self, DescriptorSetError> {
         self.poison_on_err(|builder| {
             if buffer.inner().buffer.device().internal_object()
@@ -378,7 +378,7 @@ impl DescriptorSetBuilder {
     /// Binds an image view as the next descriptor or array element.
     pub fn add_image(
         &mut self,
-        image_view: Arc<dyn ImageViewAbstract + 'static>,
+        image_view: Arc<dyn ImageViewAbstract>,
     ) -> Result<&mut Self, DescriptorSetError> {
         self.poison_on_err(|builder| {
             if image_view.image().inner().image.device().internal_object()
@@ -417,7 +417,7 @@ impl DescriptorSetBuilder {
                         return Err(DescriptorSetError::IncompatibleImageViewSampler);
                     }
 
-                    image_match_desc(&image_view, image_desc)?;
+                    image_match_desc(image_view.as_ref(), image_desc)?;
                 }
                 DescriptorDescTy::SampledImage { ref image_desc, .. } => {
                     if !image_view.image().inner().image.usage().sampled {
@@ -426,7 +426,7 @@ impl DescriptorSetBuilder {
                         ));
                     }
 
-                    image_match_desc(&image_view, image_desc)?;
+                    image_match_desc(image_view.as_ref(), image_desc)?;
                 }
                 DescriptorDescTy::StorageImage { ref image_desc, .. } => {
                     if !image_view.image().inner().image.usage().storage {
@@ -435,7 +435,7 @@ impl DescriptorSetBuilder {
                         ));
                     }
 
-                    image_match_desc(&image_view, image_desc)?;
+                    image_match_desc(image_view.as_ref(), image_desc)?;
 
                     if !image_view.component_mapping().is_identity() {
                         return Err(DescriptorSetError::NotIdentitySwizzled);
@@ -493,7 +493,7 @@ impl DescriptorSetBuilder {
     /// `add_image` instead.
     pub fn add_sampled_image(
         &mut self,
-        image_view: Arc<dyn ImageViewAbstract + 'static>,
+        image_view: Arc<dyn ImageViewAbstract>,
         sampler: Arc<Sampler>,
     ) -> Result<&mut Self, DescriptorSetError> {
         self.poison_on_err(|builder| {
@@ -539,7 +539,7 @@ impl DescriptorSetBuilder {
                         return Err(DescriptorSetError::SamplerIsImmutable);
                     }
 
-                    image_match_desc(&image_view, image_desc)?;
+                    image_match_desc(image_view.as_ref(), image_desc)?;
                 }
                 _ => return Err(DescriptorSetError::WrongDescriptorType),
             }
@@ -643,13 +643,13 @@ impl DescriptorSetBuilderOutput {
         self.buffers.len()
     }
 
-    pub(crate) fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, u32)> {
+    pub(crate) fn buffer(&self, index: usize) -> Option<(Arc<dyn BufferAccess>, u32)> {
         self.buffers
             .get(index)
             .map(|&(write_index, element_index)| {
                 let write = &self.writes[write_index];
                 let buffer = match write.elements() {
-                    DescriptorWriteElements::Buffer(elements) => elements[element_index].as_ref(),
+                    DescriptorWriteElements::Buffer(elements) => elements[element_index].clone(),
                     DescriptorWriteElements::BufferView(elements) => {
                         elements[element_index].buffer()
                     }
@@ -664,13 +664,13 @@ impl DescriptorSetBuilderOutput {
         self.images.len()
     }
 
-    pub(crate) fn image(&self, index: usize) -> Option<(&dyn ImageViewAbstract, u32)> {
+    pub(crate) fn image(&self, index: usize) -> Option<(Arc<dyn ImageViewAbstract>, u32)> {
         self.images.get(index).map(|&(write_index, element_index)| {
             let write = &self.writes[write_index];
             let image = match write.elements() {
-                DescriptorWriteElements::ImageView(elements) => elements[element_index].as_ref(),
+                DescriptorWriteElements::ImageView(elements) => elements[element_index].clone(),
                 DescriptorWriteElements::ImageViewSampler(elements) => {
-                    elements[element_index].0.as_ref()
+                    elements[element_index].0.clone()
                 }
                 _ => unreachable!(),
             };

@@ -75,7 +75,6 @@ use crate::query::QueryResultElement;
 use crate::query::QueryResultFlags;
 use crate::query::QueryType;
 use crate::render_pass::Framebuffer;
-use crate::render_pass::FramebufferAbstract;
 use crate::render_pass::LoadOp;
 use crate::render_pass::Subpass;
 use crate::sampler::Filter;
@@ -115,7 +114,7 @@ pub struct AutoCommandBufferBuilder<L, P = StandardCommandPoolBuilder> {
 
     // The inheritance for secondary command buffers.
     // Must be `None` in a primary command buffer and `Some` in a secondary command buffer.
-    inheritance: Option<CommandBufferInheritance<Box<dyn FramebufferAbstract>>>,
+    inheritance: Option<CommandBufferInheritance>,
 
     // Usage flags passed when creating the command buffer.
     usage: CommandBufferUsage,
@@ -225,7 +224,7 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
         let level = CommandBufferLevel::Secondary(CommandBufferInheritance {
             render_pass: Some(CommandBufferInheritanceRenderPass {
                 subpass,
-                framebuffer: None::<Arc<Framebuffer<()>>>,
+                framebuffer: None,
             }),
             occlusion_query: None,
             query_statistics_flags: QueryPipelineStatisticFlags::none(),
@@ -260,7 +259,7 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
         let level = CommandBufferLevel::Secondary(CommandBufferInheritance {
             render_pass: Some(CommandBufferInheritanceRenderPass {
                 subpass,
-                framebuffer: None::<Arc<Framebuffer<()>>>,
+                framebuffer: None,
             }),
             occlusion_query,
             query_statistics_flags,
@@ -277,42 +276,29 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
 
 impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
     // Actual constructor. Private.
-    fn with_level<F>(
+    fn with_level(
         device: Arc<Device>,
         queue_family: QueueFamily,
         usage: CommandBufferUsage,
-        level: CommandBufferLevel<F>,
-    ) -> Result<AutoCommandBufferBuilder<L, StandardCommandPoolBuilder>, OomError>
-    where
-        F: FramebufferAbstract + Clone + 'static,
-    {
+        level: CommandBufferLevel,
+    ) -> Result<AutoCommandBufferBuilder<L, StandardCommandPoolBuilder>, OomError> {
         let (inheritance, render_pass_state) = match &level {
             CommandBufferLevel::Primary => (None, None),
             CommandBufferLevel::Secondary(inheritance) => {
-                let (render_pass, render_pass_state) = match inheritance.render_pass.as_ref() {
-                    Some(CommandBufferInheritanceRenderPass {
-                        subpass,
-                        framebuffer,
-                    }) => {
-                        let render_pass = CommandBufferInheritanceRenderPass {
-                            subpass: subpass.clone(),
-                            framebuffer: framebuffer
-                                .as_ref()
-                                .map(|f| Box::new(f.clone()) as Box<_>),
-                        };
-                        let render_pass_state = RenderPassState {
-                            subpass: subpass.clone(),
-                            contents: SubpassContents::Inline,
-                            framebuffer: ash::vk::Framebuffer::null(), // Only needed for primary command buffers
-                        };
-                        (Some(render_pass), Some(render_pass_state))
-                    }
-                    None => (None, None),
-                };
+                let render_pass_state = inheritance.render_pass.as_ref().map(
+                    |CommandBufferInheritanceRenderPass {
+                         subpass,
+                         framebuffer,
+                     }| RenderPassState {
+                        subpass: subpass.clone(),
+                        contents: SubpassContents::Inline,
+                        framebuffer: ash::vk::Framebuffer::null(), // Only needed for primary command buffers
+                    },
+                );
 
                 (
                     Some(CommandBufferInheritance {
-                        render_pass,
+                        render_pass: inheritance.render_pass.clone(),
                         occlusion_query: inheritance.occlusion_query,
                         query_statistics_flags: inheritance.query_statistics_flags,
                     }),
@@ -593,7 +579,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// - If the index buffer contains `u8` indices, panics if the
     ///   [`index_type_uint8`](crate::device::Features::index_type_uint8) feature is not
     ///   enabled on the device.
-    pub fn bind_index_buffer<Ib, I>(&mut self, index_buffer: Ib) -> &mut Self
+    pub fn bind_index_buffer<Ib, I>(&mut self, index_buffer: Arc<Ib>) -> &mut Self
     where
         Ib: TypedBufferAccess<Content = [I]> + 'static,
         I: Index + 'static,
@@ -823,25 +809,21 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///
     /// - Panics if the source or the destination was not created with `device`.
     ///
-    pub fn blit_image<S, D>(
+    pub fn blit_image(
         &mut self,
-        source: S,
+        source: Arc<dyn ImageAccess>,
         source_top_left: [i32; 3],
         source_bottom_right: [i32; 3],
         source_base_array_layer: u32,
         source_mip_level: u32,
-        destination: D,
+        destination: Arc<dyn ImageAccess>,
         destination_top_left: [i32; 3],
         destination_bottom_right: [i32; 3],
         destination_base_array_layer: u32,
         destination_mip_level: u32,
         layer_count: u32,
         filter: Filter,
-    ) -> Result<&mut Self, BlitImageError>
-    where
-        S: ImageAccess + 'static,
-        D: ImageAccess + 'static,
-    {
+    ) -> Result<&mut Self, BlitImageError> {
         unsafe {
             if !self.queue_family().supports_graphics() {
                 return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
@@ -851,12 +833,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             check_blit_image(
                 self.device(),
-                &source,
+                source.as_ref(),
                 source_top_left,
                 source_bottom_right,
                 source_base_array_layer,
                 source_mip_level,
-                &destination,
+                destination.as_ref(),
                 destination_top_left,
                 destination_bottom_right,
                 destination_base_array_layer,
@@ -905,14 +887,11 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///
     /// Panics if `color` is not a color value.
     ///
-    pub fn clear_color_image<I>(
+    pub fn clear_color_image(
         &mut self,
-        image: I,
+        image: Arc<dyn ImageAccess>,
         color: ClearValue,
-    ) -> Result<&mut Self, ClearColorImageError>
-    where
-        I: ImageAccess + 'static,
-    {
+    ) -> Result<&mut Self, ClearColorImageError> {
         let layers = image.dimensions().array_layers();
         let levels = image.mipmap_levels();
 
@@ -925,18 +904,15 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///
     /// - Panics if `color` is not a color value.
     ///
-    pub fn clear_color_image_dimensions<I>(
+    pub fn clear_color_image_dimensions(
         &mut self,
-        image: I,
+        image: Arc<dyn ImageAccess>,
         first_layer: u32,
         num_layers: u32,
         first_mipmap: u32,
         num_mipmaps: u32,
         color: ClearValue,
-    ) -> Result<&mut Self, ClearColorImageError>
-    where
-        I: ImageAccess + 'static,
-    {
+    ) -> Result<&mut Self, ClearColorImageError> {
         unsafe {
             if !self.queue_family().supports_graphics() && !self.queue_family().supports_compute() {
                 return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
@@ -945,7 +921,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             self.ensure_outside_render_pass()?;
             check_clear_color_image(
                 self.device(),
-                &image,
+                image.as_ref(),
                 first_layer,
                 num_layers,
                 first_mipmap,
@@ -982,14 +958,11 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///
     /// Panics if `clear_value` is not a depth / stencil value.
     ///
-    pub fn clear_depth_stencil_image<I>(
+    pub fn clear_depth_stencil_image(
         &mut self,
-        image: I,
+        image: Arc<dyn ImageAccess>,
         clear_value: ClearValue,
-    ) -> Result<&mut Self, ClearDepthStencilImageError>
-    where
-        I: ImageAccess + 'static,
-    {
+    ) -> Result<&mut Self, ClearDepthStencilImageError> {
         let layers = image.dimensions().array_layers();
 
         self.clear_depth_stencil_image_dimensions(image, 0, layers, clear_value)
@@ -1001,23 +974,25 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///
     /// - Panics if `clear_value` is not a depth / stencil value.
     ///
-    pub fn clear_depth_stencil_image_dimensions<I>(
+    pub fn clear_depth_stencil_image_dimensions(
         &mut self,
-        image: I,
+        image: Arc<dyn ImageAccess>,
         first_layer: u32,
         num_layers: u32,
         clear_value: ClearValue,
-    ) -> Result<&mut Self, ClearDepthStencilImageError>
-    where
-        I: ImageAccess + 'static,
-    {
+    ) -> Result<&mut Self, ClearDepthStencilImageError> {
         unsafe {
             if !self.queue_family().supports_graphics() && !self.queue_family().supports_compute() {
                 return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
             }
 
             self.ensure_outside_render_pass()?;
-            check_clear_depth_stencil_image(self.device(), &image, first_layer, num_layers)?;
+            check_clear_depth_stencil_image(
+                self.device(),
+                image.as_ref(),
+                first_layer,
+                num_layers,
+            )?;
 
             let (clear_depth, clear_stencil) = match clear_value {
                 ClearValue::Depth(_) => (true, false),
@@ -1051,8 +1026,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     #[inline]
     pub fn copy_buffer<S, D, T>(
         &mut self,
-        source: S,
-        destination: D,
+        source: Arc<S>,
+        destination: Arc<D>,
     ) -> Result<&mut Self, CopyBufferError>
     where
         S: TypedBufferAccess<Content = T> + 'static,
@@ -1061,7 +1036,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     {
         unsafe {
             self.ensure_outside_render_pass()?;
-            let infos = check_copy_buffer(self.device(), &source, &destination)?;
+            let infos = check_copy_buffer(self.device(), source.as_ref(), destination.as_ref())?;
             self.inner
                 .copy_buffer(source, destination, iter::once((0, 0, infos.copy_size)))?;
             Ok(self)
@@ -1073,9 +1048,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     #[inline]
     pub fn copy_buffer_dimensions<S, D, T>(
         &mut self,
-        source: S,
+        source: Arc<S>,
         source_offset: DeviceSize,
-        destination: D,
+        destination: Arc<D>,
         destination_offset: DeviceSize,
         count: DeviceSize,
     ) -> Result<&mut Self, CopyBufferError>
@@ -1085,7 +1060,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     {
         self.ensure_outside_render_pass()?;
 
-        let _infos = check_copy_buffer(self.device(), &source, &destination)?;
+        let _infos = check_copy_buffer(self.device(), source.as_ref(), destination.as_ref())?;
         debug_assert!(source_offset + count <= source.len());
         debug_assert!(destination_offset + count <= destination.len());
 
@@ -1105,14 +1080,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     /// Adds a command that copies from a buffer to an image.
-    pub fn copy_buffer_to_image<S, D, Px>(
+    pub fn copy_buffer_to_image<S, Px>(
         &mut self,
-        source: S,
-        destination: D,
+        source: Arc<S>,
+        destination: Arc<dyn ImageAccess>,
     ) -> Result<&mut Self, CopyBufferImageError>
     where
         S: TypedBufferAccess<Content = [Px]> + 'static,
-        D: ImageAccess + 'static,
         Px: Pixel,
     {
         self.ensure_outside_render_pass()?;
@@ -1122,10 +1096,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     /// Adds a command that copies from a buffer to an image.
-    pub fn copy_buffer_to_image_dimensions<S, D, Px>(
+    pub fn copy_buffer_to_image_dimensions<S, Px>(
         &mut self,
-        source: S,
-        destination: D,
+        source: Arc<S>,
+        destination: Arc<dyn ImageAccess>,
         offset: [u32; 3],
         size: [u32; 3],
         first_layer: u32,
@@ -1134,7 +1108,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ) -> Result<&mut Self, CopyBufferImageError>
     where
         S: TypedBufferAccess<Content = [Px]> + 'static,
-        D: ImageAccess + 'static,
         Px: Pixel,
     {
         unsafe {
@@ -1142,8 +1115,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             check_copy_buffer_image(
                 self.device(),
-                &source,
-                &destination,
+                source.as_ref(),
+                destination.as_ref(),
                 CheckCopyBufferImageTy::BufferToImage,
                 offset,
                 size,
@@ -1200,33 +1173,29 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///
     /// - Panics if the source or the destination was not created with `device`.
     ///
-    pub fn copy_image<S, D>(
+    pub fn copy_image(
         &mut self,
-        source: S,
+        source: Arc<dyn ImageAccess>,
         source_offset: [i32; 3],
         source_base_array_layer: u32,
         source_mip_level: u32,
-        destination: D,
+        destination: Arc<dyn ImageAccess>,
         destination_offset: [i32; 3],
         destination_base_array_layer: u32,
         destination_mip_level: u32,
         extent: [u32; 3],
         layer_count: u32,
-    ) -> Result<&mut Self, CopyImageError>
-    where
-        S: ImageAccess + 'static,
-        D: ImageAccess + 'static,
-    {
+    ) -> Result<&mut Self, CopyImageError> {
         unsafe {
             self.ensure_outside_render_pass()?;
 
             check_copy_image(
                 self.device(),
-                &source,
+                source.as_ref(),
                 source_offset,
                 source_base_array_layer,
                 source_mip_level,
-                &destination,
+                destination.as_ref(),
                 destination_offset,
                 destination_base_array_layer,
                 destination_mip_level,
@@ -1275,13 +1244,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// Adds a command that copies from an image to a buffer.
     // The data layout of the image on the gpu is opaque, as in, it is non of our business how the gpu stores the image.
     // This does not matter since the act of copying the image into a buffer converts it to linear form.
-    pub fn copy_image_to_buffer<S, D, Px>(
+    pub fn copy_image_to_buffer<D, Px>(
         &mut self,
-        source: S,
-        destination: D,
+        source: Arc<dyn ImageAccess>,
+        destination: Arc<D>,
     ) -> Result<&mut Self, CopyBufferImageError>
     where
-        S: ImageAccess + 'static,
         D: TypedBufferAccess<Content = [Px]> + 'static,
         Px: Pixel,
     {
@@ -1292,10 +1260,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     /// Adds a command that copies from an image to a buffer.
-    pub fn copy_image_to_buffer_dimensions<S, D, Px>(
+    pub fn copy_image_to_buffer_dimensions<D, Px>(
         &mut self,
-        source: S,
-        destination: D,
+        source: Arc<dyn ImageAccess>,
+        destination: Arc<D>,
         offset: [u32; 3],
         size: [u32; 3],
         first_layer: u32,
@@ -1303,7 +1271,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         mipmap: u32,
     ) -> Result<&mut Self, CopyBufferImageError>
     where
-        S: ImageAccess + 'static,
         D: TypedBufferAccess<Content = [Px]> + 'static,
         Px: Pixel,
     {
@@ -1312,8 +1279,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             check_copy_buffer_image(
                 self.device(),
-                &destination,
-                &source,
+                destination.as_ref(),
+                source.as_ref(),
                 CheckCopyBufferImageTy::ImageToBuffer,
                 offset,
                 size,
@@ -1446,7 +1413,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     #[inline]
     pub fn dispatch_indirect<Inb>(
         &mut self,
-        indirect_buffer: Inb,
+        indirect_buffer: Arc<Inb>,
     ) -> Result<&mut Self, DispatchIndirectError>
     where
         Inb: TypedBufferAccess<Content = [DispatchIndirectCommand]> + 'static,
@@ -1463,7 +1430,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             PipelineBindPoint::Compute,
         )?;
         check_push_constants_validity(self.state(), pipeline.layout())?;
-        check_indirect_buffer(self.device(), &indirect_buffer)?;
+        check_indirect_buffer(self.device(), indirect_buffer.as_ref())?;
 
         unsafe {
             self.inner.dispatch_indirect(indirect_buffer)?;
@@ -1527,14 +1494,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     #[inline]
     pub fn draw_indirect<Inb>(
         &mut self,
-        indirect_buffer: Inb,
+        indirect_buffer: Arc<Inb>,
     ) -> Result<&mut Self, DrawIndirectError>
     where
-        Inb: BufferAccess
-            + TypedBufferAccess<Content = [DrawIndirectCommand]>
-            + Send
-            + Sync
-            + 'static,
+        Inb: TypedBufferAccess<Content = [DrawIndirectCommand]> + Send + Sync + 'static,
     {
         let pipeline = check_pipeline_graphics(self.state())?;
         self.ensure_inside_render_pass_inline(pipeline)?;
@@ -1546,7 +1509,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         )?;
         check_push_constants_validity(self.state(), pipeline.layout())?;
         check_vertex_buffers(self.state(), pipeline, None, None)?;
-        check_indirect_buffer(self.device(), &indirect_buffer)?;
+        check_indirect_buffer(self.device(), indirect_buffer.as_ref())?;
 
         let requested = indirect_buffer.len() as u32;
         let limit = self
@@ -1639,7 +1602,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     #[inline]
     pub fn draw_indexed_indirect<Inb>(
         &mut self,
-        indirect_buffer: Inb,
+        indirect_buffer: Arc<Inb>,
     ) -> Result<&mut Self, DrawIndexedIndirectError>
     where
         Inb: TypedBufferAccess<Content = [DrawIndexedIndirectCommand]> + 'static,
@@ -1655,7 +1618,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         check_push_constants_validity(self.state(), pipeline.layout())?;
         check_vertex_buffers(self.state(), pipeline, None, None)?;
         check_index_buffer(self.state(), None)?;
-        check_indirect_buffer(self.device(), &indirect_buffer)?;
+        check_indirect_buffer(self.device(), indirect_buffer.as_ref())?;
 
         let requested = indirect_buffer.len() as u32;
         let limit = self
@@ -1693,13 +1656,14 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// > this function only for zeroing the content of a buffer by passing `0` for the data.
     // TODO: not safe because of signalling NaNs
     #[inline]
-    pub fn fill_buffer<B>(&mut self, buffer: B, data: u32) -> Result<&mut Self, FillBufferError>
-    where
-        B: BufferAccess + 'static,
-    {
+    pub fn fill_buffer(
+        &mut self,
+        buffer: Arc<dyn BufferAccess>,
+        data: u32,
+    ) -> Result<&mut Self, FillBufferError> {
         unsafe {
             self.ensure_outside_render_pass()?;
-            check_fill_buffer(self.device(), &buffer)?;
+            check_fill_buffer(self.device(), buffer.as_ref())?;
             self.inner.fill_buffer(buffer, data);
             Ok(self)
         }
@@ -2866,7 +2830,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     #[inline]
     pub fn update_buffer<B, D, Dd>(
         &mut self,
-        buffer: B,
+        buffer: Arc<B>,
         data: Dd,
     ) -> Result<&mut Self, UpdateBufferError>
     where
@@ -2876,7 +2840,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     {
         unsafe {
             self.ensure_outside_render_pass()?;
-            check_update_buffer(self.device(), &buffer, data.deref())?;
+            check_update_buffer(self.device(), buffer.as_ref(), data.deref())?;
 
             let size_of_data = mem::size_of_val(data.deref()) as DeviceSize;
             if buffer.size() >= size_of_data {
@@ -3014,7 +2978,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         &mut self,
         query_pool: Arc<QueryPool>,
         queries: Range<u32>,
-        destination: D,
+        destination: Arc<D>,
         flags: QueryResultFlags,
     ) -> Result<&mut Self, CopyQueryPoolResultsError>
     where
@@ -3027,7 +2991,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 self.device(),
                 &query_pool,
                 queries.clone(),
-                &destination,
+                destination.as_ref(),
                 flags,
             )?;
             self.inner
@@ -3085,14 +3049,13 @@ where
     ///
     /// You must call this before you can add draw commands.
     #[inline]
-    pub fn begin_render_pass<F, I>(
+    pub fn begin_render_pass<I>(
         &mut self,
-        framebuffer: F,
+        framebuffer: Arc<Framebuffer>,
         contents: SubpassContents,
         clear_values: I,
     ) -> Result<&mut Self, BeginRenderPassError>
     where
-        F: FramebufferAbstract + Clone + 'static,
         I: IntoIterator<Item = ClearValue>,
     {
         unsafe {
@@ -3218,7 +3181,7 @@ where
                 }
             }
 
-            let framebuffer_object = framebuffer.inner().internal_object();
+            let framebuffer_object = framebuffer.internal_object();
             self.inner
                 .begin_render_pass(framebuffer.clone(), contents, clear_values)?;
             self.render_pass_state = Some(RenderPassState {
@@ -3339,8 +3302,8 @@ where
     where
         C: SecondaryCommandBuffer + 'static,
     {
-        if let Some(render_pass) = command_buffer.inheritance().render_pass {
-            self.ensure_inside_render_pass_secondary(&render_pass)?;
+        if let Some(render_pass) = &command_buffer.inheritance().render_pass {
+            self.ensure_inside_render_pass_secondary(render_pass)?;
         } else {
             self.ensure_outside_render_pass()?;
         }
@@ -3378,7 +3341,7 @@ where
     #[inline]
     fn ensure_inside_render_pass_secondary(
         &self,
-        render_pass: &CommandBufferInheritanceRenderPass<&dyn FramebufferAbstract>,
+        render_pass: &CommandBufferInheritanceRenderPass,
     ) -> Result<(), AutoCommandBufferBuilderContextError> {
         let render_pass_state = self
             .render_pass_state
@@ -3406,8 +3369,8 @@ where
 
         // Framebuffer, if present on the secondary command buffer, must be the
         // same as the one in the current render pass.
-        if let Some(framebuffer) = render_pass.framebuffer {
-            if framebuffer.inner().internal_object() != render_pass_state.framebuffer {
+        if let Some(framebuffer) = &render_pass.framebuffer {
+            if framebuffer.internal_object() != render_pass_state.framebuffer {
                 return Err(AutoCommandBufferBuilderContextError::IncompatibleFramebuffer);
             }
         }
@@ -3584,7 +3547,7 @@ where
 pub struct SecondaryAutoCommandBuffer<P = StandardCommandPoolAlloc> {
     inner: SyncCommandBuffer,
     pool_alloc: P, // Safety: must be dropped after `inner`
-    inheritance: CommandBufferInheritance<Box<dyn FramebufferAbstract>>,
+    inheritance: CommandBufferInheritance,
 
     // Tracks usage of the command buffer on the GPU.
     submit_state: SubmitState,
@@ -3645,22 +3608,9 @@ where
         };
     }
 
-    fn inheritance(&self) -> CommandBufferInheritance<&dyn FramebufferAbstract> {
-        CommandBufferInheritance {
-            render_pass: self.inheritance.render_pass.as_ref().map(
-                |CommandBufferInheritanceRenderPass {
-                     subpass,
-                     framebuffer,
-                 }| {
-                    CommandBufferInheritanceRenderPass {
-                        subpass: subpass.clone(),
-                        framebuffer: framebuffer.as_ref().map(|f| f.as_ref() as &_),
-                    }
-                },
-            ),
-            occlusion_query: self.inheritance.occlusion_query,
-            query_statistics_flags: self.inheritance.query_statistics_flags,
-        }
+    #[inline]
+    fn inheritance(&self) -> &CommandBufferInheritance {
+        &self.inheritance
     }
 
     #[inline]
@@ -3669,7 +3619,7 @@ where
     }
 
     #[inline]
-    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, PipelineMemoryAccess)> {
+    fn buffer(&self, index: usize) -> Option<(&Arc<dyn BufferAccess>, PipelineMemoryAccess)> {
         self.inner.buffer(index)
     }
 
@@ -3683,7 +3633,7 @@ where
         &self,
         index: usize,
     ) -> Option<(
-        &dyn ImageAccess,
+        &Arc<dyn ImageAccess>,
         PipelineMemoryAccess,
         ImageLayout,
         ImageLayout,

@@ -9,7 +9,6 @@
 
 // This example demonstrates how to initialize immutable buffers.
 
-use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
 use vulkano::descriptor_set::PersistentDescriptorSet;
@@ -65,7 +64,7 @@ fn main() {
 
     let queue = queues.next().unwrap();
 
-    let pipeline = Arc::new({
+    let pipeline = {
         mod cs {
             vulkano_shaders::shader! {
                 ty: "compute",
@@ -98,7 +97,7 @@ void main() {
             |_| {},
         )
         .unwrap()
-    });
+    };
 
     let data_buffer = {
         let data_iter = (0..65536u32).map(|n| n);
@@ -155,7 +154,7 @@ void main() {
         .add_buffer(immutable_data_buffer.clone())
         .unwrap();
 
-    let set = Arc::new(set_builder.build().unwrap());
+    let set = set_builder.build().unwrap();
 
     let mut builder = AutoCommandBufferBuilder::primary(
         device.clone(),

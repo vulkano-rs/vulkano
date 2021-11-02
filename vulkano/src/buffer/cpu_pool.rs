@@ -291,10 +291,13 @@ where
     /// > **Note**: You can think of it like a `Vec`. If you insert an element and the `Vec` is not
     /// > large enough, a new chunk of memory is automatically allocated.
     #[inline]
-    pub fn next(&self, data: T) -> Result<CpuBufferPoolSubbuffer<T, A>, DeviceMemoryAllocError> {
-        Ok(CpuBufferPoolSubbuffer {
-            chunk: self.chunk(iter::once(data))?,
-        })
+    pub fn next(
+        &self,
+        data: T,
+    ) -> Result<Arc<CpuBufferPoolSubbuffer<T, A>>, DeviceMemoryAllocError> {
+        Ok(Arc::new(CpuBufferPoolSubbuffer {
+            chunk: self.chunk_impl(iter::once(data))?,
+        }))
     }
 
     /// Grants access to a new subbuffer and puts `data` in it.
@@ -309,13 +312,18 @@ where
     ///
     /// Panics if the length of the iterator didn't match the actual number of element.
     ///
-    pub fn chunk<I>(&self, data: I) -> Result<CpuBufferPoolChunk<T, A>, DeviceMemoryAllocError>
+    pub fn chunk<I>(&self, data: I) -> Result<Arc<CpuBufferPoolChunk<T, A>>, DeviceMemoryAllocError>
     where
         I: IntoIterator<Item = T>,
         I::IntoIter: ExactSizeIterator,
     {
-        let data = data.into_iter();
+        self.chunk_impl(data.into_iter()).map(|ok| Arc::new(ok))
+    }
 
+    fn chunk_impl(
+        &self,
+        data: impl ExactSizeIterator<Item = T>,
+    ) -> Result<CpuBufferPoolChunk<T, A>, DeviceMemoryAllocError> {
         let mut mutex = self.current_buffer.lock().unwrap();
 
         let data = match self.try_next_impl(&mut mutex, data) {
@@ -343,10 +351,10 @@ where
     /// A `CpuBufferPool` is always empty the first time you use it, so you shouldn't use
     /// `try_next` the first time you use it.
     #[inline]
-    pub fn try_next(&self, data: T) -> Option<CpuBufferPoolSubbuffer<T, A>> {
+    pub fn try_next(&self, data: T) -> Option<Arc<CpuBufferPoolSubbuffer<T, A>>> {
         let mut mutex = self.current_buffer.lock().unwrap();
         self.try_next_impl(&mut mutex, iter::once(data))
-            .map(|c| CpuBufferPoolSubbuffer { chunk: c })
+            .map(|c| Arc::new(CpuBufferPoolSubbuffer { chunk: c }))
             .ok()
     }
 

@@ -17,7 +17,6 @@
 use std::fs::File;
 use std::io::BufWriter;
 use std::path::Path;
-use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
 use vulkano::descriptor_set::PersistentDescriptorSet;
@@ -174,16 +173,14 @@ fn main() {
         constant_1: local_size_x, // specifying local size constants
         constant_2: local_size_y,
     };
-    let pipeline = Arc::new(
-        ComputePipeline::new(
-            device.clone(),
-            &shader.main_entry_point(),
-            &spec_consts,
-            None,
-            |_| {},
-        )
-        .unwrap(),
-    );
+    let pipeline = ComputePipeline::new(
+        device.clone(),
+        &shader.main_entry_point(),
+        &spec_consts,
+        None,
+        |_| {},
+    )
+    .unwrap();
 
     let image = StorageImage::new(
         device.clone(),
@@ -203,7 +200,7 @@ fn main() {
 
     set_builder.add_image(view.clone()).unwrap();
 
-    let set = Arc::new(set_builder.build().unwrap());
+    let set = set_builder.build().unwrap();
 
     let buf = CpuAccessibleBuffer::from_iter(
         device.clone(),

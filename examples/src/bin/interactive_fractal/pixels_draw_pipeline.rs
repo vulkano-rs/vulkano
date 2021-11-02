@@ -84,17 +84,15 @@ impl PixelsDrawPipeline {
                 .expect("failed to create shader module");
             let fs = fs::Shader::load(gfx_queue.device().clone())
                 .expect("failed to create shader module");
-            Arc::new(
-                GraphicsPipeline::start()
-                    .vertex_input_single_buffer::<TexturedVertex>()
-                    .vertex_shader(vs.main_entry_point(), ())
-                    .input_assembly_state(InputAssemblyState::new())
-                    .fragment_shader(fs.main_entry_point(), ())
-                    .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-                    .render_pass(subpass)
-                    .build(gfx_queue.device().clone())
-                    .unwrap(),
-            )
+            GraphicsPipeline::start()
+                .vertex_input_single_buffer::<TexturedVertex>()
+                .vertex_shader(vs.main_entry_point(), ())
+                .input_assembly_state(InputAssemblyState::new())
+                .fragment_shader(fs.main_entry_point(), ())
+                .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+                .render_pass(subpass)
+                .build(gfx_queue.device().clone())
+                .unwrap()
         };
         PixelsDrawPipeline {
             gfx_queue,
@@ -104,7 +102,10 @@ impl PixelsDrawPipeline {
         }
     }
 
-    fn create_descriptor_set(&self, image: Arc<dyn ImageViewAbstract>) -> PersistentDescriptorSet {
+    fn create_descriptor_set(
+        &self,
+        image: Arc<dyn ImageViewAbstract>,
+    ) -> Arc<PersistentDescriptorSet> {
         let layout = self
             .pipeline
             .layout()

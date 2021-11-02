@@ -49,7 +49,7 @@ use crate::query::Query;
 use crate::query::QueryControlFlags;
 use crate::query::QueryResultElement;
 use crate::query::QueryResultFlags;
-use crate::render_pass::FramebufferAbstract;
+use crate::render_pass::Framebuffer;
 use crate::sampler::Filter;
 use crate::sync::AccessFlags;
 use crate::sync::Event;
@@ -103,14 +103,11 @@ impl UnsafeCommandBufferBuilder {
     ///
     /// > **Note**: Some checks are still made with `debug_assert!`. Do not expect to be able to
     /// > submit invalid commands.
-    pub unsafe fn new<F>(
+    pub unsafe fn new(
         pool_alloc: &UnsafeCommandPoolAlloc,
-        level: CommandBufferLevel<F>,
+        level: CommandBufferLevel,
         usage: CommandBufferUsage,
-    ) -> Result<UnsafeCommandBufferBuilder, OomError>
-    where
-        F: FramebufferAbstract,
-    {
+    ) -> Result<UnsafeCommandBufferBuilder, OomError> {
         let secondary = match level {
             CommandBufferLevel::Primary => false,
             CommandBufferLevel::Secondary(..) => true,
@@ -138,13 +135,13 @@ impl UnsafeCommandBufferBuilder {
                 render_pass: Some(ref render_pass),
                 ..
             }) => {
-                let rp = render_pass.subpass.render_pass().inner().internal_object();
+                let rp = render_pass.subpass.render_pass().internal_object();
                 let sp = render_pass.subpass.index();
                 let fb = match render_pass.framebuffer {
                     Some(ref fb) => {
                         // TODO: debug assert that the framebuffer is compatible with
                         //       the render pass?
-                        fb.inner().internal_object()
+                        fb.internal_object()
                     }
                     None => ash::vk::Framebuffer::null(),
                 };
@@ -240,21 +237,20 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdBeginRenderPass` on the builder.
     #[inline]
-    pub unsafe fn begin_render_pass<F, I>(
+    pub unsafe fn begin_render_pass<I>(
         &mut self,
-        framebuffer: &F,
+        framebuffer: &Framebuffer,
         subpass_contents: SubpassContents,
         clear_values: I,
     ) where
-        F: ?Sized + FramebufferAbstract,
         I: IntoIterator<Item = ClearValue>,
     {
         let fns = self.device().fns();
         let cmd = self.internal_object();
 
         // TODO: allow passing a different render pass
-        let raw_render_pass = framebuffer.render_pass().inner().internal_object();
-        let raw_framebuffer = framebuffer.inner().internal_object();
+        let raw_render_pass = framebuffer.render_pass().internal_object();
+        let raw_framebuffer = framebuffer.internal_object();
 
         let raw_clear_values: SmallVec<[_; 12]> = clear_values
             .into_iter()
@@ -1070,7 +1066,7 @@ impl UnsafeCommandBufferBuilder {
     pub unsafe fn copy_query_pool_results<D, T>(
         &mut self,
         queries: QueriesRange,
-        destination: D,
+        destination: &D,
         stride: DeviceSize,
         flags: QueryResultFlags,
     ) where

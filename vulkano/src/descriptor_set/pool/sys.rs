@@ -426,7 +426,7 @@ mod tests {
 
         let mut pool = UnsafeDescriptorPool::new(device, &desc, 10, false).unwrap();
         unsafe {
-            let sets = pool.alloc([&set_layout]).unwrap();
+            let sets = pool.alloc([set_layout.as_ref()]).unwrap();
             assert_eq!(sets.count(), 1);
         }
     }
@@ -460,7 +460,7 @@ mod tests {
                 let mut pool = UnsafeDescriptorPool::new(device2, &desc, 10, false).unwrap();
 
                 unsafe {
-                    let _ = pool.alloc([&set_layout]);
+                    let _ = pool.alloc([set_layout.as_ref()]);
                 }
             }
         );

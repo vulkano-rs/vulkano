@@ -209,7 +209,7 @@ mod tests {
         )
         .unwrap();
 
-        ensure_image_view_compatible(rp.desc(), 0, &view).unwrap();
+        ensure_image_view_compatible(rp.desc(), 0, view.as_ref()).unwrap();
     }
 
     #[test]
@@ -237,7 +237,7 @@ mod tests {
         )
         .unwrap();
 
-        match ensure_image_view_compatible(rp.desc(), 0, &view) {
+        match ensure_image_view_compatible(rp.desc(), 0, view.as_ref()) {
             Err(IncompatibleRenderPassAttachmentError::FormatMismatch {
                 expected: Format::R16G16_SFLOAT,
                 obtained: Format::R8G8B8A8_UNORM,
@@ -257,7 +257,7 @@ mod tests {
         .unwrap();
 
         assert_should_panic!("Attachment num out of range", {
-            let _ = ensure_image_view_compatible(&rp, 0, &view);
+            let _ = ensure_image_view_compatible(&rp, 0, view.as_ref());
         });
     }
 

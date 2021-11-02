@@ -86,7 +86,6 @@ use crate::device::DeviceOwned;
 use crate::format::Format;
 use crate::image::view::ImageViewType;
 use crate::OomError;
-use crate::SafeDeref;
 use crate::VulkanObject;
 use smallvec::SmallVec;
 use std::error;
@@ -115,7 +114,7 @@ pub unsafe trait DescriptorSet: DeviceOwned + Send + Sync {
     fn layout(&self) -> &Arc<DescriptorSetLayout>;
 
     /// Creates a [`DescriptorSetWithOffsets`] with the given dynamic offsets.
-    fn offsets<I>(self, dynamic_offsets: I) -> DescriptorSetWithOffsets
+    fn offsets<I>(self: Arc<Self>, dynamic_offsets: I) -> DescriptorSetWithOffsets
     where
         Self: Sized + 'static,
         I: IntoIterator<Item = u32>,
@@ -125,27 +124,6 @@ pub unsafe trait DescriptorSet: DeviceOwned + Send + Sync {
 
     /// Returns the resources bound to this descriptor set.
     fn resources(&self) -> &DescriptorSetResources;
-}
-
-unsafe impl<T> DescriptorSet for T
-where
-    T: SafeDeref + Send + Sync,
-    T::Target: DescriptorSet,
-{
-    #[inline]
-    fn inner(&self) -> &UnsafeDescriptorSet {
-        (**self).inner()
-    }
-
-    #[inline]
-    fn layout(&self) -> &Arc<DescriptorSetLayout> {
-        (**self).layout()
-    }
-
-    #[inline]
-    fn resources(&self) -> &DescriptorSetResources {
-        (**self).resources()
-    }
 }
 
 impl PartialEq for dyn DescriptorSet {
@@ -167,15 +145,14 @@ impl Hash for dyn DescriptorSet {
 }
 
 pub struct DescriptorSetWithOffsets {
-    descriptor_set: Box<dyn DescriptorSet>,
+    descriptor_set: Arc<dyn DescriptorSet>,
     dynamic_offsets: SmallVec<[u32; 4]>,
 }
 
 impl DescriptorSetWithOffsets {
     #[inline]
-    pub fn new<S, O>(descriptor_set: S, dynamic_offsets: O) -> Self
+    pub fn new<O>(descriptor_set: Arc<dyn DescriptorSet>, dynamic_offsets: O) -> Self
     where
-        S: DescriptorSet + 'static,
         O: IntoIterator<Item = u32>,
     {
         let dynamic_offsets: SmallVec<_> = dynamic_offsets.into_iter().collect();
@@ -232,29 +209,29 @@ impl DescriptorSetWithOffsets {
         );
 
         DescriptorSetWithOffsets {
-            descriptor_set: Box::new(descriptor_set),
+            descriptor_set,
             dynamic_offsets,
         }
     }
 
     #[inline]
-    pub fn as_ref(&self) -> (&dyn DescriptorSet, &[u32]) {
+    pub fn as_ref(&self) -> (&Arc<dyn DescriptorSet>, &[u32]) {
         (&self.descriptor_set, &self.dynamic_offsets)
     }
 
     #[inline]
-    pub fn into_tuple(self) -> (Box<dyn DescriptorSet>, impl ExactSizeIterator<Item = u32>) {
+    pub fn into_tuple(self) -> (Arc<dyn DescriptorSet>, impl ExactSizeIterator<Item = u32>) {
         (self.descriptor_set, self.dynamic_offsets.into_iter())
     }
 }
 
-impl<S> From<S> for DescriptorSetWithOffsets
+impl<S> From<Arc<S>> for DescriptorSetWithOffsets
 where
     S: DescriptorSet + 'static,
 {
     #[inline]
-    fn from(descriptor_set: S) -> Self {
-        Self::new(descriptor_set, std::iter::empty())
+    fn from(descriptor_set: Arc<S>) -> Self {
+        DescriptorSetWithOffsets::new(descriptor_set, std::iter::empty())
     }
 }
 

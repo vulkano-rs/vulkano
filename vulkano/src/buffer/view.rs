@@ -46,7 +46,6 @@ use crate::format::Format;
 use crate::format::Pixel;
 use crate::Error;
 use crate::OomError;
-use crate::SafeDeref;
 use crate::VulkanObject;
 use std::error;
 use std::fmt;
@@ -61,7 +60,7 @@ where
     B: BufferAccess + ?Sized,
 {
     handle: ash::vk::BufferView,
-    buffer: Box<B>,
+    buffer: Arc<B>,
     atomic_accesses: bool,
 }
 
@@ -71,7 +70,10 @@ where
 {
     /// Builds a new buffer view.
     #[inline]
-    pub fn new<Px>(buffer: B, format: Format) -> Result<BufferView<B>, BufferViewCreationError>
+    pub fn new<Px>(
+        buffer: Arc<B>,
+        format: Format,
+    ) -> Result<Arc<BufferView<B>>, BufferViewCreationError>
     where
         B: TypedBufferAccess<Content = [Px]>,
         Px: Pixel,
@@ -81,9 +83,9 @@ where
 
     /// Builds a new buffer view without checking that the format is correct.
     pub unsafe fn unchecked(
-        org_buffer: B,
+        org_buffer: Arc<B>,
         format: Format,
-    ) -> Result<BufferView<B>, BufferViewCreationError>
+    ) -> Result<Arc<BufferView<B>>, BufferViewCreationError>
     where
         B: BufferAccess,
     {
@@ -153,16 +155,16 @@ where
             output.assume_init()
         };
 
-        Ok(BufferView {
+        Ok(Arc::new(BufferView {
             handle,
-            buffer: Box::new(org_buffer),
+            buffer: org_buffer,
             atomic_accesses: buffer_features.storage_texel_buffer_atomic,
-        })
+        }))
     }
 
     /// Returns the buffer associated to this view.
     #[inline]
-    pub fn buffer(&self) -> &B {
+    pub fn buffer(&self) -> &Arc<B> {
         &self.buffer
     }
 
@@ -241,12 +243,12 @@ pub unsafe trait BufferViewAbstract: Send + Sync {
     fn inner(&self) -> ash::vk::BufferView;
 
     /// Returns the wrapped buffer that this buffer view was created from.
-    fn buffer(&self) -> &dyn BufferAccess;
+    fn buffer(&self) -> Arc<dyn BufferAccess>;
 }
 
 unsafe impl<B> BufferViewAbstract for BufferView<B>
 where
-    B: BufferAccess,
+    B: BufferAccess + 'static,
 {
     #[inline]
     fn inner(&self) -> ash::vk::BufferView {
@@ -254,24 +256,8 @@ where
     }
 
     #[inline]
-    fn buffer(&self) -> &dyn BufferAccess {
-        &self.buffer
-    }
-}
-
-unsafe impl<T> BufferViewAbstract for T
-where
-    T: SafeDeref + Send + Sync,
-    T::Target: BufferViewAbstract,
-{
-    #[inline]
-    fn inner(&self) -> ash::vk::BufferView {
-        (**self).inner()
-    }
-
-    #[inline]
-    fn buffer(&self) -> &dyn BufferAccess {
-        (**self).buffer()
+    fn buffer(&self) -> Arc<dyn BufferAccess> {
+        self.buffer.clone() as Arc<_>
     }
 }
 
