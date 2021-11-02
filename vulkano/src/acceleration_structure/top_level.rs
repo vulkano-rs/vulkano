@@ -15,6 +15,9 @@ use std::sync::Arc;
 
 pub struct TopLevelAccelerationStructure {
     acceleration_structure: AccelerationStructure,
+    /// Here we keep strong refs to bottom level acceleration structures
+    /// to prevent them from being dropped
+    bottom_acceleration_structures: Box<[Arc<BottomLevelAccelerationStructure>]>,
     /// Here are stored instances of bottom level acceleration structures
     instances: Box<[ash::vk::AccelerationStructureInstanceKHR]>,
 }
@@ -22,14 +25,14 @@ pub struct TopLevelAccelerationStructure {
 fn make_instance(
     transform: [[f32; 4]; 3],
     bottom: ash::vk::AccelerationStructureKHR,
+    custom_index: u32,
+    shader_record_offset: u32,
 ) -> ash::vk::AccelerationStructureInstanceKHR {
     let matrix: [f32; 12] = unsafe { std::mem::transmute(transform) };
 
     let transform = ash::vk::TransformMatrixKHR { matrix };
 
-    let custom_index = 0;
     let mask = 0xFF;
-    let shader_offset = 0;
     let flags = 0;
 
     let bottom_ref = ash::vk::AccelerationStructureReferenceKHR {
@@ -39,7 +42,7 @@ fn make_instance(
     ash::vk::AccelerationStructureInstanceKHR {
         transform,
         instance_custom_index_and_mask: (mask << 24) | custom_index,
-        instance_shader_binding_table_record_offset_and_flags: (flags << 24) | shader_offset,
+        instance_shader_binding_table_record_offset_and_flags: (flags << 24) | shader_record_offset,
         acceleration_structure_reference: bottom_ref,
     }
 }
@@ -60,25 +63,48 @@ unsafe fn make_instances_data(
 }
 
 impl TopLevelAccelerationStructure {
-    pub fn new<'a>(
-        device: Arc<Device>,
-        bottom_structures: impl Iterator<Item = &'a BottomLevelAccelerationStructure>,
-    ) -> Self {
-        let transform = [
-            [1.0, 0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0, 0.0],
-            [0.0, 0.0, 1.0, 0.0],
-        ];
+    pub fn builder(device: Arc<Device>) -> TopLevelAccelerationStructureBuilder {
+        TopLevelAccelerationStructureBuilder {
+            device,
+            bottom_acceleration_structures: Vec::new(),
+            instances: Vec::new(),
+        }
+    }
+}
 
-        let instances: Box<[_]> = bottom_structures
-            .map(|b| b.acceleration_structure.inner)
-            .map(|b| make_instance(transform, b))
-            .collect();
+pub struct TopLevelAccelerationStructureBuilder {
+    device: Arc<Device>,
+    bottom_acceleration_structures: Vec<Arc<BottomLevelAccelerationStructure>>,
+    instances: Vec<ash::vk::AccelerationStructureInstanceKHR>,
+}
+
+impl TopLevelAccelerationStructureBuilder {
+    pub fn add_instance(
+        &mut self,
+        bottom_structure: Arc<BottomLevelAccelerationStructure>,
+        transform: [[f32; 4]; 3],
+        instance_custom_index: u32,
+        instance_shader_binding_table_record_offset: u32,
+    ) {
+        let instance = make_instance(
+            transform,
+            bottom_structure.acceleration_structure.inner,
+            instance_custom_index,
+            instance_shader_binding_table_record_offset,
+        );
+
+        self.bottom_acceleration_structures.push(bottom_structure);
+        self.instances.push(instance);
+    }
+
+    pub fn build(self) -> TopLevelAccelerationStructure {
+        let bottom_acceleration_structures = self.bottom_acceleration_structures.into_boxed_slice();
+        let instances = self.instances.into_boxed_slice();
 
         // SAFETY
         //
         // Instances are stored in the boxed slice
-        // and dropped only when this struct is dropped
+        // and dropped only when `TopLevelAccelerationStructure` is dropped
         //
         let instances_data = unsafe { make_instances_data(instances.as_ptr()) };
 
@@ -92,14 +118,15 @@ impl TopLevelAccelerationStructure {
             .build();
 
         let acceleration_structure = AccelerationStructure::new(
-            device,
+            self.device,
             std::slice::from_ref(&geometry),
             std::iter::once(instances.len() as u32),
             ash::vk::AccelerationStructureTypeKHR::TOP_LEVEL,
         );
 
-        Self {
+        TopLevelAccelerationStructure {
             acceleration_structure,
+            bottom_acceleration_structures,
             instances,
         }
     }
