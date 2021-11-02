@@ -22,6 +22,15 @@
 - **Breaking** `BufferViewRef` is replaced with `BufferViewAbstract`, similar to the existing `ImageViewAbstract`.
 - **Breaking** `UnsafeDescriptorSet::write` takes a `DescriptorSetLayout` instead of `Device`.
 - **Breaking** `DescriptorWrite` is now constructed based on the resources stored instead of the descriptor type. The descriptor type is inferred from the descriptor set layout.
+- **Breaking** Added an `Arc` to many parameters and return types:
+  - Objects implementing `BufferAccess`, `BufferViewAbstract`, `ImageAccess`, `ImageViewAbstract` or `DescriptorSet` are now always constructed in an `Arc`, and parameters that take one of these types require the `Arc` wrapper.
+  - The type parameters of `BufferView`, `ImageView` and `BufferSlice` do not contain this implicit `Arc`.
+  - The types `DescriptorSetLayout`, `PipelineLayout`, `ComputePipeline`, `GraphicsPipeline`, `QueryPool`, `RenderPass` and `Framebuffer` are also always constructed in an `Arc`.
+- **Breaking** `Framebuffer` no longer has a type parameter.
+  - This made the `FramebufferAbstract` trait redundant, and it has been removed.
+  - `CommandBufferLevel` and its nested types no longer have a type parameter either.
+  - `AttachmentsList` is no longer needed and has been removed.
+- **Breaking** The `dimensions` method has been removed as an inherent method from types that already implement `ImageAccess`, to avoid confusion between the inherent method and the method of the trait when they have different semantics.
 - Added a new `DescriptorRequirements` type, which contains requirements imposed by a shader onto a descriptor and the resources bound to it.
   - `DescriptorDesc` can be created from `DescriptorRequirements` with the `From` trait.
   - `DescriptorSetDesc`s can be created from the requirements with the `from_requirement` constructor.
