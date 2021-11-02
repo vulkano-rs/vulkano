@@ -7,10 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::buffer::DeviceLocalBuffer;
-use crate::buffer::{BufferAccess, BufferUsage};
+use crate::buffer::{BufferAccess, BufferUsage, DeviceLocalBuffer};
 use crate::check_errors;
-use crate::device::Device;
+use crate::device::{Device, DeviceOwned};
 use crate::VulkanObject;
 use ash::vk::Handle;
 use std::mem::MaybeUninit;
@@ -141,6 +140,23 @@ impl AccelerationStructure {
         AccelerationStructure {
             inner: acceleration_structure,
             buffer,
+        }
+    }
+}
+
+impl Drop for AccelerationStructure {
+    fn drop(&mut self) {
+        let device = self.buffer.device();
+
+        let fns = device.fns();
+
+        unsafe {
+            fns.khr_acceleration_structure
+                .destroy_acceleration_structure_khr(
+                    device.internal_object(),
+                    self.inner,
+                    ptr::null(),
+                );
         }
     }
 }
