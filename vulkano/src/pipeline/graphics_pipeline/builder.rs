@@ -226,12 +226,11 @@ where
 
         let descriptor_set_layouts = descriptor_set_layout_descs
             .into_iter()
-            .map(|desc| Ok(Arc::new(DescriptorSetLayout::new(device.clone(), desc)?)))
+            .map(|desc| Ok(DescriptorSetLayout::new(device.clone(), desc)?))
             .collect::<Result<Vec<_>, PipelineLayoutCreationError>>()?;
-        let pipeline_layout = Arc::new(
+        let pipeline_layout =
             PipelineLayout::new(device.clone(), descriptor_set_layouts, push_constant_ranges)
-                .unwrap(),
-        );
+                .unwrap();
         self.with_pipeline_layout(device, pipeline_layout)
     }
 

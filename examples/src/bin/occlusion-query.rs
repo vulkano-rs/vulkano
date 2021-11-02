@@ -164,7 +164,7 @@ fn main() {
     let triangle3 = vertex_buffer.slice(6..9).unwrap();
 
     // Create a query pool for occlusion queries, with 3 slots.
-    let query_pool = Arc::new(QueryPool::new(device.clone(), QueryType::Occlusion, 3).unwrap());
+    let query_pool = QueryPool::new(device.clone(), QueryType::Occlusion, 3).unwrap();
 
     // Create a buffer on the CPU to hold the results of the three queries.
     // Query results are always represented as either `u32` or `u64`.

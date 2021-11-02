@@ -47,7 +47,7 @@ impl DescriptorSetLayout {
     pub fn new<D>(
         device: Arc<Device>,
         set_desc: D,
-    ) -> Result<DescriptorSetLayout, DescriptorSetLayoutError>
+    ) -> Result<Arc<DescriptorSetLayout>, DescriptorSetLayoutError>
     where
         D: Into<DescriptorSetDesc>,
     {
@@ -243,13 +243,13 @@ impl DescriptorSetLayout {
             output.assume_init()
         };
 
-        Ok(DescriptorSetLayout {
+        Ok(Arc::new(DescriptorSetLayout {
             handle,
             device,
             desc: set_desc,
             descriptors_count,
             variable_descriptor_count,
-        })
+        }))
     }
 
     pub(crate) fn desc(&self) -> &DescriptorSetDesc {

@@ -43,7 +43,7 @@ impl PipelineLayout {
         device: Arc<Device>,
         descriptor_set_layouts: D,
         push_constant_ranges: P,
-    ) -> Result<PipelineLayout, PipelineLayoutCreationError>
+    ) -> Result<Arc<PipelineLayout>, PipelineLayoutCreationError>
     where
         D: IntoIterator<Item = Arc<DescriptorSetLayout>>,
         P: IntoIterator<Item = PipelineLayoutPcRange>,
@@ -164,12 +164,12 @@ impl PipelineLayout {
             output.assume_init()
         };
 
-        Ok(PipelineLayout {
+        Ok(Arc::new(PipelineLayout {
             handle,
             device: device.clone(),
             descriptor_set_layouts,
             push_constant_ranges,
-        })
+        }))
     }
 
     /// Returns the descriptor set layouts this pipeline layout was created from.

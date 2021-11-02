@@ -289,23 +289,16 @@ fn main() {
 
         let descriptor_set_layouts = descriptor_set_descs
             .into_iter()
-            .map(|desc| {
-                Ok(Arc::new(DescriptorSetLayout::new(
-                    device.clone(),
-                    desc.clone(),
-                )?))
-            })
+            .map(|desc| Ok(DescriptorSetLayout::new(device.clone(), desc.clone())?))
             .collect::<Result<Vec<_>, DescriptorSetLayoutError>>()
             .unwrap();
 
-        Arc::new(
-            PipelineLayout::new(
-                device.clone(),
-                descriptor_set_layouts,
-                fs.main_entry_point().push_constant_range().iter().cloned(),
-            )
-            .unwrap(),
+        PipelineLayout::new(
+            device.clone(),
+            descriptor_set_layouts,
+            fs.main_entry_point().push_constant_range().iter().cloned(),
         )
+        .unwrap()
     };
 
     let subpass = Subpass::from(render_pass.clone(), 0).unwrap();

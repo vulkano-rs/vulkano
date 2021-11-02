@@ -671,25 +671,22 @@ mod tests {
                 CommandBufferUsage::MultipleSubmit,
             )
             .unwrap();
-            let set_layout = Arc::new(
-                DescriptorSetLayout::new(
-                    device.clone(),
-                    [Some(DescriptorDesc {
-                        ty: DescriptorDescTy::Sampler {
-                            immutable_samplers: vec![],
-                        },
-                        descriptor_count: 1,
-                        stages: ShaderStages::all(),
-                        mutable: false,
-                        variable_count: false,
-                    })],
-                )
-                .unwrap(),
-            );
-            let pipeline_layout = Arc::new(
+            let set_layout = DescriptorSetLayout::new(
+                device.clone(),
+                [Some(DescriptorDesc {
+                    ty: DescriptorDescTy::Sampler {
+                        immutable_samplers: vec![],
+                    },
+                    descriptor_count: 1,
+                    stages: ShaderStages::all(),
+                    mutable: false,
+                    variable_count: false,
+                })],
+            )
+            .unwrap();
+            let pipeline_layout =
                 PipelineLayout::new(device.clone(), [set_layout.clone(), set_layout.clone()], [])
-                    .unwrap(),
-            );
+                    .unwrap();
 
             let set = {
                 let mut builder = PersistentDescriptorSet::start(set_layout.clone());
@@ -733,17 +730,15 @@ mod tests {
                 .descriptor_set(PipelineBindPoint::Graphics, 1)
                 .is_some());
 
-            let pipeline_layout = Arc::new(
-                PipelineLayout::new(
-                    device.clone(),
-                    [
-                        Arc::new(DescriptorSetLayout::new(device.clone(), []).unwrap()),
-                        set_layout.clone(),
-                    ],
-                    [],
-                )
-                .unwrap(),
-            );
+            let pipeline_layout = PipelineLayout::new(
+                device.clone(),
+                [
+                    DescriptorSetLayout::new(device.clone(), []).unwrap(),
+                    set_layout.clone(),
+                ],
+                [],
+            )
+            .unwrap();
 
             let set = {
                 let mut builder = PersistentDescriptorSet::start(set_layout.clone());

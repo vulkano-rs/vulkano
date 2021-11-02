@@ -64,18 +64,13 @@ impl ComputePipeline {
 
         let descriptor_set_layouts = descriptor_set_layout_descs
             .iter()
-            .map(|desc| {
-                Ok(Arc::new(DescriptorSetLayout::new(
-                    device.clone(),
-                    desc.clone(),
-                )?))
-            })
+            .map(|desc| Ok(DescriptorSetLayout::new(device.clone(), desc.clone())?))
             .collect::<Result<Vec<_>, PipelineLayoutCreationError>>()?;
-        let pipeline_layout = Arc::new(PipelineLayout::new(
+        let pipeline_layout = PipelineLayout::new(
             device.clone(),
             descriptor_set_layouts,
             shader.push_constant_range().iter().cloned(),
-        )?);
+        )?;
 
         unsafe {
             ComputePipeline::with_unchecked_pipeline_layout(
