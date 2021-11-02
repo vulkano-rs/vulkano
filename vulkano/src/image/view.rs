@@ -84,7 +84,7 @@ where
     }
 
     /// Returns the wrapped image that this image view was created from.
-    pub fn image(&self) -> &I {
+    pub fn image(&self) -> &Arc<I> {
         &self.image
     }
 }
