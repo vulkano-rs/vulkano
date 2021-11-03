@@ -38,7 +38,7 @@ pub fn check_desc_against_limits(
         for descriptor in (0..set.num_bindings()).filter_map(|i| set.descriptor(i).map(|d| d)) {
             num_resources.increment(descriptor.descriptor_count, &descriptor.stages);
 
-            match descriptor.ty.ty() {
+            match descriptor.ty {
                 // TODO:
                 DescriptorType::Sampler => {
                     num_samplers.increment(descriptor.descriptor_count, &descriptor.stages);

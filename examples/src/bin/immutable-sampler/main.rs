@@ -33,7 +33,7 @@ use vulkano::instance::Instance;
 use vulkano::pipeline::color_blend::ColorBlendState;
 use vulkano::pipeline::input_assembly::{InputAssemblyState, PrimitiveTopology};
 use vulkano::pipeline::viewport::{Viewport, ViewportState};
-use vulkano::pipeline::{GraphicsPipeline, PipelineBindPoint};
+use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
 use vulkano::sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode};
 use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};

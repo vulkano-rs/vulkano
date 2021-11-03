@@ -81,10 +81,8 @@ pub use self::resources::{DescriptorBindingResources, DescriptorSetResources};
 pub use self::single_layout_pool::SingleLayoutDescSetPool;
 use self::sys::UnsafeDescriptorSet;
 use crate::buffer::BufferAccess;
-use crate::descriptor_set::layout::DescriptorDescTy;
+use crate::descriptor_set::layout::DescriptorType;
 use crate::device::DeviceOwned;
-use crate::format::Format;
-use crate::image::view::ImageViewType;
 use crate::OomError;
 use crate::VulkanObject;
 use smallvec::SmallVec;
@@ -144,6 +142,7 @@ impl Hash for dyn DescriptorSet {
     }
 }
 
+#[derive(Clone)]
 pub struct DescriptorSetWithOffsets {
     descriptor_set: Arc<dyn DescriptorSet>,
     dynamic_offsets: SmallVec<[u32; 4]>,
@@ -167,7 +166,7 @@ impl DescriptorSetWithOffsets {
         // by the physical device.
         for desc in layout.desc().bindings() {
             match desc.as_ref().unwrap().ty {
-                DescriptorDescTy::StorageBufferDynamic => {
+                DescriptorType::StorageBufferDynamic => {
                     // Don't check alignment if there are not enough offsets anyway
                     if dynamic_offsets.len() > dynamic_offset_index {
                         assert!(
@@ -179,7 +178,7 @@ impl DescriptorSetWithOffsets {
                     }
                     dynamic_offset_index += 1;
                 }
-                DescriptorDescTy::UniformBufferDynamic => {
+                DescriptorType::UniformBufferDynamic => {
                     // Don't check alignment if there are not enough offsets anyway
                     if dynamic_offsets.len() > dynamic_offset_index {
                         assert!(
@@ -279,25 +278,6 @@ pub enum DescriptorSetError {
         obtained: u32,
     },
 
-    /// Expected a multisampled image, but got a single-sampled image.
-    ExpectedMultisampled,
-
-    /// The format of an image view doesn't match what was expected.
-    ImageViewFormatMismatch {
-        /// Expected format.
-        expected: Format,
-        /// Format of the image view that was passed.
-        obtained: Format,
-    },
-
-    /// The type of an image view doesn't match what was expected.
-    ImageViewTypeMismatch {
-        /// Expected type.
-        expected: ImageViewType,
-        /// Type of the image view that was passed.
-        obtained: ImageViewType,
-    },
-
     /// The image view isn't compatible with the sampler.
     IncompatibleImageViewSampler,
 
@@ -327,9 +307,6 @@ pub enum DescriptorSetError {
 
     /// Expected a non-arrayed image, but got an arrayed image.
     UnexpectedArrayed,
-
-    /// Expected a single-sampled image, but got a multisampled image.
-    UnexpectedMultisampled,
 
     /// Expected one type of resource but got another.
     WrongDescriptorType,
@@ -361,12 +338,6 @@ impl fmt::Display for DescriptorSetError {
                     "the builder has previously return an error and is an unknown state",
                 Self::DescriptorIsEmpty => "operation can not be performed on an empty descriptor",
                 Self::DescriptorsMissing { .. } => "not all descriptors have been added",
-                Self::ExpectedMultisampled =>
-                    "expected a multisampled image, but got a single-sampled image",
-                Self::ImageViewFormatMismatch { .. } =>
-                    "the format of an image view doesn't match what was expected",
-                Self::ImageViewTypeMismatch { .. } =>
-                    "the type of an image view doesn't match what was expected",
                 Self::IncompatibleImageViewSampler =>
                     "the image view isn't compatible with the sampler",
                 Self::MissingBufferUsage(_) => "the buffer is missing the correct usage",
@@ -379,8 +350,6 @@ impl fmt::Display for DescriptorSetError {
                 Self::SamplerIsImmutable => "provided a dynamically assigned sampler, but the descriptor has an immutable sampler",
                 Self::TooManyDescriptors => "builder doesn't expect anymore descriptors",
                 Self::UnexpectedArrayed => "expected a non-arrayed image, but got an arrayed image",
-                Self::UnexpectedMultisampled =>
-                    "expected a single-sampled image, but got a multisampled image",
                 Self::WrongDescriptorType => "expected one type of resource but got another",
             }
         )

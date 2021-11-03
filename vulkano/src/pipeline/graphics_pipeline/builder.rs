@@ -357,6 +357,13 @@ where
             }
         }
 
+        let num_used_descriptor_sets = descriptor_requirements
+            .keys()
+            .map(|loc| loc.0)
+            .max()
+            .map(|x| x + 1)
+            .unwrap_or(0);
+
         // Will contain the list of dynamic states. Filled throughout this function.
         let mut dynamic_state_modes: FnvHashMap<DynamicState, bool> = HashMap::default();
 
@@ -1018,6 +1025,7 @@ where
             subpass,
             shaders,
             descriptor_requirements,
+            num_used_descriptor_sets,
 
             vertex_input, // Can be None if there's a mesh shader, but we don't support that yet
             input_assembly_state: self.input_assembly_state, // Can be None if there's a mesh shader, but we don't support that yet

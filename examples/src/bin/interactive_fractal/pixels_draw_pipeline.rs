@@ -17,7 +17,7 @@ use vulkano::device::Queue;
 use vulkano::image::ImageViewAbstract;
 use vulkano::pipeline::input_assembly::InputAssemblyState;
 use vulkano::pipeline::viewport::{Viewport, ViewportState};
-use vulkano::pipeline::{GraphicsPipeline, PipelineBindPoint};
+use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::render_pass::Subpass;
 use vulkano::sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode};
 

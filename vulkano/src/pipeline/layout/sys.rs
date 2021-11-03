@@ -187,6 +187,31 @@ impl PipelineLayout {
         &self.push_constant_ranges
     }
 
+    /// Returns whether `self` is compatible with `other` for the given number of sets.
+    pub fn is_compatible_with(&self, other: &PipelineLayout, num_sets: u32) -> bool {
+        let num_sets = num_sets as usize;
+        assert!(num_sets >= self.descriptor_set_layouts.len());
+
+        if self.handle == other.handle {
+            return true;
+        }
+
+        if self.push_constant_ranges != other.push_constant_ranges {
+            return false;
+        }
+
+        let other_sets = match other.descriptor_set_layouts.get(0..num_sets) {
+            Some(x) => x,
+            None => return false,
+        };
+
+        self.descriptor_set_layouts.iter().zip(other_sets).all(
+            |(self_set_layout, other_set_layout)| {
+                self_set_layout.is_compatible_with(other_set_layout)
+            },
+        )
+    }
+
     /// Makes sure that `self` is a superset of the provided descriptor set layouts and push
     /// constant ranges. Returns an `Err` if this is not the case.
     pub fn ensure_compatible_with_shader<'a>(

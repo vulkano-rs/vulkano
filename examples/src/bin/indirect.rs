@@ -44,7 +44,7 @@ use vulkano::image::{ImageAccess, ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
 use vulkano::pipeline::input_assembly::InputAssemblyState;
 use vulkano::pipeline::viewport::{Viewport, ViewportState};
-use vulkano::pipeline::{ComputePipeline, GraphicsPipeline, PipelineBindPoint};
+use vulkano::pipeline::{ComputePipeline, GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
 use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
 use vulkano::sync::{self, FlushError, GpuFuture};

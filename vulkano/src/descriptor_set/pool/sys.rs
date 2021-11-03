@@ -360,9 +360,9 @@ impl fmt::Display for DescriptorPoolAllocError {
 #[cfg(test)]
 mod tests {
     use crate::descriptor_set::layout::DescriptorDesc;
-    use crate::descriptor_set::layout::DescriptorDescTy;
     use crate::descriptor_set::layout::DescriptorSetDesc;
     use crate::descriptor_set::layout::DescriptorSetLayout;
+    use crate::descriptor_set::layout::DescriptorType;
     use crate::descriptor_set::pool::DescriptorsCount;
     use crate::descriptor_set::pool::UnsafeDescriptorPool;
     use crate::pipeline::shader::ShaderStages;
@@ -406,11 +406,11 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let layout = DescriptorDesc {
-            ty: DescriptorDescTy::UniformBuffer,
+            ty: DescriptorType::UniformBuffer,
             descriptor_count: 1,
-            stages: ShaderStages::all_graphics(),
-            mutable: false,
             variable_count: false,
+            stages: ShaderStages::all_graphics(),
+            immutable_samplers: Vec::new(),
         };
 
         let set_layout = DescriptorSetLayout::new(
@@ -437,11 +437,11 @@ mod tests {
         let (device2, _) = gfx_dev_and_queue!();
 
         let layout = DescriptorDesc {
-            ty: DescriptorDescTy::UniformBuffer,
+            ty: DescriptorType::UniformBuffer,
             descriptor_count: 1,
-            stages: ShaderStages::all_graphics(),
-            mutable: false,
             variable_count: false,
+            stages: ShaderStages::all_graphics(),
+            immutable_samplers: Vec::new(),
         };
 
         let set_layout =

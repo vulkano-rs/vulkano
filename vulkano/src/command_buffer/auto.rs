@@ -67,6 +67,7 @@ use crate::pipeline::viewport::Viewport;
 use crate::pipeline::ComputePipeline;
 use crate::pipeline::DynamicState;
 use crate::pipeline::GraphicsPipeline;
+use crate::pipeline::Pipeline;
 use crate::pipeline::PipelineBindPoint;
 use crate::query::QueryControlFlags;
 use crate::query::QueryPipelineStatisticFlags;
@@ -1393,11 +1394,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
         let pipeline = check_pipeline_compute(self.state())?;
         self.ensure_outside_render_pass()?;
-        check_descriptor_sets_validity(
-            self.state(),
-            pipeline.layout(),
-            PipelineBindPoint::Compute,
-        )?;
+        check_descriptor_sets_validity(self.state(), pipeline, pipeline.descriptor_requirements())?;
         check_push_constants_validity(self.state(), pipeline.layout())?;
         check_dispatch(self.device(), group_counts)?;
 
@@ -1424,11 +1421,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
         let pipeline = check_pipeline_compute(self.state())?;
         self.ensure_outside_render_pass()?;
-        check_descriptor_sets_validity(
-            self.state(),
-            pipeline.layout(),
-            PipelineBindPoint::Compute,
-        )?;
+        check_descriptor_sets_validity(self.state(), pipeline, pipeline.descriptor_requirements())?;
         check_push_constants_validity(self.state(), pipeline.layout())?;
         check_indirect_buffer(self.device(), indirect_buffer.as_ref())?;
 
@@ -1456,11 +1449,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         let pipeline = check_pipeline_graphics(self.state())?;
         self.ensure_inside_render_pass_inline(pipeline)?;
         check_dynamic_state_validity(self.state(), pipeline)?;
-        check_descriptor_sets_validity(
-            self.state(),
-            pipeline.layout(),
-            PipelineBindPoint::Graphics,
-        )?;
+        check_descriptor_sets_validity(self.state(), pipeline, pipeline.descriptor_requirements())?;
         check_push_constants_validity(self.state(), pipeline.layout())?;
         check_vertex_buffers(
             self.state(),
@@ -1502,11 +1491,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         let pipeline = check_pipeline_graphics(self.state())?;
         self.ensure_inside_render_pass_inline(pipeline)?;
         check_dynamic_state_validity(self.state(), pipeline)?;
-        check_descriptor_sets_validity(
-            self.state(),
-            pipeline.layout(),
-            PipelineBindPoint::Graphics,
-        )?;
+        check_descriptor_sets_validity(self.state(), pipeline, pipeline.descriptor_requirements())?;
         check_push_constants_validity(self.state(), pipeline.layout())?;
         check_vertex_buffers(self.state(), pipeline, None, None)?;
         check_indirect_buffer(self.device(), indirect_buffer.as_ref())?;
@@ -1557,11 +1542,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         let pipeline = check_pipeline_graphics(self.state())?;
         self.ensure_inside_render_pass_inline(pipeline)?;
         check_dynamic_state_validity(self.state(), pipeline)?;
-        check_descriptor_sets_validity(
-            self.state(),
-            pipeline.layout(),
-            PipelineBindPoint::Graphics,
-        )?;
+        check_descriptor_sets_validity(self.state(), pipeline, pipeline.descriptor_requirements())?;
         check_push_constants_validity(self.state(), pipeline.layout())?;
         check_vertex_buffers(
             self.state(),
@@ -1610,11 +1591,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         let pipeline = check_pipeline_graphics(self.state())?;
         self.ensure_inside_render_pass_inline(pipeline)?;
         check_dynamic_state_validity(self.state(), pipeline)?;
-        check_descriptor_sets_validity(
-            self.state(),
-            pipeline.layout(),
-            PipelineBindPoint::Graphics,
-        )?;
+        check_descriptor_sets_validity(self.state(), pipeline, pipeline.descriptor_requirements())?;
         check_push_constants_validity(self.state(), pipeline.layout())?;
         check_vertex_buffers(self.state(), pipeline, None, None)?;
         check_index_buffer(self.state(), None)?;

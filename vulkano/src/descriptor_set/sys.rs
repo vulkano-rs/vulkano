@@ -55,7 +55,7 @@ impl UnsafeDescriptorSet {
         let (infos, mut writes): (SmallVec<[_; 8]>, SmallVec<[_; 8]>) = writes
             .into_iter()
             .map(|write| {
-                let descriptor_type = layout.descriptor(write.binding_num).unwrap().ty.ty();
+                let descriptor_type = layout.descriptor(write.binding_num).unwrap().ty;
 
                 (
                     write.to_vulkan_info(descriptor_type),

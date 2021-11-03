@@ -104,7 +104,7 @@ pub struct SyncCommandBuffer {
 
     // List of commands used by the command buffer. Used to hold the various resources that are
     // being used.
-    commands: Vec<Arc<dyn Command>>,
+    commands: Vec<Box<dyn Command>>,
 
     // Locations within commands that pipeline barriers were inserted. For debugging purposes.
     // TODO: present only in cfg(debug_assertions)?
@@ -468,10 +468,6 @@ trait Command: Send + Sync {
     // Sends the command to the `UnsafeCommandBufferBuilder`. Calling this method twice on the same
     // object will likely lead to a panic.
     unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder);
-
-    fn bound_descriptor_set(&self, set_num: u32) -> SetOrPush {
-        panic!()
-    }
 }
 
 impl std::fmt::Debug for dyn Command {
@@ -493,8 +489,8 @@ mod tests {
     use crate::command_buffer::CommandBufferLevel;
     use crate::command_buffer::CommandBufferUsage;
     use crate::descriptor_set::layout::DescriptorDesc;
-    use crate::descriptor_set::layout::DescriptorDescTy;
     use crate::descriptor_set::layout::DescriptorSetLayout;
+    use crate::descriptor_set::layout::DescriptorType;
     use crate::descriptor_set::PersistentDescriptorSet;
     use crate::device::Device;
     use crate::pipeline::layout::PipelineLayout;
@@ -674,13 +670,11 @@ mod tests {
             let set_layout = DescriptorSetLayout::new(
                 device.clone(),
                 [Some(DescriptorDesc {
-                    ty: DescriptorDescTy::Sampler {
-                        immutable_samplers: vec![],
-                    },
+                    ty: DescriptorType::Sampler,
                     descriptor_count: 1,
-                    stages: ShaderStages::all(),
-                    mutable: false,
                     variable_count: false,
+                    stages: ShaderStages::all(),
+                    immutable_samplers: Vec::new(),
                 })],
             )
             .unwrap();

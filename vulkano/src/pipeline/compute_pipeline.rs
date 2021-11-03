@@ -15,6 +15,7 @@ use crate::pipeline::layout::{
     PipelineLayout, PipelineLayoutCreationError, PipelineLayoutSupersetError,
 };
 use crate::pipeline::shader::{ComputeEntryPoint, DescriptorRequirements, SpecializationConstants};
+use crate::pipeline::{Pipeline, PipelineBindPoint};
 use crate::Error;
 use crate::OomError;
 use crate::VulkanObject;
@@ -37,8 +38,9 @@ use std::sync::Arc;
 pub struct ComputePipeline {
     handle: ash::vk::Pipeline,
     device: Arc<Device>,
-    pipeline_layout: Arc<PipelineLayout>,
+    layout: Arc<PipelineLayout>,
     descriptor_requirements: FnvHashMap<(u32, u32), DescriptorRequirements>,
+    num_used_descriptor_sets: u32,
 }
 
 impl ComputePipeline {
@@ -66,7 +68,7 @@ impl ComputePipeline {
             .iter()
             .map(|desc| Ok(DescriptorSetLayout::new(device.clone(), desc.clone())?))
             .collect::<Result<Vec<_>, PipelineLayoutCreationError>>()?;
-        let pipeline_layout = PipelineLayout::new(
+        let layout = PipelineLayout::new(
             device.clone(),
             descriptor_set_layouts,
             shader.push_constant_range().iter().cloned(),
@@ -77,7 +79,7 @@ impl ComputePipeline {
                 device,
                 shader,
                 spec_constants,
-                pipeline_layout,
+                layout,
                 cache,
             )
         }
@@ -91,7 +93,7 @@ impl ComputePipeline {
         device: Arc<Device>,
         shader: &ComputeEntryPoint,
         spec_constants: &Css,
-        pipeline_layout: Arc<PipelineLayout>,
+        layout: Arc<PipelineLayout>,
         cache: Option<Arc<PipelineCache>>,
     ) -> Result<Arc<ComputePipeline>, ComputePipelineCreationError>
     where
@@ -102,7 +104,7 @@ impl ComputePipeline {
         }
 
         unsafe {
-            pipeline_layout.ensure_compatible_with_shader(
+            layout.ensure_compatible_with_shader(
                 shader.descriptor_requirements(),
                 shader.push_constant_range(),
             )?;
@@ -110,7 +112,7 @@ impl ComputePipeline {
                 device,
                 shader,
                 spec_constants,
-                pipeline_layout,
+                layout,
                 cache,
             )
         }
@@ -122,7 +124,7 @@ impl ComputePipeline {
         device: Arc<Device>,
         shader: &ComputeEntryPoint,
         spec_constants: &Css,
-        pipeline_layout: Arc<PipelineLayout>,
+        layout: Arc<PipelineLayout>,
         cache: Option<Arc<PipelineCache>>,
     ) -> Result<Arc<ComputePipeline>, ComputePipelineCreationError>
     where
@@ -155,7 +157,7 @@ impl ComputePipeline {
             let infos = ash::vk::ComputePipelineCreateInfo {
                 flags: ash::vk::PipelineCreateFlags::empty(),
                 stage,
-                layout: pipeline_layout.internal_object(),
+                layout: layout.internal_object(),
                 base_pipeline_handle: ash::vk::Pipeline::null(),
                 base_pipeline_index: 0,
                 ..Default::default()
@@ -178,14 +180,23 @@ impl ComputePipeline {
             output.assume_init()
         };
 
+        let descriptor_requirements: FnvHashMap<_, _> = shader
+            .descriptor_requirements()
+            .map(|(loc, reqs)| (loc, reqs.clone()))
+            .collect();
+        let num_used_descriptor_sets = descriptor_requirements
+            .keys()
+            .map(|loc| loc.0)
+            .max()
+            .map(|x| x + 1)
+            .unwrap_or(0);
+
         Ok(Arc::new(ComputePipeline {
             handle,
             device: device.clone(),
-            pipeline_layout: pipeline_layout,
-            descriptor_requirements: shader
-                .descriptor_requirements()
-                .map(|(loc, reqs)| (loc, reqs.clone()))
-                .collect(),
+            layout,
+            descriptor_requirements,
+            num_used_descriptor_sets,
         }))
     }
 
@@ -193,12 +204,6 @@ impl ComputePipeline {
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
         &self.device
-    }
-
-    /// Returns the pipeline layout used in this compute pipeline.
-    #[inline]
-    pub fn layout(&self) -> &Arc<PipelineLayout> {
-        &self.pipeline_layout
     }
 
     /// Returns an iterator over the descriptor requirements for this pipeline.
@@ -209,6 +214,23 @@ impl ComputePipeline {
         self.descriptor_requirements
             .iter()
             .map(|(loc, reqs)| (*loc, reqs))
+    }
+}
+
+impl Pipeline for ComputePipeline {
+    #[inline]
+    fn bind_point(&self) -> PipelineBindPoint {
+        PipelineBindPoint::Compute
+    }
+
+    #[inline]
+    fn layout(&self) -> &Arc<PipelineLayout> {
+        &self.layout
+    }
+
+    #[inline]
+    fn num_used_descriptor_sets(&self) -> u32 {
+        self.num_used_descriptor_sets
     }
 }
 
@@ -352,6 +374,7 @@ mod tests {
     use crate::pipeline::shader::SpecializationConstants;
     use crate::pipeline::shader::SpecializationMapEntry;
     use crate::pipeline::ComputePipeline;
+    use crate::pipeline::Pipeline;
     use crate::pipeline::PipelineBindPoint;
     use crate::sync::now;
     use crate::sync::GpuFuture;
