@@ -621,6 +621,12 @@ pub struct ShaderStages {
     pub geometry: bool,
     pub fragment: bool,
     pub compute: bool,
+    pub raygen: bool,
+    pub any_hit: bool,
+    pub closest_hit: bool,
+    pub miss: bool,
+    pub intersection: bool,
+    pub callable: bool,
 }
 
 impl ShaderStages {
@@ -635,6 +641,12 @@ impl ShaderStages {
             geometry: true,
             fragment: true,
             compute: true,
+            raygen: true,
+            any_hit: true,
+            closest_hit: true,
+            miss: true,
+            intersection: true,
+            callable: true,
         }
     }
 
@@ -649,6 +661,12 @@ impl ShaderStages {
             geometry: false,
             fragment: false,
             compute: false,
+            raygen: false,
+            any_hit: false,
+            closest_hit: false,
+            miss: false,
+            intersection: false,
+            callable: false,
         }
     }
 
@@ -663,6 +681,12 @@ impl ShaderStages {
             geometry: true,
             fragment: true,
             compute: false,
+            raygen: false,
+            any_hit: false,
+            closest_hit: false,
+            miss: false,
+            intersection: false,
+            callable: false,
         }
     }
 
@@ -677,6 +701,12 @@ impl ShaderStages {
             geometry: false,
             fragment: false,
             compute: true,
+            raygen: false,
+            any_hit: false,
+            closest_hit: false,
+            miss: false,
+            intersection: false,
+            callable: false,
         }
     }
 
@@ -690,6 +720,12 @@ impl ShaderStages {
             && (self.geometry || !other.geometry)
             && (self.fragment || !other.fragment)
             && (self.compute || !other.compute)
+            && (self.raygen || !other.raygen)
+            && (self.any_hit || !other.any_hit)
+            && (self.closest_hit || !other.closest_hit)
+            && (self.miss || !other.miss)
+            && (self.intersection || !other.intersection)
+            && (self.callable || !other.callable)
     }
 
     /// Checks whether any of the stages in `self` are also present in `other`.
@@ -702,6 +738,12 @@ impl ShaderStages {
             || (self.geometry && other.geometry)
             || (self.fragment && other.fragment)
             || (self.compute && other.compute)
+            || (self.raygen && other.raygen)
+            || (self.any_hit && other.any_hit)
+            || (self.closest_hit && other.closest_hit)
+            || (self.miss && other.miss)
+            || (self.intersection && other.intersection)
+            || (self.callable && other.callable)
     }
 
     /// Returns the union of the stages in `self` and `other`.
@@ -714,6 +756,12 @@ impl ShaderStages {
             geometry: self.geometry || other.geometry,
             fragment: self.fragment || other.fragment,
             compute: self.compute || other.compute,
+            raygen: self.raygen || other.raygen,
+            any_hit: self.any_hit || other.any_hit,
+            closest_hit: self.closest_hit || other.closest_hit,
+            miss: self.miss || other.miss,
+            intersection: self.intersection || other.intersection,
+            callable: self.callable || other.callable,
         }
     }
 }
@@ -740,6 +788,24 @@ impl From<ShaderStages> for ash::vk::ShaderStageFlags {
         if val.compute {
             result |= ash::vk::ShaderStageFlags::COMPUTE;
         }
+        if val.raygen {
+            result |= ash::vk::ShaderStageFlags::RAYGEN_KHR;
+        }
+        if val.any_hit {
+            result |= ash::vk::ShaderStageFlags::ANY_HIT_KHR;
+        }
+        if val.closest_hit {
+            result |= ash::vk::ShaderStageFlags::CLOSEST_HIT_KHR;
+        }
+        if val.miss {
+            result |= ash::vk::ShaderStageFlags::MISS_KHR;
+        }
+        if val.intersection {
+            result |= ash::vk::ShaderStageFlags::INTERSECTION_KHR;
+        }
+        if val.callable {
+            result |= ash::vk::ShaderStageFlags::CALLABLE_KHR;
+        }
         result
     }
 }
@@ -755,6 +821,12 @@ impl From<ash::vk::ShaderStageFlags> for ShaderStages {
             geometry: val.intersects(ash::vk::ShaderStageFlags::GEOMETRY),
             fragment: val.intersects(ash::vk::ShaderStageFlags::FRAGMENT),
             compute: val.intersects(ash::vk::ShaderStageFlags::COMPUTE),
+            raygen: val.intersects(ash::vk::ShaderStageFlags::RAYGEN_KHR),
+            any_hit: val.intersects(ash::vk::ShaderStageFlags::ANY_HIT_KHR),
+            closest_hit: val.intersects(ash::vk::ShaderStageFlags::CLOSEST_HIT_KHR),
+            miss: val.intersects(ash::vk::ShaderStageFlags::MISS_KHR),
+            intersection: val.intersects(ash::vk::ShaderStageFlags::INTERSECTION_KHR),
+            callable: val.intersects(ash::vk::ShaderStageFlags::CALLABLE_KHR),
         }
     }
 }
@@ -771,6 +843,12 @@ impl BitOr for ShaderStages {
             geometry: self.geometry || other.geometry,
             fragment: self.fragment || other.fragment,
             compute: self.compute || other.compute,
+            raygen: self.raygen || other.raygen,
+            any_hit: self.any_hit || other.any_hit,
+            closest_hit: self.closest_hit || other.closest_hit,
+            miss: self.miss || other.miss,
+            intersection: self.intersection || other.intersection,
+            callable: self.callable || other.callable,
         }
     }
 }
@@ -785,6 +863,12 @@ impl From<ShaderStages> for PipelineStages {
             geometry_shader: stages.geometry,
             fragment_shader: stages.fragment,
             compute_shader: stages.compute,
+            ray_tracing_shader: stages.raygen
+                | stages.any_hit
+                | stages.closest_hit
+                | stages.miss
+                | stages.intersection
+                | stages.callable,
             ..PipelineStages::none()
         }
     }
