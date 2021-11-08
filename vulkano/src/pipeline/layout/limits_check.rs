@@ -13,7 +13,7 @@ use crate::descriptor_set::layout::DescriptorSetLayout;
 use crate::descriptor_set::layout::DescriptorType;
 use crate::device::Properties;
 use crate::pipeline::layout::PipelineLayoutPcRange;
-use crate::pipeline::shader::ShaderStages;
+use crate::shader::ShaderStages;
 use std::error;
 use std::fmt;
 use std::sync::Arc;

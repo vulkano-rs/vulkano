@@ -498,9 +498,9 @@ mod tests {
     use crate::descriptor_set::PersistentDescriptorSet;
     use crate::device::Device;
     use crate::pipeline::layout::PipelineLayout;
-    use crate::pipeline::shader::ShaderStages;
     use crate::pipeline::PipelineBindPoint;
     use crate::sampler::Sampler;
+    use crate::shader::ShaderStages;
     use crate::sync::GpuFuture;
     use std::sync::Arc;
 

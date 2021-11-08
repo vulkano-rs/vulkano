@@ -248,10 +248,10 @@ fn main() {
     )
     .unwrap();
 
-    let vs = vs::Shader::load(device.clone()).unwrap();
-    let tcs = tcs::Shader::load(device.clone()).unwrap();
-    let tes = tes::Shader::load(device.clone()).unwrap();
-    let fs = fs::Shader::load(device.clone()).unwrap();
+    let vs = vs::load(device.clone()).unwrap();
+    let tcs = tcs::load(device.clone()).unwrap();
+    let tes = tes::load(device.clone()).unwrap();
+    let fs = fs::load(device.clone()).unwrap();
 
     let render_pass = vulkano::single_pass_renderpass!(
         device.clone(),
@@ -272,9 +272,14 @@ fn main() {
 
     let pipeline = GraphicsPipeline::start()
         .vertex_input_single_buffer::<Vertex>()
-        .vertex_shader(vs.main_entry_point(), ())
+        .vertex_shader(vs.entry_point("main").unwrap(), ())
         // Actually use the tessellation shaders.
-        .tessellation_shaders(tcs.main_entry_point(), (), tes.main_entry_point(), ())
+        .tessellation_shaders(
+            tcs.entry_point("main").unwrap(),
+            (),
+            tes.entry_point("main").unwrap(),
+            (),
+        )
         .input_assembly_state(InputAssemblyState::new().topology(PrimitiveTopology::PatchList))
         .rasterization_state(RasterizationState::new().polygon_mode(PolygonMode::Line))
         .tessellation_state(
@@ -285,7 +290,7 @@ fn main() {
                 .patch_control_points(3),
         )
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-        .fragment_shader(fs.main_entry_point(), ())
+        .fragment_shader(fs.entry_point("main").unwrap(), ())
         .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
         .build(device.clone())
         .unwrap();

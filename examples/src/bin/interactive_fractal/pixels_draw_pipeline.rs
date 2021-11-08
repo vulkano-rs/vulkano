@@ -80,15 +80,13 @@ impl PixelsDrawPipeline {
         .unwrap();
 
         let pipeline = {
-            let vs = vs::Shader::load(gfx_queue.device().clone())
-                .expect("failed to create shader module");
-            let fs = fs::Shader::load(gfx_queue.device().clone())
-                .expect("failed to create shader module");
+            let vs = vs::load(gfx_queue.device().clone()).expect("failed to create shader module");
+            let fs = fs::load(gfx_queue.device().clone()).expect("failed to create shader module");
             GraphicsPipeline::start()
                 .vertex_input_single_buffer::<TexturedVertex>()
-                .vertex_shader(vs.main_entry_point(), ())
+                .vertex_shader(vs.entry_point("main").unwrap(), ())
                 .input_assembly_state(InputAssemblyState::new())
-                .fragment_shader(fs.main_entry_point(), ())
+                .fragment_shader(fs.entry_point("main").unwrap(), ())
                 .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
                 .render_pass(subpass)
                 .build(gfx_queue.device().clone())

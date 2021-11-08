@@ -43,9 +43,9 @@
 
 use crate::format::Format;
 use crate::image::view::ImageViewType;
-use crate::pipeline::shader::DescriptorRequirements;
-use crate::pipeline::shader::ShaderStages;
 use crate::sampler::Sampler;
+use crate::shader::DescriptorRequirements;
+use crate::shader::ShaderStages;
 use crate::sync::AccessFlags;
 use crate::sync::PipelineStages;
 use smallvec::SmallVec;

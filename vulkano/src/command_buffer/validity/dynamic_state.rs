@@ -9,10 +9,10 @@
 
 use crate::command_buffer::synced::CommandBufferState;
 use crate::pipeline::input_assembly::PrimitiveTopology;
-use crate::pipeline::shader::ShaderStage;
 use crate::pipeline::DynamicState;
 use crate::pipeline::GraphicsPipeline;
 use crate::pipeline::PartialStateMode;
+use crate::shader::ShaderStage;
 use std::error;
 use std::fmt;
 

@@ -102,7 +102,7 @@ pub fn write(grammar: &SpirvGrammar) {
     let value_enum_output = value_enum_output(&value_enum_members(grammar));
 
     write_file(
-        "spirv.rs",
+        "spirv_parse.rs",
         format!(
             "SPIR-V grammar version {}.{}.{}",
             grammar.major_version, grammar.minor_version, grammar.revision
@@ -415,11 +415,30 @@ fn bit_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
 
 fn bit_enum_members(grammar: &SpirvGrammar) -> Vec<(Ident, Vec<KindEnumMember>)> {
     let parameter_kinds = kinds_to_types(grammar);
-
-    grammar
+    let kinds_dedup: Vec<_> = grammar
         .operand_kinds
         .iter()
-        .filter(|operand_kind| operand_kind.category == "BitEnum")
+        .cloned()
+        .filter_map(|mut operand_kind| {
+            if operand_kind.category == "BitEnum" {
+                operand_kind.enumerants.dedup_by_key(|enumerant| {
+                    let value = enumerant
+                        .value
+                        .as_str()
+                        .unwrap()
+                        .strip_prefix("0x")
+                        .unwrap();
+                    u32::from_str_radix(value, 16).unwrap()
+                });
+                Some(operand_kind)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    kinds_dedup
+        .into_iter()
         .map(|operand_kind| {
             let members = operand_kind
                 .enumerants
@@ -546,11 +565,24 @@ fn value_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
 
 fn value_enum_members(grammar: &SpirvGrammar) -> Vec<(Ident, Vec<KindEnumMember>)> {
     let parameter_kinds = kinds_to_types(grammar);
-
-    grammar
+    let kinds_dedup: Vec<_> = grammar
         .operand_kinds
         .iter()
-        .filter(|operand_kind| operand_kind.category == "ValueEnum")
+        .cloned()
+        .filter_map(|mut operand_kind| {
+            if operand_kind.category == "ValueEnum" {
+                operand_kind
+                    .enumerants
+                    .dedup_by_key(|enumerant| enumerant.value.as_u64());
+                Some(operand_kind)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    kinds_dedup
+        .into_iter()
         .map(|operand_kind| {
             let members = operand_kind
                 .enumerants

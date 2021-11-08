@@ -11,7 +11,7 @@ use crate::format::ClearValue;
 use crate::format::Format;
 use crate::image::ImageLayout;
 use crate::image::SampleCount;
-use crate::pipeline::shader::ShaderInterface;
+use crate::shader::ShaderInterface;
 use crate::sync::AccessFlags;
 use crate::sync::PipelineStages;
 

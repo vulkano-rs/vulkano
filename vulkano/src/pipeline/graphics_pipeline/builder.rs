@@ -25,15 +25,15 @@ use crate::pipeline::input_assembly::{InputAssemblyState, PrimitiveTopology};
 use crate::pipeline::layout::{PipelineLayout, PipelineLayoutCreationError, PipelineLayoutPcRange};
 use crate::pipeline::multisample::MultisampleState;
 use crate::pipeline::rasterization::{CullMode, FrontFace, PolygonMode, RasterizationState};
-use crate::pipeline::shader::{
-    DescriptorRequirements, GraphicsEntryPoint, GraphicsShaderType, ShaderStage,
-    SpecializationConstants,
-};
 use crate::pipeline::tessellation::TessellationState;
 use crate::pipeline::vertex::{BuffersDefinition, Vertex, VertexDefinition, VertexInputRate};
 use crate::pipeline::viewport::{Scissor, Viewport, ViewportState};
 use crate::pipeline::{DynamicState, PartialStateMode, StateMode};
 use crate::render_pass::Subpass;
+use crate::shader::{
+    DescriptorRequirements, EntryPoint, ShaderExecution, ShaderStage, SpecializationConstants,
+};
+use crate::DeviceSize;
 use crate::VulkanObject;
 use fnv::FnvHashMap;
 use smallvec::SmallVec;
@@ -49,10 +49,10 @@ pub struct GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, T
     subpass: Option<Subpass>,
     cache: Option<Arc<PipelineCache>>,
 
-    vertex_shader: Option<(GraphicsEntryPoint<'vs>, Vss)>,
+    vertex_shader: Option<(EntryPoint<'vs>, Vss)>,
     tessellation_shaders: Option<TessellationShaders<'tcs, 'tes, Tcss, Tess>>,
-    geometry_shader: Option<(GraphicsEntryPoint<'gs>, Gss)>,
-    fragment_shader: Option<(GraphicsEntryPoint<'fs>, Fss)>,
+    geometry_shader: Option<(EntryPoint<'gs>, Gss)>,
+    fragment_shader: Option<(EntryPoint<'fs>, Fss)>,
 
     vertex_definition: Vdef,
     input_assembly_state: InputAssemblyState,
@@ -68,8 +68,8 @@ pub struct GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, T
 // Additional parameters if tessellation is used.
 #[derive(Clone, Debug)]
 struct TessellationShaders<'tcs, 'tes, Tcss, Tess> {
-    tessellation_control_shader: (GraphicsEntryPoint<'tcs>, Tcss),
-    tessellation_evaluation_shader: (GraphicsEntryPoint<'tes>, Tess),
+    tessellation_control_shader: (EntryPoint<'tcs>, Tcss),
+    tessellation_evaluation_shader: (EntryPoint<'tes>, Tess),
 }
 
 impl
@@ -141,7 +141,7 @@ where
         F: FnOnce(&mut [DescriptorSetDesc]),
     {
         let (descriptor_set_layout_descs, push_constant_ranges) = {
-            let stages: SmallVec<[&GraphicsEntryPoint; 5]> = std::array::IntoIter::new([
+            let stages: SmallVec<[&EntryPoint; 5]> = std::array::IntoIter::new([
                 self.vertex_shader.as_ref().map(|s| &s.0),
                 self.tessellation_shaders
                     .as_ref()
@@ -156,7 +156,7 @@ where
             .collect();
 
             for (output, input) in stages.iter().zip(stages.iter().skip(1)) {
-                if let Err(err) = input.input().matches(output.output()) {
+                if let Err(err) = input.input_interface().matches(output.output_interface()) {
                     return Err(GraphicsPipelineCreationError::ShaderStagesMismatch(err));
                 }
             }
@@ -201,7 +201,7 @@ where
             // Vertex and a subrange available to Fragment, like [0, 8)
             let mut range_map = HashMap::new();
             for stage in stages.iter() {
-                if let Some(range) = stage.push_constant_range() {
+                if let Some(range) = stage.push_constant_requirements() {
                     match range_map.entry((range.offset, range.size)) {
                         Entry::Vacant(entry) => {
                             entry.insert(range.stages);
@@ -258,7 +258,7 @@ where
             let shader = &self.vertex_shader.as_ref().unwrap().0;
             pipeline_layout.ensure_compatible_with_shader(
                 shader.descriptor_requirements(),
-                shader.push_constant_range(),
+                shader.push_constant_requirements(),
             )?;
             for (loc, reqs) in shader.descriptor_requirements() {
                 match descriptor_requirements.entry(loc) {
@@ -277,7 +277,7 @@ where
             let shader = &geometry_shader.0;
             pipeline_layout.ensure_compatible_with_shader(
                 shader.descriptor_requirements(),
-                shader.push_constant_range(),
+                shader.push_constant_requirements(),
             )?;
             for (loc, reqs) in shader.descriptor_requirements() {
                 match descriptor_requirements.entry(loc) {
@@ -297,7 +297,7 @@ where
                 let shader = &tess.tessellation_control_shader.0;
                 pipeline_layout.ensure_compatible_with_shader(
                     shader.descriptor_requirements(),
-                    shader.push_constant_range(),
+                    shader.push_constant_requirements(),
                 )?;
                 for (loc, reqs) in shader.descriptor_requirements() {
                     match descriptor_requirements.entry(loc) {
@@ -316,7 +316,7 @@ where
                 let shader = &tess.tessellation_evaluation_shader.0;
                 pipeline_layout.ensure_compatible_with_shader(
                     shader.descriptor_requirements(),
-                    shader.push_constant_range(),
+                    shader.push_constant_requirements(),
                 )?;
                 for (loc, reqs) in shader.descriptor_requirements() {
                     match descriptor_requirements.entry(loc) {
@@ -336,7 +336,7 @@ where
             let shader = &fragment_shader.0;
             pipeline_layout.ensure_compatible_with_shader(
                 shader.descriptor_requirements(),
-                shader.push_constant_range(),
+                shader.push_constant_requirements(),
             )?;
             for (loc, reqs) in shader.descriptor_requirements() {
                 match descriptor_requirements.entry(loc) {
@@ -352,7 +352,7 @@ where
 
             // Check that the subpass can accept the output of the fragment shader.
             // TODO: If there is no fragment shader, what should be checked then? The previous stage?
-            if !subpass.is_compatible_with(shader.output()) {
+            if !subpass.is_compatible_with(shader.output_interface()) {
                 return Err(GraphicsPipelineCreationError::FragmentShaderRenderPassIncompatible);
             }
         }
@@ -362,13 +362,20 @@ where
 
         // Creating the specialization constants of the various stages.
         let vertex_shader_specialization = {
-            let shader = self.vertex_shader.as_ref().unwrap();
+            let (shader, constants) = self.vertex_shader.as_ref().unwrap();
             let spec_descriptors = Vss::descriptors();
-            if spec_descriptors != shader.0.spec_constants() {
-                return Err(GraphicsPipelineCreationError::IncompatibleSpecializationConstants);
+
+            for (constant_id, reqs) in shader.specialization_constant_requirements() {
+                let map_entry = spec_descriptors
+                    .iter()
+                    .find(|desc| desc.constant_id == constant_id)
+                    .ok_or(GraphicsPipelineCreationError::IncompatibleSpecializationConstants)?;
+
+                if map_entry.size as DeviceSize != reqs.size {
+                    return Err(GraphicsPipelineCreationError::IncompatibleSpecializationConstants);
+                }
             }
 
-            let constants = &shader.1;
             ash::vk::SpecializationInfo {
                 map_entry_count: spec_descriptors.len() as u32,
                 p_map_entries: spec_descriptors.as_ptr() as *const _,
@@ -379,13 +386,24 @@ where
 
         let tess_shader_specialization = if let Some(ref tess) = self.tessellation_shaders {
             let tcs_spec = {
-                let shader = &tess.tessellation_control_shader;
+                let (shader, constants) = &tess.tessellation_control_shader;
                 let spec_descriptors = Tcss::descriptors();
-                if spec_descriptors != shader.0.spec_constants() {
-                    return Err(GraphicsPipelineCreationError::IncompatibleSpecializationConstants);
+
+                for (constant_id, reqs) in shader.specialization_constant_requirements() {
+                    let map_entry = spec_descriptors
+                        .iter()
+                        .find(|desc| desc.constant_id == constant_id)
+                        .ok_or(
+                            GraphicsPipelineCreationError::IncompatibleSpecializationConstants,
+                        )?;
+
+                    if map_entry.size as DeviceSize != reqs.size {
+                        return Err(
+                            GraphicsPipelineCreationError::IncompatibleSpecializationConstants,
+                        );
+                    }
                 }
 
-                let constants = &shader.1;
                 ash::vk::SpecializationInfo {
                     map_entry_count: spec_descriptors.len() as u32,
                     p_map_entries: spec_descriptors.as_ptr() as *const _,
@@ -394,13 +412,24 @@ where
                 }
             };
             let tes_spec = {
-                let shader = &tess.tessellation_evaluation_shader;
+                let (shader, constants) = &tess.tessellation_evaluation_shader;
                 let spec_descriptors = Tess::descriptors();
-                if spec_descriptors != shader.0.spec_constants() {
-                    return Err(GraphicsPipelineCreationError::IncompatibleSpecializationConstants);
+
+                for (constant_id, reqs) in shader.specialization_constant_requirements() {
+                    let map_entry = spec_descriptors
+                        .iter()
+                        .find(|desc| desc.constant_id == constant_id)
+                        .ok_or(
+                            GraphicsPipelineCreationError::IncompatibleSpecializationConstants,
+                        )?;
+
+                    if map_entry.size as DeviceSize != reqs.size {
+                        return Err(
+                            GraphicsPipelineCreationError::IncompatibleSpecializationConstants,
+                        );
+                    }
                 }
 
-                let constants = &shader.1;
                 ash::vk::SpecializationInfo {
                     map_entry_count: spec_descriptors.len() as u32,
                     p_map_entries: spec_descriptors.as_ptr() as *const _,
@@ -413,13 +442,22 @@ where
             None
         };
 
-        let geometry_shader_specialization = if let Some(ref shader) = self.geometry_shader {
+        let geometry_shader_specialization = if let Some((shader, constants)) =
+            &self.geometry_shader
+        {
             let spec_descriptors = Gss::descriptors();
-            if spec_descriptors != shader.0.spec_constants() {
-                return Err(GraphicsPipelineCreationError::IncompatibleSpecializationConstants);
+
+            for (constant_id, reqs) in shader.specialization_constant_requirements() {
+                let map_entry = spec_descriptors
+                    .iter()
+                    .find(|desc| desc.constant_id == constant_id)
+                    .ok_or(GraphicsPipelineCreationError::IncompatibleSpecializationConstants)?;
+
+                if map_entry.size as DeviceSize != reqs.size {
+                    return Err(GraphicsPipelineCreationError::IncompatibleSpecializationConstants);
+                }
             }
 
-            let constants = &shader.1;
             Some(ash::vk::SpecializationInfo {
                 map_entry_count: spec_descriptors.len() as u32,
                 p_map_entries: spec_descriptors.as_ptr() as *const _,
@@ -430,13 +468,22 @@ where
             None
         };
 
-        let fragment_shader_specialization = if let Some(ref shader) = self.fragment_shader {
+        let fragment_shader_specialization = if let Some((shader, constants)) =
+            &self.fragment_shader
+        {
             let spec_descriptors = Fss::descriptors();
-            if spec_descriptors != shader.0.spec_constants() {
-                return Err(GraphicsPipelineCreationError::IncompatibleSpecializationConstants);
+
+            for (constant_id, reqs) in shader.specialization_constant_requirements() {
+                let map_entry = spec_descriptors
+                    .iter()
+                    .find(|desc| desc.constant_id == constant_id)
+                    .ok_or(GraphicsPipelineCreationError::IncompatibleSpecializationConstants)?;
+
+                if map_entry.size as DeviceSize != reqs.size {
+                    return Err(GraphicsPipelineCreationError::IncompatibleSpecializationConstants);
+                }
             }
 
-            let constants = &shader.1;
             Some(ash::vk::SpecializationInfo {
                 map_entry_count: spec_descriptors.len() as u32,
                 p_map_entries: spec_descriptors.as_ptr() as *const _,
@@ -452,8 +499,8 @@ where
         let stages = {
             let mut stages = SmallVec::<[_; 5]>::new();
 
-            match self.vertex_shader.as_ref().unwrap().0.ty() {
-                GraphicsShaderType::Vertex => {}
+            match self.vertex_shader.as_ref().unwrap().0.execution() {
+                ShaderExecution::Vertex => {}
                 _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
             };
 
@@ -483,13 +530,13 @@ where
                     });
                 }
 
-                match tess.tessellation_control_shader.0.ty() {
-                    GraphicsShaderType::TessellationControl => {}
+                match tess.tessellation_control_shader.0.execution() {
+                    ShaderExecution::TessellationControl => {}
                     _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
                 };
 
-                match tess.tessellation_evaluation_shader.0.ty() {
-                    GraphicsShaderType::TessellationEvaluation => {}
+                match tess.tessellation_evaluation_shader.0.execution() {
+                    ShaderExecution::TessellationEvaluation => {}
                     _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
                 };
 
@@ -532,13 +579,13 @@ where
                     });
                 }
 
-                let shader_execution_mode = match geometry_shader.0.ty() {
-                    GraphicsShaderType::Geometry(mode) => mode,
+                let input = match geometry_shader.0.execution() {
+                    ShaderExecution::Geometry(execution) => execution.input,
                     _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
                 };
 
                 if let PartialStateMode::Fixed(topology) = self.input_assembly_state.topology {
-                    if !shader_execution_mode.matches(topology) {
+                    if !input.is_compatible_with(topology) {
                         return Err(
                             GraphicsPipelineCreationError::TopologyNotMatchingGeometryShader,
                         );
@@ -565,8 +612,8 @@ where
             }
 
             if let Some(ref fragment_shader) = self.fragment_shader {
-                match fragment_shader.0.ty() {
-                    GraphicsShaderType::Fragment => {}
+                match fragment_shader.0.execution() {
+                    ShaderExecution::Fragment => {}
                     _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
                 };
 
@@ -588,7 +635,7 @@ where
         // Vertex input state
         let vertex_input = self
             .vertex_definition
-            .definition(self.vertex_shader.as_ref().unwrap().0.input())?;
+            .definition(self.vertex_shader.as_ref().unwrap().0.input_interface())?;
 
         let (binding_descriptions, binding_divisor_descriptions) = {
             let mut binding_descriptions = SmallVec::<[_; 8]>::new();
@@ -1069,7 +1116,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     #[inline]
     pub fn vertex_shader<'vs2, Vss2>(
         self,
-        shader: GraphicsEntryPoint<'vs2>,
+        shader: EntryPoint<'vs2>,
         specialization_constants: Vss2,
     ) -> GraphicsPipelineBuilder<'vs2, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss2, Tcss, Tess, Gss, Fss>
     where
@@ -1101,10 +1148,10 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     #[inline]
     pub fn tessellation_shaders<'tcs2, 'tes2, Tcss2, Tess2>(
         self,
-        tessellation_control_shader: GraphicsEntryPoint<'tcs2>,
-        tessellation_control_shader_spec_constants: Tcss2,
-        tessellation_evaluation_shader: GraphicsEntryPoint<'tes2>,
-        tessellation_evaluation_shader_spec_constants: Tess2,
+        control_shader: EntryPoint<'tcs2>,
+        control_specialization_constants: Tcss2,
+        evaluation_shader: EntryPoint<'tes2>,
+        evaluation_specialization_constants: Tess2,
     ) -> GraphicsPipelineBuilder<'vs, 'tcs2, 'tes2, 'gs, 'fs, Vdef, Vss, Tcss2, Tess2, Gss, Fss>
     where
         Tcss2: SpecializationConstants,
@@ -1116,13 +1163,10 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
 
             vertex_shader: self.vertex_shader,
             tessellation_shaders: Some(TessellationShaders {
-                tessellation_control_shader: (
-                    tessellation_control_shader,
-                    tessellation_control_shader_spec_constants,
-                ),
+                tessellation_control_shader: (control_shader, control_specialization_constants),
                 tessellation_evaluation_shader: (
-                    tessellation_evaluation_shader,
-                    tessellation_evaluation_shader_spec_constants,
+                    evaluation_shader,
+                    evaluation_specialization_constants,
                 ),
             }),
             geometry_shader: self.geometry_shader,
@@ -1145,7 +1189,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     #[inline]
     pub fn geometry_shader<'gs2, Gss2>(
         self,
-        shader: GraphicsEntryPoint<'gs2>,
+        shader: EntryPoint<'gs2>,
         specialization_constants: Gss2,
     ) -> GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs2, 'fs, Vdef, Vss, Tcss, Tess, Gss2, Fss>
     where
@@ -1179,7 +1223,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     #[inline]
     pub fn fragment_shader<'fs2, Fss2>(
         self,
-        shader: GraphicsEntryPoint<'fs2>,
+        shader: EntryPoint<'fs2>,
         specialization_constants: Fss2,
     ) -> GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs2, Vdef, Vss, Tcss, Tess, Gss, Fss2>
     where

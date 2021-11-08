@@ -48,10 +48,10 @@ impl FractalComputePipeline {
         let end_color = [0.0; 4];
 
         let pipeline = {
-            let shader = cs::Shader::load(gfx_queue.device().clone()).unwrap();
+            let shader = cs::load(gfx_queue.device().clone()).unwrap();
             ComputePipeline::new(
                 gfx_queue.device().clone(),
-                &shader.main_entry_point(),
+                shader.entry_point("main").unwrap(),
                 &(),
                 None,
                 |_| {},

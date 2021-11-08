@@ -19,8 +19,6 @@
 // $ glslangValidator frag.glsl -V -S frag -o frag.spv
 // Vulkano uses glslangValidator to build your shaders internally.
 
-use std::borrow::Cow;
-use std::ffi::CStr;
 use std::fs::File;
 use std::io::Read;
 use std::sync::Arc;
@@ -29,19 +27,15 @@ use vulkano::buffer::{BufferUsage, TypedBufferAccess};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
-use vulkano::format::Format;
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageAccess, ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
 use vulkano::pipeline::input_assembly::InputAssemblyState;
 use vulkano::pipeline::rasterization::{CullMode, FrontFace, RasterizationState};
-use vulkano::pipeline::shader::{
-    GraphicsShaderType, ShaderInterface, ShaderInterfaceEntry, ShaderModule,
-    SpecializationConstants,
-};
 use vulkano::pipeline::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
+use vulkano::shader::ShaderModule;
 use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
 use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano::Version;
@@ -145,7 +139,7 @@ fn main() {
         f.read_to_end(&mut v).unwrap();
         // Create a ShaderModule on a device the same Shader::load does it.
         // NOTE: You will have to verify correctness of the data by yourself!
-        unsafe { ShaderModule::new(device.clone(), &v) }.unwrap()
+        unsafe { ShaderModule::from_bytes(device.clone(), &v) }.unwrap()
     };
 
     let fs = {
@@ -153,96 +147,15 @@ fn main() {
             .expect("Can't find file src/bin/runtime-shader/frag.spv");
         let mut v = vec![];
         f.read_to_end(&mut v).unwrap();
-        unsafe { ShaderModule::new(device.clone(), &v) }.unwrap()
-    };
-
-    // This definition will tell Vulkan how input entries of our vertex shader look like
-    // There are things to consider when giving out entries:
-    // * There must be only one entry per one location, you can't have
-    //   `color' and `position' entries both at 0..1 locations.  They also
-    //   should not overlap.
-    // * Format of each element must be no larger than 128 bits.
-    let vertex_input = unsafe {
-        ShaderInterface::new_unchecked(vec![
-            ShaderInterfaceEntry {
-                location: 1..2,
-                format: Format::R32G32B32_SFLOAT,
-                name: Some(Cow::Borrowed("color")),
-            },
-            ShaderInterfaceEntry {
-                location: 0..1,
-                format: Format::R32G32_SFLOAT,
-                name: Some(Cow::Borrowed("position")),
-            },
-        ])
-    };
-
-    // This definition will tell Vulkan how output entries (those passed to next
-    // stage) of our vertex shader look like.
-    let vertex_output = unsafe {
-        ShaderInterface::new_unchecked(vec![ShaderInterfaceEntry {
-            location: 0..1,
-            format: Format::R32G32B32_SFLOAT,
-            name: Some(Cow::Borrowed("v_color")),
-        }])
-    };
-
-    // Same as with our vertex shader, but for fragment one instead.
-    let fragment_input = unsafe {
-        ShaderInterface::new_unchecked(vec![ShaderInterfaceEntry {
-            location: 0..1,
-            format: Format::R32G32B32_SFLOAT,
-            name: Some(Cow::Borrowed("v_color")),
-        }])
-    };
-
-    // Note that color fragment color entry will be determined
-    // automatically by Vulkano.
-    let fragment_output = unsafe {
-        ShaderInterface::new_unchecked(vec![ShaderInterfaceEntry {
-            location: 0..1,
-            format: Format::R32G32B32A32_SFLOAT,
-            name: Some(Cow::Borrowed("f_color")),
-        }])
-    };
-
-    // NOTE: ShaderModule::*_shader_entry_point calls do not do any error
-    // checking and you have to verify correctness of what you are doing by
-    // yourself.
-    //
-    // You must be extra careful to specify correct entry point, or program will
-    // crash at runtime outside of rust and you will get NO meaningful error
-    // information!
-    let vert_main = unsafe {
-        vs.graphics_entry_point(
-            CStr::from_bytes_with_nul_unchecked(b"main\0"),
-            [],   // No descriptor sets.
-            None, // No push constants.
-            <()>::descriptors(),
-            vertex_input,
-            vertex_output,
-            GraphicsShaderType::Vertex,
-        )
-    };
-
-    let frag_main = unsafe {
-        fs.graphics_entry_point(
-            CStr::from_bytes_with_nul_unchecked(b"main\0"),
-            [],   // No descriptor sets.
-            None, // No push constants.
-            <()>::descriptors(),
-            fragment_input,
-            fragment_output,
-            GraphicsShaderType::Fragment,
-        )
+        unsafe { ShaderModule::from_bytes(device.clone(), &v) }.unwrap()
     };
 
     let graphics_pipeline = GraphicsPipeline::start()
         .vertex_input_single_buffer::<Vertex>()
-        .vertex_shader(vert_main, ())
+        .vertex_shader(vs.entry_point("main").unwrap(), ())
         .input_assembly_state(InputAssemblyState::new())
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-        .fragment_shader(frag_main, ())
+        .fragment_shader(fs.entry_point("main").unwrap(), ())
         .rasterization_state(
             RasterizationState::new()
                 .cull_mode(CullMode::Front)
