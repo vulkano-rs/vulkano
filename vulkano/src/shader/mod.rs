@@ -1225,7 +1225,6 @@ impl From<ShaderStages> for PipelineStages {
             callable,
         } = stages;
 
-        // TODO: add missing types
         PipelineStages {
             vertex_shader: vertex,
             tessellation_control_shader: tessellation_control,
@@ -1233,6 +1232,7 @@ impl From<ShaderStages> for PipelineStages {
             geometry_shader: geometry,
             fragment_shader: fragment,
             compute_shader: compute,
+            ray_tracing_shader: raygen | any_hit | closest_hit | miss | intersection | callable,
             ..PipelineStages::none()
         }
     }

@@ -108,6 +108,7 @@ pipeline_stages! {
     host, Host => ash::vk::PipelineStageFlags::HOST, ash::vk::QueueFlags::empty();
     all_graphics, AllGraphics => ash::vk::PipelineStageFlags::ALL_GRAPHICS, ash::vk::QueueFlags::GRAPHICS;
     all_commands, AllCommands => ash::vk::PipelineStageFlags::ALL_COMMANDS, ash::vk::QueueFlags::empty();
+    ray_tracing_shader, RayTracingShader => ash::vk::PipelineStageFlags::RAY_TRACING_SHADER_KHR, ash::vk::QueueFlags::GRAPHICS | ash::vk::QueueFlags::COMPUTE | ash::vk::QueueFlags::TRANSFER;
 }
 
 macro_rules! access_flags {
