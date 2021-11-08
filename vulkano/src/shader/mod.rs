@@ -1210,13 +1210,29 @@ impl BitOr for ShaderStages {
 impl From<ShaderStages> for PipelineStages {
     #[inline]
     fn from(stages: ShaderStages) -> PipelineStages {
+        let ShaderStages {
+            vertex,
+            tessellation_control,
+            tessellation_evaluation,
+            geometry,
+            fragment,
+            compute,
+            raygen,
+            any_hit,
+            closest_hit,
+            miss,
+            intersection,
+            callable,
+        } = stages;
+
+        // TODO: add missing types
         PipelineStages {
-            vertex_shader: stages.vertex,
-            tessellation_control_shader: stages.tessellation_control,
-            tessellation_evaluation_shader: stages.tessellation_evaluation,
-            geometry_shader: stages.geometry,
-            fragment_shader: stages.fragment,
-            compute_shader: stages.compute,
+            vertex_shader: vertex,
+            tessellation_control_shader: tessellation_control,
+            tessellation_evaluation_shader: tessellation_evaluation,
+            geometry_shader: geometry,
+            fragment_shader: fragment,
+            compute_shader: compute,
             ..PipelineStages::none()
         }
     }
