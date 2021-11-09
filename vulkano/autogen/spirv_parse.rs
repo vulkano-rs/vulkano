@@ -415,35 +415,25 @@ fn bit_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
 
 fn bit_enum_members(grammar: &SpirvGrammar) -> Vec<(Ident, Vec<KindEnumMember>)> {
     let parameter_kinds = kinds_to_types(grammar);
-    let kinds_dedup: Vec<_> = grammar
+
+    grammar
         .operand_kinds
         .iter()
-        .cloned()
-        .filter_map(|mut operand_kind| {
-            if operand_kind.category == "BitEnum" {
-                operand_kind.enumerants.dedup_by_key(|enumerant| {
-                    let value = enumerant
-                        .value
-                        .as_str()
-                        .unwrap()
-                        .strip_prefix("0x")
-                        .unwrap();
-                    u32::from_str_radix(value, 16).unwrap()
-                });
-                Some(operand_kind)
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    kinds_dedup
-        .into_iter()
+        .filter(|operand_kind| operand_kind.category == "BitEnum")
         .map(|operand_kind| {
+            let mut previous_value = None;
+
             let members = operand_kind
                 .enumerants
                 .iter()
                 .filter_map(|enumerant| {
+                    // Skip enumerants with the same value as the previous.
+                    if previous_value == Some(&enumerant.value) {
+                        return None;
+                    }
+
+                    previous_value = Some(&enumerant.value);
+
                     let value = enumerant
                         .value
                         .as_str()
@@ -565,29 +555,25 @@ fn value_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
 
 fn value_enum_members(grammar: &SpirvGrammar) -> Vec<(Ident, Vec<KindEnumMember>)> {
     let parameter_kinds = kinds_to_types(grammar);
-    let kinds_dedup: Vec<_> = grammar
+
+    grammar
         .operand_kinds
         .iter()
-        .cloned()
-        .filter_map(|mut operand_kind| {
-            if operand_kind.category == "ValueEnum" {
-                operand_kind
-                    .enumerants
-                    .dedup_by_key(|enumerant| enumerant.value.as_u64());
-                Some(operand_kind)
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    kinds_dedup
-        .into_iter()
+        .filter(|operand_kind| operand_kind.category == "ValueEnum")
         .map(|operand_kind| {
+            let mut previous_value = None;
+
             let members = operand_kind
                 .enumerants
                 .iter()
-                .map(|enumerant| {
+                .filter_map(|enumerant| {
+                    // Skip enumerants with the same value as the previous.
+                    if previous_value == Some(&enumerant.value) {
+                        return None;
+                    }
+
+                    previous_value = Some(&enumerant.value);
+
                     let name = match enumerant.enumerant.as_str() {
                         "1D" => format_ident!("Dim1D"),
                         "2D" => format_ident!("Dim2D"),
@@ -608,11 +594,11 @@ fn value_enum_members(grammar: &SpirvGrammar) -> Vec<(Ident, Vec<KindEnumMember>
                         })
                         .collect();
 
-                    KindEnumMember {
+                    Some(KindEnumMember {
                         name,
                         value: enumerant.value.as_u64().unwrap() as u32,
                         parameters,
-                    }
+                    })
                 })
                 .collect();
 

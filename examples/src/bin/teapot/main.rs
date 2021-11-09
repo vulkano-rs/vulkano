@@ -145,13 +145,8 @@ fn main() {
     )
     .unwrap();
 
-    let (mut pipeline, mut framebuffers) = window_size_dependent_setup(
-        device.clone(),
-        vs.clone(),
-        fs.clone(),
-        &images,
-        render_pass.clone(),
-    );
+    let (mut pipeline, mut framebuffers) =
+        window_size_dependent_setup(device.clone(), &vs, &fs, &images, render_pass.clone());
     let mut recreate_swapchain = false;
 
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
@@ -186,8 +181,8 @@ fn main() {
                     swapchain = new_swapchain;
                     let (new_pipeline, new_framebuffers) = window_size_dependent_setup(
                         device.clone(),
-                        vs.clone(),
-                        fs.clone(),
+                        &vs,
+                        &fs,
                         &new_images,
                         render_pass.clone(),
                     );
@@ -307,8 +302,8 @@ fn main() {
 /// This method is called once during initialization, then again whenever the window is resized
 fn window_size_dependent_setup(
     device: Arc<Device>,
-    vs: Arc<ShaderModule>,
-    fs: Arc<ShaderModule>,
+    vs: &ShaderModule,
+    fs: &ShaderModule,
     images: &[Arc<SwapchainImage<Window>>],
     render_pass: Arc<RenderPass>,
 ) -> (Arc<GraphicsPipeline>, Vec<Arc<Framebuffer>>) {

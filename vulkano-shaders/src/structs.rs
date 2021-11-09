@@ -8,6 +8,7 @@
 // according to those terms.
 
 use crate::{RegisteredType, TypesMeta};
+use heck::CamelCase;
 use proc_macro2::{Span, TokenStream};
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -776,13 +777,11 @@ pub(super) fn write_specialization_constants<'a>(
         }
     }
 
-    let struct_name = Ident::new(
-        &format!(
-            "{}SpecializationConstants",
-            if shared_constants { "" } else { shader }
-        ),
-        Span::call_site(),
-    );
+    let struct_name = if shared_constants {
+        format_ident!("SpecializationConstants")
+    } else {
+        format_ident!("{}SpecializationConstants", shader.to_camel_case())
+    };
 
     // For multi-constants mode registration mechanism skipped
     if shared_constants {

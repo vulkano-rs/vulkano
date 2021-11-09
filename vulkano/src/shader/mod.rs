@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! A program that is run on the GPU.
+//! A program that is run on the device.
 //!
 //! In Vulkan, shaders are grouped in *shader modules*. Each shader module is built from SPIR-V
 //! code and can contain one or more entry points. Note that for the moment the official

@@ -344,7 +344,7 @@ mod tests {
     }
 
     #[test]
-    fn test() {
+    fn spirv_parse() {
         let data = include_bytes!("../tests/frag.spv");
         let insts: Vec<_> = data
             .chunks(4)
