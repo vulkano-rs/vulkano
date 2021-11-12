@@ -12,7 +12,7 @@ use crate::Error;
 use crate::OomError;
 use crate::Version;
 use std::error;
-use std::fmt;
+use std::fmt::{Display, Error as FmtError, Formatter};
 
 /// Error that can happen when loading the list of layers.
 #[derive(Clone, Debug)]
@@ -33,9 +33,9 @@ impl error::Error for SupportedExtensionsError {
     }
 }
 
-impl fmt::Display for SupportedExtensionsError {
+impl Display for SupportedExtensionsError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, fmt: &mut Formatter) -> Result<(), FmtError> {
         write!(
             fmt,
             "{}",
@@ -86,9 +86,9 @@ pub struct ExtensionRestrictionError {
 
 impl error::Error for ExtensionRestrictionError {}
 
-impl fmt::Display for ExtensionRestrictionError {
+impl Display for ExtensionRestrictionError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, fmt: &mut Formatter) -> Result<(), FmtError> {
         write!(
             fmt,
             "a restriction for the extension {} was not met: {}",
@@ -101,45 +101,89 @@ impl fmt::Display for ExtensionRestrictionError {
 pub enum ExtensionRestriction {
     /// Not supported by the loader or physical device.
     NotSupported,
-    /// Requires a minimum Vulkan API version.
-    RequiresCore(Version),
-    /// Requires a device extension to be enabled.
-    RequiresDeviceExtension(&'static str),
-    /// Requires an instance extension to be enabled.
-    RequiresInstanceExtension(&'static str),
     /// Required to be enabled by the physical device.
     RequiredIfSupported,
+    /// Requires one of the following.
+    Requires(OneOfRequirements),
     /// Requires a device extension to be disabled.
     ConflictsDeviceExtension(&'static str),
 }
 
-impl fmt::Display for ExtensionRestriction {
+impl Display for ExtensionRestriction {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, fmt: &mut Formatter) -> Result<(), FmtError> {
         match *self {
             ExtensionRestriction::NotSupported => {
                 write!(fmt, "not supported by the loader or physical device")
             }
-            ExtensionRestriction::RequiresCore(version) => {
-                write!(
-                    fmt,
-                    "requires Vulkan API version {}.{}",
-                    version.major, version.minor
-                )
-            }
-            ExtensionRestriction::RequiresDeviceExtension(ext) => {
-                write!(fmt, "requires device extension {} to be enabled", ext)
-            }
-            ExtensionRestriction::RequiresInstanceExtension(ext) => {
-                write!(fmt, "requires instance extension {} to be enabled", ext)
-            }
             ExtensionRestriction::RequiredIfSupported => {
                 write!(fmt, "required to be enabled by the physical device")
+            }
+            ExtensionRestriction::Requires(requires) => {
+                if requires.has_multiple() {
+                    write!(fmt, "requires one of: {}", requires)
+                } else {
+                    write!(fmt, "requires: {}", requires)
+                }
             }
             ExtensionRestriction::ConflictsDeviceExtension(ext) => {
                 write!(fmt, "requires device extension {} to be disabled", ext)
             }
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct OneOfRequirements {
+    pub api_version: Option<Version>,
+    pub device_extensions: &'static [&'static str],
+    pub instance_extensions: &'static [&'static str],
+}
+
+impl OneOfRequirements {
+    /// Returns whether there is more than one possible requirement.
+    #[inline]
+    pub fn has_multiple(&self) -> bool {
+        self.api_version.iter().count()
+            + self.device_extensions.len()
+            + self.instance_extensions.len()
+            > 1
+    }
+}
+
+impl Display for OneOfRequirements {
+    #[inline]
+    fn fmt(&self, fmt: &mut Formatter) -> Result<(), FmtError> {
+        let mut items_written = 0;
+
+        if let Some(version) = self.api_version {
+            write!(
+                fmt,
+                "Vulkan API version {}.{}",
+                version.major, version.minor
+            )?;
+            items_written += 1;
+        }
+
+        for ext in self.instance_extensions.iter() {
+            if items_written != 0 {
+                write!(fmt, ", ")?;
+            }
+
+            write!(fmt, "instance extension {}", ext)?;
+            items_written += 1;
+        }
+
+        for ext in self.device_extensions.iter() {
+            if items_written != 0 {
+                write!(fmt, ", ")?;
+            }
+
+            write!(fmt, "device extension {}", ext)?;
+            items_written += 1;
+        }
+
+        Ok(())
     }
 }
 
