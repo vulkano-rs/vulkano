@@ -14,8 +14,9 @@ use crate::pipeline::cache::PipelineCache;
 use crate::pipeline::layout::{
     PipelineLayout, PipelineLayoutCreationError, PipelineLayoutSupersetError,
 };
-use crate::pipeline::shader::{ComputeEntryPoint, DescriptorRequirements, SpecializationConstants};
 use crate::pipeline::{Pipeline, PipelineBindPoint};
+use crate::shader::{DescriptorRequirements, EntryPoint, SpecializationConstants};
+use crate::DeviceSize;
 use crate::Error;
 use crate::OomError;
 use crate::VulkanObject;
@@ -51,8 +52,8 @@ impl ComputePipeline {
     /// to add dynamic buffers or immutable samplers.
     pub fn new<Css, F>(
         device: Arc<Device>,
-        shader: &ComputeEntryPoint,
-        spec_constants: &Css,
+        shader: EntryPoint,
+        specialization_constants: &Css,
         cache: Option<Arc<PipelineCache>>,
         func: F,
     ) -> Result<Arc<ComputePipeline>, ComputePipelineCreationError>
@@ -63,22 +64,22 @@ impl ComputePipeline {
         let mut descriptor_set_layout_descs =
             DescriptorSetDesc::from_requirements(shader.descriptor_requirements());
         func(&mut descriptor_set_layout_descs);
-
         let descriptor_set_layouts = descriptor_set_layout_descs
             .iter()
             .map(|desc| Ok(DescriptorSetLayout::new(device.clone(), desc.clone())?))
             .collect::<Result<Vec<_>, PipelineLayoutCreationError>>()?;
+
         let layout = PipelineLayout::new(
             device.clone(),
             descriptor_set_layouts,
-            shader.push_constant_range().iter().cloned(),
+            shader.push_constant_requirements().cloned(),
         )?;
 
         unsafe {
             ComputePipeline::with_unchecked_pipeline_layout(
                 device,
                 shader,
-                spec_constants,
+                specialization_constants,
                 layout,
                 cache,
             )
@@ -91,27 +92,37 @@ impl ComputePipeline {
     /// uses.
     pub fn with_pipeline_layout<Css>(
         device: Arc<Device>,
-        shader: &ComputeEntryPoint,
-        spec_constants: &Css,
+        shader: EntryPoint,
+        specialization_constants: &Css,
         layout: Arc<PipelineLayout>,
         cache: Option<Arc<PipelineCache>>,
     ) -> Result<Arc<ComputePipeline>, ComputePipelineCreationError>
     where
         Css: SpecializationConstants,
     {
-        if Css::descriptors() != shader.spec_constants() {
-            return Err(ComputePipelineCreationError::IncompatibleSpecializationConstants);
+        let spec_descriptors = Css::descriptors();
+
+        for (constant_id, reqs) in shader.specialization_constant_requirements() {
+            let map_entry = spec_descriptors
+                .iter()
+                .find(|desc| desc.constant_id == constant_id)
+                .ok_or(ComputePipelineCreationError::IncompatibleSpecializationConstants)?;
+
+            if map_entry.size as DeviceSize != reqs.size {
+                return Err(ComputePipelineCreationError::IncompatibleSpecializationConstants);
+            }
         }
 
+        layout.ensure_compatible_with_shader(
+            shader.descriptor_requirements(),
+            shader.push_constant_requirements(),
+        )?;
+
         unsafe {
-            layout.ensure_compatible_with_shader(
-                shader.descriptor_requirements(),
-                shader.push_constant_range(),
-            )?;
             ComputePipeline::with_unchecked_pipeline_layout(
                 device,
                 shader,
-                spec_constants,
+                specialization_constants,
                 layout,
                 cache,
             )
@@ -122,8 +133,8 @@ impl ComputePipeline {
     /// superset of what the shader expects.
     pub unsafe fn with_unchecked_pipeline_layout<Css>(
         device: Arc<Device>,
-        shader: &ComputeEntryPoint,
-        spec_constants: &Css,
+        shader: EntryPoint,
+        specialization_constants: &Css,
         layout: Arc<PipelineLayout>,
         cache: Option<Arc<PipelineCache>>,
     ) -> Result<Arc<ComputePipeline>, ComputePipelineCreationError>
@@ -137,8 +148,8 @@ impl ComputePipeline {
             let specialization = ash::vk::SpecializationInfo {
                 map_entry_count: spec_descriptors.len() as u32,
                 p_map_entries: spec_descriptors.as_ptr() as *const _,
-                data_size: mem::size_of_val(spec_constants),
-                p_data: spec_constants as *const Css as *const _,
+                data_size: mem::size_of_val(specialization_constants),
+                p_data: specialization_constants as *const Css as *const _,
             };
 
             let stage = ash::vk::PipelineShaderStageCreateInfo {
@@ -366,25 +377,21 @@ mod tests {
     use crate::buffer::CpuAccessibleBuffer;
     use crate::command_buffer::AutoCommandBufferBuilder;
     use crate::command_buffer::CommandBufferUsage;
-    use crate::descriptor_set::layout::DescriptorType;
     use crate::descriptor_set::PersistentDescriptorSet;
-    use crate::pipeline::shader::DescriptorRequirements;
-    use crate::pipeline::shader::ShaderModule;
-    use crate::pipeline::shader::ShaderStages;
-    use crate::pipeline::shader::SpecializationConstants;
-    use crate::pipeline::shader::SpecializationMapEntry;
     use crate::pipeline::ComputePipeline;
     use crate::pipeline::Pipeline;
     use crate::pipeline::PipelineBindPoint;
+    use crate::shader::ShaderModule;
+    use crate::shader::SpecializationConstants;
+    use crate::shader::SpecializationMapEntry;
     use crate::sync::now;
     use crate::sync::GpuFuture;
-    use std::ffi::CStr;
 
     // TODO: test for basic creation
     // TODO: test for pipeline layout error
 
     #[test]
-    fn spec_constants() {
+    fn specialization_constants() {
         // This test checks whether specialization constants work.
         // It executes a single compute shader (one invocation) that writes the value of a spec.
         // constant to a buffer. The buffer content is then checked for the right value.
@@ -428,31 +435,7 @@ mod tests {
                 0, 5, 0, 0, 0, 65, 0, 5, 0, 12, 0, 0, 0, 13, 0, 0, 0, 9, 0, 0, 0, 10, 0, 0, 0, 62,
                 0, 3, 0, 13, 0, 0, 0, 11, 0, 0, 0, 253, 0, 1, 0, 56, 0, 1, 0,
             ];
-            ShaderModule::new(device.clone(), &MODULE).unwrap()
-        };
-
-        let shader = unsafe {
-            static NAME: [u8; 5] = [109, 97, 105, 110, 0]; // "main"
-            module.compute_entry_point(
-                CStr::from_ptr(NAME.as_ptr() as *const _),
-                [(
-                    (0, 0),
-                    DescriptorRequirements {
-                        descriptor_types: vec![DescriptorType::StorageBuffer],
-                        descriptor_count: 1,
-                        format: None,
-                        image_view_type: None,
-                        multisampled: false,
-                        mutable: false,
-                        stages: ShaderStages {
-                            compute: true,
-                            ..ShaderStages::none()
-                        },
-                    },
-                )],
-                None,
-                SpecConsts::descriptors(),
-            )
+            ShaderModule::from_bytes(device.clone(), &MODULE).unwrap()
         };
 
         #[derive(Debug, Copy, Clone)]
@@ -474,7 +457,7 @@ mod tests {
 
         let pipeline = ComputePipeline::new(
             device.clone(),
-            &shader,
+            module.entry_point("main").unwrap(),
             &SpecConsts { VALUE: 0x12345678 },
             None,
             |_| {},

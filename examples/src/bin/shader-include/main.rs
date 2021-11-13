@@ -90,10 +90,10 @@ fn main() {
                 "
             }
         }
-        let shader = cs::Shader::load(device.clone()).unwrap();
+        let shader = cs::load(device.clone()).unwrap();
         ComputePipeline::new(
             device.clone(),
-            &shader.main_entry_point(),
+            shader.entry_point("main").unwrap(),
             &(),
             None,
             |_| {},

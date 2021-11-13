@@ -183,7 +183,7 @@ mod tests {
     use crate::descriptor_set::layout::DescriptorType;
     use crate::descriptor_set::pool::DescriptorPool;
     use crate::descriptor_set::pool::StdDescriptorPool;
-    use crate::pipeline::shader::ShaderStages;
+    use crate::shader::ShaderStages;
     use std::iter;
     use std::sync::Arc;
 

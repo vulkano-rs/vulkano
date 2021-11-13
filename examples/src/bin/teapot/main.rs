@@ -28,6 +28,7 @@ use vulkano::pipeline::vertex::BuffersDefinition;
 use vulkano::pipeline::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
+use vulkano::shader::ShaderModule;
 use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
 use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano::Version;
@@ -119,8 +120,8 @@ fn main() {
 
     let uniform_buffer = CpuBufferPool::<vs::ty::Data>::new(device.clone(), BufferUsage::all());
 
-    let vs = vs::Shader::load(device.clone()).unwrap();
-    let fs = fs::Shader::load(device.clone()).unwrap();
+    let vs = vs::load(device.clone()).unwrap();
+    let fs = fs::load(device.clone()).unwrap();
 
     let render_pass = vulkano::single_pass_renderpass!(device.clone(),
         attachments: {
@@ -301,8 +302,8 @@ fn main() {
 /// This method is called once during initialization, then again whenever the window is resized
 fn window_size_dependent_setup(
     device: Arc<Device>,
-    vs: &vs::Shader,
-    fs: &fs::Shader,
+    vs: &ShaderModule,
+    fs: &ShaderModule,
     images: &[Arc<SwapchainImage<Window>>],
     render_pass: Arc<RenderPass>,
 ) -> (Arc<GraphicsPipeline>, Vec<Arc<Framebuffer>>) {
@@ -337,7 +338,7 @@ fn window_size_dependent_setup(
                 .vertex::<Vertex>()
                 .vertex::<Normal>(),
         )
-        .vertex_shader(vs.main_entry_point(), ())
+        .vertex_shader(vs.entry_point("main").unwrap(), ())
         .input_assembly_state(InputAssemblyState::new())
         .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([
             Viewport {
@@ -346,7 +347,7 @@ fn window_size_dependent_setup(
                 depth_range: 0.0..1.0,
             },
         ]))
-        .fragment_shader(fs.main_entry_point(), ())
+        .fragment_shader(fs.entry_point("main").unwrap(), ())
         .depth_stencil_state(DepthStencilState::simple_depth_test())
         .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
         .build(device.clone())

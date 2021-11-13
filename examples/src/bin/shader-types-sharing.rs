@@ -102,7 +102,7 @@ fn main() {
                 // by default and the macro by default producing unique
                 // structs(`MultSpecializationConstants`, `AddSpecializationConstants`)
                 shared_constants: true,
-                Mult: {
+                mult: {
                     ty: "compute",
                     src: "
                         #version 450
@@ -127,7 +127,7 @@ fn main() {
                         }
                     "
                 },
-                Add: {
+                add: {
                     ty: "compute",
                     src: "
                         #version 450
@@ -216,9 +216,10 @@ fn main() {
     // Loading the first shader, and creating a Pipeline for the shader
     let mult_pipeline = ComputePipeline::new(
         device.clone(),
-        &shaders::MultShader::load(device.clone())
+        shaders::load_mult(device.clone())
             .unwrap()
-            .main_entry_point(),
+            .entry_point("main")
+            .unwrap(),
         &shaders::SpecializationConstants { enabled: 1 },
         None,
         |_| {},
@@ -228,9 +229,10 @@ fn main() {
     // Loading the second shader, and creating a Pipeline for the shader
     let add_pipeline = ComputePipeline::new(
         device.clone(),
-        &shaders::AddShader::load(device.clone())
+        shaders::load_add(device.clone())
             .unwrap()
-            .main_entry_point(),
+            .entry_point("main")
+            .unwrap(),
         &shaders::SpecializationConstants { enabled: 1 },
         None,
         |_| {},

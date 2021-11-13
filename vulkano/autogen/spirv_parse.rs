@@ -102,7 +102,7 @@ pub fn write(grammar: &SpirvGrammar) {
     let value_enum_output = value_enum_output(&value_enum_members(grammar));
 
     write_file(
-        "spirv.rs",
+        "spirv_parse.rs",
         format!(
             "SPIR-V grammar version {}.{}.{}",
             grammar.major_version, grammar.minor_version, grammar.revision
@@ -421,10 +421,19 @@ fn bit_enum_members(grammar: &SpirvGrammar) -> Vec<(Ident, Vec<KindEnumMember>)>
         .iter()
         .filter(|operand_kind| operand_kind.category == "BitEnum")
         .map(|operand_kind| {
+            let mut previous_value = None;
+
             let members = operand_kind
                 .enumerants
                 .iter()
                 .filter_map(|enumerant| {
+                    // Skip enumerants with the same value as the previous.
+                    if previous_value == Some(&enumerant.value) {
+                        return None;
+                    }
+
+                    previous_value = Some(&enumerant.value);
+
                     let value = enumerant
                         .value
                         .as_str()
@@ -552,10 +561,19 @@ fn value_enum_members(grammar: &SpirvGrammar) -> Vec<(Ident, Vec<KindEnumMember>
         .iter()
         .filter(|operand_kind| operand_kind.category == "ValueEnum")
         .map(|operand_kind| {
+            let mut previous_value = None;
+
             let members = operand_kind
                 .enumerants
                 .iter()
-                .map(|enumerant| {
+                .filter_map(|enumerant| {
+                    // Skip enumerants with the same value as the previous.
+                    if previous_value == Some(&enumerant.value) {
+                        return None;
+                    }
+
+                    previous_value = Some(&enumerant.value);
+
                     let name = match enumerant.enumerant.as_str() {
                         "1D" => format_ident!("Dim1D"),
                         "2D" => format_ident!("Dim2D"),
@@ -576,11 +594,11 @@ fn value_enum_members(grammar: &SpirvGrammar) -> Vec<(Ident, Vec<KindEnumMember>
                         })
                         .collect();
 
-                    KindEnumMember {
+                    Some(KindEnumMember {
                         name,
                         value: enumerant.value.as_u64().unwrap() as u32,
                         parameters,
-                    }
+                    })
                 })
                 .collect();
 

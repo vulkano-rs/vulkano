@@ -5,8 +5,8 @@ use crate::device::physical::{
 use crate::device::DeviceExtensions;
 use crate::image::{SampleCount, SampleCounts};
 use crate::instance::InstanceExtensions;
-use crate::pipeline::shader::ShaderStages;
 use crate::render_pass::ResolveModes;
+use crate::shader::ShaderStages;
 use crate::DeviceSize;
 use crate::Version;
 use std::convert::TryInto;

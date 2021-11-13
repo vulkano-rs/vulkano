@@ -137,7 +137,7 @@ fn main() {
         }
     }
 
-    let shader = cs::Shader::load(device.clone()).unwrap();
+    let shader = cs::load(device.clone()).unwrap();
 
     // Fetching subgroup size from the Physical Device metadata to compute appropriate
     // Compute Shader local size properties.
@@ -175,7 +175,7 @@ fn main() {
     };
     let pipeline = ComputePipeline::new(
         device.clone(),
-        &shader.main_entry_point(),
+        shader.entry_point("main").unwrap(),
         &spec_consts,
         None,
         |_| {},

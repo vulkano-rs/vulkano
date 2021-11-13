@@ -95,10 +95,10 @@ fn main() {
         }
     }
 
-    let shader = shader::Shader::load(device.clone()).unwrap();
+    let shader = shader::load(device.clone()).unwrap();
     let pipeline = ComputePipeline::new(
         device.clone(),
-        &shader.main_entry_point(),
+        shader.entry_point("main").unwrap(),
         &(),
         None,
         |set_descs| {

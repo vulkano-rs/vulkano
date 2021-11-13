@@ -190,8 +190,8 @@ fn main() {
     )
     .unwrap();
 
-    let vs = vs::Shader::load(device.clone()).unwrap();
-    let fs = fs::Shader::load(device.clone()).unwrap();
+    let vs = vs::load(device.clone()).unwrap();
+    let fs = fs::load(device.clone()).unwrap();
 
     let render_pass = vulkano::single_pass_renderpass!(device.clone(),
         attachments: {
@@ -281,8 +281,9 @@ fn main() {
     .unwrap();
 
     let pipeline_layout = {
-        let mut descriptor_set_descs: Vec<_> =
-            DescriptorSetDesc::from_requirements(fs.main_entry_point().descriptor_requirements());
+        let mut descriptor_set_descs: Vec<_> = DescriptorSetDesc::from_requirements(
+            fs.entry_point("main").unwrap().descriptor_requirements(),
+        );
 
         // Set 0, Binding 0
         descriptor_set_descs[0].set_variable_descriptor_count(0, 2);
@@ -296,7 +297,10 @@ fn main() {
         PipelineLayout::new(
             device.clone(),
             descriptor_set_layouts,
-            fs.main_entry_point().push_constant_range().iter().cloned(),
+            fs.entry_point("main")
+                .unwrap()
+                .push_constant_requirements()
+                .cloned(),
         )
         .unwrap()
     };
@@ -304,9 +308,9 @@ fn main() {
     let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
     let pipeline = GraphicsPipeline::start()
         .vertex_input_single_buffer::<Vertex>()
-        .vertex_shader(vs.main_entry_point(), ())
+        .vertex_shader(vs.entry_point("main").unwrap(), ())
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-        .fragment_shader(fs.main_entry_point(), ())
+        .fragment_shader(fs.entry_point("main").unwrap(), ())
         .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()).blend_alpha())
         .render_pass(subpass)
         .with_pipeline_layout(device.clone(), pipeline_layout)

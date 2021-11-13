@@ -8,9 +8,9 @@
 // according to those terms.
 
 use crate::format::Format;
-use crate::pipeline::shader::ShaderInterface;
 use crate::pipeline::vertex::VertexInput;
 use crate::pipeline::vertex::VertexMemberTy;
+use crate::shader::ShaderInterface;
 use crate::SafeDeref;
 use std::error;
 use std::fmt;

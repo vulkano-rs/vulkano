@@ -93,7 +93,6 @@ pub mod input_assembly;
 pub mod layout;
 pub mod multisample;
 pub mod rasterization;
-pub mod shader;
 pub mod tessellation;
 pub mod vertex;
 pub mod viewport;

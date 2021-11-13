@@ -272,8 +272,8 @@ fn main() {
         }
     }
 
-    let vs = vs::Shader::load(device.clone()).unwrap();
-    let fs = fs::Shader::load(device.clone()).unwrap();
+    let vs = vs::load(device.clone()).unwrap();
+    let fs = fs::load(device.clone()).unwrap();
 
     // At this point, OpenGL initialization would be finished. However in Vulkan it is not. OpenGL
     // implicitly does a lot of computation whenever you draw. In Vulkan, you have to do all this
@@ -321,13 +321,13 @@ fn main() {
         // A Vulkan shader can in theory contain multiple entry points, so we have to specify
         // which one. The `main` word of `main_entry_point` actually corresponds to the name of
         // the entry point.
-        .vertex_shader(vs.main_entry_point(), ())
+        .vertex_shader(vs.entry_point("main").unwrap(), ())
         // The content of the vertex buffer describes a list of triangles.
         .input_assembly_state(InputAssemblyState::new())
         // Use a resizable viewport set to draw over the entire window
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
         // See `vertex_shader`.
-        .fragment_shader(fs.main_entry_point(), ())
+        .fragment_shader(fs.entry_point("main").unwrap(), ())
         // We have to indicate which subpass of which render pass this pipeline is going to be used
         // in. The pipeline will only be usable from this particular subpass.
         .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())

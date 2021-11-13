@@ -95,7 +95,7 @@
 
 use crate::device::physical::PhysicalDevice;
 use crate::image::ImageAspects;
-use crate::spirv::ImageFormat;
+use crate::shader::spirv::ImageFormat;
 use crate::DeviceSize;
 use crate::VulkanObject;
 use half::f16;

@@ -41,9 +41,9 @@
 //!   in a render pass. Can only give access to the same pixel as the one you're processing.
 //!
 
-use crate::pipeline::shader::DescriptorRequirements;
-use crate::pipeline::shader::ShaderStages;
 use crate::sampler::Sampler;
+use crate::shader::DescriptorRequirements;
+use crate::shader::ShaderStages;
 use smallvec::SmallVec;
 use std::cmp;
 use std::error;

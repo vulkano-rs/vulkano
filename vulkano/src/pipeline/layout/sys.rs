@@ -15,8 +15,8 @@ use crate::descriptor_set::layout::DescriptorSetLayoutError;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::pipeline::layout::PipelineLayoutLimitsError;
-use crate::pipeline::shader::DescriptorRequirements;
-use crate::pipeline::shader::ShaderStages;
+use crate::shader::DescriptorRequirements;
+use crate::shader::ShaderStages;
 use crate::Error;
 use crate::OomError;
 use crate::VulkanObject;
@@ -217,7 +217,7 @@ impl PipelineLayout {
     pub fn ensure_compatible_with_shader<'a>(
         &self,
         descriptor_requirements: impl IntoIterator<Item = ((u32, u32), &'a DescriptorRequirements)>,
-        push_constant_range: &Option<PipelineLayoutPcRange>,
+        push_constant_range: Option<&PipelineLayoutPcRange>,
     ) -> Result<(), PipelineLayoutSupersetError> {
         for ((set_num, binding_num), reqs) in descriptor_requirements.into_iter() {
             let descriptor_desc = self
@@ -475,7 +475,7 @@ impl fmt::Display for PipelineLayoutSupersetError {
 }
 
 /// Description of a range of the push constants of a pipeline layout.
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct PipelineLayoutPcRange {
     /// Offset in bytes from the start of the push constants to this range.
     pub offset: u32,

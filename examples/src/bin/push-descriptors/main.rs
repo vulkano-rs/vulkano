@@ -128,8 +128,8 @@ fn main() {
     )
     .unwrap();
 
-    let vs = vs::Shader::load(device.clone()).unwrap();
-    let fs = fs::Shader::load(device.clone()).unwrap();
+    let vs = vs::load(device.clone()).unwrap();
+    let fs = fs::load(device.clone()).unwrap();
 
     let render_pass = vulkano::single_pass_renderpass!(device.clone(),
         attachments: {
@@ -191,10 +191,10 @@ fn main() {
     let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
     let pipeline = GraphicsPipeline::start()
         .vertex_input_single_buffer::<Vertex>()
-        .vertex_shader(vs.main_entry_point(), ())
+        .vertex_shader(vs.entry_point("main").unwrap(), ())
         .input_assembly_state(InputAssemblyState::new().topology(PrimitiveTopology::TriangleStrip))
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-        .fragment_shader(fs.main_entry_point(), ())
+        .fragment_shader(fs.entry_point("main").unwrap(), ())
         .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()).blend_alpha())
         .render_pass(subpass)
         .with_auto_layout(device.clone(), |set_descs| {

@@ -199,9 +199,9 @@ fn main() {
         }
     }
 
-    let vs = vs::Shader::load(device.clone()).unwrap();
-    let fs = fs::Shader::load(device.clone()).unwrap();
-    let cs = cs::Shader::load(device.clone()).unwrap();
+    let vs = vs::load(device.clone()).unwrap();
+    let fs = fs::load(device.clone()).unwrap();
+    let cs = cs::load(device.clone()).unwrap();
 
     // Each frame we generate a new set of vertices and each frame we need a new DrawIndirectCommand struct to
     // set the number of vertices to draw
@@ -209,8 +209,14 @@ fn main() {
         CpuBufferPool::new(device.clone(), BufferUsage::all());
     let vertex_pool: CpuBufferPool<Vertex> = CpuBufferPool::new(device.clone(), BufferUsage::all());
 
-    let compute_pipeline =
-        ComputePipeline::new(device.clone(), &cs.main_entry_point(), &(), None, |_| {}).unwrap();
+    let compute_pipeline = ComputePipeline::new(
+        device.clone(),
+        cs.entry_point("main").unwrap(),
+        &(),
+        None,
+        |_| {},
+    )
+    .unwrap();
 
     let render_pass = single_pass_renderpass!(
         device.clone(),
@@ -231,10 +237,10 @@ fn main() {
 
     let render_pipeline = GraphicsPipeline::start()
         .vertex_input_single_buffer::<Vertex>()
-        .vertex_shader(vs.main_entry_point(), ())
+        .vertex_shader(vs.entry_point("main").unwrap(), ())
         .input_assembly_state(InputAssemblyState::new())
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-        .fragment_shader(fs.main_entry_point(), ())
+        .fragment_shader(fs.entry_point("main").unwrap(), ())
         .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
         .build(device.clone())
         .unwrap();
