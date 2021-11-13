@@ -19,14 +19,12 @@ use crate::command_buffer::CommandBufferExecError;
 use crate::command_buffer::CommandBufferLevel;
 use crate::command_buffer::CommandBufferUsage;
 use crate::command_buffer::ImageUninitializedSafe;
-use crate::descriptor_set::builder::DescriptorSetBuilderOutput;
-use crate::descriptor_set::layout::DescriptorSetLayout;
-use crate::descriptor_set::DescriptorSet;
+use crate::descriptor_set::DescriptorSetResources;
+use crate::descriptor_set::DescriptorSetWithOffsets;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::image::ImageAccess;
 use crate::image::ImageLayout;
-use crate::image::ImageViewAbstract;
 use crate::pipeline::color_blend::LogicOp;
 use crate::pipeline::depth_stencil::CompareOp;
 use crate::pipeline::depth_stencil::StencilOp;
@@ -82,7 +80,7 @@ pub struct SyncCommandBufferBuilder {
 
     // Stores all the commands that were added to the sync builder. Some of them are maybe not
     // submitted to the inner builder yet.
-    commands: Vec<Arc<dyn Command>>,
+    commands: Vec<Box<dyn Command>>,
 
     // Prototype for the pipeline barrier that must be submitted before flushing the commands
     // in `commands`.
@@ -243,7 +241,7 @@ impl SyncCommandBufferBuilder {
 
         // Note that we don't submit the command to the inner command buffer yet.
         let (latest_command_id, end) = {
-            self.commands.push(Arc::new(command));
+            self.commands.push(Box::new(command));
             let latest_command_id = self.commands.len() - 1;
             let end = self.latest_render_pass_enter.unwrap_or(latest_command_id);
             (latest_command_id, end)
@@ -777,9 +775,8 @@ impl CurrentState {
         pipeline_layout: Arc<PipelineLayout>,
         first_set: u32,
         num_descriptor_sets: u32,
-        cmd: &Arc<dyn Command>,
-    ) {
-        let state = match self.descriptor_sets.entry(pipeline_bind_point) {
+    ) -> &mut DescriptorSetState {
+        match self.descriptor_sets.entry(pipeline_bind_point) {
             Entry::Vacant(entry) => entry.insert(DescriptorSetState {
                 descriptor_sets: Default::default(),
                 pipeline_layout,
@@ -827,18 +824,28 @@ impl CurrentState {
 
                 state
             }
-        };
-
-        for i in 0..num_descriptor_sets {
-            state.descriptor_sets.insert(first_set + i, cmd.clone());
         }
     }
 }
 
-#[derive(Debug)]
 struct DescriptorSetState {
-    descriptor_sets: FnvHashMap<u32, Arc<dyn Command>>,
+    descriptor_sets: FnvHashMap<u32, SetOrPush>,
     pipeline_layout: Arc<PipelineLayout>,
+}
+
+#[derive(Clone)]
+pub enum SetOrPush {
+    Set(DescriptorSetWithOffsets),
+    Push(DescriptorSetResources),
+}
+
+impl SetOrPush {
+    pub fn resources(&self) -> &DescriptorSetResources {
+        match self {
+            Self::Set(set) => set.as_ref().0.resources(),
+            Self::Push(resources) => resources,
+        }
+    }
 }
 
 /// Allows you to retrieve the current state of a command buffer builder.
@@ -855,18 +862,11 @@ impl<'a> CommandBufferState<'a> {
         &self,
         pipeline_bind_point: PipelineBindPoint,
         set_num: u32,
-    ) -> Option<SetOrPush<'a>> {
-        let state =
-            if let Some(state) = self.current_state.descriptor_sets.get(&pipeline_bind_point) {
-                state
-            } else {
-                return None;
-            };
-
-        state
+    ) -> Option<&'a SetOrPush> {
+        self.current_state
             .descriptor_sets
-            .get(&set_num)
-            .map(|cmd| cmd.bound_descriptor_set(set_num))
+            .get(&pipeline_bind_point)
+            .and_then(|state| state.descriptor_sets.get(&set_num))
     }
 
     /// Returns the pipeline layout that describes all currently bound descriptor sets.
@@ -1101,53 +1101,6 @@ impl<'a> CommandBufferState<'a> {
             .viewport_with_count
             .as_ref()
             .map(|x| x.as_slice())
-    }
-}
-
-#[derive(Clone)]
-pub enum SetOrPush<'a> {
-    Set(&'a Arc<dyn DescriptorSet>, &'a [u32]),
-    Push(&'a DescriptorSetBuilderOutput),
-}
-
-impl<'a> SetOrPush<'a> {
-    pub fn layout(&self) -> &'a Arc<DescriptorSetLayout> {
-        match *self {
-            Self::Set(set, offsets) => set.layout(),
-            Self::Push(writes) => writes.layout(),
-        }
-    }
-
-    #[inline]
-    pub fn num_buffers(&self) -> usize {
-        match self {
-            Self::Set(set, offsets) => set.resources().num_buffers(),
-            Self::Push(writes) => writes.num_buffers(),
-        }
-    }
-
-    #[inline]
-    pub fn buffer(&self, num: usize) -> Option<(Arc<dyn BufferAccess>, u32)> {
-        match *self {
-            Self::Set(set, offsets) => set.resources().buffer(num),
-            Self::Push(writes) => writes.buffer(num),
-        }
-    }
-
-    #[inline]
-    pub fn num_images(&self) -> usize {
-        match self {
-            Self::Set(set, offsets) => set.resources().num_images(),
-            Self::Push(writes) => writes.num_images(),
-        }
-    }
-
-    #[inline]
-    pub fn image(&self, num: usize) -> Option<(Arc<dyn ImageViewAbstract>, u32)> {
-        match *self {
-            Self::Set(set, offsets) => set.resources().image(num),
-            Self::Push(writes) => writes.image(num),
-        }
     }
 }
 

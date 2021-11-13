@@ -178,9 +178,9 @@ impl Drop for StdDescriptorPoolAlloc {
 #[cfg(test)]
 mod tests {
     use crate::descriptor_set::layout::DescriptorDesc;
-    use crate::descriptor_set::layout::DescriptorDescTy;
     use crate::descriptor_set::layout::DescriptorSetDesc;
     use crate::descriptor_set::layout::DescriptorSetLayout;
+    use crate::descriptor_set::layout::DescriptorType;
     use crate::descriptor_set::pool::DescriptorPool;
     use crate::descriptor_set::pool::StdDescriptorPool;
     use crate::pipeline::shader::ShaderStages;
@@ -193,13 +193,11 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let desc = DescriptorDesc {
-            ty: DescriptorDescTy::Sampler {
-                immutable_samplers: vec![],
-            },
+            ty: DescriptorType::Sampler,
             descriptor_count: 1,
-            stages: ShaderStages::all(),
-            mutable: true,
             variable_count: false,
+            stages: ShaderStages::all(),
+            immutable_samplers: Vec::new(),
         };
         let layout = DescriptorSetLayout::new(
             device.clone(),

@@ -19,7 +19,7 @@ use vulkano::image::ImageViewAbstract;
 use vulkano::pipeline::color_blend::{AttachmentBlend, BlendFactor, BlendOp, ColorBlendState};
 use vulkano::pipeline::input_assembly::InputAssemblyState;
 use vulkano::pipeline::viewport::{Viewport, ViewportState};
-use vulkano::pipeline::{GraphicsPipeline, PipelineBindPoint};
+use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::render_pass::Subpass;
 
 /// Allows applying a directional light source to a scene.

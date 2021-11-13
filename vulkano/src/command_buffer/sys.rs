@@ -1375,11 +1375,10 @@ impl UnsafeCommandBufferBuilder {
                 let descriptor = pipeline_layout.descriptor_set_layouts()[set_num as usize]
                     .descriptor(write.binding_num)
                     .unwrap();
-                let descriptor_type = descriptor.ty.ty();
 
                 (
-                    write.to_vulkan_info(descriptor_type),
-                    write.to_vulkan(ash::vk::DescriptorSet::null(), descriptor_type),
+                    write.to_vulkan_info(descriptor.ty),
+                    write.to_vulkan(ash::vk::DescriptorSet::null(), descriptor.ty),
                 )
             })
             .unzip();

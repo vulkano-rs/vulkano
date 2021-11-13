@@ -17,7 +17,7 @@ use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
 use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::Queue;
 use vulkano::image::ImageAccess;
-use vulkano::pipeline::{ComputePipeline, PipelineBindPoint};
+use vulkano::pipeline::{ComputePipeline, Pipeline, PipelineBindPoint};
 use vulkano::sync::GpuFuture;
 
 pub struct FractalComputePipeline {

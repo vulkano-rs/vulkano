@@ -21,8 +21,6 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct DescriptorSetResources {
     descriptors: FnvHashMap<u32, DescriptorBindingResources>,
-    buffers: Vec<(u32, usize)>,
-    images: Vec<(u32, usize)>,
 }
 
 impl DescriptorSetResources {
@@ -37,7 +35,7 @@ impl DescriptorSetResources {
             .filter_map(|(b, d)| d.as_ref().map(|d| (b as u32, d)))
             .map(|(binding_num, binding_desc)| {
                 let count = binding_desc.descriptor_count as usize;
-                let binding_resources = match binding_desc.ty.ty() {
+                let binding_resources = match binding_desc.ty {
                     DescriptorType::UniformBuffer
                     | DescriptorType::StorageBuffer
                     | DescriptorType::UniformBufferDynamic
@@ -53,14 +51,14 @@ impl DescriptorSetResources {
                         DescriptorBindingResources::ImageView(smallvec![None; count])
                     }
                     DescriptorType::CombinedImageSampler => {
-                        if binding_desc.ty.immutable_samplers().is_empty() {
+                        if binding_desc.immutable_samplers.is_empty() {
                             DescriptorBindingResources::ImageViewSampler(smallvec![None; count])
                         } else {
                             DescriptorBindingResources::ImageView(smallvec![None; count])
                         }
                     }
                     DescriptorType::Sampler => {
-                        if binding_desc.ty.immutable_samplers().is_empty() {
+                        if binding_desc.immutable_samplers.is_empty() {
                             DescriptorBindingResources::Sampler(smallvec![None; count])
                         } else {
                             DescriptorBindingResources::None
@@ -71,11 +69,7 @@ impl DescriptorSetResources {
             })
             .collect();
 
-        Self {
-            descriptors,
-            buffers: Vec::new(),
-            images: Vec::new(),
-        }
+        Self { descriptors }
     }
 
     /// Applies descriptor writes to the resources.
@@ -91,36 +85,6 @@ impl DescriptorSetResources {
                 .expect("descriptor write has invalid binding number")
                 .update(write)
         }
-
-        self.buffers.clear();
-        self.images.clear();
-
-        for (&binding, resources) in self.descriptors.iter() {
-            match resources {
-                DescriptorBindingResources::None => (),
-                DescriptorBindingResources::Buffer(resources) => {
-                    self.buffers.extend(resources.iter().enumerate().filter_map(
-                        |(index, resource)| resource.as_ref().map(|_| (binding, index)),
-                    ))
-                }
-                DescriptorBindingResources::BufferView(resources) => {
-                    self.buffers.extend(resources.iter().enumerate().filter_map(
-                        |(index, resource)| resource.as_ref().map(|_| (binding, index)),
-                    ))
-                }
-                DescriptorBindingResources::ImageView(resources) => {
-                    self.images.extend(resources.iter().enumerate().filter_map(
-                        |(index, resource)| resource.as_ref().map(|_| (binding, index)),
-                    ))
-                }
-                DescriptorBindingResources::ImageViewSampler(resources) => {
-                    self.images.extend(resources.iter().enumerate().filter_map(
-                        |(index, resource)| resource.as_ref().map(|_| (binding, index)),
-                    ))
-                }
-                DescriptorBindingResources::Sampler(_) => (),
-            }
-        }
     }
 
     /// Returns a reference to the bound resources for `binding`. Returns `None` if the binding
@@ -128,42 +92,6 @@ impl DescriptorSetResources {
     #[inline]
     pub fn binding(&self, binding: u32) -> Option<&DescriptorBindingResources> {
         self.descriptors.get(&binding)
-    }
-
-    pub(crate) fn num_buffers(&self) -> usize {
-        self.buffers.len()
-    }
-
-    pub(crate) fn buffer(&self, index: usize) -> Option<(Arc<dyn BufferAccess>, u32)> {
-        self.buffers
-            .get(index)
-            .and_then(|&(binding, index)| match &self.descriptors[&binding] {
-                DescriptorBindingResources::Buffer(resources) => {
-                    resources[index].as_ref().map(|r| (r.clone(), binding))
-                }
-                DescriptorBindingResources::BufferView(resources) => {
-                    resources[index].as_ref().map(|r| (r.buffer(), binding))
-                }
-                _ => unreachable!(),
-            })
-    }
-
-    pub(crate) fn num_images(&self) -> usize {
-        self.images.len()
-    }
-
-    pub(crate) fn image(&self, index: usize) -> Option<(Arc<dyn ImageViewAbstract>, u32)> {
-        self.images
-            .get(index)
-            .and_then(|&(binding, index)| match &self.descriptors[&binding] {
-                DescriptorBindingResources::ImageView(resources) => {
-                    resources[index].as_ref().map(|r| (r.clone(), binding))
-                }
-                DescriptorBindingResources::ImageViewSampler(resources) => {
-                    resources[index].as_ref().map(|r| (r.0.clone(), binding))
-                }
-                _ => unreachable!(),
-            })
     }
 }
 
