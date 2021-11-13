@@ -90,6 +90,13 @@
 - **Breaking** Buffers and Images that have `with_exportable_fd` use dedicated allocation, thus requiring khr_get_memory_requirements2 and khr_dedicated_allocation on top of 
 already needed khr_external_memory and khr_external_memory_fd.
 - **Breaking** `Compare` is renamed to `CompareOp` to match Vulkan.
+- **Breaking** Vulkano-shaders no longer generates a `Shader` struct, but instead provides `load` as a standalone function that returns `Arc<ShaderModule>` directly.
+- **Breaking** Vulkano-shaders no longer generates a function for each entry point. Entry points are now retrieved using the `entry_point` method of `ShaderModule`.
+- **Breaking** The `shader` module is moved to the crate root, and `spirv` is now a submodule of it.
+- **Breaking** `ShaderModule::new` is renamed to `from_bytes` to match the existing `from_words`.
+- **Breaking** `ShaderModule` now parses and analyses the shader provided to it on construction, checks whether the shader is compatible with the device, and gathers data such as descriptor sets and input/output interfaces directly from its code. To provide this data yourself as before, and avoid parsing, you can use the `_with_data` constructors.
+- **Breaking** `ComputeEntryPoint` and `GraphicsEntryPoint` are removed, as are the functions on `ShaderModule` that generate them. Instead, you can look up an entry point using the `entry_point` method.
+- Added support for additional shader types in `ShaderStage`, `ShaderStages` and `PipelineStages`.
 - Added `export_fd` and `with_exportable_fd` to `AttachmentImage` and `StorageImage` as well as `mem_size` which is needed when using those images with Cuda.
 - Vulkano-shaders: added extension/feature checks for more SPIR-V capabilities.
 - Added support for surface creation from a CAMetalLayer using VK_EXT_metal_surface.
