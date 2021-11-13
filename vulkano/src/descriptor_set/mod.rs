@@ -237,9 +237,6 @@ where
 /// Error related to descriptor sets.
 #[derive(Debug, Clone)]
 pub enum DescriptorSetError {
-    /// Builder is already within an array.
-    AlreadyInArray,
-
     /// The number of array layers of an image doesn't match what was expected.
     ArrayLayersMismatch {
         /// Number of expected array layers for the image.
@@ -278,6 +275,9 @@ pub enum DescriptorSetError {
         obtained: u32,
     },
 
+    /// The builder is within an array, but the operation requires it not to be.
+    InArray,
+
     /// The image view isn't compatible with the sampler.
     IncompatibleImageViewSampler,
 
@@ -290,7 +290,7 @@ pub enum DescriptorSetError {
     /// The image view has a component swizzle that is different from identity.
     NotIdentitySwizzled,
 
-    /// Builder is not in an array.
+    /// The builder is not in an array, but the operation requires it to be.
     NotInArray,
 
     /// Out of memory
@@ -327,7 +327,6 @@ impl fmt::Display for DescriptorSetError {
             fmt,
             "{}",
             match *self {
-                Self::AlreadyInArray => "builder is already within an array",
                 Self::ArrayLayersMismatch { .. } =>
                     "the number of array layers of an image doesn't match what was expected",
                 Self::ArrayLengthMismatch { .. } =>
@@ -338,13 +337,14 @@ impl fmt::Display for DescriptorSetError {
                     "the builder has previously return an error and is an unknown state",
                 Self::DescriptorIsEmpty => "operation can not be performed on an empty descriptor",
                 Self::DescriptorsMissing { .. } => "not all descriptors have been added",
+                Self::InArray => "the builder is within an array, but the operation requires it not to be",
                 Self::IncompatibleImageViewSampler =>
                     "the image view isn't compatible with the sampler",
                 Self::MissingBufferUsage(_) => "the buffer is missing the correct usage",
                 Self::MissingImageUsage(_) => "the image is missing the correct usage",
                 Self::NotIdentitySwizzled =>
                     "the image view has a component swizzle that is different from identity",
-                Self::NotInArray => "builder is not in an array",
+                Self::NotInArray => "the builder is not in an array, but the operation requires it to be",
                 Self::OomError(_) => "out of memory",
                 Self::ResourceWrongDevice => "resource belongs to another device",
                 Self::SamplerIsImmutable => "provided a dynamically assigned sampler, but the descriptor has an immutable sampler",

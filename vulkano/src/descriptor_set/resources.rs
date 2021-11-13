@@ -26,7 +26,9 @@ pub struct DescriptorSetResources {
 impl DescriptorSetResources {
     /// Creates a new `DescriptorSetResources` matching the provided descriptor set layout, and
     /// all descriptors set to `None`.
-    pub fn new(layout: &DescriptorSetLayout) -> Self {
+    pub fn new(layout: &DescriptorSetLayout, variable_descriptor_count: u32) -> Self {
+        assert!(variable_descriptor_count <= layout.variable_descriptor_count());
+
         let descriptors = layout
             .desc()
             .bindings()
@@ -34,7 +36,12 @@ impl DescriptorSetResources {
             .enumerate()
             .filter_map(|(b, d)| d.as_ref().map(|d| (b as u32, d)))
             .map(|(binding_num, binding_desc)| {
-                let count = binding_desc.descriptor_count as usize;
+                let count = if binding_desc.variable_count {
+                    variable_descriptor_count
+                } else {
+                    binding_desc.descriptor_count
+                } as usize;
+
                 let binding_resources = match binding_desc.ty {
                     DescriptorType::UniformBuffer
                     | DescriptorType::StorageBuffer

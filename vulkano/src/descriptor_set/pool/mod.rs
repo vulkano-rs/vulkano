@@ -11,6 +11,7 @@
 
 pub use self::standard::StdDescriptorPool;
 pub use self::sys::DescriptorPoolAllocError;
+pub use self::sys::DescriptorSetAllocateInfo;
 pub use self::sys::UnsafeDescriptorPool;
 use crate::descriptor_set::layout::DescriptorSetLayout;
 use crate::descriptor_set::layout::DescriptorType;
@@ -34,7 +35,11 @@ pub unsafe trait DescriptorPool: DeviceOwned {
     type Alloc: DescriptorPoolAlloc;
 
     /// Allocates a descriptor set.
-    fn alloc(&mut self, layout: &DescriptorSetLayout) -> Result<Self::Alloc, OomError>;
+    fn alloc(
+        &mut self,
+        layout: &DescriptorSetLayout,
+        variable_descriptor_count: u32,
+    ) -> Result<Self::Alloc, OomError>;
 }
 
 /// An allocated descriptor set.

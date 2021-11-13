@@ -12,7 +12,7 @@ use crate::buffer::BufferView;
 use crate::descriptor_set::builder::DescriptorSetBuilder;
 use crate::descriptor_set::layout::DescriptorSetLayout;
 use crate::descriptor_set::pool::{
-    DescriptorPoolAlloc, DescriptorPoolAllocError, UnsafeDescriptorPool,
+    DescriptorPoolAlloc, DescriptorPoolAllocError, DescriptorSetAllocateInfo, UnsafeDescriptorPool,
 };
 use crate::descriptor_set::{BufferAccess, DescriptorSet, DescriptorSetError, UnsafeDescriptorSet};
 use crate::device::{Device, DeviceOwned};
@@ -42,10 +42,20 @@ pub struct SingleLayoutDescSetPool {
 impl SingleLayoutDescSetPool {
     /// Initializes a new pool. The pool is configured to allocate sets that corresponds to the
     /// parameters passed to this function.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the provided `layout` is for push descriptors rather than regular descriptor
+    ///   sets.
+    /// - Panics if the provided `layout` has a binding with a variable descriptor count.
     pub fn new(layout: Arc<DescriptorSetLayout>) -> Self {
         assert!(
             !layout.desc().is_push_descriptor(),
             "the provided descriptor set layout is for push descriptors, and cannot be used to build a descriptor set object"
+        );
+        assert!(
+            layout.variable_descriptor_count() == 0,
+            "the provided descriptor set layout has a binding with a variable descriptor count, which cannot be used with SingleLayoutDescSetPool"
         );
 
         Self {
@@ -96,7 +106,10 @@ impl SingleLayoutDescSetPool {
             )?;
 
             let reserve = unsafe {
-                match unsafe_pool.alloc((0..self.set_count).map(|_| &*self.layout)) {
+                match unsafe_pool.alloc((0..self.set_count).map(|_| DescriptorSetAllocateInfo {
+                    layout: self.layout.as_ref(),
+                    variable_descriptor_count: 0,
+                })) {
                     Ok(alloc_iter) => {
                         let reserve = SegQueue::new();
 
@@ -169,7 +182,7 @@ impl Drop for SingleLayoutPoolAlloc {
 
 /// A descriptor set created from a `SingleLayoutDescSetPool`.
 pub struct SingleLayoutDescSet {
-    inner: SingleLayoutPoolAlloc,
+    alloc: SingleLayoutPoolAlloc,
     resources: DescriptorSetResources,
     layout: Arc<DescriptorSetLayout>,
 }
@@ -177,7 +190,7 @@ pub struct SingleLayoutDescSet {
 unsafe impl DescriptorSet for SingleLayoutDescSet {
     #[inline]
     fn inner(&self) -> &UnsafeDescriptorSet {
-        self.inner.inner()
+        self.alloc.inner()
     }
 
     #[inline]
@@ -320,15 +333,17 @@ impl<'a> SingleLayoutDescSetBuilder<'a> {
     /// Builds a `SingleLayoutDescSet` from the builder.
     pub fn build(self) -> Result<Arc<SingleLayoutDescSet>, DescriptorSetError> {
         let writes = self.inner.build()?;
+        debug_assert!(writes.variable_descriptor_count() == 0);
         let mut alloc = self.pool.next_alloc()?;
+        let mut resources = DescriptorSetResources::new(writes.layout(), 0);
+
         unsafe {
             alloc.inner_mut().write(writes.layout(), writes.writes());
+            resources.update(writes.writes());
         }
-        let mut resources = DescriptorSetResources::new(writes.layout());
-        resources.update(writes.writes());
 
         Ok(Arc::new(SingleLayoutDescSet {
-            inner: alloc,
+            alloc,
             resources,
             layout: writes.layout().clone(),
         }))

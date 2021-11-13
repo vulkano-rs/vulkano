@@ -27,10 +27,12 @@ struct BuilderDescriptor {
 /// A builder for constructing a new descriptor set.
 pub struct DescriptorSetBuilder {
     layout: Arc<DescriptorSetLayout>,
-    in_array: bool,
-    descriptors: Vec<BuilderDescriptor>,
-    cur_binding: u32,
+    variable_descriptor_count: u32,
     writes: Vec<DescriptorWrite>,
+
+    cur_binding: u32,
+    descriptors: Vec<BuilderDescriptor>,
+    in_array: bool,
     poisoned: bool,
 }
 
@@ -61,10 +63,12 @@ impl DescriptorSetBuilder {
 
         Self {
             layout,
-            in_array: false,
+            variable_descriptor_count: 0,
+            writes: Vec::with_capacity(desc_writes_capacity),
+
             cur_binding: 0,
             descriptors,
-            writes: Vec::with_capacity(desc_writes_capacity),
+            in_array: false,
             poisoned: false,
         }
     }
@@ -75,15 +79,20 @@ impl DescriptorSetBuilder {
             return Err(DescriptorSetError::BuilderPoisoned);
         }
 
+        if self.in_array {
+            return Err(DescriptorSetError::InArray);
+        }
+
         if self.cur_binding != self.descriptors.len() as u32 {
-            Err(DescriptorSetError::DescriptorsMissing {
+            return Err(DescriptorSetError::DescriptorsMissing {
                 expected: self.descriptors.len() as u32,
                 obtained: self.cur_binding,
-            })
+            });
         } else {
             Ok(DescriptorSetBuilderOutput {
                 layout: self.layout,
                 writes: self.writes,
+                variable_descriptor_count: self.variable_descriptor_count,
             })
         }
     }
@@ -113,7 +122,7 @@ impl DescriptorSetBuilder {
     pub fn enter_array(&mut self) -> Result<&mut Self, DescriptorSetError> {
         self.poison_on_err(|builder| {
             if builder.in_array {
-                Err(DescriptorSetError::AlreadyInArray)
+                Err(DescriptorSetError::InArray)
             } else if builder.cur_binding >= builder.descriptors.len() as u32 {
                 Err(DescriptorSetError::TooManyDescriptors)
             } else if builder.descriptors[builder.cur_binding as usize]
@@ -147,6 +156,10 @@ impl DescriptorSetBuilder {
                             obtained: descriptor.array_element,
                         });
                     }
+
+                    debug_assert!(builder.cur_binding as usize == builder.descriptors.len() - 1);
+                    debug_assert!(builder.variable_descriptor_count == 0);
+                    builder.variable_descriptor_count = descriptor.array_element;
                 } else if descriptor.array_element != inner_desc.descriptor_count {
                     return Err(DescriptorSetError::ArrayLengthMismatch {
                         expected: inner_desc.descriptor_count,
@@ -164,8 +177,8 @@ impl DescriptorSetBuilder {
     /// Skips the current descriptor if it is empty.
     pub fn add_empty(&mut self) -> Result<&mut Self, DescriptorSetError> {
         self.poison_on_err(|builder| {
-            // Should be unreahable as enter_array prevents entering an array for empty descriptors.
-            assert!(!builder.in_array);
+            // Should be unreachable as enter_array prevents entering an array for empty descriptors.
+            debug_assert!(!builder.in_array);
 
             if builder.descriptors[builder.cur_binding as usize]
                 .desc
@@ -572,6 +585,7 @@ unsafe impl DeviceOwned for DescriptorSetBuilder {
 /// This is not a descriptor set yet, but can be used to write the descriptors to one.
 pub struct DescriptorSetBuilderOutput {
     layout: Arc<DescriptorSetLayout>,
+    variable_descriptor_count: u32,
     writes: Vec<DescriptorWrite>,
 }
 
@@ -580,6 +594,12 @@ impl DescriptorSetBuilderOutput {
     #[inline]
     pub fn layout(&self) -> &Arc<DescriptorSetLayout> {
         &self.layout
+    }
+
+    /// Returns the number of variable descriptors.
+    #[inline]
+    pub fn variable_descriptor_count(&self) -> u32 {
+        self.variable_descriptor_count
     }
 
     /// Returns the descriptor writes.
