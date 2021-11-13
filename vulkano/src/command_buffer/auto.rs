@@ -66,6 +66,7 @@ use crate::pipeline::viewport::Viewport;
 use crate::pipeline::ComputePipeline;
 use crate::pipeline::DynamicState;
 use crate::pipeline::GraphicsPipeline;
+use crate::pipeline::Pipeline;
 use crate::pipeline::PipelineBindPoint;
 use crate::query::QueryControlFlags;
 use crate::query::QueryPipelineStatisticFlags;
@@ -1385,6 +1386,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     /// Perform a single compute operation using a compute pipeline.
+    ///
+    /// A compute pipeline must have been bound using
+    /// [`bind_pipeline_compute`](Self::bind_pipeline_compute). Any resources used by the compute
+    /// pipeline, such as descriptor sets, must have been set beforehand.
     #[inline]
     pub fn dispatch(&mut self, group_counts: [u32; 3]) -> Result<&mut Self, DispatchError> {
         if !self.queue_family().supports_compute() {
@@ -1393,11 +1398,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
         let pipeline = check_pipeline_compute(self.state())?;
         self.ensure_outside_render_pass()?;
-        check_descriptor_sets_validity(
-            self.state(),
-            pipeline.layout(),
-            PipelineBindPoint::Compute,
-        )?;
+        check_descriptor_sets_validity(self.state(), pipeline, pipeline.descriptor_requirements())?;
         check_push_constants_validity(self.state(), pipeline.layout())?;
         check_dispatch(self.device(), group_counts)?;
 
@@ -1409,7 +1410,11 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     /// Perform multiple compute operations using a compute pipeline. One dispatch is performed for
-    /// each `vulkano::command_buffer::DispatchIndirectCommand` struct in `indirect_buffer`.
+    /// each [`DispatchIndirectCommand`] struct in `indirect_buffer`.
+    ///
+    /// A compute pipeline must have been bound using
+    /// [`bind_pipeline_compute`](Self::bind_pipeline_compute). Any resources used by the compute
+    /// pipeline, such as descriptor sets, must have been set beforehand.
     #[inline]
     pub fn dispatch_indirect<Inb>(
         &mut self,
@@ -1424,11 +1429,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
         let pipeline = check_pipeline_compute(self.state())?;
         self.ensure_outside_render_pass()?;
-        check_descriptor_sets_validity(
-            self.state(),
-            pipeline.layout(),
-            PipelineBindPoint::Compute,
-        )?;
+        check_descriptor_sets_validity(self.state(), pipeline, pipeline.descriptor_requirements())?;
         check_push_constants_validity(self.state(), pipeline.layout())?;
         check_indirect_buffer(self.device(), indirect_buffer.as_ref())?;
 
@@ -1441,10 +1442,15 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     /// Perform a single draw operation using a graphics pipeline.
     ///
-    /// `vertex_buffer` is a set of vertex and/or instance buffers used to provide input.
+    /// The parameters specify the first vertex and the number of vertices to draw, and the first
+    /// instance and number of instances. For non-instanced drawing, specify `instance_count` as 1
+    /// and `first_instance` as 0.
     ///
-    /// All data in `vertex_buffer` is used for the draw operation. To use only some data in the
-    /// buffer, wrap it in a `vulkano::buffer::BufferSlice`.
+    /// A graphics pipeline must have been bound using
+    /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). Any resources used by the graphics
+    /// pipeline, such as descriptor sets, vertex buffers and dynamic state, must have been set
+    /// beforehand. If the bound graphics pipeline uses vertex buffers, then the provided vertex and
+    /// instance ranges must be in range of the bound vertex buffers.
     #[inline]
     pub fn draw(
         &mut self,
@@ -1456,11 +1462,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         let pipeline = check_pipeline_graphics(self.state())?;
         self.ensure_inside_render_pass_inline(pipeline)?;
         check_dynamic_state_validity(self.state(), pipeline)?;
-        check_descriptor_sets_validity(
-            self.state(),
-            pipeline.layout(),
-            PipelineBindPoint::Graphics,
-        )?;
+        check_descriptor_sets_validity(self.state(), pipeline, pipeline.descriptor_requirements())?;
         check_push_constants_validity(self.state(), pipeline.layout())?;
         check_vertex_buffers(
             self.state(),
@@ -1486,11 +1488,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// [`multi_draw_indirect`](crate::device::Features::multi_draw_indirect) feature has been
     /// enabled.
     ///
-    /// `vertex_buffer` is a set of vertex and/or instance buffers used to provide input. It is
-    /// used for every draw operation.
-    ///
-    /// All data in `vertex_buffer` is used for every draw operation. To use only some data in the
-    /// buffer, wrap it in a `vulkano::buffer::BufferSlice`.
+    /// A graphics pipeline must have been bound using
+    /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). Any resources used by the graphics
+    /// pipeline, such as descriptor sets, vertex buffers and dynamic state, must have been set
+    /// beforehand. If the bound graphics pipeline uses vertex buffers, then the vertex and instance
+    /// ranges of each `DrawIndirectCommand` in the indirect buffer must be in range of the bound
+    /// vertex buffers.
     #[inline]
     pub fn draw_indirect<Inb>(
         &mut self,
@@ -1502,11 +1505,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         let pipeline = check_pipeline_graphics(self.state())?;
         self.ensure_inside_render_pass_inline(pipeline)?;
         check_dynamic_state_validity(self.state(), pipeline)?;
-        check_descriptor_sets_validity(
-            self.state(),
-            pipeline.layout(),
-            PipelineBindPoint::Graphics,
-        )?;
+        check_descriptor_sets_validity(self.state(), pipeline, pipeline.descriptor_requirements())?;
         check_push_constants_validity(self.state(), pipeline.layout())?;
         check_vertex_buffers(self.state(), pipeline, None, None)?;
         check_indirect_buffer(self.device(), indirect_buffer.as_ref())?;
@@ -1538,12 +1537,22 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     /// Perform a single draw operation using a graphics pipeline, using an index buffer.
     ///
-    /// `vertex_buffer` is a set of vertex and/or instance buffers used to provide input.
-    /// `index_buffer` is a buffer containing indices into the vertex buffer that should be
-    /// processed in order.
+    /// The parameters specify the first index and the number of indices in the index buffer that
+    /// should be used, and the first instance and number of instances. For non-instanced drawing,
+    /// specify `instance_count` as 1 and `first_instance` as 0. The `vertex_offset` is a constant
+    /// value that should be added to each index in the index buffer to produce the final vertex
+    /// number to be used.
     ///
-    /// All data in `vertex_buffer` and `index_buffer` is used for the draw operation. To use
-    /// only some data in the buffer, wrap it in a `vulkano::buffer::BufferSlice`.
+    /// An index buffer must have been bound using
+    /// [`bind_index_buffer`](Self::bind_index_buffer), and the provided index range must be in
+    /// range of the bound index buffer.
+    ///
+    /// A graphics pipeline must have been bound using
+    /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). Any resources used by the graphics
+    /// pipeline, such as descriptor sets, vertex buffers and dynamic state, must have been set
+    /// beforehand. If the bound graphics pipeline uses vertex buffers, then the provided instance
+    /// range must be in range of the bound vertex buffers. The vertex indices in the index buffer
+    /// must be in range of the bound vertex buffers.
     #[inline]
     pub fn draw_indexed(
         &mut self,
@@ -1557,11 +1566,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         let pipeline = check_pipeline_graphics(self.state())?;
         self.ensure_inside_render_pass_inline(pipeline)?;
         check_dynamic_state_validity(self.state(), pipeline)?;
-        check_descriptor_sets_validity(
-            self.state(),
-            pipeline.layout(),
-            PipelineBindPoint::Graphics,
-        )?;
+        check_descriptor_sets_validity(self.state(), pipeline, pipeline.descriptor_requirements())?;
         check_push_constants_validity(self.state(), pipeline.layout())?;
         check_vertex_buffers(
             self.state(),
@@ -1586,19 +1591,24 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     /// Perform multiple draw operations using a graphics pipeline, using an index buffer.
     ///
-    /// One draw is performed for each [`DrawIndirectCommand`] struct in `indirect_buffer`.
+    /// One draw is performed for each [`DrawIndexedIndirectCommand`] struct in `indirect_buffer`.
     /// The maximum number of draw commands in the buffer is limited by the
     /// [`max_draw_indirect_count`](crate::device::Properties::max_draw_indirect_count) limit.
     /// This limit is 1 unless the
     /// [`multi_draw_indirect`](crate::device::Features::multi_draw_indirect) feature has been
     /// enabled.
     ///
-    /// `vertex_buffer` is a set of vertex and/or instance buffers used to provide input.
-    /// `index_buffer` is a buffer containing indices into the vertex buffer that should be
-    /// processed in order.
+    /// An index buffer must have been bound using
+    /// [`bind_index_buffer`](Self::bind_index_buffer), and the index ranges of each
+    /// `DrawIndexedIndirectCommand` in the indirect buffer must be in range of the bound index
+    /// buffer.
     ///
-    /// All data in `vertex_buffer` and `index_buffer` is used for every draw operation. To use
-    /// only some data in the buffer, wrap it in a `vulkano::buffer::BufferSlice`.
+    /// A graphics pipeline must have been bound using
+    /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). Any resources used by the graphics
+    /// pipeline, such as descriptor sets, vertex buffers and dynamic state, must have been set
+    /// beforehand. If the bound graphics pipeline uses vertex buffers, then the instance ranges of
+    /// each `DrawIndexedIndirectCommand` in the indirect buffer must be in range of the bound
+    /// vertex buffers.
     #[inline]
     pub fn draw_indexed_indirect<Inb>(
         &mut self,
@@ -1610,11 +1620,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         let pipeline = check_pipeline_graphics(self.state())?;
         self.ensure_inside_render_pass_inline(pipeline)?;
         check_dynamic_state_validity(self.state(), pipeline)?;
-        check_descriptor_sets_validity(
-            self.state(),
-            pipeline.layout(),
-            PipelineBindPoint::Graphics,
-        )?;
+        check_descriptor_sets_validity(self.state(), pipeline, pipeline.descriptor_requirements())?;
         check_push_constants_validity(self.state(), pipeline.layout())?;
         check_vertex_buffers(self.state(), pipeline, None, None)?;
         check_index_buffer(self.state(), None)?;
@@ -2137,11 +2143,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the [`ext_discard_rectangles`](crate::device::Features::ext_discard_rectangles)
+    /// - Panics if the
+    ///   [`ext_discard_rectangles`](crate::device::DeviceExtensions::ext_discard_rectangles)
     ///   extension is not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     /// - Panics if the highest discard rectangle slot being set is greater than the
-    ///   [`max_discard_rectangle`](crate::device::Properties::max_discard_rectangle) device property.
+    ///   [`max_discard_rectangles`](crate::device::Properties::max_discard_rectangles) device
+    ///   property.
     pub fn set_discard_rectangle<I>(&mut self, first_rectangle: u32, rectangles: I) -> &mut Self
     where
         I: IntoIterator<Item = Scissor>,

@@ -8,14 +8,13 @@
 // according to those terms.
 
 use crate::buffer::{BufferAccess, BufferView};
-use crate::descriptor_set::layout::{DescriptorDesc, DescriptorDescImage, DescriptorDescTy};
-use crate::descriptor_set::sys::{DescriptorWrite, DescriptorWriteElements};
+use crate::descriptor_set::layout::{DescriptorDesc, DescriptorType};
+use crate::descriptor_set::sys::DescriptorWrite;
 use crate::descriptor_set::{
     DescriptorSetError, DescriptorSetLayout, MissingBufferUsage, MissingImageUsage,
 };
 use crate::device::{Device, DeviceOwned};
-use crate::image::view::ImageViewType;
-use crate::image::{ImageViewAbstract, SampleCount};
+use crate::image::ImageViewAbstract;
 use crate::sampler::Sampler;
 use crate::VulkanObject;
 use std::sync::Arc;
@@ -82,38 +81,9 @@ impl DescriptorSetBuilder {
                 obtained: self.cur_binding,
             })
         } else {
-            let mut buffers = Vec::new();
-            let mut images = Vec::new();
-
-            for (write_index, write) in self.writes.iter().enumerate() {
-                let first_array_element = write.first_array_element() as usize;
-
-                match write.elements() {
-                    DescriptorWriteElements::Buffer(elements) => buffers.extend(
-                        (first_array_element..first_array_element + elements.len())
-                            .map(|element_index| (write_index, element_index)),
-                    ),
-                    DescriptorWriteElements::BufferView(elements) => buffers.extend(
-                        (first_array_element..first_array_element + elements.len())
-                            .map(|element_index| (write_index, element_index)),
-                    ),
-                    DescriptorWriteElements::ImageView(elements) => images.extend(
-                        (first_array_element..first_array_element + elements.len())
-                            .map(|element_index| (write_index, element_index)),
-                    ),
-                    DescriptorWriteElements::ImageViewSampler(elements) => images.extend(
-                        (first_array_element..first_array_element + elements.len())
-                            .map(|element_index| (write_index, element_index)),
-                    ),
-                    DescriptorWriteElements::Sampler(elements) => (),
-                }
-            }
-
             Ok(DescriptorSetBuilderOutput {
                 layout: self.layout,
                 writes: self.writes,
-                buffers,
-                images,
             })
         }
     }
@@ -245,7 +215,7 @@ impl DescriptorSetBuilder {
             //       in case we forget to adjust this code
 
             match inner_desc.ty {
-                DescriptorDescTy::StorageBuffer | DescriptorDescTy::StorageBufferDynamic => {
+                DescriptorType::StorageBuffer | DescriptorType::StorageBufferDynamic => {
                     assert!(
                         builder
                             .layout
@@ -260,7 +230,7 @@ impl DescriptorSetBuilder {
                         ));
                     }
                 }
-                DescriptorDescTy::UniformBuffer => {
+                DescriptorType::UniformBuffer => {
                     assert!(
                         builder
                             .layout
@@ -275,7 +245,7 @@ impl DescriptorSetBuilder {
                         ));
                     }
                 }
-                DescriptorDescTy::UniformBufferDynamic => {
+                DescriptorType::UniformBufferDynamic => {
                     assert!(
                         builder
                             .layout
@@ -338,7 +308,7 @@ impl DescriptorSetBuilder {
             };
 
             match inner_desc.ty {
-                DescriptorDescTy::StorageTexelBuffer { .. } => {
+                DescriptorType::StorageTexelBuffer => {
                     // TODO: storage_texel_buffer_atomic
 
                     if !view.storage_texel_buffer() {
@@ -347,7 +317,7 @@ impl DescriptorSetBuilder {
                         ));
                     }
                 }
-                DescriptorDescTy::UniformTexelBuffer { .. } => {
+                DescriptorType::UniformTexelBuffer => {
                     if !view.uniform_texel_buffer() {
                         return Err(DescriptorSetError::MissingBufferUsage(
                             MissingBufferUsage::UniformTexelBuffer,
@@ -401,47 +371,40 @@ impl DescriptorSetBuilder {
             };
 
             match &inner_desc.ty {
-                DescriptorDescTy::CombinedImageSampler {
-                    image_desc,
-                    immutable_samplers,
-                } if !immutable_samplers.is_empty() => {
+                DescriptorType::CombinedImageSampler
+                    if !inner_desc.immutable_samplers.is_empty() =>
+                {
                     if !image_view.image().inner().image.usage().sampled {
                         return Err(DescriptorSetError::MissingImageUsage(
                             MissingImageUsage::Sampled,
                         ));
                     }
 
-                    if !image_view
-                        .can_be_sampled(&immutable_samplers[descriptor.array_element as usize])
-                    {
+                    if !image_view.can_be_sampled(
+                        &inner_desc.immutable_samplers[descriptor.array_element as usize],
+                    ) {
                         return Err(DescriptorSetError::IncompatibleImageViewSampler);
                     }
-
-                    image_match_desc(image_view.as_ref(), image_desc)?;
                 }
-                DescriptorDescTy::SampledImage { ref image_desc, .. } => {
+                DescriptorType::SampledImage => {
                     if !image_view.image().inner().image.usage().sampled {
                         return Err(DescriptorSetError::MissingImageUsage(
                             MissingImageUsage::Sampled,
                         ));
                     }
-
-                    image_match_desc(image_view.as_ref(), image_desc)?;
                 }
-                DescriptorDescTy::StorageImage { ref image_desc, .. } => {
+                DescriptorType::StorageImage => {
                     if !image_view.image().inner().image.usage().storage {
                         return Err(DescriptorSetError::MissingImageUsage(
                             MissingImageUsage::Storage,
                         ));
                     }
 
-                    image_match_desc(image_view.as_ref(), image_desc)?;
-
                     if !image_view.component_mapping().is_identity() {
                         return Err(DescriptorSetError::NotIdentitySwizzled);
                     }
                 }
-                DescriptorDescTy::InputAttachment { multisampled } => {
+                DescriptorType::InputAttachment => {
                     if !image_view.image().inner().image.usage().input_attachment {
                         return Err(DescriptorSetError::MissingImageUsage(
                             MissingImageUsage::InputAttachment,
@@ -450,13 +413,6 @@ impl DescriptorSetBuilder {
 
                     if !image_view.component_mapping().is_identity() {
                         return Err(DescriptorSetError::NotIdentitySwizzled);
-                    }
-
-                    if *multisampled && image_view.image().samples() == SampleCount::Sample1 {
-                        return Err(DescriptorSetError::ExpectedMultisampled);
-                    } else if !multisampled && image_view.image().samples() != SampleCount::Sample1
-                    {
-                        return Err(DescriptorSetError::UnexpectedMultisampled);
                     }
 
                     let image_layers = image_view.array_layers();
@@ -531,15 +487,10 @@ impl DescriptorSetBuilder {
             };
 
             match &inner_desc.ty {
-                DescriptorDescTy::CombinedImageSampler {
-                    image_desc,
-                    immutable_samplers,
-                } => {
-                    if !immutable_samplers.is_empty() {
+                DescriptorType::CombinedImageSampler => {
+                    if !inner_desc.immutable_samplers.is_empty() {
                         return Err(DescriptorSetError::SamplerIsImmutable);
                     }
-
-                    image_match_desc(image_view.as_ref(), image_desc)?;
                 }
                 _ => return Err(DescriptorSetError::WrongDescriptorType),
             }
@@ -583,8 +534,8 @@ impl DescriptorSetBuilder {
             };
 
             match &inner_desc.ty {
-                DescriptorDescTy::Sampler { immutable_samplers } => {
-                    if !immutable_samplers.is_empty() {
+                DescriptorType::Sampler => {
+                    if !inner_desc.immutable_samplers.is_empty() {
                         return Err(DescriptorSetError::SamplerIsImmutable);
                     }
                 }
@@ -622,8 +573,6 @@ unsafe impl DeviceOwned for DescriptorSetBuilder {
 pub struct DescriptorSetBuilderOutput {
     layout: Arc<DescriptorSetLayout>,
     writes: Vec<DescriptorWrite>,
-    buffers: Vec<(usize, usize)>,
-    images: Vec<(usize, usize)>,
 }
 
 impl DescriptorSetBuilderOutput {
@@ -638,81 +587,4 @@ impl DescriptorSetBuilderOutput {
     pub fn writes(&self) -> &[DescriptorWrite] {
         &self.writes
     }
-
-    pub(crate) fn num_buffers(&self) -> usize {
-        self.buffers.len()
-    }
-
-    pub(crate) fn buffer(&self, index: usize) -> Option<(Arc<dyn BufferAccess>, u32)> {
-        self.buffers
-            .get(index)
-            .map(|&(write_index, element_index)| {
-                let write = &self.writes[write_index];
-                let buffer = match write.elements() {
-                    DescriptorWriteElements::Buffer(elements) => elements[element_index].clone(),
-                    DescriptorWriteElements::BufferView(elements) => {
-                        elements[element_index].buffer()
-                    }
-                    _ => unreachable!(),
-                };
-                let binding_num = write.binding_num;
-                (buffer, binding_num)
-            })
-    }
-
-    pub(crate) fn num_images(&self) -> usize {
-        self.images.len()
-    }
-
-    pub(crate) fn image(&self, index: usize) -> Option<(Arc<dyn ImageViewAbstract>, u32)> {
-        self.images.get(index).map(|&(write_index, element_index)| {
-            let write = &self.writes[write_index];
-            let image = match write.elements() {
-                DescriptorWriteElements::ImageView(elements) => elements[element_index].clone(),
-                DescriptorWriteElements::ImageViewSampler(elements) => {
-                    elements[element_index].0.clone()
-                }
-                _ => unreachable!(),
-            };
-            let binding_num = write.binding_num;
-            (image, binding_num)
-        })
-    }
-}
-
-// Checks whether an image view matches the descriptor.
-fn image_match_desc<I>(image_view: &I, desc: &DescriptorDescImage) -> Result<(), DescriptorSetError>
-where
-    I: ?Sized + ImageViewAbstract,
-{
-    if image_view.ty() != desc.view_type
-        && match desc.view_type {
-            ImageViewType::Dim1dArray => image_view.ty() != ImageViewType::Dim1d,
-            ImageViewType::Dim2dArray => image_view.ty() != ImageViewType::Dim2d,
-            ImageViewType::CubeArray => image_view.ty() != ImageViewType::Cube,
-            _ => true,
-        }
-    {
-        return Err(DescriptorSetError::ImageViewTypeMismatch {
-            expected: desc.view_type,
-            obtained: image_view.ty(),
-        });
-    }
-
-    if let Some(format) = desc.format {
-        if image_view.format() != format {
-            return Err(DescriptorSetError::ImageViewFormatMismatch {
-                expected: format,
-                obtained: image_view.format(),
-            });
-        }
-    }
-
-    if desc.multisampled && image_view.image().samples() == SampleCount::Sample1 {
-        return Err(DescriptorSetError::ExpectedMultisampled);
-    } else if !desc.multisampled && image_view.image().samples() != SampleCount::Sample1 {
-        return Err(DescriptorSetError::UnexpectedMultisampled);
-    }
-
-    Ok(())
 }

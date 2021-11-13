@@ -31,6 +31,9 @@
   - `CommandBufferLevel` and its nested types no longer have a type parameter either.
   - `AttachmentsList` is no longer needed and has been removed.
 - **Breaking** The `dimensions` method has been removed as an inherent method from types that already implement `ImageAccess`, to avoid confusion between the inherent method and the method of the trait when they have different semantics.
+- **Breaking** Replaced `DescriptorDescTy` with `DescriptorType` and made further changes to the members of `DescriptorDesc`.
+- **Breaking** Added a `Pipeline` trait to hold methods that are common to all pipeline types.
+- Descriptor resources are now checked against the shader requirements at the time of a draw/dispatch call, rather than at the time the descriptor set is created. Only the resources that are actually needed in the shader are checked, the other resources in a descriptor set are ignored and don't need to be valid.
 - Added a new `DescriptorRequirements` type, which contains requirements imposed by a shader onto a descriptor and the resources bound to it.
   - `DescriptorDesc` can be created from `DescriptorRequirements` with the `From` trait.
   - `DescriptorSetDesc`s can be created from the requirements with the `from_requirement` constructor.

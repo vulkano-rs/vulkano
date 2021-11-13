@@ -80,6 +80,8 @@ pub use self::compute_pipeline::ComputePipelineCreationError;
 pub use self::graphics_pipeline::GraphicsPipeline;
 pub use self::graphics_pipeline::GraphicsPipelineBuilder;
 pub use self::graphics_pipeline::GraphicsPipelineCreationError;
+use self::layout::PipelineLayout;
+use std::sync::Arc;
 
 pub mod cache;
 pub mod color_blend;
@@ -94,6 +96,19 @@ pub mod rasterization;
 pub mod tessellation;
 pub mod vertex;
 pub mod viewport;
+
+// A trait for operations shared between pipeline types.
+pub trait Pipeline {
+    /// Returns the bind point of this pipeline.
+    fn bind_point(&self) -> PipelineBindPoint;
+
+    /// Returns the pipeline layout used in this pipeline.
+    fn layout(&self) -> &Arc<PipelineLayout>;
+
+    /// Returns the number of descriptor sets actually accessed by this pipeline. This may be less
+    /// than the number of sets in the pipeline layout.
+    fn num_used_descriptor_sets(&self) -> u32;
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(i32)]

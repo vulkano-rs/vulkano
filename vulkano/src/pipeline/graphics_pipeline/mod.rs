@@ -20,7 +20,7 @@ use crate::pipeline::rasterization::RasterizationState;
 use crate::pipeline::tessellation::TessellationState;
 use crate::pipeline::vertex::{BuffersDefinition, VertexInput};
 use crate::pipeline::viewport::ViewportState;
-use crate::pipeline::DynamicState;
+use crate::pipeline::{DynamicState, Pipeline, PipelineBindPoint};
 use crate::render_pass::Subpass;
 use crate::shader::{DescriptorRequirements, ShaderStage};
 use crate::VulkanObject;
@@ -48,6 +48,7 @@ pub struct GraphicsPipeline {
     // TODO: replace () with an object that describes the shaders in some way.
     shaders: FnvHashMap<ShaderStage, ()>,
     descriptor_requirements: FnvHashMap<(u32, u32), DescriptorRequirements>,
+    num_used_descriptor_sets: u32,
 
     vertex_input: VertexInput,
     input_assembly_state: InputAssemblyState,
@@ -84,12 +85,6 @@ impl GraphicsPipeline {
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
         &self.device
-    }
-
-    /// Returns the pipeline layout used to create this pipeline.
-    #[inline]
-    pub fn layout(&self) -> &Arc<PipelineLayout> {
-        &self.layout
     }
 
     /// Returns the subpass this graphics pipeline is rendering to.
@@ -184,6 +179,23 @@ impl GraphicsPipeline {
     /// Returns all potentially dynamic states in the pipeline, and whether they are dynamic or not.
     pub fn dynamic_states(&self) -> impl ExactSizeIterator<Item = (DynamicState, bool)> + '_ {
         self.dynamic_state.iter().map(|(k, v)| (*k, *v))
+    }
+}
+
+impl Pipeline for GraphicsPipeline {
+    #[inline]
+    fn bind_point(&self) -> PipelineBindPoint {
+        PipelineBindPoint::Graphics
+    }
+
+    #[inline]
+    fn layout(&self) -> &Arc<PipelineLayout> {
+        &self.layout
+    }
+
+    #[inline]
+    fn num_used_descriptor_sets(&self) -> u32 {
+        self.num_used_descriptor_sets
     }
 }
 
