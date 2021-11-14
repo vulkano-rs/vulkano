@@ -26,7 +26,6 @@ use vulkano::pipeline::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::query::{QueryControlFlags, QueryPool, QueryResultFlags, QueryType};
 use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
-use vulkano::shader::spirv::ExecutionModel;
 use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
 use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano::Version;
@@ -238,10 +237,10 @@ fn main() {
 
     let pipeline = GraphicsPipeline::start()
         .vertex_input_single_buffer::<Vertex>()
-        .vertex_shader(vs.entry_point("main", ExecutionModel::Vertex).unwrap(), ())
+        .vertex_shader(vs.entry_point("main").unwrap(), ())
         .input_assembly_state(InputAssemblyState::new())
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-        .fragment_shader(fs.entry_point("main", ExecutionModel::Fragment).unwrap(), ())
+        .fragment_shader(fs.entry_point("main").unwrap(), ())
         .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
         // Enable depth testing, which is needed for occlusion queries to make sense at all.
         // If you disable depth testing, every pixel is considered to pass the depth test, so

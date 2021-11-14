@@ -32,7 +32,6 @@ use vulkano::pipeline::tessellation::TessellationState;
 use vulkano::pipeline::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
-use vulkano::shader::spirv::ExecutionModel;
 use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
 use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano::Version;
@@ -273,12 +272,12 @@ fn main() {
 
     let pipeline = GraphicsPipeline::start()
         .vertex_input_single_buffer::<Vertex>()
-        .vertex_shader(vs.entry_point("main", ExecutionModel::Vertex).unwrap(), ())
+        .vertex_shader(vs.entry_point("main").unwrap(), ())
         // Actually use the tessellation shaders.
         .tessellation_shaders(
-            tcs.entry_point("main", ExecutionModel::TessellationControl).unwrap(),
+            tcs.entry_point("main").unwrap(),
             (),
-            tes.entry_point("main", ExecutionModel::TessellationEvaluation).unwrap(),
+            tes.entry_point("main").unwrap(),
             (),
         )
         .input_assembly_state(InputAssemblyState::new().topology(PrimitiveTopology::PatchList))
@@ -291,7 +290,7 @@ fn main() {
                 .patch_control_points(3),
         )
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-        .fragment_shader(fs.entry_point("main", ExecutionModel::Fragment).unwrap(), ())
+        .fragment_shader(fs.entry_point("main").unwrap(), ())
         .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
         .build(device.clone())
         .unwrap();

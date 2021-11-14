@@ -20,7 +20,6 @@ use vulkano::pipeline::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::render_pass::Subpass;
 use vulkano::sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode};
-use vulkano::shader::spirv::ExecutionModel;
 
 /// Vertex for textured quads
 #[derive(Default, Debug, Clone, Copy)]
@@ -85,9 +84,9 @@ impl PixelsDrawPipeline {
             let fs = fs::load(gfx_queue.device().clone()).expect("failed to create shader module");
             GraphicsPipeline::start()
                 .vertex_input_single_buffer::<TexturedVertex>()
-                .vertex_shader(vs.entry_point("main", ExecutionModel::Vertex).unwrap(), ())
+                .vertex_shader(vs.entry_point("main").unwrap(), ())
                 .input_assembly_state(InputAssemblyState::new())
-                .fragment_shader(fs.entry_point("main", ExecutionModel::Fragment).unwrap(), ())
+                .fragment_shader(fs.entry_point("main").unwrap(), ())
                 .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
                 .render_pass(subpass)
                 .build(gfx_queue.device().clone())

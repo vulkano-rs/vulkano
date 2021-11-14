@@ -28,7 +28,6 @@ use vulkano::pipeline::input_assembly::InputAssemblyState;
 use vulkano::pipeline::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
-use vulkano::shader::spirv::ExecutionModel;
 use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
 use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano::Version;
@@ -322,13 +321,13 @@ fn main() {
         // A Vulkan shader can in theory contain multiple entry points, so we have to specify
         // which one. The `main` word of `main_entry_point` actually corresponds to the name of
         // the entry point.
-        .vertex_shader(vs.entry_point("main", ExecutionModel::Vertex).unwrap(), ())
+        .vertex_shader(vs.entry_point("main").unwrap(), ())
         // The content of the vertex buffer describes a list of triangles.
         .input_assembly_state(InputAssemblyState::new())
         // Use a resizable viewport set to draw over the entire window
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
         // See `vertex_shader`.
-        .fragment_shader(fs.entry_point("main", ExecutionModel::Fragment).unwrap(), ())
+        .fragment_shader(fs.entry_point("main").unwrap(), ())
         // We have to indicate which subpass of which render pass this pipeline is going to be used
         // in. The pipeline will only be usable from this particular subpass.
         .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())

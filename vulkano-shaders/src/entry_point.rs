@@ -17,10 +17,9 @@ use vulkano::shader::{
 use vulkano::shader::{EntryPointInfo, ShaderInterface, ShaderStages};
 use vulkano::shader::spirv::ExecutionModel;
 
-pub(super) fn write_entry_point(entry: (String, ExecutionModel), info: &EntryPointInfo) -> TokenStream {
+pub(super) fn write_entry_point(name: &str, model: ExecutionModel, info: &EntryPointInfo) -> TokenStream {
     let execution = write_shader_execution(&info.execution);
-    let name = entry.0;
-    let model = syn::parse_str::<syn::Path>(&format!("vulkano::shader::spirv::ExecutionModel::{:?}", entry.1)).unwrap();
+    let model = syn::parse_str::<syn::Path>(&format!("vulkano::shader::spirv::ExecutionModel::{:?}", model)).unwrap();
     let descriptor_requirements = write_descriptor_requirements(&info.descriptor_requirements);
     let push_constant_requirements =
         write_push_constant_requirements(&info.push_constant_requirements);
@@ -31,7 +30,8 @@ pub(super) fn write_entry_point(entry: (String, ExecutionModel), info: &EntryPoi
 
     quote! {
         (
-            (#name.to_owned(), #model),
+            #name.to_owned(),
+            #model,
             EntryPointInfo {
                 execution: #execution,
                 descriptor_requirements: std::array::IntoIter::new(#descriptor_requirements).collect(),

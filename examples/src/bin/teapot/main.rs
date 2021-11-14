@@ -9,7 +9,6 @@
 
 use cgmath::{Matrix3, Matrix4, Point3, Rad, Vector3};
 use examples::{Normal, Vertex, INDICES, NORMALS, VERTICES};
-use vulkano::shader::spirv::ExecutionModel;
 use std::sync::Arc;
 use std::time::Instant;
 use vulkano::buffer::cpu_pool::CpuBufferPool;
@@ -339,7 +338,7 @@ fn window_size_dependent_setup(
                 .vertex::<Vertex>()
                 .vertex::<Normal>(),
         )
-        .vertex_shader(vs.entry_point("main", ExecutionModel::Vertex).unwrap(), ())
+        .vertex_shader(vs.entry_point("main").unwrap(), ())
         .input_assembly_state(InputAssemblyState::new())
         .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([
             Viewport {
@@ -348,7 +347,7 @@ fn window_size_dependent_setup(
                 depth_range: 0.0..1.0,
             },
         ]))
-        .fragment_shader(fs.entry_point("main", ExecutionModel::Fragment).unwrap(), ())
+        .fragment_shader(fs.entry_point("main").unwrap(), ())
         .depth_stencil_state(DepthStencilState::simple_depth_test())
         .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
         .build(device.clone())

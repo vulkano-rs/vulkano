@@ -65,7 +65,6 @@
 //!
 
 use png;
-use vulkano::shader::spirv::ExecutionModel;
 use std::fs::File;
 use std::io::BufWriter;
 use std::path::Path;
@@ -267,9 +266,9 @@ fn main() {
 
     let pipeline = GraphicsPipeline::start()
         .vertex_input_single_buffer::<Vertex>()
-        .vertex_shader(vs.entry_point("main", ExecutionModel::Vertex).unwrap(), ())
+        .vertex_shader(vs.entry_point("main").unwrap(), ())
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-        .fragment_shader(fs.entry_point("main", ExecutionModel::Fragment).unwrap(), ())
+        .fragment_shader(fs.entry_point("main").unwrap(), ())
         .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
         .build(device.clone())
         .unwrap();

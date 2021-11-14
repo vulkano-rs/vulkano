@@ -18,7 +18,6 @@ use vulkano::pipeline::input_assembly::InputAssemblyState;
 use vulkano::pipeline::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::Subpass;
-use vulkano::shader::spirv::ExecutionModel;
 
 pub struct TriangleDrawSystem {
     gfx_queue: Arc<Queue>,
@@ -57,10 +56,10 @@ impl TriangleDrawSystem {
 
             GraphicsPipeline::start()
                 .vertex_input_single_buffer::<Vertex>()
-                .vertex_shader(vs.entry_point("main", ExecutionModel::Vertex).unwrap(), ())
+                .vertex_shader(vs.entry_point("main").unwrap(), ())
                 .input_assembly_state(InputAssemblyState::new())
                 .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-                .fragment_shader(fs.entry_point("main", ExecutionModel::Fragment).unwrap(), ())
+                .fragment_shader(fs.entry_point("main").unwrap(), ())
                 .depth_stencil_state(DepthStencilState::simple_depth_test())
                 .render_pass(subpass)
                 .build(gfx_queue.device().clone())

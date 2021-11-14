@@ -8,7 +8,6 @@
 // according to those terms.
 
 use png;
-use vulkano::shader::spirv::ExecutionModel;
 use std::io::Cursor;
 use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
@@ -283,7 +282,7 @@ fn main() {
 
     let pipeline_layout = {
         let mut descriptor_set_descs: Vec<_> = DescriptorSetDesc::from_requirements(
-            fs.entry_point("main", ExecutionModel::Fragment).unwrap().descriptor_requirements(),
+            fs.entry_point("main").unwrap().descriptor_requirements(),
         );
 
         // Set 0, Binding 0
@@ -298,7 +297,7 @@ fn main() {
         PipelineLayout::new(
             device.clone(),
             descriptor_set_layouts,
-            fs.entry_point("main", ExecutionModel::Fragment)
+            fs.entry_point("main")
                 .unwrap()
                 .push_constant_requirements()
                 .cloned(),
@@ -309,9 +308,9 @@ fn main() {
     let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
     let pipeline = GraphicsPipeline::start()
         .vertex_input_single_buffer::<Vertex>()
-        .vertex_shader(vs.entry_point("main", ExecutionModel::Vertex).unwrap(), ())
+        .vertex_shader(vs.entry_point("main").unwrap(), ())
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-        .fragment_shader(fs.entry_point("main", ExecutionModel::Fragment).unwrap(), ())
+        .fragment_shader(fs.entry_point("main").unwrap(), ())
         .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()).blend_alpha())
         .render_pass(subpass)
         .with_pipeline_layout(device.clone(), pipeline_layout)

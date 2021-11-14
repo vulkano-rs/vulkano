@@ -32,7 +32,7 @@ use crate::Version;
 use crate::VulkanObject;
 use fnv::FnvHashMap;
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::error;
 use std::error::Error;
 use std::ffi::CStr;
@@ -59,7 +59,7 @@ include!(concat!(env!("OUT_DIR"), "/spirv_reqs.rs"));
 pub struct ShaderModule {
     handle: ash::vk::ShaderModule,
     device: Arc<Device>,
-    entry_points: HashMap<(String, ExecutionModel), EntryPointInfo>,
+    entry_points: HashMap<String, HashMap<ExecutionModel, EntryPointInfo>>,
 }
 
 impl ShaderModule {
@@ -118,7 +118,7 @@ impl ShaderModule {
         spirv_version: Version,
         spirv_capabilities: impl IntoIterator<Item = &'a Capability>,
         spirv_extensions: impl IntoIterator<Item = &'a str>,
-        entry_points: impl IntoIterator<Item = ((String, ExecutionModel), EntryPointInfo)>,
+        entry_points: impl IntoIterator<Item = (String, ExecutionModel, EntryPointInfo)>,
     ) -> Result<Arc<ShaderModule>, ShaderCreationError> {
         if let Err(reason) = check_spirv_version(&device, spirv_version) {
             return Err(ShaderCreationError::SpirvVersionNotSupported {
@@ -164,10 +164,30 @@ impl ShaderModule {
             output.assume_init()
         };
 
+        let entries = entry_points.into_iter().collect::<Vec<_>>();
+        let entry_points = entries
+            .iter()
+            .filter_map(|(name, _, _)| Some(name))
+            .collect::<HashSet<_>>()
+            .iter()
+            .map(|name| {
+                ((*name).clone(),
+                    entries.iter().filter_map(|(entry_name, entry_model, info)| {
+                        if &entry_name == name {
+                            Some((*entry_model, info.clone()))
+                        } else {
+                            None
+                        }
+                    }).collect::<HashMap<_, _>>()
+                )
+            })
+            .collect();
+
         Ok(Arc::new(ShaderModule {
             handle,
             device,
-            entry_points: entry_points.into_iter().collect(),
+            //entry_points: entry_points.into_iter().collect(),
+            entry_points,
         }))
     }
 
@@ -182,7 +202,7 @@ impl ShaderModule {
         spirv_version: Version,
         spirv_capabilities: impl IntoIterator<Item = &'a Capability>,
         spirv_extensions: impl IntoIterator<Item = &'a str>,
-        entry_points: impl IntoIterator<Item = ((String, ExecutionModel), EntryPointInfo)>,
+        entry_points: impl IntoIterator<Item = (String, ExecutionModel, EntryPointInfo)>,
     ) -> Result<Arc<ShaderModule>, ShaderCreationError> {
         assert!((bytes.len() % 4) == 0);
         Self::from_words_with_data(
@@ -199,12 +219,31 @@ impl ShaderModule {
     }
 
     /// Returns information about the entry point with the provided name. Returns `None` if no entry
-    /// point with that name exists in the shader module.
-    pub fn entry_point<'a>(&'a self, name: &str, execution: ExecutionModel) -> Option<EntryPoint<'a>> {
-        self.entry_points.get(&(name.to_string(), execution)).map(|info| EntryPoint {
-            module: self,
-            name: CString::new(name).unwrap(),
-            info,
+    /// point with that name exists in the shader module or if multiple entry points with the same
+    /// name exist.
+    pub fn entry_point<'a>(&'a self, name: &str) -> Option<EntryPoint<'a>> {
+        self.entry_points.get(name).and_then(|infos| {
+            if infos.len() == 1 {
+                infos.iter().next().map(|(_, info)| EntryPoint {
+                    module: self,
+                    name: CString::new(name).unwrap(),
+                    info,
+                })
+            } else {
+                None
+            }
+        })
+    }
+
+    /// Returns information about the entry point with the provided name and execution model. Returns
+    /// `None` if no entry and execution model exists in the shader module.
+    pub fn entry_point_with_execution<'a>(&'a self, name: &str, execution: ExecutionModel) -> Option<EntryPoint<'a>> {
+        self.entry_points.get(name).and_then(|infos| {
+            infos.get(&execution).map(|info| EntryPoint {
+                module: self,
+                name: CString::new(name).unwrap(),
+                info,
+            })
         })
     }
 }
