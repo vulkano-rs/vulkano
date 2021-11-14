@@ -35,6 +35,7 @@ use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features, Queue};
 use vulkano::instance::{Instance, InstanceExtensions};
 use vulkano::pipeline::{ComputePipeline, Pipeline, PipelineBindPoint};
+use vulkano::shader::spirv::ExecutionModel;
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
 use vulkano::Version;
@@ -218,7 +219,7 @@ fn main() {
         device.clone(),
         shaders::load_mult(device.clone())
             .unwrap()
-            .entry_point("main")
+            .entry_point("main", ExecutionModel::GLCompute)
             .unwrap(),
         &shaders::SpecializationConstants { enabled: 1 },
         None,
@@ -231,7 +232,7 @@ fn main() {
         device.clone(),
         shaders::load_add(device.clone())
             .unwrap()
-            .entry_point("main")
+            .entry_point("main", ExecutionModel::GLCompute)
             .unwrap(),
         &shaders::SpecializationConstants { enabled: 1 },
         None,

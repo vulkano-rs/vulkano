@@ -36,6 +36,7 @@ use vulkano::pipeline::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
 use vulkano::shader::ShaderModule;
+use vulkano::shader::spirv::ExecutionModel;
 use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
 use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano::Version;
@@ -152,10 +153,10 @@ fn main() {
 
     let graphics_pipeline = GraphicsPipeline::start()
         .vertex_input_single_buffer::<Vertex>()
-        .vertex_shader(vs.entry_point("main").unwrap(), ())
+        .vertex_shader(vs.entry_point("main", ExecutionModel::Vertex).unwrap(), ())
         .input_assembly_state(InputAssemblyState::new())
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-        .fragment_shader(fs.entry_point("main").unwrap(), ())
+        .fragment_shader(fs.entry_point("main", ExecutionModel::Fragment).unwrap(), ())
         .rasterization_state(
             RasterizationState::new()
                 .cull_mode(CullMode::Front)

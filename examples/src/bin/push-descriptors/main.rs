@@ -8,6 +8,7 @@
 // according to those terms.
 
 use png;
+use vulkano::shader::spirv::ExecutionModel;
 use std::io::Cursor;
 use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
@@ -191,10 +192,10 @@ fn main() {
     let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
     let pipeline = GraphicsPipeline::start()
         .vertex_input_single_buffer::<Vertex>()
-        .vertex_shader(vs.entry_point("main").unwrap(), ())
+        .vertex_shader(vs.entry_point("main", ExecutionModel::Vertex).unwrap(), ())
         .input_assembly_state(InputAssemblyState::new().topology(PrimitiveTopology::TriangleStrip))
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-        .fragment_shader(fs.entry_point("main").unwrap(), ())
+        .fragment_shader(fs.entry_point("main", ExecutionModel::Fragment).unwrap(), ())
         .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()).blend_alpha())
         .render_pass(subpass)
         .with_auto_layout(device.clone(), |set_descs| {

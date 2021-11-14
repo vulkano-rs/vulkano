@@ -16,6 +16,7 @@ use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::instance::{Instance, InstanceExtensions};
 use vulkano::pipeline::{ComputePipeline, Pipeline, PipelineBindPoint};
+use vulkano::shader::spirv::ExecutionModel;
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
 use vulkano::Version;
@@ -96,7 +97,7 @@ fn main() {
     };
     let pipeline = ComputePipeline::new(
         device.clone(),
-        shader.entry_point("main").unwrap(),
+        shader.entry_point("main", ExecutionModel::GLCompute).unwrap(),
         &spec_consts,
         None,
         |_| {},

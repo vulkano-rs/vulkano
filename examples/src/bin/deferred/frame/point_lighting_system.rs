@@ -8,6 +8,7 @@
 // according to those terms.
 
 use cgmath::{Matrix4, Vector3};
+use vulkano::shader::spirv::ExecutionModel;
 use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{
@@ -61,10 +62,10 @@ impl PointLightingSystem {
 
             GraphicsPipeline::start()
                 .vertex_input_single_buffer::<Vertex>()
-                .vertex_shader(vs.entry_point("main").unwrap(), ())
+                .vertex_shader(vs.entry_point("main", ExecutionModel::Vertex).unwrap(), ())
                 .input_assembly_state(InputAssemblyState::new())
                 .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-                .fragment_shader(fs.entry_point("main").unwrap(), ())
+                .fragment_shader(fs.entry_point("main", ExecutionModel::Fragment).unwrap(), ())
                 .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()).blend(
                     AttachmentBlend {
                         color_op: BlendOp::Add,

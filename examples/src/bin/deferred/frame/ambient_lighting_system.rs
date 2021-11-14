@@ -20,6 +20,7 @@ use vulkano::pipeline::input_assembly::InputAssemblyState;
 use vulkano::pipeline::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::render_pass::Subpass;
+use vulkano::shader::spirv::ExecutionModel;
 
 /// Allows applying an ambient lighting to a scene.
 pub struct AmbientLightingSystem {
@@ -61,10 +62,10 @@ impl AmbientLightingSystem {
 
             GraphicsPipeline::start()
                 .vertex_input_single_buffer::<Vertex>()
-                .vertex_shader(vs.entry_point("main").unwrap(), ())
+                .vertex_shader(vs.entry_point("main", ExecutionModel::Vertex).unwrap(), ())
                 .input_assembly_state(InputAssemblyState::new())
                 .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-                .fragment_shader(fs.entry_point("main").unwrap(), ())
+                .fragment_shader(fs.entry_point("main", ExecutionModel::Fragment).unwrap(), ())
                 .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()).blend(
                     AttachmentBlend {
                         color_op: BlendOp::Add,

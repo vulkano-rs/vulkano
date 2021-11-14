@@ -10,6 +10,7 @@
 use crate::renderer::InterimImageView;
 use cgmath::Vector2;
 use rand::Rng;
+use vulkano::shader::spirv::ExecutionModel;
 use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::PrimaryCommandBuffer;
@@ -51,7 +52,7 @@ impl FractalComputePipeline {
             let shader = cs::load(gfx_queue.device().clone()).unwrap();
             ComputePipeline::new(
                 gfx_queue.device().clone(),
-                shader.entry_point("main").unwrap(),
+                shader.entry_point("main", ExecutionModel::GLCompute).unwrap(),
                 &(),
                 None,
                 |_| {},

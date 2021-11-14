@@ -242,7 +242,7 @@ where
     });
     let spirv_extensions = reflect::spirv_extensions(&spirv);
     let entry_points = reflect::entry_points(&spirv, exact_entrypoint_interface)
-        .map(|(name, info)| entry_point::write_entry_point(&name, &info));
+        .map(|(entry, info)| entry_point::write_entry_point(entry, &info));
 
     let specialization_constants = structs::write_specialization_constants(
         prefix,

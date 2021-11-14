@@ -31,6 +31,7 @@ use vulkano::pipeline::vertex::BuffersDefinition;
 use vulkano::pipeline::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
+use vulkano::shader::spirv::ExecutionModel;
 use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
 use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano::Version;
@@ -241,10 +242,10 @@ fn main() {
                 .vertex::<Vertex>()
                 .instance::<InstanceData>(),
         )
-        .vertex_shader(vs.entry_point("main").unwrap(), ())
+        .vertex_shader(vs.entry_point("main", ExecutionModel::Vertex).unwrap(), ())
         .input_assembly_state(InputAssemblyState::new())
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-        .fragment_shader(fs.entry_point("main").unwrap(), ())
+        .fragment_shader(fs.entry_point("main", ExecutionModel::Fragment).unwrap(), ())
         .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
         .build(device.clone())
         .unwrap();

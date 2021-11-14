@@ -37,6 +37,7 @@ use vulkano::instance::{Instance, InstanceExtensions};
 use vulkano::pipeline::cache::PipelineCache;
 use vulkano::pipeline::ComputePipeline;
 use vulkano::Version;
+use vulkano::shader::spirv::ExecutionModel;
 
 fn main() {
     // As with other examples, the first step is to create an instance.
@@ -115,7 +116,7 @@ fn main() {
         let shader = cs::load(device.clone()).unwrap();
         ComputePipeline::new(
             device.clone(),
-            shader.entry_point("main").unwrap(),
+            shader.entry_point("main", ExecutionModel::GLCompute).unwrap(),
             &(),
             Some(pipeline_cache.clone()),
             |_| {},
