@@ -400,7 +400,7 @@ impl<'a> EntryPoint<'a> {
 
 /// The mode in which a shader executes. This includes both information about the shader type/stage,
 /// and additional data relevant to particular shader types.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ShaderExecution {
     Vertex,
     TessellationControl,
@@ -425,7 +425,7 @@ pub enum TessellationShaderSubdivision {
 }*/
 
 /// The mode in which a geometry shader executes.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct GeometryShaderExecution {
     pub input: GeometryShaderInput,
     /*pub max_output_vertices: u32,
