@@ -248,7 +248,6 @@ impl Drop for PipelineCache {
 mod tests {
     use crate::pipeline::cache::PipelineCache;
     use crate::shader::ShaderModule;
-    use crate::shader::spirv::ExecutionModel;
     use crate::pipeline::ComputePipeline;
     use std::sync::Arc;
 
@@ -289,7 +288,7 @@ mod tests {
         let pipeline = Arc::new(
             ComputePipeline::new(
                 device.clone(),
-                module.entry_point("main", ExecutionModel::GLCompute).unwrap(),
+                module.entry_point("main").unwrap(),
                 &(),
                 Some(cache.clone()),
                 |_| {},
@@ -362,7 +361,7 @@ mod tests {
         let pipeline = Arc::new(
             ComputePipeline::new(
                 device.clone(),
-                first_module.entry_point("main", ExecutionModel::GLCompute).unwrap(),
+                first_module.entry_point("main").unwrap(),
                 &(),
                 Some(cache.clone()),
                 |_| {},
@@ -375,7 +374,7 @@ mod tests {
         let second_pipeline = Arc::new(
             ComputePipeline::new(
                 device.clone(),
-                second_module.entry_point("main", ExecutionModel::GLCompute).unwrap(),
+                second_module.entry_point("main").unwrap(),
                 &(),
                 Some(cache.clone()),
                 |_| {},
@@ -420,7 +419,7 @@ mod tests {
         let pipeline = Arc::new(
             ComputePipeline::new(
                 device.clone(),
-                module.entry_point("main", ExecutionModel::GLCompute).unwrap(),
+                module.entry_point("main").unwrap(),
                 &(),
                 Some(cache.clone()),
                 |_| {},
@@ -433,7 +432,7 @@ mod tests {
         let second_pipeline = Arc::new(
             ComputePipeline::new(
                 device.clone(),
-                module.entry_point("main", ExecutionModel::GLCompute).unwrap(),
+                module.entry_point("main").unwrap(),
                 &(),
                 Some(cache.clone()),
                 |_| {},

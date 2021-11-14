@@ -384,7 +384,6 @@ mod tests {
     use crate::shader::ShaderModule;
     use crate::shader::SpecializationConstants;
     use crate::shader::SpecializationMapEntry;
-    use crate::shader::spirv::ExecutionModel;
     use crate::sync::now;
     use crate::sync::GpuFuture;
 
@@ -458,7 +457,7 @@ mod tests {
 
         let pipeline = ComputePipeline::new(
             device.clone(),
-            module.entry_point("main", ExecutionModel::GLCompute).unwrap(),
+            module.entry_point("main").unwrap(),
             &SpecConsts { VALUE: 0x12345678 },
             None,
             |_| {},
