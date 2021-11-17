@@ -241,6 +241,7 @@ fn main() {
     let vs = vs::load(device.clone()).unwrap();
     let fs = fs::load(device.clone()).unwrap();
 
+    #[repr(C)]
     #[derive(Default, Copy, Clone)]
     struct Vertex {
         position: [f32; 2],

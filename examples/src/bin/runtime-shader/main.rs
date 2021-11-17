@@ -44,6 +44,7 @@ use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
 
+#[repr(C)]
 #[derive(Default, Copy, Clone)]
 pub struct Vertex {
     pub position: [f32; 2],

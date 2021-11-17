@@ -56,6 +56,7 @@ use winit::window::{Window, WindowBuilder};
 
 // # Vertex Types
 // `Vertex` is the vertex type that will be output from the compute shader and be input to the vertex shader.
+#[repr(C)]
 #[derive(Default, Debug, Clone)]
 struct Vertex {
     position: [f32; 2],

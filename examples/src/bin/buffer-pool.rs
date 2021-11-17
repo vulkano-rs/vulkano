@@ -40,6 +40,7 @@ use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
 
+#[repr(C)]
 #[derive(Default, Debug, Clone)]
 struct Vertex {
     position: [f32; 2],
