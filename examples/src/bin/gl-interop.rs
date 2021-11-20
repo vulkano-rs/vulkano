@@ -1,11 +1,17 @@
+#[cfg(not(target_os = "linux"))]
+pub fn main() {}
+
+#[cfg(target_os = "linux")]
 extern crate glium;
 
+#[cfg(target_os = "linux")]
+use glium::glutin::{self, platform::unix::HeadlessContextExt};
+#[cfg(target_os = "linux")]
 use std::{
     sync::{Arc, Barrier},
     time::Instant,
 };
-
-use glium::glutin::{self, platform::unix::HeadlessContextExt};
+#[cfg(target_os = "linux")]
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
     command_buffer::{
@@ -32,13 +38,15 @@ use vulkano::{
     sync::{now, FlushError, GpuFuture, PipelineStages, Semaphore},
     Version,
 };
+#[cfg(target_os = "linux")]
 use vulkano_win::VkSurfaceBuild;
+#[cfg(target_os = "linux")]
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
-
+#[cfg(target_os = "linux")]
 fn main() {
     let event_loop_gl = glutin::event_loop::EventLoop::new();
     // For some reason, this must be created before the vulkan window
@@ -301,12 +309,15 @@ fn main() {
     });
 }
 
+#[cfg(target_os = "linux")]
 #[derive(Default, Debug, Clone)]
 struct Vertex {
     position: [f32; 2],
 }
+#[cfg(target_os = "linux")]
 vulkano::impl_vertex!(Vertex, position);
 
+#[cfg(target_os = "linux")]
 fn vk_setup() -> (
     Arc<vulkano::device::Device>,
     Arc<vulkano::instance::Instance>,
@@ -511,6 +522,7 @@ fn vk_setup() -> (
     )
 }
 
+#[cfg(target_os = "linux")]
 fn build_display<F>(ctx: glutin::Context<glutin::NotCurrent>, f: F)
 where
     F: FnOnce(Box<dyn glium::backend::Facade>),
@@ -525,7 +537,7 @@ where
         f(display);
     });
 }
-
+#[cfg(target_os = "linux")]
 fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage<Window>>],
     render_pass: Arc<RenderPass>,
@@ -548,7 +560,7 @@ fn window_size_dependent_setup(
         })
         .collect::<Vec<_>>()
 }
-
+#[cfg(target_os = "linux")]
 mod vs {
     vulkano_shaders::shader! {
         ty: "vertex",
@@ -562,7 +574,7 @@ void main() {
 }"
     }
 }
-
+#[cfg(target_os = "linux")]
 mod fs {
     vulkano_shaders::shader! {
         ty: "fragment",
