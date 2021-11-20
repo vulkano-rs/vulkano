@@ -17,29 +17,36 @@
 //!
 //! Input data is assigned per shader input location. Locations are set by adding the `location`
 //! layout qualifier to an input variable in GLSL. A single location contains four data elements,
-//! named "components". These correspond to the `x`, `y`, `z` and `w` (or equivalently `r`, `g`,
-//! `b`, `a`) components of a `vec4` inside the shader.
+//! named "components", which are each 32 bits in size. These correspond to the `x`, `y`, `z` and
+//! `w` (or equivalently `r`, `g`, `b`, `a`) components of a `vec4` inside the shader.
+//! A component can contain at most one value, and data types that are smaller than 32 bits will
+//! still take up a whole component, so a single `i8vec4` variable will still take up all four
+//! components in a location, even if not all bits are actually used.
 //!
 //! A variable may take up fewer than four components. For example, a single `float` takes up only
 //! one component, a `vec2` takes up two, and so on. Using the `component` layout qualifier in GLSL,
 //! it is possible to fit multiple variables into a single four-component location slot, as long
 //! as the components of each variable don't overlap.
 //!
-//! A matrix takes up multiple location slots: as many locations as there are columns in the matrix,
-//! as if each column were treated as an independent vector. Thus, a `mat3` is laid out as three
-//! `vec3`s, `mat4` as four `vec4`s. As with individual vectors, each column of the matrix uses up
-//! as many components of its location as there are rows in the matrix, the remaining components are
-//! available for additional variables as described above.
+//! If the input variable is an array, then it takes up a series of consecutive locations. Each
+//! element of the array always starts at a new location, regardless of whether there is still room
+//! in the previous one. So, for example, an array of three `vec2` takes three locations, since
+//! `vec2` alone needs one location. An array can be decorated with the `component` qualifier as
+//! well; this is equivalent to applying the qualifier to every element of the array. If elements do
+//! not use all components in their locations, those free components can be filled with additional
+//! variables, just like for non-array types.
 //!
-//! A single component within a location is 32 bits wide. Data types that are 32 bits or smaller
-//! will always take up a whole component, so a single `i8vec4` variable will still take up all four
-//! components in a location, even if not all bits are actually used. If a 64-bit value is to be
-//! passed to a shader, it will take up two adjacent components. Vectors of 64-bit values are
-//! correspondingly twice as large: `dvec2` takes up all four components of a location, `dvec4`
-//! takes two full locations, while `dvec3` takes one full location and the first two components of
-//! the next. A matrix of a 64-bit type is made up of multiple adjacent 64-bit vectors, just like
-//! for smaller types: each new column starts at a fresh location, regardless of whether there is
-//! still room in the previous one.
+//! Matrices are laid out as if they were an array of column vectors. Thus, a `mat4x3` is laid out
+//! as an array of four `vec3`s, `mat2x4` as two `vec4`s. As with individual vectors, each column of
+//! the matrix uses up as many components of its location as there are rows in the matrix, and the
+//! remaining components are available for additional variables as described above. However, it is
+//! not possible to use the `component` qualifier on a matrix.
+//!
+//! If a 64-bit value is to be passed to a shader, it will take up two adjacent components. Vectors
+//! of 64-bit values are correspondingly twice as large: `dvec2` takes up all four components of a
+//! location, `dvec4` takes two full locations, while `dvec3` takes one full location and the first
+//! two components of the next. An array or matrix of a 64-bit type is made up of multiple adjacent
+//! 64-bit elements, just like for smaller types: each new element starts at a fresh location.
 //!
 //! # Input attributes
 //!
