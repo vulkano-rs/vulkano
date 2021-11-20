@@ -121,6 +121,54 @@ impl UnsafeImage {
             sharing,
             linear_tiling,
             preinitialized_layout,
+            None,
+        )
+    }
+
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "dragonflybsd",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd",
+        target_os = "android"
+    ))]
+    #[inline]
+    pub unsafe fn new_with_exportable_fd<'a, Mi, I>(
+        device: Arc<Device>,
+        usage: ImageUsage,
+        format: Format,
+        flags: ImageCreateFlags,
+        dimensions: ImageDimensions,
+        num_samples: SampleCount,
+        mipmaps: Mi,
+        sharing: Sharing<I>,
+        linear_tiling: bool,
+        preinitialized_layout: bool,
+    ) -> Result<(UnsafeImage, MemoryRequirements), ImageCreationError>
+    where
+        Mi: Into<MipmapsCount>,
+        I: IntoIterator<Item = u32>,
+    {
+        let sharing = match sharing {
+            Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, SmallVec::<[u32; 8]>::new()),
+            Sharing::Concurrent(ids) => {
+                (ash::vk::SharingMode::CONCURRENT, ids.into_iter().collect())
+            }
+        };
+
+        UnsafeImage::new_impl(
+            device,
+            usage,
+            format,
+            flags,
+            dimensions,
+            num_samples,
+            mipmaps.into(),
+            sharing,
+            linear_tiling,
+            preinitialized_layout,
+            Some(crate::memory::ExternalMemoryHandleType::posix()),
         )
     }
 
@@ -136,6 +184,7 @@ impl UnsafeImage {
         (sh_mode, sh_indices): (ash::vk::SharingMode, SmallVec<[u32; 8]>),
         linear_tiling: bool,
         preinitialized_layout: bool,
+        external_mem_handle_type: Option<crate::memory::ExternalMemoryHandleType>,
     ) -> Result<(UnsafeImage, MemoryRequirements), ImageCreationError> {
         // TODO: doesn't check that the proper features are enabled
 
@@ -526,7 +575,7 @@ impl UnsafeImage {
 
         // Everything now ok. Creating the image.
         let image = {
-            let infos = ash::vk::ImageCreateInfo {
+            let mut infos = ash::vk::ImageCreateInfo {
                 flags: flags.into(),
                 image_type: ty,
                 format: format.into(),
@@ -550,6 +599,13 @@ impl UnsafeImage {
                 },
                 ..Default::default()
             };
+
+            if let Some(mem_types) = external_mem_handle_type {
+                infos.p_next = std::mem::transmute(&ash::vk::ExternalMemoryImageCreateInfo {
+                    handle_types: mem_types.into(),
+                    ..Default::default()
+                });
+            }
 
             let mut output = MaybeUninit::uninit();
             check_errors(fns.v1_0.create_image(
@@ -604,7 +660,7 @@ impl UnsafeImage {
 
             let mut out = MemoryRequirements::from(output.memory_requirements);
             if let Some(output2) = output2 {
-                debug_assert_eq!(output2.requires_dedicated_allocation, 0);
+                //debug_assert_eq!(output2.requires_dedicated_allocation, 0);
                 out.prefer_dedicated = output2.prefers_dedicated_allocation != 0;
             }
             out
