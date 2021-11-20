@@ -660,7 +660,6 @@ impl UnsafeImage {
 
             let mut out = MemoryRequirements::from(output.memory_requirements);
             if let Some(output2) = output2 {
-                //debug_assert_eq!(output2.requires_dedicated_allocation, 0);
                 out.prefer_dedicated = output2.prefers_dedicated_allocation != 0;
             }
             out
