@@ -186,7 +186,6 @@ impl ShaderModule {
         Ok(Arc::new(ShaderModule {
             handle,
             device,
-            //entry_points: entry_points.into_iter().collect(),
             entry_points,
         }))
     }
