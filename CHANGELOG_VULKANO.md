@@ -48,6 +48,9 @@
 - Added `CommandBufferState::push_constants` to retrieve the set of all push constant bytes that have been set.
 - Added check to `AutoCommandBufferBuilder` to ensure that the push constants that are needed by the pipeline have been set.
 - Added android platform to external memory cfgs.
+- Fixed two bugs related to the requirements for enabled extensions:
+- For required extensions that have been promoted, the promoted version now also fulfills the requirement.
+- For features that must be enabled in tandem with extensions (e.g. `descriptor_indexing`), the requirement only applies to Vulkan 1.2 and above, since these features do not exist on earlier versions and thus cannot be enabled.
 
 # Version 0.26.0 (2021-10-2)
 
