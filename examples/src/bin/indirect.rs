@@ -40,12 +40,12 @@ use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::image::view::ImageView;
-use vulkano::image::{ImageUsage, SwapchainImage};
+use vulkano::image::{ImageAccess, ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
 use vulkano::pipeline::input_assembly::InputAssemblyState;
 use vulkano::pipeline::viewport::{Viewport, ViewportState};
-use vulkano::pipeline::{ComputePipeline, GraphicsPipeline, PipelineBindPoint};
-use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
+use vulkano::pipeline::{ComputePipeline, GraphicsPipeline, Pipeline, PipelineBindPoint};
+use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
 use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
 use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano::Version;
@@ -199,9 +199,9 @@ fn main() {
         }
     }
 
-    let vs = vs::Shader::load(device.clone()).unwrap();
-    let fs = fs::Shader::load(device.clone()).unwrap();
-    let cs = cs::Shader::load(device.clone()).unwrap();
+    let vs = vs::load(device.clone()).unwrap();
+    let fs = fs::load(device.clone()).unwrap();
+    let cs = cs::load(device.clone()).unwrap();
 
     // Each frame we generate a new set of vertices and each frame we need a new DrawIndirectCommand struct to
     // set the number of vertices to draw
@@ -209,40 +209,41 @@ fn main() {
         CpuBufferPool::new(device.clone(), BufferUsage::all());
     let vertex_pool: CpuBufferPool<Vertex> = CpuBufferPool::new(device.clone(), BufferUsage::all());
 
-    let compute_pipeline = Arc::new(
-        ComputePipeline::new(device.clone(), &cs.main_entry_point(), &(), None, |_| {}).unwrap(),
-    );
+    let compute_pipeline = ComputePipeline::new(
+        device.clone(),
+        cs.entry_point("main").unwrap(),
+        &(),
+        None,
+        |_| {},
+    )
+    .unwrap();
 
-    let render_pass = Arc::new(
-        single_pass_renderpass!(
-            device.clone(),
-            attachments: {
-                color: {
-                    load: Clear,
-                    store: Store,
-                    format: swapchain.format(),
-                    samples: 1,
-                }
-            },
-            pass: {
-                color: [color],
-                depth_stencil: {}
+    let render_pass = single_pass_renderpass!(
+        device.clone(),
+        attachments: {
+            color: {
+                load: Clear,
+                store: Store,
+                format: swapchain.format(),
+                samples: 1,
             }
-        )
-        .unwrap(),
-    );
+        },
+        pass: {
+            color: [color],
+            depth_stencil: {}
+        }
+    )
+    .unwrap();
 
-    let render_pipeline = Arc::new(
-        GraphicsPipeline::start()
-            .vertex_input_single_buffer::<Vertex>()
-            .vertex_shader(vs.main_entry_point(), ())
-            .input_assembly_state(InputAssemblyState::new())
-            .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-            .fragment_shader(fs.main_entry_point(), ())
-            .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-            .build(device.clone())
-            .unwrap(),
-    );
+    let render_pipeline = GraphicsPipeline::start()
+        .vertex_input_single_buffer::<Vertex>()
+        .vertex_shader(vs.entry_point("main").unwrap(), ())
+        .input_assembly_state(InputAssemblyState::new())
+        .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+        .fragment_shader(fs.entry_point("main").unwrap(), ())
+        .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+        .build(device.clone())
+        .unwrap();
 
     let mut viewport = Viewport {
         origin: [0.0, 0.0],
@@ -306,24 +307,20 @@ fn main() {
 
                 // Allocate a GPU buffer to hold the arguments for this frames draw call. The compute
                 // shader will only update vertex_count, so set the other parameters correctly here.
-                let indirect_args = Arc::new(
-                    indirect_args_pool
-                        .chunk(iter::once(DrawIndirectCommand {
-                            vertex_count: 0,
-                            instance_count: 1,
-                            first_vertex: 0,
-                            first_instance: 0,
-                        }))
-                        .unwrap(),
-                );
+                let indirect_args = indirect_args_pool
+                    .chunk(iter::once(DrawIndirectCommand {
+                        vertex_count: 0,
+                        instance_count: 1,
+                        first_vertex: 0,
+                        first_instance: 0,
+                    }))
+                    .unwrap();
 
                 // Allocate a GPU buffer to hold this frames vertices. This needs to be large enough to hold
                 // the worst case number of vertices generated by the compute shader
-                let vertices = Arc::new(
-                    vertex_pool
-                        .chunk((0..(6 * 16)).map(|_| Vertex { position: [0.0; 2] }))
-                        .unwrap(),
-                );
+                let vertices = vertex_pool
+                    .chunk((0..(6 * 16)).map(|_| Vertex { position: [0.0; 2] }))
+                    .unwrap();
 
                 // Pass the two buffers to the compute shader
                 let layout = compute_pipeline
@@ -339,7 +336,7 @@ fn main() {
                     .add_buffer(indirect_args.clone())
                     .unwrap();
 
-                let cs_desciptor_set = Arc::new(cs_desciptor_set_builder.build().unwrap());
+                let cs_desciptor_set = cs_desciptor_set_builder.build().unwrap();
 
                 let mut builder = AutoCommandBufferBuilder::primary(
                     device.clone(),
@@ -410,21 +407,19 @@ fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage<Window>>],
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
-) -> Vec<Arc<dyn FramebufferAbstract>> {
-    let dimensions = images[0].dimensions();
+) -> Vec<Arc<Framebuffer>> {
+    let dimensions = images[0].dimensions().width_height();
     viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
 
     images
         .iter()
         .map(|image| {
             let view = ImageView::new(image.clone()).unwrap();
-            Arc::new(
-                Framebuffer::start(render_pass.clone())
-                    .add(view)
-                    .unwrap()
-                    .build()
-                    .unwrap(),
-            ) as Arc<dyn FramebufferAbstract>
+            Framebuffer::start(render_pass.clone())
+                .add(view)
+                .unwrap()
+                .build()
+                .unwrap()
         })
         .collect::<Vec<_>>()
 }

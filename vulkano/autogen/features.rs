@@ -48,15 +48,15 @@ fn conflicts_features(name: &str) -> &'static [&'static str] {
     }
 }
 
-fn required_by_extensions(name: &str) -> &'static [&'static str] {
+fn required_by_extensions(name: &str) -> &'static [(&'static str, &'static str)] {
     match name {
-        "shaderDrawParameters" => &["VK_KHR_shader_draw_parameters"],
-        "drawIndirectCount" => &["VK_KHR_draw_indirect_count"],
-        "samplerMirrorClampToEdge" => &["VK_KHR_sampler_mirror_clamp_to_edge"],
-        "descriptorIndexing" => &["VK_EXT_descriptor_indexing"],
-        "samplerFilterMinmax" => &["VK_EXT_sampler_filter_minmax"],
-        "shaderOutputViewportIndex" => &["VK_EXT_shader_viewport_index_layer"],
-        "shaderOutputLayer" => &["VK_EXT_shader_viewport_index_layer"],
+        "shaderDrawParameters" => &[("V1_2", "VK_KHR_shader_draw_parameters")],
+        "drawIndirectCount" => &[("V1_2", "VK_KHR_draw_indirect_count")],
+        "samplerMirrorClampToEdge" => &[("V1_2", "VK_KHR_sampler_mirror_clamp_to_edge")],
+        "descriptorIndexing" => &[("V1_2", "VK_EXT_descriptor_indexing")],
+        "samplerFilterMinmax" => &[("V1_2", "VK_EXT_sampler_filter_minmax")],
+        "shaderOutputViewportIndex" => &[("V1_2", "VK_EXT_shader_viewport_index_layer")],
+        "shaderOutputLayer" => &[("V1_2", "VK_EXT_shader_viewport_index_layer")],
         _ => &[],
     }
 }
@@ -83,7 +83,7 @@ struct FeaturesMember {
     ffi_members: Vec<(Ident, TokenStream)>,
     requires_features: Vec<Ident>,
     conflicts_features: Vec<Ident>,
-    required_by_extensions: Vec<Ident>,
+    required_by_extensions: Vec<(Ident, Ident)>,
     optional: bool,
 }
 
@@ -126,17 +126,18 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
                     }
                 }
             });
-            let required_by_extensions_items = required_by_extensions.iter().map(|extension| {
-                let string = extension.to_string();
-                quote! {
-                    if extensions.#extension {
-                        return Err(FeatureRestrictionError {
-                            feature: #name_string,
-                            restriction: FeatureRestriction::RequiredByExtension(#string),
-                        });
+            let required_by_extensions_items =
+                required_by_extensions.iter().map(|(version, extension)| {
+                    let string = extension.to_string();
+                    quote! {
+                        if extensions.#extension && api_version >= Version::#version {
+                            return Err(FeatureRestrictionError {
+                                feature: #name_string,
+                                restriction: FeatureRestriction::RequiredByExtension(#string),
+                            });
+                        }
                     }
-                }
-            });
+                });
             quote! {
                 if self.#name {
                     if !supported.#name {
@@ -286,8 +287,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             pub(super) fn check_requirements(
                 &self,
                 supported: &Features,
-                api_version:
-                Version,
+                api_version: Version,
                 extensions: &DeviceExtensions,
             ) -> Result<(), FeatureRestrictionError> {
                 #(#check_requirements_items)*
@@ -403,11 +403,13 @@ fn features_members(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<FeaturesMe
                                 .collect(),
                             required_by_extensions: required_by_extensions
                                 .iter()
-                                .map(|vk_name| {
-                                    format_ident!(
+                                .map(|(version, vk_name)| {
+                                    let version = format_ident!("{}", version);
+                                    let name = format_ident!(
                                         "{}",
                                         vk_name.strip_prefix("VK_").unwrap().to_snake_case()
-                                    )
+                                    );
+                                    (version, name)
                                 })
                                 .collect(),
                             optional,
@@ -460,7 +462,7 @@ fn make_doc(feat: &mut FeaturesMember, vulkan_ty_name: &str) {
         let links: Vec<_> = feat
             .required_by_extensions
             .iter()
-            .map(|ext| format!("[`{}`](crate::device::DeviceExtensions::{0})", ext))
+            .map(|(_, ext)| format!("[`{}`](crate::device::DeviceExtensions::{0})", ext))
             .collect();
         write!(
             writer,

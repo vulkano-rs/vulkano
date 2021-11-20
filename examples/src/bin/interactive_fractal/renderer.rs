@@ -17,7 +17,9 @@ use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features, Queue};
 use vulkano::format::Format;
 use vulkano::image::view::ImageView;
-use vulkano::image::{AttachmentImage, ImageUsage, ImageViewAbstract, SampleCount, SwapchainImage};
+use vulkano::image::{
+    AttachmentImage, ImageAccess, ImageUsage, ImageViewAbstract, SampleCount, SwapchainImage,
+};
 use vulkano::instance::Instance;
 use vulkano::instance::InstanceExtensions;
 use vulkano::swapchain::{
@@ -30,9 +32,9 @@ use winit::event_loop::EventLoop;
 use winit::window::{Fullscreen, Window, WindowBuilder};
 
 /// Final render target (swapchain image)
-pub type FinalImageView = Arc<ImageView<Arc<SwapchainImage<Window>>>>;
+pub type FinalImageView = Arc<ImageView<SwapchainImage<Window>>>;
 /// Other intermediate render targets
-pub type InterimImageView = Arc<ImageView<Arc<AttachmentImage>>>;
+pub type InterimImageView = Arc<ImageView<AttachmentImage>>;
 
 /// A simple struct to organize renderpasses.
 /// You could add more here. E.g. the `frame_system`

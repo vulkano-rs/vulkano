@@ -853,6 +853,7 @@ pub struct SubgroupFeatures {
     pub shuffle_relative: bool,
     pub clustered: bool,
     pub quad: bool,
+    pub partitioned: bool,
 }
 
 impl From<ash::vk::SubgroupFeatureFlags> for SubgroupFeatures {
@@ -867,6 +868,7 @@ impl From<ash::vk::SubgroupFeatureFlags> for SubgroupFeatures {
             shuffle_relative: val.intersects(ash::vk::SubgroupFeatureFlags::SHUFFLE_RELATIVE),
             clustered: val.intersects(ash::vk::SubgroupFeatureFlags::CLUSTERED),
             quad: val.intersects(ash::vk::SubgroupFeatureFlags::QUAD),
+            partitioned: val.intersects(ash::vk::SubgroupFeatureFlags::PARTITIONED_NV),
         }
     }
 }

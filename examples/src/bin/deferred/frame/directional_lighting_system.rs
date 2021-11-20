@@ -19,7 +19,7 @@ use vulkano::image::ImageViewAbstract;
 use vulkano::pipeline::color_blend::{AttachmentBlend, BlendFactor, BlendOp, ColorBlendState};
 use vulkano::pipeline::input_assembly::InputAssemblyState;
 use vulkano::pipeline::viewport::{Viewport, ViewportState};
-use vulkano::pipeline::{GraphicsPipeline, PipelineBindPoint};
+use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::render_pass::Subpass;
 
 /// Allows applying a directional light source to a scene.
@@ -57,32 +57,28 @@ impl DirectionalLightingSystem {
         };
 
         let pipeline = {
-            let vs = vs::Shader::load(gfx_queue.device().clone())
-                .expect("failed to create shader module");
-            let fs = fs::Shader::load(gfx_queue.device().clone())
-                .expect("failed to create shader module");
+            let vs = vs::load(gfx_queue.device().clone()).expect("failed to create shader module");
+            let fs = fs::load(gfx_queue.device().clone()).expect("failed to create shader module");
 
-            Arc::new(
-                GraphicsPipeline::start()
-                    .vertex_input_single_buffer::<Vertex>()
-                    .vertex_shader(vs.main_entry_point(), ())
-                    .input_assembly_state(InputAssemblyState::new())
-                    .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-                    .fragment_shader(fs.main_entry_point(), ())
-                    .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()).blend(
-                        AttachmentBlend {
-                            color_op: BlendOp::Add,
-                            color_source: BlendFactor::One,
-                            color_destination: BlendFactor::One,
-                            alpha_op: BlendOp::Max,
-                            alpha_source: BlendFactor::One,
-                            alpha_destination: BlendFactor::One,
-                        },
-                    ))
-                    .render_pass(subpass)
-                    .build(gfx_queue.device().clone())
-                    .unwrap(),
-            ) as Arc<_>
+            GraphicsPipeline::start()
+                .vertex_input_single_buffer::<Vertex>()
+                .vertex_shader(vs.entry_point("main").unwrap(), ())
+                .input_assembly_state(InputAssemblyState::new())
+                .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+                .fragment_shader(fs.entry_point("main").unwrap(), ())
+                .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()).blend(
+                    AttachmentBlend {
+                        color_op: BlendOp::Add,
+                        color_source: BlendFactor::One,
+                        color_destination: BlendFactor::One,
+                        alpha_op: BlendOp::Max,
+                        alpha_source: BlendFactor::One,
+                        alpha_destination: BlendFactor::One,
+                    },
+                ))
+                .render_pass(subpass)
+                .build(gfx_queue.device().clone())
+                .unwrap()
         };
 
         DirectionalLightingSystem {

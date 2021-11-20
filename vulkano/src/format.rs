@@ -95,6 +95,7 @@
 
 use crate::device::physical::PhysicalDevice;
 use crate::image::ImageAspects;
+use crate::shader::spirv::ImageFormat;
 use crate::DeviceSize;
 use crate::VulkanObject;
 use half::f16;
@@ -180,6 +181,55 @@ impl From<Format> for ash::vk::Format {
     #[inline]
     fn from(val: Format) -> Self {
         ash::vk::Format::from_raw(val as i32)
+    }
+}
+
+impl From<ImageFormat> for Option<Format> {
+    fn from(val: ImageFormat) -> Self {
+        match val {
+            ImageFormat::Unknown => None,
+            ImageFormat::Rgba32f => Some(Format::R32G32B32A32_SFLOAT),
+            ImageFormat::Rgba16f => Some(Format::R16G16B16A16_SFLOAT),
+            ImageFormat::R32f => Some(Format::R32_SFLOAT),
+            ImageFormat::Rgba8 => Some(Format::R8G8B8A8_UNORM),
+            ImageFormat::Rgba8Snorm => Some(Format::R8G8B8A8_SNORM),
+            ImageFormat::Rg32f => Some(Format::R32G32_SFLOAT),
+            ImageFormat::Rg16f => Some(Format::R16G16_SFLOAT),
+            ImageFormat::R11fG11fB10f => Some(Format::B10G11R11_UFLOAT_PACK32),
+            ImageFormat::R16f => Some(Format::R16_SFLOAT),
+            ImageFormat::Rgba16 => Some(Format::R16G16B16A16_UNORM),
+            ImageFormat::Rgb10A2 => Some(Format::A2B10G10R10_UNORM_PACK32),
+            ImageFormat::Rg16 => Some(Format::R16G16_UNORM),
+            ImageFormat::Rg8 => Some(Format::R8G8_UNORM),
+            ImageFormat::R16 => Some(Format::R16_UNORM),
+            ImageFormat::R8 => Some(Format::R8_UNORM),
+            ImageFormat::Rgba16Snorm => Some(Format::R16G16B16A16_SNORM),
+            ImageFormat::Rg16Snorm => Some(Format::R16G16_SNORM),
+            ImageFormat::Rg8Snorm => Some(Format::R8G8_SNORM),
+            ImageFormat::R16Snorm => Some(Format::R16_SNORM),
+            ImageFormat::R8Snorm => Some(Format::R8_SNORM),
+            ImageFormat::Rgba32i => Some(Format::R32G32B32A32_SINT),
+            ImageFormat::Rgba16i => Some(Format::R16G16B16A16_SINT),
+            ImageFormat::Rgba8i => Some(Format::R8G8B8A8_SINT),
+            ImageFormat::R32i => Some(Format::R32_SINT),
+            ImageFormat::Rg32i => Some(Format::R32G32_SINT),
+            ImageFormat::Rg16i => Some(Format::R16G16_SINT),
+            ImageFormat::Rg8i => Some(Format::R8G8_SINT),
+            ImageFormat::R16i => Some(Format::R16_SINT),
+            ImageFormat::R8i => Some(Format::R8_SINT),
+            ImageFormat::Rgba32ui => Some(Format::R32G32B32A32_UINT),
+            ImageFormat::Rgba16ui => Some(Format::R16G16B16A16_UINT),
+            ImageFormat::Rgba8ui => Some(Format::R8G8B8A8_UINT),
+            ImageFormat::R32ui => Some(Format::R32_UINT),
+            ImageFormat::Rgb10a2ui => Some(Format::A2B10G10R10_UINT_PACK32),
+            ImageFormat::Rg32ui => Some(Format::R32G32_UINT),
+            ImageFormat::Rg16ui => Some(Format::R16G16_UINT),
+            ImageFormat::Rg8ui => Some(Format::R8G8_UINT),
+            ImageFormat::R16ui => Some(Format::R16_UINT),
+            ImageFormat::R8ui => Some(Format::R8_UINT),
+            ImageFormat::R64ui => Some(Format::R64_UINT),
+            ImageFormat::R64i => Some(Format::R64_SINT),
+        }
     }
 }
 

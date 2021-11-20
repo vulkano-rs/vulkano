@@ -11,6 +11,34 @@
   - Most of the state-setting methods on `GraphicsPipelineBuilder` are deprecated. State is now set using a `_state` method, which is given one of the above state types.
 - **Breaking** `DynamicStateMode` is replaced with a simple `bool`.
 - **Breaking** The presence of dynamic state in the pipeline state is now expressed more explicitly with two new types, `StateMode` and `PartialStateMode`.
+- **Breaking** The `PersistentDescriptorSet::start` and `SingleLayoutDescSetPool::new` functions now return `Result`.
+- **Breaking** `DescriptorWrite` now takes an iterator instead of a single item, allowing arrayed descriptors to be written in one operation.
+- **Breaking** Removed the `EntryPointAbstract` trait, which was unused.
+- **Breaking** `ComputeEntryPoint` and `GraphicsEntryPoint` now hold a list of `DescriptorRequirements` instead of `DescriptorSetDesc`.
+- **Breaking** Removed `union`, `union_multiple` and `ensure_compatible_with_shader` from `DescriptorSetDesc`, and `union` from `DescriptorDesc`. This is now handled by `DescriptorRequirements`.
+- **Breaking** `DescriptorDesc::ensure_compatibility_with_shader` now takes `DescriptorRequirements` instead of another `DescriptorDesc`.
+- **Breaking** When the shader's layout specifies a descriptor with runtime array, its upper bound from now on interprets as zero by default(previously it was `1`).
+- **Breaking** The `DescriptorSet` trait now has a `resources` method, which returns a reference to a `DescriptorSetResources` object. It no longer has the `num_buffers`, `buffer`, `num_images` and `image` methods.
+- **Breaking** `BufferViewRef` is replaced with `BufferViewAbstract`, similar to the existing `ImageViewAbstract`.
+- **Breaking** `UnsafeDescriptorSet::write` takes a `DescriptorSetLayout` instead of `Device`.
+- **Breaking** `DescriptorWrite` is now constructed based on the resources stored instead of the descriptor type. The descriptor type is inferred from the descriptor set layout.
+- **Breaking** Added an `Arc` to many parameters and return types:
+  - Objects implementing `BufferAccess`, `BufferViewAbstract`, `ImageAccess`, `ImageViewAbstract` or `DescriptorSet` are now always constructed in an `Arc`, and parameters that take one of these types require the `Arc` wrapper.
+  - The type parameters of `BufferView`, `ImageView` and `BufferSlice` do not contain this implicit `Arc`.
+  - The types `DescriptorSetLayout`, `PipelineLayout`, `ComputePipeline`, `GraphicsPipeline`, `QueryPool`, `RenderPass` and `Framebuffer` are also always constructed in an `Arc`.
+- **Breaking** `Framebuffer` no longer has a type parameter.
+  - This made the `FramebufferAbstract` trait redundant, and it has been removed.
+  - `CommandBufferLevel` and its nested types no longer have a type parameter either.
+  - `AttachmentsList` is no longer needed and has been removed.
+- **Breaking** The `dimensions` method has been removed as an inherent method from types that already implement `ImageAccess`, to avoid confusion between the inherent method and the method of the trait when they have different semantics.
+- **Breaking** Replaced `DescriptorDescTy` with `DescriptorType` and made further changes to the members of `DescriptorDesc`.
+- **Breaking** Added a `Pipeline` trait to hold methods that are common to all pipeline types.
+- Descriptor resources are now checked against the shader requirements at the time of a draw/dispatch call, rather than at the time the descriptor set is created. Only the resources that are actually needed in the shader are checked, the other resources in a descriptor set are ignored and don't need to be valid.
+- Added a new `DescriptorRequirements` type, which contains requirements imposed by a shader onto a descriptor and the resources bound to it.
+  - `DescriptorDesc` can be created from `DescriptorRequirements` with the `From` trait.
+  - `DescriptorSetDesc`s can be created from the requirements with the `from_requirement` constructor.
+  - The descriptor requirements of a pipeline can be queried using a new `descriptor_requirements` method.
+- Added basic support for the `khr_push_descriptor` extension, with an example of how it's used. The implementation is somewhat limited and some of the details may change in a future update.
 - Added support for lots more dynamic state, most of which requires features or extensions to use.
 - Added support for discard rectangles, in the `pipeline::discard_rectangle` module.
 - Added support for line rasterization state, in the `pipeline::rasterization` module.
@@ -20,6 +48,9 @@
 - Added `CommandBufferState::push_constants` to retrieve the set of all push constant bytes that have been set.
 - Added check to `AutoCommandBufferBuilder` to ensure that the push constants that are needed by the pipeline have been set.
 - Added android platform to external memory cfgs.
+- Fixed two bugs related to the requirements for enabled extensions:
+- For required extensions that have been promoted, the promoted version now also fulfills the requirement.
+- For features that must be enabled in tandem with extensions (e.g. `descriptor_indexing`), the requirement only applies to Vulkan 1.2 and above, since these features do not exist on earlier versions and thus cannot be enabled.
 
 # Version 0.26.0 (2021-10-2)
 
@@ -62,6 +93,13 @@
 - **Breaking** Buffers and Images that have `with_exportable_fd` use dedicated allocation, thus requiring khr_get_memory_requirements2 and khr_dedicated_allocation on top of 
 already needed khr_external_memory and khr_external_memory_fd.
 - **Breaking** `Compare` is renamed to `CompareOp` to match Vulkan.
+- **Breaking** Vulkano-shaders no longer generates a `Shader` struct, but instead provides `load` as a standalone function that returns `Arc<ShaderModule>` directly.
+- **Breaking** Vulkano-shaders no longer generates a function for each entry point. Entry points are now retrieved using the `entry_point` method of `ShaderModule`.
+- **Breaking** The `shader` module is moved to the crate root, and `spirv` is now a submodule of it.
+- **Breaking** `ShaderModule::new` is renamed to `from_bytes` to match the existing `from_words`.
+- **Breaking** `ShaderModule` now parses and analyses the shader provided to it on construction, checks whether the shader is compatible with the device, and gathers data such as descriptor sets and input/output interfaces directly from its code. To provide this data yourself as before, and avoid parsing, you can use the `_with_data` constructors.
+- **Breaking** `ComputeEntryPoint` and `GraphicsEntryPoint` are removed, as are the functions on `ShaderModule` that generate them. Instead, you can look up an entry point using the `entry_point` method.
+- Added support for additional shader types in `ShaderStage`, `ShaderStages` and `PipelineStages`.
 - Added `export_fd` and `with_exportable_fd` to `AttachmentImage` and `StorageImage` as well as `mem_size` which is needed when using those images with Cuda.
 - Vulkano-shaders: added extension/feature checks for more SPIR-V capabilities.
 - Added support for surface creation from a CAMetalLayer using VK_EXT_metal_surface.

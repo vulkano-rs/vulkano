@@ -621,15 +621,6 @@ impl AttachmentImage {
     }
 }
 
-impl<A> AttachmentImage<A> {
-    /// Returns the width, height and layers of the image.
-    #[inline]
-    pub fn dimensions(&self) -> [u32; 3] {
-        let dims = self.image.dimensions();
-        [dims.width(), dims.height(), dims.array_layers()]
-    }
-}
-
 unsafe impl<A> ImageAccess for AttachmentImage<A>
 where
     A: MemoryPoolAlloc,
@@ -745,11 +736,11 @@ where
 
     #[inline]
     fn current_layer_levels_access(&self) -> std::ops::Range<u32> {
-        0..self.dimensions()[2]
+        0..self.dimensions().array_layers()
     }
 }
 
-unsafe impl<A> ImageClearValue<ClearValue> for Arc<AttachmentImage<A>>
+unsafe impl<A> ImageClearValue<ClearValue> for AttachmentImage<A>
 where
     A: MemoryPoolAlloc,
 {
@@ -759,7 +750,7 @@ where
     }
 }
 
-unsafe impl<P, A> ImageContent<P> for Arc<AttachmentImage<A>>
+unsafe impl<P, A> ImageContent<P> for AttachmentImage<A>
 where
     A: MemoryPoolAlloc,
 {

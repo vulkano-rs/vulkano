@@ -77,16 +77,13 @@ pub use self::builder::DescriptorSetBuilder;
 pub use self::collection::DescriptorSetsCollection;
 use self::layout::DescriptorSetLayout;
 pub use self::persistent::PersistentDescriptorSet;
+pub use self::resources::{DescriptorBindingResources, DescriptorSetResources};
 pub use self::single_layout_pool::SingleLayoutDescSetPool;
 use self::sys::UnsafeDescriptorSet;
 use crate::buffer::BufferAccess;
-use crate::descriptor_set::layout::DescriptorDescTy;
+use crate::descriptor_set::layout::DescriptorType;
 use crate::device::DeviceOwned;
-use crate::format::Format;
-use crate::image::view::ImageViewAbstract;
-use crate::image::view::ImageViewType;
 use crate::OomError;
-use crate::SafeDeref;
 use crate::VulkanObject;
 use smallvec::SmallVec;
 use std::error;
@@ -115,7 +112,7 @@ pub unsafe trait DescriptorSet: DeviceOwned + Send + Sync {
     fn layout(&self) -> &Arc<DescriptorSetLayout>;
 
     /// Creates a [`DescriptorSetWithOffsets`] with the given dynamic offsets.
-    fn offsets<I>(self, dynamic_offsets: I) -> DescriptorSetWithOffsets
+    fn offsets<I>(self: Arc<Self>, dynamic_offsets: I) -> DescriptorSetWithOffsets
     where
         Self: Sized + 'static,
         I: IntoIterator<Item = u32>,
@@ -123,59 +120,8 @@ pub unsafe trait DescriptorSet: DeviceOwned + Send + Sync {
         DescriptorSetWithOffsets::new(self, dynamic_offsets)
     }
 
-    /// Returns the number of buffers within this descriptor set.
-    fn num_buffers(&self) -> usize;
-
-    /// Returns the `index`th buffer of this descriptor set, or `None` if out of range. Also
-    /// returns the index of the descriptor that uses this buffer.
-    ///
-    /// The valid range is between 0 and `num_buffers()`.
-    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, u32)>;
-
-    /// Returns the number of images within this descriptor set.
-    fn num_images(&self) -> usize;
-
-    /// Returns the `index`th image of this descriptor set, or `None` if out of range. Also returns
-    /// the index of the descriptor that uses this image.
-    ///
-    /// The valid range is between 0 and `num_images()`.
-    fn image(&self, index: usize) -> Option<(&dyn ImageViewAbstract, u32)>;
-}
-
-unsafe impl<T> DescriptorSet for T
-where
-    T: SafeDeref + Send + Sync,
-    T::Target: DescriptorSet,
-{
-    #[inline]
-    fn inner(&self) -> &UnsafeDescriptorSet {
-        (**self).inner()
-    }
-
-    #[inline]
-    fn layout(&self) -> &Arc<DescriptorSetLayout> {
-        (**self).layout()
-    }
-
-    #[inline]
-    fn num_buffers(&self) -> usize {
-        (**self).num_buffers()
-    }
-
-    #[inline]
-    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, u32)> {
-        (**self).buffer(index)
-    }
-
-    #[inline]
-    fn num_images(&self) -> usize {
-        (**self).num_images()
-    }
-
-    #[inline]
-    fn image(&self, index: usize) -> Option<(&dyn ImageViewAbstract, u32)> {
-        (**self).image(index)
-    }
+    /// Returns the resources bound to this descriptor set.
+    fn resources(&self) -> &DescriptorSetResources;
 }
 
 impl PartialEq for dyn DescriptorSet {
@@ -196,16 +142,16 @@ impl Hash for dyn DescriptorSet {
     }
 }
 
+#[derive(Clone)]
 pub struct DescriptorSetWithOffsets {
-    descriptor_set: Box<dyn DescriptorSet>,
+    descriptor_set: Arc<dyn DescriptorSet>,
     dynamic_offsets: SmallVec<[u32; 4]>,
 }
 
 impl DescriptorSetWithOffsets {
     #[inline]
-    pub fn new<S, O>(descriptor_set: S, dynamic_offsets: O) -> Self
+    pub fn new<O>(descriptor_set: Arc<dyn DescriptorSet>, dynamic_offsets: O) -> Self
     where
-        S: DescriptorSet + 'static,
         O: IntoIterator<Item = u32>,
     {
         let dynamic_offsets: SmallVec<_> = dynamic_offsets.into_iter().collect();
@@ -220,7 +166,7 @@ impl DescriptorSetWithOffsets {
         // by the physical device.
         for desc in layout.desc().bindings() {
             match desc.as_ref().unwrap().ty {
-                DescriptorDescTy::StorageBufferDynamic => {
+                DescriptorType::StorageBufferDynamic => {
                     // Don't check alignment if there are not enough offsets anyway
                     if dynamic_offsets.len() > dynamic_offset_index {
                         assert!(
@@ -232,7 +178,7 @@ impl DescriptorSetWithOffsets {
                     }
                     dynamic_offset_index += 1;
                 }
-                DescriptorDescTy::UniformBufferDynamic => {
+                DescriptorType::UniformBufferDynamic => {
                     // Don't check alignment if there are not enough offsets anyway
                     if dynamic_offsets.len() > dynamic_offset_index {
                         assert!(
@@ -262,29 +208,29 @@ impl DescriptorSetWithOffsets {
         );
 
         DescriptorSetWithOffsets {
-            descriptor_set: Box::new(descriptor_set),
+            descriptor_set,
             dynamic_offsets,
         }
     }
 
     #[inline]
-    pub fn as_ref(&self) -> (&dyn DescriptorSet, &[u32]) {
+    pub fn as_ref(&self) -> (&Arc<dyn DescriptorSet>, &[u32]) {
         (&self.descriptor_set, &self.dynamic_offsets)
     }
 
     #[inline]
-    pub fn into_tuple(self) -> (Box<dyn DescriptorSet>, impl ExactSizeIterator<Item = u32>) {
+    pub fn into_tuple(self) -> (Arc<dyn DescriptorSet>, impl ExactSizeIterator<Item = u32>) {
         (self.descriptor_set, self.dynamic_offsets.into_iter())
     }
 }
 
-impl<S> From<S> for DescriptorSetWithOffsets
+impl<S> From<Arc<S>> for DescriptorSetWithOffsets
 where
     S: DescriptorSet + 'static,
 {
     #[inline]
-    fn from(descriptor_set: S) -> Self {
-        Self::new(descriptor_set, std::iter::empty())
+    fn from(descriptor_set: Arc<S>) -> Self {
+        DescriptorSetWithOffsets::new(descriptor_set, std::iter::empty())
     }
 }
 
@@ -332,25 +278,6 @@ pub enum DescriptorSetError {
         obtained: u32,
     },
 
-    /// Expected a multisampled image, but got a single-sampled image.
-    ExpectedMultisampled,
-
-    /// The format of an image view doesn't match what was expected.
-    ImageViewFormatMismatch {
-        /// Expected format.
-        expected: Format,
-        /// Format of the image view that was passed.
-        obtained: Format,
-    },
-
-    /// The type of an image view doesn't match what was expected.
-    ImageViewTypeMismatch {
-        /// Expected type.
-        expected: ImageViewType,
-        /// Type of the image view that was passed.
-        obtained: ImageViewType,
-    },
-
     /// The image view isn't compatible with the sampler.
     IncompatibleImageViewSampler,
 
@@ -380,9 +307,6 @@ pub enum DescriptorSetError {
 
     /// Expected a non-arrayed image, but got an arrayed image.
     UnexpectedArrayed,
-
-    /// Expected a single-sampled image, but got a multisampled image.
-    UnexpectedMultisampled,
 
     /// Expected one type of resource but got another.
     WrongDescriptorType,
@@ -414,12 +338,6 @@ impl fmt::Display for DescriptorSetError {
                     "the builder has previously return an error and is an unknown state",
                 Self::DescriptorIsEmpty => "operation can not be performed on an empty descriptor",
                 Self::DescriptorsMissing { .. } => "not all descriptors have been added",
-                Self::ExpectedMultisampled =>
-                    "expected a multisampled image, but got a single-sampled image",
-                Self::ImageViewFormatMismatch { .. } =>
-                    "the format of an image view doesn't match what was expected",
-                Self::ImageViewTypeMismatch { .. } =>
-                    "the type of an image view doesn't match what was expected",
                 Self::IncompatibleImageViewSampler =>
                     "the image view isn't compatible with the sampler",
                 Self::MissingBufferUsage(_) => "the buffer is missing the correct usage",
@@ -432,8 +350,6 @@ impl fmt::Display for DescriptorSetError {
                 Self::SamplerIsImmutable => "provided a dynamically assigned sampler, but the descriptor has an immutable sampler",
                 Self::TooManyDescriptors => "builder doesn't expect anymore descriptors",
                 Self::UnexpectedArrayed => "expected a non-arrayed image, but got an arrayed image",
-                Self::UnexpectedMultisampled =>
-                    "expected a single-sampled image, but got a multisampled image",
                 Self::WrongDescriptorType => "expected one type of resource but got another",
             }
         )

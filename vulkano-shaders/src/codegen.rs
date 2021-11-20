@@ -9,11 +9,10 @@
 
 use crate::entry_point;
 use crate::read_file_to_string;
-use crate::spec_consts;
 use crate::structs;
 use crate::RegisteredType;
 use crate::TypesMeta;
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::TokenStream;
 pub use shaderc::{CompilationArtifact, IncludeType, ResolvedInclude, ShaderKind};
 use shaderc::{CompileOptions, Compiler, EnvVersion, SpirvVersion, TargetEnv};
 use std::collections::HashMap;
@@ -23,11 +22,8 @@ use std::{
     cell::{RefCell, RefMut},
     io::Error as IoError,
 };
-use syn::Ident;
-use vulkano::{
-    spirv::{Capability, Instruction, Spirv, SpirvError, StorageClass},
-    Version,
-};
+use vulkano::shader::reflect;
+use vulkano::shader::spirv::{Spirv, SpirvError};
 
 pub(super) fn path_to_str(path: &Path) -> &str {
     path.to_str().expect(
@@ -218,112 +214,7 @@ pub(super) fn reflect<'a, I>(
 where
     I: IntoIterator<Item = &'a str>,
 {
-    let struct_name = Ident::new(&format!("{}Shader", prefix), Span::call_site());
     let spirv = Spirv::new(words)?;
-
-    // checking whether each required capability is enabled in the Vulkan device
-    let mut cap_checks: Vec<TokenStream> = vec![];
-    match spirv.version() {
-        Version::V1_0 => {}
-        Version::V1_1 | Version::V1_2 | Version::V1_3 => {
-            cap_checks.push(quote! {
-                if device.api_version() < Version::V1_1 {
-                    panic!("Device API version 1.1 required");
-                }
-            });
-        }
-        Version::V1_4 => {
-            cap_checks.push(quote! {
-                if device.api_version() < Version::V1_2
-                    && !device.enabled_extensions().khr_spirv_1_4 {
-                    panic!("Device API version 1.2 or extension VK_KHR_spirv_1_4 required");
-                }
-            });
-        }
-        Version::V1_5 => {
-            cap_checks.push(quote! {
-                if device.api_version() < Version::V1_2 {
-                    panic!("Device API version 1.2 required");
-                }
-            });
-        }
-        _ => return Err(Error::UnsupportedSpirvVersion),
-    }
-
-    for i in spirv.instructions() {
-        let dev_req = {
-            match i {
-                Instruction::Variable {
-                    result_type_id: _,
-                    result_id: _,
-                    storage_class,
-                    initializer: _,
-                } => storage_class_requirement(storage_class),
-                Instruction::TypePointer {
-                    result_id: _,
-                    storage_class,
-                    ty: _,
-                } => storage_class_requirement(storage_class),
-                Instruction::Capability { capability } => capability_requirement(capability),
-                _ => &[],
-            }
-        };
-
-        if dev_req.len() == 0 {
-            continue;
-        }
-
-        let (conditions, messages): (Vec<_>, Vec<_>) = dev_req
-            .iter()
-            .map(|req| match req {
-                DeviceRequirement::Extension(extension) => {
-                    let ident = Ident::new(extension, Span::call_site());
-                    (
-                        quote! { device.enabled_extensions().#ident },
-                        format!("extension {}", extension),
-                    )
-                }
-                DeviceRequirement::Feature(feature) => {
-                    let ident = Ident::new(feature, Span::call_site());
-                    (
-                        quote! { device.enabled_features().#ident },
-                        format!("feature {}", feature),
-                    )
-                }
-                DeviceRequirement::Version(major, minor) => {
-                    let ident = format_ident!("V{}_{}", major, minor);
-                    (
-                        quote! { device.api_version() >= crate::Version::#ident },
-                        format!("API version {}.{}", major, minor),
-                    )
-                }
-            })
-            .unzip();
-        let messages = messages.join(", ");
-
-        cap_checks.push(quote! {
-            if !std::array::IntoIter::new([#(#conditions),*]).all(|x| x) {
-                panic!("One of the following must be enabled on the device: {}", #messages);
-            }
-        });
-    }
-
-    // writing one method for each entry point of this module
-    let mut entry_points_inside_impl: Vec<TokenStream> = vec![];
-    for instruction in spirv
-        .iter_entry_point()
-        .filter(|instruction| matches!(instruction, Instruction::EntryPoint { .. }))
-    {
-        let entry_point = entry_point::write_entry_point(
-            prefix,
-            &spirv,
-            instruction,
-            types_meta,
-            exact_entrypoint_interface,
-            shared_constants,
-        );
-        entry_points_inside_impl.push(entry_point);
-    }
 
     let include_bytes = input_paths.into_iter().map(|s| {
         quote! {
@@ -333,57 +224,82 @@ where
         }
     });
 
-    let structs = structs::write_structs(prefix, &spirv, types_meta, types_registry);
-    let specialization_constants = spec_consts::write_specialization_constants(
+    let spirv_version = {
+        let major = spirv.version().major;
+        let minor = spirv.version().minor;
+        let patch = spirv.version().patch;
+        quote! {
+            Version {
+                major: #major,
+                minor: #minor,
+                patch: #patch,
+            }
+        }
+    };
+    let spirv_capabilities = reflect::spirv_capabilities(&spirv).map(|capability| {
+        let name = format_ident!("{}", format!("{:?}", capability));
+        quote! { &Capability::#name }
+    });
+    let spirv_extensions = reflect::spirv_extensions(&spirv);
+    let entry_points = reflect::entry_points(&spirv, exact_entrypoint_interface)
+        .map(|(name, info)| entry_point::write_entry_point(&name, &info));
+
+    let specialization_constants = structs::write_specialization_constants(
         prefix,
         &spirv,
         types_meta,
         shared_constants,
         types_registry,
     );
+
+    let load_name = if prefix.is_empty() {
+        format_ident!("load")
+    } else {
+        format_ident!("load_{}", prefix)
+    };
+
     let shader_code = quote! {
-        pub struct #struct_name {
-            shader: ::std::sync::Arc<::vulkano::pipeline::shader::ShaderModule>,
-        }
+        /// Loads the shader in Vulkan as a `ShaderModule`.
+        #[inline]
+        #[allow(unsafe_code)]
+        pub fn #load_name(device: ::std::sync::Arc<::vulkano::device::Device>)
+            -> Result<::std::sync::Arc<::vulkano::shader::ShaderModule>, ::vulkano::shader::ShaderCreationError>
+        {
+            use vulkano::shader::EntryPointInfo;
+            use vulkano::shader::GeometryShaderExecution;
+            use vulkano::shader::ShaderExecution;
+            use vulkano::shader::ShaderModule;
+            use vulkano::shader::ShaderStage;
+            use vulkano::shader::SpecializationConstantRequirements;
+            use vulkano::shader::spirv::Capability;
+            use vulkano::Version;
 
-        impl #struct_name {
-            /// Loads the shader in Vulkan as a `ShaderModule`.
-            #[inline]
-            #[allow(unsafe_code)]
-            pub fn load(device: ::std::sync::Arc<::vulkano::device::Device>)
-                        -> Result<#struct_name, ::vulkano::OomError>
-            {
-                let _bytes = ( #( #include_bytes),* );
+            let _bytes = ( #( #include_bytes),* );
 
-                #( #cap_checks )*
-                static WORDS: &[u32] = &[ #( #words ),* ];
+            static WORDS: &[u32] = &[ #( #words ),* ];
 
-                unsafe {
-                    Ok(#struct_name {
-                        shader: ::vulkano::pipeline::shader::ShaderModule::from_words(device, WORDS)?
-                    })
-                }
+            unsafe {
+                Ok(ShaderModule::from_words_with_data(
+                    device,
+                    WORDS,
+                    #spirv_version,
+                    [#(#spirv_capabilities),*],
+                    [#(#spirv_extensions),*],
+                    [#(#entry_points),*],
+                )?)
             }
-
-            /// Returns the module that was created.
-            #[allow(dead_code)]
-            #[inline]
-            pub fn module(&self) -> &::std::sync::Arc<::vulkano::pipeline::shader::ShaderModule> {
-                &self.shader
-            }
-
-            #( #entry_points_inside_impl )*
         }
 
         #specialization_constants
     };
+
+    let structs = structs::write_structs(prefix, &spirv, types_meta, types_registry);
 
     Ok((shader_code, structs))
 }
 
 #[derive(Debug)]
 pub enum Error {
-    UnsupportedSpirvVersion,
     IoError(IoError),
     SpirvError(SpirvError),
 }
@@ -402,361 +318,13 @@ impl From<SpirvError> for Error {
     }
 }
 
-/// Returns the Vulkan device requirement for a SPIR-V `OpCapability`.
-#[rustfmt::skip]
-fn capability_requirement(cap: &Capability) -> &'static [DeviceRequirement] {
-    match *cap {
-        Capability::Matrix => &[],
-        Capability::Shader => &[],
-        Capability::InputAttachment => &[],
-        Capability::Sampled1D => &[],
-        Capability::Image1D => &[],
-        Capability::SampledBuffer => &[],
-        Capability::ImageBuffer => &[],
-        Capability::ImageQuery => &[],
-        Capability::DerivativeControl => &[],
-        Capability::Geometry => &[DeviceRequirement::Feature("geometry_shader")],
-        Capability::Tessellation => &[DeviceRequirement::Feature("tessellation_shader")],
-        Capability::Float64 => &[DeviceRequirement::Feature("shader_float64")],
-        Capability::Int64 => &[DeviceRequirement::Feature("shader_int64")],
-        Capability::Int64Atomics => &[
-            DeviceRequirement::Feature("shader_buffer_int64_atomics"),
-            DeviceRequirement::Feature("shader_shared_int64_atomics"),
-            DeviceRequirement::Feature("shader_image_int64_atomics"),
-        ],
-        /* Capability::AtomicFloat16AddEXT => &[
-            DeviceRequirement::Feature("shader_buffer_float16_atomic_add"),
-            DeviceRequirement::Feature("shader_shared_float16_atomic_add"),
-        ], */
-        Capability::AtomicFloat32AddEXT => &[
-            DeviceRequirement::Feature("shader_buffer_float32_atomic_add"),
-            DeviceRequirement::Feature("shader_shared_float32_atomic_add"),
-            DeviceRequirement::Feature("shader_image_float32_atomic_add"),
-        ],
-        Capability::AtomicFloat64AddEXT => &[
-            DeviceRequirement::Feature("shader_buffer_float64_atomic_add"),
-            DeviceRequirement::Feature("shader_shared_float64_atomic_add"),
-        ],
-        /* Capability::AtomicFloat16MinMaxEXT => &[
-            DeviceRequirement::Feature("shader_buffer_float16_atomic_min_max"),
-            DeviceRequirement::Feature("shader_shared_float16_atomic_min_max"),
-        ], */
-        /* Capability::AtomicFloat32MinMaxEXT => &[
-            DeviceRequirement::Feature("shader_buffer_float32_atomic_min_max"),
-            DeviceRequirement::Feature("shader_shared_float32_atomic_min_max"),
-            DeviceRequirement::Feature("shader_image_float32_atomic_min_max"),
-        ], */
-        /* Capability::AtomicFloat64MinMaxEXT => &[
-            DeviceRequirement::Feature("shader_buffer_float64_atomic_min_max"),
-            DeviceRequirement::Feature("shader_shared_float64_atomic_min_max"),
-        ], */
-        Capability::Int64ImageEXT => &[DeviceRequirement::Feature("shader_image_int64_atomics")],
-        Capability::Int16 => &[DeviceRequirement::Feature("shader_int16")],
-        Capability::TessellationPointSize => &[DeviceRequirement::Feature(
-            "shader_tessellation_and_geometry_point_size",
-        )],
-        Capability::GeometryPointSize => &[DeviceRequirement::Feature(
-            "shader_tessellation_and_geometry_point_size",
-        )],
-        Capability::ImageGatherExtended => {
-            &[DeviceRequirement::Feature("shader_image_gather_extended")]
-        }
-        Capability::StorageImageMultisample => &[DeviceRequirement::Feature(
-            "shader_storage_image_multisample",
-        )],
-        Capability::UniformBufferArrayDynamicIndexing => &[DeviceRequirement::Feature(
-            "shader_uniform_buffer_array_dynamic_indexing",
-        )],
-        Capability::SampledImageArrayDynamicIndexing => &[DeviceRequirement::Feature(
-            "shader_sampled_image_array_dynamic_indexing",
-        )],
-        Capability::StorageBufferArrayDynamicIndexing => &[DeviceRequirement::Feature(
-            "shader_storage_buffer_array_dynamic_indexing",
-        )],
-        Capability::StorageImageArrayDynamicIndexing => &[DeviceRequirement::Feature(
-            "shader_storage_image_array_dynamic_indexing",
-        )],
-        Capability::ClipDistance => &[DeviceRequirement::Feature("shader_clip_distance")],
-        Capability::CullDistance => &[DeviceRequirement::Feature("shader_cull_distance")],
-        Capability::ImageCubeArray => &[DeviceRequirement::Feature("image_cube_array")],
-        Capability::SampleRateShading => &[DeviceRequirement::Feature("sample_rate_shading")],
-        Capability::SparseResidency => &[DeviceRequirement::Feature("shader_resource_residency")],
-        Capability::MinLod => &[DeviceRequirement::Feature("shader_resource_min_lod")],
-        Capability::SampledCubeArray => &[DeviceRequirement::Feature("image_cube_array")],
-        Capability::ImageMSArray => &[DeviceRequirement::Feature(
-            "shader_storage_image_multisample",
-        )],
-        Capability::StorageImageExtendedFormats => &[],
-        Capability::InterpolationFunction => &[DeviceRequirement::Feature("sample_rate_shading")],
-        Capability::StorageImageReadWithoutFormat => &[DeviceRequirement::Feature(
-            "shader_storage_image_read_without_format",
-        )],
-        Capability::StorageImageWriteWithoutFormat => &[DeviceRequirement::Feature(
-            "shader_storage_image_write_without_format",
-        )],
-        Capability::MultiViewport => &[DeviceRequirement::Feature("multi_viewport")],
-        Capability::DrawParameters => &[
-            DeviceRequirement::Feature("shader_draw_parameters"),
-            DeviceRequirement::Extension("khr_shader_draw_parameters"),
-        ],
-        Capability::MultiView => &[DeviceRequirement::Feature("multiview")],
-        Capability::DeviceGroup => &[
-            DeviceRequirement::Version(1, 1),
-            DeviceRequirement::Extension("khr_device_group"),
-        ],
-        Capability::VariablePointersStorageBuffer => &[DeviceRequirement::Feature(
-            "variable_pointers_storage_buffer",
-        )],
-        Capability::VariablePointers => &[DeviceRequirement::Feature("variable_pointers")],
-        Capability::ShaderClockKHR => &[DeviceRequirement::Extension("khr_shader_clock")],
-        Capability::StencilExportEXT => {
-            &[DeviceRequirement::Extension("ext_shader_stencil_export")]
-        }
-        Capability::SubgroupBallotKHR => {
-            &[DeviceRequirement::Extension("ext_shader_subgroup_ballot")]
-        }
-        Capability::SubgroupVoteKHR => &[DeviceRequirement::Extension("ext_shader_subgroup_vote")],
-        Capability::ImageReadWriteLodAMD => &[DeviceRequirement::Extension(
-            "amd_shader_image_load_store_lod",
-        )],
-        Capability::ImageGatherBiasLodAMD => {
-            &[DeviceRequirement::Extension("amd_texture_gather_bias_lod")]
-        }
-        Capability::FragmentMaskAMD => &[DeviceRequirement::Extension("amd_shader_fragment_mask")],
-        Capability::SampleMaskOverrideCoverageNV => &[DeviceRequirement::Extension(
-            "nv_sample_mask_override_coverage",
-        )],
-        Capability::GeometryShaderPassthroughNV => &[DeviceRequirement::Extension(
-            "nv_geometry_shader_passthrough",
-        )],
-        Capability::ShaderViewportIndex => {
-            &[DeviceRequirement::Feature("shader_output_viewport_index")]
-        }
-        Capability::ShaderLayer => &[DeviceRequirement::Feature("shader_output_layer")],
-        Capability::ShaderViewportIndexLayerEXT => &[
-            DeviceRequirement::Extension("ext_shader_viewport_index_layer"),
-            DeviceRequirement::Extension("nv_viewport_array2"),
-        ],
-        Capability::ShaderViewportMaskNV => &[DeviceRequirement::Extension("nv_viewport_array2")],
-        Capability::PerViewAttributesNV => &[DeviceRequirement::Extension(
-            "nvx_multiview_per_view_attributes",
-        )],
-        Capability::StorageBuffer16BitAccess => {
-            &[DeviceRequirement::Feature("storage_buffer16_bit_access")]
-        }
-        Capability::UniformAndStorageBuffer16BitAccess => &[DeviceRequirement::Feature(
-            "uniform_and_storage_buffer16_bit_access",
-        )],
-        Capability::StoragePushConstant16 => {
-            &[DeviceRequirement::Feature("storage_push_constant16")]
-        }
-        Capability::StorageInputOutput16 => &[DeviceRequirement::Feature("storage_input_output16")],
-        Capability::GroupNonUniform => todo!(),
-        Capability::GroupNonUniformVote => todo!(),
-        Capability::GroupNonUniformArithmetic => todo!(),
-        Capability::GroupNonUniformBallot => todo!(),
-        Capability::GroupNonUniformShuffle => todo!(),
-        Capability::GroupNonUniformShuffleRelative => todo!(),
-        Capability::GroupNonUniformClustered => todo!(),
-        Capability::GroupNonUniformQuad => todo!(),
-        Capability::GroupNonUniformPartitionedNV => todo!(),
-        Capability::SampleMaskPostDepthCoverage => {
-            &[DeviceRequirement::Extension("ext_post_depth_coverage")]
-        }
-        Capability::ShaderNonUniform => &[
-            DeviceRequirement::Version(1, 2),
-            DeviceRequirement::Extension("ext_descriptor_indexing"),
-        ],
-        Capability::RuntimeDescriptorArray => {
-            &[DeviceRequirement::Feature("runtime_descriptor_array")]
-        }
-        Capability::InputAttachmentArrayDynamicIndexing => &[DeviceRequirement::Feature(
-            "shader_input_attachment_array_dynamic_indexing",
-        )],
-        Capability::UniformTexelBufferArrayDynamicIndexing => &[DeviceRequirement::Feature(
-            "shader_uniform_texel_buffer_array_dynamic_indexing",
-        )],
-        Capability::StorageTexelBufferArrayDynamicIndexing => &[DeviceRequirement::Feature(
-            "shader_storage_texel_buffer_array_dynamic_indexing",
-        )],
-        Capability::UniformBufferArrayNonUniformIndexing => &[DeviceRequirement::Feature(
-            "shader_uniform_buffer_array_non_uniform_indexing",
-        )],
-        Capability::SampledImageArrayNonUniformIndexing => &[DeviceRequirement::Feature(
-            "shader_sampled_image_array_non_uniform_indexing",
-        )],
-        Capability::StorageBufferArrayNonUniformIndexing => &[DeviceRequirement::Feature(
-            "shader_storage_buffer_array_non_uniform_indexing",
-        )],
-        Capability::StorageImageArrayNonUniformIndexing => &[DeviceRequirement::Feature(
-            "shader_storage_image_array_non_uniform_indexing",
-        )],
-        Capability::InputAttachmentArrayNonUniformIndexing => &[DeviceRequirement::Feature(
-            "shader_input_attachment_array_non_uniform_indexing",
-        )],
-        Capability::UniformTexelBufferArrayNonUniformIndexing => &[DeviceRequirement::Feature(
-            "shader_uniform_texel_buffer_array_non_uniform_indexing",
-        )],
-        Capability::StorageTexelBufferArrayNonUniformIndexing => &[DeviceRequirement::Feature(
-            "shader_storage_texel_buffer_array_non_uniform_indexing",
-        )],
-        Capability::Float16 => &[
-            DeviceRequirement::Feature("shader_float16"),
-            DeviceRequirement::Extension("amd_gpu_shader_half_float"),
-        ],
-        Capability::Int8 => &[DeviceRequirement::Feature("shader_int8")],
-        Capability::StorageBuffer8BitAccess => {
-            &[DeviceRequirement::Feature("storage_buffer8_bit_access")]
-        }
-        Capability::UniformAndStorageBuffer8BitAccess => &[DeviceRequirement::Feature(
-            "uniform_and_storage_buffer8_bit_access",
-        )],
-        Capability::StoragePushConstant8 => &[DeviceRequirement::Feature("storage_push_constant8")],
-        Capability::VulkanMemoryModel => &[DeviceRequirement::Feature("vulkan_memory_model")],
-        Capability::VulkanMemoryModelDeviceScope => &[DeviceRequirement::Feature(
-            "vulkan_memory_model_device_scope",
-        )],
-        Capability::DenormPreserve => todo!(),
-        Capability::DenormFlushToZero => todo!(),
-        Capability::SignedZeroInfNanPreserve => todo!(),
-        Capability::RoundingModeRTE => todo!(),
-        Capability::RoundingModeRTZ => todo!(),
-        Capability::ComputeDerivativeGroupQuadsNV => {
-            &[DeviceRequirement::Feature("compute_derivative_group_quads")]
-        }
-        Capability::ComputeDerivativeGroupLinearNV => &[DeviceRequirement::Feature(
-            "compute_derivative_group_linear",
-        )],
-        Capability::FragmentBarycentricNV => {
-            &[DeviceRequirement::Feature("fragment_shader_barycentric")]
-        }
-        Capability::ImageFootprintNV => &[DeviceRequirement::Feature("image_footprint")],
-        Capability::MeshShadingNV => &[DeviceRequirement::Extension("nv_mesh_shader")],
-        Capability::RayTracingKHR | Capability::RayTracingProvisionalKHR => {
-            &[DeviceRequirement::Feature("ray_tracing_pipeline")]
-        }
-        Capability::RayQueryKHR | Capability::RayQueryProvisionalKHR => &[DeviceRequirement::Feature("ray_query")],
-        Capability::RayTraversalPrimitiveCullingKHR => &[DeviceRequirement::Feature(
-            "ray_traversal_primitive_culling",
-        )],
-        Capability::RayTracingNV => &[DeviceRequirement::Extension("nv_ray_tracing")],
-        // Capability::RayTracingMotionBlurNV => &[DeviceRequirement::Feature("ray_tracing_motion_blur")],
-        Capability::TransformFeedback => &[DeviceRequirement::Feature("transform_feedback")],
-        Capability::GeometryStreams => &[DeviceRequirement::Feature("geometry_streams")],
-        Capability::FragmentDensityEXT => &[
-            DeviceRequirement::Feature("fragment_density_map"),
-            DeviceRequirement::Feature("shading_rate_image"),
-        ],
-        Capability::PhysicalStorageBufferAddresses => {
-            &[DeviceRequirement::Feature("buffer_device_address")]
-        }
-        Capability::CooperativeMatrixNV => &[DeviceRequirement::Feature("cooperative_matrix")],
-        Capability::IntegerFunctions2INTEL => {
-            &[DeviceRequirement::Feature("shader_integer_functions2")]
-        }
-        Capability::ShaderSMBuiltinsNV => &[DeviceRequirement::Feature("shader_sm_builtins")],
-        Capability::FragmentShaderSampleInterlockEXT => &[DeviceRequirement::Feature(
-            "fragment_shader_sample_interlock",
-        )],
-        Capability::FragmentShaderPixelInterlockEXT => &[DeviceRequirement::Feature(
-            "fragment_shader_pixel_interlock",
-        )],
-        Capability::FragmentShaderShadingRateInterlockEXT => &[
-            DeviceRequirement::Feature("fragment_shader_shading_rate_interlock"),
-            DeviceRequirement::Feature("shading_rate_image"),
-        ],
-        Capability::DemoteToHelperInvocationEXT => &[DeviceRequirement::Feature(
-            "shader_demote_to_helper_invocation",
-        )],
-        Capability::FragmentShadingRateKHR => &[
-            DeviceRequirement::Feature("pipeline_fragment_shading_rate"),
-            DeviceRequirement::Feature("primitive_fragment_shading_rate"),
-            DeviceRequirement::Feature("attachment_fragment_shading_rate"),
-        ],
-        // Capability::WorkgroupMemoryExplicitLayoutKHR => &[DeviceRequirement::Feature("workgroup_memory_explicit_layout")],
-        // Capability::WorkgroupMemoryExplicitLayout8BitAccessKHR => &[DeviceRequirement::Feature("workgroup_memory_explicit_layout8_bit_access")],
-        // Capability::WorkgroupMemoryExplicitLayout16BitAccessKHR => &[DeviceRequirement::Feature("workgroup_memory_explicit_layout16_bit_access")],
-        Capability::Addresses => panic!(),        // not supported
-        Capability::Linkage => panic!(),          // not supported
-        Capability::Kernel => panic!(),           // not supported
-        Capability::Vector16 => panic!(),         // not supported
-        Capability::Float16Buffer => panic!(),    // not supported
-        Capability::ImageBasic => panic!(),       // not supported
-        Capability::ImageReadWrite => panic!(),   // not supported
-        Capability::ImageMipmap => panic!(),      // not supported
-        Capability::Pipes => panic!(),            // not supported
-        Capability::Groups => panic!(),           // not supported
-        Capability::DeviceEnqueue => panic!(),    // not supported
-        Capability::LiteralSampler => panic!(),   // not supported
-        Capability::AtomicStorage => panic!(),    // not supported
-        Capability::ImageRect => panic!(),        // not supported
-        Capability::SampledRect => panic!(),      // not supported
-        Capability::GenericPointer => panic!(),   // not supported
-        Capability::SubgroupDispatch => panic!(), // not supported
-        Capability::NamedBarrier => panic!(),     // not supported
-        Capability::PipeStorage => panic!(),      // not supported
-        Capability::AtomicStorageOps => panic!(), // not supported
-        Capability::Float16ImageAMD => panic!(),  // not supported
-        Capability::ShaderStereoViewNV => panic!(), // not supported
-        Capability::FragmentFullyCoveredEXT => panic!(), // not supported
-        Capability::SubgroupShuffleINTEL => panic!(), // not supported
-        Capability::SubgroupBufferBlockIOINTEL => panic!(), // not supported
-        Capability::SubgroupImageBlockIOINTEL => panic!(), // not supported
-        Capability::SubgroupImageMediaBlockIOINTEL => panic!(), // not supported
-        Capability::SubgroupAvcMotionEstimationINTEL => panic!(), // not supported
-        Capability::SubgroupAvcMotionEstimationIntraINTEL => panic!(), // not supported
-        Capability::SubgroupAvcMotionEstimationChromaINTEL => panic!(), // not supported
-        Capability::FunctionPointersINTEL => panic!(), // not supported
-        Capability::IndirectReferencesINTEL => panic!(), // not supported
-        Capability::FPGAKernelAttributesINTEL => panic!(), // not supported
-        Capability::FPGALoopControlsINTEL => panic!(), // not supported
-        Capability::FPGAMemoryAttributesINTEL => panic!(), // not supported
-        Capability::FPGARegINTEL => panic!(), // not supported
-        Capability::UnstructuredLoopControlsINTEL => panic!(), // not supported
-        Capability::KernelAttributesINTEL => panic!(), // not supported
-        Capability::BlockingPipesINTEL => panic!(), // not supported
-    }
-}
-
-/// Returns the Vulkan device requirement for a SPIR-V storage class.
-fn storage_class_requirement(storage_class: &StorageClass) -> &'static [DeviceRequirement] {
-    match *storage_class {
-        StorageClass::UniformConstant => &[],
-        StorageClass::Input => &[],
-        StorageClass::Uniform => &[],
-        StorageClass::Output => &[],
-        StorageClass::Workgroup => &[],
-        StorageClass::CrossWorkgroup => &[],
-        StorageClass::Private => &[],
-        StorageClass::Function => &[],
-        StorageClass::Generic => &[],
-        StorageClass::PushConstant => &[],
-        StorageClass::AtomicCounter => &[],
-        StorageClass::Image => &[],
-        StorageClass::StorageBuffer => &[DeviceRequirement::Extension(
-            "khr_storage_buffer_storage_class",
-        )],
-        StorageClass::CallableDataKHR => todo!(),
-        StorageClass::IncomingCallableDataKHR => todo!(),
-        StorageClass::RayPayloadKHR => todo!(),
-        StorageClass::HitAttributeKHR => todo!(),
-        StorageClass::IncomingRayPayloadKHR => todo!(),
-        StorageClass::ShaderRecordBufferKHR => todo!(),
-        StorageClass::PhysicalStorageBuffer => todo!(),
-        StorageClass::CodeSectionINTEL => todo!(),
-    }
-}
-
-enum DeviceRequirement {
-    Feature(&'static str),
-    Extension(&'static str),
-    Version(u32, u32),
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
+    use crate::codegen::compile;
+    use shaderc::ShaderKind;
+    use std::path::{Path, PathBuf};
+    use vulkano::shader::{reflect, spirv::Spirv};
 
     #[cfg(not(target_os = "windows"))]
     pub fn path_separator() -> &'static str {
@@ -773,6 +341,19 @@ mod tests {
             .iter()
             .map(|p| path_to_str(root_path.join(p).as_path()).to_owned())
             .collect()
+    }
+
+    #[test]
+    fn spirv_parse() {
+        let data = include_bytes!("../tests/frag.spv");
+        let insts: Vec<_> = data
+            .chunks(4)
+            .map(|c| {
+                ((c[3] as u32) << 24) | ((c[2] as u32) << 16) | ((c[1] as u32) << 8) | c[0] as u32
+            })
+            .collect();
+
+        Spirv::new(&insts).unwrap();
     }
 
     #[test]
@@ -1050,5 +631,167 @@ mod tests {
             None,
         );
         compile_defines.expect("Setting shader macros did not work");
+    }
+
+    /// `entrypoint1.frag.glsl`:
+    /// ```glsl
+    /// #version 450
+    ///
+    /// layout(set = 0, binding = 0) uniform Uniform {
+    ///     uint data;
+    /// } ubo;
+    ///
+    /// layout(set = 0, binding = 1) buffer Buffer {
+    ///     uint data;
+    /// } bo;
+    ///
+    /// layout(set = 0, binding = 2) uniform sampler textureSampler;
+    /// layout(set = 0, binding = 3) uniform texture2D imageTexture;
+    ///
+    /// layout(push_constant) uniform PushConstant {
+    ///    uint data;
+    /// } push;
+    ///
+    /// layout(input_attachment_index = 0, set = 0, binding = 4) uniform subpassInput inputAttachment;
+    ///
+    /// layout(location = 0) out vec4 outColor;
+    ///
+    /// void entrypoint1() {
+    ///     bo.data = 12;
+    ///     outColor = vec4(
+    ///         float(ubo.data),
+    ///         float(push.data),
+    ///         texture(sampler2D(imageTexture, textureSampler), vec2(0.0, 0.0)).x,
+    ///         subpassLoad(inputAttachment).x
+    ///     );
+    /// }
+    /// ```
+    ///
+    /// `entrypoint2.frag.glsl`:
+    /// ```glsl
+    /// #version 450
+    ///
+    /// layout(input_attachment_index = 0, set = 0, binding = 0) uniform subpassInput inputAttachment2;
+    ///
+    /// layout(set = 0, binding = 1) buffer Buffer {
+    ///     uint data;
+    /// } bo2;
+    ///
+    /// layout(set = 0, binding = 2) uniform Uniform {
+    ///     uint data;
+    /// } ubo2;
+    ///
+    /// layout(push_constant) uniform PushConstant {
+    ///    uint data;
+    /// } push2;
+    ///
+    /// void entrypoint2() {
+    ///     bo2.data = ubo2.data + push2.data + int(subpassLoad(inputAttachment2).y);
+    /// }
+    /// ```
+    ///
+    /// Compiled and linked with:
+    /// ```sh
+    /// glslangvalidator -e entrypoint1 --source-entrypoint entrypoint1 -V100 entrypoint1.frag.glsl -o entrypoint1.spv
+    /// glslangvalidator -e entrypoint2 --source-entrypoint entrypoint2 -V100 entrypoint2.frag.glsl -o entrypoint2.spv
+    /// spirv-link entrypoint1.spv entrypoint2.spv -o multiple_entrypoints.spv
+    /// ```
+    #[test]
+    fn test_descriptor_calculation_with_multiple_entrypoints() {
+        let data = include_bytes!("../tests/multiple_entrypoints.spv");
+        let instructions: Vec<u32> = data
+            .chunks(4)
+            .map(|c| {
+                ((c[3] as u32) << 24) | ((c[2] as u32) << 16) | ((c[1] as u32) << 8) | c[0] as u32
+            })
+            .collect();
+        let spirv = Spirv::new(&instructions).unwrap();
+
+        let mut descriptors = Vec::new();
+        for (_, info) in reflect::entry_points(&spirv, true) {
+            descriptors.push(info.descriptor_requirements);
+        }
+
+        // Check first entrypoint
+        let e1_descriptors = descriptors.get(0).expect("Could not find entrypoint1");
+        let mut e1_bindings = Vec::new();
+        for (loc, _reqs) in e1_descriptors {
+            e1_bindings.push(*loc);
+        }
+        assert_eq!(e1_bindings.len(), 5);
+        assert!(e1_bindings.contains(&(0, 0)));
+        assert!(e1_bindings.contains(&(0, 1)));
+        assert!(e1_bindings.contains(&(0, 2)));
+        assert!(e1_bindings.contains(&(0, 3)));
+        assert!(e1_bindings.contains(&(0, 4)));
+
+        // Check second entrypoint
+        let e2_descriptors = descriptors.get(1).expect("Could not find entrypoint2");
+        let mut e2_bindings = Vec::new();
+        for (loc, _reqs) in e2_descriptors {
+            e2_bindings.push(*loc);
+        }
+        assert_eq!(e2_bindings.len(), 3);
+        assert!(e2_bindings.contains(&(0, 0)));
+        assert!(e2_bindings.contains(&(0, 1)));
+        assert!(e2_bindings.contains(&(0, 2)));
+    }
+
+    #[test]
+    fn test_descriptor_calculation_with_multiple_functions() {
+        let includes: [PathBuf; 0] = [];
+        let defines: [(String, String); 0] = [];
+        let (comp, _) = compile(
+            None,
+            &Path::new(""),
+            "
+        #version 450
+
+        layout(set = 1, binding = 0) buffer Buffer {
+            vec3 data;
+        } bo;
+
+        layout(set = 2, binding = 0) uniform Uniform {
+            float data;
+        } ubo;
+
+        layout(set = 3, binding = 1) uniform sampler textureSampler;
+        layout(set = 3, binding = 2) uniform texture2D imageTexture;
+
+        float withMagicSparkles(float data) {
+            return texture(sampler2D(imageTexture, textureSampler), vec2(data, data)).x;
+        }
+
+        vec3 makeSecretSauce() {
+            return vec3(withMagicSparkles(ubo.data));
+        }
+
+        void main() {
+            bo.data = makeSecretSauce();
+        }
+        ",
+            ShaderKind::Vertex,
+            &includes,
+            &defines,
+            None,
+            None,
+        )
+        .unwrap();
+        let spirv = Spirv::new(comp.as_binary()).unwrap();
+
+        for (_, info) in reflect::entry_points(&spirv, true) {
+            let mut bindings = Vec::new();
+            for (loc, _reqs) in info.descriptor_requirements {
+                bindings.push(loc);
+            }
+            assert_eq!(bindings.len(), 4);
+            assert!(bindings.contains(&(1, 0)));
+            assert!(bindings.contains(&(2, 0)));
+            assert!(bindings.contains(&(3, 1)));
+            assert!(bindings.contains(&(3, 2)));
+
+            return;
+        }
+        panic!("Could not find entrypoint");
     }
 }

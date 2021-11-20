@@ -22,7 +22,7 @@ use std::{
 };
 use vk_parse::{
     EnumSpec, EnumsChild, Extension, ExtensionChild, Feature, InterfaceItem, Registry,
-    RegistryChild, Type, TypeCodeMarkup, TypeSpec, TypesChild,
+    RegistryChild, SpirvExtOrCap, Type, TypeCodeMarkup, TypeSpec, TypesChild,
 };
 
 mod extensions;
@@ -30,8 +30,9 @@ mod features;
 mod fns;
 mod formats;
 mod properties;
-mod spirv;
 mod spirv_grammar;
+mod spirv_parse;
+mod spirv_reqs;
 
 pub fn autogen() {
     let registry = get_vk_registry("vk.xml");
@@ -43,7 +44,8 @@ pub fn autogen() {
     formats::write(&vk_data);
     fns::write(&vk_data);
     properties::write(&vk_data);
-    spirv::write(&spirv_grammar);
+    spirv_parse::write(&spirv_grammar);
+    spirv_reqs::write(&vk_data, &spirv_grammar);
 }
 
 fn write_file(file: impl AsRef<Path>, source: impl AsRef<str>, content: impl Display) {
@@ -84,6 +86,8 @@ pub struct VkRegistryData<'r> {
     pub extensions: IndexMap<&'r str, &'r Extension>,
     pub features: IndexMap<&'r str, &'r Feature>,
     pub formats: Vec<&'r str>,
+    pub spirv_capabilities: Vec<&'r SpirvExtOrCap>,
+    pub spirv_extensions: Vec<&'r SpirvExtOrCap>,
     pub types: HashMap<&'r str, (&'r Type, Vec<&'r str>)>,
 }
 
@@ -97,6 +101,8 @@ impl<'r> VkRegistryData<'r> {
             features.values().map(|x| x.children.iter()).flatten(),
             extensions.values().map(|x| x.children.iter()).flatten(),
         );
+        let spirv_capabilities = Self::get_spirv_capabilities(registry);
+        let spirv_extensions = Self::get_spirv_extensions(registry);
         let types = Self::get_types(&registry, &aliases, &features, &extensions);
         let header_version = Self::get_header_version(&registry);
 
@@ -105,6 +111,8 @@ impl<'r> VkRegistryData<'r> {
             extensions,
             features,
             formats,
+            spirv_capabilities,
+            spirv_extensions,
             types,
         }
     }
@@ -247,6 +255,34 @@ impl<'r> VkRegistryData<'r> {
             .collect()
     }
 
+    fn get_spirv_capabilities<'a>(registry: &'a Registry) -> Vec<&'a SpirvExtOrCap> {
+        registry
+            .0
+            .iter()
+            .filter_map(|child| {
+                if let RegistryChild::SpirvCapabilities(capabilities) = child {
+                    return Some(capabilities.children.iter());
+                }
+                None
+            })
+            .flatten()
+            .collect()
+    }
+
+    fn get_spirv_extensions<'a>(registry: &'a Registry) -> Vec<&'a SpirvExtOrCap> {
+        registry
+            .0
+            .iter()
+            .filter_map(|child| {
+                if let RegistryChild::SpirvExtensions(extensions) = child {
+                    return Some(extensions.children.iter());
+                }
+                None
+            })
+            .flatten()
+            .collect()
+    }
+
     fn get_types<'a>(
         registry: &'a Registry,
         aliases: &HashMap<&'a str, &'a str>,
@@ -337,15 +373,6 @@ pub fn get_spirv_grammar<P: AsRef<Path> + ?Sized>(path: &P) -> SpirvGrammar {
                     suffix_key(&enumerant.enumerant),
                 )
             });
-            operand_kind.enumerants.dedup_by_key(|enumerant| {
-                let value = enumerant
-                    .value
-                    .as_str()
-                    .unwrap()
-                    .strip_prefix("0x")
-                    .unwrap();
-                u32::from_str_radix(value, 16).unwrap()
-            });
         });
 
     grammar
@@ -356,9 +383,6 @@ pub fn get_spirv_grammar<P: AsRef<Path> + ?Sized>(path: &P) -> SpirvGrammar {
             operand_kind.enumerants.sort_by_key(|enumerant| {
                 (enumerant.value.as_u64(), suffix_key(&enumerant.enumerant))
             });
-            operand_kind
-                .enumerants
-                .dedup_by_key(|enumerant| enumerant.value.as_u64());
         });
 
     grammar

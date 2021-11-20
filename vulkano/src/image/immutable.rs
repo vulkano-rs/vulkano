@@ -120,14 +120,12 @@ fn has_mipmaps(mipmaps: MipmapsCount) -> bool {
     }
 }
 
-fn generate_mipmaps<L, Img>(
+fn generate_mipmaps<L>(
     cbb: &mut AutoCommandBufferBuilder<L>,
-    image: Arc<Img>,
+    image: Arc<dyn ImageAccess>,
     dimensions: ImageDimensions,
     layout: ImageLayout,
-) where
-    Img: ImageAccess + 'static,
-{
+) {
     for level in 1..image.mipmap_levels() {
         let [xs, ys, ds] = dimensions
             .mipmap_dimensions(level - 1)
@@ -244,7 +242,7 @@ impl ImmutableImage {
         flags: ImageCreateFlags,
         layout: ImageLayout,
         queue_families: I,
-    ) -> Result<(Arc<ImmutableImage>, ImmutableImageInitialization), ImageCreationError>
+    ) -> Result<(Arc<ImmutableImage>, Arc<ImmutableImageInitialization>), ImageCreationError>
     where
         I: IntoIterator<Item = QueueFamily<'a>>,
         M: Into<MipmapsCount>,
@@ -303,12 +301,12 @@ impl ImmutableImage {
             layout,
         });
 
-        let init = ImmutableImageInitialization {
+        let init = Arc::new(ImmutableImageInitialization {
             image: image.clone(),
             used: AtomicBool::new(false),
             mip_levels_access: 0..image.mipmap_levels(),
             layer_levels_access: 0..image.dimensions().array_layers(),
-        };
+        });
 
         Ok((image, init))
     }
@@ -344,7 +342,7 @@ impl ImmutableImage {
 
     /// Construct an ImmutableImage containing a copy of the data in `source`.
     pub fn from_buffer<B, Px>(
-        source: B,
+        source: Arc<B>,
         dimensions: ImageDimensions,
         mipmaps: MipmapsCount,
         format: Format,
@@ -357,7 +355,7 @@ impl ImmutableImage {
         ImageCreationError,
     >
     where
-        B: TypedBufferAccess<Content = [Px]> + Clone + 'static,
+        B: TypedBufferAccess<Content = [Px]> + 'static,
         Px: Pixel + Send + Sync + Clone + 'static,
     {
         let need_to_generate_mipmaps = has_mipmaps(mipmaps);
@@ -381,14 +379,7 @@ impl ImmutableImage {
             source.device().active_queue_families(),
         )?;
 
-        let init = SubImage::new(
-            Arc::new(initializer),
-            0,
-            1,
-            0,
-            1,
-            ImageLayout::ShaderReadOnlyOptimal,
-        );
+        let init = SubImage::new(initializer, 0, 1, 0, 1, ImageLayout::ShaderReadOnlyOptimal);
 
         let mut cbb = AutoCommandBufferBuilder::primary(
             source.device().clone(),
@@ -425,20 +416,6 @@ impl ImmutableImage {
         image.initialized.store(true, Ordering::Relaxed);
 
         Ok((image, future))
-    }
-}
-
-impl<A> ImmutableImage<A> {
-    /// Returns the dimensions of the image.
-    #[inline]
-    pub fn dimensions(&self) -> ImageDimensions {
-        self.dimensions
-    }
-
-    /// Returns the number of mipmap levels of the image.
-    #[inline]
-    pub fn mipmap_levels(&self) -> u32 {
-        self.image.mipmap_levels()
     }
 }
 

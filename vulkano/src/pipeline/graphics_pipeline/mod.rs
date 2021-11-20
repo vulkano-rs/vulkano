@@ -17,18 +17,17 @@ use crate::pipeline::input_assembly::InputAssemblyState;
 use crate::pipeline::layout::PipelineLayout;
 use crate::pipeline::multisample::MultisampleState;
 use crate::pipeline::rasterization::RasterizationState;
-use crate::pipeline::shader::ShaderStage;
 use crate::pipeline::tessellation::TessellationState;
 use crate::pipeline::vertex::{BuffersDefinition, VertexInput};
 use crate::pipeline::viewport::ViewportState;
-use crate::pipeline::DynamicState;
+use crate::pipeline::{DynamicState, Pipeline, PipelineBindPoint};
 use crate::render_pass::Subpass;
+use crate::shader::{DescriptorRequirements, ShaderStage};
 use crate::VulkanObject;
 use fnv::FnvHashMap;
 use std::fmt;
 use std::hash::Hash;
 use std::hash::Hasher;
-use std::marker::PhantomData;
 use std::ptr;
 use std::sync::Arc;
 
@@ -42,11 +41,14 @@ mod creation_error;
 /// This object contains the shaders and the various fixed states that describe how the
 /// implementation should perform the various operations needed by a draw command.
 pub struct GraphicsPipeline {
-    inner: Inner,
+    handle: ash::vk::Pipeline,
+    device: Arc<Device>,
     layout: Arc<PipelineLayout>,
     subpass: Subpass,
     // TODO: replace () with an object that describes the shaders in some way.
     shaders: FnvHashMap<ShaderStage, ()>,
+    descriptor_requirements: FnvHashMap<(u32, u32), DescriptorRequirements>,
+    num_used_descriptor_sets: u32,
 
     vertex_input: VertexInput,
     input_assembly_state: InputAssemblyState,
@@ -58,12 +60,6 @@ pub struct GraphicsPipeline {
     depth_stencil_state: Option<DepthStencilState>,
     color_blend_state: Option<ColorBlendState>,
     dynamic_state: FnvHashMap<DynamicState, bool>,
-}
-
-#[derive(PartialEq, Eq, Hash)]
-struct Inner {
-    pipeline: ash::vk::Pipeline,
-    device: Arc<Device>,
 }
 
 impl GraphicsPipeline {
@@ -88,13 +84,7 @@ impl GraphicsPipeline {
     /// Returns the device used to create this pipeline.
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
-        &self.inner.device
-    }
-
-    /// Returns the pipeline layout used to create this pipeline.
-    #[inline]
-    pub fn layout(&self) -> &Arc<PipelineLayout> {
-        &self.layout
+        &self.device
     }
 
     /// Returns the subpass this graphics pipeline is rendering to.
@@ -112,6 +102,16 @@ impl GraphicsPipeline {
     #[inline]
     pub(crate) fn shader(&self, stage: ShaderStage) -> Option<()> {
         self.shaders.get(&stage).copied()
+    }
+
+    /// Returns an iterator over the descriptor requirements for this pipeline.
+    #[inline]
+    pub fn descriptor_requirements(
+        &self,
+    ) -> impl ExactSizeIterator<Item = ((u32, u32), &DescriptorRequirements)> {
+        self.descriptor_requirements
+            .iter()
+            .map(|(loc, reqs)| (*loc, reqs))
     }
 
     /// Returns the vertex input state used to create this pipeline.
@@ -182,17 +182,34 @@ impl GraphicsPipeline {
     }
 }
 
+impl Pipeline for GraphicsPipeline {
+    #[inline]
+    fn bind_point(&self) -> PipelineBindPoint {
+        PipelineBindPoint::Graphics
+    }
+
+    #[inline]
+    fn layout(&self) -> &Arc<PipelineLayout> {
+        &self.layout
+    }
+
+    #[inline]
+    fn num_used_descriptor_sets(&self) -> u32 {
+        self.num_used_descriptor_sets
+    }
+}
+
 unsafe impl DeviceOwned for GraphicsPipeline {
     #[inline]
     fn device(&self) -> &Arc<Device> {
-        &self.inner.device
+        &self.device
     }
 }
 
 impl fmt::Debug for GraphicsPipeline {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "<Vulkan graphics pipeline {:?}>", self.inner.pipeline)
+        write!(fmt, "<Vulkan graphics pipeline {:?}>", self.handle)
     }
 }
 
@@ -201,17 +218,17 @@ unsafe impl VulkanObject for GraphicsPipeline {
 
     #[inline]
     fn internal_object(&self) -> ash::vk::Pipeline {
-        self.inner.pipeline
+        self.handle
     }
 }
 
-impl Drop for Inner {
+impl Drop for GraphicsPipeline {
     #[inline]
     fn drop(&mut self) {
         unsafe {
             let fns = self.device.fns();
             fns.v1_0
-                .destroy_pipeline(self.device.internal_object(), self.pipeline, ptr::null());
+                .destroy_pipeline(self.device.internal_object(), self.handle, ptr::null());
         }
     }
 }
@@ -219,7 +236,7 @@ impl Drop for Inner {
 impl PartialEq for GraphicsPipeline {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.inner == other.inner
+        self.device == other.device && self.handle == other.handle
     }
 }
 
@@ -228,19 +245,7 @@ impl Eq for GraphicsPipeline {}
 impl Hash for GraphicsPipeline {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.inner.hash(state);
-    }
-}
-
-/// Opaque object that represents the inside of the graphics pipeline.
-#[derive(Debug, Copy, Clone)]
-pub struct GraphicsPipelineSys<'a>(ash::vk::Pipeline, PhantomData<&'a ()>);
-
-unsafe impl<'a> VulkanObject for GraphicsPipelineSys<'a> {
-    type Object = ash::vk::Pipeline;
-
-    #[inline]
-    fn internal_object(&self) -> ash::vk::Pipeline {
-        self.0
+        self.handle.hash(state);
+        self.device.hash(state);
     }
 }

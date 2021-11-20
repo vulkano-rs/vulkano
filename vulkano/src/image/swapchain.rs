@@ -56,15 +56,6 @@ impl<W> SwapchainImage<W> {
         }))
     }
 
-    /// Returns the dimensions of the image.
-    ///
-    /// A `SwapchainImage` is always two-dimensional.
-    #[inline]
-    pub fn dimensions(&self) -> [u32; 2] {
-        let dims = self.my_image().image.dimensions();
-        [dims.width(), dims.height()]
-    }
-
     /// Returns the swapchain this image belongs to.
     #[inline]
     pub fn swapchain(&self) -> &Arc<Swapchain<W>> {

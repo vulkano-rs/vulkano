@@ -8,7 +8,6 @@
 // according to those terms.
 
 use super::VertexMemberInfo;
-use crate::pipeline::shader::ShaderInterface;
 use crate::pipeline::vertex::IncompatibleVertexDefinitionError;
 use crate::pipeline::vertex::Vertex;
 use crate::pipeline::vertex::VertexDefinition;
@@ -16,6 +15,7 @@ use crate::pipeline::vertex::VertexInput;
 use crate::pipeline::vertex::VertexInputAttribute;
 use crate::pipeline::vertex::VertexInputBinding;
 use crate::pipeline::vertex::VertexInputRate;
+use crate::shader::ShaderInterface;
 use crate::DeviceSize;
 use std::mem;
 

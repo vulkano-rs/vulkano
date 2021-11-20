@@ -9,8 +9,6 @@
 
 use crate::check_errors;
 use crate::descriptor_set::layout::DescriptorDesc;
-use crate::descriptor_set::layout::DescriptorDescTy;
-use crate::descriptor_set::layout::DescriptorSetCompatibilityError;
 use crate::descriptor_set::layout::DescriptorSetDesc;
 use crate::descriptor_set::layout::DescriptorType;
 use crate::descriptor_set::pool::DescriptorsCount;
@@ -47,7 +45,7 @@ impl DescriptorSetLayout {
     pub fn new<D>(
         device: Arc<Device>,
         set_desc: D,
-    ) -> Result<DescriptorSetLayout, DescriptorSetLayoutError>
+    ) -> Result<Arc<DescriptorSetLayout>, DescriptorSetLayoutError>
     where
         D: Into<DescriptorSetDesc>,
     {
@@ -85,7 +83,7 @@ impl DescriptorSetLayout {
             // FIXME: it is not legal to pass eg. the TESSELLATION_SHADER bit when the device
             //        doesn't have tess shaders enabled
 
-            let ty = binding_desc.ty.ty();
+            let ty = binding_desc.ty;
 
             if set_desc.is_push_descriptor() {
                 if matches!(
@@ -107,13 +105,19 @@ impl DescriptorSetLayout {
 
             descriptors_count.add_num(ty, binding_desc.descriptor_count);
             let mut binding_flags = ash::vk::DescriptorBindingFlags::empty();
-            let immutable_samplers = binding_desc.ty.immutable_samplers();
 
-            let p_immutable_samplers = if !immutable_samplers.is_empty() {
-                if binding_desc.descriptor_count != immutable_samplers.len() as u32 {
+            let p_immutable_samplers = if !binding_desc.immutable_samplers.is_empty() {
+                if !matches!(
+                    ty,
+                    DescriptorType::Sampler | DescriptorType::CombinedImageSampler
+                ) {
+                    return Err(DescriptorSetLayoutError::ImmutableSamplersWrongDescriptorType);
+                }
+
+                if binding_desc.descriptor_count != binding_desc.immutable_samplers.len() as u32 {
                     return Err(DescriptorSetLayoutError::ImmutableSamplersCountMismatch {
                         descriptor_count: binding_desc.descriptor_count,
-                        sampler_count: immutable_samplers.len() as u32,
+                        sampler_count: binding_desc.immutable_samplers.len() as u32,
                     });
                 }
 
@@ -122,7 +126,8 @@ impl DescriptorSetLayout {
                 // with one of the values VK_BORDER_COLOR_FLOAT_CUSTOM_EXT or
                 // VK_BORDER_COLOR_INT_CUSTOM_EXT
 
-                let sampler_handles = immutable_samplers
+                let sampler_handles = binding_desc
+                    .immutable_samplers
                     .iter()
                     .map(|s| s.internal_object())
                     .collect::<Vec<_>>()
@@ -139,8 +144,8 @@ impl DescriptorSetLayout {
                     return Err(DescriptorSetLayoutError::VariableCountDescMustBeLast);
                 }
 
-                if binding_desc.ty == DescriptorDescTy::UniformBufferDynamic
-                    || binding_desc.ty == DescriptorDescTy::StorageBufferDynamic
+                if binding_desc.ty == DescriptorType::UniformBufferDynamic
+                    || binding_desc.ty == DescriptorType::StorageBufferDynamic
                 {
                     return Err(DescriptorSetLayoutError::VariableCountDescMustNotBeDynamic);
                 }
@@ -243,13 +248,13 @@ impl DescriptorSetLayout {
             output.assume_init()
         };
 
-        Ok(DescriptorSetLayout {
+        Ok(Arc::new(DescriptorSetLayout {
             handle,
             device,
             desc: set_desc,
             descriptors_count,
             variable_descriptor_count,
-        })
+        }))
     }
 
     pub(crate) fn desc(&self) -> &DescriptorSetDesc {
@@ -292,19 +297,6 @@ impl DescriptorSetLayout {
     #[inline]
     pub fn is_compatible_with(&self, other: &DescriptorSetLayout) -> bool {
         self.handle == other.handle || self.desc.is_compatible_with(&other.desc)
-    }
-
-    /// Checks whether the descriptor of a pipeline layout `self` is compatible with the descriptor
-    /// of a descriptor set being bound `other`.
-    pub fn ensure_compatible_with_bind(
-        &self,
-        other: &DescriptorSetLayout,
-    ) -> Result<(), DescriptorSetCompatibilityError> {
-        if self.handle == other.handle {
-            return Ok(());
-        }
-
-        self.desc.ensure_compatible_with_bind(&other.desc)
     }
 }
 
@@ -356,6 +348,10 @@ pub enum DescriptorSetLayoutError {
         sampler_count: u32,
     },
 
+    /// Immutable samplers were included on a descriptor type other than `Sampler` or
+    /// `CombinedImageSampler`.
+    ImmutableSamplersWrongDescriptorType,
+
     /// The maximum number of push descriptors has been exceeded.
     MaxPushDescriptorsExceeded {
         /// Maximum allowed value.
@@ -405,6 +401,12 @@ impl std::fmt::Display for DescriptorSetLayoutError {
                     "the number of immutable samplers does not match the descriptor count"
                 )
             }
+            Self::ImmutableSamplersWrongDescriptorType => {
+                write!(
+                    fmt,
+                    "immutable samplers were included on a descriptor type other than Sampler or CombinedImageSampler"
+                )
+            }
             Self::MaxPushDescriptorsExceeded { .. } => {
                 write!(
                     fmt,
@@ -433,11 +435,11 @@ impl std::fmt::Display for DescriptorSetLayoutError {
 #[cfg(test)]
 mod tests {
     use crate::descriptor_set::layout::DescriptorDesc;
-    use crate::descriptor_set::layout::DescriptorDescTy;
     use crate::descriptor_set::layout::DescriptorSetDesc;
     use crate::descriptor_set::layout::DescriptorSetLayout;
+    use crate::descriptor_set::layout::DescriptorType;
     use crate::descriptor_set::pool::DescriptorsCount;
-    use crate::pipeline::shader::ShaderStages;
+    use crate::shader::ShaderStages;
     use std::iter;
 
     #[test]
@@ -451,11 +453,11 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let layout = DescriptorDesc {
-            ty: DescriptorDescTy::UniformBuffer,
+            ty: DescriptorType::UniformBuffer,
             descriptor_count: 1,
-            stages: ShaderStages::all_graphics(),
-            mutable: false,
             variable_count: false,
+            stages: ShaderStages::all_graphics(),
+            immutable_samplers: Vec::new(),
         };
 
         let sl = DescriptorSetLayout::new(

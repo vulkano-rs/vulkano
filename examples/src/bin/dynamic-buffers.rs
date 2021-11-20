@@ -15,14 +15,13 @@
 // rebind descriptor sets.
 
 use std::mem;
-use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
 use vulkano::descriptor_set::{DescriptorSet, PersistentDescriptorSet};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::instance::{Instance, InstanceExtensions};
-use vulkano::pipeline::{ComputePipeline, PipelineBindPoint};
+use vulkano::pipeline::{ComputePipeline, Pipeline, PipelineBindPoint};
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
 use vulkano::Version;
@@ -96,19 +95,17 @@ fn main() {
         }
     }
 
-    let shader = shader::Shader::load(device.clone()).unwrap();
-    let pipeline = Arc::new(
-        ComputePipeline::new(
-            device.clone(),
-            &shader.main_entry_point(),
-            &(),
-            None,
-            |set_descs| {
-                set_descs[0].set_buffer_dynamic(0);
-            },
-        )
-        .unwrap(),
-    );
+    let shader = shader::load(device.clone()).unwrap();
+    let pipeline = ComputePipeline::new(
+        device.clone(),
+        shader.entry_point("main").unwrap(),
+        &(),
+        None,
+        |set_descs| {
+            set_descs[0].set_buffer_dynamic(0);
+        },
+    )
+    .unwrap();
 
     // Declare input buffer.
     // Data in a dynamic buffer **MUST** be aligned to min_uniform_buffer_offset_align
@@ -166,7 +163,7 @@ fn main() {
         .add_buffer(output_buffer.clone())
         .unwrap();
 
-    let set = Arc::new(set_builder.build().unwrap());
+    let set = set_builder.build().unwrap();
 
     // Build the command buffer, using different offsets for each call.
     let mut builder = AutoCommandBufferBuilder::primary(

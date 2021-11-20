@@ -8,59 +8,58 @@
 // according to those terms.
 
 use crate::buffer::BufferAccess;
+use std::sync::Arc;
 
 /// A collection of vertex buffers.
 pub unsafe trait VertexBuffersCollection {
     /// Converts `self` into a list of buffers.
     // TODO: better than a Vec
-    fn into_vec(self) -> Vec<Box<dyn BufferAccess>>;
+    fn into_vec(self) -> Vec<Arc<dyn BufferAccess>>;
 }
 
 unsafe impl VertexBuffersCollection for () {
     #[inline]
-    fn into_vec(self) -> Vec<Box<dyn BufferAccess>> {
+    fn into_vec(self) -> Vec<Arc<dyn BufferAccess>> {
         vec![]
     }
 }
 
-unsafe impl<T> VertexBuffersCollection for T
+unsafe impl<T> VertexBuffersCollection for Arc<T>
 where
     T: BufferAccess + 'static,
 {
     #[inline]
-    fn into_vec(self) -> Vec<Box<dyn BufferAccess>> {
-        vec![Box::new(self) as Box<_>]
+    fn into_vec(self) -> Vec<Arc<dyn BufferAccess>> {
+        vec![self as Arc<_>]
     }
 }
 
-unsafe impl<T> VertexBuffersCollection for Vec<T>
+unsafe impl<T> VertexBuffersCollection for Vec<Arc<T>>
 where
     T: BufferAccess + 'static,
 {
     #[inline]
-    fn into_vec(self) -> Vec<Box<dyn BufferAccess>> {
-        self.into_iter()
-            .map(|source| Box::new(source) as Box<_>)
-            .collect()
+    fn into_vec(self) -> Vec<Arc<dyn BufferAccess>> {
+        self.into_iter().map(|source| source as Arc<_>).collect()
     }
 }
 
 macro_rules! impl_collection {
     ($first:ident $(, $others:ident)+) => (
-        unsafe impl<$first$(, $others)+> VertexBuffersCollection for ($first, $($others),+)
+        unsafe impl<$first$(, $others)+> VertexBuffersCollection for (Arc<$first>, $(Arc<$others>),+)
             where $first: BufferAccess + 'static
                   $(, $others: BufferAccess + 'static)*
         {
             #[inline]
-            fn into_vec(self) -> Vec<Box<dyn BufferAccess>> {
+            fn into_vec(self) -> Vec<Arc<dyn BufferAccess>> {
                 #![allow(non_snake_case)]
 
                 let ($first, $($others,)*) = self;
 
                 let mut list = Vec::new();
-                list.push(Box::new($first) as Box<_>);
+                list.push($first as Arc<_>);
                 $(
-                    list.push(Box::new($others) as Box<_>);
+                    list.push($others as Arc<_>);
                 )+
                 list
             }

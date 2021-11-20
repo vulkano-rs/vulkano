@@ -301,17 +301,6 @@ impl StorageImage {
     }
 }
 
-impl<A> StorageImage<A>
-where
-    A: MemoryPool,
-{
-    /// Returns the dimensions of the image.
-    #[inline]
-    pub fn dimensions(&self) -> ImageDimensions {
-        self.dimensions
-    }
-}
-
 unsafe impl<A> ImageAccess for StorageImage<A>
 where
     A: MemoryPool,

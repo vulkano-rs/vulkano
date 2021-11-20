@@ -34,7 +34,7 @@ use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features, Queue};
 use vulkano::instance::{Instance, InstanceExtensions};
-use vulkano::pipeline::{ComputePipeline, PipelineBindPoint};
+use vulkano::pipeline::{ComputePipeline, Pipeline, PipelineBindPoint};
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
 use vulkano::Version;
@@ -102,7 +102,7 @@ fn main() {
                 // by default and the macro by default producing unique
                 // structs(`MultSpecializationConstants`, `AddSpecializationConstants`)
                 shared_constants: true,
-                Mult: {
+                mult: {
                     ty: "compute",
                     src: "
                         #version 450
@@ -127,7 +127,7 @@ fn main() {
                         }
                     "
                 },
-                Add: {
+                add: {
                     ty: "compute",
                     src: "
                         #version 450
@@ -176,7 +176,7 @@ fn main() {
 
         set_builder.add_buffer(data_buffer.clone()).unwrap();
 
-        let set = Arc::new(set_builder.build().unwrap());
+        let set = set_builder.build().unwrap();
 
         let mut builder = AutoCommandBufferBuilder::primary(
             queue.device().clone(),
@@ -214,32 +214,30 @@ fn main() {
     };
 
     // Loading the first shader, and creating a Pipeline for the shader
-    let mult_pipeline = Arc::new(
-        ComputePipeline::new(
-            device.clone(),
-            &shaders::MultShader::load(device.clone())
-                .unwrap()
-                .main_entry_point(),
-            &shaders::SpecializationConstants { enabled: 1 },
-            None,
-            |_| {},
-        )
-        .unwrap(),
-    );
+    let mult_pipeline = ComputePipeline::new(
+        device.clone(),
+        shaders::load_mult(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap(),
+        &shaders::SpecializationConstants { enabled: 1 },
+        None,
+        |_| {},
+    )
+    .unwrap();
 
     // Loading the second shader, and creating a Pipeline for the shader
-    let add_pipeline = Arc::new(
-        ComputePipeline::new(
-            device.clone(),
-            &shaders::AddShader::load(device.clone())
-                .unwrap()
-                .main_entry_point(),
-            &shaders::SpecializationConstants { enabled: 1 },
-            None,
-            |_| {},
-        )
-        .unwrap(),
-    );
+    let add_pipeline = ComputePipeline::new(
+        device.clone(),
+        shaders::load_add(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap(),
+        &shaders::SpecializationConstants { enabled: 1 },
+        None,
+        |_| {},
+    )
+    .unwrap();
 
     // Multiply each value by 2
     run_shader(

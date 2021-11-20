@@ -34,22 +34,14 @@
 //! # Generated code overview
 //!
 //! The macro generates the following items of interest:
-//! * The `Shader` struct. This contains a single field, `shader`, which is an
-//! `Arc<ShaderModule>`.
-//! * The `Shader::load` constructor. This method takes an `Arc<Device>`, calls
-//! [`ShaderModule::new`][ShaderModule::new] with the passed-in device and the
-//! shader data provided via the macro, and returns `Result<Shader, OomError>`.
+//! * The `load` constructor. This method takes an `Arc<Device>`, calls
+//! [`ShaderModule::new`][ShaderModule::new] with the passed-in device and the shader data provided
+//! via the macro, and returns `Result<Arc<ShaderModule>, ShaderCreationError>`.
 //! Before doing so, it loops through every capability instruction in the shader
 //! data, verifying that the passed-in `Device` has the appropriate features
-//! enabled. **This function currently panics if a feature required by the shader
-//! is not enabled on the device.** At some point in the future it will return
-//! an error instead.
-//! * The `Shader::module` method. This method simply returns a reference to the
-//! `Arc<ShaderModule>` contained within the `shader` field of the `Shader`
-//! struct.
-//! * Methods for each entry point of the shader module. These construct and
-//! return the various entry point structs that can be found in the
-//! [vulkano::pipeline::shader][pipeline::shader] module.
+//! enabled.
+//! * If the `shaders` option is used, then instead of one `load` constructor, there is one for each
+//! shader. They are named based on the provided names, `load_first`, `load_second` etc.
 //! * A Rust struct translated from each struct contained in the shader data.
 //! By default each structure has a `Clone` and a `Copy` implementations. This
 //! behavior could be customized through the `types_meta` macro option(see below
@@ -65,7 +57,7 @@
 //! ```
 //! # fn main() {}
 //! # use std::sync::Arc;
-//! # use vulkano::OomError;
+//! # use vulkano::shader::{ShaderCreationError, ShaderModule};
 //! # use vulkano::device::Device;
 //! #
 //! # mod vs {
@@ -85,13 +77,13 @@
 //! // `vertex_shader` module with shader derive
 //!
 //! pub struct Shaders {
-//!     pub vs: vs::Shader
+//!     pub vs: Arc<ShaderModule>,
 //! }
 //!
 //! impl Shaders {
-//!     pub fn load(device: Arc<Device>) -> Result<Self, OomError> {
+//!     pub fn load(device: Arc<Device>) -> Result<Self, ShaderCreationError> {
 //!         Ok(Self {
-//!             vs: vs::Shader::load(device)?,
+//!             vs: vs::load(device)?,
 //!         })
 //!     }
 //! }
@@ -136,11 +128,10 @@
 //! ## `shaders: { First: {src: "...", ty: "..."}, ... }`
 //!
 //! With these options the user can compile several shaders at a single macro invocation.
-//! Each entry key is a prefix that will be put in front of generated `Shader`
-//! struct(`FirstShader` in this case), and `SpecializationConstants`
-//! struct(`FirstSpecializationConstants` in this case). However all other Rust structs
-//! translated from the shader source will be shared between shaders. The macro checks that the
-//! source structs with the same names between different shaders have the same declaration
+//! Each entry key is a suffix that will be put after the name of the generated `load` function and
+//! `SpecializationConstants` struct(`FirstSpecializationConstants` in this case). However all other
+//! Rust structs translated from the shader source will be shared between shaders. The macro checks
+//! that the source structs with the same names between different shaders have the same declaration
 //! signature, and throws a compile-time error if they don't.
 //!
 //! Each entry values expecting `src`, `path`, `bytes`, and `ty` pairs same as above.
@@ -248,11 +239,7 @@ use syn::{
 };
 
 mod codegen;
-mod descriptor_sets;
 mod entry_point;
-mod parse;
-mod spec_consts;
-mod spirv_search;
 mod structs;
 
 enum SourceKind {
@@ -920,17 +907,7 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         #[allow(unused_imports)]
         use vulkano::device::Device;
         #[allow(unused_imports)]
-        use vulkano::descriptor_set::layout::DescriptorDesc;
-        #[allow(unused_imports)]
-        use vulkano::descriptor_set::layout::DescriptorDescTy;
-        #[allow(unused_imports)]
-        use vulkano::descriptor_set::layout::DescriptorDescImage;
-        #[allow(unused_imports)]
-        use vulkano::descriptor_set::layout::DescriptorSetDesc;
-        #[allow(unused_imports)]
-        use vulkano::descriptor_set::layout::DescriptorSetLayout;
-        #[allow(unused_imports)]
-        use vulkano::descriptor_set::DescriptorSet;
+        use vulkano::descriptor_set::layout::DescriptorType;
         #[allow(unused_imports)]
         use vulkano::format::Format;
         #[allow(unused_imports)]
@@ -940,11 +917,13 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         #[allow(unused_imports)]
         use vulkano::pipeline::layout::PipelineLayoutPcRange;
         #[allow(unused_imports)]
-        use vulkano::pipeline::shader::ShaderStages;
+        use vulkano::shader::DescriptorRequirements;
         #[allow(unused_imports)]
-        use vulkano::pipeline::shader::SpecializationConstants as SpecConstsTrait;
+        use vulkano::shader::ShaderStages;
         #[allow(unused_imports)]
-        use vulkano::pipeline::shader::SpecializationMapEntry;
+        use vulkano::shader::SpecializationConstants as SpecConstsTrait;
+        #[allow(unused_imports)]
+        use vulkano::shader::SpecializationMapEntry;
         #[allow(unused_imports)]
         use vulkano::Version;
 

@@ -18,6 +18,7 @@ use crate::command_buffer::CommandBufferUsage;
 use crate::command_buffer::SecondaryCommandBuffer;
 use crate::command_buffer::SubpassContents;
 use crate::descriptor_set::sys::DescriptorWrite;
+use crate::descriptor_set::sys::DescriptorWriteInfo;
 use crate::descriptor_set::sys::UnsafeDescriptorSet;
 use crate::device::Device;
 use crate::device::DeviceOwned;
@@ -37,7 +38,6 @@ use crate::pipeline::input_assembly::PrimitiveTopology;
 use crate::pipeline::layout::PipelineLayout;
 use crate::pipeline::rasterization::CullMode;
 use crate::pipeline::rasterization::FrontFace;
-use crate::pipeline::shader::ShaderStages;
 use crate::pipeline::viewport::Scissor;
 use crate::pipeline::viewport::Viewport;
 use crate::pipeline::ComputePipeline;
@@ -48,8 +48,9 @@ use crate::query::Query;
 use crate::query::QueryControlFlags;
 use crate::query::QueryResultElement;
 use crate::query::QueryResultFlags;
-use crate::render_pass::FramebufferAbstract;
+use crate::render_pass::Framebuffer;
 use crate::sampler::Filter;
+use crate::shader::ShaderStages;
 use crate::sync::AccessFlags;
 use crate::sync::Event;
 use crate::sync::PipelineStage;
@@ -102,14 +103,11 @@ impl UnsafeCommandBufferBuilder {
     ///
     /// > **Note**: Some checks are still made with `debug_assert!`. Do not expect to be able to
     /// > submit invalid commands.
-    pub unsafe fn new<F>(
+    pub unsafe fn new(
         pool_alloc: &UnsafeCommandPoolAlloc,
-        level: CommandBufferLevel<F>,
+        level: CommandBufferLevel,
         usage: CommandBufferUsage,
-    ) -> Result<UnsafeCommandBufferBuilder, OomError>
-    where
-        F: FramebufferAbstract,
-    {
+    ) -> Result<UnsafeCommandBufferBuilder, OomError> {
         let secondary = match level {
             CommandBufferLevel::Primary => false,
             CommandBufferLevel::Secondary(..) => true,
@@ -137,13 +135,13 @@ impl UnsafeCommandBufferBuilder {
                 render_pass: Some(ref render_pass),
                 ..
             }) => {
-                let rp = render_pass.subpass.render_pass().inner().internal_object();
+                let rp = render_pass.subpass.render_pass().internal_object();
                 let sp = render_pass.subpass.index();
                 let fb = match render_pass.framebuffer {
                     Some(ref fb) => {
                         // TODO: debug assert that the framebuffer is compatible with
                         //       the render pass?
-                        fb.inner().internal_object()
+                        fb.internal_object()
                     }
                     None => ash::vk::Framebuffer::null(),
                 };
@@ -239,21 +237,20 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdBeginRenderPass` on the builder.
     #[inline]
-    pub unsafe fn begin_render_pass<F, I>(
+    pub unsafe fn begin_render_pass<I>(
         &mut self,
-        framebuffer: &F,
+        framebuffer: &Framebuffer,
         subpass_contents: SubpassContents,
         clear_values: I,
     ) where
-        F: ?Sized + FramebufferAbstract,
         I: IntoIterator<Item = ClearValue>,
     {
         let fns = self.device().fns();
         let cmd = self.internal_object();
 
         // TODO: allow passing a different render pass
-        let raw_render_pass = framebuffer.render_pass().inner().internal_object();
-        let raw_framebuffer = framebuffer.inner().internal_object();
+        let raw_render_pass = framebuffer.render_pass().internal_object();
+        let raw_framebuffer = framebuffer.internal_object();
 
         let raw_clear_values: SmallVec<[_; 12]> = clear_values
             .into_iter()
@@ -1069,7 +1066,7 @@ impl UnsafeCommandBufferBuilder {
     pub unsafe fn copy_query_pool_results<D, T>(
         &mut self,
         queries: QueriesRange,
-        destination: D,
+        destination: &D,
         stride: DeviceSize,
         flags: QueryResultFlags,
     ) where
@@ -1372,21 +1369,50 @@ impl UnsafeCommandBufferBuilder {
             return;
         }
 
+        let (infos, mut writes): (SmallVec<[_; 8]>, SmallVec<[_; 8]>) = descriptor_writes
+            .into_iter()
+            .map(|write| {
+                let descriptor = pipeline_layout.descriptor_set_layouts()[set_num as usize]
+                    .descriptor(write.binding_num)
+                    .unwrap();
+
+                (
+                    write.to_vulkan_info(descriptor.ty),
+                    write.to_vulkan(ash::vk::DescriptorSet::null(), descriptor.ty),
+                )
+            })
+            .unzip();
+
+        // Set the info pointers separately.
+        for (info, write) in infos.iter().zip(writes.iter_mut()) {
+            match info {
+                DescriptorWriteInfo::Image(info) => {
+                    write.descriptor_count = info.len() as u32;
+                    write.p_image_info = info.as_ptr();
+                }
+                DescriptorWriteInfo::Buffer(info) => {
+                    write.descriptor_count = info.len() as u32;
+                    write.p_buffer_info = info.as_ptr();
+                }
+                DescriptorWriteInfo::BufferView(info) => {
+                    write.descriptor_count = info.len() as u32;
+                    write.p_texel_buffer_view = info.as_ptr();
+                }
+            }
+
+            debug_assert!(write.descriptor_count != 0);
+        }
+
         let fns = self.device().fns();
         let cmd = self.internal_object();
-
-        let raw_writes: SmallVec<[_; 8]> = descriptor_writes
-            .iter()
-            .map(|write| write.to_vulkan(ash::vk::DescriptorSet::null()))
-            .collect();
 
         fns.khr_push_descriptor.cmd_push_descriptor_set_khr(
             cmd,
             pipeline_bind_point.into(),
             pipeline_layout.internal_object(),
             set_num,
-            raw_writes.len() as u32,
-            raw_writes.as_ptr(),
+            writes.len() as u32,
+            writes.as_ptr(),
         );
     }
 

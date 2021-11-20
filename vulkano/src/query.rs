@@ -44,7 +44,7 @@ impl QueryPool {
         device: Arc<Device>,
         ty: QueryType,
         num_slots: u32,
-    ) -> Result<QueryPool, QueryPoolCreationError> {
+    ) -> Result<Arc<QueryPool>, QueryPoolCreationError> {
         let statistics = match ty {
             QueryType::PipelineStatistics(flags) => {
                 if !device.enabled_features().pipeline_statistics_query {
@@ -78,12 +78,12 @@ impl QueryPool {
             output.assume_init()
         };
 
-        Ok(QueryPool {
+        Ok(Arc::new(QueryPool {
             pool,
             device,
             num_slots,
             ty,
-        })
+        }))
     }
 
     /// Returns the [`QueryType`] that this query pool was created with.

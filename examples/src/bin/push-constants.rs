@@ -9,14 +9,13 @@
 
 // TODO: Give a paragraph about what push constants are and what problems they solve
 
-use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
 use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::instance::{Instance, InstanceExtensions};
-use vulkano::pipeline::{ComputePipeline, PipelineBindPoint};
+use vulkano::pipeline::{ComputePipeline, Pipeline, PipelineBindPoint};
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
 use vulkano::Version;
@@ -90,17 +89,15 @@ fn main() {
         }
     }
 
-    let shader = cs::Shader::load(device.clone()).unwrap();
-    let pipeline = Arc::new(
-        ComputePipeline::new(
-            device.clone(),
-            &shader.main_entry_point(),
-            &(),
-            None,
-            |_| {},
-        )
-        .unwrap(),
-    );
+    let shader = cs::load(device.clone()).unwrap();
+    let pipeline = ComputePipeline::new(
+        device.clone(),
+        shader.entry_point("main").unwrap(),
+        &(),
+        None,
+        |_| {},
+    )
+    .unwrap();
 
     let data_buffer = {
         let data_iter = (0..65536u32).map(|n| n);
@@ -113,7 +110,7 @@ fn main() {
 
     set_builder.add_buffer(data_buffer.clone()).unwrap();
 
-    let set = Arc::new(set_builder.build().unwrap());
+    let set = set_builder.build().unwrap();
 
     // The `vulkano_shaders::shaders!` macro generates a struct with the correct representation of the push constants struct specified in the shader.
     // Here we create an instance of the generated struct.

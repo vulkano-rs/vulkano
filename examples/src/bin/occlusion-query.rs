@@ -17,6 +17,7 @@ use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, Subp
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, DeviceOwned, Features};
 use vulkano::format::Format;
+use vulkano::image::ImageAccess;
 use vulkano::image::{view::ImageView, AttachmentImage, ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
 use vulkano::pipeline::depth_stencil::DepthStencilState;
@@ -24,7 +25,7 @@ use vulkano::pipeline::input_assembly::InputAssemblyState;
 use vulkano::pipeline::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::query::{QueryControlFlags, QueryPool, QueryResultFlags, QueryType};
-use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
+use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
 use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
 use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano::Version;
@@ -158,13 +159,12 @@ fn main() {
     .unwrap();
 
     // Create three buffer slices, one for each triangle.
-    let buffer_slice = vertex_buffer.into_buffer_slice();
-    let triangle1 = buffer_slice.clone().slice(0..3).unwrap();
-    let triangle2 = buffer_slice.clone().slice(3..6).unwrap();
-    let triangle3 = buffer_slice.clone().slice(6..9).unwrap();
+    let triangle1 = vertex_buffer.slice(0..3).unwrap();
+    let triangle2 = vertex_buffer.slice(3..6).unwrap();
+    let triangle3 = vertex_buffer.slice(6..9).unwrap();
 
     // Create a query pool for occlusion queries, with 3 slots.
-    let query_pool = Arc::new(QueryPool::new(device.clone(), QueryType::Occlusion, 3).unwrap());
+    let query_pool = QueryPool::new(device.clone(), QueryType::Occlusion, 3).unwrap();
 
     // Create a buffer on the CPU to hold the results of the three queries.
     // Query results are always represented as either `u32` or `u64`.
@@ -209,49 +209,45 @@ fn main() {
         }
     }
 
-    let vs = vs::Shader::load(device.clone()).unwrap();
-    let fs = fs::Shader::load(device.clone()).unwrap();
+    let vs = vs::load(device.clone()).unwrap();
+    let fs = fs::load(device.clone()).unwrap();
 
-    let render_pass = Arc::new(
-        vulkano::single_pass_renderpass!(
-            device.clone(),
-            attachments: {
-                color: {
-                    load: Clear,
-                    store: Store,
-                    format: swapchain.format(),
-                    samples: 1,
-                },
-                depth: {
-                    load: Clear,
-                    store: DontCare,
-                    format: Format::D16_UNORM,
-                    samples: 1,
-                }
+    let render_pass = vulkano::single_pass_renderpass!(
+        device.clone(),
+        attachments: {
+            color: {
+                load: Clear,
+                store: Store,
+                format: swapchain.format(),
+                samples: 1,
             },
-            pass: {
-                color: [color],
-                depth_stencil: {depth}
+            depth: {
+                load: Clear,
+                store: DontCare,
+                format: Format::D16_UNORM,
+                samples: 1,
             }
-        )
-        .unwrap(),
-    );
+        },
+        pass: {
+            color: [color],
+            depth_stencil: {depth}
+        }
+    )
+    .unwrap();
 
-    let pipeline = Arc::new(
-        GraphicsPipeline::start()
-            .vertex_input_single_buffer::<Vertex>()
-            .vertex_shader(vs.main_entry_point(), ())
-            .input_assembly_state(InputAssemblyState::new())
-            .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-            .fragment_shader(fs.main_entry_point(), ())
-            .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-            // Enable depth testing, which is needed for occlusion queries to make sense at all.
-            // If you disable depth testing, every pixel is considered to pass the depth test, so
-            // every query will return a nonzero result.
-            .depth_stencil_state(DepthStencilState::simple_depth_test())
-            .build(device.clone())
-            .unwrap(),
-    );
+    let pipeline = GraphicsPipeline::start()
+        .vertex_input_single_buffer::<Vertex>()
+        .vertex_shader(vs.entry_point("main").unwrap(), ())
+        .input_assembly_state(InputAssemblyState::new())
+        .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+        .fragment_shader(fs.entry_point("main").unwrap(), ())
+        .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+        // Enable depth testing, which is needed for occlusion queries to make sense at all.
+        // If you disable depth testing, every pixel is considered to pass the depth test, so
+        // every query will return a nonzero result.
+        .depth_stencil_state(DepthStencilState::simple_depth_test())
+        .build(device.clone())
+        .unwrap();
 
     let mut viewport = Viewport {
         origin: [0.0, 0.0],
@@ -440,8 +436,8 @@ fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage<Window>>],
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
-) -> Vec<Arc<dyn FramebufferAbstract>> {
-    let dimensions = images[0].dimensions();
+) -> Vec<Arc<Framebuffer>> {
+    let dimensions = images[0].dimensions().width_height();
     viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
 
     let depth_attachment = ImageView::new(
@@ -463,15 +459,13 @@ fn window_size_dependent_setup(
         .iter()
         .map(|image| {
             let view = ImageView::new(image.clone()).unwrap();
-            Arc::new(
-                Framebuffer::start(render_pass.clone())
-                    .add(view)
-                    .unwrap()
-                    .add(depth_attachment.clone())
-                    .unwrap()
-                    .build()
-                    .unwrap(),
-            ) as Arc<dyn FramebufferAbstract>
+            Framebuffer::start(render_pass.clone())
+                .add(view)
+                .unwrap()
+                .add(depth_attachment.clone())
+                .unwrap()
+                .build()
+                .unwrap()
         })
         .collect::<Vec<_>>()
 }

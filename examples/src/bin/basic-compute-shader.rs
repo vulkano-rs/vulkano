@@ -13,14 +13,13 @@
 // been more or more used for general-purpose operations as well. This is called "General-Purpose
 // GPU", or *GPGPU*. This is what this example demonstrates.
 
-use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
 use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::instance::{Instance, InstanceExtensions};
-use vulkano::pipeline::{ComputePipeline, PipelineBindPoint};
+use vulkano::pipeline::{ComputePipeline, Pipeline, PipelineBindPoint};
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
 use vulkano::Version;
@@ -92,7 +91,7 @@ fn main() {
     //
     // If you are familiar with graphics pipeline, the principle is the same except that compute
     // pipelines are much simpler to create.
-    let pipeline = Arc::new({
+    let pipeline = {
         mod cs {
             vulkano_shaders::shader! {
                 ty: "compute",
@@ -112,16 +111,16 @@ fn main() {
                 "
             }
         }
-        let shader = cs::Shader::load(device.clone()).unwrap();
+        let shader = cs::load(device.clone()).unwrap();
         ComputePipeline::new(
             device.clone(),
-            &shader.main_entry_point(),
+            shader.entry_point("main").unwrap(),
             &(),
             None,
             |_| {},
         )
         .unwrap()
-    });
+    };
 
     // We start by creating the buffer that will store the data.
     let data_buffer = {
@@ -153,7 +152,7 @@ fn main() {
 
     set_builder.add_buffer(data_buffer.clone()).unwrap();
 
-    let set = Arc::new(set_builder.build().unwrap());
+    let set = set_builder.build().unwrap();
 
     // In order to execute our operation, we have to build a command buffer.
     let mut builder = AutoCommandBufferBuilder::primary(

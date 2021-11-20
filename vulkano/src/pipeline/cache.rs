@@ -247,10 +247,9 @@ impl Drop for PipelineCache {
 #[cfg(test)]
 mod tests {
     use crate::pipeline::cache::PipelineCache;
-    use crate::pipeline::shader::ShaderModule;
-    use crate::pipeline::shader::SpecializationConstants;
+    use crate::shader::ShaderModule;
     use crate::pipeline::ComputePipeline;
-    use std::{ffi::CStr, sync::Arc};
+    use std::sync::Arc;
 
     #[test]
     fn merge_self_forbidden() {
@@ -283,22 +282,18 @@ mod tests {
                 0, 0, 0, 54, 0, 5, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 248, 0, 2, 0,
                 5, 0, 0, 0, 253, 0, 1, 0, 56, 0, 1, 0,
             ];
-            ShaderModule::new(device.clone(), &MODULE).unwrap()
-        };
-
-        let shader = unsafe {
-            static NAME: [u8; 5] = [109, 97, 105, 110, 0]; // "main"
-            module.compute_entry_point(
-                CStr::from_ptr(NAME.as_ptr() as *const _),
-                [],
-                None,
-                <()>::descriptors(),
-            )
+            ShaderModule::from_bytes(device.clone(), &MODULE).unwrap()
         };
 
         let pipeline = Arc::new(
-            ComputePipeline::new(device.clone(), &shader, &(), Some(cache.clone()), |_| {})
-                .unwrap(),
+            ComputePipeline::new(
+                device.clone(),
+                module.entry_point("main").unwrap(),
+                &(),
+                Some(cache.clone()),
+                |_| {},
+            )
+            .unwrap(),
         );
 
         let cache_data = cache.get_data().unwrap();
@@ -329,17 +324,7 @@ mod tests {
                 0, 0, 0, 54, 0, 5, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 248, 0, 2, 0,
                 5, 0, 0, 0, 253, 0, 1, 0, 56, 0, 1, 0,
             ];
-            ShaderModule::new(device.clone(), &MODULE).unwrap()
-        };
-
-        let first_shader = unsafe {
-            static NAME: [u8; 5] = [109, 97, 105, 110, 0]; // "main"
-            first_module.compute_entry_point(
-                CStr::from_ptr(NAME.as_ptr() as *const _),
-                [],
-                None,
-                <()>::descriptors(),
-            )
+            ShaderModule::from_bytes(device.clone(), &MODULE).unwrap()
         };
 
         let second_module = unsafe {
@@ -370,23 +355,13 @@ mod tests {
                 0, 15, 0, 0, 0, 14, 0, 0, 0, 62, 0, 3, 0, 8, 0, 0, 0, 15, 0, 0, 0, 253, 0, 1, 0,
                 56, 0, 1, 0,
             ];
-            ShaderModule::new(device.clone(), &SECOND_MODULE).unwrap()
-        };
-
-        let second_shader = unsafe {
-            static NAME: [u8; 5] = [109, 97, 105, 110, 0]; // "main"
-            second_module.compute_entry_point(
-                CStr::from_ptr(NAME.as_ptr() as *const _),
-                [],
-                None,
-                <()>::descriptors(),
-            )
+            ShaderModule::from_bytes(device.clone(), &SECOND_MODULE).unwrap()
         };
 
         let pipeline = Arc::new(
             ComputePipeline::new(
                 device.clone(),
-                &first_shader,
+                first_module.entry_point("main").unwrap(),
                 &(),
                 Some(cache.clone()),
                 |_| {},
@@ -399,7 +374,7 @@ mod tests {
         let second_pipeline = Arc::new(
             ComputePipeline::new(
                 device.clone(),
-                &second_shader,
+                second_module.entry_point("main").unwrap(),
                 &(),
                 Some(cache.clone()),
                 |_| {},
@@ -438,29 +413,31 @@ mod tests {
                 0, 0, 0, 54, 0, 5, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 248, 0, 2, 0,
                 5, 0, 0, 0, 253, 0, 1, 0, 56, 0, 1, 0,
             ];
-            ShaderModule::new(device.clone(), &MODULE).unwrap()
-        };
-
-        let shader = unsafe {
-            static NAME: [u8; 5] = [109, 97, 105, 110, 0]; // "main"
-            module.compute_entry_point(
-                CStr::from_ptr(NAME.as_ptr() as *const _),
-                [],
-                None,
-                <()>::descriptors(),
-            )
+            ShaderModule::from_bytes(device.clone(), &MODULE).unwrap()
         };
 
         let pipeline = Arc::new(
-            ComputePipeline::new(device.clone(), &shader, &(), Some(cache.clone()), |_| {})
-                .unwrap(),
+            ComputePipeline::new(
+                device.clone(),
+                module.entry_point("main").unwrap(),
+                &(),
+                Some(cache.clone()),
+                |_| {},
+            )
+            .unwrap(),
         );
 
         let cache_data = cache.get_data().unwrap();
 
         let second_pipeline = Arc::new(
-            ComputePipeline::new(device.clone(), &shader, &(), Some(cache.clone()), |_| {})
-                .unwrap(),
+            ComputePipeline::new(
+                device.clone(),
+                module.entry_point("main").unwrap(),
+                &(),
+                Some(cache.clone()),
+                |_| {},
+            )
+            .unwrap(),
         );
 
         let second_data = cache.get_data().unwrap();

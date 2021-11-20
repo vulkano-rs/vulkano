@@ -17,7 +17,6 @@
 use std::fs::File;
 use std::io::BufWriter;
 use std::path::Path;
-use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
 use vulkano::descriptor_set::PersistentDescriptorSet;
@@ -26,7 +25,7 @@ use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::format::Format;
 use vulkano::image::{view::ImageView, ImageDimensions, StorageImage};
 use vulkano::instance::{Instance, InstanceExtensions};
-use vulkano::pipeline::{ComputePipeline, PipelineBindPoint};
+use vulkano::pipeline::{ComputePipeline, Pipeline, PipelineBindPoint};
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
 use vulkano::Version;
@@ -138,7 +137,7 @@ fn main() {
         }
     }
 
-    let shader = cs::Shader::load(device.clone()).unwrap();
+    let shader = cs::load(device.clone()).unwrap();
 
     // Fetching subgroup size from the Physical Device metadata to compute appropriate
     // Compute Shader local size properties.
@@ -174,16 +173,14 @@ fn main() {
         constant_1: local_size_x, // specifying local size constants
         constant_2: local_size_y,
     };
-    let pipeline = Arc::new(
-        ComputePipeline::new(
-            device.clone(),
-            &shader.main_entry_point(),
-            &spec_consts,
-            None,
-            |_| {},
-        )
-        .unwrap(),
-    );
+    let pipeline = ComputePipeline::new(
+        device.clone(),
+        shader.entry_point("main").unwrap(),
+        &spec_consts,
+        None,
+        |_| {},
+    )
+    .unwrap();
 
     let image = StorageImage::new(
         device.clone(),
@@ -203,7 +200,7 @@ fn main() {
 
     set_builder.add_image(view.clone()).unwrap();
 
-    let set = Arc::new(set_builder.build().unwrap());
+    let set = set_builder.build().unwrap();
 
     let buf = CpuAccessibleBuffer::from_iter(
         device.clone(),

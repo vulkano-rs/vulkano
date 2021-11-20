@@ -17,7 +17,7 @@ use vulkano::device::Queue;
 use vulkano::image::ImageViewAbstract;
 use vulkano::pipeline::input_assembly::InputAssemblyState;
 use vulkano::pipeline::viewport::{Viewport, ViewportState};
-use vulkano::pipeline::{GraphicsPipeline, PipelineBindPoint};
+use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::render_pass::Subpass;
 use vulkano::sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode};
 
@@ -80,21 +80,17 @@ impl PixelsDrawPipeline {
         .unwrap();
 
         let pipeline = {
-            let vs = vs::Shader::load(gfx_queue.device().clone())
-                .expect("failed to create shader module");
-            let fs = fs::Shader::load(gfx_queue.device().clone())
-                .expect("failed to create shader module");
-            Arc::new(
-                GraphicsPipeline::start()
-                    .vertex_input_single_buffer::<TexturedVertex>()
-                    .vertex_shader(vs.main_entry_point(), ())
-                    .input_assembly_state(InputAssemblyState::new())
-                    .fragment_shader(fs.main_entry_point(), ())
-                    .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-                    .render_pass(subpass)
-                    .build(gfx_queue.device().clone())
-                    .unwrap(),
-            )
+            let vs = vs::load(gfx_queue.device().clone()).expect("failed to create shader module");
+            let fs = fs::load(gfx_queue.device().clone()).expect("failed to create shader module");
+            GraphicsPipeline::start()
+                .vertex_input_single_buffer::<TexturedVertex>()
+                .vertex_shader(vs.entry_point("main").unwrap(), ())
+                .input_assembly_state(InputAssemblyState::new())
+                .fragment_shader(fs.entry_point("main").unwrap(), ())
+                .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+                .render_pass(subpass)
+                .build(gfx_queue.device().clone())
+                .unwrap()
         };
         PixelsDrawPipeline {
             gfx_queue,
@@ -104,7 +100,10 @@ impl PixelsDrawPipeline {
         }
     }
 
-    fn create_descriptor_set(&self, image: Arc<dyn ImageViewAbstract>) -> PersistentDescriptorSet {
+    fn create_descriptor_set(
+        &self,
+        image: Arc<dyn ImageViewAbstract>,
+    ) -> Arc<PersistentDescriptorSet> {
         let layout = self
             .pipeline
             .layout()

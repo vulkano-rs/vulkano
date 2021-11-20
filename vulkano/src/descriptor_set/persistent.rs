@@ -21,24 +21,19 @@
 //! # Example
 //! TODO:
 
-use super::builder::DescriptorSetBuilder;
-use super::resources::DescriptorSetResources;
-use super::DescriptorSetError;
 use crate::buffer::BufferView;
+use crate::descriptor_set::builder::DescriptorSetBuilder;
 use crate::descriptor_set::pool::standard::StdDescriptorPoolAlloc;
-use crate::descriptor_set::pool::DescriptorPool;
-use crate::descriptor_set::pool::DescriptorPoolAlloc;
-use crate::descriptor_set::BufferAccess;
-use crate::descriptor_set::DescriptorSet;
-use crate::descriptor_set::DescriptorSetLayout;
-use crate::descriptor_set::UnsafeDescriptorSet;
-use crate::device::Device;
-use crate::device::DeviceOwned;
+use crate::descriptor_set::pool::{DescriptorPool, DescriptorPoolAlloc};
+use crate::descriptor_set::resources::DescriptorSetResources;
+use crate::descriptor_set::{
+    BufferAccess, DescriptorSet, DescriptorSetError, DescriptorSetLayout, UnsafeDescriptorSet,
+};
+use crate::device::{Device, DeviceOwned};
 use crate::image::ImageViewAbstract;
 use crate::sampler::Sampler;
 use crate::VulkanObject;
-use std::hash::Hash;
-use std::hash::Hasher;
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 /// A simple, immutable descriptor set that is expected to be long-lived.
@@ -77,27 +72,15 @@ where
     }
 
     #[inline]
-    fn num_buffers(&self) -> usize {
-        self.resources.num_buffers()
-    }
-
-    #[inline]
-    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, u32)> {
-        self.resources.buffer(index)
-    }
-
-    #[inline]
-    fn num_images(&self) -> usize {
-        self.resources.num_images()
-    }
-
-    #[inline]
-    fn image(&self, index: usize) -> Option<(&dyn ImageViewAbstract, u32)> {
-        self.resources.image(index)
+    fn resources(&self) -> &DescriptorSetResources {
+        &self.resources
     }
 }
 
-unsafe impl<P> DeviceOwned for PersistentDescriptorSet<P> {
+unsafe impl<P> DeviceOwned for PersistentDescriptorSet<P>
+where
+    P: DescriptorPoolAlloc,
+{
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.layout.device()
@@ -170,7 +153,7 @@ impl PersistentDescriptorSetBuilder {
     #[inline]
     pub fn add_buffer(
         &mut self,
-        buffer: Arc<dyn BufferAccess + 'static>,
+        buffer: Arc<dyn BufferAccess>,
     ) -> Result<&mut Self, DescriptorSetError> {
         self.inner.add_buffer(buffer)?;
         Ok(self)
@@ -197,7 +180,7 @@ impl PersistentDescriptorSetBuilder {
     #[inline]
     pub fn add_image(
         &mut self,
-        image_view: Arc<dyn ImageViewAbstract + 'static>,
+        image_view: Arc<dyn ImageViewAbstract>,
     ) -> Result<&mut Self, DescriptorSetError> {
         self.inner.add_image(image_view)?;
         Ok(self)
@@ -212,7 +195,7 @@ impl PersistentDescriptorSetBuilder {
     #[inline]
     pub fn add_sampled_image(
         &mut self,
-        image_view: Arc<dyn ImageViewAbstract + 'static>,
+        image_view: Arc<dyn ImageViewAbstract>,
         sampler: Arc<Sampler>,
     ) -> Result<&mut Self, DescriptorSetError> {
         self.inner.add_sampled_image(image_view, sampler)?;
@@ -232,7 +215,7 @@ impl PersistentDescriptorSetBuilder {
     #[inline]
     pub fn build(
         self,
-    ) -> Result<PersistentDescriptorSet<StdDescriptorPoolAlloc>, DescriptorSetError> {
+    ) -> Result<Arc<PersistentDescriptorSet<StdDescriptorPoolAlloc>>, DescriptorSetError> {
         let mut pool = Device::standard_descriptor_pool(self.inner.device());
         self.build_with_pool(&mut pool)
     }
@@ -241,21 +224,23 @@ impl PersistentDescriptorSetBuilder {
     pub fn build_with_pool<P>(
         self,
         pool: &mut P,
-    ) -> Result<PersistentDescriptorSet<P::Alloc>, DescriptorSetError>
+    ) -> Result<Arc<PersistentDescriptorSet<P::Alloc>>, DescriptorSetError>
     where
         P: ?Sized + DescriptorPool,
     {
-        let (layout, writes, resources) = self.inner.build()?.into();
+        let writes = self.inner.build()?;
         let set = unsafe {
-            let mut set = pool.alloc(&layout)?;
-            set.inner_mut().write(pool.device(), &writes);
+            let mut set = pool.alloc(writes.layout())?;
+            set.inner_mut().write(writes.layout(), writes.writes());
             set
         };
+        let mut resources = DescriptorSetResources::new(writes.layout());
+        resources.update(writes.writes());
 
-        Ok(PersistentDescriptorSet {
+        Ok(Arc::new(PersistentDescriptorSet {
             inner: set,
             resources,
-            layout,
-        })
+            layout: writes.layout().clone(),
+        }))
     }
 }

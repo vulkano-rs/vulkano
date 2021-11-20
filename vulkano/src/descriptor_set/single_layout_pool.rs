@@ -7,26 +7,21 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::builder::DescriptorSetBuilder;
 use super::resources::DescriptorSetResources;
-use super::DescriptorSetError;
 use crate::buffer::BufferView;
+use crate::descriptor_set::builder::DescriptorSetBuilder;
 use crate::descriptor_set::layout::DescriptorSetLayout;
-use crate::descriptor_set::pool::DescriptorPoolAlloc;
-use crate::descriptor_set::pool::DescriptorPoolAllocError;
-use crate::descriptor_set::pool::UnsafeDescriptorPool;
-use crate::descriptor_set::BufferAccess;
-use crate::descriptor_set::DescriptorSet;
-use crate::descriptor_set::UnsafeDescriptorSet;
-use crate::device::Device;
-use crate::device::DeviceOwned;
+use crate::descriptor_set::pool::{
+    DescriptorPoolAlloc, DescriptorPoolAllocError, UnsafeDescriptorPool,
+};
+use crate::descriptor_set::{BufferAccess, DescriptorSet, DescriptorSetError, UnsafeDescriptorSet};
+use crate::device::{Device, DeviceOwned};
 use crate::image::ImageViewAbstract;
 use crate::sampler::Sampler;
 use crate::OomError;
 use crate::VulkanObject;
 use crossbeam_queue::SegQueue;
-use std::hash::Hash;
-use std::hash::Hasher;
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 /// `SingleLayoutDescSetPool` is a convenience wrapper provided by Vulkano not to be confused with
@@ -191,23 +186,8 @@ unsafe impl DescriptorSet for SingleLayoutDescSet {
     }
 
     #[inline]
-    fn num_buffers(&self) -> usize {
-        self.resources.num_buffers()
-    }
-
-    #[inline]
-    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, u32)> {
-        self.resources.buffer(index)
-    }
-
-    #[inline]
-    fn num_images(&self) -> usize {
-        self.resources.num_images()
-    }
-
-    #[inline]
-    fn image(&self, index: usize) -> Option<(&dyn ImageViewAbstract, u32)> {
-        self.resources.image(index)
+    fn resources(&self) -> &DescriptorSetResources {
+        &self.resources
     }
 }
 
@@ -279,7 +259,7 @@ impl<'a> SingleLayoutDescSetBuilder<'a> {
     #[inline]
     pub fn add_buffer(
         &mut self,
-        buffer: Arc<dyn BufferAccess + 'static>,
+        buffer: Arc<dyn BufferAccess>,
     ) -> Result<&mut Self, DescriptorSetError> {
         self.inner.add_buffer(buffer)?;
         Ok(self)
@@ -338,17 +318,19 @@ impl<'a> SingleLayoutDescSetBuilder<'a> {
     }
 
     /// Builds a `SingleLayoutDescSet` from the builder.
-    pub fn build(self) -> Result<SingleLayoutDescSet, DescriptorSetError> {
-        let (layout, writes, resources) = self.inner.build()?.into();
+    pub fn build(self) -> Result<Arc<SingleLayoutDescSet>, DescriptorSetError> {
+        let writes = self.inner.build()?;
         let mut alloc = self.pool.next_alloc()?;
         unsafe {
-            alloc.inner_mut().write(&self.pool.device, &writes);
+            alloc.inner_mut().write(writes.layout(), writes.writes());
         }
+        let mut resources = DescriptorSetResources::new(writes.layout());
+        resources.update(writes.writes());
 
-        Ok(SingleLayoutDescSet {
+        Ok(Arc::new(SingleLayoutDescSet {
             inner: alloc,
             resources,
-            layout,
-        })
+            layout: writes.layout().clone(),
+        }))
     }
 }

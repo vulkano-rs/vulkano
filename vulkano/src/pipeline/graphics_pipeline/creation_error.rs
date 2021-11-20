@@ -9,8 +9,8 @@
 
 use crate::pipeline::layout::PipelineLayoutCreationError;
 use crate::pipeline::layout::PipelineLayoutSupersetError;
-use crate::pipeline::shader::ShaderInterfaceMismatchError;
 use crate::pipeline::vertex::IncompatibleVertexDefinitionError;
+use crate::shader::ShaderInterfaceMismatchError;
 use crate::Error;
 use crate::OomError;
 use std::error;

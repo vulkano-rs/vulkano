@@ -12,21 +12,23 @@ use std::io::Cursor;
 use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
-use vulkano::descriptor_set::layout::{DescriptorSetLayout, DescriptorSetLayoutError};
+use vulkano::descriptor_set::layout::{
+    DescriptorSetDesc, DescriptorSetLayout, DescriptorSetLayoutError,
+};
 use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::format::Format;
+use vulkano::image::ImageAccess;
 use vulkano::image::{
     view::ImageView, ImageDimensions, ImageUsage, ImmutableImage, MipmapsCount, SwapchainImage,
 };
 use vulkano::instance::Instance;
 use vulkano::pipeline::color_blend::ColorBlendState;
 use vulkano::pipeline::layout::PipelineLayout;
-use vulkano::pipeline::shader::EntryPointAbstract;
 use vulkano::pipeline::viewport::{Viewport, ViewportState};
-use vulkano::pipeline::{GraphicsPipeline, PipelineBindPoint};
-use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
+use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
+use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
 use vulkano::sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode};
 use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
 use vulkano::sync::{self, FlushError, GpuFuture};
@@ -188,26 +190,24 @@ fn main() {
     )
     .unwrap();
 
-    let vs = vs::Shader::load(device.clone()).unwrap();
-    let fs = fs::Shader::load(device.clone()).unwrap();
+    let vs = vs::load(device.clone()).unwrap();
+    let fs = fs::load(device.clone()).unwrap();
 
-    let render_pass = Arc::new(
-        vulkano::single_pass_renderpass!(device.clone(),
-            attachments: {
-                color: {
-                    load: Clear,
-                    store: Store,
-                    format: swapchain.format(),
-                    samples: 1,
-                }
-            },
-            pass: {
-                color: [color],
-                depth_stencil: {}
+    let render_pass = vulkano::single_pass_renderpass!(device.clone(),
+        attachments: {
+            color: {
+                load: Clear,
+                store: Store,
+                format: swapchain.format(),
+                samples: 1,
             }
-        )
-        .unwrap(),
-    );
+        },
+        pass: {
+            color: [color],
+            depth_stencil: {}
+        }
+    )
+    .unwrap();
 
     let mascot_texture = {
         let png_bytes = include_bytes!("rust_mascot.png").to_vec();
@@ -281,51 +281,40 @@ fn main() {
     .unwrap();
 
     let pipeline_layout = {
-        let mut descriptor_set_descs: Vec<_> = (&fs.main_entry_point() as &dyn EntryPointAbstract)
-            .descriptor_set_layout_descs()
-            .iter()
-            .cloned()
-            .collect();
+        let mut descriptor_set_descs: Vec<_> = DescriptorSetDesc::from_requirements(
+            fs.entry_point("main").unwrap().descriptor_requirements(),
+        );
 
         // Set 0, Binding 0
         descriptor_set_descs[0].set_variable_descriptor_count(0, 2);
 
         let descriptor_set_layouts = descriptor_set_descs
             .into_iter()
-            .map(|desc| {
-                Ok(Arc::new(DescriptorSetLayout::new(
-                    device.clone(),
-                    desc.clone(),
-                )?))
-            })
+            .map(|desc| Ok(DescriptorSetLayout::new(device.clone(), desc.clone())?))
             .collect::<Result<Vec<_>, DescriptorSetLayoutError>>()
             .unwrap();
 
-        Arc::new(
-            PipelineLayout::new(
-                device.clone(),
-                descriptor_set_layouts,
-                (&fs.main_entry_point() as &dyn EntryPointAbstract)
-                    .push_constant_range()
-                    .iter()
-                    .cloned(),
-            )
-            .unwrap(),
+        PipelineLayout::new(
+            device.clone(),
+            descriptor_set_layouts,
+            fs.entry_point("main")
+                .unwrap()
+                .push_constant_requirements()
+                .cloned(),
         )
+        .unwrap()
     };
 
     let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
-    let pipeline = Arc::new(
-        GraphicsPipeline::start()
-            .vertex_input_single_buffer::<Vertex>()
-            .vertex_shader(vs.main_entry_point(), ())
-            .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-            .fragment_shader(fs.main_entry_point(), ())
-            .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()).blend_alpha())
-            .render_pass(subpass)
-            .with_pipeline_layout(device.clone(), pipeline_layout)
-            .unwrap(),
-    );
+    let pipeline = GraphicsPipeline::start()
+        .vertex_input_single_buffer::<Vertex>()
+        .vertex_shader(vs.entry_point("main").unwrap(), ())
+        .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+        .fragment_shader(fs.entry_point("main").unwrap(), ())
+        .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()).blend_alpha())
+        .render_pass(subpass)
+        .with_pipeline_layout(device.clone(), pipeline_layout)
+        .unwrap();
 
     let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
     let mut set_builder = PersistentDescriptorSet::start(layout.clone());
@@ -340,7 +329,7 @@ fn main() {
         .leave_array()
         .unwrap();
 
-    let set = Arc::new(set_builder.build().unwrap());
+    let set = set_builder.build().unwrap();
 
     let mut viewport = Viewport {
         origin: [0.0, 0.0],
@@ -459,21 +448,19 @@ fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage<Window>>],
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
-) -> Vec<Arc<dyn FramebufferAbstract>> {
-    let dimensions = images[0].dimensions();
+) -> Vec<Arc<Framebuffer>> {
+    let dimensions = images[0].dimensions().width_height();
     viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
 
     images
         .iter()
         .map(|image| {
             let view = ImageView::new(image.clone()).unwrap();
-            Arc::new(
-                Framebuffer::start(render_pass.clone())
-                    .add(view)
-                    .unwrap()
-                    .build()
-                    .unwrap(),
-            ) as Arc<dyn FramebufferAbstract>
+            Framebuffer::start(render_pass.clone())
+                .add(view)
+                .unwrap()
+                .build()
+                .unwrap()
         })
         .collect::<Vec<_>>()
 }

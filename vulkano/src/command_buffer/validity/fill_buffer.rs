@@ -86,7 +86,7 @@ mod tests {
         )
         .unwrap();
 
-        match check_fill_buffer(&device, &buffer) {
+        match check_fill_buffer(&device, buffer.as_ref()) {
             Err(CheckFillBufferError::BufferMissingUsage) => (),
             _ => panic!(),
         }
@@ -99,7 +99,7 @@ mod tests {
         let buffer = CpuAccessibleBuffer::from_data(dev1, BufferUsage::all(), false, 0u32).unwrap();
 
         assert_should_panic!({
-            let _ = check_fill_buffer(&dev2, &buffer);
+            let _ = check_fill_buffer(&dev2, buffer.as_ref());
         });
     }
 }
