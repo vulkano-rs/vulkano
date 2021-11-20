@@ -41,12 +41,17 @@ struct ExtensionsMember {
     name: Ident,
     doc: String,
     raw: String,
-    requires_core: (String, String),
-    requires_device_extensions: Vec<Ident>,
-    requires_instance_extensions: Vec<Ident>,
     required_if_supported: bool,
+    requires: Vec<OneOfDependencies>,
     conflicts_device_extensions: Vec<Ident>,
     status: Option<ExtensionStatus>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+struct OneOfDependencies {
+    api_version: Option<(String, String)>,
+    device_extensions: Vec<Ident>,
+    instance_extensions: Vec<Ident>,
 }
 
 #[derive(Clone, Debug)]
@@ -83,34 +88,40 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
 
     let check_requirements_items = members.iter().map(|ExtensionsMember {
         name,
-        requires_core,
-        requires_device_extensions,
-        requires_instance_extensions,
+        requires,
         conflicts_device_extensions,
         required_if_supported,
         ..
     }| {
         let name_string = name.to_string();
-        let requires_core = format_ident!("V{}_{}", requires_core.0, requires_core.1);
-        let requires_device_extensions_items = requires_device_extensions.iter().map(|extension| {
-            let string = extension.to_string();
+
+        let requires_items = requires.iter().map(|require| {
+            let require_items = require.api_version.iter().map(|version| {
+                let version = format_ident!("V{}_{}", version.0, version.1);
+                quote! { api_version >= Version::#version }
+            }).chain(require.instance_extensions.iter().map(|ext| {
+                quote! { instance_extensions.#ext }
+            })).chain(require.device_extensions.iter().map(|ext| {
+                quote! { device_extensions.#ext }
+            }));
+
+            let api_version_items = require.api_version.as_ref().map(|version| {
+                let version = format_ident!("V{}_{}", version.0, version.1);
+                quote! { Some(Version::#version) }
+            }).unwrap_or_else(|| quote!{ None });
+            let device_extensions_items = require.device_extensions.iter().map(|ext| ext.to_string());
+            let instance_extensions_items = require.instance_extensions.iter().map(|ext| ext.to_string());
+
             quote! {
-                if !self.#extension {
+                if !(#(#require_items)||*) {
                     return Err(ExtensionRestrictionError {
                         extension: #name_string,
-                        restriction: ExtensionRestriction::RequiresDeviceExtension(#string),
-                    });
-                }
-            }
-        });
-        let requires_instance_extensions_items = requires_instance_extensions.iter().map(|extension| {
-            let string = extension.to_string();
-            quote! {
-                if !instance_extensions.#extension {
-                    return Err(ExtensionRestrictionError {
-                        extension: #name_string,
-                        restriction: ExtensionRestriction::RequiresInstanceExtension(#string),
-                    });
+                        restriction: ExtensionRestriction::Requires(OneOfRequirements {
+                            api_version: #api_version_items,
+                            device_extensions: &[#(#device_extensions_items),*],
+                            instance_extensions: &[#(#instance_extensions_items),*],
+                        }),
+                    })
                 }
             }
         });
@@ -147,15 +158,7 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                     });
                 }
 
-                if api_version < Version::#requires_core {
-                    return Err(ExtensionRestrictionError {
-                        extension: #name_string,
-                        restriction: ExtensionRestriction::RequiresCore(Version::#requires_core),
-                    });
-                }
-
-                #(#requires_device_extensions_items)*
-                #(#requires_instance_extensions_items)*
+                #(#requires_items)*
                 #(#conflicts_device_extensions_items)*
             } else {
                 #required_if_supported
@@ -186,6 +189,7 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                 api_version: Version,
                 instance_extensions: &InstanceExtensions,
             ) -> Result<(), ExtensionRestrictionError> {
+                let device_extensions = self;
                 #(#check_requirements_items)*
                 Ok(())
             }
@@ -203,41 +207,69 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
 fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
     let common = extensions_common_output(format_ident!("InstanceExtensions"), members);
 
-    let check_requirements_items = members.iter().map(|ExtensionsMember { name, requires_core, requires_instance_extensions, .. }| {
-        let name_string = name.to_string();
-        let requires_core = format_ident!("V{}_{}", requires_core.0, requires_core.1);
-        let requires_instance_extensions_items = requires_instance_extensions.iter().map(|extension| {
-            let string = extension.to_string();
-            quote! {
-                if !self.#extension {
-                    return Err(ExtensionRestrictionError {
-                        extension: #name_string,
-                        restriction: ExtensionRestriction::RequiresInstanceExtension(#string),
-                    });
-                }
-            }
-        });
+    let check_requirements_items =
+        members
+            .iter()
+            .map(|ExtensionsMember { name, requires, .. }| {
+                let name_string = name.to_string();
 
-        quote! {
-            if self.#name {
-                if !supported.#name {
-                    return Err(ExtensionRestrictionError {
-                        extension: #name_string,
-                        restriction: ExtensionRestriction::NotSupported,
-                    });
-                }
+                let requires_items = requires.iter().map(|require| {
+                    let require_items = require
+                        .api_version
+                        .iter()
+                        .map(|version| {
+                            let version = format_ident!("V{}_{}", version.0, version.1);
+                            quote! { api_version >= Version::#version }
+                        })
+                        .chain(require.instance_extensions.iter().map(|ext| {
+                            quote! { instance_extensions.#ext }
+                        }))
+                        .chain(require.device_extensions.iter().map(|ext| {
+                            quote! { device_extensions.#ext }
+                        }));
 
-                if api_version < Version::#requires_core {
-                    return Err(ExtensionRestrictionError {
-                        extension: #name_string,
-                        restriction: ExtensionRestriction::RequiresCore(Version::#requires_core),
-                    });
-                } else {
-                    #(#requires_instance_extensions_items)*
+                    let api_version_items = require
+                        .api_version
+                        .as_ref()
+                        .map(|version| {
+                            let version = format_ident!("V{}_{}", version.0, version.1);
+                            quote! { Some(Version::#version) }
+                        })
+                        .unwrap_or_else(|| quote! { None });
+                    let device_extensions_items =
+                        require.device_extensions.iter().map(|ext| ext.to_string());
+                    let instance_extensions_items = require
+                        .instance_extensions
+                        .iter()
+                        .map(|ext| ext.to_string());
+
+                    quote! {
+                        if !(#(#require_items)||*) {
+                            return Err(ExtensionRestrictionError {
+                                extension: #name_string,
+                                restriction: ExtensionRestriction::Requires(OneOfRequirements {
+                                    api_version: #api_version_items,
+                                    device_extensions: &[#(#device_extensions_items),*],
+                                    instance_extensions: &[#(#instance_extensions_items),*],
+                                }),
+                            })
+                        }
+                    }
+                });
+
+                quote! {
+                    if self.#name {
+                        if !supported.#name {
+                            return Err(ExtensionRestrictionError {
+                                extension: #name_string,
+                                restriction: ExtensionRestriction::NotSupported,
+                            });
+                        }
+
+                        #(#requires_items)*
+                    }
                 }
-            }
-        }
-    });
+            });
 
     quote! {
         #common
@@ -249,6 +281,7 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                 supported: &InstanceExtensions,
                 api_version: Version,
             ) -> Result<(), ExtensionRestrictionError> {
+                let instance_extensions = self;
                 #(#check_requirements_items)*
                 Ok(())
             }
@@ -420,42 +453,60 @@ fn extensions_members(ty: &str, extensions: &IndexMap<&str, &Extension>) -> Vec<
         .map(|ext| {
             let raw = ext.name.to_owned();
             let name = raw.strip_prefix("VK_").unwrap().to_snake_case();
-            let (major, minor) = ext
-                .requires_core
-                .as_ref()
-                .map(|s| s.as_str())
-                .unwrap_or("1.0")
-                .split_once('.')
-                .unwrap();
-            let requires_extensions: Vec<_> = ext
-                .requires
-                .as_ref()
-                .map(|s| s.split(',').collect())
-                .unwrap_or_default();
+
+            let mut requires = Vec::new();
+
+            if let Some(core) = ext.requires_core.as_ref() {
+                let (major, minor) = core.split_once('.').unwrap();
+                requires.push(OneOfDependencies {
+                    api_version: Some((major.to_owned(), minor.to_owned())),
+                    ..Default::default()
+                });
+            }
+
+            if let Some(req) = ext.requires.as_ref() {
+                requires.extend(req.split(',').map(|mut vk_name| {
+                    let mut dependencies = OneOfDependencies::default();
+
+                    loop {
+                        if let Some(version) = vk_name.strip_prefix("VK_VERSION_") {
+                            let (major, minor) = version.split_once('_').unwrap();
+                            dependencies.api_version = Some((major.to_owned(), minor.to_owned()));
+                            break;
+                        } else {
+                            let ident = format_ident!(
+                                "{}",
+                                vk_name.strip_prefix("VK_").unwrap().to_snake_case()
+                            );
+                            let extension = extensions[vk_name];
+
+                            match extension.ext_type.as_ref().map(|s| s.as_str()) {
+                                Some("device") => &mut dependencies.device_extensions,
+                                Some("instance") => &mut dependencies.instance_extensions,
+                                _ => unreachable!(),
+                            }
+                            .insert(0, ident);
+
+                            if let Some(promotedto) = extension.promotedto.as_ref() {
+                                vk_name = promotedto.as_str();
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+
+                    dependencies
+                }));
+            }
+
             let conflicts_extensions = conflicts_extensions(&ext.name);
 
             let mut member = ExtensionsMember {
                 name: format_ident!("{}", name),
                 doc: String::new(),
                 raw,
-                requires_core: (major.to_owned(), minor.to_owned()),
-                requires_device_extensions: requires_extensions
-                    .iter()
-                    .filter(|&&vk_name| extensions[vk_name].ext_type.as_ref().unwrap() == "device")
-                    .map(|vk_name| {
-                        format_ident!("{}", vk_name.strip_prefix("VK_").unwrap().to_snake_case())
-                    })
-                    .collect(),
-                requires_instance_extensions: requires_extensions
-                    .iter()
-                    .filter(|&&vk_name| {
-                        extensions[vk_name].ext_type.as_ref().unwrap() == "instance"
-                    })
-                    .map(|vk_name| {
-                        format_ident!("{}", vk_name.strip_prefix("VK_").unwrap().to_snake_case())
-                    })
-                    .collect(),
                 required_if_supported: required_if_supported(ext.name.as_str()),
+                requires,
                 conflicts_device_extensions: conflicts_extensions
                     .iter()
                     .filter(|&&vk_name| extensions[vk_name].ext_type.as_ref().unwrap() == "device")
@@ -529,76 +580,10 @@ fn make_doc(ext: &mut ExtensionsMember) {
     let writer = &mut ext.doc;
     write!(writer, "- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/{}.html)", ext.raw).unwrap();
 
-    if !(ext.requires_core.0 == "1" && ext.requires_core.1 == "0") {
-        write!(
-            writer,
-            "\n- Requires Vulkan {}.{}",
-            ext.requires_core.0, ext.requires_core.1
-        )
-        .unwrap();
-    }
-
-    if !ext.requires_device_extensions.is_empty() {
-        let links: Vec<_> = ext
-            .requires_device_extensions
-            .iter()
-            .map(|ext| format!("[`{}`](crate::device::DeviceExtensions::{0})", ext))
-            .collect();
-        write!(
-            writer,
-            "\n- Requires device extension{}: {}",
-            if ext.requires_device_extensions.len() > 1 {
-                "s"
-            } else {
-                ""
-            },
-            links.join(", ")
-        )
-        .unwrap();
-    }
-
-    if !ext.requires_instance_extensions.is_empty() {
-        let links: Vec<_> = ext
-            .requires_instance_extensions
-            .iter()
-            .map(|ext| format!("[`{}`](crate::instance::InstanceExtensions::{0})", ext))
-            .collect();
-        write!(
-            writer,
-            "\n- Requires instance extension{}: {}",
-            if ext.requires_instance_extensions.len() > 1 {
-                "s"
-            } else {
-                ""
-            },
-            links.join(", ")
-        )
-        .unwrap();
-    }
-
     if ext.required_if_supported {
         write!(
             writer,
             "\n- Must be enabled if it is supported by the physical device",
-        )
-        .unwrap();
-    }
-
-    if !ext.conflicts_device_extensions.is_empty() {
-        let links: Vec<_> = ext
-            .conflicts_device_extensions
-            .iter()
-            .map(|ext| format!("[`{}`](crate::device::DeviceExtensions::{0})", ext))
-            .collect();
-        write!(
-            writer,
-            "\n- Conflicts with device extension{}: {}",
-            if ext.conflicts_device_extensions.len() > 1 {
-                "s"
-            } else {
-                ""
-            },
-            links.join(", ")
         )
         .unwrap();
     }
@@ -655,5 +640,55 @@ fn make_doc(ext: &mut ExtensionsMember) {
                 }
             }
         }
+    }
+
+    if !ext.requires.is_empty() {
+        write!(writer, "\n- Requires:").unwrap();
+    }
+
+    for require in &ext.requires {
+        let mut line = Vec::new();
+
+        if let Some((major, minor)) = require.api_version.as_ref() {
+            line.push(format!("Vulkan API version {}.{}", major, minor));
+        }
+
+        line.extend(require.device_extensions.iter().map(|ext| {
+            format!(
+                "device extension [`{}`](crate::device::DeviceExtensions::{0})",
+                ext
+            )
+        }));
+        line.extend(require.instance_extensions.iter().map(|ext| {
+            format!(
+                "instance extension [`{}`](crate::instance::InstanceExtensions::{0})",
+                ext
+            )
+        }));
+
+        if line.len() == 1 {
+            write!(writer, "\n  - {}", line[0]).unwrap();
+        } else {
+            write!(writer, "\n  - One of: {}", line.join(", ")).unwrap();
+        }
+    }
+
+    if !ext.conflicts_device_extensions.is_empty() {
+        let links: Vec<_> = ext
+            .conflicts_device_extensions
+            .iter()
+            .map(|ext| format!("[`{}`](crate::device::DeviceExtensions::{0})", ext))
+            .collect();
+        write!(
+            writer,
+            "\n- Conflicts with device extension{}: {}",
+            if ext.conflicts_device_extensions.len() > 1 {
+                "s"
+            } else {
+                ""
+            },
+            links.join(", ")
+        )
+        .unwrap();
     }
 }
