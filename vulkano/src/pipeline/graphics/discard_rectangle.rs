@@ -12,8 +12,9 @@
 //! The discard rectangle test is similar to, but separate from the scissor test.
 
 use crate::device::Device;
-use crate::pipeline::viewport::Scissor;
-use crate::pipeline::{DynamicState, GraphicsPipelineCreationError, PartialStateMode};
+use crate::pipeline::graphics::viewport::Scissor;
+use crate::pipeline::graphics::GraphicsPipelineCreationError;
+use crate::pipeline::{DynamicState, PartialStateMode};
 use fnv::FnvHashMap;
 use smallvec::SmallVec;
 
@@ -126,6 +127,7 @@ impl Default for DiscardRectangleState {
     }
 }
 
+/// The mode in which the discard rectangle test operates.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(i32)]
 pub enum DiscardRectangleMode {

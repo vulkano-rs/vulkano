@@ -20,9 +20,10 @@ use vulkano::format::Format;
 use vulkano::image::ImageAccess;
 use vulkano::image::{view::ImageView, AttachmentImage, ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
-use vulkano::pipeline::depth_stencil::DepthStencilState;
-use vulkano::pipeline::input_assembly::InputAssemblyState;
-use vulkano::pipeline::viewport::{Viewport, ViewportState};
+use vulkano::pipeline::graphics::depth_stencil::DepthStencilState;
+use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
+use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
+use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::query::{QueryControlFlags, QueryPool, QueryResultFlags, QueryType};
 use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
@@ -236,7 +237,7 @@ fn main() {
     .unwrap();
 
     let pipeline = GraphicsPipeline::start()
-        .vertex_input_single_buffer::<Vertex>()
+        .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
         .vertex_shader(vs.entry_point("main").unwrap(), ())
         .input_assembly_state(InputAssemblyState::new())
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())

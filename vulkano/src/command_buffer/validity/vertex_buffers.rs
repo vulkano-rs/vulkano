@@ -8,7 +8,7 @@
 // according to those terms.
 
 use crate::command_buffer::synced::CommandBufferState;
-use crate::pipeline::vertex::VertexInputRate;
+use crate::pipeline::graphics::vertex_input::VertexInputRate;
 use crate::pipeline::GraphicsPipeline;
 use crate::DeviceSize;
 use std::convert::TryInto;
@@ -21,11 +21,11 @@ pub(in super::super) fn check_vertex_buffers(
     vertices: Option<(u32, u32)>,
     instances: Option<(u32, u32)>,
 ) -> Result<(), CheckVertexBufferError> {
-    let vertex_input = pipeline.vertex_input();
+    let vertex_input = pipeline.vertex_input_state();
     let mut max_vertex_count: Option<u32> = None;
     let mut max_instance_count: Option<u32> = None;
 
-    for (binding_num, binding_desc) in vertex_input.bindings() {
+    for (&binding_num, binding_desc) in &vertex_input.bindings {
         let vertex_buffer = match current_state.vertex_buffer(binding_num) {
             Some(x) => x,
             None => return Err(CheckVertexBufferError::BufferNotBound { binding_num }),

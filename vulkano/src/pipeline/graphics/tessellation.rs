@@ -7,15 +7,14 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! Subdividing primitives.
-//!
-//! A tessellation shader divides primitives into smaller primitives.
+//! Subdivides primitives into smaller primitives.
 
 use crate::device::Device;
-use crate::pipeline::input_assembly::{
+use crate::pipeline::graphics::input_assembly::{
     InputAssemblyState, PrimitiveTopology, PrimitiveTopologyClass,
 };
-use crate::pipeline::{DynamicState, GraphicsPipelineCreationError, PartialStateMode, StateMode};
+use crate::pipeline::graphics::GraphicsPipelineCreationError;
+use crate::pipeline::{DynamicState, PartialStateMode, StateMode};
 use fnv::FnvHashMap;
 
 /// The state in a graphics pipeline describing the tessellation shader execution of a graphics

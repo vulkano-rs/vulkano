@@ -21,9 +21,10 @@ use vulkano::image::{
     view::ImageView, ImageDimensions, ImageUsage, ImmutableImage, MipmapsCount, SwapchainImage,
 };
 use vulkano::instance::Instance;
-use vulkano::pipeline::color_blend::ColorBlendState;
-use vulkano::pipeline::input_assembly::{InputAssemblyState, PrimitiveTopology};
-use vulkano::pipeline::viewport::{Viewport, ViewportState};
+use vulkano::pipeline::graphics::color_blend::ColorBlendState;
+use vulkano::pipeline::graphics::input_assembly::{InputAssemblyState, PrimitiveTopology};
+use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
+use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
 use vulkano::sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode};
@@ -190,7 +191,7 @@ fn main() {
 
     let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
     let pipeline = GraphicsPipeline::start()
-        .vertex_input_single_buffer::<Vertex>()
+        .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
         .vertex_shader(vs.entry_point("main").unwrap(), ())
         .input_assembly_state(InputAssemblyState::new().topology(PrimitiveTopology::TriangleStrip))
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())

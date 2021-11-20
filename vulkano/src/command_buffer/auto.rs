@@ -50,19 +50,19 @@ use crate::image::ImageAccess;
 use crate::image::ImageAspect;
 use crate::image::ImageAspects;
 use crate::image::ImageLayout;
-use crate::pipeline::color_blend::LogicOp;
-use crate::pipeline::depth_stencil::CompareOp;
-use crate::pipeline::depth_stencil::StencilFaces;
-use crate::pipeline::depth_stencil::StencilOp;
-use crate::pipeline::input_assembly::Index;
-use crate::pipeline::input_assembly::IndexType;
-use crate::pipeline::input_assembly::PrimitiveTopology;
+use crate::pipeline::graphics::color_blend::LogicOp;
+use crate::pipeline::graphics::depth_stencil::CompareOp;
+use crate::pipeline::graphics::depth_stencil::StencilFaces;
+use crate::pipeline::graphics::depth_stencil::StencilOp;
+use crate::pipeline::graphics::input_assembly::Index;
+use crate::pipeline::graphics::input_assembly::IndexType;
+use crate::pipeline::graphics::input_assembly::PrimitiveTopology;
+use crate::pipeline::graphics::rasterization::CullMode;
+use crate::pipeline::graphics::rasterization::FrontFace;
+use crate::pipeline::graphics::vertex_input::VertexBuffersCollection;
+use crate::pipeline::graphics::viewport::Scissor;
+use crate::pipeline::graphics::viewport::Viewport;
 use crate::pipeline::layout::PipelineLayout;
-use crate::pipeline::rasterization::CullMode;
-use crate::pipeline::rasterization::FrontFace;
-use crate::pipeline::vertex::VertexBuffersCollection;
-use crate::pipeline::viewport::Scissor;
-use crate::pipeline::viewport::Viewport;
 use crate::pipeline::ComputePipeline;
 use crate::pipeline::DynamicState;
 use crate::pipeline::GraphicsPipeline;
@@ -1845,7 +1845,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///   feature is not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     /// - If there is a graphics pipeline with color blend state bound, `enables.len()` must equal
-    /// - [`attachments.len()`](crate::pipeline::color_blend::ColorBlendState::attachments).
+    /// - [`attachments.len()`](crate::pipeline::graphics::color_blend::ColorBlendState::attachments).
     #[inline]
     pub fn set_color_write_enable<I>(&mut self, enables: I) -> &mut Self
     where

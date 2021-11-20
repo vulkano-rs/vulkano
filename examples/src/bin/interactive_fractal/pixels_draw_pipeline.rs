@@ -15,8 +15,9 @@ use vulkano::command_buffer::{
 use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::Queue;
 use vulkano::image::ImageViewAbstract;
-use vulkano::pipeline::input_assembly::InputAssemblyState;
-use vulkano::pipeline::viewport::{Viewport, ViewportState};
+use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
+use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
+use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::render_pass::Subpass;
 use vulkano::sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode};
@@ -83,7 +84,7 @@ impl PixelsDrawPipeline {
             let vs = vs::load(gfx_queue.device().clone()).expect("failed to create shader module");
             let fs = fs::load(gfx_queue.device().clone()).expect("failed to create shader module");
             GraphicsPipeline::start()
-                .vertex_input_single_buffer::<TexturedVertex>()
+                .vertex_input_state(BuffersDefinition::new().vertex::<TexturedVertex>())
                 .vertex_shader(vs.entry_point("main").unwrap(), ())
                 .input_assembly_state(InputAssemblyState::new())
                 .fragment_shader(fs.entry_point("main").unwrap(), ())

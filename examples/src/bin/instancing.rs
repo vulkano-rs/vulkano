@@ -26,9 +26,9 @@ use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageAccess, ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
-use vulkano::pipeline::input_assembly::InputAssemblyState;
-use vulkano::pipeline::vertex::BuffersDefinition;
-use vulkano::pipeline::viewport::{Viewport, ViewportState};
+use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
+use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
+use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
 use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
@@ -236,7 +236,7 @@ fn main() {
     let pipeline = GraphicsPipeline::start()
         // Use the `BuffersDefinition` to describe to vulkano how the two vertex types
         // are expected to be used.
-        .vertex_input(
+        .vertex_input_state(
             BuffersDefinition::new()
                 .vertex::<Vertex>()
                 .instance::<InstanceData>(),

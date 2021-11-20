@@ -109,9 +109,9 @@ pub use self::traits::PrimaryCommandBuffer;
 pub use self::traits::SecondaryCommandBuffer;
 use crate::query::QueryControlFlags;
 use crate::query::QueryPipelineStatisticFlags;
+use crate::render_pass::Framebuffer;
 use crate::render_pass::Subpass;
 use std::sync::Arc;
-use crate::render_pass::Framebuffer;
 
 mod auto;
 pub mod pool;

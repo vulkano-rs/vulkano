@@ -28,8 +28,9 @@ use vulkano::image::{
     StorageImage,
 };
 use vulkano::instance::{Instance, InstanceExtensions};
-use vulkano::pipeline::input_assembly::InputAssemblyState;
-use vulkano::pipeline::viewport::{Viewport, ViewportState};
+use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
+use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
+use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{
     AttachmentDesc, Framebuffer, LoadOp, MultiviewDesc, RenderPass, RenderPassDesc, StoreOp,
@@ -236,7 +237,7 @@ fn main() {
         .unwrap();
 
     let pipeline = GraphicsPipeline::start()
-        .vertex_input_single_buffer::<Vertex>()
+        .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
         .vertex_shader(vs.entry_point("main").unwrap(), ())
         .input_assembly_state(InputAssemblyState::new())
         .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([

@@ -8,13 +8,13 @@
 // according to those terms.
 
 use super::VertexMemberInfo;
-use crate::pipeline::vertex::IncompatibleVertexDefinitionError;
-use crate::pipeline::vertex::Vertex;
-use crate::pipeline::vertex::VertexDefinition;
-use crate::pipeline::vertex::VertexInput;
-use crate::pipeline::vertex::VertexInputAttribute;
-use crate::pipeline::vertex::VertexInputBinding;
-use crate::pipeline::vertex::VertexInputRate;
+use crate::pipeline::graphics::vertex_input::IncompatibleVertexDefinitionError;
+use crate::pipeline::graphics::vertex_input::Vertex;
+use crate::pipeline::graphics::vertex_input::VertexDefinition;
+use crate::pipeline::graphics::vertex_input::VertexInputAttributeDescription;
+use crate::pipeline::graphics::vertex_input::VertexInputBindingDescription;
+use crate::pipeline::graphics::vertex_input::VertexInputRate;
+use crate::pipeline::graphics::vertex_input::VertexInputState;
 use crate::shader::ShaderInterface;
 use crate::DeviceSize;
 use std::mem;
@@ -39,7 +39,7 @@ impl std::fmt::Debug for VertexBuffer {
     }
 }
 
-impl From<VertexBuffer> for VertexInputBinding {
+impl From<VertexBuffer> for VertexInputBindingDescription {
     #[inline]
     fn from(val: VertexBuffer) -> Self {
         Self {
@@ -100,13 +100,13 @@ unsafe impl VertexDefinition for BuffersDefinition {
     fn definition(
         &self,
         interface: &ShaderInterface,
-    ) -> Result<VertexInput, IncompatibleVertexDefinitionError> {
+    ) -> Result<VertexInputState, IncompatibleVertexDefinitionError> {
         let bindings = self
             .0
             .iter()
             .enumerate()
             .map(|(binding, &buffer)| (binding as u32, buffer.into()));
-        let mut attributes: Vec<(u32, VertexInputAttribute)> = Vec::new();
+        let mut attributes: Vec<(u32, VertexInputAttributeDescription)> = Vec::new();
 
         for element in interface.elements() {
             let name = element.name.as_ref().unwrap();
@@ -144,7 +144,7 @@ unsafe impl VertexDefinition for BuffersDefinition {
             for location in element.location.clone() {
                 attributes.push((
                     location,
-                    VertexInputAttribute {
+                    VertexInputAttributeDescription {
                         binding,
                         format: element.format,
                         offset: offset as u32,
@@ -154,6 +154,8 @@ unsafe impl VertexDefinition for BuffersDefinition {
             }
         }
 
-        Ok(VertexInput::new(bindings, attributes))
+        Ok(VertexInputState::new()
+            .bindings(bindings)
+            .attributes(attributes))
     }
 }

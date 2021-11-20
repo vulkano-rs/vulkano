@@ -32,12 +32,12 @@ use crate::descriptor_set::DescriptorSetWithOffsets;
 use crate::format::ClearValue;
 use crate::image::ImageAccess;
 use crate::image::ImageLayout;
-use crate::pipeline::depth_stencil::StencilFaces;
-use crate::pipeline::input_assembly::IndexType;
+use crate::pipeline::graphics::depth_stencil::StencilFaces;
+use crate::pipeline::graphics::input_assembly::IndexType;
+use crate::pipeline::graphics::vertex_input::VertexInputState;
+use crate::pipeline::graphics::viewport::Scissor;
+use crate::pipeline::graphics::viewport::Viewport;
 use crate::pipeline::layout::PipelineLayout;
-use crate::pipeline::vertex::VertexInput;
-use crate::pipeline::viewport::Scissor;
-use crate::pipeline::viewport::Viewport;
 use crate::pipeline::ComputePipeline;
 use crate::pipeline::GraphicsPipeline;
 use crate::pipeline::PipelineBindPoint;
@@ -1167,7 +1167,7 @@ impl SyncCommandBufferBuilder {
             PipelineBindPoint::Graphics,
             pipeline.descriptor_requirements(),
         );
-        self.add_vertex_buffer_resources(&mut resources, pipeline.vertex_input());
+        self.add_vertex_buffer_resources(&mut resources, pipeline.vertex_input_state());
 
         self.append_command(
             Cmd {
@@ -1223,7 +1223,7 @@ impl SyncCommandBufferBuilder {
             PipelineBindPoint::Graphics,
             pipeline.descriptor_requirements(),
         );
-        self.add_vertex_buffer_resources(&mut resources, pipeline.vertex_input());
+        self.add_vertex_buffer_resources(&mut resources, pipeline.vertex_input_state());
         self.add_index_buffer_resources(&mut resources);
 
         self.append_command(
@@ -1271,7 +1271,7 @@ impl SyncCommandBufferBuilder {
             PipelineBindPoint::Graphics,
             pipeline.descriptor_requirements(),
         );
-        self.add_vertex_buffer_resources(&mut resources, pipeline.vertex_input());
+        self.add_vertex_buffer_resources(&mut resources, pipeline.vertex_input_state());
         self.add_indirect_buffer_resources(&mut resources, indirect_buffer.clone());
 
         self.append_command(
@@ -1322,7 +1322,7 @@ impl SyncCommandBufferBuilder {
             PipelineBindPoint::Graphics,
             pipeline.descriptor_requirements(),
         );
-        self.add_vertex_buffer_resources(&mut resources, pipeline.vertex_input());
+        self.add_vertex_buffer_resources(&mut resources, pipeline.vertex_input_state());
         self.add_index_buffer_resources(&mut resources);
         self.add_indirect_buffer_resources(&mut resources, indirect_buffer.clone());
 
@@ -2680,9 +2680,9 @@ impl SyncCommandBufferBuilder {
                 ImageUninitializedSafe,
             )>,
         )>,
-        vertex_input: &VertexInput,
+        vertex_input: &VertexInputState,
     ) {
-        resources.extend(vertex_input.bindings().map(|(binding_num, _)| {
+        resources.extend(vertex_input.bindings.iter().map(|(&binding_num, _)| {
             let buffer = self.current_state.vertex_buffers[&binding_num].clone();
             (
                 KeyTy::Buffer(buffer),

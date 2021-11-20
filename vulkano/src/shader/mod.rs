@@ -22,7 +22,7 @@ use crate::descriptor_set::layout::DescriptorType;
 use crate::device::Device;
 use crate::format::Format;
 use crate::image::view::ImageViewType;
-use crate::pipeline::input_assembly::PrimitiveTopology;
+use crate::pipeline::graphics::input_assembly::PrimitiveTopology;
 use crate::pipeline::layout::PipelineLayoutPcRange;
 use crate::shader::spirv::{Capability, Spirv, SpirvError};
 use crate::sync::PipelineStages;
@@ -715,6 +715,7 @@ impl ShaderInterface {
     ///
     /// - Must only provide one entry per location.
     /// - The format of each element must not be larger than 128 bits.
+    // TODO: 4x64 bit formats are possible, but they require special handling.
     // TODO: could this be made safe?
     #[inline]
     pub unsafe fn new_unchecked(elements: Vec<ShaderInterfaceEntry>) -> ShaderInterface {

@@ -7,15 +7,11 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! Stage when triangles are turned into pixels.
-//!
-//! The rasterization is the stage when collections of triangles are turned into collections
-//! of pixels or samples.
+//! Configures how primitives should be converted into collections of fragments.
 
-use crate::{
-    device::Device,
-    pipeline::{DynamicState, GraphicsPipelineCreationError, StateMode},
-};
+use crate::device::Device;
+use crate::pipeline::graphics::GraphicsPipelineCreationError;
+use crate::pipeline::{DynamicState, StateMode};
 use fnv::FnvHashMap;
 
 /// The state in a graphics pipeline describing how the rasterization stage should behave.

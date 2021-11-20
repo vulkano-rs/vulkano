@@ -30,9 +30,10 @@ use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageAccess, ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
-use vulkano::pipeline::input_assembly::InputAssemblyState;
-use vulkano::pipeline::rasterization::{CullMode, FrontFace, RasterizationState};
-use vulkano::pipeline::viewport::{Viewport, ViewportState};
+use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
+use vulkano::pipeline::graphics::rasterization::{CullMode, FrontFace, RasterizationState};
+use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
+use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
 use vulkano::shader::ShaderModule;
@@ -151,7 +152,7 @@ fn main() {
     };
 
     let graphics_pipeline = GraphicsPipeline::start()
-        .vertex_input_single_buffer::<Vertex>()
+        .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
         .vertex_shader(vs.entry_point("main").unwrap(), ())
         .input_assembly_state(InputAssemblyState::new())
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
