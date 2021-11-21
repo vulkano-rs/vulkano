@@ -371,7 +371,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
         ///
         /// This macro returns one possible suitable representation, but there are usually other
         /// possibilities for a given format, including those provided by external libraries like
-        /// `cmath` or `nalgebra`. A compile error occurs for types that have no well-defined size
+        /// `cmath` or `nalgebra`. A compile error occurs for formats that have no well-defined size
         /// (the `size` method returns `None`).
         ///
         /// - For regular unpacked formats with one component, this returns a single floating point,
