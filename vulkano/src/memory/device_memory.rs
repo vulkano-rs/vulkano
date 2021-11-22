@@ -112,8 +112,7 @@ pub struct DeviceMemory {
 /// ```
 pub struct DeviceMemoryBuilder<'a> {
     device: Arc<Device>,
-    allocation_size: u64,
-    memory_type_index: u32,
+    builder: ash::vk::MemoryAllocateInfoBuilder<'a>,
     dedicated_info: Option<ash::vk::MemoryDedicatedAllocateInfoKHR>,
     export_info: Option<ash::vk::ExportMemoryAllocateInfo>,
     import_info: Option<ash::vk::ImportMemoryFdInfoKHR>,
@@ -130,8 +129,9 @@ impl<'a> DeviceMemoryBuilder<'a> {
     ) -> DeviceMemoryBuilder<'a> {
         DeviceMemoryBuilder {
             device,
-            allocation_size: size,
-            memory_type_index: memory_index,
+            builder: ash::vk::MemoryAllocateInfo::builder()
+                .allocation_size(size)
+                .memory_type_index(memory_index),
             dedicated_info: None,
             export_info: None,
             import_info: None,
@@ -227,7 +227,7 @@ impl<'a> DeviceMemoryBuilder<'a> {
     /// is returned if the requested allocation is too large or if the total number of allocations
     /// would exceed per-device limits.
     pub fn build(mut self) -> Result<Arc<DeviceMemory>, DeviceMemoryAllocError> {
-        if self.allocation_size == 0 {
+        if self.builder.allocation_size == 0 {
             return Err(DeviceMemoryAllocError::InvalidSize)?;
         }
 
@@ -238,7 +238,7 @@ impl<'a> DeviceMemoryBuilder<'a> {
         let memory_type = self
             .device
             .physical_device()
-            .memory_type_by_id(self.memory_type_index)
+            .memory_type_by_id(self.builder.memory_type_index)
             .ok_or(DeviceMemoryAllocError::SpecViolation(1714))?;
 
         if self.device.physical_device().internal_object()
@@ -259,7 +259,7 @@ impl<'a> DeviceMemoryBuilder<'a> {
         // returned by vkGetPhysicalDeviceMemoryProperties for the VkPhysicalDevice that device was created
         // from".
         let reported_heap_size = memory_type.heap().size();
-        if reported_heap_size != 0 && self.allocation_size > reported_heap_size {
+        if reported_heap_size != 0 && self.builder.allocation_size > reported_heap_size {
             return Err(DeviceMemoryAllocError::SpecViolation(1713));
         }
 
@@ -316,9 +316,9 @@ impl<'a> DeviceMemoryBuilder<'a> {
             }
         }
 
-        let mut builder = ash::vk::MemoryAllocateInfo::builder()
-            .allocation_size(self.allocation_size)
-            .memory_type_index(self.memory_type_index);
+        let mut builder = self.builder;
+        let size = builder.allocation_size;
+        let memory_type_index = builder.memory_type_index;
 
         if let Some(info) = self.dedicated_info.as_mut() {
             builder = builder.push_next(info);
@@ -360,8 +360,8 @@ impl<'a> DeviceMemoryBuilder<'a> {
         Ok(Arc::new(DeviceMemory {
             memory,
             device: self.device,
-            size: self.allocation_size,
-            memory_type_index: self.memory_type_index,
+            size,
+            memory_type_index,
             handle_types: ExternalMemoryHandleType::from(export_handle_bits),
             mapped: Mutex::new(false),
         }))
