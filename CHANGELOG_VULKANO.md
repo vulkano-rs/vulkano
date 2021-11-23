@@ -33,6 +33,10 @@
 - **Breaking** The `dimensions` method has been removed as an inherent method from types that already implement `ImageAccess`, to avoid confusion between the inherent method and the method of the trait when they have different semantics.
 - **Breaking** Replaced `DescriptorDescTy` with `DescriptorType` and made further changes to the members of `DescriptorDesc`.
 - **Breaking** Added a `Pipeline` trait to hold methods that are common to all pipeline types.
+- **Breaking** Changes to allow allocating variable descriptor counts:
+  - The `alloc` method of the `DescriptorPool` trait now has a second parameter to specify the number of descriptors to allocate for the variable count binding. If there is no variable count binding in the layout, this should be 0.
+  - The `alloc` method of `UnsafeDescriptorPool` now takes an iterator of `DescriptorSetAllocateInfo`.
+- For `PersistentDescriptorSet` when using a layout with a variable count binding, allocate only the number of descriptors needed instead of always the maximum.
 - Descriptor resources are now checked against the shader requirements at the time of a draw/dispatch call, rather than at the time the descriptor set is created. Only the resources that are actually needed in the shader are checked, the other resources in a descriptor set are ignored and don't need to be valid.
 - Added a new `DescriptorRequirements` type, which contains requirements imposed by a shader onto a descriptor and the resources bound to it.
   - `DescriptorDesc` can be created from `DescriptorRequirements` with the `From` trait.
