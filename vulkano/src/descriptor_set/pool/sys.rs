@@ -177,8 +177,9 @@ impl UnsafeDescriptorPool {
         let output = if layouts.len() == 0 {
             vec![]
         } else {
-            let variable_desc_count_alloc_info = if self.device.api_version() >= Version::V1_2
-                || self.device.enabled_extensions().ext_descriptor_indexing
+            let variable_desc_count_alloc_info = if (self.device.api_version() >= Version::V1_2
+                || self.device.enabled_extensions().ext_descriptor_indexing)
+                && variable_descriptor_counts.iter().any(|c| *c != 0)
             {
                 Some(ash::vk::DescriptorSetVariableDescriptorCountAllocateInfo {
                     descriptor_set_count: layouts.len() as u32,
