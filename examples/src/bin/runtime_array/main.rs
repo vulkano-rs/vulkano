@@ -83,7 +83,6 @@ fn main() {
             shader_uniform_buffer_array_non_uniform_indexing: true,
             runtime_descriptor_array: true,
             descriptor_binding_variable_descriptor_count: true,
-            descriptor_binding_partially_bound: true,
             ..Features::none()
         },
         &physical_device

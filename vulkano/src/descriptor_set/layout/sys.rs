@@ -32,8 +32,6 @@ pub struct DescriptorSetLayout {
     desc: DescriptorSetDesc,
     // Number of descriptors of each type.
     descriptors_count: DescriptorsCount,
-    // Number of descriptors in a variable count descriptor. Will be zero if no variable count descriptors are present.
-    variable_descriptor_count: u32,
 }
 
 impl DescriptorSetLayout {
@@ -51,7 +49,6 @@ impl DescriptorSetLayout {
     {
         let set_desc = set_desc.into();
         let mut descriptors_count = DescriptorsCount::zero();
-        let mut variable_descriptor_count = 0;
         let bindings = set_desc.bindings();
         let mut bindings_vk = Vec::with_capacity(bindings.len());
         let mut binding_flags_vk = Vec::with_capacity(bindings.len());
@@ -92,6 +89,18 @@ impl DescriptorSetLayout {
                 ) {
                     return Err(DescriptorSetLayoutError::PushDescriptorDynamicBuffer);
                 }
+
+                if binding_desc.variable_count {
+                    return Err(DescriptorSetLayoutError::PushDescriptorVariableCount);
+                }
+
+                // TODO: VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-flags-03003
+                // If VkDescriptorSetLayoutCreateInfo::flags includes
+                // VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR,
+                // then all elements of pBindingFlags must not include
+                // VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT,
+                // VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT, or
+                // VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT
 
                 // TODO: VUID-VkDescriptorSetLayoutCreateInfo-flags-02208
                 // If flags contains VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR, then all
@@ -167,17 +176,7 @@ impl DescriptorSetLayout {
                     });
                 }
 
-                if !device.enabled_features().descriptor_binding_partially_bound {
-                    return Err(DescriptorSetLayoutError::FeatureNotEnabled {
-                        feature: "descriptor_binding_partially_bound",
-                        reason: "binding has a variable count",
-                    });
-                }
-
-                variable_descriptor_count = binding_desc.descriptor_count;
-                // TODO: should these be settable separately by the user?
                 binding_flags |= ash::vk::DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT;
-                binding_flags |= ash::vk::DescriptorBindingFlags::PARTIALLY_BOUND;
             }
 
             bindings_vk.push(ash::vk::DescriptorSetLayoutBinding {
@@ -253,7 +252,6 @@ impl DescriptorSetLayout {
             device,
             desc: set_desc,
             descriptors_count,
-            variable_descriptor_count,
         }))
     }
 
@@ -267,10 +265,22 @@ impl DescriptorSetLayout {
         &self.descriptors_count
     }
 
-    /// Returns the number of descriptors in a variable count descriptor. This will return zero if there are no variable count descriptors present.
+    /// If the last binding has a variable count, returns its `descriptor_count`. Otherwise returns
+    /// 0.
     #[inline]
     pub fn variable_descriptor_count(&self) -> u32 {
-        self.variable_descriptor_count
+        self.desc
+            .bindings()
+            .last()
+            .and_then(|binding| binding.as_ref())
+            .map(|binding| {
+                if binding.variable_count {
+                    binding.descriptor_count
+                } else {
+                    0
+                }
+            })
+            .unwrap_or(0)
     }
 
     /// Returns the number of binding slots in the set.
@@ -363,8 +373,11 @@ pub enum DescriptorSetLayoutError {
     /// Out of Memory.
     OomError(OomError),
 
-    /// The layout was being created for push descriptors, but included a dynamic buffer descriptor.
+    /// The layout was being created for push descriptors, but included a dynamic buffer binding.
     PushDescriptorDynamicBuffer,
+
+    /// The layout was being created for push descriptors, but included a variable count binding.
+    PushDescriptorVariableCount,
 
     /// Variable count descriptor must be last binding.
     VariableCountDescMustBeLast,
@@ -414,7 +427,10 @@ impl std::fmt::Display for DescriptorSetLayoutError {
                 )
             }
             Self::PushDescriptorDynamicBuffer => {
-                write!(fmt, "the layout was being created for push descriptors, but included a dynamic buffer descriptor")
+                write!(fmt, "the layout was being created for push descriptors, but included a dynamic buffer binding")
+            }
+            Self::PushDescriptorVariableCount => {
+                write!(fmt, "the layout was being created for push descriptors, but included a variable count binding")
             }
             Self::OomError(_) => {
                 write!(fmt, "out of memory")

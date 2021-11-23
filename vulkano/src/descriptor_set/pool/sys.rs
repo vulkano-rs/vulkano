@@ -14,6 +14,7 @@ use crate::descriptor_set::UnsafeDescriptorSet;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::OomError;
+use crate::Version;
 use crate::VulkanObject;
 use smallvec::SmallVec;
 use std::error;
@@ -129,7 +130,7 @@ impl UnsafeDescriptorPool {
         })
     }
 
-    /// Allocates descriptor sets from the pool, one for each layout.
+    /// Allocates descriptor sets from the pool, one for each element in `create_info`.
     /// Returns an iterator to the allocated sets, or an error.
     ///
     /// The `FragmentedPool` errors often can't be prevented. If the function returns this error,
@@ -148,44 +149,46 @@ impl UnsafeDescriptorPool {
     /// - You must ensure that the allocated descriptor sets are no longer in use when the pool
     ///   is destroyed, as destroying the pool is equivalent to freeing all the sets.
     ///
-    pub unsafe fn alloc<'l, I>(
+    pub unsafe fn alloc<'a>(
         &mut self,
-        layouts: I,
-    ) -> Result<impl ExactSizeIterator<Item = UnsafeDescriptorSet>, DescriptorPoolAllocError>
-    where
-        I: IntoIterator<Item = &'l DescriptorSetLayout>,
-    {
-        let mut variable_descriptor_counts: SmallVec<[_; 8]> = SmallVec::new();
+        create_info: impl IntoIterator<Item = DescriptorSetAllocateInfo<'a>>,
+    ) -> Result<impl ExactSizeIterator<Item = UnsafeDescriptorSet>, DescriptorPoolAllocError> {
+        let (layouts, variable_descriptor_counts): (SmallVec<[_; 1]>, SmallVec<[_; 1]>) =
+            create_info
+                .into_iter()
+                .map(|info| {
+                    assert_eq!(
+                        self.device.internal_object(),
+                        info.layout.device().internal_object(),
+                        "Tried to allocate from a pool with a set layout of a different device"
+                    );
+                    debug_assert!(!info.layout.desc().is_push_descriptor());
+                    debug_assert!(
+                        info.variable_descriptor_count <= info.layout.variable_descriptor_count()
+                    );
 
-        let layouts: SmallVec<[_; 8]> = layouts
-            .into_iter()
-            .map(|layout| {
-                assert_eq!(
-                    self.device.internal_object(),
-                    layout.device().internal_object(),
-                    "Tried to allocate from a pool with a set layout of a different device"
-                );
-                debug_assert!(!layout.desc().is_push_descriptor());
+                    (
+                        info.layout.internal_object(),
+                        info.variable_descriptor_count,
+                    )
+                })
+                .unzip();
 
-                variable_descriptor_counts.push(layout.variable_descriptor_count());
-                layout.internal_object()
-            })
-            .collect();
-        let num = layouts.len();
-
-        let output = if num == 0 {
+        let output = if layouts.len() == 0 {
             vec![]
         } else {
-            let variable_desc_count_alloc_info =
-                if variable_descriptor_counts.iter().any(|c| *c != 0) {
-                    Some(ash::vk::DescriptorSetVariableDescriptorCountAllocateInfo {
-                        descriptor_set_count: layouts.len() as u32,
-                        p_descriptor_counts: variable_descriptor_counts.as_ptr(),
-                        ..Default::default()
-                    })
-                } else {
-                    None
-                };
+            let variable_desc_count_alloc_info = if (self.device.api_version() >= Version::V1_2
+                || self.device.enabled_extensions().ext_descriptor_indexing)
+                && variable_descriptor_counts.iter().any(|c| *c != 0)
+            {
+                Some(ash::vk::DescriptorSetVariableDescriptorCountAllocateInfo {
+                    descriptor_set_count: layouts.len() as u32,
+                    p_descriptor_counts: variable_descriptor_counts.as_ptr(),
+                    ..Default::default()
+                })
+            } else {
+                None
+            };
 
             let infos = ash::vk::DescriptorSetAllocateInfo {
                 descriptor_pool: self.pool,
@@ -199,7 +202,7 @@ impl UnsafeDescriptorPool {
                 ..Default::default()
             };
 
-            let mut output = Vec::with_capacity(num);
+            let mut output = Vec::with_capacity(layouts.len());
 
             let fns = self.device.fns();
             let ret = fns.v1_0.allocate_descriptor_sets(
@@ -227,7 +230,7 @@ impl UnsafeDescriptorPool {
                 _ => (),
             };
 
-            output.set_len(num);
+            output.set_len(layouts.len());
             output
         };
 
@@ -320,6 +323,17 @@ impl Drop for UnsafeDescriptorPool {
     }
 }
 
+/// Parameters to use when allocating a new descriptor set from a descriptor pool.
+#[derive(Clone, Debug)]
+pub struct DescriptorSetAllocateInfo<'a> {
+    /// The descriptor set layout to create the set for.
+    pub layout: &'a DescriptorSetLayout,
+
+    /// For layouts with a variable-count binding, the number of descriptors to allocate for that
+    /// binding. This should be 0 for layouts that don't have a variable-count binding.
+    pub variable_descriptor_count: u32,
+}
+
 /// Error that can be returned when creating a device.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum DescriptorPoolAllocError {
@@ -363,6 +377,7 @@ mod tests {
     use crate::descriptor_set::layout::DescriptorSetDesc;
     use crate::descriptor_set::layout::DescriptorSetLayout;
     use crate::descriptor_set::layout::DescriptorType;
+    use crate::descriptor_set::pool::sys::DescriptorSetAllocateInfo;
     use crate::descriptor_set::pool::DescriptorsCount;
     use crate::descriptor_set::pool::UnsafeDescriptorPool;
     use crate::shader::ShaderStages;
@@ -426,7 +441,12 @@ mod tests {
 
         let mut pool = UnsafeDescriptorPool::new(device, &desc, 10, false).unwrap();
         unsafe {
-            let sets = pool.alloc([set_layout.as_ref()]).unwrap();
+            let sets = pool
+                .alloc([DescriptorSetAllocateInfo {
+                    layout: set_layout.as_ref(),
+                    variable_descriptor_count: 0,
+                }])
+                .unwrap();
             assert_eq!(sets.count(), 1);
         }
     }
@@ -454,13 +474,15 @@ mod tests {
         };
 
         assert_should_panic!(
-            "Tried to allocate from a pool with a set layout \
-                              of a different device",
+            "Tried to allocate from a pool with a set layout of a different device",
             {
                 let mut pool = UnsafeDescriptorPool::new(device2, &desc, 10, false).unwrap();
 
                 unsafe {
-                    let _ = pool.alloc([set_layout.as_ref()]);
+                    let _ = pool.alloc([DescriptorSetAllocateInfo {
+                        layout: set_layout.as_ref(),
+                        variable_descriptor_count: 0,
+                    }]);
                 }
             }
         );
