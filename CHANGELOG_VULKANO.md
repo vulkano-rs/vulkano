@@ -51,6 +51,9 @@
 - Fixed two bugs related to the requirements for enabled extensions:
 - For required extensions that have been promoted, the promoted version now also fulfills the requirement.
 - For features that must be enabled in tandem with extensions (e.g. `descriptor_indexing`), the requirement only applies to Vulkan 1.2 and above, since these features do not exist on earlier versions and thus cannot be enabled.
+- Fix device memory builder not including p_next structures.
+- Fix exportable image not created with VkExternalMemoryImageCreateInfo.
+- Fix mutable bit not set on exportable image.
 
 # Version 0.26.0 (2021-10-2)
 
