@@ -229,7 +229,7 @@ impl StorageImage {
                 Sharing::Exclusive
             };
 
-            UnsafeImage::new(
+            UnsafeImage::new_with_exportable_fd(
                 device.clone(),
                 usage,
                 format,

@@ -112,7 +112,7 @@ pub struct DeviceMemory {
 /// ```
 pub struct DeviceMemoryBuilder<'a> {
     device: Arc<Device>,
-    allocate: ash::vk::MemoryAllocateInfo,
+    builder: ash::vk::MemoryAllocateInfoBuilder<'a>,
     dedicated_info: Option<ash::vk::MemoryDedicatedAllocateInfoKHR>,
     export_info: Option<ash::vk::ExportMemoryAllocateInfo>,
     import_info: Option<ash::vk::ImportMemoryFdInfoKHR>,
@@ -127,15 +127,11 @@ impl<'a> DeviceMemoryBuilder<'a> {
         memory_index: u32,
         size: DeviceSize,
     ) -> DeviceMemoryBuilder<'a> {
-        let allocate = ash::vk::MemoryAllocateInfo {
-            allocation_size: size,
-            memory_type_index: memory_index,
-            ..Default::default()
-        };
-
         DeviceMemoryBuilder {
             device,
-            allocate,
+            builder: ash::vk::MemoryAllocateInfo::builder()
+                .allocation_size(size)
+                .memory_type_index(memory_index),
             dedicated_info: None,
             export_info: None,
             import_info: None,
@@ -159,7 +155,7 @@ impl<'a> DeviceMemoryBuilder<'a> {
             return self;
         }
 
-        let mut dedicated_info = match dedicated {
+        let dedicated_info = match dedicated {
             DedicatedAlloc::Buffer(buffer) => ash::vk::MemoryDedicatedAllocateInfoKHR {
                 image: ash::vk::Image::null(),
                 buffer: buffer.internal_object(),
@@ -173,7 +169,6 @@ impl<'a> DeviceMemoryBuilder<'a> {
             DedicatedAlloc::None => return self,
         };
 
-        self = self.push_next(&mut dedicated_info);
         self.dedicated_info = Some(dedicated_info);
         self
     }
@@ -189,12 +184,11 @@ impl<'a> DeviceMemoryBuilder<'a> {
     ) -> DeviceMemoryBuilder<'a> {
         assert!(self.export_info.is_none());
 
-        let mut export_info = ash::vk::ExportMemoryAllocateInfo {
+        let export_info = ash::vk::ExportMemoryAllocateInfo {
             handle_types: handle_types.into(),
             ..Default::default()
         };
 
-        self = self.push_next(&mut export_info);
         self.export_info = Some(export_info);
         self
     }
@@ -219,52 +213,21 @@ impl<'a> DeviceMemoryBuilder<'a> {
     ) -> DeviceMemoryBuilder<'a> {
         assert!(self.import_info.is_none());
 
-        let mut import_info = ash::vk::ImportMemoryFdInfoKHR {
+        let import_info = ash::vk::ImportMemoryFdInfoKHR {
             handle_type: handle_types.into(),
             fd: fd.into_raw_fd(),
             ..Default::default()
         };
 
-        self = self.push_next(&mut import_info);
         self.import_info = Some(import_info);
-        self
-    }
-
-    // Private function copied shamelessly from Ash.
-    // https://github.com/MaikKlein/ash/blob/4ba8637d018fec6d6e3a90d7fa47d11c085f6b4a/generator/src/lib.rs
-    #[allow(unused_assignments)]
-    fn push_next<T: ExtendsMemoryAllocateInfo>(self, next: &mut T) -> DeviceMemoryBuilder<'a> {
-        unsafe {
-            // `next` here can contain a pointer chain. This means that we must correctly
-            // attach he head to the root and the tail to the rest of the chain
-            // For example:
-            //
-            // next = A -> B
-            // Before: `Root -> C -> D -> E`
-            // After: `Root -> A -> B -> C -> D -> E`
-
-            // Convert next to our ptr structure
-            let next_ptr = next as *mut T as *mut BaseOutStructure;
-            // Previous head (can be null)
-            let mut prev_head = self.allocate.p_next as *mut BaseOutStructure;
-            // Retrieve end of next chain
-            let last_next = ptr_chain_iter(next).last().unwrap();
-            // Set end of next chain's next to be previous head only if previous head's next'
-            if !prev_head.is_null() {
-                (*last_next).p_next = (*prev_head).p_next;
-            }
-            // Set next ptr to be first one
-            prev_head = next_ptr;
-        }
-
         self
     }
 
     /// Creates a `DeviceMemory` object on success, consuming the `DeviceMemoryBuilder`.  An error
     /// is returned if the requested allocation is too large or if the total number of allocations
     /// would exceed per-device limits.
-    pub fn build(self) -> Result<Arc<DeviceMemory>, DeviceMemoryAllocError> {
-        if self.allocate.allocation_size == 0 {
+    pub fn build(mut self) -> Result<Arc<DeviceMemory>, DeviceMemoryAllocError> {
+        if self.builder.allocation_size == 0 {
             return Err(DeviceMemoryAllocError::InvalidSize)?;
         }
 
@@ -275,7 +238,7 @@ impl<'a> DeviceMemoryBuilder<'a> {
         let memory_type = self
             .device
             .physical_device()
-            .memory_type_by_id(self.allocate.memory_type_index)
+            .memory_type_by_id(self.builder.memory_type_index)
             .ok_or(DeviceMemoryAllocError::SpecViolation(1714))?;
 
         if self.device.physical_device().internal_object()
@@ -296,7 +259,7 @@ impl<'a> DeviceMemoryBuilder<'a> {
         // returned by vkGetPhysicalDeviceMemoryProperties for the VkPhysicalDevice that device was created
         // from".
         let reported_heap_size = memory_type.heap().size();
-        if reported_heap_size != 0 && self.allocate.allocation_size > reported_heap_size {
+        if reported_heap_size != 0 && self.builder.allocation_size > reported_heap_size {
             return Err(DeviceMemoryAllocError::SpecViolation(1713));
         }
 
@@ -353,6 +316,22 @@ impl<'a> DeviceMemoryBuilder<'a> {
             }
         }
 
+        let mut builder = self.builder;
+        let size = builder.allocation_size;
+        let memory_type_index = builder.memory_type_index;
+
+        if let Some(info) = self.dedicated_info.as_mut() {
+            builder = builder.push_next(info);
+        }
+
+        if let Some(info) = self.export_info.as_mut() {
+            builder = builder.push_next(info);
+        }
+
+        if let Some(info) = self.import_info.as_mut() {
+            builder = builder.push_next(info);
+        }
+
         let memory = unsafe {
             let physical_device = self.device.physical_device();
             let mut allocation_count = self
@@ -367,9 +346,10 @@ impl<'a> DeviceMemoryBuilder<'a> {
             let fns = self.device.fns();
 
             let mut output = MaybeUninit::uninit();
+
             check_errors(fns.v1_0.allocate_memory(
                 self.device.internal_object(),
-                &self.allocate,
+                &builder.build(),
                 ptr::null(),
                 output.as_mut_ptr(),
             ))?;
@@ -378,10 +358,10 @@ impl<'a> DeviceMemoryBuilder<'a> {
         };
 
         Ok(Arc::new(DeviceMemory {
-            memory: memory,
+            memory,
             device: self.device,
-            size: self.allocate.allocation_size,
-            memory_type_index: self.allocate.memory_type_index,
+            size,
+            memory_type_index,
             handle_types: ExternalMemoryHandleType::from(export_handle_bits),
             mapped: Mutex::new(false),
         }))
