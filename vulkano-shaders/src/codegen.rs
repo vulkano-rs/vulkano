@@ -193,6 +193,9 @@ pub fn compile(
         compile_options.add_macro_definition(macro_name.as_ref(), Some(macro_value.as_ref()));
     }
 
+    #[cfg(feature = "shaderc-debug")]
+    compile_options.set_generate_debug_info();
+
     let content = compiler
         .compile_into_spirv(&code, ty, root_source_path, "main", Some(&compile_options))
         .map_err(|e| e.to_string())?;
