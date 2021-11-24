@@ -530,8 +530,13 @@ fn value_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
         );
         let name_string = name.to_string();
 
+        let derives = match name_string.as_str() {
+            "ExecutionModel" => quote! { #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)] },
+            _ => quote! { #[derive(Clone, Debug, PartialEq)] },
+        };
+
         quote! {
-            #[derive(Clone, Debug, PartialEq)]
+            #derives
             #[allow(non_camel_case_types)]
             pub enum #name {
                 #(#members_items)*
