@@ -60,6 +60,7 @@
 - Fix mutable bit not set on exportable image.
 - `ShaderModule` can how handle multiple entry points with the same name but differing execution models. `ShaderModule::entry_point` will now return `None` if the entry point with the specified name does not exist or is ambiguous. To disambiguate, use `ShaderModule::entry_point_with_execution`.
 - Added a `shaderc-debug` cargo feature to Vulkano-shaders, to emit debug information in the generated SPIR-V code.
+- Added a `type_for_format` macro, which returns a Rust type that is suitable for representing a given `Format`.
 
 # Version 0.26.0 (2021-10-2)
 
