@@ -447,7 +447,7 @@ where
     #[inline]
     fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
         Some(ImageDescriptorLayouts {
-            storage_image: self.layout,
+            storage_image: ImageLayout::General,
             combined_image_sampler: self.layout,
             sampled_image: self.layout,
             input_attachment: self.layout,

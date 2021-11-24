@@ -649,7 +649,7 @@ where
     #[inline]
     fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
         Some(ImageDescriptorLayouts {
-            storage_image: ImageLayout::ShaderReadOnlyOptimal,
+            storage_image: ImageLayout::General,
             combined_image_sampler: ImageLayout::ShaderReadOnlyOptimal,
             sampled_image: ImageLayout::ShaderReadOnlyOptimal,
             input_attachment: ImageLayout::ShaderReadOnlyOptimal,
