@@ -22,6 +22,7 @@ use vulkano::render_pass::Subpass;
 use vulkano::sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode};
 
 /// Vertex for textured quads
+#[repr(C)]
 #[derive(Default, Debug, Clone, Copy)]
 pub struct TexturedVertex {
     pub position: [f32; 2],
