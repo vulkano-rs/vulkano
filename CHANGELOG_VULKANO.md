@@ -58,6 +58,7 @@
 - Fix device memory builder not including p_next structures.
 - Fix exportable image not created with VkExternalMemoryImageCreateInfo.
 - Fix mutable bit not set on exportable image.
+- `ShaderModule` can how handle multiple entry points with the same name but differing execution models. `ShaderModule::entry_point` will now return `None` if the entry point with the specified name does not exist or is ambiguous. To disambiguate, use `ShaderModule::entry_point_with_execution`.
 
 # Version 0.26.0 (2021-10-2)
 
