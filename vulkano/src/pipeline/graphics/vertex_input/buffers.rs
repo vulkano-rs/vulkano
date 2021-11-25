@@ -126,31 +126,33 @@ unsafe impl VertexDefinition for BuffersDefinition {
 
             if !infos.ty.matches(
                 infos.array_size,
-                element.format,
-                element.location.end - element.location.start,
+                element.ty.to_format(),
+                element.ty.num_locations(),
             ) {
                 // TODO: move this check to GraphicsPipelineBuilder
                 return Err(IncompatibleVertexDefinitionError::FormatMismatch {
                     attribute: name.clone().into_owned(),
                     shader: (
-                        element.format,
-                        (element.location.end - element.location.start) as usize,
+                        element.ty.to_format(),
+                        (element.ty.num_locations()) as usize,
                     ),
                     definition: (infos.ty, infos.array_size),
                 });
             }
 
             let mut offset = infos.offset as DeviceSize;
-            for location in element.location.clone() {
+            let location_range = element.location..element.location + element.ty.num_locations();
+
+            for location in location_range {
                 attributes.push((
                     location,
                     VertexInputAttributeDescription {
                         binding,
-                        format: element.format,
+                        format: element.ty.to_format(),
                         offset: offset as u32,
                     },
                 ));
-                offset += element.format.size().unwrap();
+                offset += element.ty.to_format().size().unwrap();
             }
         }
 

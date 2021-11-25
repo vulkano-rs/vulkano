@@ -42,7 +42,6 @@ use std::fmt::Display;
 use std::mem;
 use std::mem::MaybeUninit;
 use std::ops::BitOr;
-use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 
@@ -747,11 +746,12 @@ impl ShaderInterface {
         }
 
         for a in self.elements() {
-            for loc in a.location.clone() {
+            let location_range = a.location..a.location + a.ty.num_locations();
+            for loc in location_range {
                 let b = match other
                     .elements()
                     .iter()
-                    .find(|e| loc >= e.location.start && loc < e.location.end)
+                    .find(|e| loc >= e.location && loc < e.location + e.ty.num_locations())
                 {
                     None => {
                         return Err(ShaderInterfaceMismatchError::MissingElement { location: loc })
@@ -759,11 +759,11 @@ impl ShaderInterface {
                     Some(b) => b,
                 };
 
-                if a.format != b.format {
-                    return Err(ShaderInterfaceMismatchError::FormatMismatch {
+                if a.ty != b.ty {
+                    return Err(ShaderInterfaceMismatchError::TypeMismatch {
                         location: loc,
-                        self_format: a.format,
-                        other_format: b.format,
+                        self_ty: a.ty,
+                        other_ty: b.ty,
                     });
                 }
 
@@ -785,12 +785,76 @@ impl ShaderInterface {
 /// Entry of a shader interface definition.
 #[derive(Debug, Clone)]
 pub struct ShaderInterfaceEntry {
-    /// Range of locations covered by the element.
-    pub location: Range<u32>,
-    /// Format of a each location of the element.
-    pub format: Format,
+    /// The location slot that the variable starts at.
+    pub location: u32,
+
+    /// The component slot that the variable starts at. Must be in the range 0..=3.
+    pub component: u32,
+
     /// Name of the element, or `None` if the name is unknown.
     pub name: Option<Cow<'static, str>>,
+
+    /// The type of the variable.
+    pub ty: ShaderInterfaceEntryType,
+}
+
+/// The type of a variable in a shader interface.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ShaderInterfaceEntryType {
+    /// The base numeric type.
+    pub base_type: ShaderScalarType,
+
+    /// The number of vector components. Must be in the range 1..=4.
+    pub num_components: u32,
+
+    /// The number of array elements or matrix columns.
+    pub num_elements: u32,
+
+    /// Whether the base type is 64 bits wide. If true, each item of the base type takes up two
+    /// component slots instead of one.
+    pub is_64bit: bool,
+}
+
+impl ShaderInterfaceEntryType {
+    pub(crate) fn to_format(&self) -> Format {
+        assert!(!self.is_64bit); // TODO: implement
+        match self.base_type {
+            ShaderScalarType::Float => match self.num_components {
+                1 => Format::R32_SFLOAT,
+                2 => Format::R32G32_SFLOAT,
+                3 => Format::R32G32B32_SFLOAT,
+                4 => Format::R32G32B32A32_SFLOAT,
+                _ => unreachable!(),
+            },
+            ShaderScalarType::Sint => match self.num_components {
+                1 => Format::R32_SINT,
+                2 => Format::R32G32_SINT,
+                3 => Format::R32G32B32_SINT,
+                4 => Format::R32G32B32A32_SINT,
+                _ => unreachable!(),
+            },
+            ShaderScalarType::Uint => match self.num_components {
+                1 => Format::R32_UINT,
+                2 => Format::R32G32_UINT,
+                3 => Format::R32G32B32_UINT,
+                4 => Format::R32G32B32A32_UINT,
+                _ => unreachable!(),
+            },
+        }
+    }
+
+    pub(crate) fn num_locations(&self) -> u32 {
+        assert!(!self.is_64bit); // TODO: implement
+        self.num_elements
+    }
+}
+
+/// The numeric base type of a shader interface variable.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ShaderScalarType {
+    Float,
+    Sint,
+    Uint,
 }
 
 /// Error that can happen when the interface mismatches between two shader stages.
@@ -810,14 +874,14 @@ pub enum ShaderInterfaceMismatchError {
         location: u32,
     },
 
-    /// The format of an element does not match.
-    FormatMismatch {
+    /// The type of an element does not match.
+    TypeMismatch {
         /// Location of the element that mismatches.
         location: u32,
-        /// Format in the first interface.
-        self_format: Format,
-        /// Format in the second interface.
-        other_format: Format,
+        /// Type in the first interface.
+        self_ty: ShaderInterfaceEntryType,
+        /// Type in the second interface.
+        other_ty: ShaderInterfaceEntryType,
     },
 }
 
@@ -834,8 +898,8 @@ impl fmt::Display for ShaderInterfaceMismatchError {
                     "the number of elements mismatches"
                 }
                 ShaderInterfaceMismatchError::MissingElement { .. } => "an element is missing",
-                ShaderInterfaceMismatchError::FormatMismatch { .. } => {
-                    "the format of an element does not match"
+                ShaderInterfaceMismatchError::TypeMismatch { .. } => {
+                    "the type of an element does not match"
                 }
             }
         )

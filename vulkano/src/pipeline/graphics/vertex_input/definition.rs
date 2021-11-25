@@ -51,18 +51,11 @@
 //! ```
 
 use crate::format::Format;
-use crate::pipeline::graphics::vertex_input::vertex::VertexMemberInfo;
-use crate::pipeline::graphics::vertex_input::Vertex;
-use crate::pipeline::graphics::vertex_input::VertexInputAttributeDescription;
-use crate::pipeline::graphics::vertex_input::VertexInputBindingDescription;
-use crate::pipeline::graphics::vertex_input::VertexInputRate;
 use crate::pipeline::graphics::vertex_input::VertexInputState;
 use crate::pipeline::graphics::vertex_input::VertexMemberTy;
 use crate::shader::ShaderInterface;
-use crate::DeviceSize;
 use std::error;
 use std::fmt;
-use std::mem;
 
 /// Trait for types that can create a [`VertexInputState`] from a [`ShaderInterface`].
 pub unsafe trait VertexDefinition {
@@ -117,146 +110,5 @@ impl fmt::Display for IncompatibleVertexDefinitionError {
                 write!(fmt, "the format of an attribute does not match")
             }
         }
-    }
-}
-
-/// A vertex definition for any number of vertex and instance buffers.
-#[derive(Clone, Debug, Default)]
-pub struct BuffersDefinition(Vec<VertexBuffer>);
-
-#[derive(Clone, Copy)]
-struct VertexBuffer {
-    info_fn: fn(&str) -> Option<VertexMemberInfo>,
-    stride: u32,
-    input_rate: VertexInputRate,
-}
-
-impl std::fmt::Debug for VertexBuffer {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("VertexBuffer")
-            .field("stride", &self.stride)
-            .field("input_rate", &self.input_rate)
-            .finish()
-    }
-}
-
-impl From<VertexBuffer> for VertexInputBindingDescription {
-    #[inline]
-    fn from(val: VertexBuffer) -> Self {
-        Self {
-            stride: val.stride,
-            input_rate: val.input_rate,
-        }
-    }
-}
-
-impl BuffersDefinition {
-    /// Constructs a new definition.
-    pub fn new() -> Self {
-        BuffersDefinition(Vec::new())
-    }
-
-    /// Adds a new vertex buffer containing elements of type `V` to the definition.
-    pub fn vertex<V: Vertex>(mut self) -> Self {
-        self.0.push(VertexBuffer {
-            info_fn: V::member,
-            stride: mem::size_of::<V>() as u32,
-            input_rate: VertexInputRate::Vertex,
-        });
-        self
-    }
-
-    /// Adds a new instance buffer containing elements of type `V` to the definition.
-    pub fn instance<V: Vertex>(mut self) -> Self {
-        self.0.push(VertexBuffer {
-            info_fn: V::member,
-            stride: mem::size_of::<V>() as u32,
-            input_rate: VertexInputRate::Instance { divisor: 1 },
-        });
-        self
-    }
-
-    /// Adds a new instance buffer containing elements of type `V` to the definition, with the
-    /// specified input rate divisor.
-    ///
-    /// This requires the
-    /// [`vertex_attribute_instance_rate_divisor`](crate::device::Features::vertex_attribute_instance_rate_divisor)
-    /// feature has been enabled on the device, unless `divisor` is 1.
-    ///
-    /// `divisor` can be 0 if the
-    /// [`vertex_attribute_instance_rate_zero_divisor`](crate::device::Features::vertex_attribute_instance_rate_zero_divisor)
-    /// feature is also enabled. This means that every vertex will use the same vertex and instance
-    /// data.
-    pub fn instance_with_divisor<V: Vertex>(mut self, divisor: u32) -> Self {
-        self.0.push(VertexBuffer {
-            info_fn: V::member,
-            stride: mem::size_of::<V>() as u32,
-            input_rate: VertexInputRate::Instance { divisor },
-        });
-        self
-    }
-}
-
-unsafe impl VertexDefinition for BuffersDefinition {
-    fn definition(
-        &self,
-        interface: &ShaderInterface,
-    ) -> Result<VertexInputState, IncompatibleVertexDefinitionError> {
-        let bindings = self
-            .0
-            .iter()
-            .enumerate()
-            .map(|(binding, &buffer)| (binding as u32, buffer.into()));
-        let mut attributes: Vec<(u32, VertexInputAttributeDescription)> = Vec::new();
-
-        for element in interface.elements() {
-            let name = element.name.as_ref().unwrap();
-
-            let (infos, binding) = self
-                .0
-                .iter()
-                .enumerate()
-                .find_map(|(binding, buffer)| {
-                    (buffer.info_fn)(name).map(|infos| (infos, binding as u32))
-                })
-                .ok_or_else(||
-                    // TODO: move this check to GraphicsPipelineBuilder
-                    IncompatibleVertexDefinitionError::MissingAttribute {
-                        attribute: name.clone().into_owned(),
-                    })?;
-
-            if !infos.ty.matches(
-                infos.array_size,
-                element.format,
-                element.location.end - element.location.start,
-            ) {
-                // TODO: move this check to GraphicsPipelineBuilder
-                return Err(IncompatibleVertexDefinitionError::FormatMismatch {
-                    attribute: name.clone().into_owned(),
-                    shader: (
-                        element.format,
-                        (element.location.end - element.location.start) as usize,
-                    ),
-                    definition: (infos.ty, infos.array_size),
-                });
-            }
-
-            let mut offset = infos.offset as DeviceSize;
-            for location in element.location.clone() {
-                attributes.push((
-                    location,
-                    VertexInputAttributeDescription {
-                        binding,
-                        format: element.format,
-                        offset: offset as u32,
-                    },
-                ));
-                offset += element.format.size().unwrap();
-            }
-        }
-
-        Ok(VertexInputState::new()
-            .bindings(bindings)
-            .attributes(attributes))
     }
 }

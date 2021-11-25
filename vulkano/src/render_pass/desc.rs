@@ -126,7 +126,10 @@ impl RenderPassDesc {
         };
 
         for element in shader_interface.elements() {
-            for location in element.location.clone() {
+            assert!(!element.ty.is_64bit); // TODO: implement
+            let location_range = element.location..element.location + element.ty.num_locations();
+
+            for location in location_range {
                 let attachment_id = match pass_descr.color_attachments.get(location as usize) {
                     Some(a) => a.0,
                     None => return false,

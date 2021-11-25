@@ -11,6 +11,7 @@
 
 use crate::descriptor_set::layout::DescriptorType;
 use crate::image::view::ImageViewType;
+use crate::shader::ShaderScalarType;
 use crate::DeviceSize;
 use crate::{
     format::Format,
@@ -21,8 +22,8 @@ use crate::{
             Instruction, Spirv, StorageClass,
         },
         DescriptorRequirements, EntryPointInfo, GeometryShaderExecution, GeometryShaderInput,
-        ShaderExecution, ShaderInterface, ShaderInterfaceEntry, ShaderStage,
-        SpecializationConstantRequirements,
+        ShaderExecution, ShaderInterface, ShaderInterfaceEntry, ShaderInterfaceEntryType,
+        ShaderStage, SpecializationConstantRequirements,
     },
 };
 use fnv::FnvHashMap;
@@ -737,12 +738,23 @@ fn shader_interface(
                         result_id, name,
                     )
                 });
+            let component = id_info
+                .iter_decoration()
+                .find_map(|instruction| match instruction {
+                    Instruction::Decorate {
+                        decoration: Decoration::Component { component },
+                        ..
+                    } => Some(*component),
+                    _ => None,
+                })
+                .unwrap_or(0);
 
-            let (format, num_locations) = format_of_type(spirv, result_type_id, ignore_first_array);
-            assert!(num_locations >= 1);
+            let ty = shader_interface_type_of(spirv, result_type_id, ignore_first_array);
+            assert!(ty.num_elements >= 1);
             Some(ShaderInterfaceEntry {
-                location: location..location + num_locations,
-                format,
+                location,
+                component,
+                ty,
                 name,
             })
         })
@@ -751,20 +763,20 @@ fn shader_interface(
     // Checking for overlapping elements.
     for (offset, element1) in elements.iter().enumerate() {
         for element2 in elements.iter().skip(offset + 1) {
-            if element1.location.start == element2.location.start
-                || (element1.location.start < element2.location.start
-                    && element1.location.end > element2.location.start)
-                || (element2.location.start < element1.location.start
-                    && element2.location.end > element1.location.start)
+            if element1.location == element2.location
+                || (element1.location < element2.location
+                    && element1.location + element1.ty.num_locations() > element2.location)
+                || (element2.location < element1.location
+                    && element2.location + element2.ty.num_locations() > element1.location)
             {
                 panic!(
                     "The locations of attributes `{:?}` ({}..{}) and `{:?}` ({}..{}) overlap",
                     element1.name,
-                    element1.location.start,
-                    element1.location.end,
+                    element1.location,
+                    element1.location + element1.ty.num_locations(),
                     element2.name,
-                    element2.location.start,
-                    element2.location.end,
+                    element2.location,
+                    element2.location + element2.ty.num_locations(),
                 );
             }
         }
@@ -885,39 +897,46 @@ fn offset_of_struct(spirv: &Spirv, id: Id) -> u32 {
         .unwrap_or(0)
 }
 
-/// Returns the vulkano `Format` and number of occupied locations from an id.
-///
 /// If `ignore_first_array` is true, the function expects the outermost instruction to be
 /// `OpTypeArray`. If it's the case, the OpTypeArray will be ignored. If not, the function will
 /// panic.
-fn format_of_type(spirv: &Spirv, id: Id, ignore_first_array: bool) -> (Format, u32) {
+fn shader_interface_type_of(
+    spirv: &Spirv,
+    id: Id,
+    ignore_first_array: bool,
+) -> ShaderInterfaceEntryType {
     match spirv.id(id).instruction() {
         &Instruction::TypeInt {
             width, signedness, ..
         } => {
             assert!(!ignore_first_array);
-            let format = match (width, signedness) {
-                (8, 1) => Format::R8_SINT,
-                (8, 0) => Format::R8_UINT,
-                (16, 1) => Format::R16_SINT,
-                (16, 0) => Format::R16_UINT,
-                (32, 1) => Format::R32_SINT,
-                (32, 0) => Format::R32_UINT,
-                (64, 1) => Format::R64_SINT,
-                (64, 0) => Format::R64_UINT,
-                _ => panic!(),
-            };
-            (format, 1)
+            ShaderInterfaceEntryType {
+                base_type: match signedness {
+                    0 => ShaderScalarType::Uint,
+                    1 => ShaderScalarType::Sint,
+                    _ => unreachable!(),
+                },
+                num_components: 1,
+                num_elements: 1,
+                is_64bit: match width {
+                    8 | 16 | 32 => false,
+                    64 => true,
+                    _ => unimplemented!(),
+                },
+            }
         }
         &Instruction::TypeFloat { width, .. } => {
             assert!(!ignore_first_array);
-            let format = match width {
-                16 => Format::R16_SFLOAT,
-                32 => Format::R32_SFLOAT,
-                64 => Format::R64_SFLOAT,
-                _ => panic!(),
-            };
-            (format, 1)
+            ShaderInterfaceEntryType {
+                base_type: ShaderScalarType::Float,
+                num_components: 1,
+                num_elements: 1,
+                is_64bit: match width {
+                    16 | 32 => false,
+                    64 => true,
+                    _ => unimplemented!(),
+                },
+            }
         }
         &Instruction::TypeVector {
             component_type,
@@ -925,53 +944,10 @@ fn format_of_type(spirv: &Spirv, id: Id, ignore_first_array: bool) -> (Format, u
             ..
         } => {
             assert!(!ignore_first_array);
-            // TODO: Add handling of 64-bit types, which need special care. See the sections
-            // "Attribute Location and Component Assignment" and "Vertex Input Extraction" in the spec:
-            // https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/chap22.html#fxvertex-attrib-location
-            let format = match spirv.id(component_type).instruction() {
-                Instruction::TypeInt {
-                    width, signedness, ..
-                } => match (component_count, width, signedness) {
-                    (1, 8, 1) => Format::R8_SINT,
-                    (1, 8, 0) => Format::R8_UINT,
-                    (1, 16, 1) => Format::R16_SINT,
-                    (1, 16, 0) => Format::R16_UINT,
-                    (1, 32, 1) => Format::R32_SINT,
-                    (1, 32, 0) => Format::R32_UINT,
-                    (2, 8, 1) => Format::R8G8_SINT,
-                    (2, 8, 0) => Format::R8G8_UINT,
-                    (2, 16, 1) => Format::R16G16_SINT,
-                    (2, 16, 0) => Format::R16G16_UINT,
-                    (2, 32, 1) => Format::R32G32_SINT,
-                    (2, 32, 0) => Format::R32G32_UINT,
-                    (3, 8, 1) => Format::R8G8B8_SINT,
-                    (3, 8, 0) => Format::R8G8B8_UINT,
-                    (3, 16, 1) => Format::R16G16B16_SINT,
-                    (3, 16, 0) => Format::R16G16B16_UINT,
-                    (3, 32, 1) => Format::R32G32B32_SINT,
-                    (3, 32, 0) => Format::R32G32B32_UINT,
-                    (4, 8, 1) => Format::R8G8B8A8_SINT,
-                    (4, 8, 0) => Format::R8G8B8A8_UINT,
-                    (4, 16, 1) => Format::R16G16B16A16_SINT,
-                    (4, 16, 0) => Format::R16G16B16A16_UINT,
-                    (4, 32, 1) => Format::R32G32B32A32_SINT,
-                    (4, 32, 0) => Format::R32G32B32A32_UINT,
-                    _ => panic!(),
-                },
-                &Instruction::TypeFloat { width, .. } => match (component_count, width) {
-                    (1, 16) => Format::R16_SFLOAT,
-                    (1, 32) => Format::R32_SFLOAT,
-                    (2, 16) => Format::R16G16_SFLOAT,
-                    (2, 32) => Format::R32G32_SFLOAT,
-                    (3, 16) => Format::R16G16B16_SFLOAT,
-                    (3, 32) => Format::R32G32B32_SFLOAT,
-                    (4, 16) => Format::R16G16B16A16_SFLOAT,
-                    (4, 32) => Format::R32G32B32A32_SFLOAT,
-                    _ => panic!(),
-                },
-                _ => panic!(),
-            };
-            (format, 1)
+            ShaderInterfaceEntryType {
+                num_components: component_count,
+                ..shader_interface_type_of(spirv, component_type, false)
+            }
         }
         &Instruction::TypeMatrix {
             column_type,
@@ -979,8 +955,10 @@ fn format_of_type(spirv: &Spirv, id: Id, ignore_first_array: bool) -> (Format, u
             ..
         } => {
             assert!(!ignore_first_array);
-            let (format, num_locations) = format_of_type(spirv, column_type, false);
-            (format, num_locations * column_count)
+            ShaderInterfaceEntryType {
+                num_elements: column_count,
+                ..shader_interface_type_of(spirv, column_type, false)
+            }
         }
         &Instruction::TypeArray {
             element_type,
@@ -988,10 +966,10 @@ fn format_of_type(spirv: &Spirv, id: Id, ignore_first_array: bool) -> (Format, u
             ..
         } => {
             if ignore_first_array {
-                format_of_type(spirv, element_type, false)
+                shader_interface_type_of(spirv, element_type, false)
             } else {
-                let (format, num_locations) = format_of_type(spirv, element_type, false);
-                let len = spirv
+                let mut ty = shader_interface_type_of(spirv, element_type, false);
+                let num_elements = spirv
                     .instructions()
                     .iter()
                     .filter_map(|e| match e {
@@ -1003,12 +981,18 @@ fn format_of_type(spirv: &Spirv, id: Id, ignore_first_array: bool) -> (Format, u
                         _ => None,
                     })
                     .next()
-                    .expect("failed to find array length");
-                let len = len.iter().rev().fold(0u64, |a, &b| (a << 32) | b as u64) as u32;
-                (format, num_locations * len)
+                    .expect("failed to find array length")
+                    .iter()
+                    .rev()
+                    .fold(0u64, |a, &b| (a << 32) | b as u64)
+                    as u32;
+                ty.num_elements *= num_elements;
+                ty
             }
         }
-        &Instruction::TypePointer { ty, .. } => format_of_type(spirv, ty, ignore_first_array),
+        &Instruction::TypePointer { ty, .. } => {
+            shader_interface_type_of(spirv, ty, ignore_first_array)
+        }
         _ => panic!("Type {} not found or invalid", id),
     }
 }

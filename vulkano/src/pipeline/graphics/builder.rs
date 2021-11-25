@@ -258,7 +258,11 @@ where
             // Check that the vertex input state contains attributes for all the shader's input
             // variables.
             for element in vertex_shader.0.input_interface().elements() {
-                for location in element.location.clone() {
+                assert!(!element.ty.is_64bit); // TODO: implement
+                let location_range =
+                    element.location..element.location + element.ty.num_locations();
+
+                for location in location_range {
                     let attribute_desc = match self_vertex_input_state.attributes.get(&location) {
                         Some(attribute_desc) => attribute_desc,
                         None => {
@@ -273,7 +277,7 @@ where
                     // TODO: Check component assignments too. Multiple variables can occupy the same
                     // location but in different components.
 
-                    let shader_type = element.format.type_color().unwrap();
+                    let shader_type = element.ty.to_format().type_color().unwrap();
                     let attribute_type = attribute_desc.format.type_color().unwrap();
 
                     if !matches!(
