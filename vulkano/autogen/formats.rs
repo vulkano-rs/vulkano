@@ -38,6 +38,7 @@ struct FormatMember {
     components: [u8; 4],
     compression: Option<Ident>,
     planes: Vec<Ident>,
+    rust_type: Option<TokenStream>,
     size: Option<u64>,
     type_color: Option<Ident>,
     type_depth: Option<Ident>,
@@ -215,6 +216,15 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
     let try_from_items = members.iter().map(|FormatMember { name, ffi_name, .. }| {
         quote! { ash::vk::Format::#ffi_name => Ok(Self::#name), }
     });
+    let type_for_format_items = members.iter().filter_map(
+        |FormatMember {
+             name, rust_type, ..
+         }| {
+            rust_type.as_ref().map(|rust_type| {
+                quote! { (#name) => { #rust_type }; }
+            })
+        },
+    );
 
     quote! {
         /// An enumeration of all the possible formats.
@@ -355,6 +365,38 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
                 }
             }
         }
+
+        /// Converts a format enum identifier to a type that is suitable for representing the format
+        /// in a buffer or image.
+        ///
+        /// This macro returns one possible suitable representation, but there are usually other
+        /// possibilities for a given format, including those provided by external libraries like
+        /// `cmath` or `nalgebra`. A compile error occurs for formats that have no well-defined size
+        /// (the `size` method returns `None`).
+        ///
+        /// - For regular unpacked formats with one component, this returns a single floating point,
+        ///   signed or unsigned integer with the appropriate number of bits. For formats with
+        ///   multiple components, an array is returned.
+        /// - For packed formats, this returns an unsigned integer with the size of the packed
+        ///   element. For multi-packed formats (such as `2PACK16`), an array is returned.
+        /// - For compressed formats, this returns `[u8; N]` where N is the size of a block.
+        ///
+        /// Note: for 16-bit floating point values, you need to import the [`half::f16`] type.
+        ///
+        /// # Example
+        ///
+        /// ```
+        /// # #[macro_use] extern crate vulkano;
+        /// # fn main() {
+        /// let pixel: type_for_format!(R32G32B32A32_SFLOAT);
+        /// # }
+        /// ```
+        ///
+        /// The type of `pixel` will be `[f32; 4]`.
+        #[macro_export]
+        macro_rules! type_for_format {
+            #(#type_for_format_items)*
+        }
     }
 }
 
@@ -397,6 +439,7 @@ fn formats_members(formats: &[&str]) -> Vec<FormatMember> {
                 components: [0u8; 4],
                 compression: None,
                 planes: vec![],
+                rust_type: None,
                 size: None,
                 type_color: None,
                 type_depth: None,
@@ -504,19 +547,26 @@ fn formats_members(formats: &[&str]) -> Vec<FormatMember> {
                 };
                 member.components = components;
                 member.compression = Some(compression);
+                member.rust_type = Some({
+                    let block_size = Literal::usize_unsuffixed(block_size as usize);
+                    quote! { [u8; #block_size] }
+                });
                 member.size = Some(block_size);
                 member.type_color = Some(numeric_type);
             } else {
                 // Other formats
-
-                let many_pack = PACK_REGEX
-                    .captures(*parts.last().unwrap())
-                    .map(|captures| {
-                        parts.pop();
-                        let first = captures.get(1).unwrap().as_str();
-                        first == "3" || first == "4"
-                    })
-                    .unwrap_or(false);
+                let pack = PACK_REGEX.captures(*parts.last().unwrap()).map(|captures| {
+                    parts.pop();
+                    let pack_elements = captures
+                        .get(1)
+                        .and_then(|c| c.as_str().parse::<usize>().ok())
+                        .unwrap_or(1);
+                    let pack_bits = captures
+                        .get(2)
+                        .and_then(|c| c.as_str().parse::<u8>().ok())
+                        .unwrap();
+                    (pack_elements, pack_bits)
+                });
 
                 let numeric_type = parts.pop().unwrap();
                 member.aspect_color = true;
@@ -586,6 +636,21 @@ fn formats_members(formats: &[&str]) -> Vec<FormatMember> {
                         member.components = components;
                         member.size = Some(block_size * size_factor);
 
+                        let many_pack = if let Some((elements, bits)) = pack {
+                            let ty = format_ident!("u{}", bits);
+
+                            member.rust_type = Some(if elements > 1 {
+                                let elements = Literal::usize_unsuffixed(elements);
+                                quote! { [#ty; #elements] }
+                            } else {
+                                quote! { #ty }
+                            });
+
+                            elements == 3 || elements == 4
+                        } else {
+                            false
+                        };
+
                         if size_factor != 1 {
                             let captures = COMPONENTS_REGEX.captures(parts[0]).unwrap();
                             let bits: u8 = captures.get(2).unwrap().as_str().parse().unwrap();
@@ -596,6 +661,11 @@ fn formats_members(formats: &[&str]) -> Vec<FormatMember> {
                                     g_even: #g_even,
                                 }
                             };
+
+                            if member.rust_type.is_none() {
+                                let ty = format_ident!("u{}", bits);
+                                member.rust_type = Some(quote! { [#ty; 4] });
+                            }
                         } else if many_pack {
                             let captures = COMPONENTS_REGEX.captures(parts[0]).unwrap();
                             let bits: u8 = captures.get(2).unwrap().as_str().parse().unwrap();
@@ -611,7 +681,38 @@ fn formats_members(formats: &[&str]) -> Vec<FormatMember> {
                                     size: #size,
                                 }
                             };
+
+                            if member.rust_type.is_none() {
+                                let bits = components[0];
+                                let prefix = match numeric_type {
+                                    "SFLOAT" => "f",
+                                    "SINT" | "SNORM" | "SSCALED" => "i",
+                                    "UINT" | "UNORM" | "USCALED" | "SRGB" => "u",
+                                    _ => unreachable!(),
+                                };
+                                let ty = format_ident!("{}{}", prefix, bits);
+
+                                let elements = std::array::IntoIter::new(components)
+                                    .filter(|&c| {
+                                        if c != 0 {
+                                            debug_assert!(c == bits);
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    })
+                                    .count();
+
+                                member.rust_type = Some(if elements > 1 {
+                                    let elements = Literal::usize_unsuffixed(elements);
+                                    quote! { [#ty; #elements] }
+                                } else {
+                                    quote! { #ty }
+                                });
+                            }
                         }
+
+                        debug_assert!(member.rust_type.is_some());
                     }
                 }
             }

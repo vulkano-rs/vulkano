@@ -25,3 +25,4 @@ vulkano = { version = "0.26.0", path = "../vulkano" }
 
 [features]
 shaderc-build-from-source = ["shaderc/build-from-source"]
+shaderc-debug = []

@@ -8,6 +8,7 @@
 // according to those terms.
 
 use crate::descriptor_set::layout::DescriptorSetLayout;
+use crate::descriptor_set::pool::sys::DescriptorSetAllocateInfo;
 use crate::descriptor_set::pool::DescriptorPool;
 use crate::descriptor_set::pool::DescriptorPoolAlloc;
 use crate::descriptor_set::pool::DescriptorPoolAllocError;
@@ -64,7 +65,25 @@ unsafe impl DescriptorPool for Arc<StdDescriptorPool> {
     type Alloc = StdDescriptorPoolAlloc;
 
     // TODO: eventually use a lock-free algorithm?
-    fn alloc(&mut self, layout: &DescriptorSetLayout) -> Result<StdDescriptorPoolAlloc, OomError> {
+    fn alloc(
+        &mut self,
+        layout: &DescriptorSetLayout,
+        variable_descriptor_count: u32,
+    ) -> Result<StdDescriptorPoolAlloc, OomError> {
+        assert!(
+            !layout.desc().is_push_descriptor(),
+            "the provided descriptor set layout is for push descriptors, and cannot be used to build a descriptor set object",
+        );
+
+        let max_count = layout.variable_descriptor_count();
+
+        assert!(
+            variable_descriptor_count <= max_count,
+            "the provided variable_descriptor_count ({}) is greater than the maximum number of variable count descriptors in the set ({})",
+            variable_descriptor_count,
+            max_count,
+        );
+
         let mut pools = self.pools.lock().unwrap();
 
         // Try find an existing pool with some free space.
@@ -87,7 +106,10 @@ unsafe impl DescriptorPool for Arc<StdDescriptorPool> {
             pool.remaining_capacity -= *layout.descriptors_count();
 
             let alloc = unsafe {
-                match pool.pool.alloc(Some(layout)) {
+                match pool.pool.alloc([DescriptorSetAllocateInfo {
+                    layout,
+                    variable_descriptor_count,
+                }]) {
                     Ok(mut sets) => sets.next().unwrap(),
                     // An error can happen if we're out of memory, or if the pool is fragmented.
                     // We handle these errors by just ignoring this pool and trying the next ones.
@@ -111,7 +133,10 @@ unsafe impl DescriptorPool for Arc<StdDescriptorPool> {
         let mut new_pool = UnsafeDescriptorPool::new(self.device.clone(), &count, 40, true)?;
 
         let alloc = unsafe {
-            match new_pool.alloc(Some(layout)) {
+            match new_pool.alloc([DescriptorSetAllocateInfo {
+                layout,
+                variable_descriptor_count,
+            }]) {
                 Ok(mut sets) => sets.next().unwrap(),
                 Err(DescriptorPoolAllocError::OutOfHostMemory) => {
                     return Err(OomError::OutOfHostMemory);
@@ -207,7 +232,7 @@ mod tests {
 
         let mut pool = Arc::new(StdDescriptorPool::new(device));
         let pool_weak = Arc::downgrade(&pool);
-        let alloc = pool.alloc(&layout);
+        let alloc = pool.alloc(&layout, 0);
         drop(pool);
         assert!(pool_weak.upgrade().is_some());
     }

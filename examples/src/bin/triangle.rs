@@ -209,6 +209,9 @@ fn main() {
     };
 
     // We now create a buffer that will store the shape of our triangle.
+    // We use #[repr(C)] here to force rustc to not do anything funky with our data, although for this
+    // particular example, it doesn't actually change the in-memory representation.
+    #[repr(C)]
     #[derive(Default, Debug, Clone)]
     struct Vertex {
         position: [f32; 2],

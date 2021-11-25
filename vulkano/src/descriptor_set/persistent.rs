@@ -38,7 +38,7 @@ use std::sync::Arc;
 
 /// A simple, immutable descriptor set that is expected to be long-lived.
 pub struct PersistentDescriptorSet<P = StdDescriptorPoolAlloc> {
-    inner: P,
+    alloc: P,
     resources: DescriptorSetResources,
     layout: Arc<DescriptorSetLayout>,
 }
@@ -63,7 +63,7 @@ where
 {
     #[inline]
     fn inner(&self) -> &UnsafeDescriptorSet {
-        self.inner.inner()
+        self.alloc.inner()
     }
 
     #[inline]
@@ -229,16 +229,17 @@ impl PersistentDescriptorSetBuilder {
         P: ?Sized + DescriptorPool,
     {
         let writes = self.inner.build()?;
-        let set = unsafe {
-            let mut set = pool.alloc(writes.layout())?;
-            set.inner_mut().write(writes.layout(), writes.writes());
-            set
-        };
-        let mut resources = DescriptorSetResources::new(writes.layout());
-        resources.update(writes.writes());
+        let mut alloc = pool.alloc(writes.layout(), writes.variable_descriptor_count())?;
+        let mut resources =
+            DescriptorSetResources::new(writes.layout(), writes.variable_descriptor_count());
+
+        unsafe {
+            alloc.inner_mut().write(writes.layout(), writes.writes());
+            resources.update(writes.writes());
+        }
 
         Ok(Arc::new(PersistentDescriptorSet {
-            inner: set,
+            alloc,
             resources,
             layout: writes.layout().clone(),
         }))

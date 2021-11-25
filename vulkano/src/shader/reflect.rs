@@ -54,7 +54,7 @@ pub fn spirv_extensions<'a>(spirv: &'a Spirv) -> impl Iterator<Item = &'a str> {
 pub fn entry_points<'a>(
     spirv: &'a Spirv,
     exact_interface: bool,
-) -> impl Iterator<Item = (String, EntryPointInfo)> + 'a {
+) -> impl Iterator<Item = (String, ExecutionModel, EntryPointInfo)> + 'a {
     spirv.iter_entry_point().filter_map(move |instruction| {
         let (execution_model, function_id, entry_point_name, interface) = match instruction {
             &Instruction::EntryPoint {
@@ -93,6 +93,7 @@ pub fn entry_points<'a>(
 
         Some((
             entry_point_name.clone(),
+            *execution_model,
             EntryPointInfo {
                 execution,
                 descriptor_requirements,

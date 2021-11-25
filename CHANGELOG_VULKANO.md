@@ -33,6 +33,10 @@
 - **Breaking** The `dimensions` method has been removed as an inherent method from types that already implement `ImageAccess`, to avoid confusion between the inherent method and the method of the trait when they have different semantics.
 - **Breaking** Replaced `DescriptorDescTy` with `DescriptorType` and made further changes to the members of `DescriptorDesc`.
 - **Breaking** Added a `Pipeline` trait to hold methods that are common to all pipeline types.
+- **Breaking** Changes to allow allocating variable descriptor counts:
+  - The `alloc` method of the `DescriptorPool` trait now has a second parameter to specify the number of descriptors to allocate for the variable count binding. If there is no variable count binding in the layout, this should be 0.
+  - The `alloc` method of `UnsafeDescriptorPool` now takes an iterator of `DescriptorSetAllocateInfo`.
+- For `PersistentDescriptorSet` when using a layout with a variable count binding, allocate only the number of descriptors needed instead of always the maximum.
 - Descriptor resources are now checked against the shader requirements at the time of a draw/dispatch call, rather than at the time the descriptor set is created. Only the resources that are actually needed in the shader are checked, the other resources in a descriptor set are ignored and don't need to be valid.
 - Added a new `DescriptorRequirements` type, which contains requirements imposed by a shader onto a descriptor and the resources bound to it.
   - `DescriptorDesc` can be created from `DescriptorRequirements` with the `From` trait.
@@ -48,6 +52,16 @@
 - Added `CommandBufferState::push_constants` to retrieve the set of all push constant bytes that have been set.
 - Added check to `AutoCommandBufferBuilder` to ensure that the push constants that are needed by the pipeline have been set.
 - Added android platform to external memory cfgs.
+- Fixed two bugs related to the requirements for enabled extensions:
+- For required extensions that have been promoted, the promoted version now also fulfills the requirement.
+- For features that must be enabled in tandem with extensions (e.g. `descriptor_indexing`), the requirement only applies to Vulkan 1.2 and above, since these features do not exist on earlier versions and thus cannot be enabled.
+- Fix device memory builder not including p_next structures.
+- Fix exportable image not created with VkExternalMemoryImageCreateInfo.
+- Fix mutable bit not set on exportable image.
+- `ShaderModule` can how handle multiple entry points with the same name but differing execution models. `ShaderModule::entry_point` will now return `None` if the entry point with the specified name does not exist or is ambiguous. To disambiguate, use `ShaderModule::entry_point_with_execution`.
+- Added a `shaderc-debug` cargo feature to Vulkano-shaders, to emit debug information in the generated SPIR-V code.
+- Added a `type_for_format` macro, which returns a Rust type that is suitable for representing a given `Format`.
+- Fixed a bug when using vulkano-shaders macro with multiple shaders in release mode.
 
 # Version 0.26.0 (2021-10-2)
 

@@ -182,6 +182,7 @@ impl PointLightingSystem {
     }
 }
 
+#[repr(C)]
 #[derive(Default, Debug, Clone)]
 struct Vertex {
     position: [f32; 2],

@@ -541,11 +541,14 @@ impl AttachmentImage {
                 array_layers,
             };
 
-            UnsafeImage::new(
+            UnsafeImage::new_with_exportable_fd(
                 device.clone(),
                 usage,
                 format,
-                ImageCreateFlags::none(),
+                ImageCreateFlags {
+                    mutable_format: true,
+                    ..ImageCreateFlags::none()
+                },
                 dims,
                 samples,
                 1,

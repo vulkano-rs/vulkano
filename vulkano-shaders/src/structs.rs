@@ -240,7 +240,7 @@ fn write_struct<'a>(
             return (quote! {}, total_size);
         }
 
-        debug_assert!(types_registry.insert(name, target_type).is_none());
+        assert!(types_registry.insert(name, target_type).is_none());
     }
 
     // We can only implement Clone if there's no unsized member in the struct.
@@ -804,7 +804,7 @@ pub(super) fn write_specialization_constants<'a>(
             return quote! {};
         }
 
-        debug_assert!(types_registry.insert(name, target_type).is_none());
+        assert!(types_registry.insert(name, target_type).is_none());
     }
 
     let map_entries = {

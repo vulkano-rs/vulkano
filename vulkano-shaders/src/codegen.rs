@@ -193,6 +193,9 @@ pub fn compile(
         compile_options.add_macro_definition(macro_name.as_ref(), Some(macro_value.as_ref()));
     }
 
+    #[cfg(feature = "shaderc-debug")]
+    compile_options.set_generate_debug_info();
+
     let content = compiler
         .compile_into_spirv(&code, ty, root_source_path, "main", Some(&compile_options))
         .map_err(|e| e.to_string())?;
@@ -242,7 +245,7 @@ where
     });
     let spirv_extensions = reflect::spirv_extensions(&spirv);
     let entry_points = reflect::entry_points(&spirv, exact_entrypoint_interface)
-        .map(|(name, info)| entry_point::write_entry_point(&name, &info));
+        .map(|(name, model, info)| entry_point::write_entry_point(&name, model, &info));
 
     let specialization_constants = structs::write_specialization_constants(
         prefix,
@@ -708,7 +711,7 @@ mod tests {
         let spirv = Spirv::new(&instructions).unwrap();
 
         let mut descriptors = Vec::new();
-        for (_, info) in reflect::entry_points(&spirv, true) {
+        for (_, _, info) in reflect::entry_points(&spirv, true) {
             descriptors.push(info.descriptor_requirements);
         }
 
@@ -779,7 +782,7 @@ mod tests {
         .unwrap();
         let spirv = Spirv::new(comp.as_binary()).unwrap();
 
-        for (_, info) in reflect::entry_points(&spirv, true) {
+        for (_, _, info) in reflect::entry_points(&spirv, true) {
             let mut bindings = Vec::new();
             for (loc, _reqs) in info.descriptor_requirements {
                 bindings.push(loc);

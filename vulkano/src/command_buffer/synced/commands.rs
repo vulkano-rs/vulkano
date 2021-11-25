@@ -1567,7 +1567,7 @@ impl SyncCommandBufferBuilder {
         let set_resources = match state
             .descriptor_sets
             .entry(set_num)
-            .or_insert(SetOrPush::Push(DescriptorSetResources::new(layout)))
+            .or_insert(SetOrPush::Push(DescriptorSetResources::new(layout, 0)))
         {
             SetOrPush::Push(set_resources) => set_resources,
             _ => unreachable!(),

@@ -206,6 +206,7 @@ fn main() {
     };
 
     #[derive(Default, Debug, Clone)]
+    #[repr(C)]
     struct Vertex {
         position: [f32; 2],
     }

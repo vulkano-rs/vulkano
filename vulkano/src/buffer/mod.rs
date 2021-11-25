@@ -14,6 +14,12 @@
 //! between a Vulkan buffer and a regular buffer is that the content of a Vulkan buffer is
 //! accessible from the GPU.
 //!
+//! Vulkano does not perform any specific marshalling of buffer data. The representation of the buffer in
+//! memory is identical between the CPU and GPU. Because the Rust compiler is allowed to reorder struct
+//! fields at will by default when using `#[repr(Rust)]`, it is advised to mark each struct requiring
+//! imput assembly as `#[repr(C)]`. This forces Rust to follow the standard C procedure. Each element is
+//! laid out in memory in the order of declaration and aligned to a multiple of their alignment.
+//!
 //! # Various kinds of buffers
 //!
 //! The low level implementation of a buffer is [`UnsafeBuffer`](crate::buffer::sys::UnsafeBuffer).
