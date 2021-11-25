@@ -834,7 +834,7 @@ impl UnsafeCommandBufferBuilder {
                 if region.clear_depth {
                     aspect_mask |= ash::vk::ImageAspectFlags::DEPTH;
                 }
-                if region.clear_depth {
+                if region.clear_stencil {
                     aspect_mask |= ash::vk::ImageAspectFlags::STENCIL;
                 }
 
