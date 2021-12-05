@@ -13,9 +13,10 @@ use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer,
 };
 use vulkano::device::Queue;
-use vulkano::pipeline::depth_stencil::DepthStencilState;
-use vulkano::pipeline::input_assembly::InputAssemblyState;
-use vulkano::pipeline::viewport::{Viewport, ViewportState};
+use vulkano::pipeline::graphics::depth_stencil::DepthStencilState;
+use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
+use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
+use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::Subpass;
 
@@ -55,7 +56,7 @@ impl TriangleDrawSystem {
             let fs = fs::load(gfx_queue.device().clone()).expect("failed to create shader module");
 
             GraphicsPipeline::start()
-                .vertex_input_single_buffer::<Vertex>()
+                .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
                 .vertex_shader(vs.entry_point("main").unwrap(), ())
                 .input_assembly_state(InputAssemblyState::new())
                 .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())

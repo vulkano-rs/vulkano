@@ -22,10 +22,10 @@ use vulkano::image::attachment::AttachmentImage;
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageAccess, ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
-use vulkano::pipeline::depth_stencil::DepthStencilState;
-use vulkano::pipeline::input_assembly::InputAssemblyState;
-use vulkano::pipeline::vertex::BuffersDefinition;
-use vulkano::pipeline::viewport::{Viewport, ViewportState};
+use vulkano::pipeline::graphics::depth_stencil::DepthStencilState;
+use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
+use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
+use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
 use vulkano::shader::ShaderModule;
@@ -333,7 +333,7 @@ fn window_size_dependent_setup(
     // This allows the driver to optimize things, at the cost of slower window resizes.
     // https://computergraphics.stackexchange.com/questions/5742/vulkan-best-way-of-updating-pipeline-viewport
     let pipeline = GraphicsPipeline::start()
-        .vertex_input(
+        .vertex_input_state(
             BuffersDefinition::new()
                 .vertex::<Vertex>()
                 .vertex::<Normal>(),

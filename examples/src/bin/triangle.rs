@@ -24,8 +24,9 @@ use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageAccess, ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
-use vulkano::pipeline::input_assembly::InputAssemblyState;
-use vulkano::pipeline::viewport::{Viewport, ViewportState};
+use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
+use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
+use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
 use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
@@ -318,12 +319,9 @@ fn main() {
     // program, but much more specific.
     let pipeline = GraphicsPipeline::start()
         // We need to indicate the layout of the vertices.
-        // The type `SingleBufferDefinition` actually contains a template parameter corresponding
-        // to the type of each vertex. But in this code it is automatically inferred.
-        .vertex_input_single_buffer::<Vertex>()
+        .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
         // A Vulkan shader can in theory contain multiple entry points, so we have to specify
-        // which one. The `main` word of `main_entry_point` actually corresponds to the name of
-        // the entry point.
+        // which one.
         .vertex_shader(vs.entry_point("main").unwrap(), ())
         // The content of the vertex buffer describes a list of triangles.
         .input_assembly_state(InputAssemblyState::new())

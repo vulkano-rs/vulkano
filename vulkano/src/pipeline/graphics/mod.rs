@@ -7,19 +7,68 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+//! A pipeline that performs graphics processing operations.
+//!
+//! Unlike a compute pipeline, which performs general-purpose work, a graphics pipeline is geared
+//! specifically towards doing graphical processing. To that end, it consists of several shaders,
+//! with additional state and glue logic in between.
+//!
+//! A graphics pipeline performs many separate steps, that execute more or less in sequence.
+//! Due to the parallel nature of a GPU, no strict ordering guarantees may exist.
+//!
+//! 1. Vertex input and assembly: vertex input data is read from data buffers and then assembled
+//!    into primitives (points, lines, triangles etc.).
+//! 2. Vertex shader invocations: the vertex data of each primitive is fed as input to the vertex
+//!    shader, which performs transformations on the data and generates new data as output.
+//! 3. (Optional) Tessellation: primitives are subdivided by the operations of two shaders, the
+//!    tessellation control and tessellation evaluation shaders. The control shader produces the
+//!    tessellation level to apply for the primitive, while the evaluation shader postprocesses the
+//!    newly created vertices.
+//! 4. (Optional) Geometry shading: whole primitives are fed as input and processed into a new set
+//!    of output primitives.
+//! 5. Vertex post-processing, including:
+//!    - Clipping primitives to the view frustum and user-defined clipping planes.
+//!    - Perspective division.
+//!    - Viewport mapping.
+//! 6. Rasterization: converting primitives into a two-dimensional representation. Primitives may be
+//!    discarded depending on their orientation, and are then converted into a collection of
+//!    fragments that are processed further.
+//! 7. Fragment operations. These include invocations of the fragment shader, which generates the
+//!    values to be written to the color attachment. Various testing and discarding operations can
+//!    be performed both before and after the fragment shader ("early" and "late" fragment tests),
+//!    including:
+//!    - Discard rectangle test
+//!    - Scissor test
+//!    - Sample mask test
+//!    - Depth bounds test
+//!    - Stencil test
+//!    - Depth test
+//! 8. Color attachment output: the final pixel data is written to a framebuffer. Blending and
+//!    logical operations can be applied to combine incoming pixel data with data already present
+//!    in the framebuffer.
+//!
+//! A graphics pipeline contains many configuration options, which are grouped into collections of
+//! "state". Often, these directly correspond to one or more steps in the graphics pipeline. Each
+//! state collection has a dedicated submodule.
+//!
+//! Once a graphics pipeline has been created, you can execute it by first *binding* it in a command
+//! buffer, binding the necessary vertex buffers, binding any descriptor sets, setting push
+//! constants, and setting any dynamic state that the pipeline may need. Then you issue a `draw`
+//! command.
+
 pub use self::builder::GraphicsPipelineBuilder;
 pub use self::creation_error::GraphicsPipelineCreationError;
 use crate::device::{Device, DeviceOwned};
-use crate::pipeline::color_blend::ColorBlendState;
-use crate::pipeline::depth_stencil::DepthStencilState;
-use crate::pipeline::discard_rectangle::DiscardRectangleState;
-use crate::pipeline::input_assembly::InputAssemblyState;
+use crate::pipeline::graphics::color_blend::ColorBlendState;
+use crate::pipeline::graphics::depth_stencil::DepthStencilState;
+use crate::pipeline::graphics::discard_rectangle::DiscardRectangleState;
+use crate::pipeline::graphics::input_assembly::InputAssemblyState;
+use crate::pipeline::graphics::multisample::MultisampleState;
+use crate::pipeline::graphics::rasterization::RasterizationState;
+use crate::pipeline::graphics::tessellation::TessellationState;
+use crate::pipeline::graphics::vertex_input::VertexInputState;
+use crate::pipeline::graphics::viewport::ViewportState;
 use crate::pipeline::layout::PipelineLayout;
-use crate::pipeline::multisample::MultisampleState;
-use crate::pipeline::rasterization::RasterizationState;
-use crate::pipeline::tessellation::TessellationState;
-use crate::pipeline::vertex::{BuffersDefinition, VertexInput};
-use crate::pipeline::viewport::ViewportState;
 use crate::pipeline::{DynamicState, Pipeline, PipelineBindPoint};
 use crate::render_pass::Subpass;
 use crate::shader::{DescriptorRequirements, ShaderStage};
@@ -32,7 +81,16 @@ use std::ptr;
 use std::sync::Arc;
 
 mod builder;
+pub mod color_blend;
 mod creation_error;
+pub mod depth_stencil;
+pub mod discard_rectangle;
+pub mod input_assembly;
+pub mod multisample;
+pub mod rasterization;
+pub mod tessellation;
+pub mod vertex_input;
+pub mod viewport;
 // FIXME: restore
 //mod tests;
 
@@ -50,7 +108,7 @@ pub struct GraphicsPipeline {
     descriptor_requirements: FnvHashMap<(u32, u32), DescriptorRequirements>,
     num_used_descriptor_sets: u32,
 
-    vertex_input: VertexInput,
+    vertex_input_state: VertexInputState,
     input_assembly_state: InputAssemblyState,
     tessellation_state: Option<TessellationState>,
     viewport_state: Option<ViewportState>,
@@ -71,7 +129,7 @@ impl GraphicsPipeline {
         'static,
         'static,
         'static,
-        BuffersDefinition,
+        VertexInputState,
         (),
         (),
         (),
@@ -116,8 +174,8 @@ impl GraphicsPipeline {
 
     /// Returns the vertex input state used to create this pipeline.
     #[inline]
-    pub fn vertex_input(&self) -> &VertexInput {
-        &self.vertex_input
+    pub fn vertex_input_state(&self) -> &VertexInputState {
+        &self.vertex_input_state
     }
 
     /// Returns the input assembly state used to create this pipeline.

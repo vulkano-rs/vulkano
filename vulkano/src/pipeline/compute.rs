@@ -7,6 +7,21 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+//! A pipeline that performs general-purpose operations.
+//!
+//! A compute pipeline takes buffers and/or images as both inputs and outputs. It operates
+//! "standalone", with no additional infrastructure such as render passes or vertex input. Compute
+//! pipelines can be used by themselves for performing work on the Vulkan device, but they can also
+//! assist graphics operations by precalculating or postprocessing the operations from another kind
+//! of pipeline. While it theoretically possible to perform graphics operations entirely in a
+//! compute pipeline, a graphics pipeline is better suited to that task.
+//!
+//! A compute pipeline is relatively simple to create, requiring only a pipeline layout and a single
+//! shader, the *compute shader*. The compute shader is the actual program that performs the work.
+//! Once created, you can execute a compute pipeline by *binding* it in a command buffer, binding
+//! any descriptor sets and/or push constants that the pipeline needs, and then issuing a `dispatch`
+//! command on the command buffer.
+
 use crate::check_errors;
 use crate::descriptor_set::layout::{DescriptorSetDesc, DescriptorSetLayout};
 use crate::device::{Device, DeviceOwned};

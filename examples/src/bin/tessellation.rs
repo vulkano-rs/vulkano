@@ -26,10 +26,11 @@ use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageAccess, ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
-use vulkano::pipeline::input_assembly::{InputAssemblyState, PrimitiveTopology};
-use vulkano::pipeline::rasterization::{PolygonMode, RasterizationState};
-use vulkano::pipeline::tessellation::TessellationState;
-use vulkano::pipeline::viewport::{Viewport, ViewportState};
+use vulkano::pipeline::graphics::input_assembly::{InputAssemblyState, PrimitiveTopology};
+use vulkano::pipeline::graphics::rasterization::{PolygonMode, RasterizationState};
+use vulkano::pipeline::graphics::tessellation::TessellationState;
+use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
+use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
 use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
@@ -272,7 +273,7 @@ fn main() {
     .unwrap();
 
     let pipeline = GraphicsPipeline::start()
-        .vertex_input_single_buffer::<Vertex>()
+        .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
         .vertex_shader(vs.entry_point("main").unwrap(), ())
         // Actually use the tessellation shaders.
         .tessellation_shaders(

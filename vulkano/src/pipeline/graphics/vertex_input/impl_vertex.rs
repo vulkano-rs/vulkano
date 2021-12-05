@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::pipeline::vertex::VertexMemberTy;
+use crate::pipeline::graphics::vertex_input::VertexMemberTy;
 
 /// Implements the `Vertex` trait on a struct.
 ///# Example
@@ -26,15 +26,15 @@ use crate::pipeline::vertex::VertexMemberTy;
 macro_rules! impl_vertex {
     ($out:ty $(, $member:ident)*) => (
         #[allow(unsafe_code)]
-        unsafe impl $crate::pipeline::vertex::Vertex for $out {
+        unsafe impl $crate::pipeline::graphics::vertex_input::Vertex for $out {
             #[inline(always)]
-            fn member(name: &str) -> Option<$crate::pipeline::vertex::VertexMemberInfo> {
+            fn member(name: &str) -> Option<$crate::pipeline::graphics::vertex_input::VertexMemberInfo> {
                 use std::ptr;
                 #[allow(unused_imports)]
                 use $crate::format::Format;
-                use $crate::pipeline::vertex::VertexMemberInfo;
-                use $crate::pipeline::vertex::VertexMemberTy;
-                use $crate::pipeline::vertex::VertexMember;
+                use $crate::pipeline::graphics::vertex_input::VertexMemberInfo;
+                use $crate::pipeline::graphics::vertex_input::VertexMemberTy;
+                use $crate::pipeline::graphics::vertex_input::VertexMember;
 
                 $(
                     if name == stringify!($member) {

@@ -7,12 +7,11 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! Assembling vertices into primitives.
-//!
-//! The input assembly is the stage where lists of vertices are turned into primitives.
+//! Configures how input vertices are assembled into primitives.
 
 use crate::device::Device;
-use crate::pipeline::{DynamicState, GraphicsPipelineCreationError, PartialStateMode, StateMode};
+use crate::pipeline::graphics::GraphicsPipelineCreationError;
+use crate::pipeline::{DynamicState, PartialStateMode, StateMode};
 use crate::DeviceSize;
 use fnv::FnvHashMap;
 

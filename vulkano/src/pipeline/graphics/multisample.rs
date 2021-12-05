@@ -7,14 +7,13 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! State of multisampling.
-//!
-//! Multisampling allows you to ask the GPU to run the rasterizer to generate more than one
-//! sample per pixel.
+//! Generates multiple fragments per framebuffer pixel when rasterizing. This can be used for
+//! anti-aliasing.
 
 use crate::device::Device;
 use crate::image::SampleCount;
-use crate::pipeline::{DynamicState, GraphicsPipelineCreationError};
+use crate::pipeline::graphics::GraphicsPipelineCreationError;
+use crate::pipeline::DynamicState;
 use crate::render_pass::Subpass;
 use fnv::FnvHashMap;
 use std::ptr;

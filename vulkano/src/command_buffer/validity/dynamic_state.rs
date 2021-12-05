@@ -8,7 +8,7 @@
 // according to those terms.
 
 use crate::command_buffer::synced::CommandBufferState;
-use crate::pipeline::input_assembly::PrimitiveTopology;
+use crate::pipeline::graphics::input_assembly::PrimitiveTopology;
 use crate::pipeline::DynamicState;
 use crate::pipeline::GraphicsPipeline;
 use crate::pipeline::PartialStateMode;

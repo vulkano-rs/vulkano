@@ -7,10 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! Depth and stencil operations description.
-//!
-//! After the fragment shader has finished running, each fragment goes through the depth, depth
-//! bounds and stencil tests.
+//! Configures the operation of the depth, stencil and depth bounds tests.
 //!
 //! The depth test passes of fails depending on how the depth value of each fragment compares
 //! to the existing depth value in the depth buffer at that fragment's location. Depth values
@@ -24,7 +21,8 @@
 //! depth and stencil tests, the value of the stencil buffer at that location can be updated.
 
 use crate::device::Device;
-use crate::pipeline::{DynamicState, GraphicsPipelineCreationError, StateMode};
+use crate::pipeline::graphics::GraphicsPipelineCreationError;
+use crate::pipeline::{DynamicState, StateMode};
 use crate::render_pass::Subpass;
 use fnv::FnvHashMap;
 use std::ops::RangeInclusive;

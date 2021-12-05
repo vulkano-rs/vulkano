@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! Defines how the color output of the fragment shader is written to the attachment.
+//! Configures how the color output of the fragment shader is written to the attachment.
 //!
 //! # Blending in details
 //!

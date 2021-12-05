@@ -80,7 +80,8 @@ use vulkano::image::{
     view::ImageView, AttachmentImage, ImageDimensions, SampleCount, StorageImage,
 };
 use vulkano::instance::Instance;
-use vulkano::pipeline::viewport::{Viewport, ViewportState};
+use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
+use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, Subpass};
 use vulkano::sync::GpuFuture;
@@ -266,7 +267,7 @@ fn main() {
     .unwrap();
 
     let pipeline = GraphicsPipeline::start()
-        .vertex_input_single_buffer::<Vertex>()
+        .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
         .vertex_shader(vs.entry_point("main").unwrap(), ())
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
         .fragment_shader(fs.entry_point("main").unwrap(), ())

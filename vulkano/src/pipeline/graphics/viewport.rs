@@ -7,15 +7,15 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! Viewports and scissor boxes.
+//! Configures the area of the framebuffer that pixels will be written to.
 //!
 //! There are two different concepts to determine where things will be drawn:
 //!
-//! - The viewport is the region of the image which corresponds to the
-//!   vertex coordinates `-1.0` to `1.0`.
+//! - The viewport is the region of the image which corresponds to the vertex coordinates `-1.0` to
+//!   `1.0`.
 //! - Any pixel outside of the scissor box will be discarded.
 //!
-//! In other words modifying the viewport will stretch the image, while modifying the scissor
+//! In other words, modifying the viewport will stretch the image, while modifying the scissor
 //! box acts like a filter.
 //!
 //! It is legal and sensible to use a viewport that is larger than the target image or that
@@ -48,10 +48,9 @@
 //! In all cases the number of viewports and scissor boxes must be the same.
 //!
 
-use crate::{
-    device::Device,
-    pipeline::{DynamicState, GraphicsPipelineCreationError},
-};
+use crate::device::Device;
+use crate::pipeline::graphics::GraphicsPipelineCreationError;
+use crate::pipeline::DynamicState;
 use fnv::FnvHashMap;
 use smallvec::SmallVec;
 use std::{ops::Range, ptr};

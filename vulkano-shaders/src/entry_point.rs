@@ -12,7 +12,7 @@ use proc_macro2::TokenStream;
 use vulkano::pipeline::layout::PipelineLayoutPcRange;
 use vulkano::shader::{
     DescriptorRequirements, GeometryShaderExecution, ShaderExecution, ShaderInterfaceEntry,
-    SpecializationConstantRequirements,
+    ShaderInterfaceEntryType, SpecializationConstantRequirements,
 };
 use vulkano::shader::{EntryPointInfo, ShaderInterface, ShaderStages};
 use vulkano::shader::spirv::ExecutionModel;
@@ -239,17 +239,28 @@ fn write_interface(interface: &ShaderInterface) -> TokenStream {
     let items = interface.elements().iter().map(
         |ShaderInterfaceEntry {
              location,
-             format,
+             component,
+             ty:
+                 ShaderInterfaceEntryType {
+                     base_type,
+                     num_components,
+                     num_elements,
+                     is_64bit,
+                 },
              name,
          }| {
-            let start = location.start;
-            let end = location.end;
-            let format = format_ident!("{}", format!("{:?}", format));
+            let base_type = format_ident!("{}", format!("{:?}", base_type));
 
             quote! {
                 ::vulkano::shader::ShaderInterfaceEntry {
-                    location: #start .. #end,
-                    format: ::vulkano::format::Format::#format,
+                    location: #location,
+                    component: #component,
+                    ty: ::vulkano::shader::ShaderInterfaceEntryType {
+                        base_type: ::vulkano::shader::ShaderScalarType::#base_type,
+                        num_components: #num_components,
+                        num_elements: #num_elements,
+                        is_64bit: #is_64bit,
+                    },
                     name: Some(::std::borrow::Cow::Borrowed(#name))
                 },
             }

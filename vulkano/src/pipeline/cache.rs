@@ -247,8 +247,8 @@ impl Drop for PipelineCache {
 #[cfg(test)]
 mod tests {
     use crate::pipeline::cache::PipelineCache;
-    use crate::shader::ShaderModule;
     use crate::pipeline::ComputePipeline;
+    use crate::shader::ShaderModule;
     use std::sync::Arc;
 
     #[test]

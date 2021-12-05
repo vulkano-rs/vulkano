@@ -65,7 +65,7 @@
 use crate::check_errors;
 use crate::device::Device;
 use crate::device::DeviceOwned;
-use crate::pipeline::depth_stencil::CompareOp;
+use crate::pipeline::graphics::depth_stencil::CompareOp;
 use crate::Error;
 use crate::OomError;
 use crate::VulkanObject;

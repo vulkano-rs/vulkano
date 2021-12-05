@@ -27,9 +27,10 @@ use vulkano::{
     image::{view::ImageView, ImageCreateFlags, ImageUsage, StorageImage, SwapchainImage},
     instance::{debug::DebugCallback, Instance, InstanceExtensions},
     pipeline::{
-        color_blend::ColorBlendState,
-        input_assembly::{InputAssemblyState, PrimitiveTopology},
-        viewport::{Scissor, Viewport, ViewportState},
+        graphics::color_blend::ColorBlendState,
+        graphics::input_assembly::{InputAssemblyState, PrimitiveTopology},
+        graphics::vertex_input::BuffersDefinition,
+        graphics::viewport::{Scissor, Viewport, ViewportState},
         GraphicsPipeline, Pipeline, PipelineBindPoint,
     },
     render_pass::{Framebuffer, RenderPass, Subpass},
@@ -324,7 +325,7 @@ fn vk_setup() -> (
     Arc<Swapchain<winit::window::Window>>,
     Arc<vulkano::swapchain::Surface<winit::window::Window>>,
     winit::event_loop::EventLoop<()>,
-    vulkano::pipeline::viewport::Viewport,
+    vulkano::pipeline::graphics::viewport::Viewport,
     Arc<Queue>,
     Arc<RenderPass>,
     Vec<Arc<Framebuffer>>,
@@ -486,7 +487,7 @@ fn vk_setup() -> (
     let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
 
     let pipeline = GraphicsPipeline::start()
-        .vertex_input_single_buffer::<Vertex>()
+        .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
         .vertex_shader(vs.entry_point("main").unwrap(), ())
         .input_assembly_state(InputAssemblyState::new().topology(PrimitiveTopology::TriangleStrip))
         .viewport_state(ViewportState::FixedScissor {
