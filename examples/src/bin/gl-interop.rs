@@ -185,112 +185,6 @@ fn main() {
     let mut previous_frame_end: Option<Box<dyn GpuFuture>> = Some(Box::new(now(device.clone())));
 
     event_loop.run(move |event, _, control_flow| {
-        unsafe {
-            let mut builder = SubmitCommandBufferBuilder::new();
-            builder.add_signal_semaphore(&acquire_sem);
-            builder.submit(&queue).unwrap();
-        };
-
-        barrier.wait();
-        barrier_2.wait();
-
-        unsafe {
-            let mut builder = SubmitCommandBufferBuilder::new();
-            builder.add_wait_semaphore(
-                &release_sem,
-                PipelineStages {
-                    all_commands: true,
-                    ..PipelineStages::none()
-                },
-            );
-            builder.submit(&queue).unwrap();
-        };
-
-        previous_frame_end.as_mut().unwrap().cleanup_finished();
-
-        if recreate_swapchain {
-            let dimensions: [u32; 2] = surface.window().inner_size().into();
-            let (new_swapchain, new_images) =
-                match swapchain.recreate().dimensions(dimensions).build() {
-                    Ok(r) => r,
-                    Err(SwapchainCreationError::UnsupportedDimensions) => return,
-                    Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
-                };
-
-            swapchain = new_swapchain;
-            framebuffers =
-                window_size_dependent_setup(&new_images, render_pass.clone(), &mut viewport);
-            recreate_swapchain = false;
-        }
-
-        let (image_num, suboptimal, acquire_future) =
-            match vulkano::swapchain::acquire_next_image(swapchain.clone(), None) {
-                Ok(r) => r,
-                Err(AcquireError::OutOfDate) => {
-                    recreate_swapchain = true;
-                    return;
-                }
-                Err(e) => panic!("Failed to acquire next image: {:?}", e),
-            };
-
-        if suboptimal {
-            recreate_swapchain = true;
-        }
-
-        let clear_values = vec![[0.0, 0.0, 1.0, 1.0].into()];
-        let mut builder = AutoCommandBufferBuilder::primary(
-            device.clone(),
-            queue.family(),
-            CommandBufferUsage::OneTimeSubmit,
-        )
-        .unwrap();
-        builder
-            .begin_render_pass(
-                framebuffers[image_num].clone(),
-                SubpassContents::Inline,
-                clear_values,
-            )
-            .unwrap()
-            .set_viewport(0, [viewport.clone()])
-            .bind_pipeline_graphics(pipeline.clone())
-            .bind_descriptor_sets(
-                PipelineBindPoint::Graphics,
-                pipeline.layout().clone(),
-                0,
-                set.clone(),
-            )
-            .bind_vertex_buffers(0, vertex_buffer.clone())
-            .draw(vertex_buffer.len() as u32, 1, 0, 0)
-            .unwrap()
-            .end_render_pass()
-            .unwrap();
-        let command_buffer = builder.build().unwrap();
-
-        let future = previous_frame_end.take().unwrap().join(acquire_future);
-
-        // let future = then_signal_ext_semaphore(future, sem.clone(), queue.clone());
-
-        let future = // then_wait_ext_semaphore(future, sem.clone(), queue.clone())
-            future.then_execute(queue.clone(), command_buffer)
-            .unwrap()
-            .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
-            .then_signal_fence_and_flush();
-
-        match future {
-            Ok(future) => {
-                future.wait(None).unwrap();
-                previous_frame_end = Some(future.boxed());
-            }
-            Err(FlushError::OutOfDate) => {
-                recreate_swapchain = true;
-                previous_frame_end = Some(vulkano::sync::now(device.clone()).boxed());
-            }
-            Err(e) => {
-                println!("Failed to flush future: {:?}", e);
-                previous_frame_end = Some(vulkano::sync::now(device.clone()).boxed());
-            }
-        };
-
         match event {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
@@ -303,6 +197,114 @@ fn main() {
                 ..
             } => {
                 recreate_swapchain = true;
+            }
+            Event::RedrawEventsCleared => {
+                unsafe {
+                    let mut builder = SubmitCommandBufferBuilder::new();
+                    builder.add_signal_semaphore(&acquire_sem);
+                    builder.submit(&queue).unwrap();
+                };
+
+                barrier.wait();
+                barrier_2.wait();
+
+                unsafe {
+                    let mut builder = SubmitCommandBufferBuilder::new();
+                    builder.add_wait_semaphore(
+                        &release_sem,
+                        PipelineStages {
+                            all_commands: true,
+                            ..PipelineStages::none()
+                        },
+                    );
+                    builder.submit(&queue).unwrap();
+                };
+
+                previous_frame_end.as_mut().unwrap().cleanup_finished();
+
+                if recreate_swapchain {
+                    let dimensions: [u32; 2] = surface.window().inner_size().into();
+                    let (new_swapchain, new_images) =
+                        match swapchain.recreate().dimensions(dimensions).build() {
+                            Ok(r) => r,
+                            Err(SwapchainCreationError::UnsupportedDimensions) => return,
+                            Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
+                        };
+
+                    swapchain = new_swapchain;
+                    framebuffers = window_size_dependent_setup(
+                        &new_images,
+                        render_pass.clone(),
+                        &mut viewport,
+                    );
+                    recreate_swapchain = false;
+                }
+
+                let (image_num, suboptimal, acquire_future) =
+                    match vulkano::swapchain::acquire_next_image(swapchain.clone(), None) {
+                        Ok(r) => r,
+                        Err(AcquireError::OutOfDate) => {
+                            recreate_swapchain = true;
+                            return;
+                        }
+                        Err(e) => panic!("Failed to acquire next image: {:?}", e),
+                    };
+
+                if suboptimal {
+                    recreate_swapchain = true;
+                }
+
+                let clear_values = vec![[0.0, 0.0, 1.0, 1.0].into()];
+                let mut builder = AutoCommandBufferBuilder::primary(
+                    device.clone(),
+                    queue.family(),
+                    CommandBufferUsage::OneTimeSubmit,
+                )
+                .unwrap();
+                builder
+                    .begin_render_pass(
+                        framebuffers[image_num].clone(),
+                        SubpassContents::Inline,
+                        clear_values,
+                    )
+                    .unwrap()
+                    .set_viewport(0, [viewport.clone()])
+                    .bind_pipeline_graphics(pipeline.clone())
+                    .bind_descriptor_sets(
+                        PipelineBindPoint::Graphics,
+                        pipeline.layout().clone(),
+                        0,
+                        set.clone(),
+                    )
+                    .bind_vertex_buffers(0, vertex_buffer.clone())
+                    .draw(vertex_buffer.len() as u32, 1, 0, 0)
+                    .unwrap()
+                    .end_render_pass()
+                    .unwrap();
+                let command_buffer = builder.build().unwrap();
+
+                let future = previous_frame_end.take().unwrap().join(acquire_future);
+
+                let future = future
+                    .then_execute(queue.clone(), command_buffer)
+                    .unwrap()
+                    .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
+                    .then_signal_fence_and_flush();
+
+                match future {
+                    Ok(future) => {
+                        future.wait(None).unwrap();
+                        previous_frame_end = Some(future.boxed());
+                    }
+                    Err(FlushError::OutOfDate) => {
+                        recreate_swapchain = true;
+                        previous_frame_end = Some(vulkano::sync::now(device.clone()).boxed());
+                    }
+                    Err(e) => {
+                        println!("Failed to flush future: {:?}", e);
+                        previous_frame_end = Some(vulkano::sync::now(device.clone()).boxed());
+                    }
+                };
             }
 
             _ => (),
@@ -333,6 +335,8 @@ fn vk_setup() -> (
     Arc<GraphicsPipeline>,
     Arc<CpuAccessibleBuffer<[Vertex]>>,
 ) {
+    use vulkano::device::Features;
+
     let required_extensions = vulkano_win::required_extensions();
 
     let instance = Instance::new(
@@ -402,7 +406,7 @@ fn vk_setup() -> (
 
     let (device, mut queues) = Device::new(
         physical_device,
-        physical_device.supported_features(),
+        &Features::none(),
         &device_ext,
         [(queue_family, 0.5)].iter().cloned(),
     )
