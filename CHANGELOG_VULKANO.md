@@ -65,6 +65,7 @@
 - Added a `shaderc-debug` cargo feature to Vulkano-shaders, to emit debug information in the generated SPIR-V code.
 - Added a `type_for_format` macro, which returns a Rust type that is suitable for representing a given `Format`.
 - Fixed a bug when using vulkano-shaders macro with multiple shaders in release mode.
+- Fixed bug where the wrong image layout was used for images used as a storage image.
 
 # Version 0.26.0 (2021-10-2)
 
