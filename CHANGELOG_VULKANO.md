@@ -6,9 +6,12 @@
     description. They will be transferred to this file right after the
     Pull Request merge. 
 -->
+- **Breaking** The modules `compute_pipeline` and `graphics_pipeline` are shortened to `compute` and `graphics`, and are now public.
+- **Breaking** `ComputePipeline`, `GraphicsPipeline` and `PipelineLayout` are re-exported from the base `pipeline` module, but other items are not.
 - **Breaking** Major changes have been made to most parts of the graphics pipeline state.
-  - Each state category is now provided by a separate type ending in `State` that lives in its own submodule of `pipeline`. Some of these were existing types that were renamed.
+  - Each state category is now provided by a separate type ending in `State` that lives in its own submodule of `graphics`. Some of these were existing types that were renamed.
   - Most of the state-setting methods on `GraphicsPipelineBuilder` are deprecated. State is now set using a `_state` method, which is given one of the above state types.
+- **Breaking** `ShaderInterfaceEntry` now contains the start `location` and `component`, and specifies its type using a new `ty` member instead of as a format.
 - **Breaking** `DynamicStateMode` is replaced with a simple `bool`.
 - **Breaking** The presence of dynamic state in the pipeline state is now expressed more explicitly with two new types, `StateMode` and `PartialStateMode`.
 - **Breaking** The `PersistentDescriptorSet::start` and `SingleLayoutDescSetPool::new` functions now return `Result`.
