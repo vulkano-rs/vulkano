@@ -11,7 +11,6 @@ use crate::command_buffer::synced::CommandBufferState;
 use crate::pipeline::graphics::vertex_input::VertexInputRate;
 use crate::pipeline::GraphicsPipeline;
 use crate::DeviceSize;
-use std::convert::TryInto;
 use std::error;
 use std::fmt;
 

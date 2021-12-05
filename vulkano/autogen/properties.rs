@@ -81,9 +81,9 @@ fn properties_output(members: &[PropertiesMember]) -> TokenStream {
                 });
 
                 quote! {
-                    #name: std::array::IntoIter::new([
+                    #name: [
                         #(#ffi_members),*
-                    ]).flatten().next().and_then(|x| <#ty>::from_vulkan(x)),
+                    ].into_iter().flatten().next().and_then(|x| <#ty>::from_vulkan(x)),
                 }
             } else {
                 let ffi_members = ffi_members.iter().map(|(ffi_member, ffi_member_field)| {
@@ -91,9 +91,9 @@ fn properties_output(members: &[PropertiesMember]) -> TokenStream {
                 });
 
                 quote! {
-                    #name: std::array::IntoIter::new([
+                    #name: [
                         #(#ffi_members),*
-                    ]).next().and_then(|x| <#ty>::from_vulkan(x)).unwrap(),
+                    ].into_iter().next().and_then(|x| <#ty>::from_vulkan(x)).unwrap(),
                 }
             }
         },
@@ -122,11 +122,13 @@ fn properties_output(members: &[PropertiesMember]) -> TokenStream {
 
 fn properties_members(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<PropertiesMember> {
     let mut properties = HashMap::new();
-    std::array::IntoIter::new([
+
+    [
         &types["VkPhysicalDeviceProperties"],
         &types["VkPhysicalDeviceLimits"],
         &types["VkPhysicalDeviceSparseProperties"],
-    ])
+    ]
+    .into_iter()
     .chain(sorted_structs(types).into_iter())
     .filter(|(ty, _)| {
         let name = ty.name.as_ref().map(|s| s.as_str());
@@ -235,8 +237,8 @@ fn properties_ffi_output(members: &[PropertiesFfiMember]) -> TokenStream {
              ..
          }| {
             quote! {
-                if std::array::IntoIter::new([#(#provided_by),*]).any(|x| x) &&
-                    std::array::IntoIter::new([#(self.#conflicts.is_none()),*]).all(|x| x) {
+                if [#(#provided_by),*].into_iter().any(|x| x) &&
+                    [#(self.#conflicts.is_none()),*].into_iter().all(|x| x) {
                     self.#name = Some(Default::default());
                     let member = self.#name.as_mut().unwrap();
                     member.p_next = head.p_next;

@@ -692,7 +692,8 @@ fn formats_members(formats: &[&str]) -> Vec<FormatMember> {
                                 };
                                 let ty = format_ident!("{}{}", prefix, bits);
 
-                                let elements = std::array::IntoIter::new(components)
+                                let elements = components
+                                    .into_iter()
                                     .filter(|&c| {
                                         if c != 0 {
                                             debug_assert!(c == bits);

@@ -71,7 +71,7 @@ pub enum FenceSignalFutureBehavior {
 /// use std::sync::Arc;
 /// use vulkano::sync::GpuFuture;
 ///
-/// # let future: Box<GpuFuture> = return;
+/// # let future: Box<dyn GpuFuture> = return;
 /// // Assuming you have a chain of operations, like this:
 /// // let future = ...
 /// //      .then_execute(foo)

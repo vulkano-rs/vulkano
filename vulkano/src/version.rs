@@ -9,7 +9,6 @@
 
 // The `Version` object is reexported from the `instance` module.
 
-use std::convert::TryFrom;
 use std::fmt;
 
 /// Represents an API version of Vulkan.
@@ -89,7 +88,6 @@ impl fmt::Display for Version {
 #[cfg(test)]
 mod tests {
     use super::Version;
-    use std::convert::TryFrom;
 
     #[test]
     fn into_vk_version() {

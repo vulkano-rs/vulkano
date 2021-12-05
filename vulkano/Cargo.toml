@@ -1,7 +1,7 @@
 [package]
 name = "vulkano"
 version = "0.27.0"
-edition = "2018"
+edition = "2021"
 authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>", "The vulkano contributors"]
 repository = "https://github.com/vulkano-rs/vulkano"
 description = "Safe wrapper for the Vulkan graphics API"
@@ -19,11 +19,11 @@ build = "build.rs"
 ash = "0.33.3"
 crossbeam-queue = "0.3"
 fnv = "1.0"
-half = "1.7"
+half = "1.8"
 lazy_static = "1.4"
 parking_lot = { version = "0.11", features = ["send_guard"] }
 shared_library = "0.1"
-smallvec = "1.6"
+smallvec = "1.7"
 
 [build-dependencies]
 heck = "0.3"

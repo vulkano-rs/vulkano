@@ -12,10 +12,7 @@ use heck::SnakeCase;
 use lazy_static::lazy_static;
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
-use std::{
-    collections::{HashMap, HashSet},
-    iter::FromIterator,
-};
+use std::collections::{HashMap, HashSet};
 
 lazy_static! {
     static ref SPEC_CONSTANT_OP: HashSet<&'static str> = {

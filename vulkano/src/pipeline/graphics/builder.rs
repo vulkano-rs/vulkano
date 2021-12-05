@@ -147,13 +147,14 @@ where
         F: FnOnce(&mut [DescriptorSetDesc]),
     {
         let (descriptor_set_layout_descs, push_constant_ranges) = {
-            let stages: SmallVec<[&EntryPoint; 5]> = std::array::IntoIter::new([
+            let stages: SmallVec<[&EntryPoint; 5]> = [
                 self.vertex_shader.as_ref().map(|s| &s.0),
                 self.tessellation_shaders.as_ref().map(|s| &s.control.0),
                 self.tessellation_shaders.as_ref().map(|s| &s.evaluation.0),
                 self.geometry_shader.as_ref().map(|s| &s.0),
                 self.fragment_shader.as_ref().map(|s| &s.0),
-            ])
+            ]
+            .into_iter()
             .flatten()
             .collect();
 
@@ -410,7 +411,7 @@ where
             specialization_data: &'a [u8],
         }
 
-        let stages_info: SmallVec<[ShaderStageInfo; 5]> = std::array::IntoIter::new([
+        let stages_info: SmallVec<[ShaderStageInfo; 5]> = [
             self.vertex_shader
                 .as_ref()
                 .map(|(entry_point, spec_consts)| ShaderStageInfo {
@@ -477,7 +478,8 @@ where
                         )
                     },
                 }),
-        ])
+        ]
+        .into_iter()
         .flatten()
         .collect();
 

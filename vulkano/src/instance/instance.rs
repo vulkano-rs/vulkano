@@ -22,7 +22,6 @@ use crate::Version;
 use crate::VulkanObject;
 use smallvec::SmallVec;
 use std::borrow::Cow;
-use std::convert::TryInto;
 use std::error;
 use std::ffi::CString;
 use std::fmt;

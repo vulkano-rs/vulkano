@@ -9,7 +9,6 @@ use crate::render_pass::ResolveModes;
 use crate::shader::ShaderStages;
 use crate::DeviceSize;
 use crate::Version;
-use std::convert::TryInto;
 use std::ffi::CStr;
 use std::os::raw::c_char;
 
