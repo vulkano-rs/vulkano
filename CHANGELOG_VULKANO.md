@@ -66,6 +66,7 @@
 - Added a `type_for_format` macro, which returns a Rust type that is suitable for representing a given `Format`.
 - Fixed a bug when using vulkano-shaders macro with multiple shaders in release mode.
 - Fixed bug where the wrong image layout was used for images used as a storage image.
+- Fix typo in `clear_depth_stencil`.
 
 # Version 0.26.0 (2021-10-2)
 
