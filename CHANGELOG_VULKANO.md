@@ -6,6 +6,9 @@
     description. They will be transferred to this file right after the
     Pull Request merge. 
 -->
+
+# Version 0.27.0 (2021-12-06)
+
 - **Breaking** The modules `compute_pipeline` and `graphics_pipeline` are shortened to `compute` and `graphics`, and are now public.
 - **Breaking** `ComputePipeline`, `GraphicsPipeline` and `PipelineLayout` are re-exported from the base `pipeline` module, but other items are not.
 - **Breaking** Major changes have been made to most parts of the graphics pipeline state.
