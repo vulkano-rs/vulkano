@@ -18,7 +18,7 @@ use vulkano::{
         submit::SubmitCommandBufferBuilder, AutoCommandBufferBuilder, CommandBufferUsage,
         SubpassContents,
     },
-    descriptor_set::PersistentDescriptorSet,
+    descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
         Device, DeviceExtensions, Queue,
@@ -173,13 +173,15 @@ fn main() {
 
     let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
 
-    let mut set_builder = PersistentDescriptorSet::start(layout.clone());
-
-    set_builder
-        .add_sampled_image(image_view, sampler.clone())
-        .unwrap();
-
-    let set = set_builder.build().unwrap();
+    let set = PersistentDescriptorSet::new(
+        layout.clone(),
+        [WriteDescriptorSet::image_view_sampler(
+            0,
+            image_view,
+            sampler.clone(),
+        )],
+    )
+    .unwrap();
 
     let mut recreate_swapchain = false;
     let mut previous_frame_end: Option<Box<dyn GpuFuture>> = Some(Box::new(now(device.clone())));

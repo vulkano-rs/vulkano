@@ -13,7 +13,7 @@ use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer,
 };
-use vulkano::descriptor_set::PersistentDescriptorSet;
+use vulkano::descriptor_set::{WriteDescriptorSet, PersistentDescriptorSet};
 use vulkano::device::Queue;
 use vulkano::image::ImageViewAbstract;
 use vulkano::pipeline::graphics::color_blend::{
@@ -140,17 +140,15 @@ impl PointLightingSystem {
             .descriptor_set_layouts()
             .get(0)
             .unwrap();
-        let mut descriptor_set_builder = PersistentDescriptorSet::start(layout.clone());
-
-        descriptor_set_builder
-            .add_image(color_input)
-            .unwrap()
-            .add_image(normals_input)
-            .unwrap()
-            .add_image(depth_input)
-            .unwrap();
-
-        let descriptor_set = descriptor_set_builder.build().unwrap();
+        let descriptor_set = PersistentDescriptorSet::new(
+            layout.clone(),
+            [
+                WriteDescriptorSet::image_view(0, color_input),
+                WriteDescriptorSet::image_view(1, normals_input),
+                WriteDescriptorSet::image_view(2, depth_input),
+            ],
+        )
+        .unwrap();
 
         let viewport = Viewport {
             origin: [0.0, 0.0],

@@ -15,6 +15,7 @@
 
 use crate::check_errors;
 use crate::device::Device;
+use crate::device::DeviceOwned;
 use crate::format::Format;
 use crate::image::sys::UnsafeImage;
 use crate::image::ImageAccess;
@@ -86,6 +87,15 @@ where
     /// Returns the wrapped image that this image view was created from.
     pub fn image(&self) -> &Arc<I> {
         &self.image
+    }
+}
+
+unsafe impl<I> DeviceOwned for ImageView<I>
+where
+    I: ImageAccess,
+{
+    fn device(&self) -> &Arc<Device> {
+        self.inner.device()
     }
 }
 
@@ -436,6 +446,12 @@ unsafe impl VulkanObject for UnsafeImageView {
     }
 }
 
+unsafe impl DeviceOwned for UnsafeImageView {
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
+
 impl fmt::Debug for UnsafeImageView {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
@@ -581,7 +597,7 @@ impl Default for ComponentSwizzle {
 }
 
 /// Trait for types that represent the GPU can access an image view.
-pub unsafe trait ImageViewAbstract: Send + Sync {
+pub unsafe trait ImageViewAbstract: DeviceOwned + Send + Sync {
     /// Returns the wrapped image that this image view was created from.
     fn image(&self) -> Arc<dyn ImageAccess>;
 

@@ -73,33 +73,34 @@
 //! - The `DescriptorSetsCollection` trait is implemented on collections of types that implement
 //!   `DescriptorSet`. It is what you pass to the draw functions.
 
-pub use self::builder::DescriptorSetBuilder;
 pub use self::collection::DescriptorSetsCollection;
 use self::layout::DescriptorSetLayout;
 pub use self::persistent::PersistentDescriptorSet;
-pub use self::resources::{DescriptorBindingResources, DescriptorSetResources};
 pub use self::single_layout_pool::SingleLayoutDescSetPool;
 use self::sys::UnsafeDescriptorSet;
+pub(crate) use self::update::{check_descriptor_write, DescriptorWriteInfo};
+pub use self::update::{DescriptorSetUpdateError, WriteDescriptorSet, WriteDescriptorSetElements};
 use crate::buffer::BufferAccess;
+use crate::buffer::BufferViewAbstract;
 use crate::descriptor_set::layout::DescriptorType;
 use crate::device::DeviceOwned;
-use crate::OomError;
+use crate::image::ImageViewAbstract;
+use crate::sampler::Sampler;
 use crate::VulkanObject;
-use smallvec::SmallVec;
-use std::error;
-use std::fmt;
+use fnv::FnvHashMap;
+use smallvec::{smallvec, SmallVec};
 use std::hash::Hash;
 use std::hash::Hasher;
+use std::ptr;
 use std::sync::Arc;
 
-pub mod builder;
 mod collection;
 pub mod layout;
 pub mod persistent;
 pub mod pool;
-mod resources;
 pub mod single_layout_pool;
 pub mod sys;
+mod update;
 
 /// Trait for objects that contain a collection of resources that will be accessible by shaders.
 ///
@@ -139,6 +140,269 @@ impl Hash for dyn DescriptorSet {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().internal_object().hash(state);
         self.device().hash(state);
+    }
+}
+
+pub(crate) struct DescriptorSetInner {
+    handle: ash::vk::DescriptorSet,
+    layout: Arc<DescriptorSetLayout>,
+    variable_descriptor_count: u32,
+    resources: DescriptorSetResources,
+}
+
+impl DescriptorSetInner {
+    pub(crate) fn new(
+        handle: ash::vk::DescriptorSet,
+        layout: Arc<DescriptorSetLayout>,
+        variable_descriptor_count: u32,
+        descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
+    ) -> Result<Self, DescriptorSetUpdateError> {
+        assert!(
+            !layout.desc().is_push_descriptor(),
+            "the provided descriptor set layout is for push descriptors, and cannot be used to build a descriptor set object"
+        );
+
+        let max_count = layout.variable_descriptor_count();
+
+        assert!(
+            variable_descriptor_count <= max_count,
+            "the provided variable_descriptor_count ({}) is greater than the maximum number of variable count descriptors in the layout ({})",
+            variable_descriptor_count,
+            max_count,
+        );
+
+        let mut resources = DescriptorSetResources::new(&layout, variable_descriptor_count);
+
+        let descriptor_writes = descriptor_writes.into_iter();
+        let (lower_size_bound, _) = descriptor_writes.size_hint();
+        let mut descriptor_write_info: SmallVec<[_; 8]> = SmallVec::with_capacity(lower_size_bound);
+        let mut write_descriptor_set: SmallVec<[_; 8]> = SmallVec::with_capacity(lower_size_bound);
+
+        for write in descriptor_writes {
+            let layout_binding =
+                check_descriptor_write(&write, &layout, variable_descriptor_count)?;
+
+            resources.update(&write);
+            descriptor_write_info.push(write.to_vulkan_info(layout_binding.ty));
+            write_descriptor_set.push(write.to_vulkan(handle, layout_binding.ty));
+        }
+
+        if !write_descriptor_set.is_empty() {
+            for (info, write) in descriptor_write_info
+                .iter()
+                .zip(write_descriptor_set.iter_mut())
+            {
+                match info {
+                    DescriptorWriteInfo::Image(info) => {
+                        write.descriptor_count = info.len() as u32;
+                        write.p_image_info = info.as_ptr();
+                    }
+                    DescriptorWriteInfo::Buffer(info) => {
+                        write.descriptor_count = info.len() as u32;
+                        write.p_buffer_info = info.as_ptr();
+                    }
+                    DescriptorWriteInfo::BufferView(info) => {
+                        write.descriptor_count = info.len() as u32;
+                        write.p_texel_buffer_view = info.as_ptr();
+                    }
+                }
+            }
+        }
+
+        unsafe {
+            let fns = layout.device().fns();
+
+            fns.v1_0.update_descriptor_sets(
+                layout.device().internal_object(),
+                write_descriptor_set.len() as u32,
+                write_descriptor_set.as_ptr(),
+                0,
+                ptr::null(),
+            );
+        }
+
+        Ok(DescriptorSetInner {
+            handle,
+            layout,
+            variable_descriptor_count,
+            resources,
+        })
+    }
+
+    pub(crate) fn layout(&self) -> &Arc<DescriptorSetLayout> {
+        &self.layout
+    }
+
+    pub(crate) fn variable_descriptor_count(&self) -> u32 {
+        self.variable_descriptor_count
+    }
+
+    pub(crate) fn resources(&self) -> &DescriptorSetResources {
+        &self.resources
+    }
+}
+
+/// The resources that are bound to a descriptor set.
+#[derive(Clone)]
+pub struct DescriptorSetResources {
+    binding_resources: FnvHashMap<u32, DescriptorBindingResources>,
+}
+
+impl DescriptorSetResources {
+    /// Creates a new `DescriptorSetResources` matching the provided descriptor set layout, and
+    /// all descriptors set to `None`.
+    pub fn new(layout: &DescriptorSetLayout, variable_descriptor_count: u32) -> Self {
+        assert!(variable_descriptor_count <= layout.variable_descriptor_count());
+
+        let binding_resources = layout
+            .desc()
+            .bindings()
+            .iter()
+            .enumerate()
+            .filter_map(|(b, d)| d.as_ref().map(|d| (b as u32, d)))
+            .map(|(binding_num, binding_desc)| {
+                let count = if binding_desc.variable_count {
+                    variable_descriptor_count
+                } else {
+                    binding_desc.descriptor_count
+                } as usize;
+
+                let binding_resources = match binding_desc.ty {
+                    DescriptorType::UniformBuffer
+                    | DescriptorType::StorageBuffer
+                    | DescriptorType::UniformBufferDynamic
+                    | DescriptorType::StorageBufferDynamic => {
+                        DescriptorBindingResources::Buffer(smallvec![None; count])
+                    }
+                    DescriptorType::UniformTexelBuffer | DescriptorType::StorageTexelBuffer => {
+                        DescriptorBindingResources::BufferView(smallvec![None; count])
+                    }
+                    DescriptorType::SampledImage
+                    | DescriptorType::StorageImage
+                    | DescriptorType::InputAttachment => {
+                        DescriptorBindingResources::ImageView(smallvec![None; count])
+                    }
+                    DescriptorType::CombinedImageSampler => {
+                        if binding_desc.immutable_samplers.is_empty() {
+                            DescriptorBindingResources::ImageViewSampler(smallvec![None; count])
+                        } else {
+                            DescriptorBindingResources::ImageView(smallvec![None; count])
+                        }
+                    }
+                    DescriptorType::Sampler => {
+                        if binding_desc.immutable_samplers.is_empty() {
+                            DescriptorBindingResources::Sampler(smallvec![None; count])
+                        } else if layout.desc().is_push_descriptor() {
+                            // For push descriptors, no resource is written by default, this needs
+                            // to be done explicitly via a dummy write.
+                            DescriptorBindingResources::None(smallvec![None; count])
+                        } else {
+                            // For regular descriptor sets, all descriptors are considered valid
+                            // from the start.
+                            DescriptorBindingResources::None(smallvec![Some(()); count])
+                        }
+                    }
+                };
+                (binding_num, binding_resources)
+            })
+            .collect();
+
+        Self { binding_resources }
+    }
+
+    /// Applies a descriptor write to the resources.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the binding number of a write does not exist in the resources.
+    /// - See also [`DescriptorBindingResources::update`].
+    pub fn update<'a>(&mut self, write: &WriteDescriptorSet) {
+        self.binding_resources
+            .get_mut(&write.binding())
+            .expect("descriptor write has invalid binding number")
+            .update(write)
+    }
+
+    /// Returns a reference to the bound resources for `binding`. Returns `None` if the binding
+    /// doesn't exist.
+    #[inline]
+    pub fn binding(&self, binding: u32) -> Option<&DescriptorBindingResources> {
+        self.binding_resources.get(&binding)
+    }
+}
+
+/// The resources that are bound to a single descriptor set binding.
+#[derive(Clone)]
+pub enum DescriptorBindingResources {
+    None(Elements<()>),
+    Buffer(Elements<Arc<dyn BufferAccess>>),
+    BufferView(Elements<Arc<dyn BufferViewAbstract>>),
+    ImageView(Elements<Arc<dyn ImageViewAbstract>>),
+    ImageViewSampler(Elements<(Arc<dyn ImageViewAbstract>, Arc<Sampler>)>),
+    Sampler(Elements<Arc<Sampler>>),
+}
+
+type Elements<T> = SmallVec<[Option<T>; 1]>;
+
+impl DescriptorBindingResources {
+    /// Applies a descriptor write to the resources.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the resource types do not match.
+    /// - Panics if the write goes out of bounds.
+    pub fn update(&mut self, write: &WriteDescriptorSet) {
+        fn write_resources<T: Clone>(first: usize, resources: &mut [Option<T>], elements: &[T]) {
+            resources
+                .get_mut(first..first + elements.len())
+                .expect("descriptor write for binding out of bounds")
+                .iter_mut()
+                .zip(elements)
+                .for_each(|(resource, element)| {
+                    *resource = Some(element.clone());
+                });
+        }
+
+        let first = write.first_array_element() as usize;
+
+        match (self, write.elements()) {
+            (
+                DescriptorBindingResources::None(resources),
+                WriteDescriptorSetElements::None(num_elements),
+            ) => {
+                resources
+                    .get_mut(first..first + *num_elements as usize)
+                    .expect("descriptor write for binding out of bounds")
+                    .iter_mut()
+                    .for_each(|resource| {
+                        *resource = Some(());
+                    });
+            }
+            (
+                DescriptorBindingResources::Buffer(resources),
+                WriteDescriptorSetElements::Buffer(elements),
+            ) => write_resources(first, resources, elements),
+            (
+                DescriptorBindingResources::BufferView(resources),
+                WriteDescriptorSetElements::BufferView(elements),
+            ) => write_resources(first, resources, elements),
+            (
+                DescriptorBindingResources::ImageView(resources),
+                WriteDescriptorSetElements::ImageView(elements),
+            ) => write_resources(first, resources, elements),
+            (
+                DescriptorBindingResources::ImageViewSampler(resources),
+                WriteDescriptorSetElements::ImageViewSampler(elements),
+            ) => write_resources(first, resources, elements),
+            (
+                DescriptorBindingResources::Sampler(resources),
+                WriteDescriptorSetElements::Sampler(elements),
+            ) => write_resources(first, resources, elements),
+            _ => panic!(
+                "descriptor write for binding {} has wrong resource type",
+                write.binding(),
+            ),
+        }
     }
 }
 
@@ -232,145 +496,4 @@ where
     fn from(descriptor_set: Arc<S>) -> Self {
         DescriptorSetWithOffsets::new(descriptor_set, std::iter::empty())
     }
-}
-
-/// Error related to descriptor sets.
-#[derive(Debug, Clone)]
-pub enum DescriptorSetError {
-    /// The number of array layers of an image doesn't match what was expected.
-    ArrayLayersMismatch {
-        /// Number of expected array layers for the image.
-        expected: u32,
-        /// Number of array layers of the image that was added.
-        obtained: u32,
-    },
-
-    /// Array doesn't contain the correct amount of descriptors
-    ArrayLengthMismatch {
-        /// Expected length
-        expected: u32,
-        /// Obtained length
-        obtained: u32,
-    },
-
-    /// Runtime array contains too many descriptors
-    ArrayTooManyDescriptors {
-        /// Capacity of array
-        capacity: u32,
-        /// Obtained length
-        obtained: u32,
-    },
-
-    /// The builder has previously return an error and is an unknown state.
-    BuilderPoisoned,
-
-    /// Operation can not be performed on an empty descriptor.
-    DescriptorIsEmpty,
-
-    /// Not all descriptors have been added.
-    DescriptorsMissing {
-        /// Expected bindings
-        expected: u32,
-        /// Obtained bindings
-        obtained: u32,
-    },
-
-    /// The builder is within an array, but the operation requires it not to be.
-    InArray,
-
-    /// The image view isn't compatible with the sampler.
-    IncompatibleImageViewSampler,
-
-    /// The buffer is missing the correct usage.
-    MissingBufferUsage(MissingBufferUsage),
-
-    /// The image is missing the correct usage.
-    MissingImageUsage(MissingImageUsage),
-
-    /// The image view has a component swizzle that is different from identity.
-    NotIdentitySwizzled,
-
-    /// The builder is not in an array, but the operation requires it to be.
-    NotInArray,
-
-    /// Out of memory
-    OomError(OomError),
-
-    /// Resource belongs to another device.
-    ResourceWrongDevice,
-
-    /// Provided a dynamically assigned sampler, but the descriptor has an immutable sampler.
-    SamplerIsImmutable,
-
-    /// Builder doesn't expect anymore descriptors
-    TooManyDescriptors,
-
-    /// Expected a non-arrayed image, but got an arrayed image.
-    UnexpectedArrayed,
-
-    /// Expected one type of resource but got another.
-    WrongDescriptorType,
-}
-
-impl From<OomError> for DescriptorSetError {
-    fn from(error: OomError) -> Self {
-        Self::OomError(error)
-    }
-}
-
-impl error::Error for DescriptorSetError {}
-
-impl fmt::Display for DescriptorSetError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                Self::ArrayLayersMismatch { .. } =>
-                    "the number of array layers of an image doesn't match what was expected",
-                Self::ArrayLengthMismatch { .. } =>
-                    "array doesn't contain the correct amount of descriptors",
-                Self::ArrayTooManyDescriptors { .. } =>
-                    "runtime array contains too many descriptors",
-                Self::BuilderPoisoned =>
-                    "the builder has previously return an error and is an unknown state",
-                Self::DescriptorIsEmpty => "operation can not be performed on an empty descriptor",
-                Self::DescriptorsMissing { .. } => "not all descriptors have been added",
-                Self::InArray => "the builder is within an array, but the operation requires it not to be",
-                Self::IncompatibleImageViewSampler =>
-                    "the image view isn't compatible with the sampler",
-                Self::MissingBufferUsage(_) => "the buffer is missing the correct usage",
-                Self::MissingImageUsage(_) => "the image is missing the correct usage",
-                Self::NotIdentitySwizzled =>
-                    "the image view has a component swizzle that is different from identity",
-                Self::NotInArray => "the builder is not in an array, but the operation requires it to be",
-                Self::OomError(_) => "out of memory",
-                Self::ResourceWrongDevice => "resource belongs to another device",
-                Self::SamplerIsImmutable => "provided a dynamically assigned sampler, but the descriptor has an immutable sampler",
-                Self::TooManyDescriptors => "builder doesn't expect anymore descriptors",
-                Self::UnexpectedArrayed => "expected a non-arrayed image, but got an arrayed image",
-                Self::WrongDescriptorType => "expected one type of resource but got another",
-            }
-        )
-    }
-}
-
-// Part of the DescriptorSetError for the case
-// of missing usage on a buffer.
-#[derive(Debug, Clone)]
-pub enum MissingBufferUsage {
-    StorageBuffer,
-    UniformBuffer,
-    StorageTexelBuffer,
-    UniformTexelBuffer,
-}
-
-// Part of the DescriptorSetError for the case
-// of missing usage on an image.
-#[derive(Debug, Clone)]
-pub enum MissingImageUsage {
-    InputAttachment,
-    Sampled,
-    Storage,
 }

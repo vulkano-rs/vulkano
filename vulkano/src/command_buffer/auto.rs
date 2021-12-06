@@ -37,8 +37,7 @@ use crate::command_buffer::ImageUninitializedSafe;
 use crate::command_buffer::PrimaryCommandBuffer;
 use crate::command_buffer::SecondaryCommandBuffer;
 use crate::command_buffer::SubpassContents;
-use crate::descriptor_set::builder::DescriptorSetBuilderOutput;
-use crate::descriptor_set::DescriptorSetsCollection;
+use crate::descriptor_set::{check_descriptor_write, DescriptorSetsCollection, WriteDescriptorSet};
 use crate::device::physical::QueueFamily;
 use crate::device::Device;
 use crate::device::DeviceOwned;
@@ -1758,12 +1757,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///   [`khr_push_descriptor`](crate::device::DeviceExtensions::khr_push_descriptor)
     ///   extension is not enabled on the device.
     /// - Panics if `set_num` is not less than the number of sets in `pipeline_layout`.
+    /// - Panics if an element of `descriptor_writes` is not compatible with `pipeline_layout`.
     pub fn push_descriptor_set(
         &mut self,
         pipeline_bind_point: PipelineBindPoint,
         pipeline_layout: Arc<PipelineLayout>,
         set_num: u32,
-        descriptor_writes: DescriptorSetBuilderOutput, // TODO: make partial writes possible
+        descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
     ) -> &mut Self {
         match pipeline_bind_point {
             PipelineBindPoint::Compute => assert!(
@@ -1785,12 +1785,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the descriptor set slot being bound must be less than the number of sets in pipeline_layout"
         );
 
-        let pipeline_set = &pipeline_layout.descriptor_set_layouts()[set_num as usize];
-        assert!(
-            pipeline_set.is_compatible_with(descriptor_writes.layout()),
-            "descriptor_writes is not compatible with slot {} in pipeline_layout",
-            set_num as usize,
-        );
+        let descriptor_writes: SmallVec<[_; 8]> = descriptor_writes.into_iter().collect();
+        let descriptor_set_layout = &pipeline_layout.descriptor_set_layouts()[set_num as usize];
+
+        for write in &descriptor_writes {
+            check_descriptor_write(write, descriptor_set_layout, 0).unwrap();
+        }
 
         unsafe {
             self.inner.push_descriptor_set(

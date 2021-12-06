@@ -25,10 +25,10 @@ use crate::command_buffer::CommandBufferExecError;
 use crate::command_buffer::ImageUninitializedSafe;
 use crate::command_buffer::SecondaryCommandBuffer;
 use crate::command_buffer::SubpassContents;
-use crate::descriptor_set::builder::DescriptorSetBuilderOutput;
 use crate::descriptor_set::layout::DescriptorType;
 use crate::descriptor_set::DescriptorBindingResources;
 use crate::descriptor_set::DescriptorSetWithOffsets;
+use crate::descriptor_set::WriteDescriptorSet;
 use crate::format::ClearValue;
 use crate::image::ImageAccess;
 use crate::image::ImageLayout;
@@ -1531,13 +1531,13 @@ impl SyncCommandBufferBuilder {
         pipeline_bind_point: PipelineBindPoint,
         pipeline_layout: Arc<PipelineLayout>,
         set_num: u32,
-        descriptor_writes: DescriptorSetBuilderOutput,
+        descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
     ) {
         struct Cmd {
             pipeline_bind_point: PipelineBindPoint,
             pipeline_layout: Arc<PipelineLayout>,
             set_num: u32,
-            descriptor_writes: DescriptorSetBuilderOutput,
+            descriptor_writes: SmallVec<[WriteDescriptorSet; 8]>,
         }
 
         impl Command for Cmd {
@@ -1550,10 +1550,13 @@ impl SyncCommandBufferBuilder {
                     self.pipeline_bind_point,
                     &self.pipeline_layout,
                     self.set_num,
-                    self.descriptor_writes.writes(),
+                    &self.descriptor_writes,
                 );
             }
         }
+
+        let descriptor_writes: SmallVec<[WriteDescriptorSet; 8]> =
+            descriptor_writes.into_iter().collect();
 
         let state = self.current_state.invalidate_descriptor_sets(
             pipeline_bind_point,
@@ -1572,7 +1575,10 @@ impl SyncCommandBufferBuilder {
             SetOrPush::Push(set_resources) => set_resources,
             _ => unreachable!(),
         };
-        set_resources.update(descriptor_writes.writes());
+
+        for write in &descriptor_writes {
+            set_resources.update(write);
+        }
 
         self.append_command(
             Cmd {
@@ -2632,7 +2638,7 @@ impl SyncCommandBufferBuilder {
                 .binding(binding)
                 .unwrap()
             {
-                DescriptorBindingResources::None => continue,
+                DescriptorBindingResources::None(_) => continue,
                 DescriptorBindingResources::Buffer(elements) => {
                     resources.extend(elements.iter().flatten().cloned().map(buffer_resource));
                 }

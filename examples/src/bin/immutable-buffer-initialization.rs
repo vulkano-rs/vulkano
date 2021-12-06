@@ -11,7 +11,7 @@
 
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
-use vulkano::descriptor_set::PersistentDescriptorSet;
+use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::instance::{Instance, InstanceExtensions};
@@ -145,16 +145,15 @@ void main() {
     };
 
     let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
-    let mut set_builder = PersistentDescriptorSet::start(layout.clone());
-
-    set_builder
-        .add_buffer(data_buffer.clone())
-        .unwrap()
-        // Now you can just add immutable buffer like other buffers.
-        .add_buffer(immutable_data_buffer.clone())
-        .unwrap();
-
-    let set = set_builder.build().unwrap();
+    let set = PersistentDescriptorSet::new(
+        layout.clone(),
+        [
+            WriteDescriptorSet::buffer(0, data_buffer.clone()),
+            // Now you can just add immutable buffer like other buffers.
+            WriteDescriptorSet::buffer(1, immutable_data_buffer.clone()),
+        ],
+    )
+    .unwrap();
 
     let mut builder = AutoCommandBufferBuilder::primary(
         device.clone(),

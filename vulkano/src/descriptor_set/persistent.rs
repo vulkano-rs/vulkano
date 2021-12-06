@@ -21,39 +21,94 @@
 //! # Example
 //! TODO:
 
-use crate::buffer::BufferView;
-use crate::descriptor_set::builder::DescriptorSetBuilder;
 use crate::descriptor_set::pool::standard::StdDescriptorPoolAlloc;
 use crate::descriptor_set::pool::{DescriptorPool, DescriptorPoolAlloc};
-use crate::descriptor_set::resources::DescriptorSetResources;
+use crate::descriptor_set::update::{DescriptorSetUpdateError, WriteDescriptorSet};
 use crate::descriptor_set::{
-    BufferAccess, DescriptorSet, DescriptorSetError, DescriptorSetLayout, UnsafeDescriptorSet,
+    DescriptorSet, DescriptorSetInner, DescriptorSetLayout, DescriptorSetResources,
+    UnsafeDescriptorSet,
 };
 use crate::device::{Device, DeviceOwned};
-use crate::image::ImageViewAbstract;
-use crate::sampler::Sampler;
-use crate::VulkanObject;
+use crate::{OomError, VulkanObject};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 /// A simple, immutable descriptor set that is expected to be long-lived.
 pub struct PersistentDescriptorSet<P = StdDescriptorPoolAlloc> {
     alloc: P,
-    resources: DescriptorSetResources,
-    layout: Arc<DescriptorSetLayout>,
+    inner: DescriptorSetInner,
 }
 
 impl PersistentDescriptorSet {
-    /// Starts the process of building a `PersistentDescriptorSet`. Returns a builder.
-    pub fn start(layout: Arc<DescriptorSetLayout>) -> PersistentDescriptorSetBuilder {
+    /// Creates and returns a new descriptor set with a variable descriptor count of 0.
+    ///
+    /// See `new_with_pool` for more.
+    #[inline]
+    pub fn new(
+        layout: Arc<DescriptorSetLayout>,
+        descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
+    ) -> Result<Arc<PersistentDescriptorSet>, PersistentDescriptorSetCreationError> {
+        let mut pool = Device::standard_descriptor_pool(layout.device());
+        Self::new_with_pool(layout, 0, &mut pool, descriptor_writes)
+    }
+
+    /// Creates and returns a new descriptor set with the requested variable descriptor count.
+    ///
+    /// See `new_with_pool` for more.
+    #[inline]
+    pub fn new_variable(
+        layout: Arc<DescriptorSetLayout>,
+        variable_descriptor_count: u32,
+        descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
+    ) -> Result<Arc<PersistentDescriptorSet>, PersistentDescriptorSetCreationError> {
+        let mut pool = Device::standard_descriptor_pool(layout.device());
+        Self::new_with_pool(
+            layout,
+            variable_descriptor_count,
+            &mut pool,
+            descriptor_writes,
+        )
+    }
+
+    /// Creates and returns a new descriptor set with the requested variable descriptor count,
+    /// allocating it from the provided pool.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `layout` was created for push descriptors rather than descriptor sets.
+    /// - Panics if `variable_descriptor_count` is too large for the given `layout`.
+    pub fn new_with_pool<P>(
+        layout: Arc<DescriptorSetLayout>,
+        variable_descriptor_count: u32,
+        pool: &mut P,
+        descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
+    ) -> Result<Arc<PersistentDescriptorSet<P::Alloc>>, PersistentDescriptorSetCreationError>
+    where
+        P: ?Sized + DescriptorPool,
+    {
         assert!(
             !layout.desc().is_push_descriptor(),
             "the provided descriptor set layout is for push descriptors, and cannot be used to build a descriptor set object"
         );
 
-        PersistentDescriptorSetBuilder {
-            inner: DescriptorSetBuilder::start(layout),
-        }
+        let max_count = layout.variable_descriptor_count();
+
+        assert!(
+            variable_descriptor_count <= max_count,
+            "the provided variable_descriptor_count ({}) is greater than the maximum number of variable count descriptors in the set ({})",
+            variable_descriptor_count,
+            max_count,
+        );
+
+        let alloc = pool.alloc(&layout, variable_descriptor_count)?;
+        let inner = DescriptorSetInner::new(
+            alloc.inner().internal_object(),
+            layout,
+            variable_descriptor_count,
+            descriptor_writes,
+        )?;
+
+        Ok(Arc::new(PersistentDescriptorSet { alloc, inner }))
     }
 }
 
@@ -68,12 +123,12 @@ where
 
     #[inline]
     fn layout(&self) -> &Arc<DescriptorSetLayout> {
-        &self.layout
+        self.inner.layout()
     }
 
     #[inline]
     fn resources(&self) -> &DescriptorSetResources {
-        &self.resources
+        self.inner.resources()
     }
 }
 
@@ -83,7 +138,7 @@ where
 {
     #[inline]
     fn device(&self) -> &Arc<Device> {
-        self.layout.device()
+        self.inner.layout().device()
     }
 }
 
@@ -111,137 +166,44 @@ where
     }
 }
 
-/// Prototype of a `PersistentDescriptorSet`.
-pub struct PersistentDescriptorSetBuilder {
-    inner: DescriptorSetBuilder,
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PersistentDescriptorSetCreationError {
+    DescriptorSetUpdateError(DescriptorSetUpdateError),
+    OomError(OomError),
 }
 
-impl PersistentDescriptorSetBuilder {
-    /// Call this function if the next element of the set is an array in order to set the value of
-    /// each element.
-    ///
-    /// Returns an error if the descriptor is empty, there are no remaining descriptors, or if the
-    /// builder is already in an error.
-    ///
-    /// This function can be called even if the descriptor isn't an array, and it is valid to enter
-    /// the "array", add one element, then leave.
+impl std::error::Error for PersistentDescriptorSetCreationError {
     #[inline]
-    pub fn enter_array(&mut self) -> Result<&mut Self, DescriptorSetError> {
-        self.inner.enter_array()?;
-        Ok(self)
-    }
-
-    /// Leaves the array. Call this once you added all the elements of the array.
-    ///
-    /// Returns an error if the array is missing elements, or if the builder is not in an array.
-    #[inline]
-    pub fn leave_array(&mut self) -> Result<&mut Self, DescriptorSetError> {
-        self.inner.leave_array()?;
-        Ok(self)
-    }
-
-    /// Skips the current descriptor if it is empty.
-    #[inline]
-    pub fn add_empty(&mut self) -> Result<&mut Self, DescriptorSetError> {
-        self.inner.add_empty()?;
-        Ok(self)
-    }
-
-    /// Binds a buffer as the next descriptor.
-    ///
-    /// An error is returned if the buffer isn't compatible with the descriptor.
-    #[inline]
-    pub fn add_buffer(
-        &mut self,
-        buffer: Arc<dyn BufferAccess>,
-    ) -> Result<&mut Self, DescriptorSetError> {
-        self.inner.add_buffer(buffer)?;
-        Ok(self)
-    }
-
-    /// Binds a buffer view as the next descriptor.
-    ///
-    /// An error is returned if the buffer isn't compatible with the descriptor.
-    #[inline]
-    pub fn add_buffer_view<B>(
-        &mut self,
-        view: Arc<BufferView<B>>,
-    ) -> Result<&mut Self, DescriptorSetError>
-    where
-        B: BufferAccess + 'static,
-    {
-        self.inner.add_buffer_view(view)?;
-        Ok(self)
-    }
-
-    /// Binds an image view as the next descriptor.
-    ///
-    /// An error is returned if the image view isn't compatible with the descriptor.
-    #[inline]
-    pub fn add_image(
-        &mut self,
-        image_view: Arc<dyn ImageViewAbstract>,
-    ) -> Result<&mut Self, DescriptorSetError> {
-        self.inner.add_image(image_view)?;
-        Ok(self)
-    }
-
-    /// Binds an image view with a sampler as the next descriptor.
-    ///
-    /// If the descriptor set layout contains immutable samplers for this descriptor, use
-    /// `add_image` instead.
-    ///
-    /// An error is returned if the image view isn't compatible with the descriptor.
-    #[inline]
-    pub fn add_sampled_image(
-        &mut self,
-        image_view: Arc<dyn ImageViewAbstract>,
-        sampler: Arc<Sampler>,
-    ) -> Result<&mut Self, DescriptorSetError> {
-        self.inner.add_sampled_image(image_view, sampler)?;
-        Ok(self)
-    }
-
-    /// Binds a sampler as the next descriptor.
-    ///
-    /// An error is returned if the sampler isn't compatible with the descriptor.
-    #[inline]
-    pub fn add_sampler(&mut self, sampler: Arc<Sampler>) -> Result<&mut Self, DescriptorSetError> {
-        self.inner.add_sampler(sampler)?;
-        Ok(self)
-    }
-
-    /// Builds a `PersistentDescriptorSet` from the builder.
-    #[inline]
-    pub fn build(
-        self,
-    ) -> Result<Arc<PersistentDescriptorSet<StdDescriptorPoolAlloc>>, DescriptorSetError> {
-        let mut pool = Device::standard_descriptor_pool(self.inner.device());
-        self.build_with_pool(&mut pool)
-    }
-
-    /// Builds a `PersistentDescriptorSet` from the builder.
-    pub fn build_with_pool<P>(
-        self,
-        pool: &mut P,
-    ) -> Result<Arc<PersistentDescriptorSet<P::Alloc>>, DescriptorSetError>
-    where
-        P: ?Sized + DescriptorPool,
-    {
-        let writes = self.inner.build()?;
-        let mut alloc = pool.alloc(writes.layout(), writes.variable_descriptor_count())?;
-        let mut resources =
-            DescriptorSetResources::new(writes.layout(), writes.variable_descriptor_count());
-
-        unsafe {
-            alloc.inner_mut().write(writes.layout(), writes.writes());
-            resources.update(writes.writes());
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::DescriptorSetUpdateError(err) => Some(err),
+            Self::OomError(err) => Some(err),
         }
+    }
+}
 
-        Ok(Arc::new(PersistentDescriptorSet {
-            alloc,
-            resources,
-            layout: writes.layout().clone(),
-        }))
+impl std::fmt::Display for PersistentDescriptorSetCreationError {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DescriptorSetUpdateError(err) => {
+                write!(f, "an error occurred while updating the descriptor set")
+            }
+            Self::OomError(err) => write!(f, "out of memory"),
+        }
+    }
+}
+
+impl From<DescriptorSetUpdateError> for PersistentDescriptorSetCreationError {
+    #[inline]
+    fn from(err: DescriptorSetUpdateError) -> Self {
+        Self::DescriptorSetUpdateError(err)
+    }
+}
+
+impl From<OomError> for PersistentDescriptorSetCreationError {
+    #[inline]
+    fn from(err: OomError) -> Self {
+        Self::OomError(err)
     }
 }
