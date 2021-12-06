@@ -14,6 +14,7 @@ use crate::device::Queue;
 use crate::memory::Content;
 use crate::sync::AccessError;
 use crate::DeviceSize;
+use crate::SafeDeref;
 use crate::VulkanObject;
 use std::hash::Hash;
 use std::hash::Hasher;
@@ -149,6 +150,42 @@ pub struct BufferInner<'a> {
     pub offset: DeviceSize,
 }
 
+unsafe impl<T> BufferAccess for T
+where
+    T: SafeDeref + Send + Sync,
+    T::Target: BufferAccess,
+{
+    #[inline]
+    fn inner(&self) -> BufferInner {
+        (**self).inner()
+    }
+
+    #[inline]
+    fn size(&self) -> DeviceSize {
+        (**self).size()
+    }
+
+    #[inline]
+    fn conflict_key(&self) -> (u64, u64) {
+        (**self).conflict_key()
+    }
+
+    #[inline]
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError> {
+        (**self).try_gpu_lock(exclusive_access, queue)
+    }
+
+    #[inline]
+    unsafe fn increase_gpu_lock(&self) {
+        (**self).increase_gpu_lock()
+    }
+
+    #[inline]
+    unsafe fn unlock(&self) {
+        (**self).unlock()
+    }
+}
+
 /// Extension trait for `BufferAccess`. Indicates the type of the content of the buffer.
 pub unsafe trait TypedBufferAccess: BufferAccess {
     /// The type of the content.
@@ -164,6 +201,14 @@ pub unsafe trait TypedBufferAccess: BufferAccess {
     {
         self.size() / <Self::Content as Content>::indiv_size()
     }
+}
+
+unsafe impl<T> TypedBufferAccess for T
+where
+    T: SafeDeref + Send + Sync,
+    T::Target: TypedBufferAccess,
+{
+    type Content = <T::Target as TypedBufferAccess>::Content;
 }
 
 impl PartialEq for dyn BufferAccess {
