@@ -7,6 +7,10 @@
     Pull Request merge. 
 -->
 
+# Version 0.27.1 (2021-12-07)
+
+- Reimplement generic impl's for `BufferAcces`, `TypedBufferAccess` & `ImageAccess`.
+
 # Version 0.27.0 (2021-12-06)
 
 - **Breaking** The modules `compute_pipeline` and `graphics_pipeline` are shortened to `compute` and `graphics`, and are now public.
