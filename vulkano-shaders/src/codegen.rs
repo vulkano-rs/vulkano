@@ -210,7 +210,6 @@ pub(super) fn reflect<'a, I>(
     words: &[u32],
     types_meta: &TypesMeta,
     input_paths: I,
-    exact_entrypoint_interface: bool,
     shared_constants: bool,
     types_registry: &'a mut HashMap<String, RegisteredType>,
 ) -> Result<(TokenStream, TokenStream), Error>
@@ -244,7 +243,7 @@ where
         quote! { &Capability::#name }
     });
     let spirv_extensions = reflect::spirv_extensions(&spirv);
-    let entry_points = reflect::entry_points(&spirv, exact_entrypoint_interface)
+    let entry_points = reflect::entry_points(&spirv)
         .map(|(name, model, info)| entry_point::write_entry_point(&name, model, &info));
 
     let specialization_constants = structs::write_specialization_constants(
@@ -711,7 +710,7 @@ mod tests {
         let spirv = Spirv::new(&instructions).unwrap();
 
         let mut descriptors = Vec::new();
-        for (_, _, info) in reflect::entry_points(&spirv, true) {
+        for (_, _, info) in reflect::entry_points(&spirv) {
             descriptors.push(info.descriptor_requirements);
         }
 
@@ -782,7 +781,7 @@ mod tests {
         .unwrap();
         let spirv = Spirv::new(comp.as_binary()).unwrap();
 
-        for (_, _, info) in reflect::entry_points(&spirv, true) {
+        for (_, _, info) in reflect::entry_points(&spirv) {
             let mut bindings = Vec::new();
             for (loc, _reqs) in info.descriptor_requirements {
                 bindings.push(loc);

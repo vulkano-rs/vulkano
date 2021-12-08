@@ -356,7 +356,6 @@ impl RegisteredType {
 
 struct MacroInput {
     dump: bool,
-    exact_entrypoint_interface: bool,
     include_directories: Vec<String>,
     macro_defines: Vec<(String, String)>,
     shared_constants: bool,
@@ -762,7 +761,6 @@ impl Parse for MacroInput {
 
         Ok(Self {
             dump: dump.unwrap_or(false),
-            exact_entrypoint_interface: exact_entrypoint_interface.unwrap_or(false),
             include_directories,
             macro_defines,
             shared_constants: shared_constants.unwrap_or(false),
@@ -818,7 +816,6 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 unsafe { from_raw_parts(bytes.as_slice().as_ptr() as *const u32, bytes.len() / 4) },
                 &input.types_meta,
                 empty(),
-                input.exact_entrypoint_interface,
                 input.shared_constants,
                 &mut types_registry,
             )
@@ -884,7 +881,6 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 content.as_binary(),
                 &input.types_meta,
                 input_paths,
-                input.exact_entrypoint_interface,
                 input.shared_constants,
                 &mut types_registry,
             )
