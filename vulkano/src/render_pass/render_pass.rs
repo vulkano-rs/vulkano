@@ -773,6 +773,16 @@ impl Subpass {
         self.attachment_desc(atch_num).format.aspects().stencil
     }
 
+    /// Returns true if the subpass has any depth/stencil attachment.
+    #[inline]
+    pub fn has_depth_stencil_attachment(&self) -> bool {
+        let subpass_desc = self.subpass_desc();
+        match subpass_desc.depth_stencil {
+            Some((d, _)) => true,
+            None => false,
+        }
+    }
+
     /// Returns true if the subpass has any color or depth/stencil attachment.
     #[inline]
     pub fn has_color_or_depth_stencil_attachment(&self) -> bool {

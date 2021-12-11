@@ -30,6 +30,8 @@ use crate::descriptor_set::layout::DescriptorType;
 use crate::descriptor_set::DescriptorBindingResources;
 use crate::descriptor_set::DescriptorSetWithOffsets;
 use crate::format::ClearValue;
+use crate::image::attachment::ClearAttachment;
+use crate::image::attachment::ClearRect;
 use crate::image::ImageAccess;
 use crate::image::ImageLayout;
 use crate::pipeline::graphics::depth_stencil::StencilFaces;
@@ -482,6 +484,45 @@ impl SyncCommandBufferBuilder {
         )?;
 
         Ok(())
+    }
+
+    /// Calls `vkCmdClearAttachments` on the builder.
+    ///
+    /// Does nothing if the list of attachments or the list of rects is empty, as it would be a
+    /// no-op and isn't a valid usage of the command anyway.
+    pub unsafe fn clear_attachments<A, R>(&mut self, attachments: A, rects: R)
+    where
+        A: IntoIterator<Item = ClearAttachment>,
+        R: IntoIterator<Item = ClearRect>,
+    {
+        struct Cmd {
+            attachments: Mutex<SmallVec<[ClearAttachment; 3]>>,
+            rects: Mutex<SmallVec<[ClearRect; 4]>>,
+        }
+
+        impl Command for Cmd {
+            fn name(&self) -> &'static str {
+                "vkCmdClearAttachments"
+            }
+
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
+                out.clear_attachments(
+                    self.attachments.lock().unwrap().drain(..),
+                    self.rects.lock().unwrap().drain(..),
+                );
+            }
+        }
+        let attachments: SmallVec<[_; 3]> = attachments.into_iter().collect();
+        let rects: SmallVec<[_; 4]> = rects.into_iter().collect();
+
+        self.append_command(
+            Cmd {
+                attachments: Mutex::new(attachments),
+                rects: Mutex::new(rects),
+            },
+            [],
+        )
+        .unwrap();
     }
 
     /// Calls `vkCmdClearColorImage` on the builder.
