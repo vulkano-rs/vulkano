@@ -841,7 +841,7 @@ impl From<ClearAttachment> for ash::vk::ClearAttachment {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClearRect {
     /// The rectangle offset.
-    pub rect_offset: [i32; 2],
+    pub rect_offset: [u32; 2],
     /// The width and height of the rectangle.
     pub rect_extent: [u32; 2],
     /// The first layer to be cleared.

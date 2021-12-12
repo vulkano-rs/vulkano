@@ -242,7 +242,7 @@ fn main() {
                         },
                         // Relative offset and extent
                         ClearRect {
-                            rect_offset: [width as i32 / 2, height as i32 / 2],
+                            rect_offset: [width / 2, height / 2],
                             rect_extent: [width / 3, height / 5],
                             base_array_layer: 0,
                             layer_count: 1,

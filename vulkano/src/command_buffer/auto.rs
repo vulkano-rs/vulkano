@@ -902,7 +902,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). And the command must be inside render pass.
     ///
     /// If the render pass instance this is recorded in uses multiview,
-    /// then `ClearRect.base_array_layer` must be zero and `ClearRect.layer_count` must be one
+    /// then `ClearRect.base_array_layer` must be zero and `ClearRect.layer_count` must be one.
+    ///
+    /// The rectangle area must be inside the render area ranges.
     pub fn clear_attachments<A, R>(
         &mut self,
         attachments: A,
@@ -949,17 +951,17 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             if rect.rect_extent[0] == 0 || rect.rect_extent[1] == 0 {
                 return Err(ClearAttachmentsError::ZeroRectExtent);
             }
+            if rect.rect_offset[0] + rect.rect_extent[0] > dimensions[0]
+                || rect.rect_offset[1] + rect.rect_extent[1] > dimensions[1]
+            {
+                return Err(ClearAttachmentsError::RectOutOfBounds);
+            }
+
             if rect.layer_count == 0 {
                 return Err(ClearAttachmentsError::ZeroLayerCount);
             }
             if multiview && (rect.base_array_layer != 0 || rect.layer_count != 1) {
                 return Err(ClearAttachmentsError::InvalidMultiviewLayerRange);
-            }
-            // TODO: handle checking `rect.rect_offset` (the start of the rect)
-            if rect.rect_offset[0] + rect.rect_extent[0] as i32 > dimensions[0] as i32
-                || rect.rect_offset[1] + rect.rect_extent[1] as i32 > dimensions[1] as i32
-            {
-                return Err(ClearAttachmentsError::RectOutOfBounds);
             }
 
             // make sure rect's layers is inside attached layers ranges

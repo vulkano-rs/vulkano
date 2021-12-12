@@ -709,8 +709,8 @@ impl UnsafeCommandBufferBuilder {
                 Some(ash::vk::ClearRect {
                     rect: ash::vk::Rect2D {
                         offset: ash::vk::Offset2D {
-                            x: rect.rect_offset[0],
-                            y: rect.rect_offset[1],
+                            x: rect.rect_offset[0] as i32,
+                            y: rect.rect_offset[1] as i32,
                         },
                         extent: ash::vk::Extent2D {
                             width: rect.rect_extent[0],
