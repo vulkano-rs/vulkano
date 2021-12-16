@@ -1,7 +1,7 @@
 [package]
 name = "examples"
 version = "0.1.0"
-edition = "2018"
+edition = "2021"
 authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>"]
 publish = false
 
@@ -12,7 +12,7 @@ vulkano = { path = "../vulkano" }
 vulkano-shaders = { path = "../vulkano-shaders" }
 # The Vulkan library doesn't provide any functionality to create and handle windows, as
 # this would be out of scope. In order to open a window, we are going to use the `winit` crate.
-winit = "0.25"
+winit = "0.26"
 # The `vulkano_win` crate is the link between `vulkano` and `winit`. Vulkano doesn't know about winit,
 # and winit doesn't know about vulkano, so import a crate that will provide a link between the two.
 vulkano-win = { path = "../vulkano-win" }
@@ -21,7 +21,7 @@ cgmath = "0.18"
 png = "0.17"
 time = "0.3"
 serde = { version = "1.0", features = ["derive"] }
-ron = "0.6"
+ron = "0.7"
 rand = "0.8.4"
 
 glium = { git = "https://github.com/glium/glium.git" }

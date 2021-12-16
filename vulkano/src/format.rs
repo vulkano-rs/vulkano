@@ -99,7 +99,6 @@ use crate::shader::spirv::ImageFormat;
 use crate::DeviceSize;
 use crate::VulkanObject;
 use half::f16;
-use std::convert::TryFrom;
 use std::mem::MaybeUninit;
 use std::vec::IntoIter as VecIntoIter;
 use std::{error, fmt, mem};

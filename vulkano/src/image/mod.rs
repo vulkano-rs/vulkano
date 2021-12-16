@@ -60,7 +60,6 @@ pub use self::traits::ImageInner;
 pub use self::usage::ImageUsage;
 pub use self::view::ImageViewAbstract;
 use std::cmp;
-use std::convert::TryFrom;
 
 mod aspect;
 pub mod attachment; // TODO: make private

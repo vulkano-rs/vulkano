@@ -43,7 +43,8 @@ struct FnsMember {
 
 fn fns_output(extension_members: &[FnsMember], fns_level: &str) -> TokenStream {
     let struct_name = format_ident!("{}Functions", fns_level);
-    let members = std::array::IntoIter::new(["1_0", "1_1", "1_2"])
+    let members = ["1_0", "1_1", "1_2"]
+        .into_iter()
         .map(|version| FnsMember {
             name: format_ident!("v{}", version),
             fn_struct: format_ident!("{}FnV{}", fns_level, version),

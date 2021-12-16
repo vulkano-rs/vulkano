@@ -21,7 +21,6 @@ use crate::swapchain::SurfaceSwapchainLock;
 use crate::Error;
 use crate::OomError;
 use crate::VulkanObject;
-use std::convert::TryFrom;
 use std::error;
 use std::fmt;
 use std::mem::MaybeUninit;

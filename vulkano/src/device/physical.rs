@@ -14,7 +14,6 @@ use crate::sync::PipelineStage;
 use crate::DeviceSize;
 use crate::Version;
 use crate::VulkanObject;
-use std::convert::TryFrom;
 use std::ffi::CStr;
 use std::fmt;
 use std::hash::Hash;

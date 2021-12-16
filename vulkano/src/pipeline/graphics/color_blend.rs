@@ -185,12 +185,13 @@ impl ColorBlendState {
         for state in self.attachments.iter() {
             let blend = if let Some(blend) = &state.blend {
                 if !device.enabled_features().dual_src_blend
-                    && std::array::IntoIter::new([
+                    && [
                         blend.color_source,
                         blend.color_destination,
                         blend.alpha_source,
                         blend.alpha_destination,
-                    ])
+                    ]
+                    .into_iter()
                     .any(|blend_factor| {
                         matches!(
                             blend_factor,

@@ -137,7 +137,7 @@
 //! # use vulkano::device::Device;
 //! # use vulkano::swapchain::Surface;
 //! # use std::cmp::{max, min};
-//! # fn choose_caps(device: Arc<Device>, surface: Arc<Surface<()>>) -> Result<(), Box<std::error::Error>> {
+//! # fn choose_caps(device: Arc<Device>, surface: Arc<Surface<()>>) -> Result<(), Box<dyn std::error::Error>> {
 //! let caps = surface.capabilities(device.physical_device())?;
 //!
 //! // Use the current window size or some fixed resolution.

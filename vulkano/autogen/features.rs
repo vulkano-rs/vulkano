@@ -199,18 +199,18 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
                     quote! { self.#ffi_member.as_mut().map(|s| &mut s #ffi_member_field .#ffi_name) }
                 });
                 quote! {
-                    std::array::IntoIter::new([
+                    [
                         #(#ffi_members),*
-                    ]).flatten().next().map(|f| *f = features.#name as ash::vk::Bool32);
+                    ].into_iter().flatten().next().map(|f| *f = features.#name as ash::vk::Bool32);
                 }
             } else {
                 let ffi_members = ffi_members.iter().map(|(ffi_member, ffi_member_field)| {
                     quote! { &mut self.#ffi_member #ffi_member_field .#ffi_name }
                 });
                 quote! {
-                    std::array::IntoIter::new([
+                    [
                         #(#ffi_members),*
-                    ]).next().map(|f| *f = features.#name as ash::vk::Bool32);
+                    ].into_iter().next().map(|f| *f = features.#name as ash::vk::Bool32);
                 }
             }
         },
@@ -229,18 +229,18 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
                     quote! { features_ffi.#ffi_member.map(|s| s #ffi_member_field .#ffi_name) }
                 });
                 quote! {
-                    #name: std::array::IntoIter::new([
+                    #name: [
                         #(#ffi_members),*
-                    ]).flatten().next().unwrap_or(0) != 0,
+                    ].into_iter().flatten().next().unwrap_or(0) != 0,
                 }
             } else {
                 let ffi_members = ffi_members.iter().map(|(ffi_member, ffi_member_field)| {
                     quote! { features_ffi.#ffi_member #ffi_member_field .#ffi_name }
                 });
                 quote! {
-                    #name: std::array::IntoIter::new([
+                    #name: [
                         #(#ffi_members),*
-                    ]).next().unwrap_or(0) != 0,
+                    ].into_iter().next().unwrap_or(0) != 0,
                 }
             }
         },
@@ -518,8 +518,8 @@ fn features_ffi_output(members: &[FeaturesFfiMember]) -> TokenStream {
              ..
          }| {
             quote! {
-                if std::array::IntoIter::new([#(#provided_by),*]).any(|x| x) &&
-                    std::array::IntoIter::new([#(self.#conflicts.is_none()),*]).all(|x| x) {
+                if [#(#provided_by),*].into_iter().any(|x| x) &&
+                    [#(self.#conflicts.is_none()),*].into_iter().all(|x| x) {
                     self.#name = Some(Default::default());
                     let member = self.#name.as_mut().unwrap();
                     member.p_next = head.p_next;

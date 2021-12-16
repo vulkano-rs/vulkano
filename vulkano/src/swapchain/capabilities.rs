@@ -9,7 +9,6 @@
 
 use crate::format::Format;
 use crate::image::ImageUsage;
-use std::iter::FromIterator;
 
 /// The capabilities of a surface when used by a physical device.
 ///
@@ -158,12 +157,13 @@ impl SupportedPresentModes {
     #[inline]
     pub fn iter(&self) -> impl Iterator<Item = PresentMode> {
         let moved = *self;
-        std::array::IntoIter::new([
+        [
             PresentMode::Immediate,
             PresentMode::Mailbox,
             PresentMode::Fifo,
             PresentMode::Relaxed,
-        ])
+        ]
+        .into_iter()
         .filter(move |&mode| moved.supports(mode))
     }
 }
@@ -288,12 +288,13 @@ impl SupportedCompositeAlpha {
     #[inline]
     pub fn iter(&self) -> impl Iterator<Item = CompositeAlpha> {
         let moved = *self;
-        std::array::IntoIter::new([
+        [
             CompositeAlpha::Opaque,
             CompositeAlpha::PreMultiplied,
             CompositeAlpha::PostMultiplied,
             CompositeAlpha::Inherit,
-        ])
+        ]
+        .into_iter()
         .filter(move |&mode| moved.supports(mode))
     }
 }
@@ -418,7 +419,7 @@ impl SupportedSurfaceTransforms {
     #[inline]
     pub fn iter(&self) -> impl Iterator<Item = SurfaceTransform> {
         let moved = *self;
-        std::array::IntoIter::new([
+        [
             SurfaceTransform::Identity,
             SurfaceTransform::Rotate90,
             SurfaceTransform::Rotate180,
@@ -428,7 +429,8 @@ impl SupportedSurfaceTransforms {
             SurfaceTransform::HorizontalMirrorRotate180,
             SurfaceTransform::HorizontalMirrorRotate270,
             SurfaceTransform::Inherit,
-        ])
+        ]
+        .into_iter()
         .filter(move |&mode| moved.supports(mode))
     }
 }

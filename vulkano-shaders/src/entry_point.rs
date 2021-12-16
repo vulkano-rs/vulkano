@@ -10,16 +10,24 @@
 use fnv::FnvHashMap;
 use proc_macro2::TokenStream;
 use vulkano::pipeline::layout::PipelineLayoutPcRange;
+use vulkano::shader::spirv::ExecutionModel;
 use vulkano::shader::{
     DescriptorRequirements, GeometryShaderExecution, ShaderExecution, ShaderInterfaceEntry,
     ShaderInterfaceEntryType, SpecializationConstantRequirements,
 };
 use vulkano::shader::{EntryPointInfo, ShaderInterface, ShaderStages};
-use vulkano::shader::spirv::ExecutionModel;
 
-pub(super) fn write_entry_point(name: &str, model: ExecutionModel, info: &EntryPointInfo) -> TokenStream {
+pub(super) fn write_entry_point(
+    name: &str,
+    model: ExecutionModel,
+    info: &EntryPointInfo,
+) -> TokenStream {
     let execution = write_shader_execution(&info.execution);
-    let model = syn::parse_str::<syn::Path>(&format!("vulkano::shader::spirv::ExecutionModel::{:?}", model)).unwrap();
+    let model = syn::parse_str::<syn::Path>(&format!(
+        "vulkano::shader::spirv::ExecutionModel::{:?}",
+        model
+    ))
+    .unwrap();
     let descriptor_requirements = write_descriptor_requirements(&info.descriptor_requirements);
     let push_constant_requirements =
         write_push_constant_requirements(&info.push_constant_requirements);
@@ -34,9 +42,9 @@ pub(super) fn write_entry_point(name: &str, model: ExecutionModel, info: &EntryP
             #model,
             EntryPointInfo {
                 execution: #execution,
-                descriptor_requirements: std::array::IntoIter::new(#descriptor_requirements).collect(),
+                descriptor_requirements: #descriptor_requirements.into_iter().collect(),
                 push_constant_requirements: #push_constant_requirements,
-                specialization_constant_requirements: std::array::IntoIter::new(#specialization_constant_requirements).collect(),
+                specialization_constant_requirements: #specialization_constant_requirements.into_iter().collect(),
                 input_interface: #input_interface,
                 output_interface: #output_interface,
             },
