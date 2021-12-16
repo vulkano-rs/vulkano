@@ -7,6 +7,9 @@
     Pull Request merge. 
 -->
 
+- **Breaking** Updated to half 1.8, smallvec 1.7, winit 0.26, raw-window-handle 0.4.
+- Upgraded to Rust 2021.
+
 # Version 0.27.1 (2021-12-07)
 
 - Reimplement generic impl's for `BufferAcces`, `TypedBufferAccess` & `ImageAccess`.
