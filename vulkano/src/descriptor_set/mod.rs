@@ -86,6 +86,7 @@ use crate::descriptor_set::layout::DescriptorType;
 use crate::device::DeviceOwned;
 use crate::image::ImageViewAbstract;
 use crate::sampler::Sampler;
+use crate::OomError;
 use crate::VulkanObject;
 use fnv::FnvHashMap;
 use smallvec::{smallvec, SmallVec};
@@ -495,5 +496,47 @@ where
     #[inline]
     fn from(descriptor_set: Arc<S>) -> Self {
         DescriptorSetWithOffsets::new(descriptor_set, std::iter::empty())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DescriptorSetCreationError {
+    DescriptorSetUpdateError(DescriptorSetUpdateError),
+    OomError(OomError),
+}
+
+impl std::error::Error for DescriptorSetCreationError {
+    #[inline]
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::DescriptorSetUpdateError(err) => Some(err),
+            Self::OomError(err) => Some(err),
+        }
+    }
+}
+
+impl std::fmt::Display for DescriptorSetCreationError {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DescriptorSetUpdateError(err) => {
+                write!(f, "an error occurred while updating the descriptor set")
+            }
+            Self::OomError(err) => write!(f, "out of memory"),
+        }
+    }
+}
+
+impl From<DescriptorSetUpdateError> for DescriptorSetCreationError {
+    #[inline]
+    fn from(err: DescriptorSetUpdateError) -> Self {
+        Self::DescriptorSetUpdateError(err)
+    }
+}
+
+impl From<OomError> for DescriptorSetCreationError {
+    #[inline]
+    fn from(err: OomError) -> Self {
+        Self::OomError(err)
     }
 }

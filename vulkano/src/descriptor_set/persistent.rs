@@ -23,13 +23,13 @@
 
 use crate::descriptor_set::pool::standard::StdDescriptorPoolAlloc;
 use crate::descriptor_set::pool::{DescriptorPool, DescriptorPoolAlloc};
-use crate::descriptor_set::update::{DescriptorSetUpdateError, WriteDescriptorSet};
+use crate::descriptor_set::update::WriteDescriptorSet;
 use crate::descriptor_set::{
-    DescriptorSet, DescriptorSetInner, DescriptorSetLayout, DescriptorSetResources,
-    UnsafeDescriptorSet,
+    DescriptorSet, DescriptorSetCreationError, DescriptorSetInner, DescriptorSetLayout,
+    DescriptorSetResources, UnsafeDescriptorSet,
 };
 use crate::device::{Device, DeviceOwned};
-use crate::{OomError, VulkanObject};
+use crate::VulkanObject;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
@@ -47,7 +47,7 @@ impl PersistentDescriptorSet {
     pub fn new(
         layout: Arc<DescriptorSetLayout>,
         descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
-    ) -> Result<Arc<PersistentDescriptorSet>, PersistentDescriptorSetCreationError> {
+    ) -> Result<Arc<PersistentDescriptorSet>, DescriptorSetCreationError> {
         let mut pool = Device::standard_descriptor_pool(layout.device());
         Self::new_with_pool(layout, 0, &mut pool, descriptor_writes)
     }
@@ -60,7 +60,7 @@ impl PersistentDescriptorSet {
         layout: Arc<DescriptorSetLayout>,
         variable_descriptor_count: u32,
         descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
-    ) -> Result<Arc<PersistentDescriptorSet>, PersistentDescriptorSetCreationError> {
+    ) -> Result<Arc<PersistentDescriptorSet>, DescriptorSetCreationError> {
         let mut pool = Device::standard_descriptor_pool(layout.device());
         Self::new_with_pool(
             layout,
@@ -82,7 +82,7 @@ impl PersistentDescriptorSet {
         variable_descriptor_count: u32,
         pool: &mut P,
         descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
-    ) -> Result<Arc<PersistentDescriptorSet<P::Alloc>>, PersistentDescriptorSetCreationError>
+    ) -> Result<Arc<PersistentDescriptorSet<P::Alloc>>, DescriptorSetCreationError>
     where
         P: ?Sized + DescriptorPool,
     {
@@ -163,47 +163,5 @@ where
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().internal_object().hash(state);
         self.device().hash(state);
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PersistentDescriptorSetCreationError {
-    DescriptorSetUpdateError(DescriptorSetUpdateError),
-    OomError(OomError),
-}
-
-impl std::error::Error for PersistentDescriptorSetCreationError {
-    #[inline]
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::DescriptorSetUpdateError(err) => Some(err),
-            Self::OomError(err) => Some(err),
-        }
-    }
-}
-
-impl std::fmt::Display for PersistentDescriptorSetCreationError {
-    #[inline]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::DescriptorSetUpdateError(err) => {
-                write!(f, "an error occurred while updating the descriptor set")
-            }
-            Self::OomError(err) => write!(f, "out of memory"),
-        }
-    }
-}
-
-impl From<DescriptorSetUpdateError> for PersistentDescriptorSetCreationError {
-    #[inline]
-    fn from(err: DescriptorSetUpdateError) -> Self {
-        Self::DescriptorSetUpdateError(err)
-    }
-}
-
-impl From<OomError> for PersistentDescriptorSetCreationError {
-    #[inline]
-    fn from(err: OomError) -> Self {
-        Self::OomError(err)
     }
 }

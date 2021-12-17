@@ -11,9 +11,10 @@ use crate::descriptor_set::layout::DescriptorSetLayout;
 use crate::descriptor_set::pool::{
     DescriptorPoolAlloc, DescriptorPoolAllocError, DescriptorSetAllocateInfo, UnsafeDescriptorPool,
 };
-use crate::descriptor_set::update::{DescriptorSetUpdateError, WriteDescriptorSet};
+use crate::descriptor_set::update::WriteDescriptorSet;
 use crate::descriptor_set::{
-    DescriptorSet, DescriptorSetInner, DescriptorSetResources, UnsafeDescriptorSet,
+    DescriptorSet, DescriptorSetCreationError, DescriptorSetInner, DescriptorSetResources,
+    UnsafeDescriptorSet,
 };
 use crate::device::{Device, DeviceOwned};
 use crate::OomError;
@@ -70,7 +71,7 @@ impl SingleLayoutDescSetPool {
     pub fn next(
         &mut self,
         descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
-    ) -> Result<Arc<SingleLayoutDescSet>, SingleLayoutDescSetCreationError> {
+    ) -> Result<Arc<SingleLayoutDescSet>, DescriptorSetCreationError> {
         let alloc = self.next_alloc()?;
         let inner = DescriptorSetInner::new(
             alloc.inner().internal_object(),
@@ -229,47 +230,5 @@ impl Hash for SingleLayoutDescSet {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().internal_object().hash(state);
         self.device().hash(state);
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SingleLayoutDescSetCreationError {
-    DescriptorSetUpdateError(DescriptorSetUpdateError),
-    OomError(OomError),
-}
-
-impl std::error::Error for SingleLayoutDescSetCreationError {
-    #[inline]
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::DescriptorSetUpdateError(err) => Some(err),
-            Self::OomError(err) => Some(err),
-        }
-    }
-}
-
-impl std::fmt::Display for SingleLayoutDescSetCreationError {
-    #[inline]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::DescriptorSetUpdateError(err) => {
-                write!(f, "an error occurred while updating the descriptor set")
-            }
-            Self::OomError(err) => write!(f, "out of memory"),
-        }
-    }
-}
-
-impl From<DescriptorSetUpdateError> for SingleLayoutDescSetCreationError {
-    #[inline]
-    fn from(err: DescriptorSetUpdateError) -> Self {
-        Self::DescriptorSetUpdateError(err)
-    }
-}
-
-impl From<OomError> for SingleLayoutDescSetCreationError {
-    #[inline]
-    fn from(err: OomError) -> Self {
-        Self::OomError(err)
     }
 }
