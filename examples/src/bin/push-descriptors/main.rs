@@ -12,7 +12,7 @@ use std::io::Cursor;
 use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
-use vulkano::descriptor_set::DescriptorSetBuilder;
+use vulkano::descriptor_set::WriteDescriptorSet;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::format::Format;
@@ -276,12 +276,12 @@ fn main() {
                 .unwrap()
                 .set_viewport(0, [viewport.clone()])
                 .bind_pipeline_graphics(pipeline.clone())
-                .push_descriptor_set(PipelineBindPoint::Graphics, pipeline.layout().clone(), 0, {
-                    let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
-                    let mut set_builder = DescriptorSetBuilder::start(layout.clone());
-                    set_builder.add_image(texture.clone()).unwrap();
-                    set_builder.build().unwrap()
-                })
+                .push_descriptor_set(
+                    PipelineBindPoint::Graphics,
+                    pipeline.layout().clone(),
+                    0,
+                    [WriteDescriptorSet::image_view(0, texture.clone())],
+                )
                 .bind_vertex_buffers(0, vertex_buffer.clone())
                 .draw(vertex_buffer.len() as u32, 1, 0, 0)
                 .unwrap()

@@ -17,9 +17,8 @@ use crate::command_buffer::CommandBufferLevel;
 use crate::command_buffer::CommandBufferUsage;
 use crate::command_buffer::SecondaryCommandBuffer;
 use crate::command_buffer::SubpassContents;
-use crate::descriptor_set::sys::DescriptorWrite;
-use crate::descriptor_set::sys::DescriptorWriteInfo;
 use crate::descriptor_set::sys::UnsafeDescriptorSet;
+use crate::descriptor_set::{DescriptorWriteInfo, WriteDescriptorSet};
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::format::ClearValue;
@@ -1356,24 +1355,20 @@ impl UnsafeCommandBufferBuilder {
     ///
     /// If the list is empty then the command is automatically ignored.
     #[inline]
-    pub unsafe fn push_descriptor_set(
+    pub unsafe fn push_descriptor_set<'a>(
         &mut self,
         pipeline_bind_point: PipelineBindPoint,
         pipeline_layout: &PipelineLayout,
         set_num: u32,
-        descriptor_writes: &[DescriptorWrite],
+        descriptor_writes: impl IntoIterator<Item = &'a WriteDescriptorSet>,
     ) {
         debug_assert!(self.device().enabled_extensions().khr_push_descriptor);
-
-        if descriptor_writes.is_empty() {
-            return;
-        }
 
         let (infos, mut writes): (SmallVec<[_; 8]>, SmallVec<[_; 8]>) = descriptor_writes
             .into_iter()
             .map(|write| {
                 let descriptor = pipeline_layout.descriptor_set_layouts()[set_num as usize]
-                    .descriptor(write.binding_num)
+                    .descriptor(write.binding())
                     .unwrap();
 
                 (
@@ -1382,6 +1377,10 @@ impl UnsafeCommandBufferBuilder {
                 )
             })
             .unzip();
+
+        if writes.is_empty() {
+            return;
+        }
 
         // Set the info pointers separately.
         for (info, write) in infos.iter().zip(writes.iter_mut()) {

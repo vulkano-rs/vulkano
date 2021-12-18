@@ -238,7 +238,7 @@ where
     }
 }
 
-pub unsafe trait BufferViewAbstract: Send + Sync {
+pub unsafe trait BufferViewAbstract: DeviceOwned + Send + Sync {
     /// Returns the inner handle used by this buffer view.
     fn inner(&self) -> ash::vk::BufferView;
 

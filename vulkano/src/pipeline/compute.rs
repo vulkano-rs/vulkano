@@ -393,6 +393,7 @@ mod tests {
     use crate::command_buffer::AutoCommandBufferBuilder;
     use crate::command_buffer::CommandBufferUsage;
     use crate::descriptor_set::PersistentDescriptorSet;
+    use crate::descriptor_set::WriteDescriptorSet;
     use crate::pipeline::ComputePipeline;
     use crate::pipeline::Pipeline;
     use crate::pipeline::PipelineBindPoint;
@@ -481,12 +482,17 @@ mod tests {
 
         let data_buffer =
             CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), false, 0).unwrap();
-        let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
-        let mut builder = PersistentDescriptorSet::start(layout.clone());
 
-        builder.add_buffer(data_buffer.clone()).unwrap();
-
-        let set = builder.build().unwrap();
+        let set = PersistentDescriptorSet::new(
+            pipeline
+                .layout()
+                .descriptor_set_layouts()
+                .get(0)
+                .unwrap()
+                .clone(),
+            [WriteDescriptorSet::buffer(0, data_buffer.clone())],
+        )
+        .unwrap();
 
         let mut cbb = AutoCommandBufferBuilder::primary(
             device.clone(),

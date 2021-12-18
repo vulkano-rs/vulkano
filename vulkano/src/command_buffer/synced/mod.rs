@@ -492,6 +492,7 @@ mod tests {
     use crate::descriptor_set::layout::DescriptorSetLayout;
     use crate::descriptor_set::layout::DescriptorType;
     use crate::descriptor_set::PersistentDescriptorSet;
+    use crate::descriptor_set::WriteDescriptorSet;
     use crate::device::Device;
     use crate::pipeline::layout::PipelineLayout;
     use crate::pipeline::PipelineBindPoint;
@@ -682,13 +683,14 @@ mod tests {
                 PipelineLayout::new(device.clone(), [set_layout.clone(), set_layout.clone()], [])
                     .unwrap();
 
-            let set = {
-                let mut builder = PersistentDescriptorSet::start(set_layout.clone());
-                builder
-                    .add_sampler(Sampler::simple_repeat_linear(device.clone()))
-                    .unwrap();
-                builder.build().unwrap()
-            };
+            let set = PersistentDescriptorSet::new(
+                set_layout.clone(),
+                [WriteDescriptorSet::sampler(
+                    0,
+                    Sampler::simple_repeat_linear(device.clone()),
+                )],
+            )
+            .unwrap();
 
             let mut set_builder = sync.bind_descriptor_sets();
             set_builder.add(set.clone());
@@ -734,13 +736,14 @@ mod tests {
             )
             .unwrap();
 
-            let set = {
-                let mut builder = PersistentDescriptorSet::start(set_layout.clone());
-                builder
-                    .add_sampler(Sampler::simple_repeat_linear(device.clone()))
-                    .unwrap();
-                builder.build().unwrap()
-            };
+            let set = PersistentDescriptorSet::new(
+                set_layout.clone(),
+                [WriteDescriptorSet::sampler(
+                    0,
+                    Sampler::simple_repeat_linear(device.clone()),
+                )],
+            )
+            .unwrap();
 
             let mut set_builder = sync.bind_descriptor_sets();
             set_builder.add(set);

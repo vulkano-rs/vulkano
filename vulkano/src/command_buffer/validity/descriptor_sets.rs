@@ -80,7 +80,7 @@ pub(in super::super) fn check_descriptor_sets_validity<'a, P: Pipeline>(
         let binding_resources = set_resources.binding(binding_num).unwrap();
 
         match binding_resources {
-            DescriptorBindingResources::None => (),
+            DescriptorBindingResources::None(_) => (),
             DescriptorBindingResources::Buffer(elements) => {
                 check_resources(set_num, binding_num, reqs, elements, |_| Ok(()))?;
             }

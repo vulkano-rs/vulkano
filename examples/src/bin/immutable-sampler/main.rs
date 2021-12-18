@@ -21,7 +21,7 @@ use std::io::Cursor;
 use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
-use vulkano::descriptor_set::PersistentDescriptorSet;
+use vulkano::descriptor_set::{WriteDescriptorSet, PersistentDescriptorSet};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::format::Format;
@@ -215,12 +215,13 @@ fn main() {
         .unwrap();
 
     let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
-    let mut set_builder = PersistentDescriptorSet::start(layout.clone());
 
-    // Use `add_image` instead of `add_sampled_image`, since the sampler is already in the layout.
-    set_builder.add_image(texture.clone()).unwrap();
-
-    let set = set_builder.build().unwrap();
+    // Use `image_view` instead of `image_view_sampler`, since the sampler is already in the layout.
+    let set = PersistentDescriptorSet::new(
+        layout.clone(),
+        [WriteDescriptorSet::image_view(0, texture.clone())],
+    )
+    .unwrap();
 
     let mut viewport = Viewport {
         origin: [0.0, 0.0],

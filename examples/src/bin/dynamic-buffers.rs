@@ -17,7 +17,7 @@
 use std::mem;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
-use vulkano::descriptor_set::{DescriptorSet, PersistentDescriptorSet};
+use vulkano::descriptor_set::{DescriptorSet, WriteDescriptorSet, PersistentDescriptorSet};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::instance::{Instance, InstanceExtensions};
@@ -155,15 +155,14 @@ fn main() {
     .unwrap();
 
     let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
-    let mut set_builder = PersistentDescriptorSet::start(layout.clone());
-
-    set_builder
-        .add_buffer(input_buffer.clone())
-        .unwrap()
-        .add_buffer(output_buffer.clone())
-        .unwrap();
-
-    let set = set_builder.build().unwrap();
+    let set = PersistentDescriptorSet::new(
+        layout.clone(),
+        [
+            WriteDescriptorSet::buffer(0, input_buffer.clone()),
+            WriteDescriptorSet::buffer(1, output_buffer.clone()),
+        ],
+    )
+    .unwrap();
 
     // Build the command buffer, using different offsets for each call.
     let mut builder = AutoCommandBufferBuilder::primary(

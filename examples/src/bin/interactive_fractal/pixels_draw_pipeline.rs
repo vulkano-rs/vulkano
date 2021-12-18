@@ -12,7 +12,7 @@ use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer,
 };
-use vulkano::descriptor_set::PersistentDescriptorSet;
+use vulkano::descriptor_set::{WriteDescriptorSet, PersistentDescriptorSet};
 use vulkano::device::Queue;
 use vulkano::image::ImageViewAbstract;
 use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
@@ -126,11 +126,15 @@ impl PixelsDrawPipeline {
             0.0,
         )
         .unwrap();
-        let mut desc_set_builder = PersistentDescriptorSet::start(layout.clone());
-        desc_set_builder
-            .add_sampled_image(image.clone(), sampler)
-            .unwrap();
-        desc_set_builder.build().unwrap()
+        PersistentDescriptorSet::new(
+            layout.clone(),
+            [WriteDescriptorSet::image_view_sampler(
+                0,
+                image.clone(),
+                sampler,
+            )],
+        )
+        .unwrap()
     }
 
     /// Draw input `image` over a quad of size -1.0 to 1.0

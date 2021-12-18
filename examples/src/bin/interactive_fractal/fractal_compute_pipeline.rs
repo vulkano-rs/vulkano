@@ -14,7 +14,7 @@ use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::PrimaryCommandBuffer;
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
-use vulkano::descriptor_set::PersistentDescriptorSet;
+use vulkano::descriptor_set::{WriteDescriptorSet, PersistentDescriptorSet};
 use vulkano::device::Queue;
 use vulkano::image::ImageAccess;
 use vulkano::pipeline::{ComputePipeline, Pipeline, PipelineBindPoint};
@@ -98,13 +98,14 @@ impl FractalComputePipeline {
         let img_dims = image.image().dimensions().width_height();
         let pipeline_layout = self.pipeline.layout();
         let desc_layout = pipeline_layout.descriptor_set_layouts().get(0).unwrap();
-        let mut desc_set_builder = PersistentDescriptorSet::start(desc_layout.clone());
-        desc_set_builder
-            .add_image(image.clone())
-            .unwrap()
-            .add_buffer(self.palette.clone())
-            .unwrap();
-        let set = desc_set_builder.build().unwrap();
+        let set = PersistentDescriptorSet::new(
+            desc_layout.clone(),
+            [
+                WriteDescriptorSet::image_view(0, image.clone()),
+                WriteDescriptorSet::buffer(1, self.palette.clone()),
+            ],
+        )
+        .unwrap();
         let mut builder = AutoCommandBufferBuilder::primary(
             self.gfx_queue.device().clone(),
             self.gfx_queue.family(),

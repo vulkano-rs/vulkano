@@ -36,7 +36,7 @@ use vulkano::buffer::{BufferUsage, CpuBufferPool};
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, DrawIndirectCommand, SubpassContents,
 };
-use vulkano::descriptor_set::PersistentDescriptorSet;
+use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::image::view::ImageView;
@@ -330,15 +330,14 @@ fn main() {
                     .descriptor_set_layouts()
                     .get(0)
                     .unwrap();
-                let mut cs_desciptor_set_builder = PersistentDescriptorSet::start(layout.clone());
-
-                cs_desciptor_set_builder
-                    .add_buffer(vertices.clone())
-                    .unwrap()
-                    .add_buffer(indirect_args.clone())
-                    .unwrap();
-
-                let cs_desciptor_set = cs_desciptor_set_builder.build().unwrap();
+                let cs_desciptor_set = PersistentDescriptorSet::new(
+                    layout.clone(),
+                    [
+                        WriteDescriptorSet::buffer(0, vertices.clone()),
+                        WriteDescriptorSet::buffer(1, indirect_args.clone()),
+                    ],
+                )
+                .unwrap();
 
                 let mut builder = AutoCommandBufferBuilder::primary(
                     device.clone(),

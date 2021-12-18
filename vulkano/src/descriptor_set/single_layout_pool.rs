@@ -7,17 +7,16 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::resources::DescriptorSetResources;
-use crate::buffer::BufferView;
-use crate::descriptor_set::builder::DescriptorSetBuilder;
 use crate::descriptor_set::layout::DescriptorSetLayout;
 use crate::descriptor_set::pool::{
     DescriptorPoolAlloc, DescriptorPoolAllocError, DescriptorSetAllocateInfo, UnsafeDescriptorPool,
 };
-use crate::descriptor_set::{BufferAccess, DescriptorSet, DescriptorSetError, UnsafeDescriptorSet};
+use crate::descriptor_set::update::WriteDescriptorSet;
+use crate::descriptor_set::{
+    DescriptorSet, DescriptorSetCreationError, DescriptorSetInner, DescriptorSetResources,
+    UnsafeDescriptorSet,
+};
 use crate::device::{Device, DeviceOwned};
-use crate::image::ImageViewAbstract;
-use crate::sampler::Sampler;
 use crate::OomError;
 use crate::VulkanObject;
 use crossbeam_queue::SegQueue;
@@ -66,16 +65,22 @@ impl SingleLayoutDescSetPool {
         }
     }
 
-    /// Starts the process of building a new descriptor set.
-    ///
-    /// The set will corresponds to the set layout that was passed to `new`.
-    pub fn next(&mut self) -> SingleLayoutDescSetBuilder {
-        let layout = self.layout.clone();
+    /// Returns a new descriptor set, either by creating a new one or returning an existing one
+    /// from the internal reserve.
+    #[inline]
+    pub fn next(
+        &mut self,
+        descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
+    ) -> Result<Arc<SingleLayoutDescSet>, DescriptorSetCreationError> {
+        let alloc = self.next_alloc()?;
+        let inner = DescriptorSetInner::new(
+            alloc.inner().internal_object(),
+            self.layout.clone(),
+            0,
+            descriptor_writes,
+        )?;
 
-        SingleLayoutDescSetBuilder {
-            pool: self,
-            inner: DescriptorSetBuilder::start(layout),
-        }
+        Ok(Arc::new(SingleLayoutDescSet { alloc, inner }))
     }
 
     fn next_alloc(&mut self) -> Result<SingleLayoutPoolAlloc, OomError> {
@@ -183,8 +188,7 @@ impl Drop for SingleLayoutPoolAlloc {
 /// A descriptor set created from a `SingleLayoutDescSetPool`.
 pub struct SingleLayoutDescSet {
     alloc: SingleLayoutPoolAlloc,
-    resources: DescriptorSetResources,
-    layout: Arc<DescriptorSetLayout>,
+    inner: DescriptorSetInner,
 }
 
 unsafe impl DescriptorSet for SingleLayoutDescSet {
@@ -195,19 +199,19 @@ unsafe impl DescriptorSet for SingleLayoutDescSet {
 
     #[inline]
     fn layout(&self) -> &Arc<DescriptorSetLayout> {
-        &self.layout
+        self.inner.layout()
     }
 
     #[inline]
     fn resources(&self) -> &DescriptorSetResources {
-        &self.resources
+        self.inner.resources()
     }
 }
 
 unsafe impl DeviceOwned for SingleLayoutDescSet {
     #[inline]
     fn device(&self) -> &Arc<Device> {
-        self.layout.device()
+        self.inner.layout().device()
     }
 }
 
@@ -226,126 +230,5 @@ impl Hash for SingleLayoutDescSet {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().internal_object().hash(state);
         self.device().hash(state);
-    }
-}
-
-/// Prototype of a `SingleLayoutDescSet`.
-pub struct SingleLayoutDescSetBuilder<'a> {
-    pool: &'a mut SingleLayoutDescSetPool,
-    inner: DescriptorSetBuilder,
-}
-
-impl<'a> SingleLayoutDescSetBuilder<'a> {
-    /// Call this function if the next element of the set is an array in order to set the value of
-    /// each element.
-    ///
-    /// Returns an error if the descriptor is empty, there are no remaining descriptors, or if the
-    /// builder is already in an error.
-    ///
-    /// This function can be called even if the descriptor isn't an array, and it is valid to enter
-    /// the "array", add one element, then leave.
-    #[inline]
-    pub fn enter_array(&mut self) -> Result<&mut Self, DescriptorSetError> {
-        self.inner.enter_array()?;
-        Ok(self)
-    }
-
-    /// Leaves the array. Call this once you added all the elements of the array.
-    ///
-    /// Returns an error if the array is missing elements, or if the builder is not in an array.
-    #[inline]
-    pub fn leave_array(&mut self) -> Result<&mut Self, DescriptorSetError> {
-        self.inner.leave_array()?;
-        Ok(self)
-    }
-
-    /// Skips the current descriptor if it is empty.
-    #[inline]
-    pub fn add_empty(&mut self) -> Result<&mut Self, DescriptorSetError> {
-        self.inner.add_empty()?;
-        Ok(self)
-    }
-
-    /// Binds a buffer as the next descriptor.
-    ///
-    /// An error is returned if the buffer isn't compatible with the descriptor.
-    #[inline]
-    pub fn add_buffer(
-        &mut self,
-        buffer: Arc<dyn BufferAccess>,
-    ) -> Result<&mut Self, DescriptorSetError> {
-        self.inner.add_buffer(buffer)?;
-        Ok(self)
-    }
-
-    /// Binds a buffer view as the next descriptor.
-    ///
-    /// An error is returned if the buffer isn't compatible with the descriptor.
-    #[inline]
-    pub fn add_buffer_view<B>(
-        &mut self,
-        view: Arc<BufferView<B>>,
-    ) -> Result<&mut Self, DescriptorSetError>
-    where
-        B: BufferAccess + 'static,
-    {
-        self.inner.add_buffer_view(view)?;
-        Ok(self)
-    }
-
-    /// Binds an image view as the next descriptor.
-    ///
-    /// An error is returned if the image view isn't compatible with the descriptor.
-    #[inline]
-    pub fn add_image(
-        &mut self,
-        image_view: Arc<dyn ImageViewAbstract + 'static>,
-    ) -> Result<&mut Self, DescriptorSetError> {
-        self.inner.add_image(image_view)?;
-        Ok(self)
-    }
-
-    /// Binds an image view with a sampler as the next descriptor.
-    ///
-    /// If the descriptor set layout contains immutable samplers for this descriptor, use
-    /// `add_image` instead.
-    ///
-    /// An error is returned if the image view isn't compatible with the descriptor.
-    #[inline]
-    pub fn add_sampled_image(
-        &mut self,
-        image_view: Arc<dyn ImageViewAbstract + 'static>,
-        sampler: Arc<Sampler>,
-    ) -> Result<&mut Self, DescriptorSetError> {
-        self.inner.add_sampled_image(image_view, sampler)?;
-        Ok(self)
-    }
-
-    /// Binds a sampler as the next descriptor.
-    ///
-    /// An error is returned if the sampler isn't compatible with the descriptor.
-    #[inline]
-    pub fn add_sampler(&mut self, sampler: Arc<Sampler>) -> Result<&mut Self, DescriptorSetError> {
-        self.inner.add_sampler(sampler)?;
-        Ok(self)
-    }
-
-    /// Builds a `SingleLayoutDescSet` from the builder.
-    pub fn build(self) -> Result<Arc<SingleLayoutDescSet>, DescriptorSetError> {
-        let writes = self.inner.build()?;
-        debug_assert!(writes.variable_descriptor_count() == 0);
-        let mut alloc = self.pool.next_alloc()?;
-        let mut resources = DescriptorSetResources::new(writes.layout(), 0);
-
-        unsafe {
-            alloc.inner_mut().write(writes.layout(), writes.writes());
-            resources.update(writes.writes());
-        }
-
-        Ok(Arc::new(SingleLayoutDescSet {
-            alloc,
-            resources,
-            layout: writes.layout().clone(),
-        }))
     }
 }

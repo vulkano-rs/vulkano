@@ -15,7 +15,7 @@ use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, Subp
 use vulkano::descriptor_set::layout::{
     DescriptorSetDesc, DescriptorSetLayout, DescriptorSetLayoutError,
 };
-use vulkano::descriptor_set::PersistentDescriptorSet;
+use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::format::Format;
@@ -318,19 +318,19 @@ fn main() {
         .unwrap();
 
     let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
-    let mut set_builder = PersistentDescriptorSet::start(layout.clone());
-
-    set_builder
-        .enter_array()
-        .unwrap()
-        .add_sampled_image(mascot_texture.clone(), sampler.clone())
-        .unwrap()
-        .add_sampled_image(vulkano_texture.clone(), sampler.clone())
-        .unwrap()
-        .leave_array()
-        .unwrap();
-
-    let set = set_builder.build().unwrap();
+    let set = PersistentDescriptorSet::new_variable(
+        layout.clone(),
+        2,
+        [WriteDescriptorSet::image_view_sampler_array(
+            0,
+            0,
+            [
+                (mascot_texture.clone() as _, sampler.clone()),
+                (vulkano_texture.clone() as _, sampler.clone()),
+            ],
+        )],
+    )
+    .unwrap();
 
     let mut viewport = Viewport {
         origin: [0.0, 0.0],
