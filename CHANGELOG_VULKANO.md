@@ -9,6 +9,11 @@
 
 - **Breaking** Updated to half 1.8, smallvec 1.7, winit 0.26, raw-window-handle 0.4.
 - Upgraded to Rust 2021.
+- **Breaking** `DescriptorWrite` is renamed to `WriteDescriptorSet` to match Vulkan, and moved into the main `descriptor_set` module.
+- **Breaking** The constructors of `WriteDescriptorSet` are no longer unsafe. Added convenience constructors for writing non-arrayed bindings.
+- **Breaking** Descriptor sets are no longer constructed using a builder, but with an iterator of `WriteDescriptorSet` items. See in the examples how this is used.
+  - `PersistentDescriptorSet::start` has been replaced with three constructors, `new`, `new_variable` and `new_with_pool`. Each of these takes an iterator of `WriteDescriptorSet`.
+  - `SingleLayoutDescSetPool::next` takes an iterator of `WriteDescriptorSet` as well.
 
 # Version 0.27.1 (2021-12-07)
 
