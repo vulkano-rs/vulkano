@@ -45,6 +45,8 @@ use crate::device::Queue;
 use crate::format::ClearValue;
 use crate::format::NumericType;
 use crate::format::Pixel;
+use crate::image::attachment::ClearAttachment;
+use crate::image::attachment::ClearRect;
 use crate::image::ImageAccess;
 use crate::image::ImageAspect;
 use crate::image::ImageAspects;
@@ -132,6 +134,8 @@ pub struct AutoCommandBufferBuilder<L, P = StandardCommandPoolBuilder> {
 struct RenderPassState {
     subpass: Subpass,
     contents: SubpassContents,
+    attached_layers_ranges: SmallVec<[Range<u32>; 4]>,
+    dimensions: [u32; 3],
     framebuffer: ash::vk::Framebuffer, // Always null for secondary command buffers
 }
 
@@ -292,6 +296,14 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
                      }| RenderPassState {
                         subpass: subpass.clone(),
                         contents: SubpassContents::Inline,
+                        dimensions: framebuffer
+                            .as_ref()
+                            .map(|f| f.dimensions())
+                            .unwrap_or_default(),
+                        attached_layers_ranges: framebuffer
+                            .as_ref()
+                            .map(|f| f.attached_layers_ranges())
+                            .unwrap_or_default(),
                         framebuffer: ash::vk::Framebuffer::null(), // Only needed for primary command buffers
                     },
                 );
@@ -878,6 +890,94 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             )?;
             Ok(self)
         }
+    }
+
+    /// Adds a command that clears specific regions of specific attachments of the framebuffer.
+    ///
+    /// `attachments` specify the types of attachments and their clear values.
+    /// `rects` specify the regions to clear.
+    ///
+    /// A graphics pipeline must have been bound using
+    /// [`bind_pipeline_graphics`](Self::bind_pipeline_graphics). And the command must be inside render pass.
+    ///
+    /// If the render pass instance this is recorded in uses multiview,
+    /// then `ClearRect.base_array_layer` must be zero and `ClearRect.layer_count` must be one.
+    ///
+    /// The rectangle area must be inside the render area ranges.
+    pub fn clear_attachments<A, R>(
+        &mut self,
+        attachments: A,
+        rects: R,
+    ) -> Result<&mut Self, ClearAttachmentsError>
+    where
+        A: IntoIterator<Item = ClearAttachment>,
+        R: IntoIterator<Item = ClearRect>,
+    {
+        let pipeline = check_pipeline_graphics(self.state())?;
+        self.ensure_inside_render_pass_inline(pipeline)?;
+
+        let render_pass_state = self.render_pass_state.as_ref().unwrap();
+        let subpass = &render_pass_state.subpass;
+        let multiview = subpass.render_pass().desc().multiview().is_some();
+        let has_depth_stencil_attachment = subpass.has_depth_stencil_attachment();
+        let num_color_attachments = subpass.num_color_attachments();
+        let dimensions = render_pass_state.dimensions;
+        let attached_layers_ranges = &render_pass_state.attached_layers_ranges;
+
+        let attachments: SmallVec<[ClearAttachment; 3]> = attachments.into_iter().collect();
+        let rects: SmallVec<[ClearRect; 4]> = rects.into_iter().collect();
+
+        for attachment in &attachments {
+            match attachment {
+                ClearAttachment::Color(_, color_attachment) => {
+                    if *color_attachment >= num_color_attachments as u32 {
+                        return Err(ClearAttachmentsError::InvalidColorAttachmentIndex(
+                            *color_attachment,
+                        ));
+                    }
+                }
+                ClearAttachment::Depth(_)
+                | ClearAttachment::Stencil(_)
+                | ClearAttachment::DepthStencil(_) => {
+                    if !has_depth_stencil_attachment {
+                        return Err(ClearAttachmentsError::DepthStencilAttachmentNotPresent);
+                    }
+                }
+            }
+        }
+
+        for rect in &rects {
+            if rect.rect_extent[0] == 0 || rect.rect_extent[1] == 0 {
+                return Err(ClearAttachmentsError::ZeroRectExtent);
+            }
+            if rect.rect_offset[0] + rect.rect_extent[0] > dimensions[0]
+                || rect.rect_offset[1] + rect.rect_extent[1] > dimensions[1]
+            {
+                return Err(ClearAttachmentsError::RectOutOfBounds);
+            }
+
+            if rect.layer_count == 0 {
+                return Err(ClearAttachmentsError::ZeroLayerCount);
+            }
+            if multiview && (rect.base_array_layer != 0 || rect.layer_count != 1) {
+                return Err(ClearAttachmentsError::InvalidMultiviewLayerRange);
+            }
+
+            // make sure rect's layers is inside attached layers ranges
+            for range in attached_layers_ranges {
+                if rect.base_array_layer < range.start
+                    || rect.base_array_layer + rect.layer_count > range.end
+                {
+                    return Err(ClearAttachmentsError::LayersOutOfBounds);
+                }
+            }
+        }
+
+        unsafe {
+            self.inner.clear_attachments(attachments, rects);
+        }
+
+        Ok(self)
     }
 
     /// Adds a command that clears all the layers and mipmap levels of a color image with a
@@ -3194,6 +3294,8 @@ where
                 .begin_render_pass(framebuffer.clone(), contents, clear_values)?;
             self.render_pass_state = Some(RenderPassState {
                 subpass: framebuffer.render_pass().clone().first_subpass(),
+                dimensions: framebuffer.dimensions(),
+                attached_layers_ranges: framebuffer.attached_layers_ranges(),
                 contents,
                 framebuffer: framebuffer_object,
             });
@@ -3870,6 +3972,80 @@ err_gen!(UpdateBufferError {
     AutoCommandBufferBuilderContextError,
     CheckUpdateBufferError,
 });
+
+/// Errors that can happen when calling [`clear_attachments`](AutoCommandBufferBuilder::clear_attachments)
+#[derive(Debug, Copy, Clone)]
+pub enum ClearAttachmentsError {
+    /// AutoCommandBufferBuilderContextError
+    AutoCommandBufferBuilderContextError(AutoCommandBufferBuilderContextError),
+    /// CheckPipelineError
+    CheckPipelineError(CheckPipelineError),
+
+    /// The index of the color attachment is not present
+    InvalidColorAttachmentIndex(u32),
+    /// There is no depth/stencil attachment present
+    DepthStencilAttachmentNotPresent,
+    /// The clear rect cannot have extent of `0`
+    ZeroRectExtent,
+    /// The layer count cannot be `0`
+    ZeroLayerCount,
+    /// The clear rect region must be inside the render area of the render pass
+    RectOutOfBounds,
+    /// The clear rect's layers must be inside the layers ranges for all the attachments
+    LayersOutOfBounds,
+    /// If the render pass instance this is recorded in uses multiview,
+    /// then `ClearRect.base_array_layer` must be zero and `ClearRect.layer_count` must be one
+    InvalidMultiviewLayerRange,
+}
+
+impl error::Error for ClearAttachmentsError {}
+
+impl fmt::Display for ClearAttachmentsError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match *self {
+            ClearAttachmentsError::AutoCommandBufferBuilderContextError(e) => write!(fmt, "{}", e)?,
+            ClearAttachmentsError::CheckPipelineError(e) => write!(fmt, "{}", e)?,
+            ClearAttachmentsError::InvalidColorAttachmentIndex(index) => {
+                write!(fmt, "Color attachment {} is not present", index)?
+            }
+            ClearAttachmentsError::DepthStencilAttachmentNotPresent => {
+                write!(fmt, "There is no depth/stencil attachment present")?
+            }
+            ClearAttachmentsError::ZeroRectExtent => {
+                write!(fmt, "The clear rect cannot have extent of 0")?
+            }
+            ClearAttachmentsError::ZeroLayerCount => write!(fmt, "The layer count cannot be 0")?,
+            ClearAttachmentsError::RectOutOfBounds => write!(
+                fmt,
+                "The clear rect region must be inside the render area of the render pass"
+            )?,
+            ClearAttachmentsError::LayersOutOfBounds => write!(
+                fmt,
+                "The clear rect's layers must be inside the layers ranges for all the attachments"
+            )?,
+            ClearAttachmentsError::InvalidMultiviewLayerRange => write!(
+                fmt,
+                "If the render pass instance this is recorded in uses multiview, then `ClearRect.base_array_layer` must be zero and `ClearRect.layer_count` must be one" 
+            )?,
+        }
+        Ok(())
+    }
+}
+
+impl From<AutoCommandBufferBuilderContextError> for ClearAttachmentsError {
+    #[inline]
+    fn from(err: AutoCommandBufferBuilderContextError) -> ClearAttachmentsError {
+        ClearAttachmentsError::AutoCommandBufferBuilderContextError(err)
+    }
+}
+
+impl From<CheckPipelineError> for ClearAttachmentsError {
+    #[inline]
+    fn from(err: CheckPipelineError) -> ClearAttachmentsError {
+        ClearAttachmentsError::CheckPipelineError(err)
+    }
+}
 
 #[derive(Debug, Copy, Clone)]
 pub enum AutoCommandBufferBuilderContextError {

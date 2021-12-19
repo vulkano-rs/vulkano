@@ -23,6 +23,8 @@ use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::format::ClearValue;
 use crate::format::NumericType;
+use crate::image::attachment::ClearAttachment;
+use crate::image::attachment::ClearRect;
 use crate::image::ImageAccess;
 use crate::image::ImageAspect;
 use crate::image::ImageAspects;
@@ -685,18 +687,40 @@ impl UnsafeCommandBufferBuilder {
         );
     }
 
-    // TODO: missing structs
-    /*/// Calls `vkCmdClearAttachments` on the builder.
+    /// Calls `vkCmdClearAttachments` on the builder.
     ///
     /// Does nothing if the list of attachments or the list of rects is empty, as it would be a
     /// no-op and isn't a valid usage of the command anyway.
     #[inline]
     pub unsafe fn clear_attachments<A, R>(&mut self, attachments: A, rects: R)
-        where A: IntoIterator<Item = >,
-              R: IntoIterator<Item = >
+    where
+        A: IntoIterator<Item = ClearAttachment>,
+        R: IntoIterator<Item = ClearRect>,
     {
-        let attachments: SmallVec<[_; 16]> = attachments.map().collect();
-        let rects: SmallVec<[_; 4]> = rects.map().collect();
+        let attachments: SmallVec<[_; 3]> = attachments.into_iter().map(|v| v.into()).collect();
+        let rects: SmallVec<[_; 4]> = rects
+            .into_iter()
+            .filter_map(|rect| {
+                if rect.layer_count == 0 {
+                    return None;
+                }
+
+                Some(ash::vk::ClearRect {
+                    rect: ash::vk::Rect2D {
+                        offset: ash::vk::Offset2D {
+                            x: rect.rect_offset[0] as i32,
+                            y: rect.rect_offset[1] as i32,
+                        },
+                        extent: ash::vk::Extent2D {
+                            width: rect.rect_extent[0],
+                            height: rect.rect_extent[1],
+                        },
+                    },
+                    base_array_layer: rect.base_array_layer,
+                    layer_count: rect.layer_count,
+                })
+            })
+            .collect();
 
         if attachments.is_empty() || rects.is_empty() {
             return;
@@ -704,9 +728,14 @@ impl UnsafeCommandBufferBuilder {
 
         let fns = self.device().fns();
         let cmd = self.internal_object();
-        fns.v1_0.CmdClearAttachments(cmd, attachments.len() as u32, attachments.as_ptr(),
-                               rects.len() as u32, rects.as_ptr());
-    }*/
+        fns.v1_0.cmd_clear_attachments(
+            cmd,
+            attachments.len() as u32,
+            attachments.as_ptr(),
+            rects.len() as u32,
+            rects.as_ptr(),
+        );
+    }
 
     /// Calls `vkCmdClearColorImage` on the builder.
     ///

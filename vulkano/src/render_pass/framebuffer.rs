@@ -22,6 +22,7 @@ use std::cmp;
 use std::error;
 use std::fmt;
 use std::mem::MaybeUninit;
+use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 
@@ -154,6 +155,15 @@ impl Framebuffer {
     #[inline]
     pub fn attached_image_view(&self, index: usize) -> Option<&Arc<dyn ImageViewAbstract>> {
         self.resources.get(index)
+    }
+
+    /// Returns the layer ranges for all attachments.
+    #[inline]
+    pub fn attached_layers_ranges(&self) -> SmallVec<[Range<u32>; 4]> {
+        self.resources
+            .iter()
+            .map(|img| img.array_layers())
+            .collect()
     }
 }
 
