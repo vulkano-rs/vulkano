@@ -53,7 +53,6 @@ pub fn spirv_extensions<'a>(spirv: &'a Spirv) -> impl Iterator<Item = &'a str> {
 /// Returns an iterator over all entry points in `spirv`, with information about the entry point.
 pub fn entry_points<'a>(
     spirv: &'a Spirv,
-    exact_interface: bool,
 ) -> impl Iterator<Item = (String, ExecutionModel, EntryPointInfo)> + 'a {
     spirv.iter_entry_point().filter_map(move |instruction| {
         let (execution_model, function_id, entry_point_name, interface) = match instruction {
@@ -70,7 +69,7 @@ pub fn entry_points<'a>(
         let execution = shader_execution(&spirv, execution_model, function_id);
         let stage = ShaderStage::from(execution);
         let descriptor_requirements =
-            descriptor_requirements(&spirv, function_id, stage, interface, exact_interface);
+            descriptor_requirements(&spirv, function_id, stage, interface);
         let push_constant_requirements = push_constant_requirements(&spirv, stage);
         let specialization_constant_requirements = specialization_constant_requirements(&spirv);
         let input_interface = shader_interface(
@@ -169,13 +168,12 @@ fn descriptor_requirements(
     function_id: Id,
     stage: ShaderStage,
     interface: &[Id],
-    exact: bool,
 ) -> FnvHashMap<(u32, u32), DescriptorRequirements> {
     // For SPIR-V 1.4+, the entrypoint interface can specify variables of all storage classes,
     // and most tools will put all used variables in the entrypoint interface. However,
     // SPIR-V 1.0-1.3 do not specify variables other than Input/Output ones in the interface,
     // and instead the function itself must be inspected.
-    let variables = if exact {
+    let variables = {
         let mut found_variables: HashSet<Id> = interface.iter().cloned().collect();
         let mut inspected_functions: HashSet<Id> = HashSet::new();
         find_variables_in_function(
@@ -184,9 +182,7 @@ fn descriptor_requirements(
             &mut inspected_functions,
             &mut found_variables,
         );
-        Some(found_variables)
-    } else {
-        None
+        found_variables
     };
 
     // Looping to find all the global variables that have the `DescriptorSet` decoration.
@@ -216,7 +212,7 @@ fn descriptor_requirements(
                 _ => return None,
             };
 
-            if exact && !variables.as_ref().unwrap().contains(&variable_id) {
+            if !variables.contains(&variable_id) {
                 return None;
             }
 

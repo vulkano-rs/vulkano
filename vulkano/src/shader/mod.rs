@@ -80,7 +80,7 @@ impl ShaderModule {
             spirv.version(),
             reflect::spirv_capabilities(&spirv),
             reflect::spirv_extensions(&spirv),
-            reflect::entry_points(&spirv, false),
+            reflect::entry_points(&spirv),
         )
     }
 
@@ -170,14 +170,18 @@ impl ShaderModule {
             .collect::<HashSet<_>>()
             .iter()
             .map(|name| {
-                ((*name).clone(),
-                    entries.iter().filter_map(|(entry_name, entry_model, info)| {
-                        if &entry_name == name {
-                            Some((*entry_model, info.clone()))
-                        } else {
-                            None
-                        }
-                    }).collect::<HashMap<_, _>>()
+                (
+                    (*name).clone(),
+                    entries
+                        .iter()
+                        .filter_map(|(entry_name, entry_model, info)| {
+                            if &entry_name == name {
+                                Some((*entry_model, info.clone()))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<HashMap<_, _>>(),
                 )
             })
             .collect();
@@ -235,7 +239,11 @@ impl ShaderModule {
 
     /// Returns information about the entry point with the provided name and execution model. Returns
     /// `None` if no entry and execution model exists in the shader module.
-    pub fn entry_point_with_execution<'a>(&'a self, name: &str, execution: ExecutionModel) -> Option<EntryPoint<'a>> {
+    pub fn entry_point_with_execution<'a>(
+        &'a self,
+        name: &str,
+        execution: ExecutionModel,
+    ) -> Option<EntryPoint<'a>> {
         self.entry_points.get(name).and_then(|infos| {
             infos.get(&execution).map(|info| EntryPoint {
                 module: self,
