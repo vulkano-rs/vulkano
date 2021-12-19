@@ -1230,13 +1230,24 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             // TODO: Allow choosing layouts, but note that only Transfer*Optimal and General are
             // valid.
-            self.inner.copy_image(
-                source,
-                ImageLayout::TransferSrcOptimal,
-                destination,
-                ImageLayout::TransferDstOptimal,
-                iter::once(copy),
-            )?;
+            if source.conflict_key() == destination.conflict_key() {
+                // since we are copying from the same image, we must use the same layout
+                self.inner.copy_image(
+                    source,
+                    ImageLayout::General,
+                    destination,
+                    ImageLayout::General,
+                    iter::once(copy),
+                )?;
+            } else {
+                self.inner.copy_image(
+                    source,
+                    ImageLayout::TransferSrcOptimal,
+                    destination,
+                    ImageLayout::TransferDstOptimal,
+                    iter::once(copy),
+                )?;
+            }
             Ok(self)
         }
     }

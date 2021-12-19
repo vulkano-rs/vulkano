@@ -326,18 +326,36 @@ impl SyncCommandBufferBuilder {
                 );
             }
         }
+        let mut resources: SmallVec<[_; 2]> = SmallVec::new();
 
-        self.append_command(
-            Cmd {
-                source: source.clone(),
-                source_layout,
-                destination: destination.clone(),
-                destination_layout,
-                regions: Mutex::new(Some(regions)),
-            },
-            [
+        // if its the same image in source and destination, we need to lock it once
+        if source.conflict_key() == destination.conflict_key() {
+            resources.push((
+                KeyTy::Image(source.clone()),
+                "source_and_destination".into(),
+                Some((
+                    PipelineMemoryAccess {
+                        stages: PipelineStages {
+                            transfer: true,
+                            ..PipelineStages::none()
+                        },
+                        access: AccessFlags {
+                            transfer_read: true,
+                            transfer_write: true,
+                            ..AccessFlags::none()
+                        },
+                        exclusive: true,
+                    },
+                    // TODO: should, we take the layout as parameter? if so, which? source or destination?
+                    ImageLayout::General,
+                    ImageLayout::General,
+                    ImageUninitializedSafe::Safe,
+                )),
+            ));
+        } else {
+            resources.extend([
                 (
-                    KeyTy::Image(source),
+                    KeyTy::Image(source.clone()),
                     "source".into(),
                     Some((
                         PipelineMemoryAccess {
@@ -357,7 +375,7 @@ impl SyncCommandBufferBuilder {
                     )),
                 ),
                 (
-                    KeyTy::Image(destination),
+                    KeyTy::Image(destination.clone()),
                     "destination".into(),
                     Some((
                         PipelineMemoryAccess {
@@ -376,7 +394,18 @@ impl SyncCommandBufferBuilder {
                         ImageUninitializedSafe::Safe,
                     )),
                 ),
-            ],
+            ]);
+        };
+
+        self.append_command(
+            Cmd {
+                source,
+                source_layout,
+                destination,
+                destination_layout,
+                regions: Mutex::new(Some(regions)),
+            },
+            resources,
         )?;
 
         Ok(())
