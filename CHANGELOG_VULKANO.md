@@ -14,6 +14,7 @@
 - **Breaking** Descriptor sets are no longer constructed using a builder, but with an iterator of `WriteDescriptorSet` items. See in the examples how this is used.
   - `PersistentDescriptorSet::start` has been replaced with three constructors, `new`, `new_variable` and `new_with_pool`. Each of these takes an iterator of `WriteDescriptorSet`.
   - `SingleLayoutDescSetPool::next` takes an iterator of `WriteDescriptorSet` as well.
+- **Breaking** Shader reflection now always generates only the descriptor requirements needed for each given entry point, instead of for all of them. The `exact_entrypoint_interface` argument to the `shader!` macro is removed.
 
 # Version 0.27.1 (2021-12-07)
 
