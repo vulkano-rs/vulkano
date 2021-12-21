@@ -868,14 +868,29 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 destination_bottom_right,
             };
 
-            self.inner.blit_image(
-                source,
-                ImageLayout::TransferSrcOptimal,
-                destination, // TODO: let choose layout
-                ImageLayout::TransferDstOptimal,
-                iter::once(blit),
-                filter,
-            )?;
+            // TODO: Allow choosing layouts, but note that only Transfer*Optimal and General are
+            // valid.
+            if source.conflict_key() == destination.conflict_key() {
+                // since we are blitting from the same image, we must use the same layout
+                self.inner.blit_image(
+                    source,
+                    ImageLayout::General,
+                    destination,
+                    ImageLayout::General,
+                    iter::once(blit),
+                    filter,
+                )?;
+            } else {
+                self.inner.blit_image(
+                    source,
+                    ImageLayout::TransferSrcOptimal,
+                    destination,
+                    ImageLayout::TransferDstOptimal,
+                    iter::once(blit),
+                    filter,
+                )?;
+            }
+
             Ok(self)
         }
     }
