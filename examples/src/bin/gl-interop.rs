@@ -57,6 +57,15 @@ fn main() {
         .build_surfaceless(&event_loop_gl)
         .unwrap();
 
+    let hrb_vk = glutin::ContextBuilder::new()
+        .with_gl_debug_flag(true)
+        .with_gl(glutin::GlRequest::Latest)
+        .build_surfaceless(&event_loop_gl)
+        .unwrap();
+
+    let display =
+        glium::HeadlessRenderer::with_debug(hrb_vk, glium::debug::DebugCallbackBehavior::PrintAll)
+            .unwrap(); // Used for checking device and driver UUIDs
     let (
         device,
         _instance,
@@ -70,7 +79,7 @@ fn main() {
         sampler,
         pipeline,
         vertex_buffer,
-    ) = vk_setup();
+    ) = vk_setup(display);
 
     let image = StorageImage::new_with_exportable_fd(
         device.clone(),
@@ -323,7 +332,9 @@ struct Vertex {
 vulkano::impl_vertex!(Vertex, position);
 
 #[cfg(target_os = "linux")]
-fn vk_setup() -> (
+fn vk_setup(
+    display: glium::HeadlessRenderer,
+) -> (
     Arc<vulkano::device::Device>,
     Arc<vulkano::instance::Instance>,
     Arc<Swapchain<winit::window::Window>>,
@@ -353,7 +364,7 @@ fn vk_setup() -> (
             ..InstanceExtensions::none()
         }
         .union(&required_extensions)),
-        vec!["VK_LAYER_KHRONOS_validation"],
+        vec![],
     )
     .unwrap();
 
@@ -390,6 +401,13 @@ fn vk_setup() -> (
             p.queue_families()
                 .find(|&q| q.supports_graphics() && surface.is_supported(q).unwrap_or(false))
                 .map(|q| (p, q))
+        })
+        .filter(|(p, _)| p.properties().driver_uuid.unwrap() == display.driver_uuid().unwrap())
+        .filter(|(p, _)| {
+            display
+                .device_uuids()
+                .unwrap()
+                .contains(&p.properties().device_uuid.unwrap())
         })
         .min_by_key(|(p, _)| match p.properties().device_type {
             PhysicalDeviceType::DiscreteGpu => 0,
