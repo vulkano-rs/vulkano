@@ -89,6 +89,7 @@ use crate::VulkanObject;
 use crate::{OomError, SafeDeref};
 use fnv::FnvHashMap;
 use smallvec::SmallVec;
+use std::cmp;
 use std::error;
 use std::ffi::CStr;
 use std::fmt;
@@ -1051,9 +1052,17 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     {
         unsafe {
             self.ensure_outside_render_pass()?;
-            let infos = check_copy_buffer(self.device(), source.as_ref(), destination.as_ref())?;
+            let copy_size = cmp::min(source.size(), destination.size());
+            check_copy_buffer(
+                self.device(),
+                source.as_ref(),
+                destination.as_ref(),
+                0,
+                0,
+                copy_size,
+            )?;
             self.inner
-                .copy_buffer(source, destination, iter::once((0, 0, infos.copy_size)))?;
+                .copy_buffer(source, destination, iter::once((0, 0, copy_size)))?;
             Ok(self)
         }
     }
@@ -1074,21 +1083,26 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         D: TypedBufferAccess<Content = [T]> + 'static,
     {
         self.ensure_outside_render_pass()?;
-
-        let _infos = check_copy_buffer(self.device(), source.as_ref(), destination.as_ref())?;
-        debug_assert!(source_offset + count <= source.len());
-        debug_assert!(destination_offset + count <= destination.len());
-
         let size = std::mem::size_of::<T>() as DeviceSize;
+
+        let source_offset = source_offset * size;
+        let destination_offset = destination_offset * size;
+        let copy_size = count * size;
+
+        check_copy_buffer(
+            self.device(),
+            source.as_ref(),
+            destination.as_ref(),
+            source_offset,
+            destination_offset,
+            copy_size,
+        )?;
+
         unsafe {
             self.inner.copy_buffer(
                 source,
                 destination,
-                iter::once((
-                    source_offset * size,
-                    destination_offset * size,
-                    count * size,
-                )),
+                iter::once((source_offset, destination_offset, copy_size)),
             )?;
         }
         Ok(self)

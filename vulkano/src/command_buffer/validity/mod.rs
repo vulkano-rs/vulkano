@@ -14,7 +14,7 @@ pub use self::clear_color_image::{check_clear_color_image, CheckClearColorImageE
 pub use self::clear_depth_stencil_image::{
     check_clear_depth_stencil_image, CheckClearDepthStencilImageError,
 };
-pub use self::copy_buffer::{check_copy_buffer, CheckCopyBuffer, CheckCopyBufferError};
+pub use self::copy_buffer::{check_copy_buffer, CheckCopyBufferError};
 pub use self::copy_image::{check_copy_image, CheckCopyImageError};
 pub use self::copy_image_buffer::{
     check_copy_buffer_image, CheckCopyBufferImageError, CheckCopyBufferImageTy,
