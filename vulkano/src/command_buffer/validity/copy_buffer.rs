@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use super::ranges::is_overlapping_ranges;
 use crate::buffer::TypedBufferAccess;
 use crate::device::Device;
 use crate::device::DeviceOwned;
@@ -60,8 +61,7 @@ where
     }
 
     if source.conflict_key() == destination.conflict_key()
-        && (destination_offset < source_offset + size)
-        && (source_offset < destination_offset + size)
+        && is_overlapping_ranges(source_offset, size, destination_offset, size)
     {
         return Err(CheckCopyBufferError::OverlappingRanges);
     }

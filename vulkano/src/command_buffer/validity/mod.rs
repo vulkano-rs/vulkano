@@ -56,5 +56,6 @@ mod indirect_buffer;
 mod pipeline;
 mod push_constants;
 mod query;
+mod ranges;
 mod update_buffer;
 mod vertex_buffers;
