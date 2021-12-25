@@ -35,10 +35,10 @@ pub(super) fn is_overlapping_regions(
         ImageDimensions::Dim2d { .. } => 2,
         ImageDimensions::Dim3d { .. } => 3,
     };
-    let mut result = false;
+    let mut result = true;
     // for 1d, it will check x only, for 2d x and y, and so on...
     for i in 0..dim {
-        result |= is_overlapping_ranges(
+        result &= is_overlapping_ranges(
             source_offset[i] as u64,
             source_extent[i] as u64,
             destination_offset[i] as u64,
