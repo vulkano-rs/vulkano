@@ -188,6 +188,7 @@ fn main() {
             CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
+        // here, we perform image copying and blitting on the same image
         builder
             //  clear the image buffer
             .clear_color_image(image.clone(), ClearValue::Float([0.0, 0.0, 0.0, 0.0]))
@@ -203,7 +204,7 @@ fn main() {
                 0,
             )
             .unwrap()
-            // copy from the topleft corner to the bottom right corner
+            // copy from the top left corner to the bottom right corner
             .copy_image(
                 image.clone(),
                 [0, 0, 0],
@@ -215,6 +216,23 @@ fn main() {
                 0,
                 [img_size[0], img_size[1], 1],
                 1,
+            )
+            .unwrap()
+            // blit from the bottom right corner to the top right corner (flipped)
+            .blit_image(
+                image.clone(),
+                [img_size[0] as i32, img_size[1] as i32, 0],
+                [img_size[0] as i32 * 2, img_size[1] as i32 * 2, 1],
+                0,
+                0,
+                image.clone(),
+                // flipping the top_left and bottom_right corners results in flipped image
+                [img_size[0] as i32 * 2 - 1, img_size[1] as i32 - 1, 0],
+                [img_size[0] as i32, 0, 1],
+                0,
+                0,
+                1,
+                Filter::Nearest,
             )
             .unwrap();
         let command_buffer = builder.build().unwrap();
