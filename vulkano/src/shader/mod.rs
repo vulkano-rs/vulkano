@@ -30,7 +30,7 @@ use crate::DeviceSize;
 use crate::OomError;
 use crate::Version;
 use crate::VulkanObject;
-use fnv::FnvHashMap;
+use fnv::{FnvHashMap, FnvHashSet};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::error;
@@ -549,12 +549,33 @@ pub struct DescriptorRequirements {
     /// Whether image views bound to this descriptor must have multisampling enabled or disabled.
     pub multisampled: bool,
 
-    /// Whether the shader requires mutable (exclusive) access to the resource bound to this
-    /// descriptor.
-    pub mutable: bool,
+    /// The descriptor indices that require mutable (exclusive) access to the bound resource.
+    pub mutable: FnvHashSet<u32>,
+
+    /// For sampler bindings, the descriptor indices that sample an image with `ImplicitLod`,
+    /// `Dref` or `Proj` SPIR-V instructions.
+    pub sampler_implicitlod_dref_proj: FnvHashSet<u32>,
+
+    /// For sampler bindings, the descriptor indices that sample an image with an LOD bias or
+    /// offset.
+    pub sampler_bias_offset: FnvHashSet<u32>,
+
+    /// For sampler bindings, the sampled image descriptors that are used in combination with each
+    /// sampler descriptor index.
+    pub sampler_with_images: FnvHashMap<u32, FnvHashSet<DescriptorIdentifier>>,
 
     /// The shader stages that the descriptor must be declared for.
     pub stages: ShaderStages,
+
+    /// For storage image bindings, the descriptor indices that atomic operations are used with.
+    pub storage_image_atomic: FnvHashSet<u32>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct DescriptorIdentifier {
+    pub set: u32,
+    pub binding: u32,
+    pub index: u32,
 }
 
 impl DescriptorRequirements {
@@ -588,14 +609,29 @@ impl DescriptorRequirements {
             return Err(DescriptorRequirementsIncompatible::Multisampled);
         }
 
+        let sampler_with_images = {
+            let mut result = self.sampler_with_images.clone();
+
+            for (&index, other_identifiers) in &other.sampler_with_images {
+                result.entry(index).or_default().extend(other_identifiers);
+            }
+
+            result
+        };
+
         Ok(Self {
             descriptor_types,
             descriptor_count: self.descriptor_count.max(other.descriptor_count),
             format: self.format.or(other.format),
             image_view_type: self.image_view_type.or(other.image_view_type),
             multisampled: self.multisampled,
-            mutable: self.mutable || other.mutable,
+            mutable: &self.mutable | &other.mutable,
+            sampler_implicitlod_dref_proj: &self.sampler_implicitlod_dref_proj
+                | &other.sampler_implicitlod_dref_proj,
+            sampler_bias_offset: &self.sampler_bias_offset | &other.sampler_bias_offset,
+            sampler_with_images,
             stages: self.stages | other.stages,
+            storage_image_atomic: &self.storage_image_atomic | &other.storage_image_atomic,
         })
     }
 }
