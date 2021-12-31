@@ -764,11 +764,11 @@ pub enum SamplerAddressMode {
     /// Any pixel out of range is colored using the colour selected with the `border_color` on the
     /// `SamplerBuilder`.
     ///
-    /// When this mode is chosen, the numeric type image view's format must match the border color.
-    /// When using a floating-point border color, the sampler can only be used with floating-point
-    /// or depth image views. When using an integer border color, the sampler can only be used with
-    /// integer or stencil image views. In addition to this, you can't use an opaque black border
-    /// color with an image view that uses component swizzling.
+    /// When this mode is chosen, the numeric type of the image view's format must match the border
+    /// color. When using a floating-point border color, the sampler can only be used with
+    /// floating-point or depth image views. When using an integer border color, the sampler can
+    /// only be used with integer or stencil image views. In addition to this, you can't use an
+    /// opaque black border color with an image view that uses component swizzling.
     ClampToBorder = ash::vk::SamplerAddressMode::CLAMP_TO_BORDER.as_raw(),
 
     /// Similar to `MirroredRepeat`, except that coordinates are clamped to the range
