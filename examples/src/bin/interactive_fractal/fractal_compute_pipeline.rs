@@ -14,7 +14,7 @@ use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::PrimaryCommandBuffer;
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
-use vulkano::descriptor_set::{WriteDescriptorSet, PersistentDescriptorSet};
+use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::device::Queue;
 use vulkano::image::ImageAccess;
 use vulkano::pipeline::{ComputePipeline, Pipeline, PipelineBindPoint};

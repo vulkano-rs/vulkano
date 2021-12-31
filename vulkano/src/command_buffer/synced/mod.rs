@@ -687,7 +687,7 @@ mod tests {
                 set_layout.clone(),
                 [WriteDescriptorSet::sampler(
                     0,
-                    Sampler::simple_repeat_linear(device.clone()),
+                    Sampler::simple_repeat_linear(device.clone()).unwrap(),
                 )],
             )
             .unwrap();
@@ -740,7 +740,7 @@ mod tests {
                 set_layout.clone(),
                 [WriteDescriptorSet::sampler(
                     0,
-                    Sampler::simple_repeat_linear(device.clone()),
+                    Sampler::simple_repeat_linear(device.clone()).unwrap(),
                 )],
             )
             .unwrap();

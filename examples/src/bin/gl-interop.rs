@@ -34,7 +34,7 @@ use vulkano::{
         GraphicsPipeline, Pipeline, PipelineBindPoint,
     },
     render_pass::{Framebuffer, RenderPass, Subpass},
-    sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode},
+    sampler::{Filter, Sampler, SamplerAddressMode},
     swapchain::{AcquireError, Swapchain, SwapchainCreationError},
     sync::{now, FlushError, GpuFuture, PipelineStages, Semaphore},
     Version,
@@ -475,20 +475,11 @@ fn vk_setup() -> (
     )
     .unwrap();
 
-    let sampler = Sampler::new(
-        device.clone(),
-        Filter::Linear,
-        Filter::Linear,
-        MipmapMode::Nearest,
-        SamplerAddressMode::Repeat,
-        SamplerAddressMode::Repeat,
-        SamplerAddressMode::Repeat,
-        0.0,
-        1.0,
-        0.0,
-        0.0,
-    )
-    .unwrap();
+    let sampler = Sampler::start(device.clone())
+        .filter(Filter::Linear)
+        .address_mode(SamplerAddressMode::Repeat)
+        .build()
+        .unwrap();
 
     let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
 

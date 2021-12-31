@@ -12,7 +12,7 @@ use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer,
 };
-use vulkano::descriptor_set::{WriteDescriptorSet, PersistentDescriptorSet};
+use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::device::Queue;
 use vulkano::image::ImageViewAbstract;
 use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
@@ -20,7 +20,7 @@ use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::render_pass::Subpass;
-use vulkano::sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode};
+use vulkano::sampler::{Filter, Sampler, SamplerAddressMode, SamplerMipmapMode};
 
 /// Vertex for textured quads
 #[repr(C)]
@@ -112,20 +112,13 @@ impl PixelsDrawPipeline {
             .descriptor_set_layouts()
             .get(0)
             .unwrap();
-        let sampler = Sampler::new(
-            self.gfx_queue.device().clone(),
-            Filter::Linear,
-            Filter::Linear,
-            MipmapMode::Linear,
-            SamplerAddressMode::Repeat,
-            SamplerAddressMode::Repeat,
-            SamplerAddressMode::Repeat,
-            0.0,
-            1.0,
-            0.0,
-            0.0,
-        )
-        .unwrap();
+        let sampler = Sampler::start(self.gfx_queue.device().clone())
+            .filter(Filter::Linear)
+            .address_mode(SamplerAddressMode::Repeat)
+            .mipmap_mode(SamplerMipmapMode::Linear)
+            .build()
+            .unwrap();
+
         PersistentDescriptorSet::new(
             layout.clone(),
             [WriteDescriptorSet::image_view_sampler(
