@@ -215,11 +215,37 @@ where
         ImageDimensions::Dim3d { .. } => {}
     }
 
-    if filter == Filter::Cubic && !device.enabled_extensions().ext_filter_cubic {
-        return Err(CheckBlitImageError::ExtensionNotEnabled {
-            extension: "ext_filter_cubic",
-            reason: "the specified filter was Cubic",
-        });
+    match filter {
+        Filter::Nearest => (),
+        Filter::Linear => {
+            if !source_inner
+                .image
+                .format_features()
+                .sampled_image_filter_linear
+            {
+                return Err(CheckBlitImageError::FilterFormatNotSupported);
+            }
+        }
+        Filter::Cubic => {
+            if !device.enabled_extensions().ext_filter_cubic {
+                return Err(CheckBlitImageError::ExtensionNotEnabled {
+                    extension: "ext_filter_cubic",
+                    reason: "the specified filter was Cubic",
+                });
+            }
+
+            if !source_inner
+                .image
+                .format_features()
+                .img_sampled_image_filter_cubic
+            {
+                return Err(CheckBlitImageError::FilterFormatNotSupported);
+            }
+
+            if !matches!(source.dimensions(), ImageDimensions::Dim2d { .. }) {
+                return Err(CheckBlitImageError::FilterDimensionalityNotSupported);
+            }
+        }
     }
 
     Ok(())
@@ -233,6 +259,10 @@ pub enum CheckBlitImageError {
         reason: &'static str,
     },
 
+    /// The chosen filter type does not support the dimensionality of the source image.
+    FilterDimensionalityNotSupported,
+    /// The chosen filter type does not support the format of the source image.
+    FilterFormatNotSupported,
     /// The source is missing the transfer source usage.
     MissingTransferSourceUsage,
     /// The destination is missing the transfer destination usage.
@@ -270,6 +300,14 @@ impl fmt::Display for CheckBlitImageError {
                 fmt,
                 "the extension {} must be enabled: {}",
                 extension, reason
+            ),
+            Self::FilterDimensionalityNotSupported => write!(
+                fmt,
+                "the chosen filter type does not support the dimensionality of the source image"
+            ),
+            Self::FilterFormatNotSupported => write!(
+                fmt,
+                "the chosen filter type does not support the format of the source image"
             ),
             Self::MissingTransferSourceUsage => {
                 write!(fmt, "the source is missing the transfer source usage")
