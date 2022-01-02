@@ -329,17 +329,36 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(
-            Cmd {
-                source: source.clone(),
-                source_layout,
-                destination: destination.clone(),
-                destination_layout,
-                regions: Mutex::new(Some(regions)),
-            },
-            [
+        let mut resources: SmallVec<[_; 2]> = SmallVec::new();
+
+        // if its the same image in source and destination, we need to lock it once
+        if source.conflict_key() == destination.conflict_key() {
+            resources.push((
+                KeyTy::Image(source.clone()),
+                "source_and_destination".into(),
+                Some((
+                    PipelineMemoryAccess {
+                        stages: PipelineStages {
+                            transfer: true,
+                            ..PipelineStages::none()
+                        },
+                        access: AccessFlags {
+                            transfer_read: true,
+                            transfer_write: true,
+                            ..AccessFlags::none()
+                        },
+                        exclusive: true,
+                    },
+                    // TODO: should, we take the layout as parameter? if so, which? source or destination?
+                    ImageLayout::General,
+                    ImageLayout::General,
+                    ImageUninitializedSafe::Safe,
+                )),
+            ));
+        } else {
+            resources.extend([
                 (
-                    KeyTy::Image(source),
+                    KeyTy::Image(source.clone()),
                     "source".into(),
                     Some((
                         PipelineMemoryAccess {
@@ -359,7 +378,7 @@ impl SyncCommandBufferBuilder {
                     )),
                 ),
                 (
-                    KeyTy::Image(destination),
+                    KeyTy::Image(destination.clone()),
                     "destination".into(),
                     Some((
                         PipelineMemoryAccess {
@@ -378,7 +397,18 @@ impl SyncCommandBufferBuilder {
                         ImageUninitializedSafe::Safe,
                     )),
                 ),
-            ],
+            ]);
+        }
+
+        self.append_command(
+            Cmd {
+                source,
+                source_layout,
+                destination,
+                destination_layout,
+                regions: Mutex::new(Some(regions)),
+            },
+            resources,
         )?;
 
         Ok(())
@@ -430,18 +460,36 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(
-            Cmd {
-                source: source.clone(),
-                source_layout,
-                destination: destination.clone(),
-                destination_layout,
-                regions: Mutex::new(Some(regions)),
-                filter,
-            },
-            [
+        let mut resources: SmallVec<[_; 2]> = SmallVec::new();
+
+        // if its the same image in source and destination, we need to lock it once
+        if source.conflict_key() == destination.conflict_key() {
+            resources.push((
+                KeyTy::Image(source.clone()),
+                "source_and_destination".into(),
+                Some((
+                    PipelineMemoryAccess {
+                        stages: PipelineStages {
+                            transfer: true,
+                            ..PipelineStages::none()
+                        },
+                        access: AccessFlags {
+                            transfer_read: true,
+                            transfer_write: true,
+                            ..AccessFlags::none()
+                        },
+                        exclusive: true,
+                    },
+                    // TODO: should, we take the layout as parameter? if so, which? source or destination?
+                    ImageLayout::General,
+                    ImageLayout::General,
+                    ImageUninitializedSafe::Safe,
+                )),
+            ));
+        } else {
+            resources.extend([
                 (
-                    KeyTy::Image(source),
+                    KeyTy::Image(source.clone()),
                     "source".into(),
                     Some((
                         PipelineMemoryAccess {
@@ -461,7 +509,7 @@ impl SyncCommandBufferBuilder {
                     )),
                 ),
                 (
-                    KeyTy::Image(destination),
+                    KeyTy::Image(destination.clone()),
                     "destination".into(),
                     Some((
                         PipelineMemoryAccess {
@@ -480,7 +528,19 @@ impl SyncCommandBufferBuilder {
                         ImageUninitializedSafe::Safe,
                     )),
                 ),
-            ],
+            ]);
+        }
+
+        self.append_command(
+            Cmd {
+                source,
+                source_layout,
+                destination,
+                destination_layout,
+                regions: Mutex::new(Some(regions)),
+                filter,
+            },
+            resources,
         )?;
 
         Ok(())
@@ -713,15 +773,35 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(
-            Cmd {
-                source: source.clone(),
-                destination: destination.clone(),
-                regions: Mutex::new(Some(regions)),
-            },
-            [
+        let mut resources: SmallVec<[_; 2]> = SmallVec::new();
+
+        // if its the same image in source and destination, we need to lock it once
+        if source.conflict_key() == destination.conflict_key() {
+            resources.push((
+                KeyTy::Buffer(source.clone()),
+                "source_and_destination".into(),
+                Some((
+                    PipelineMemoryAccess {
+                        stages: PipelineStages {
+                            transfer: true,
+                            ..PipelineStages::none()
+                        },
+                        access: AccessFlags {
+                            transfer_read: true,
+                            transfer_write: true,
+                            ..AccessFlags::none()
+                        },
+                        exclusive: false,
+                    },
+                    ImageLayout::Undefined,
+                    ImageLayout::Undefined,
+                    ImageUninitializedSafe::Unsafe,
+                )),
+            ));
+        } else {
+            resources.extend([
                 (
-                    KeyTy::Buffer(source),
+                    KeyTy::Buffer(source.clone()),
                     "source".into(),
                     Some((
                         PipelineMemoryAccess {
@@ -741,7 +821,7 @@ impl SyncCommandBufferBuilder {
                     )),
                 ),
                 (
-                    KeyTy::Buffer(destination),
+                    KeyTy::Buffer(destination.clone()),
                     "destination".into(),
                     Some((
                         PipelineMemoryAccess {
@@ -760,7 +840,16 @@ impl SyncCommandBufferBuilder {
                         ImageUninitializedSafe::Unsafe,
                     )),
                 ),
-            ],
+            ]);
+        }
+
+        self.append_command(
+            Cmd {
+                source,
+                destination,
+                regions: Mutex::new(Some(regions)),
+            },
+            resources,
         )?;
 
         Ok(())
