@@ -19,6 +19,8 @@
 - Added ClearAttachment enum, which will contain the ClearValue and type of attachment
 - Implemented AutoCommandBufferBuilder::clear_attachments, which implements all possible checks from the vulkan standards to make it safe.
 - Implemented SyncCommandBufferBuilder::clear_attachments and UnsafeCommandBufferBuilder::clear_attachments.
+- Allowed `copy_image`, `blit_image` and `copy_buffer` to work with `src` and `dest` images/beffers being the same.
+  But, regions from src to dest must not overlap.
 
 # Version 0.27.1 (2021-12-07)
 
