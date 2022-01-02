@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use super::ranges::{is_overlapping_ranges, is_overlapping_regions};
 use crate::device::Device;
 use crate::format::NumericType;
 use crate::image::ImageAccess;
@@ -171,6 +172,21 @@ where
         ImageDimensions::Dim3d { .. } => {}
     }
 
+    if source.conflict_key() == destination.conflict_key() {
+        if source_mip_level == destination_mip_level
+            && is_overlapping_ranges(
+                source_base_array_layer as u64,
+                layer_count as u64,
+                destination_base_array_layer as u64,
+                layer_count as u64,
+            )
+            // since both images are the same, we can use any dimensions type
+            && is_overlapping_regions(source_offset, extent, destination_offset, extent, source_dimensions)
+        {
+            return Err(CheckCopyImageError::OverlappingRegions);
+        }
+    }
+
     Ok(())
 }
 
@@ -196,6 +212,8 @@ pub enum CheckCopyImageError {
     DestinationCoordinatesOutOfRange,
     /// The offsets or extent are incompatible with the image type.
     IncompatibleRangeForImageType,
+    /// The source and destination regions are overlapping.
+    OverlappingRegions,
 }
 
 impl error::Error for CheckCopyImageError {}
@@ -233,6 +251,9 @@ impl fmt::Display for CheckCopyImageError {
                 }
                 CheckCopyImageError::IncompatibleRangeForImageType => {
                     "the offsets or extent are incompatible with the image type"
+                }
+                CheckCopyImageError::OverlappingRegions => {
+                    "the source and destination regions are overlapping"
                 }
             }
         )

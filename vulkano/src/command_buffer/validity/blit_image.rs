@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use super::ranges::{is_overlapping_ranges, is_overlapping_regions};
 use crate::device::Device;
 use crate::format::NumericType;
 use crate::image::ImageAccess;
@@ -215,6 +216,55 @@ where
         ImageDimensions::Dim3d { .. } => {}
     }
 
+    if source.conflict_key() == destination.conflict_key() {
+        if source_mip_level == destination_mip_level
+            && is_overlapping_ranges(
+                source_base_array_layer as u64,
+                layer_count as u64,
+                destination_base_array_layer as u64,
+                layer_count as u64,
+            )
+        {
+            // we get the top left coordinate of the source in relation to the resulting image,
+            // because in blit we can do top_left = [100, 100] and bottom_right = [0, 0]
+            // which would result in flipped image and thats ok, but we can't use these values to compute
+            // extent, because it would result in negative size.
+            let mut source_render_top_left = [0; 3];
+            let mut source_extent = [0; 3];
+            let mut destination_render_top_left = [0; 3];
+            let mut destination_extent = [0; 3];
+            for i in 0..3 {
+                if source_top_left[i] < source_bottom_right[i] {
+                    source_render_top_left[i] = source_top_left[i];
+                    source_extent[i] = (source_bottom_right[i] - source_top_left[i]) as u32;
+                } else {
+                    source_render_top_left[i] = source_bottom_right[i];
+                    source_extent[i] = (source_top_left[i] - source_bottom_right[i]) as u32;
+                }
+                if destination_top_left[i] < destination_bottom_right[i] {
+                    destination_render_top_left[i] = destination_top_left[i];
+                    destination_extent[i] =
+                        (destination_bottom_right[i] - destination_top_left[i]) as u32;
+                } else {
+                    destination_render_top_left[i] = destination_bottom_right[i];
+                    destination_extent[i] =
+                        (destination_top_left[i] - destination_bottom_right[i]) as u32;
+                }
+            }
+
+            if is_overlapping_regions(
+                source_render_top_left,
+                source_extent,
+                destination_render_top_left,
+                destination_extent,
+                // since both images are the same, we can use any dimensions type
+                source_dimensions,
+            ) {
+                return Err(CheckBlitImageError::OverlappingRegions);
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -246,6 +296,8 @@ pub enum CheckBlitImageError {
     DestinationCoordinatesOutOfRange,
     /// The top-left and/or bottom-right coordinates are incompatible with the image type.
     IncompatibleRangeForImageType,
+    /// The source and destination regions are overlapping.
+    OverlappingRegions,
 }
 
 impl error::Error for CheckBlitImageError {}
@@ -292,6 +344,9 @@ impl fmt::Display for CheckBlitImageError {
                 }
                 CheckBlitImageError::IncompatibleRangeForImageType => {
                     "the top-left and/or bottom-right coordinates are incompatible with the image type"
+                }
+                CheckBlitImageError::OverlappingRegions => {
+                    "the source and destination regions are overlapping"
                 }
             }
         )

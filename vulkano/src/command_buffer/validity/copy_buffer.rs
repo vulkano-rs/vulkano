@@ -7,12 +7,12 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use super::ranges::is_overlapping_ranges;
 use crate::buffer::TypedBufferAccess;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::DeviceSize;
 use crate::VulkanObject;
-use std::cmp;
 use std::error;
 use std::fmt;
 
@@ -26,7 +26,10 @@ pub fn check_copy_buffer<S, D, T>(
     device: &Device,
     source: &S,
     destination: &D,
-) -> Result<CheckCopyBuffer, CheckCopyBufferError>
+    source_offset: DeviceSize,
+    destination_offset: DeviceSize,
+    size: DeviceSize,
+) -> Result<(), CheckCopyBufferError>
 where
     S: ?Sized + TypedBufferAccess<Content = T>,
     D: ?Sized + TypedBufferAccess<Content = T>,
@@ -49,24 +52,21 @@ where
         return Err(CheckCopyBufferError::DestinationMissingTransferUsage);
     }
 
-    let copy_size = cmp::min(source.size(), destination.size());
-
-    if source.conflict_key() == destination.conflict_key() {
-        return Err(CheckCopyBufferError::OverlappingRanges);
-    } else {
-        debug_assert!(destination.conflict_key() != source.conflict_key());
+    if source_offset + size > source.size() {
+        return Err(CheckCopyBufferError::SourceOutOfBounds);
     }
 
-    Ok(CheckCopyBuffer { copy_size })
-}
+    if destination_offset + size > destination.size() {
+        return Err(CheckCopyBufferError::DestinationOutOfBounds);
+    }
 
-/// Information returned if `check_copy_buffer` succeeds.
-pub struct CheckCopyBuffer {
-    /// Size of the transfer in bytes.
-    ///
-    /// If the size of the source and destination are not equal, then the value is equal to the
-    /// smallest of the two.
-    pub copy_size: DeviceSize,
+    if source.conflict_key() == destination.conflict_key()
+        && is_overlapping_ranges(source_offset, size, destination_offset, size)
+    {
+        return Err(CheckCopyBufferError::OverlappingRanges);
+    }
+
+    Ok(())
 }
 
 /// Error that can happen from `check_copy_buffer`.
@@ -76,8 +76,12 @@ pub enum CheckCopyBufferError {
     SourceMissingTransferUsage,
     /// The destination buffer is missing the transfer destination usage.
     DestinationMissingTransferUsage,
-    /// The source and destination are overlapping.
+    /// The source and destination ranges are overlapping.
     OverlappingRanges,
+    /// The source range is out of bounds.
+    SourceOutOfBounds,
+    /// The destination range is out of bounds.
+    DestinationOutOfBounds,
 }
 
 impl error::Error for CheckCopyBufferError {}
@@ -96,7 +100,11 @@ impl fmt::Display for CheckCopyBufferError {
                     "the destination buffer is missing the transfer destination usage"
                 }
                 CheckCopyBufferError::OverlappingRanges =>
-                    "the source and destination are overlapping",
+                    "the source and destination ranges are overlapping",
+                CheckCopyBufferError::SourceOutOfBounds => "the source range is out of bounds",
+                CheckCopyBufferError::DestinationOutOfBounds => {
+                    "the destination range is out of bounds"
+                }
             }
         )
     }
