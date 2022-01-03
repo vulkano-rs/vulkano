@@ -515,7 +515,7 @@ impl SamplerBuilder {
     /// How the final sampled value should be calculated from the samples of individual
     /// mipmaps.
     ///
-    /// The default value is [`Nearest`](MipmapMode::Nearest).
+    /// The default value is [`Nearest`](SamplerMipmapMode::Nearest).
     #[inline]
     pub fn mipmap_mode(mut self, mode: SamplerMipmapMode) -> Self {
         self.mipmap_mode = mode;
@@ -659,7 +659,7 @@ impl SamplerBuilder {
     /// not scaled by the size of the image, and therefore range up to the size of the image rather
     /// than 1.0. Enabling this comes with several restrictions:
     /// - `min_filter` and `mag_filter` must be equal.
-    /// - `mipmap_mode` must be [`Nearest`](MipmapMode::Nearest).
+    /// - `mipmap_mode` must be [`Nearest`](SamplerMipmapMode::Nearest).
     /// - The `lod` range must be `0.0..=0.0`.
     /// - `address_mode` for u and v must be either
     ///   [`ClampToEdge`](`SamplerAddressMode::ClampToEdge`) or
