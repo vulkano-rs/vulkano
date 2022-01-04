@@ -53,27 +53,27 @@ where
 
 // TODO: Add support for VkExportSemaphoreWin32HandleInfoKHR
 // TODO: Add suport for importable semaphores
-pub struct SemaphoreBuilder<D = Arc<Device>>
+pub struct SemaphoreBuilder<'a, D = Arc<Device>>
 where
     D: SafeDeref<Target = Device>,
 {
     device: D,
     export_info: Option<ash::vk::ExportSemaphoreCreateInfo>,
-    create: ash::vk::SemaphoreCreateInfo,
+    create_builder: ash::vk::SemaphoreCreateInfoBuilder<'a>,
     must_put_in_pool: bool,
 }
 
-impl<D> SemaphoreBuilder<D>
+impl<'a, D> SemaphoreBuilder<'a, D>
 where
     D: SafeDeref<Target = Device>,
 {
     pub fn new(device: D) -> Self {
-        let create = ash::vk::SemaphoreCreateInfo::default();
+        let create_builder = ash::vk::SemaphoreCreateInfo::builder();
 
         Self {
             device,
             export_info: None,
-            create,
+            create_builder,
             must_put_in_pool: false,
         }
     }
@@ -96,12 +96,11 @@ where
         };
 
         self.export_info = Some(export_info);
-        self.create.p_next = unsafe { std::mem::transmute(&export_info) };
 
         self
     }
 
-    pub fn build(self) -> Result<Semaphore<D>, SemaphoreError> {
+    pub fn build(mut self) -> Result<Semaphore<D>, SemaphoreError> {
         if self.export_info.is_some()
             && !self
                 .device
@@ -113,12 +112,17 @@ where
                 "khr_external_semaphore_capabilities",
             ))
         } else {
+            let mut builder = self.create_builder;
+            if let Some(export_info) = self.export_info.as_mut() {
+                builder = builder.push_next(export_info);
+            }
+
             let semaphore = unsafe {
                 let fns = self.device.fns();
                 let mut output = MaybeUninit::uninit();
                 check_errors(fns.v1_0.create_semaphore(
                     self.device.internal_object(),
-                    &self.create,
+                    &builder.build(),
                     ptr::null(),
                     output.as_mut_ptr(),
                 ))?;

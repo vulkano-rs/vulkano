@@ -574,43 +574,48 @@ impl UnsafeImage {
         }
 
         // Everything now ok. Creating the image.
-        let image = {
-            let mut infos = ash::vk::ImageCreateInfo {
-                flags: flags.into(),
-                image_type: ty,
-                format: format.into(),
-                extent,
-                mip_levels: mipmaps,
-                array_layers: array_layers,
-                samples: num_samples.into(),
-                tiling: if linear_tiling {
-                    ash::vk::ImageTiling::LINEAR
-                } else {
-                    ash::vk::ImageTiling::OPTIMAL
-                },
-                usage: usage_bits,
-                sharing_mode: sh_mode,
-                queue_family_index_count: sh_indices.len() as u32,
-                p_queue_family_indices: sh_indices.as_ptr(),
-                initial_layout: if preinitialized_layout {
-                    ash::vk::ImageLayout::PREINITIALIZED
-                } else {
-                    ash::vk::ImageLayout::UNDEFINED
-                },
-                ..Default::default()
-            };
 
+        let image = {
+            let mut infos_builder = ash::vk::ImageCreateInfo::builder()
+                .flags(flags.into())
+                .image_type(ty)
+                .format(format.into())
+                .extent(extent)
+                .mip_levels(mipmaps)
+                .array_layers(array_layers)
+                .samples(num_samples.into())
+                .tiling({
+                    if linear_tiling {
+                        ash::vk::ImageTiling::LINEAR
+                    } else {
+                        ash::vk::ImageTiling::OPTIMAL
+                    }
+                })
+                .usage(usage_bits)
+                .sharing_mode(sh_mode)
+                .queue_family_indices(&sh_indices)
+                .initial_layout({
+                    if preinitialized_layout {
+                        ash::vk::ImageLayout::PREINITIALIZED
+                    } else {
+                        ash::vk::ImageLayout::UNDEFINED
+                    }
+                });
+
+            let mut ext_image_create_info;
             if let Some(mem_types) = external_mem_handle_type {
-                infos.p_next = std::mem::transmute(&ash::vk::ExternalMemoryImageCreateInfo {
+                ext_image_create_info = ash::vk::ExternalMemoryImageCreateInfo {
                     handle_types: mem_types.into(),
                     ..Default::default()
-                });
+                };
+
+                infos_builder = infos_builder.push_next(&mut ext_image_create_info);
             }
 
             let mut output = MaybeUninit::uninit();
             check_errors(fns.v1_0.create_image(
                 device.internal_object(),
-                &infos,
+                &infos_builder.build(),
                 ptr::null(),
                 output.as_mut_ptr(),
             ))?;
