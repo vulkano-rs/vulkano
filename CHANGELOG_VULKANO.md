@@ -21,6 +21,9 @@
 - Implemented SyncCommandBufferBuilder::clear_attachments and UnsafeCommandBufferBuilder::clear_attachments.
 - Allowed `copy_image`, `blit_image` and `copy_buffer` to work with `src` and `dest` images/beffers being the same.
   But, regions from src to dest must not overlap.
+- Fix undefined behaviour on external semaphore creation.
+- Fix undefined behaviour on external image creation.
+- Add uuid checking to gl-interop example.
 
 # Version 0.27.1 (2021-12-07)
 
