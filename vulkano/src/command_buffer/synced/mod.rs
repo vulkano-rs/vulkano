@@ -520,29 +520,6 @@ mod tests {
     }
 
     #[test]
-    fn basic_conflict() {
-        unsafe {
-            let (device, queue) = gfx_dev_and_queue!();
-
-            let pool = Device::standard_command_pool(&device, queue.family());
-            let pool_builder_alloc = pool.alloc(false, 1).unwrap().next().unwrap();
-            let mut sync = SyncCommandBufferBuilder::new(
-                &pool_builder_alloc.inner(),
-                CommandBufferLevel::primary(),
-                CommandBufferUsage::MultipleSubmit,
-            )
-            .unwrap();
-            let buf =
-                CpuAccessibleBuffer::from_data(device, BufferUsage::all(), false, 0u32).unwrap();
-
-            assert!(matches!(
-                sync.copy_buffer(buf.clone(), buf.clone(), std::iter::once((0, 0, 4))),
-                Err(SyncCommandBufferBuilderError::Conflict { .. })
-            ));
-        }
-    }
-
-    #[test]
     fn secondary_conflicting_writes() {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
