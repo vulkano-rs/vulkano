@@ -47,6 +47,7 @@
 use crate::check_errors;
 use crate::device::Device;
 use crate::device::DeviceOwned;
+use crate::image::ImageViewAbstract;
 use crate::pipeline::graphics::depth_stencil::CompareOp;
 use crate::Error;
 use crate::OomError;
@@ -144,6 +145,16 @@ impl Sampler {
             .address_mode(SamplerAddressMode::Repeat)
             .lod(0.0..=1.0)
             .build()
+    }
+
+    /// Returns whether this sampler is allowed to sample `image_view`.
+    pub fn can_sample<I>(&self, image_view: &I) -> bool
+    where
+        I: ImageViewAbstract + ?Sized,
+    {
+        // TODO: many more things need to be tested here
+
+        true
     }
 
     /// Returns true if the sampler is a compare-mode sampler.
