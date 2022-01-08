@@ -419,16 +419,7 @@ fn inspect_entry_point(
                             [inst_sampled_image, inst_load],
                             sampled_image,
                         ) {
-                            variable.reqs.sampler_implicitlod_dref_proj.insert(index);
-
-                            if image_operands.as_ref().map_or(false, |image_operands| {
-                                image_operands.bias.is_some()
-                                    || image_operands.const_offset.is_some()
-                                    || image_operands.const_offsets.is_some()
-                                    || image_operands.offset.is_some()
-                            }) {
-                                variable.reqs.sampler_bias_offset.insert(index);
-                            }
+                            variable.reqs.sampler_no_unnormalized.insert(index);
                         }
                     }
 
@@ -469,14 +460,33 @@ fn inspect_entry_point(
                             [inst_sampled_image, inst_load],
                             sampled_image,
                         ) {
-                            variable.reqs.sampler_implicitlod_dref_proj.insert(index);
+                            variable.reqs.sampler_no_unnormalized.insert(index);
+                        }
+                    }
 
+                    &Instruction::ImageSampleExplicitLod {
+                        sampled_image,
+                        ref image_operands,
+                        ..
+                    }
+                    | &Instruction::ImageSparseSampleExplicitLod {
+                        sampled_image,
+                        ref image_operands,
+                        ..
+                    } => {
+                        if let Some((variable, Some(index))) = instruction_chain(
+                            result,
+                            global,
+                            spirv,
+                            [inst_sampled_image, inst_load],
+                            sampled_image,
+                        ) {
                             if image_operands.bias.is_some()
                                 || image_operands.const_offset.is_some()
                                 || image_operands.const_offsets.is_some()
                                 || image_operands.offset.is_some()
                             {
-                                variable.reqs.sampler_bias_offset.insert(index);
+                                variable.reqs.sampler_no_unnormalized.insert(index);
                             }
                         }
                     }

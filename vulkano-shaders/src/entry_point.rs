@@ -84,8 +84,7 @@ fn write_descriptor_requirements(
             image_view_type,
             multisampled,
             mutable,
-            sampler_implicitlod_dref_proj,
-            sampler_bias_offset,
+            sampler_no_unnormalized,
             sampler_with_images,
             stages,
             storage_image_atomic,
@@ -110,8 +109,7 @@ fn write_descriptor_requirements(
             None => quote! { None },
         };
         let mutable = mutable.iter();
-        let sampler_implicitlod_dref_proj = sampler_implicitlod_dref_proj.iter();
-        let sampler_bias_offset = sampler_bias_offset.iter();
+        let sampler_no_unnormalized = sampler_no_unnormalized.iter();
         let sampler_with_images = {
             sampler_with_images.iter().map(|(&index, identifiers)| {
                 let identifiers = identifiers.iter().map(
@@ -182,8 +180,7 @@ fn write_descriptor_requirements(
                     image_view_type: #image_view_type,
                     multisampled: #multisampled,
                     mutable: [#(#mutable),*].into_iter().collect(),
-                    sampler_implicitlod_dref_proj: [#(#sampler_implicitlod_dref_proj),*].into_iter().collect(),
-                    sampler_bias_offset: [#(#sampler_bias_offset),*].into_iter().collect(),
+                    sampler_no_unnormalized: [#(#sampler_no_unnormalized),*].into_iter().collect(),
                     sampler_with_images: [#(#sampler_with_images),*].into_iter().collect(),
                     stages: #stages,
                     storage_image_atomic: [#(#storage_image_atomic),*].into_iter().collect(),

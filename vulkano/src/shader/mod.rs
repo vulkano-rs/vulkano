@@ -552,13 +552,10 @@ pub struct DescriptorRequirements {
     /// The descriptor indices that require mutable (exclusive) access to the bound resource.
     pub mutable: FnvHashSet<u32>,
 
-    /// For sampler bindings, the descriptor indices that sample an image with `ImplicitLod`,
-    /// `Dref` or `Proj` SPIR-V instructions.
-    pub sampler_implicitlod_dref_proj: FnvHashSet<u32>,
-
-    /// For sampler bindings, the descriptor indices that sample an image with an LOD bias or
-    /// offset.
-    pub sampler_bias_offset: FnvHashSet<u32>,
+    /// For sampler bindings, the descriptor indices that perform sampling operations that are not
+    /// permitted with unnormalized coordinates. This includes sampling with `ImplicitLod`,
+    /// `Dref` or `Proj` SPIR-V instructions or with an LOD bias or offset.
+    pub sampler_no_unnormalized: FnvHashSet<u32>,
 
     /// For sampler bindings, the sampled image descriptors that are used in combination with each
     /// sampler descriptor index.
@@ -626,9 +623,7 @@ impl DescriptorRequirements {
             image_view_type: self.image_view_type.or(other.image_view_type),
             multisampled: self.multisampled,
             mutable: &self.mutable | &other.mutable,
-            sampler_implicitlod_dref_proj: &self.sampler_implicitlod_dref_proj
-                | &other.sampler_implicitlod_dref_proj,
-            sampler_bias_offset: &self.sampler_bias_offset | &other.sampler_bias_offset,
+            sampler_no_unnormalized: &self.sampler_no_unnormalized | &other.sampler_no_unnormalized,
             sampler_with_images,
             stages: self.stages | other.stages,
             storage_image_atomic: &self.storage_image_atomic | &other.storage_image_atomic,
