@@ -11,7 +11,7 @@ use super::{
     spirv_grammar::{SpirvGrammar, SpirvKindEnumerant},
     write_file, VkRegistryData,
 };
-use heck::SnakeCase;
+use heck::ToSnakeCase;
 use indexmap::{map::Entry, IndexMap};
 use lazy_static::lazy_static;
 use proc_macro2::{Ident, TokenStream};
@@ -207,13 +207,13 @@ lazy_static! {
 }
 
 fn make_enable(enable: &vk_parse::Enable) -> Option<(Enable, String)> {
-    if matches!(enable, vk_parse::Enable::Version(version) if version == "VK_API_VERSION_1_0") {
+    if matches!(enable, vk_parse::Enable::Version(version) if version == "VK_VERSION_1_0") {
         return None;
     }
 
     Some(match enable {
         vk_parse::Enable::Version(version) => {
-            let version = version.strip_prefix("VK_API_VERSION_").unwrap();
+            let version = version.strip_prefix("VK_VERSION_").unwrap();
             let (major, minor) = version.split_once('_').unwrap();
 
             (

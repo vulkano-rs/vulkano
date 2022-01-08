@@ -8,7 +8,7 @@
 // according to those terms.
 
 use super::{write_file, VkRegistryData};
-use heck::{CamelCase, SnakeCase};
+use heck::{ToSnakeCase, ToUpperCamelCase};
 use indexmap::IndexMap;
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
@@ -96,7 +96,7 @@ fn extension_fns_members(ty: &str, extensions: &IndexMap<&str, &Extension>) -> V
         .map(|ext| {
             let base = ext.name.strip_prefix("VK_").unwrap().to_snake_case();
             let name = format_ident!("{}", base);
-            let fn_struct = format_ident!("{}Fn", base.to_camel_case());
+            let fn_struct = format_ident!("{}Fn", base.to_upper_camel_case());
             FnsMember { name, fn_struct }
         })
         .collect()

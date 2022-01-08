@@ -15,8 +15,8 @@ build = "build.rs"
 
 [dependencies]
 # When updating Ash, also update vk.xml to the same Vulkan patch version that Ash uses.
-# All versions of vk.xml can be found at https://github.com/KhronosGroup/Vulkan-Headers/commits/master/registry/vk.xml.
-ash = "0.33.3"
+# All versions of vk.xml can be found at https://github.com/KhronosGroup/Vulkan-Headers/commits/main/registry/vk.xml.
+ash = "0.35.0"
 crossbeam-queue = "0.3"
 fnv = "1.0"
 half = "1.8"
@@ -26,12 +26,12 @@ shared_library = "0.1"
 smallvec = "1.7"
 
 [build-dependencies]
-heck = "0.3"
-indexmap = "1.7"
+heck = "0.4"
+indexmap = "1.8"
 lazy_static = "1.4"
 proc-macro2 = "1.0"
 quote = "1.0"
 regex = "1.5"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-vk-parse = "0.6"
+vk-parse = "0.7"
