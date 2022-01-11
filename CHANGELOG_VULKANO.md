@@ -24,6 +24,7 @@
 - Fix undefined behaviour on external semaphore creation.
 - Fix undefined behaviour on external image creation.
 - Add uuid checking to gl-interop example.
+- Added additional fields to `DescriptorRequirements`, and changed `mutable` to be on a per-descriptor basis.
 
 # Version 0.27.1 (2021-12-07)
 
