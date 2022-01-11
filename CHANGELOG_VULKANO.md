@@ -25,6 +25,12 @@
 - Fix undefined behaviour on external image creation.
 - Add uuid checking to gl-interop example.
 - Added additional fields to `DescriptorRequirements`, and changed `mutable` to be on a per-descriptor basis.
+- **Breaking** `Sampler` is now constructed using a builder, using `start` instead of `new`. The shortcut functions `simple_repeat_linear` and `simple_repeat_linear_no_mipmap` are retained, but now return `Result`.
+- **Breaking** `MipmapMode` is renamed to `SamplerMipmapMode` to match Vulkan.
+- **Breaking** `SamplerAddressMode::ClampToBorder` no longer includes a `BorderColor` value. This is now provided with the new builder.
+- **Breaking** The `ImageViewAbstract::can_be_sampled` method is removed, and replaced with `Sampler::can_sample`.
+- Added `Filter::Cubic`.
+- Added support for filter reduction modes on samplers.
 
 # Version 0.27.1 (2021-12-07)
 
