@@ -31,6 +31,8 @@
 - **Breaking** The `ImageViewAbstract::can_be_sampled` method is removed, and replaced with `Sampler::can_sample`.
 - Added `Filter::Cubic`.
 - Added support for filter reduction modes on samplers.
+- Added `buffer_self_copy_overlapping` and `buffer_self_copy_not_overlapping` as unit tests for self_copy feature (#1782).
+- Removed test `basic_conflict` (failed after #1782).
 
 # Version 0.27.1 (2021-12-07)
 
