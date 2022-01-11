@@ -21,14 +21,13 @@ use crate::{
             Capability, Decoration, Dim, ExecutionMode, ExecutionModel, Id, ImageFormat,
             Instruction, Spirv, StorageClass,
         },
-        DescriptorRequirements, EntryPointInfo, GeometryShaderExecution, GeometryShaderInput,
-        ShaderExecution, ShaderInterface, ShaderInterfaceEntry, ShaderInterfaceEntryType,
-        ShaderStage, SpecializationConstantRequirements,
+        DescriptorIdentifier, DescriptorRequirements, EntryPointInfo, GeometryShaderExecution,
+        GeometryShaderInput, ShaderExecution, ShaderInterface, ShaderInterfaceEntry,
+        ShaderInterfaceEntryType, ShaderStage, SpecializationConstantRequirements,
     },
 };
-use fnv::FnvHashMap;
+use fnv::{FnvHashMap, FnvHashSet};
 use std::borrow::Cow;
-use std::collections::HashSet;
 
 /// Returns an iterator of the capabilities used by `spirv`.
 pub fn spirv_capabilities<'a>(spirv: &'a Spirv) -> impl Iterator<Item = &'a Capability> {
@@ -54,6 +53,8 @@ pub fn spirv_extensions<'a>(spirv: &'a Spirv) -> impl Iterator<Item = &'a str> {
 pub fn entry_points<'a>(
     spirv: &'a Spirv,
 ) -> impl Iterator<Item = (String, ExecutionModel, EntryPointInfo)> + 'a {
+    let interface_variables = interface_variables(spirv);
+
     spirv.iter_entry_point().filter_map(move |instruction| {
         let (execution_model, function_id, entry_point_name, interface) = match instruction {
             &Instruction::EntryPoint {
@@ -68,8 +69,14 @@ pub fn entry_points<'a>(
 
         let execution = shader_execution(&spirv, execution_model, function_id);
         let stage = ShaderStage::from(execution);
-        let descriptor_requirements =
-            descriptor_requirements(&spirv, function_id, stage, interface);
+
+        let mut descriptor_requirements =
+            inspect_entry_point(&interface_variables.descriptor, spirv, function_id);
+
+        for reqs in descriptor_requirements.values_mut() {
+            reqs.stages = stage.into();
+        }
+
         let push_constant_requirements = push_constant_requirements(&spirv, stage);
         let specialization_constant_requirements = specialization_constant_requirements(&spirv);
         let input_interface = shader_interface(
@@ -162,445 +169,606 @@ fn shader_execution(
     }
 }
 
-/// Extracts the `DescriptorRequirements` for the entry point `function_id` from `spirv`.
-fn descriptor_requirements(
-    spirv: &Spirv,
-    function_id: Id,
-    stage: ShaderStage,
-    interface: &[Id],
-) -> FnvHashMap<(u32, u32), DescriptorRequirements> {
-    // For SPIR-V 1.4+, the entrypoint interface can specify variables of all storage classes,
-    // and most tools will put all used variables in the entrypoint interface. However,
-    // SPIR-V 1.0-1.3 do not specify variables other than Input/Output ones in the interface,
-    // and instead the function itself must be inspected.
-    let variables = {
-        let mut found_variables: HashSet<Id> = interface.iter().cloned().collect();
-        let mut inspected_functions: HashSet<Id> = HashSet::new();
-        find_variables_in_function(
-            &spirv,
-            function_id,
-            &mut inspected_functions,
-            &mut found_variables,
-        );
-        found_variables
-    };
-
-    // Looping to find all the global variables that have the `DescriptorSet` decoration.
-    spirv
-        .iter_global()
-        .filter_map(|instruction| {
-            let (variable_id, variable_type_id, storage_class) = match instruction {
-                Instruction::Variable {
-                    result_id,
-                    result_type_id,
-                    ..
-                } => {
-                    let (real_type, storage_class) = match spirv
-                        .id(*result_type_id)
-                        .instruction()
-                    {
-                        Instruction::TypePointer {
-                            ty, storage_class, ..
-                        } => (ty, storage_class),
-                        _ => panic!(
-                            "Variable {} result_type_id does not refer to a TypePointer instruction", result_id
-                        ),
-                    };
-
-                    (*result_id, *real_type, storage_class)
-                }
-                _ => return None,
-            };
-
-            if !variables.contains(&variable_id) {
-                return None;
-            }
-
-            let variable_id_info = spirv.id(variable_id);
-            let set_num = match variable_id_info
-                .iter_decoration()
-                .find_map(|instruction| match instruction {
-                    Instruction::Decorate {
-                        decoration: Decoration::DescriptorSet { descriptor_set },
-                        ..
-                    } => Some(*descriptor_set),
-                    _ => None,
-                }) {
-                Some(x) => x,
-                None => return None,
-            };
-
-            let binding_num = variable_id_info
-                .iter_decoration()
-                .find_map(|instruction| match instruction {
-                    Instruction::Decorate {
-                        decoration: Decoration::Binding { binding_point },
-                        ..
-                    } => Some(*binding_point),
-                    _ => None,
-                })
-                .unwrap();
-
-            let name = variable_id_info
-                .iter_name()
-                .find_map(|instruction| match instruction {
-                    Instruction::Name { name, .. } => Some(name.as_str()),
-                    _ => None,
-                })
-                .unwrap_or("__unnamed");
-
-            let nonwritable = variable_id_info.iter_decoration().any(|instruction| {
-                matches!(
-                    instruction,
-                    Instruction::Decorate {
-                        decoration: Decoration::NonWritable,
-                        ..
-                    }
-                )
-            });
-
-            // Find information about the kind of binding for this descriptor.
-            let mut reqs =
-                descriptor_requirements_of(spirv, variable_type_id, storage_class, false).expect(&format!(
-                "Couldn't find relevant type for global variable `{}` (type {}, maybe unimplemented)",
-                name, variable_type_id,
-            ));
-
-            reqs.stages = stage.into();
-            reqs.mutable &= !nonwritable;
-
-            Some(((set_num, binding_num), reqs))
-        })
-        .collect()
+#[derive(Clone, Debug, Default)]
+struct InterfaceVariables {
+    descriptor: FnvHashMap<Id, DescriptorVariable>,
 }
 
-// Recursively finds every pointer variable used in the execution of a function.
-fn find_variables_in_function(
+// See also section 14.5.2 of the Vulkan specs: Descriptor Set Interface.
+#[derive(Clone, Debug)]
+struct DescriptorVariable {
+    set: u32,
+    binding: u32,
+    reqs: DescriptorRequirements,
+}
+
+fn interface_variables(spirv: &Spirv) -> InterfaceVariables {
+    let mut variables = InterfaceVariables::default();
+
+    for instruction in spirv.iter_global() {
+        match instruction {
+            Instruction::Variable {
+                result_id,
+                result_type_id,
+                storage_class,
+                ..
+            } => match storage_class {
+                StorageClass::StorageBuffer
+                | StorageClass::Uniform
+                | StorageClass::UniformConstant => {
+                    variables
+                        .descriptor
+                        .insert(*result_id, descriptor_requirements_of(spirv, *result_id));
+                }
+                _ => (),
+            },
+            _ => (),
+        }
+    }
+
+    variables
+}
+
+fn inspect_entry_point(
+    global: &FnvHashMap<Id, DescriptorVariable>,
     spirv: &Spirv,
-    function: Id,
-    inspected_functions: &mut HashSet<Id>,
-    found_variables: &mut HashSet<Id>,
-) {
-    inspected_functions.insert(function);
-    let mut in_function = false;
-    for instruction in spirv.instructions() {
-        if !in_function {
-            match instruction {
-                Instruction::Function { result_id, .. } if result_id == &function => {
-                    in_function = true;
-                }
-                _ => {}
-            }
-        } else {
-            // We only care about instructions that accept pointers.
-            // https://www.khronos.org/registry/spir-v/specs/unified1/SPIRV.html#_universal_validation_rules
-            match instruction {
-                Instruction::Load { pointer, .. } | Instruction::Store { pointer, .. } => {
-                    found_variables.insert(*pointer);
-                }
-                Instruction::AccessChain { base, .. }
-                | Instruction::InBoundsAccessChain { base, .. } => {
-                    found_variables.insert(*base);
-                }
-                Instruction::FunctionCall {
-                    function,
-                    arguments,
-                    ..
-                } => {
-                    arguments.iter().for_each(|&x| {
-                        found_variables.insert(x);
-                    });
-                    if !inspected_functions.contains(function) {
-                        find_variables_in_function(
-                            spirv,
-                            *function,
-                            inspected_functions,
-                            found_variables,
-                        );
+    entry_point: Id,
+) -> FnvHashMap<(u32, u32), DescriptorRequirements> {
+    #[inline]
+    fn instruction_chain<'a, const N: usize>(
+        result: &'a mut FnvHashMap<Id, DescriptorVariable>,
+        global: &FnvHashMap<Id, DescriptorVariable>,
+        spirv: &Spirv,
+        chain: [fn(&Spirv, Id) -> Option<Id>; N],
+        id: Id,
+    ) -> Option<(&'a mut DescriptorVariable, Option<u32>)> {
+        let id = chain.into_iter().try_fold(id, |id, func| func(spirv, id))?;
+
+        if let Some(variable) = global.get(&id) {
+            // Variable was accessed without an access chain, return with index 0.
+            let variable = result.entry(id).or_insert_with(|| variable.clone());
+            return Some((variable, Some(0)));
+        }
+
+        let (id, indexes) = match spirv.id(id).instruction() {
+            &Instruction::AccessChain {
+                base, ref indexes, ..
+            } => (base, indexes),
+            _ => return None,
+        };
+
+        if let Some(variable) = global.get(&id) {
+            // Variable was accessed with an access chain.
+            // Retrieve index from instruction if it's a constant value.
+            // TODO: handle a `None` index too?
+            let index = match spirv.id(*indexes.first().unwrap()).instruction() {
+                &Instruction::Constant { ref value, .. } => Some(value[0]),
+                _ => None,
+            };
+            let variable = result.entry(id).or_insert_with(|| variable.clone());
+            return Some((variable, index));
+        }
+
+        None
+    }
+
+    #[inline]
+    fn inst_image_texel_pointer(spirv: &Spirv, id: Id) -> Option<Id> {
+        match spirv.id(id).instruction() {
+            &Instruction::ImageTexelPointer { image, .. } => Some(image),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    fn inst_load(spirv: &Spirv, id: Id) -> Option<Id> {
+        match spirv.id(id).instruction() {
+            &Instruction::Load { pointer, .. } => Some(pointer),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    fn inst_sampled_image(spirv: &Spirv, id: Id) -> Option<Id> {
+        match spirv.id(id).instruction() {
+            &Instruction::SampledImage { sampler, .. } => Some(sampler),
+            _ => Some(id),
+        }
+    }
+
+    fn inspect_entry_point_r(
+        result: &mut FnvHashMap<Id, DescriptorVariable>,
+        inspected_functions: &mut FnvHashSet<Id>,
+        global: &FnvHashMap<Id, DescriptorVariable>,
+        spirv: &Spirv,
+        function: Id,
+    ) {
+        inspected_functions.insert(function);
+        let mut in_function = false;
+        for instruction in spirv.instructions() {
+            if !in_function {
+                match instruction {
+                    Instruction::Function { result_id, .. } if result_id == &function => {
+                        in_function = true;
                     }
+                    _ => {}
                 }
-                Instruction::ImageTexelPointer {
-                    image,
-                    coordinate,
-                    sample,
-                    ..
-                } => {
-                    found_variables.insert(*image);
-                    found_variables.insert(*coordinate);
-                    found_variables.insert(*sample);
+            } else {
+                match instruction {
+                    &Instruction::AtomicLoad { pointer, .. }
+                    | &Instruction::AtomicStore { pointer, .. }
+                    | &Instruction::AtomicExchange { pointer, .. }
+                    | &Instruction::AtomicCompareExchange { pointer, .. }
+                    | &Instruction::AtomicCompareExchangeWeak { pointer, .. }
+                    | &Instruction::AtomicIIncrement { pointer, .. }
+                    | &Instruction::AtomicIDecrement { pointer, .. }
+                    | &Instruction::AtomicIAdd { pointer, .. }
+                    | &Instruction::AtomicISub { pointer, .. }
+                    | &Instruction::AtomicSMin { pointer, .. }
+                    | &Instruction::AtomicUMin { pointer, .. }
+                    | &Instruction::AtomicSMax { pointer, .. }
+                    | &Instruction::AtomicUMax { pointer, .. }
+                    | &Instruction::AtomicAnd { pointer, .. }
+                    | &Instruction::AtomicOr { pointer, .. }
+                    | &Instruction::AtomicXor { pointer, .. }
+                    | &Instruction::AtomicFlagTestAndSet { pointer, .. }
+                    | &Instruction::AtomicFlagClear { pointer, .. }
+                    | &Instruction::AtomicFMinEXT { pointer, .. }
+                    | &Instruction::AtomicFMaxEXT { pointer, .. }
+                    | &Instruction::AtomicFAddEXT { pointer, .. } => {
+                        // Storage buffer
+                        instruction_chain(result, global, spirv, [], pointer);
+
+                        // Storage image
+                        if let Some((variable, Some(index))) = instruction_chain(
+                            result,
+                            global,
+                            spirv,
+                            [inst_image_texel_pointer],
+                            pointer,
+                        ) {
+                            variable.reqs.storage_image_atomic.insert(index);
+                        }
+                    }
+
+                    &Instruction::CopyMemory { target, source, .. } => {
+                        instruction_chain(result, global, spirv, [], target);
+                        instruction_chain(result, global, spirv, [], source);
+                    }
+
+                    &Instruction::CopyObject { operand, .. } => {
+                        instruction_chain(result, global, spirv, [], operand);
+                    }
+
+                    &Instruction::ExtInst { ref operands, .. } => {
+                        // We don't know which extended instructions take pointers,
+                        // so we must interpret every operand as a pointer.
+                        for &operand in operands {
+                            instruction_chain(result, global, spirv, [], operand);
+                        }
+                    }
+
+                    &Instruction::FunctionCall {
+                        function,
+                        ref arguments,
+                        ..
+                    } => {
+                        // Rather than trying to figure out the type of each argument, we just
+                        // try all of them as pointers.
+                        for &argument in arguments {
+                            instruction_chain(result, global, spirv, [], argument);
+                        }
+
+                        if !inspected_functions.contains(&function) {
+                            inspect_entry_point_r(
+                                result,
+                                inspected_functions,
+                                global,
+                                spirv,
+                                function,
+                            );
+                        }
+                    }
+
+                    &Instruction::FunctionEnd => return,
+
+                    &Instruction::ImageSampleImplicitLod {
+                        sampled_image,
+                        ref image_operands,
+                        ..
+                    }
+                    | &Instruction::ImageSampleProjImplicitLod {
+                        sampled_image,
+                        ref image_operands,
+                        ..
+                    }
+                    | &Instruction::ImageSparseSampleProjImplicitLod {
+                        sampled_image,
+                        ref image_operands,
+                        ..
+                    }
+                    | &Instruction::ImageSparseSampleImplicitLod {
+                        sampled_image,
+                        ref image_operands,
+                        ..
+                    }
+                    | &Instruction::ImageSampleDrefImplicitLod {
+                        sampled_image,
+                        ref image_operands,
+                        ..
+                    }
+                    | &Instruction::ImageSampleProjDrefImplicitLod {
+                        sampled_image,
+                        ref image_operands,
+                        ..
+                    }
+                    | &Instruction::ImageSparseSampleDrefImplicitLod {
+                        sampled_image,
+                        ref image_operands,
+                        ..
+                    }
+                    | &Instruction::ImageSparseSampleProjDrefImplicitLod {
+                        sampled_image,
+                        ref image_operands,
+                        ..
+                    } => {
+                        if let Some((variable, Some(index))) = instruction_chain(
+                            result,
+                            global,
+                            spirv,
+                            [inst_sampled_image, inst_load],
+                            sampled_image,
+                        ) {
+                            variable.reqs.sampler_no_unnormalized.insert(index);
+                        }
+                    }
+
+                    &Instruction::ImageSampleProjExplicitLod {
+                        sampled_image,
+                        ref image_operands,
+                        ..
+                    }
+                    | &Instruction::ImageSparseSampleProjExplicitLod {
+                        sampled_image,
+                        ref image_operands,
+                        ..
+                    }
+                    | &Instruction::ImageSampleDrefExplicitLod {
+                        sampled_image,
+                        ref image_operands,
+                        ..
+                    }
+                    | &Instruction::ImageSampleProjDrefExplicitLod {
+                        sampled_image,
+                        ref image_operands,
+                        ..
+                    }
+                    | &Instruction::ImageSparseSampleDrefExplicitLod {
+                        sampled_image,
+                        ref image_operands,
+                        ..
+                    }
+                    | &Instruction::ImageSparseSampleProjDrefExplicitLod {
+                        sampled_image,
+                        ref image_operands,
+                        ..
+                    } => {
+                        if let Some((variable, Some(index))) = instruction_chain(
+                            result,
+                            global,
+                            spirv,
+                            [inst_sampled_image, inst_load],
+                            sampled_image,
+                        ) {
+                            variable.reqs.sampler_no_unnormalized.insert(index);
+                        }
+                    }
+
+                    &Instruction::ImageSampleExplicitLod {
+                        sampled_image,
+                        ref image_operands,
+                        ..
+                    }
+                    | &Instruction::ImageSparseSampleExplicitLod {
+                        sampled_image,
+                        ref image_operands,
+                        ..
+                    } => {
+                        if let Some((variable, Some(index))) = instruction_chain(
+                            result,
+                            global,
+                            spirv,
+                            [inst_sampled_image, inst_load],
+                            sampled_image,
+                        ) {
+                            if image_operands.bias.is_some()
+                                || image_operands.const_offset.is_some()
+                                || image_operands.const_offsets.is_some()
+                                || image_operands.offset.is_some()
+                            {
+                                variable.reqs.sampler_no_unnormalized.insert(index);
+                            }
+                        }
+                    }
+
+                    &Instruction::ImageTexelPointer {
+                        result_id, image, ..
+                    } => {
+                        instruction_chain(result, global, spirv, [], image);
+                    }
+
+                    &Instruction::ImageWrite { image, .. } => {
+                        if let Some((variable, Some(index))) =
+                            instruction_chain(result, global, spirv, [inst_load], image)
+                        {
+                            variable.reqs.mutable.insert(index);
+                        }
+                    }
+
+                    &Instruction::Load { pointer, .. } => {
+                        instruction_chain(result, global, spirv, [], pointer);
+                    }
+
+                    &Instruction::SampledImage { image, sampler, .. } => {
+                        let identifier =
+                            match instruction_chain(result, global, spirv, [inst_load], image) {
+                                Some((variable, Some(index))) => DescriptorIdentifier {
+                                    set: variable.set,
+                                    binding: variable.binding,
+                                    index,
+                                },
+                                _ => continue,
+                            };
+
+                        if let Some((variable, Some(index))) =
+                            instruction_chain(result, global, spirv, [inst_load], sampler)
+                        {
+                            variable
+                                .reqs
+                                .sampler_with_images
+                                .entry(index)
+                                .or_default()
+                                .insert(identifier);
+                        }
+                    }
+
+                    &Instruction::Store { pointer, .. } => {
+                        if let Some((variable, Some(index))) =
+                            instruction_chain(result, global, spirv, [], pointer)
+                        {
+                            variable.reqs.mutable.insert(index);
+                        }
+                    }
+
+                    _ => (),
                 }
-                Instruction::CopyMemory { target, source, .. } => {
-                    found_variables.insert(*target);
-                    found_variables.insert(*source);
-                }
-                Instruction::CopyObject { operand, .. } => {
-                    found_variables.insert(*operand);
-                }
-                Instruction::AtomicLoad { pointer, .. }
-                | Instruction::AtomicIIncrement { pointer, .. }
-                | Instruction::AtomicIDecrement { pointer, .. }
-                | Instruction::AtomicFlagTestAndSet { pointer, .. }
-                | Instruction::AtomicFlagClear { pointer, .. } => {
-                    found_variables.insert(*pointer);
-                }
-                Instruction::AtomicStore { pointer, value, .. }
-                | Instruction::AtomicExchange { pointer, value, .. }
-                | Instruction::AtomicIAdd { pointer, value, .. }
-                | Instruction::AtomicISub { pointer, value, .. }
-                | Instruction::AtomicSMin { pointer, value, .. }
-                | Instruction::AtomicUMin { pointer, value, .. }
-                | Instruction::AtomicSMax { pointer, value, .. }
-                | Instruction::AtomicUMax { pointer, value, .. }
-                | Instruction::AtomicAnd { pointer, value, .. }
-                | Instruction::AtomicOr { pointer, value, .. }
-                | Instruction::AtomicXor { pointer, value, .. } => {
-                    found_variables.insert(*pointer);
-                    found_variables.insert(*value);
-                }
-                Instruction::AtomicCompareExchange {
-                    pointer,
-                    value,
-                    comparator,
-                    ..
-                }
-                | Instruction::AtomicCompareExchangeWeak {
-                    pointer,
-                    value,
-                    comparator,
-                    ..
-                } => {
-                    found_variables.insert(*pointer);
-                    found_variables.insert(*value);
-                    found_variables.insert(*comparator);
-                }
-                Instruction::ExtInst { operands, .. } => {
-                    // We don't know which extended instructions take pointers,
-                    // so we must interpret every operand as a pointer.
-                    operands.iter().for_each(|&o| {
-                        found_variables.insert(o);
-                    });
-                }
-                Instruction::FunctionEnd => return,
-                _ => {}
             }
         }
     }
+
+    let mut result = FnvHashMap::default();
+    let mut inspected_functions = FnvHashSet::default();
+    inspect_entry_point_r(
+        &mut result,
+        &mut inspected_functions,
+        global,
+        spirv,
+        entry_point,
+    );
+    result
+        .into_iter()
+        .map(|(variable_id, variable)| ((variable.set, variable.binding), variable.reqs))
+        .collect()
 }
 
 /// Returns a `DescriptorRequirements` value for the pointed type.
 ///
 /// See also section 14.5.2 of the Vulkan specs: Descriptor Set Interface
-fn descriptor_requirements_of(
-    spirv: &Spirv,
-    pointed_ty: Id,
-    pointer_storage: &StorageClass,
-    force_combined_image_sampled: bool,
-) -> Option<DescriptorRequirements> {
-    let id_info = spirv.id(pointed_ty);
+fn descriptor_requirements_of(spirv: &Spirv, variable_id: Id) -> DescriptorVariable {
+    let variable_id_info = spirv.id(variable_id);
 
-    match id_info.instruction() {
-        Instruction::TypeStruct { .. } => {
-            let decoration_block = id_info.iter_decoration().any(|instruction| {
-                matches!(
-                    instruction,
-                    Instruction::Decorate {
-                        decoration: Decoration::Block,
-                        ..
-                    }
-                )
-            });
+    let mut reqs = DescriptorRequirements {
+        descriptor_count: 1,
+        ..Default::default()
+    };
 
-            let decoration_buffer_block = id_info.iter_decoration().any(|instruction| {
-                matches!(
-                    instruction,
-                    Instruction::Decorate {
-                        decoration: Decoration::BufferBlock,
-                        ..
-                    }
-                )
-            });
+    let (mut next_type_id, is_storage_buffer) = {
+        let variable_type_id = match variable_id_info.instruction() {
+            Instruction::Variable { result_type_id, .. } => *result_type_id,
+            _ => panic!("Id {} is not a variable", variable_id),
+        };
 
-            assert!(
-                decoration_block ^ decoration_buffer_block,
-                "Structs in shader interface are expected to be decorated with one of Block or BufferBlock"
-            );
+        match spirv.id(variable_type_id).instruction() {
+            Instruction::TypePointer {
+                ty, storage_class, ..
+            } => (Some(*ty), *storage_class == StorageClass::StorageBuffer),
+            _ => panic!(
+                "Variable {} result_type_id does not refer to a TypePointer instruction",
+                variable_id
+            ),
+        }
+    };
 
-            let mut reqs = DescriptorRequirements {
-                descriptor_count: 1,
-                ..Default::default()
-            };
+    while let Some(id) = next_type_id {
+        let id_info = spirv.id(id);
 
-            if decoration_buffer_block
-                || decoration_block && *pointer_storage == StorageClass::StorageBuffer
-            {
-                // Determine whether all members have a NonWritable decoration.
-                let nonwritable = id_info.iter_members().all(|member_info| {
-                    member_info.iter_decoration().any(|instruction| {
-                        matches!(
-                            instruction,
-                            Instruction::MemberDecorate {
-                                decoration: Decoration::NonWritable,
-                                ..
-                            }
-                        )
-                    })
+        next_type_id = match id_info.instruction() {
+            Instruction::TypeStruct { .. } => {
+                let decoration_block = id_info.iter_decoration().any(|instruction| {
+                    matches!(
+                        instruction,
+                        Instruction::Decorate {
+                            decoration: Decoration::Block,
+                            ..
+                        }
+                    )
                 });
 
-                reqs.descriptor_types = vec![
-                    DescriptorType::StorageBuffer,
-                    DescriptorType::StorageBufferDynamic,
-                ];
-                reqs.mutable = !nonwritable;
-            } else {
-                reqs.descriptor_types = vec![
-                    DescriptorType::UniformBuffer,
-                    DescriptorType::UniformBufferDynamic,
-                ];
-            };
-
-            Some(reqs)
-        }
-        &Instruction::TypeImage {
-            ref dim,
-            arrayed,
-            ms,
-            sampled,
-            ref image_format,
-            ..
-        } => {
-            let multisampled = ms != 0;
-            assert!(sampled != 0, "Vulkan requires that variables of type OpTypeImage have a Sampled operand of 1 or 2");
-            let format: Option<Format> = image_format.clone().into();
-
-            match dim {
-                Dim::SubpassData => {
-                    assert!(
-                        !force_combined_image_sampled,
-                        "An OpTypeSampledImage can't point to \
-                                                                an OpTypeImage whose dimension is \
-                                                                SubpassData"
-                    );
-                    assert!(
-                        *image_format == ImageFormat::Unknown,
-                        "If Dim is SubpassData, Image Format must be Unknown"
-                    );
-                    assert!(sampled == 2, "If Dim is SubpassData, Sampled must be 2");
-                    assert!(arrayed == 0, "If Dim is SubpassData, Arrayed must be 0");
-
-                    Some(DescriptorRequirements {
-                        descriptor_types: vec![DescriptorType::InputAttachment],
-                        descriptor_count: 1,
-                        multisampled,
-                        ..Default::default()
-                    })
-                }
-                Dim::Buffer => {
-                    let mut reqs = DescriptorRequirements {
-                        descriptor_count: 1,
-                        format,
-                        ..Default::default()
-                    };
-
-                    if sampled == 1 {
-                        reqs.descriptor_types = vec![DescriptorType::UniformTexelBuffer];
-                    } else {
-                        reqs.descriptor_types = vec![DescriptorType::StorageTexelBuffer];
-                        reqs.mutable = true;
-                    }
-
-                    Some(reqs)
-                }
-                _ => {
-                    let image_view_type = Some(match (dim, arrayed) {
-                        (Dim::Dim1D, 0) => ImageViewType::Dim1d,
-                        (Dim::Dim1D, 1) => ImageViewType::Dim1dArray,
-                        (Dim::Dim2D, 0) => ImageViewType::Dim2d,
-                        (Dim::Dim2D, 1) => ImageViewType::Dim2dArray,
-                        (Dim::Dim3D, 0) => ImageViewType::Dim3d,
-                        (Dim::Dim3D, 1) => panic!("Vulkan doesn't support arrayed 3D textures"),
-                        (Dim::Cube, 0) => ImageViewType::Cube,
-                        (Dim::Cube, 1) => ImageViewType::CubeArray,
-                        (Dim::Rect, _) => panic!("Vulkan doesn't support rectangle textures"),
-                        _ => unreachable!(),
-                    });
-
-                    let mut reqs = DescriptorRequirements {
-                        descriptor_count: 1,
-                        format,
-                        multisampled,
-                        image_view_type,
-                        ..Default::default()
-                    };
-
-                    if force_combined_image_sampled {
-                        assert!(
-                            sampled == 1,
-                            "A combined image sampler must not reference a storage image"
-                        );
-
-                        reqs.descriptor_types = vec![DescriptorType::CombinedImageSampler];
-                    } else {
-                        if sampled == 1 {
-                            reqs.descriptor_types = vec![DescriptorType::SampledImage];
-                        } else {
-                            reqs.descriptor_types = vec![DescriptorType::StorageImage];
-                            reqs.mutable = true;
+                let decoration_buffer_block = id_info.iter_decoration().any(|instruction| {
+                    matches!(
+                        instruction,
+                        Instruction::Decorate {
+                            decoration: Decoration::BufferBlock,
+                            ..
                         }
-                    };
+                    )
+                });
 
-                    Some(reqs)
-                }
+                assert!(
+                    decoration_block ^ decoration_buffer_block,
+                    "Structs in shader interface are expected to be decorated with one of Block or BufferBlock"
+                );
+
+                if decoration_buffer_block || decoration_block && is_storage_buffer {
+                    reqs.descriptor_types = vec![
+                        DescriptorType::StorageBuffer,
+                        DescriptorType::StorageBufferDynamic,
+                    ];
+                } else {
+                    reqs.descriptor_types = vec![
+                        DescriptorType::UniformBuffer,
+                        DescriptorType::UniformBufferDynamic,
+                    ];
+                };
+
+                None
             }
-        }
 
-        &Instruction::TypeSampledImage { image_type, .. } => {
-            descriptor_requirements_of(spirv, image_type, pointer_storage, true)
-        }
+            &Instruction::TypeImage {
+                ref dim,
+                arrayed,
+                ms,
+                sampled,
+                ref image_format,
+                ..
+            } => {
+                let multisampled = ms != 0;
+                assert!(sampled != 0, "Vulkan requires that variables of type OpTypeImage have a Sampled operand of 1 or 2");
+                let format: Option<Format> = image_format.clone().into();
 
-        &Instruction::TypeSampler { .. } => Some(DescriptorRequirements {
-            descriptor_types: vec![DescriptorType::Sampler],
-            descriptor_count: 1,
-            ..Default::default()
-        }),
+                match dim {
+                    Dim::SubpassData => {
+                        assert!(
+                            *image_format == ImageFormat::Unknown,
+                            "If Dim is SubpassData, Image Format must be Unknown"
+                        );
+                        assert!(sampled == 2, "If Dim is SubpassData, Sampled must be 2");
+                        assert!(arrayed == 0, "If Dim is SubpassData, Arrayed must be 0");
 
-        &Instruction::TypeArray {
-            element_type,
-            length,
-            ..
-        } => {
-            let reqs = match descriptor_requirements_of(spirv, element_type, pointer_storage, false)
-            {
-                None => return None,
-                Some(v) => v,
-            };
-            assert_eq!(reqs.descriptor_count, 1); // TODO: implement?
-            let len = match spirv.id(length).instruction() {
-                &Instruction::Constant { ref value, .. } => value,
-                _ => panic!("failed to find array length"),
-            };
-            let len = len.iter().rev().fold(0, |a, &b| (a << 32) | b as u64);
+                        reqs.descriptor_types = vec![DescriptorType::InputAttachment];
+                        reqs.multisampled = multisampled;
+                    }
+                    Dim::Buffer => {
+                        reqs.format = format;
 
-            Some(DescriptorRequirements {
-                descriptor_count: len as u32,
-                ..reqs
+                        if sampled == 1 {
+                            reqs.descriptor_types = vec![DescriptorType::UniformTexelBuffer];
+                        } else {
+                            reqs.descriptor_types = vec![DescriptorType::StorageTexelBuffer];
+                        }
+                    }
+                    _ => {
+                        let image_view_type = Some(match (dim, arrayed) {
+                            (Dim::Dim1D, 0) => ImageViewType::Dim1d,
+                            (Dim::Dim1D, 1) => ImageViewType::Dim1dArray,
+                            (Dim::Dim2D, 0) => ImageViewType::Dim2d,
+                            (Dim::Dim2D, 1) => ImageViewType::Dim2dArray,
+                            (Dim::Dim3D, 0) => ImageViewType::Dim3d,
+                            (Dim::Dim3D, 1) => {
+                                panic!("Vulkan doesn't support arrayed 3D textures")
+                            }
+                            (Dim::Cube, 0) => ImageViewType::Cube,
+                            (Dim::Cube, 1) => ImageViewType::CubeArray,
+                            (Dim::Rect, _) => {
+                                panic!("Vulkan doesn't support rectangle textures")
+                            }
+                            _ => unreachable!(),
+                        });
+
+                        reqs.format = format;
+                        reqs.multisampled = multisampled;
+                        reqs.image_view_type = image_view_type;
+
+                        if reqs.descriptor_types.is_empty() {
+                            if sampled == 1 {
+                                reqs.descriptor_types = vec![DescriptorType::SampledImage];
+                            } else {
+                                reqs.descriptor_types = vec![DescriptorType::StorageImage];
+                            }
+                        }
+                    }
+                }
+
+                None
+            }
+
+            &Instruction::TypeSampler { .. } => {
+                reqs.descriptor_types = vec![DescriptorType::Sampler];
+                None
+            }
+
+            &Instruction::TypeSampledImage { image_type, .. } => {
+                reqs.descriptor_types = vec![DescriptorType::CombinedImageSampler];
+                Some(image_type)
+            }
+
+            &Instruction::TypeArray {
+                element_type,
+                length,
+                ..
+            } => {
+                let len = match spirv.id(length).instruction() {
+                    &Instruction::Constant { ref value, .. } => {
+                        value.iter().rev().fold(0, |a, &b| (a << 32) | b as u64)
+                    }
+                    _ => panic!("failed to find array length"),
+                };
+
+                reqs.descriptor_count *= len as u32;
+                Some(element_type)
+            }
+
+            &Instruction::TypeRuntimeArray { element_type, .. } => {
+                reqs.descriptor_count = 0;
+                Some(element_type)
+            }
+
+            _ => {
+                let name = variable_id_info
+                    .iter_name()
+                    .find_map(|instruction| match instruction {
+                        Instruction::Name { name, .. } => Some(name.as_str()),
+                        _ => None,
+                    })
+                    .unwrap_or("__unnamed");
+
+                panic!("Couldn't find relevant type for global variable `{}` (id {}, maybe unimplemented)", name, variable_id);
+            }
+        };
+    }
+
+    DescriptorVariable {
+        set: variable_id_info
+            .iter_decoration()
+            .find_map(|instruction| match instruction {
+                Instruction::Decorate {
+                    decoration: Decoration::DescriptorSet { descriptor_set },
+                    ..
+                } => Some(*descriptor_set),
+                _ => None,
             })
-        }
-
-        &Instruction::TypeRuntimeArray { element_type, .. } => {
-            let reqs = match descriptor_requirements_of(spirv, element_type, pointer_storage, false)
-            {
-                None => return None,
-                Some(v) => v,
-            };
-            assert_eq!(reqs.descriptor_count, 1); // TODO: implement?
-
-            Some(DescriptorRequirements {
-                descriptor_count: 0,
-                ..reqs
+            .unwrap(),
+        binding: variable_id_info
+            .iter_decoration()
+            .find_map(|instruction| match instruction {
+                Instruction::Decorate {
+                    decoration: Decoration::Binding { binding_point },
+                    ..
+                } => Some(*binding_point),
+                _ => None,
             })
-        }
-
-        _ => None,
+            .unwrap(),
+        reqs,
     }
 }
 

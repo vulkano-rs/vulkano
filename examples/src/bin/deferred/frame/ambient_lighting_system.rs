@@ -12,7 +12,7 @@ use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer,
 };
-use vulkano::descriptor_set::{WriteDescriptorSet, PersistentDescriptorSet};
+use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::device::Queue;
 use vulkano::image::ImageViewAbstract;
 use vulkano::pipeline::graphics::color_blend::{

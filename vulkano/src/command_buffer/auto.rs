@@ -4178,9 +4178,11 @@ impl fmt::Display for AutoCommandBufferBuilderContextError {
 
 #[cfg(test)]
 mod tests {
+    use super::CopyBufferError;
     use crate::buffer::BufferUsage;
     use crate::buffer::CpuAccessibleBuffer;
     use crate::command_buffer::synced::SyncCommandBufferBuilderError;
+    use crate::command_buffer::validity::CheckCopyBufferError;
     use crate::command_buffer::AutoCommandBufferBuilder;
     use crate::command_buffer::CommandBufferExecError;
     use crate::command_buffer::CommandBufferUsage;
@@ -4326,5 +4328,69 @@ mod tests {
             // Now that the first cb is dropped, we should be able to record.
             builder.execute_commands(secondary.clone()).unwrap();
         }
+    }
+
+    #[test]
+    fn buffer_self_copy_overlapping() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let source = CpuAccessibleBuffer::from_iter(
+            device.clone(),
+            BufferUsage::all(),
+            true,
+            [0_u32, 1, 2, 3].iter().copied(),
+        )
+        .unwrap();
+
+        let mut builder = AutoCommandBufferBuilder::primary(
+            device.clone(),
+            queue.family(),
+            CommandBufferUsage::OneTimeSubmit,
+        )
+        .unwrap();
+
+        builder
+            .copy_buffer_dimensions(source.clone(), 0, source.clone(), 2, 2)
+            .unwrap();
+
+        let cb = builder.build().unwrap();
+
+        let future = cb
+            .execute(queue.clone())
+            .unwrap()
+            .then_signal_fence_and_flush()
+            .unwrap();
+        future.wait(None).unwrap();
+
+        let result = source.read().unwrap();
+
+        assert_eq!(*result, [0_u32, 1, 0, 1]);
+    }
+
+    #[test]
+    fn buffer_self_copy_not_overlapping() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let source = CpuAccessibleBuffer::from_iter(
+            device.clone(),
+            BufferUsage::all(),
+            true,
+            [0_u32, 1, 2, 3].iter().copied(),
+        )
+        .unwrap();
+
+        let mut builder = AutoCommandBufferBuilder::primary(
+            device.clone(),
+            queue.family(),
+            CommandBufferUsage::OneTimeSubmit,
+        )
+        .unwrap();
+
+        assert!(matches!(
+            builder.copy_buffer_dimensions(source.clone(), 0, source.clone(), 1, 2),
+            Err(CopyBufferError::CheckCopyBufferError(
+                CheckCopyBufferError::OverlappingRanges
+            ))
+        ));
     }
 }

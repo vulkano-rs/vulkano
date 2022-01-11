@@ -21,7 +21,6 @@ use crate::image::sys::UnsafeImage;
 use crate::image::ImageAccess;
 use crate::image::ImageDimensions;
 use crate::memory::DeviceMemoryAllocError;
-use crate::sampler::Sampler;
 use crate::OomError;
 use crate::VulkanObject;
 use std::error;
@@ -615,15 +614,6 @@ pub unsafe trait ImageViewAbstract: DeviceOwned + Send + Sync {
 
     /// Returns the [`ImageViewType`] of this image view.
     fn ty(&self) -> ImageViewType;
-
-    /// Returns true if the given sampler can be used with this image view.
-    ///
-    /// This method should check whether the sampler's configuration can be used with the format
-    /// of the view.
-    // TODO: return a Result and propagate it when binding to a descriptor set
-    fn can_be_sampled(&self, _sampler: &Sampler) -> bool {
-        true /* FIXME */
-    }
 }
 
 unsafe impl<I> ImageViewAbstract for ImageView<I>

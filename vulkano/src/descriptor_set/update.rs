@@ -569,7 +569,7 @@ pub(crate) fn check_descriptor_write<'a>(
                         });
                     }
 
-                    if !image_view.can_be_sampled(sampler) {
+                    if !sampler.can_sample(image_view.as_ref()) {
                         return Err(DescriptorSetUpdateError::ImageViewIncompatibleSampler {
                             binding: write.binding(),
                             index: descriptor_range_start + index as u32,
@@ -681,7 +681,7 @@ pub(crate) fn check_descriptor_write<'a>(
                         });
                     }
 
-                    if !image_view.can_be_sampled(&sampler) {
+                    if !sampler.can_sample(image_view.as_ref()) {
                         return Err(DescriptorSetUpdateError::ImageViewIncompatibleSampler {
                             binding: write.binding(),
                             index: descriptor_range_start + index as u32,
