@@ -2713,7 +2713,7 @@ impl SyncCommandBufferBuilder {
                     | DescriptorType::StorageBuffer
                     | DescriptorType::StorageBufferDynamic => AccessFlags {
                         shader_read: true,
-                        shader_write: reqs.mutable,
+                        shader_write: false,
                         ..AccessFlags::none()
                     },
                     DescriptorType::InputAttachment => AccessFlags {
@@ -2727,41 +2727,51 @@ impl SyncCommandBufferBuilder {
                         }
                     }
                 },
-                exclusive: reqs.mutable,
+                exclusive: false,
             };
 
-            let buffer_resource = move |buffer: Arc<dyn BufferAccess>| {
-                (
-                    KeyTy::Buffer(buffer),
-                    format!("Buffer bound to set {} descriptor {}", set, binding).into(),
-                    Some((
-                        access,
-                        ImageLayout::Undefined,
-                        ImageLayout::Undefined,
-                        ImageUninitializedSafe::Unsafe,
-                    )),
-                )
-            };
-            let image_resource = move |image: Arc<dyn ImageAccess>| {
-                let layout = image
-                    .descriptor_layouts()
-                    .expect("descriptor_layouts must return Some when used in an image view")
-                    .layout_for(descriptor_type);
-                (
-                    KeyTy::Image(image),
-                    format!("Image bound to set {} descriptor {}", set, binding).into(),
-                    if descriptor_type == DescriptorType::InputAttachment {
-                        // FIXME: This is tricky. Since we read from the input attachment
-                        // and this input attachment is being written in an earlier pass,
-                        // vulkano will think that it needs to put a pipeline barrier and will
-                        // return a `Conflict` error. For now as a work-around we simply ignore
-                        // input attachments.
-                        None
-                    } else {
-                        Some((access, layout, layout, ImageUninitializedSafe::Unsafe))
-                    },
-                )
-            };
+            let access = (0..).map(|index| {
+                let mut access = access;
+                let mutable = reqs.mutable.contains(&index);
+                access.access.shader_write = mutable;
+                access.exclusive = mutable;
+                access
+            });
+
+            let buffer_resource =
+                move |(access, buffer): (PipelineMemoryAccess, Arc<dyn BufferAccess>)| {
+                    (
+                        KeyTy::Buffer(buffer),
+                        format!("Buffer bound to set {} descriptor {}", set, binding).into(),
+                        Some((
+                            access,
+                            ImageLayout::Undefined,
+                            ImageLayout::Undefined,
+                            ImageUninitializedSafe::Unsafe,
+                        )),
+                    )
+                };
+            let image_resource =
+                move |(access, image): (PipelineMemoryAccess, Arc<dyn ImageAccess>)| {
+                    let layout = image
+                        .descriptor_layouts()
+                        .expect("descriptor_layouts must return Some when used in an image view")
+                        .layout_for(descriptor_type);
+                    (
+                        KeyTy::Image(image),
+                        format!("Image bound to set {} descriptor {}", set, binding).into(),
+                        if descriptor_type == DescriptorType::InputAttachment {
+                            // FIXME: This is tricky. Since we read from the input attachment
+                            // and this input attachment is being written in an earlier pass,
+                            // vulkano will think that it needs to put a pipeline barrier and will
+                            // return a `Conflict` error. For now as a work-around we simply ignore
+                            // input attachments.
+                            None
+                        } else {
+                            Some((access, layout, layout, ImageUninitializedSafe::Unsafe))
+                        },
+                    )
+                };
 
             match state.descriptor_sets[&set]
                 .resources()
@@ -2770,32 +2780,48 @@ impl SyncCommandBufferBuilder {
             {
                 DescriptorBindingResources::None(_) => continue,
                 DescriptorBindingResources::Buffer(elements) => {
-                    resources.extend(elements.iter().flatten().cloned().map(buffer_resource));
+                    resources.extend(
+                        access
+                            .zip(elements)
+                            .filter_map(|(access, element)| {
+                                element.as_ref().map(|buffer| (access, buffer.clone()))
+                            })
+                            .map(buffer_resource),
+                    );
                 }
                 DescriptorBindingResources::BufferView(elements) => {
                     resources.extend(
-                        elements
-                            .iter()
-                            .flatten()
-                            .map(|buffer_view| buffer_view.buffer())
+                        access
+                            .zip(elements)
+                            .filter_map(|(access, element)| {
+                                element
+                                    .as_ref()
+                                    .map(|buffer_view| (access, buffer_view.buffer()))
+                            })
                             .map(buffer_resource),
                     );
                 }
                 DescriptorBindingResources::ImageView(elements) => {
                     resources.extend(
-                        elements
-                            .iter()
-                            .flatten()
-                            .map(|image_view| image_view.image())
+                        access
+                            .zip(elements)
+                            .filter_map(|(access, element)| {
+                                element
+                                    .as_ref()
+                                    .map(|image_view| (access, image_view.image()))
+                            })
                             .map(image_resource),
                     );
                 }
                 DescriptorBindingResources::ImageViewSampler(elements) => {
                     resources.extend(
-                        elements
-                            .iter()
-                            .flatten()
-                            .map(|(image_view, _)| image_view.image())
+                        access
+                            .zip(elements)
+                            .filter_map(|(access, element)| {
+                                element
+                                    .as_ref()
+                                    .map(|(image_view, _)| (access, image_view.image()))
+                            })
                             .map(image_resource),
                     );
                 }

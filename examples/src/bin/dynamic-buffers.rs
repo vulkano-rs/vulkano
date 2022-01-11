@@ -17,7 +17,7 @@
 use std::mem;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
-use vulkano::descriptor_set::{DescriptorSet, WriteDescriptorSet, PersistentDescriptorSet};
+use vulkano::descriptor_set::{DescriptorSet, PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::instance::{Instance, InstanceExtensions};
@@ -75,7 +75,7 @@ fn main() {
                 layout(local_size_x = 12) in;
 
                 // Uniform Buffer Object
-                layout(set = 0, binding = 0) uniform readonly InData {
+                layout(set = 0, binding = 0) uniform InData {
                     uint data;
                 } ubo;
 

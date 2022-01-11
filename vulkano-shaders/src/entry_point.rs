@@ -12,8 +12,8 @@ use proc_macro2::TokenStream;
 use vulkano::pipeline::layout::PipelineLayoutPcRange;
 use vulkano::shader::spirv::ExecutionModel;
 use vulkano::shader::{
-    DescriptorRequirements, GeometryShaderExecution, ShaderExecution, ShaderInterfaceEntry,
-    ShaderInterfaceEntryType, SpecializationConstantRequirements,
+    DescriptorIdentifier, DescriptorRequirements, GeometryShaderExecution, ShaderExecution,
+    ShaderInterfaceEntry, ShaderInterfaceEntryType, SpecializationConstantRequirements,
 };
 use vulkano::shader::{EntryPointInfo, ShaderInterface, ShaderStages};
 
@@ -84,7 +84,10 @@ fn write_descriptor_requirements(
             image_view_type,
             multisampled,
             mutable,
+            sampler_no_unnormalized,
+            sampler_with_images,
             stages,
+            storage_image_atomic,
         } = reqs;
 
         let descriptor_types = descriptor_types.into_iter().map(|ty| {
@@ -104,6 +107,33 @@ fn write_descriptor_requirements(
                 quote! { Some(ImageViewType::#ident) }
             }
             None => quote! { None },
+        };
+        let mutable = mutable.iter();
+        let sampler_no_unnormalized = sampler_no_unnormalized.iter();
+        let sampler_with_images = {
+            sampler_with_images.iter().map(|(&index, identifiers)| {
+                let identifiers = identifiers.iter().map(
+                    |DescriptorIdentifier {
+                         set,
+                         binding,
+                         index,
+                     }| {
+                        quote! {
+                            vulkano::shader::DescriptorIdentifier {
+                                set: #set,
+                                binding: #binding,
+                                index: #index,
+                            }
+                        }
+                    },
+                );
+                quote! {
+                    (
+                        #index,
+                        [#(#identifiers),*].into_iter().collect(),
+                    )
+                }
+            })
         };
         let stages = {
             let ShaderStages {
@@ -138,6 +168,7 @@ fn write_descriptor_requirements(
                 }
             }
         };
+        let storage_image_atomic = storage_image_atomic.iter();
 
         quote! {
             (
@@ -148,8 +179,11 @@ fn write_descriptor_requirements(
                     format: #format,
                     image_view_type: #image_view_type,
                     multisampled: #multisampled,
-                    mutable: #mutable,
+                    mutable: [#(#mutable),*].into_iter().collect(),
+                    sampler_no_unnormalized: [#(#sampler_no_unnormalized),*].into_iter().collect(),
+                    sampler_with_images: [#(#sampler_with_images),*].into_iter().collect(),
                     stages: #stages,
+                    storage_image_atomic: [#(#storage_image_atomic),*].into_iter().collect(),
                 },
             ),
         }

@@ -315,7 +315,10 @@ impl DescriptorDesc {
             image_view_type,
             multisampled,
             mutable,
+            sampler_no_unnormalized,
+            sampler_with_images,
             stages,
+            storage_image_atomic,
         } = descriptor_requirements;
 
         if !descriptor_types.contains(&self.ty) {
