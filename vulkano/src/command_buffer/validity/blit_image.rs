@@ -265,12 +265,54 @@ where
         }
     }
 
+    match filter {
+        Filter::Nearest => (),
+        Filter::Linear => {
+            if !source_inner
+                .image
+                .format_features()
+                .sampled_image_filter_linear
+            {
+                return Err(CheckBlitImageError::FilterFormatNotSupported);
+            }
+        }
+        Filter::Cubic => {
+            if !device.enabled_extensions().ext_filter_cubic {
+                return Err(CheckBlitImageError::ExtensionNotEnabled {
+                    extension: "ext_filter_cubic",
+                    reason: "the specified filter was Cubic",
+                });
+            }
+
+            if !source_inner
+                .image
+                .format_features()
+                .img_sampled_image_filter_cubic
+            {
+                return Err(CheckBlitImageError::FilterFormatNotSupported);
+            }
+
+            if !matches!(source.dimensions(), ImageDimensions::Dim2d { .. }) {
+                return Err(CheckBlitImageError::FilterDimensionalityNotSupported);
+            }
+        }
+    }
+
     Ok(())
 }
 
 /// Error that can happen from `check_clear_color_image`.
 #[derive(Debug, Copy, Clone)]
 pub enum CheckBlitImageError {
+    ExtensionNotEnabled {
+        extension: &'static str,
+        reason: &'static str,
+    },
+
+    /// The chosen filter type does not support the dimensionality of the source image.
+    FilterDimensionalityNotSupported,
+    /// The chosen filter type does not support the format of the source image.
+    FilterFormatNotSupported,
     /// The source is missing the transfer source usage.
     MissingTransferSourceUsage,
     /// The destination is missing the transfer destination usage.
@@ -305,50 +347,71 @@ impl error::Error for CheckBlitImageError {}
 impl fmt::Display for CheckBlitImageError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                CheckBlitImageError::MissingTransferSourceUsage => {
-                    "the source is missing the transfer source usage"
-                }
-                CheckBlitImageError::MissingTransferDestinationUsage => {
-                    "the destination is missing the transfer destination usage"
-                }
-                CheckBlitImageError::SourceFormatNotSupported => {
-                    "the format of the source image doesn't support blit operations"
-                }
-                CheckBlitImageError::DestinationFormatNotSupported => {
-                    "the format of the destination image doesn't support blit operations"
-                }
-                CheckBlitImageError::DepthStencilNearestMandatory => {
-                    "you must use the nearest filter when blitting depth/stencil images"
-                }
-                CheckBlitImageError::DepthStencilFormatMismatch => {
-                    "the format of the source and destination must be equal when blitting \
-                 depth/stencil images"
-                }
-                CheckBlitImageError::IncompatibleFormatTypes { .. } => {
-                    "the types of the source format and the destination format aren't compatible"
-                }
-                CheckBlitImageError::UnexpectedMultisampled => {
-                    "blitting between multisampled images is forbidden"
-                }
-                CheckBlitImageError::SourceCoordinatesOutOfRange => {
-                    "the offsets, array layers and/or mipmap levels are out of range in the source \
-                 image"
-                }
-                CheckBlitImageError::DestinationCoordinatesOutOfRange => {
-                    "the offsets, array layers and/or mipmap levels are out of range in the \
-                 destination image"
-                }
-                CheckBlitImageError::IncompatibleRangeForImageType => {
-                    "the top-left and/or bottom-right coordinates are incompatible with the image type"
-                }
-                CheckBlitImageError::OverlappingRegions => {
-                    "the source and destination regions are overlapping"
-                }
+        match *self {
+            Self::ExtensionNotEnabled { extension, reason } => write!(
+                fmt,
+                "the extension {} must be enabled: {}",
+                extension, reason
+            ),
+            Self::FilterDimensionalityNotSupported => write!(
+                fmt,
+                "the chosen filter type does not support the dimensionality of the source image"
+            ),
+            Self::FilterFormatNotSupported => write!(
+                fmt,
+                "the chosen filter type does not support the format of the source image"
+            ),
+            Self::MissingTransferSourceUsage => {
+                write!(fmt, "the source is missing the transfer source usage")
             }
-        )
+            Self::MissingTransferDestinationUsage => {
+                write!(
+                    fmt,
+                    "the destination is missing the transfer destination usage"
+                )
+            }
+            Self::SourceFormatNotSupported => {
+                write!(
+                    fmt,
+                    "the format of the source image doesn't support blit operations"
+                )
+            }
+            Self::DestinationFormatNotSupported => {
+                write!(
+                    fmt,
+                    "the format of the destination image doesn't support blit operations"
+                )
+            }
+            Self::DepthStencilNearestMandatory => {
+                write!(
+                    fmt,
+                    "you must use the nearest filter when blitting depth/stencil images"
+                )
+            }
+            Self::DepthStencilFormatMismatch => {
+                write!(fmt, "the format of the source and destination must be equal when blitting depth/stencil images")
+            }
+            Self::IncompatibleFormatTypes { .. } => {
+                write!(
+                    fmt,
+                    "the types of the source format and the destination format aren't compatible"
+                )
+            }
+            Self::UnexpectedMultisampled => {
+                write!(fmt, "blitting between multisampled images is forbidden")
+            }
+            Self::SourceCoordinatesOutOfRange => {
+                write!(fmt, "the offsets, array layers and/or mipmap levels are out of range in the source image")
+            }
+            Self::DestinationCoordinatesOutOfRange => {
+                write!(fmt, "the offsets, array layers and/or mipmap levels are out of range in the destination image")
+            }
+            Self::IncompatibleRangeForImageType => {
+                write!(fmt, "the top-left and/or bottom-right coordinates are incompatible with the image type")
+            }
+            Self::OverlappingRegions => {
+                write!(fmt, "the source and destination regions are overlapping")
+            }
+        }
     }
 }

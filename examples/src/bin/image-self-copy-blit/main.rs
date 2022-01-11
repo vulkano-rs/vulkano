@@ -26,7 +26,7 @@ use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
-use vulkano::sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode};
+use vulkano::sampler::{Filter, Sampler, SamplerAddressMode};
 use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
 use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano::Version;
@@ -243,20 +243,11 @@ fn main() {
         )
     };
 
-    let sampler = Sampler::new(
-        device.clone(),
-        Filter::Linear,
-        Filter::Linear,
-        MipmapMode::Nearest,
-        SamplerAddressMode::Repeat,
-        SamplerAddressMode::Repeat,
-        SamplerAddressMode::Repeat,
-        0.0,
-        1.0,
-        0.0,
-        0.0,
-    )
-    .unwrap();
+    let sampler = Sampler::start(device.clone())
+        .filter(Filter::Linear)
+        .address_mode(SamplerAddressMode::Repeat)
+        .build()
+        .unwrap();
 
     let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
     let pipeline = GraphicsPipeline::start()
