@@ -990,9 +990,9 @@ pub enum ImageCreationError {
     AllocError(DeviceMemoryAllocError),
     /// The specified creation flags have requirements (e.g. specific dimension) that were not met.
     CreationFlagRequirementsNotMet,
-    /// A wrong number of mipmaps was provided.
-    FormatNotSupported,
     /// The format is supported, but at least one of the requested usages is not supported.
+    FormatNotSupported,
+    /// A wrong number of mipmaps was provided.
     InvalidMipmapsCount {
         obtained: u32,
         valid_range: Range<u32>,
