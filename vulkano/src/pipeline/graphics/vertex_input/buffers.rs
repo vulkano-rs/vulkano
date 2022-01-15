@@ -152,7 +152,7 @@ unsafe impl VertexDefinition for BuffersDefinition {
                         offset: offset as u32,
                     },
                 ));
-                offset += element.ty.to_format().size().unwrap();
+                offset += element.ty.to_format().block_size().unwrap();
             }
         }
 

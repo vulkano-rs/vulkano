@@ -21,8 +21,8 @@ use std::{
     process::Command,
 };
 use vk_parse::{
-    EnumSpec, EnumsChild, Extension, ExtensionChild, Feature, InterfaceItem, Registry,
-    RegistryChild, SpirvExtOrCap, Type, TypeCodeMarkup, TypeSpec, TypesChild,
+    Extension, ExtensionChild, Feature, Format, InterfaceItem, Registry, RegistryChild,
+    SpirvExtOrCap, Type, TypeCodeMarkup, TypeSpec, TypesChild,
 };
 
 mod extensions;
@@ -85,7 +85,7 @@ pub struct VkRegistryData<'r> {
     pub header_version: u16,
     pub extensions: IndexMap<&'r str, &'r Extension>,
     pub features: IndexMap<&'r str, &'r Feature>,
-    pub formats: Vec<&'r str>,
+    pub formats: Vec<&'r Format>,
     pub spirv_capabilities: Vec<&'r SpirvExtOrCap>,
     pub spirv_extensions: Vec<&'r SpirvExtOrCap>,
     pub types: HashMap<&'r str, (&'r Type, Vec<&'r str>)>,
@@ -96,11 +96,7 @@ impl<'r> VkRegistryData<'r> {
         let aliases = Self::get_aliases(&registry);
         let extensions = Self::get_extensions(&registry);
         let features = Self::get_features(&registry);
-        let formats = Self::get_formats(
-            &registry,
-            features.values().map(|x| x.children.iter()).flatten(),
-            extensions.values().map(|x| x.children.iter()).flatten(),
-        );
+        let formats = Self::get_formats(&registry);
         let spirv_capabilities = Self::get_spirv_capabilities(registry);
         let spirv_extensions = Self::get_spirv_extensions(registry);
         let types = Self::get_types(&registry, &aliases, &features, &extensions);
@@ -207,51 +203,17 @@ impl<'r> VkRegistryData<'r> {
             .collect()
     }
 
-    fn get_formats<'a>(
-        registry: &'a Registry,
-        features: impl IntoIterator<Item = &'a ExtensionChild>,
-        extensions: impl IntoIterator<Item = &'a ExtensionChild>,
-    ) -> Vec<&'a str> {
+    fn get_formats<'a>(registry: &'a Registry) -> Vec<&'a Format> {
         registry
             .0
             .iter()
             .filter_map(|child| {
-                if let RegistryChild::Enums(enums) = child {
-                    if enums.name.as_ref().map(|s| s.as_str()) == Some("VkFormat") {
-                        return Some(enums.children.iter().filter_map(|en| {
-                            if let EnumsChild::Enum(en) = en {
-                                if en.name != "VK_FORMAT_UNDEFINED" {
-                                    return Some(en.name.as_str());
-                                }
-                            }
-                            None
-                        }));
-                    }
+                if let RegistryChild::Formats(formats) = child {
+                    return Some(formats.children.iter());
                 }
                 None
             })
             .flatten()
-            .chain(
-                features
-                    .into_iter()
-                    .chain(extensions.into_iter())
-                    .filter_map(|child| {
-                        if let ExtensionChild::Require { items, .. } = child {
-                            return Some(items.iter().filter_map(|item| {
-                                if let InterfaceItem::Enum(en) = item {
-                                    if let EnumSpec::Offset { extends, .. } = &en.spec {
-                                        if extends == "VkFormat" {
-                                            return Some(en.name.as_str());
-                                        }
-                                    }
-                                }
-                                None
-                            }));
-                        }
-                        None
-                    })
-                    .flatten(),
-            )
             .collect()
     }
 

@@ -66,7 +66,7 @@ impl VertexMemberTy {
             VertexMemberTy::F64 => 8,
         };
 
-        let format_size = match format.size() {
+        let format_size = match format.block_size() {
             None => return false,
             Some(s) => s,
         } as usize;
