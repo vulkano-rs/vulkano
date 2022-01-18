@@ -33,6 +33,7 @@
 - Added support for filter reduction modes on samplers.
 - Added `buffer_self_copy_overlapping` and `buffer_self_copy_not_overlapping` as unit tests for self_copy feature (#1782).
 - Removed test `basic_conflict` (failed after #1782).
+- Added VertexMember implementations for nalgebra Vectors and Points as an optional crate feature.
 
 # Version 0.27.1 (2021-12-07)
 
