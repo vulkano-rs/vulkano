@@ -8,7 +8,7 @@
 // according to those terms.
 
 use super::{write_file, SpirvGrammar};
-use heck::SnakeCase;
+use heck::ToSnakeCase;
 use lazy_static::lazy_static;
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};

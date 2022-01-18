@@ -8,7 +8,7 @@
 // according to those terms.
 
 use super::{write_file, VkRegistryData};
-use heck::SnakeCase;
+use heck::ToSnakeCase;
 use indexmap::IndexMap;
 use proc_macro2::{Ident, Literal, TokenStream};
 use quote::{format_ident, quote};
