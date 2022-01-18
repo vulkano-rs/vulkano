@@ -7,7 +7,9 @@
     Pull Request merge. 
 -->
 
-- **Breaking** Updated to half 1.8, smallvec 1.7, winit 0.26, raw-window-handle 0.4.
+- **Breaking** Updated to ash 0.35, half 1.8, smallvec 1.7, winit 0.26, raw-window-handle 0.4.
+- **Breaking** `ColorSpace::DciP3Linear` is renamed to `DisplayP3Linear` to match an equivalent change in the Vulkan naming.
+- Updated vk.xml to 1.2.203.
 - Upgraded to Rust 2021.
 - **Breaking** `DescriptorWrite` is renamed to `WriteDescriptorSet` to match Vulkan, and moved into the main `descriptor_set` module.
 - **Breaking** The constructors of `WriteDescriptorSet` are no longer unsafe. Added convenience constructors for writing non-arrayed bindings.
