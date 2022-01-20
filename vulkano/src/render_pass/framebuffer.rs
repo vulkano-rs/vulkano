@@ -485,7 +485,7 @@ impl From<Error> for FramebufferCreationError {
 mod tests {
     use crate::format::Format;
     use crate::image::attachment::AttachmentImage;
-    use crate::image::view::{ImageView, ImageViewType};
+    use crate::image::view::ImageView;
     use crate::render_pass::Framebuffer;
     use crate::render_pass::FramebufferCreationError;
     use crate::render_pass::RenderPass;
@@ -511,7 +511,7 @@ mod tests {
         .unwrap();
 
         let view = ImageView::new(
-            AttachmentImage::new(device.clone(), [1024, 768], Format::R8G8B8A8_UNORM).unwrap(), ImageViewType::Dim2d
+            AttachmentImage::new(device.clone(), [1024, 768], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
         let _ = Framebuffer::start(render_pass)
@@ -554,7 +554,7 @@ mod tests {
         .unwrap();
 
         let view = ImageView::new(
-            AttachmentImage::new(device.clone(), [1024, 768], Format::R8_UNORM).unwrap(), ImageViewType::Dim2d
+            AttachmentImage::new(device.clone(), [1024, 768], Format::R8_UNORM).unwrap(),
         )
         .unwrap();
 
@@ -587,7 +587,7 @@ mod tests {
         .unwrap();
 
         let view = ImageView::new(
-            AttachmentImage::new(device.clone(), [600, 600], Format::R8G8B8A8_UNORM).unwrap(), ImageViewType::Dim2d
+            AttachmentImage::new(device.clone(), [600, 600], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
 
@@ -619,7 +619,7 @@ mod tests {
         .unwrap();
 
         let view = ImageView::new(
-            AttachmentImage::new(device.clone(), [512, 700], Format::R8G8B8A8_UNORM).unwrap(), ImageViewType::Dim2d
+            AttachmentImage::new(device.clone(), [512, 700], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
 
@@ -662,11 +662,11 @@ mod tests {
         .unwrap();
 
         let a = ImageView::new(
-            AttachmentImage::new(device.clone(), [512, 512], Format::R8G8B8A8_UNORM).unwrap(), ImageViewType::Dim2d
+            AttachmentImage::new(device.clone(), [512, 512], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
         let b = ImageView::new(
-            AttachmentImage::new(device.clone(), [512, 513], Format::R8G8B8A8_UNORM).unwrap(), ImageViewType::Dim2d
+            AttachmentImage::new(device.clone(), [512, 513], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
 
@@ -709,11 +709,11 @@ mod tests {
         .unwrap();
 
         let a = ImageView::new(
-            AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8_UNORM).unwrap(), ImageViewType::Dim2d
+            AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
         let b = ImageView::new(
-            AttachmentImage::new(device.clone(), [512, 128], Format::R8G8B8A8_UNORM).unwrap(), ImageViewType::Dim2d
+            AttachmentImage::new(device.clone(), [512, 128], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
 
@@ -758,7 +758,7 @@ mod tests {
         .unwrap();
 
         let view = ImageView::new(
-            AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8_UNORM).unwrap(), ImageViewType::Dim2d
+            AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
 
@@ -797,11 +797,11 @@ mod tests {
         .unwrap();
 
         let a = ImageView::new(
-            AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8_UNORM).unwrap(), ImageViewType::Dim2d
+            AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
         let b = ImageView::new(
-            AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8_UNORM).unwrap(), ImageViewType::Dim2d
+            AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
 

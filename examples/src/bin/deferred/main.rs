@@ -32,7 +32,7 @@ use cgmath::SquareMatrix;
 use cgmath::Vector3;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
-use vulkano::image::view::{ImageView, ImageViewType};
+use vulkano::image::view::ImageView;
 use vulkano::image::ImageUsage;
 use vulkano::instance::Instance;
 use vulkano::swapchain;
@@ -113,7 +113,7 @@ fn main() {
             .unwrap();
         let images = images
             .into_iter()
-            .map(|image| ImageView::new(image.clone(), ImageViewType::Dim2d).unwrap())
+            .map(|image| ImageView::new(image.clone()).unwrap())
             .collect::<Vec<_>>();
         (swapchain, images)
     };
@@ -152,7 +152,7 @@ fn main() {
                     };
                 let new_images = new_images
                     .into_iter()
-                    .map(|image| ImageView::new(image.clone(), ImageViewType::Dim2d).unwrap())
+                    .map(|image| ImageView::new(image.clone()).unwrap())
                     .collect::<Vec<_>>();
 
                 swapchain = new_swapchain;

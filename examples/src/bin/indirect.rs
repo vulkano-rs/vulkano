@@ -39,7 +39,7 @@ use vulkano::command_buffer::{
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
-use vulkano::image::view::{ImageView, ImageViewType};
+use vulkano::image::view::ImageView;
 use vulkano::image::{ImageAccess, ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
 use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
@@ -415,7 +415,7 @@ fn window_size_dependent_setup(
     images
         .iter()
         .map(|image| {
-            let view = ImageView::new(image.clone(), ImageViewType::Dim2d).unwrap();
+            let view = ImageView::new(image.clone()).unwrap();
             Framebuffer::start(render_pass.clone())
                 .add(view)
                 .unwrap()

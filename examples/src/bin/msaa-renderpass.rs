@@ -79,7 +79,6 @@ use vulkano::format::Format;
 use vulkano::image::{
     view::ImageView, AttachmentImage, ImageDimensions, SampleCount, StorageImage,
 };
-use vulkano::image::view::ImageViewType;
 use vulkano::instance::Instance;
 use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
@@ -141,7 +140,7 @@ fn main() {
             SampleCount::Sample4,
             Format::R8G8B8A8_UNORM,
         )
-        .unwrap(), ImageViewType::Dim2d
+        .unwrap(),
     )
     .unwrap();
 
@@ -154,10 +153,10 @@ fn main() {
             array_layers: 1,
         },
         Format::R8G8B8A8_UNORM,
-        Some(queue.family())
+        Some(queue.family()),
     )
     .unwrap();
-    let view = ImageView::new(image.clone(), ImageViewType::Dim2d).unwrap();
+    let view = ImageView::new(image.clone()).unwrap();
 
     // In this example, we are going to perform the *resolve* (ie. turning a multisampled image
     // into a non-multisampled one) as part of the render pass. This is the preferred method of

@@ -52,12 +52,23 @@ where
 {
     /// Creates a default `ImageView`. Equivalent to `ImageView::start(image).build()`.
     #[inline]
-    pub fn new(image: Arc<I>, ty: ImageViewType) -> Result<Arc<ImageView<I>>, ImageViewCreationError> {
-        Self::start(image, ty).build()
+    pub fn new(image: Arc<I>) -> Result<Arc<ImageView<I>>, ImageViewCreationError> {
+        Self::start(image).build()
     }
 
     /// Begins building an `ImageView`.
-    pub fn start(image: Arc<I>, ty: ImageViewType) -> ImageViewBuilder<I> {
+    pub fn start(image: Arc<I>) -> ImageViewBuilder<I> {
+        let ty = match image.dimensions() {
+            ImageDimensions::Dim1d {
+                array_layers: 1, ..
+            } => ImageViewType::Dim1d,
+            ImageDimensions::Dim1d { .. } => ImageViewType::Dim1dArray,
+            ImageDimensions::Dim2d {
+                array_layers: 1, ..
+            } => ImageViewType::Dim2d,
+            ImageDimensions::Dim2d { .. } => ImageViewType::Dim2dArray,
+            ImageDimensions::Dim3d { .. } => ImageViewType::Dim3d,
+        };
         let mipmap_levels = 0..image.mipmap_levels();
         let array_layers = 0..image.dimensions().array_layers();
 
