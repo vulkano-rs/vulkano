@@ -24,6 +24,7 @@ use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::format::Format;
 use vulkano::image::{view::ImageView, ImageDimensions, StorageImage};
+use vulkano::image::view::ImageViewType;
 use vulkano::instance::{Instance, InstanceExtensions};
 use vulkano::pipeline::{ComputePipeline, Pipeline, PipelineBindPoint};
 use vulkano::sync;
@@ -193,7 +194,7 @@ fn main() {
         Some(queue.family()),
     )
     .unwrap();
-    let view = ImageView::new(image.clone()).unwrap();
+    let view = ImageView::new(image.clone(), ImageViewType::Dim2d).unwrap();
 
     let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
     let set = PersistentDescriptorSet::new(

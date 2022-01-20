@@ -16,7 +16,7 @@ use std::sync::Arc;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features, Queue};
 use vulkano::format::Format;
-use vulkano::image::view::ImageView;
+use vulkano::image::view::{ImageView, ImageViewType};
 use vulkano::image::{
     AttachmentImage, ImageAccess, ImageUsage, ImageViewAbstract, SampleCount, SwapchainImage,
 };
@@ -211,7 +211,7 @@ impl Renderer {
             .unwrap();
         let images = images
             .into_iter()
-            .map(|image| ImageView::new(image).unwrap())
+            .map(|image| ImageView::new(image, ImageViewType::Dim2d).unwrap())
             .collect::<Vec<_>>();
         (swap_chain, images)
     }
@@ -309,7 +309,7 @@ impl Renderer {
                     ..ImageUsage::none()
                 },
             )
-            .unwrap(),
+            .unwrap(), ImageViewType::Dim2d
         )
         .unwrap();
         self.interim_image_views
@@ -427,7 +427,7 @@ impl Renderer {
         self.swap_chain = new_swapchain;
         let new_images = new_images
             .into_iter()
-            .map(|image| ImageView::new(image).unwrap())
+            .map(|image| ImageView::new(image, ImageViewType::Dim2d).unwrap())
             .collect::<Vec<_>>();
         self.final_views = new_images;
         // Resize images that follow swapchain size

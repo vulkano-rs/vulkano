@@ -180,7 +180,7 @@ mod tests {
     use super::ensure_image_view_compatible;
     use super::IncompatibleRenderPassAttachmentError;
     use crate::format::Format;
-    use crate::image::view::ImageView;
+    use crate::image::view::{ImageView, ImageViewType};
     use crate::image::AttachmentImage;
     use crate::render_pass::RenderPassDesc;
 
@@ -205,7 +205,7 @@ mod tests {
         .unwrap();
 
         let view = ImageView::new(
-            AttachmentImage::new(device, [128, 128], Format::R8G8B8A8_UNORM).unwrap(),
+            AttachmentImage::new(device, [128, 128], Format::R8G8B8A8_UNORM).unwrap(), ImageViewType::Dim2d
         )
         .unwrap();
 
@@ -233,7 +233,7 @@ mod tests {
         .unwrap();
 
         let view = ImageView::new(
-            AttachmentImage::new(device, [128, 128], Format::R8G8B8A8_UNORM).unwrap(),
+            AttachmentImage::new(device, [128, 128], Format::R8G8B8A8_UNORM).unwrap(), ImageViewType::Dim2d
         )
         .unwrap();
 
@@ -252,7 +252,7 @@ mod tests {
 
         let rp = RenderPassDesc::empty();
         let view = ImageView::new(
-            AttachmentImage::new(device, [128, 128], Format::R8G8B8A8_UNORM).unwrap(),
+            AttachmentImage::new(device, [128, 128], Format::R8G8B8A8_UNORM).unwrap(), ImageViewType::Dim2d
         )
         .unwrap();
 

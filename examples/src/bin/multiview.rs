@@ -22,7 +22,7 @@ use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, Subp
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::format::Format;
-use vulkano::image::view::ImageView;
+use vulkano::image::view::{ImageView, ImageViewType};
 use vulkano::image::{
     ImageAccess, ImageCreateFlags, ImageDimensions, ImageLayout, ImageUsage, SampleCount,
     StorageImage,
@@ -129,7 +129,7 @@ fn main() {
     )
     .unwrap();
 
-    let image_view = ImageView::new(image.clone()).unwrap();
+    let image_view = ImageView::new(image.clone(), ImageViewType::Dim2d).unwrap();
 
     #[repr(C)]
     #[derive(Default, Debug, Clone)]

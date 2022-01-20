@@ -25,6 +25,7 @@ use vulkano::image::{
     ImageDimensions, ImageUsage, ImmutableImage, MipmapsCount, SwapchainImage, view::ImageView,
 };
 use vulkano::image::ImageAccess;
+use vulkano::image::view::ImageViewType;
 use vulkano::instance::Instance;
 use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::pipeline::graphics::color_blend::ColorBlendState;
@@ -180,7 +181,7 @@ fn main() {
             queue.clone(),
         )
             .unwrap();
-        (ImageView::new(image).unwrap(), future)
+        (ImageView::new(image, ImageViewType::Dim2dArray).unwrap(), future)
     };
 
     let sampler = Sampler::simple_repeat_linear(device.clone()).unwrap();
@@ -331,7 +332,7 @@ fn window_size_dependent_setup(
     images
         .iter()
         .map(|image| {
-            let view = ImageView::new(image.clone()).unwrap();
+            let view = ImageView::new(image.clone(), ImageViewType::Dim2d).unwrap();
             Framebuffer::start(render_pass.clone())
                 .add(view)
                 .unwrap()

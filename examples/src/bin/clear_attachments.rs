@@ -25,6 +25,7 @@ use vulkano_win::VkSurfaceBuild;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
+use vulkano::image::view::ImageViewType;
 
 fn main() {
     // The start of this example is exactly the same as `triangle`. You should read the
@@ -289,7 +290,7 @@ fn window_size_dependent_setup(
     images
         .iter()
         .map(|image| {
-            let view = ImageView::new(image.clone()).unwrap();
+            let view = ImageView::new(image.clone(), ImageViewType::Dim2d).unwrap();
             Framebuffer::start(render_pass.clone())
                 .add(view)
                 .unwrap()

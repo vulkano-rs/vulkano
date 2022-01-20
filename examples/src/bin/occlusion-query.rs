@@ -34,6 +34,7 @@ use vulkano_win::VkSurfaceBuild;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
+use vulkano::image::view::ImageViewType;
 
 fn main() {
     let required_extensions = vulkano_win::required_extensions();
@@ -451,16 +452,16 @@ fn window_size_dependent_setup(
                 depth_stencil_attachment: true,
                 transient_attachment: true,
                 ..ImageUsage::none()
-            },
+            }
         )
-        .unwrap(),
+        .unwrap(), ImageViewType::Dim2d
     )
     .unwrap();
 
     images
         .iter()
         .map(|image| {
-            let view = ImageView::new(image.clone()).unwrap();
+            let view = ImageView::new(image.clone(), ImageViewType::Dim2d).unwrap();
             Framebuffer::start(render_pass.clone())
                 .add(view)
                 .unwrap()

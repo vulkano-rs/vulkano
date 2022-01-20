@@ -20,7 +20,7 @@ use vulkano::command_buffer::{
 };
 use vulkano::device::Queue;
 use vulkano::format::Format;
-use vulkano::image::view::ImageView;
+use vulkano::image::view::{ImageView, ImageViewType};
 use vulkano::image::AttachmentImage;
 use vulkano::image::ImageAccess;
 use vulkano::image::ImageUsage;
@@ -159,7 +159,7 @@ impl FrameSystem {
                 Format::A2B10G10R10_UNORM_PACK32,
                 atch_usage,
             )
-            .unwrap(),
+            .unwrap(), ImageViewType::Dim2d
         )
         .unwrap();
         let normals_buffer = ImageView::new(
@@ -169,7 +169,7 @@ impl FrameSystem {
                 Format::R16G16B16A16_SFLOAT,
                 atch_usage,
             )
-            .unwrap(),
+            .unwrap(), ImageViewType::Dim2d
         )
         .unwrap();
         let depth_buffer = ImageView::new(
@@ -179,7 +179,7 @@ impl FrameSystem {
                 Format::D16_UNORM,
                 atch_usage,
             )
-            .unwrap(),
+            .unwrap(), ImageViewType::Dim2d
         )
         .unwrap();
 
@@ -254,7 +254,7 @@ impl FrameSystem {
                     Format::A2B10G10R10_UNORM_PACK32,
                     atch_usage,
                 )
-                .unwrap(),
+                .unwrap(), ImageViewType::Dim2d
             )
             .unwrap();
             self.normals_buffer = ImageView::new(
@@ -264,7 +264,7 @@ impl FrameSystem {
                     Format::R16G16B16A16_SFLOAT,
                     atch_usage,
                 )
-                .unwrap(),
+                .unwrap(), ImageViewType::Dim2d
             )
             .unwrap();
             self.depth_buffer = ImageView::new(
@@ -274,7 +274,7 @@ impl FrameSystem {
                     Format::D16_UNORM,
                     atch_usage,
                 )
-                .unwrap(),
+                .unwrap(), ImageViewType::Dim2d
             )
             .unwrap();
         }
