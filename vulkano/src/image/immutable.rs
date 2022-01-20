@@ -127,48 +127,50 @@ fn generate_mipmaps<L>(
     layout: ImageLayout,
 ) {
     for level in 1..image.mipmap_levels() {
-        let [xs, ys, ds] = dimensions
-            .mipmap_dimensions(level - 1)
-            .unwrap()
-            .width_height_depth();
-        let [xd, yd, dd] = dimensions
-            .mipmap_dimensions(level)
-            .unwrap()
-            .width_height_depth();
-
-        let src = SubImage::new(
-            image.clone(),
-            level - 1,
-            1,
-            0,
-            dimensions.array_layers(),
-            layout,
-        );
-
-        let dst = SubImage::new(
-            image.clone(),
-            level,
-            1,
-            0,
-            dimensions.array_layers(),
-            layout,
-        );
-
-        cbb.blit_image(
-            src,                               //source
-            [0, 0, 0],                         //source_top_left
-            [xs as i32, ys as i32, ds as i32], //source_bottom_right
-            0,                                 //source_base_array_layer
-            level - 1,                         //source_mip_level
-            dst,                               //destination
-            [0, 0, 0],                         //destination_top_left
-            [xd as i32, yd as i32, dd as i32], //destination_bottom_right
-            0,                                 //destination_base_array_layer
-            level,                             //destination_mip_level
-            1,                                 //layer_count
-            Filter::Linear,                    //filter
-        )
-        .expect("failed to blit a mip map to image!");
+        for layer in 0..image.dimensions().array_layers() {
+            let [xs, ys, ds] = dimensions
+                .mipmap_dimensions(level - 1)
+                .unwrap()
+                .width_height_depth();
+            let [xd, yd, dd] = dimensions
+                .mipmap_dimensions(level)
+                .unwrap()
+                .width_height_depth();
+    
+            let src = SubImage::new(
+                image.clone(),
+                level - 1,
+                1,
+                layer,
+                1,
+                layout,
+            );
+    
+            let dst = SubImage::new(
+                image.clone(),
+                level,
+                1,
+                layer,
+                1,
+                layout,
+            );
+    
+            cbb.blit_image(
+                src,                               //source
+                [0, 0, 0],                         //source_top_left
+                [xs as i32, ys as i32, ds as i32], //source_bottom_right
+                layer,                                 //source_base_array_layer
+                level - 1,                         //source_mip_level
+                dst,                               //destination
+                [0, 0, 0],                         //destination_top_left
+                [xd as i32, yd as i32, dd as i32], //destination_bottom_right
+                layer,                                 //destination_base_array_layer
+                level,                             //destination_mip_level
+                1,                                 //layer_count
+                Filter::Linear,                    //filter
+            )
+            .expect("failed to blit a mip map to image!");
+        }
     }
 }
 
