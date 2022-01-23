@@ -7,7 +7,9 @@
     Pull Request merge. 
 -->
 
-- **Breaking** Updated to half 1.8, smallvec 1.7, winit 0.26, raw-window-handle 0.4.
+- **Breaking** Updated to ash 0.35, half 1.8, smallvec 1.7, winit 0.26, raw-window-handle 0.4.
+- **Breaking** `ColorSpace::DciP3Linear` is renamed to `DisplayP3Linear` to match an equivalent change in the Vulkan naming.
+- Updated vk.xml to 1.2.203.
 - Upgraded to Rust 2021.
 - **Breaking** `DescriptorWrite` is renamed to `WriteDescriptorSet` to match Vulkan, and moved into the main `descriptor_set` module.
 - **Breaking** The constructors of `WriteDescriptorSet` are no longer unsafe. Added convenience constructors for writing non-arrayed bindings.
@@ -33,6 +35,7 @@
 - Added support for filter reduction modes on samplers.
 - Added `buffer_self_copy_overlapping` and `buffer_self_copy_not_overlapping` as unit tests for self_copy feature (#1782).
 - Removed test `basic_conflict` (failed after #1782).
+- Added VertexMember implementations for nalgebra Vectors and Points as an optional crate feature.
 
 # Version 0.27.1 (2021-12-07)
 
