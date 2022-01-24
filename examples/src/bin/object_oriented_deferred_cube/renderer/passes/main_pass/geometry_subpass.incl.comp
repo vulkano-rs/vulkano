@@ -1,0 +1,11 @@
+// This file is named ".comp" to make my VSCode GLSL plugin happy.
+// It's by no means a compute shader.
+
+layout(std140, push_constant) uniform Constants {
+    mat4 model;
+    mat4 view;
+    mat4 projection;
+    uint id;
+    uint base_color;
+}
+constants;
