@@ -407,8 +407,8 @@ impl From<&dyn ImageAccess> for ResourceKey {
     fn from(image: &dyn ImageAccess) -> Self {
         Self::Image(
             image.conflict_key(),
-            image.current_miplevels_access(),
-            image.current_layer_levels_access(),
+            image.current_mip_levels_access(),
+            image.current_array_layers_access(),
         )
     }
 }

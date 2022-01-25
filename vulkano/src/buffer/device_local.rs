@@ -57,7 +57,7 @@ use std::sync::Mutex;
     target_os = "netbsd",
     target_os = "openbsd"
 ))]
-use {crate::memory::ExternalMemoryHandleType, std::fs::File};
+use {crate::memory::ExternalMemoryHandleTypes, std::fs::File};
 
 /// Buffer whose content is in device-local memory.
 ///
@@ -278,7 +278,7 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
     pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryAllocError> {
         self.memory
             .memory()
-            .export_fd(ExternalMemoryHandleType::posix())
+            .export_fd(ExternalMemoryHandleTypes::posix())
     }
 }
 

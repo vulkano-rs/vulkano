@@ -13,7 +13,7 @@ use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::memory::Content;
 use crate::memory::DedicatedAlloc;
-use crate::memory::ExternalMemoryHandleType;
+use crate::memory::ExternalMemoryHandleTypes;
 use crate::DeviceSize;
 use crate::Error;
 use crate::OomError;
@@ -93,7 +93,7 @@ pub struct DeviceMemory {
     device: Arc<Device>,
     size: DeviceSize,
     memory_type_index: u32,
-    handle_types: ExternalMemoryHandleType,
+    handle_types: ExternalMemoryHandleTypes,
     mapped: Mutex<bool>,
 }
 
@@ -180,7 +180,7 @@ impl<'a> DeviceMemoryBuilder<'a> {
     /// - Panics if the export info has already been set.
     pub fn export_info(
         mut self,
-        handle_types: ExternalMemoryHandleType,
+        handle_types: ExternalMemoryHandleTypes,
     ) -> DeviceMemoryBuilder<'a> {
         assert!(self.export_info.is_none());
 
@@ -209,7 +209,7 @@ impl<'a> DeviceMemoryBuilder<'a> {
     pub fn import_info(
         mut self,
         fd: File,
-        handle_types: ExternalMemoryHandleType,
+        handle_types: ExternalMemoryHandleTypes,
     ) -> DeviceMemoryBuilder<'a> {
         assert!(self.import_info.is_none());
 
@@ -362,7 +362,7 @@ impl<'a> DeviceMemoryBuilder<'a> {
             device: self.device,
             size,
             memory_type_index,
-            handle_types: ExternalMemoryHandleType::from(export_handle_bits),
+            handle_types: ExternalMemoryHandleTypes::from(export_handle_bits),
             mapped: Mutex::new(false),
         }))
     }
@@ -461,9 +461,9 @@ impl DeviceMemory {
         size: DeviceSize,
     ) -> Result<DeviceMemory, DeviceMemoryAllocError> {
         let memory = DeviceMemoryBuilder::new(device, memory_type.id(), size)
-            .export_info(ExternalMemoryHandleType {
+            .export_info(ExternalMemoryHandleTypes {
                 opaque_fd: true,
-                ..ExternalMemoryHandleType::none()
+                ..ExternalMemoryHandleTypes::none()
             })
             .build()?;
 
@@ -489,9 +489,9 @@ impl DeviceMemory {
         resource: DedicatedAlloc,
     ) -> Result<DeviceMemory, DeviceMemoryAllocError> {
         let memory = DeviceMemoryBuilder::new(device, memory_type.id(), size)
-            .export_info(ExternalMemoryHandleType {
+            .export_info(ExternalMemoryHandleTypes {
                 opaque_fd: true,
-                ..ExternalMemoryHandleType::none()
+                ..ExternalMemoryHandleTypes::none()
             })
             .dedicated_info(resource)
             .build()?;
@@ -611,7 +611,7 @@ impl DeviceMemory {
     ))]
     pub fn export_fd(
         &self,
-        handle_type: ExternalMemoryHandleType,
+        handle_type: ExternalMemoryHandleTypes,
     ) -> Result<File, DeviceMemoryAllocError> {
         let fns = self.device.fns();
 

@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::device::physical::FormatFeatures;
 use crate::format::ClearValue;
 use crate::format::Format;
 use crate::image::sys::UnsafeImage;
@@ -33,9 +34,9 @@ pub unsafe trait ImageAccess: Send + Sync {
 
     /// Returns the number of mipmap levels of this image.
     #[inline]
-    fn mipmap_levels(&self) -> u32 {
+    fn mip_levels(&self) -> u32 {
         // TODO: not necessarily correct because of the new inner() design?
-        self.inner().image.mipmap_levels()
+        self.inner().image.mip_levels()
     }
 
     /// Returns the number of samples of this image.
@@ -51,16 +52,10 @@ pub unsafe trait ImageAccess: Send + Sync {
         self.inner().image.dimensions()
     }
 
-    /// Returns true if the image can be used as a source for blits.
+    /// Returns the features supported by the image's format.
     #[inline]
-    fn supports_blit_source(&self) -> bool {
-        self.inner().image.format_features().blit_src
-    }
-
-    /// Returns true if the image can be used as a destination for blits.
-    #[inline]
-    fn supports_blit_destination(&self) -> bool {
-        self.inner().image.format_features().blit_dst
+    fn format_features(&self) -> &FormatFeatures {
+        self.inner().image.format_features()
     }
 
     /// When images are created their memory layout is initially `Undefined` or `Preinitialized`.
@@ -82,8 +77,8 @@ pub unsafe trait ImageAccess: Send + Sync {
         false
     }
 
-    unsafe fn preinitialized_layout(&self) -> bool {
-        self.inner().image.preinitialized_layout()
+    unsafe fn initial_layout(&self) -> ImageLayout {
+        self.inner().image.initial_layout()
     }
 
     /// Returns the layout that the image has when it is first used in a primary command buffer.
@@ -141,10 +136,10 @@ pub unsafe trait ImageAccess: Send + Sync {
     fn conflict_key(&self) -> u64;
 
     /// Returns the current mip level that is accessed by the gpu
-    fn current_miplevels_access(&self) -> std::ops::Range<u32>;
+    fn current_mip_levels_access(&self) -> std::ops::Range<u32>;
 
-    /// Returns the current layer level that is accessed by the gpu
-    fn current_layer_levels_access(&self) -> std::ops::Range<u32>;
+    /// Returns the current array layer that is accessed by the gpu
+    fn current_array_layers_access(&self) -> std::ops::Range<u32>;
 
     /// Locks the resource for usage on the GPU. Returns an error if the lock can't be acquired.
     ///
@@ -299,12 +294,12 @@ where
         self.image.unlock(new_layout)
     }
 
-    fn current_miplevels_access(&self) -> std::ops::Range<u32> {
-        self.image.current_miplevels_access()
+    fn current_mip_levels_access(&self) -> std::ops::Range<u32> {
+        self.image.current_mip_levels_access()
     }
 
-    fn current_layer_levels_access(&self) -> std::ops::Range<u32> {
-        self.image.current_layer_levels_access()
+    fn current_array_layers_access(&self) -> std::ops::Range<u32> {
+        self.image.current_array_layers_access()
     }
 }
 
@@ -402,11 +397,11 @@ where
         (**self).is_layout_initialized()
     }
 
-    fn current_miplevels_access(&self) -> std::ops::Range<u32> {
-        (**self).current_miplevels_access()
+    fn current_mip_levels_access(&self) -> std::ops::Range<u32> {
+        (**self).current_mip_levels_access()
     }
 
-    fn current_layer_levels_access(&self) -> std::ops::Range<u32> {
-        (**self).current_layer_levels_access()
+    fn current_array_layers_access(&self) -> std::ops::Range<u32> {
+        (**self).current_array_layers_access()
     }
 }

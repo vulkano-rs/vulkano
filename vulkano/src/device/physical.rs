@@ -7,13 +7,16 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::check_errors;
 use crate::device::{DeviceExtensions, Features, FeaturesFfi, Properties, PropertiesFfi};
+use crate::format::Format;
+use crate::image::{ImageCreateFlags, ImageTiling, ImageType, ImageUsage, SampleCounts};
 use crate::instance::{Instance, InstanceCreationError};
+use crate::memory::ExternalMemoryHandleType;
 use crate::sync::PipelineStage;
-use crate::DeviceSize;
 use crate::Version;
 use crate::VulkanObject;
+use crate::{check_errors, OomError};
+use crate::{DeviceSize, Error};
 use std::ffi::CStr;
 use std::fmt;
 use std::hash::Hash;
@@ -415,6 +418,161 @@ impl<'a> PhysicalDevice<'a> {
     #[inline]
     pub fn supported_features(&self) -> &'a Features {
         &self.info.supported_features
+    }
+
+    /// Retrieves the properties of a format when used by this physical device.
+    pub fn format_properties(&self, format: Format) -> FormatProperties {
+        let mut format_properties2 = ash::vk::FormatProperties2::default();
+        let mut format_properties3 = if self.supported_extensions().khr_format_feature_flags2 {
+            Some(ash::vk::FormatProperties3KHR::default())
+        } else {
+            None
+        };
+
+        if let Some(next) = format_properties3.as_mut() {
+            next.p_next = format_properties2.p_next;
+            format_properties2.p_next = next as *mut _ as *mut _;
+        }
+
+        unsafe {
+            let fns = self.instance.fns();
+
+            if self.api_version() >= Version::V1_1 {
+                fns.v1_1.get_physical_device_format_properties2(
+                    self.info.handle,
+                    format.into(),
+                    &mut format_properties2,
+                );
+            } else if self
+                .instance
+                .enabled_extensions()
+                .khr_get_physical_device_properties2
+            {
+                fns.khr_get_physical_device_properties2
+                    .get_physical_device_format_properties2_khr(
+                        self.info.handle,
+                        format.into(),
+                        &mut format_properties2,
+                    );
+            } else {
+                fns.v1_0.get_physical_device_format_properties(
+                    self.internal_object(),
+                    format.into(),
+                    &mut format_properties2.format_properties,
+                );
+            }
+        }
+
+        match format_properties3 {
+            Some(format_properties3) => FormatProperties {
+                linear_tiling_features: format_properties3.linear_tiling_features.into(),
+                optimal_tiling_features: format_properties3.optimal_tiling_features.into(),
+                buffer_features: format_properties3.buffer_features.into(),
+            },
+            None => FormatProperties {
+                linear_tiling_features: format_properties2
+                    .format_properties
+                    .linear_tiling_features
+                    .into(),
+                optimal_tiling_features: format_properties2
+                    .format_properties
+                    .optimal_tiling_features
+                    .into(),
+                buffer_features: format_properties2.format_properties.buffer_features.into(),
+            },
+        }
+    }
+
+    /// Returns the properties supported for images with a given image configuration.
+    ///
+    /// `Some` is returned if the configuration is supported, `None` if it is not.
+    pub fn image_format_properties(
+        &self,
+        format: Format,
+        ty: ImageType,
+        tiling: ImageTiling,
+        usage: ImageUsage,
+        flags: ImageCreateFlags,
+        external_memory_handle_type: Option<ExternalMemoryHandleType>,
+    ) -> Result<Option<ImageFormatProperties>, OomError> {
+        let mut format_info2 = ash::vk::PhysicalDeviceImageFormatInfo2::builder()
+            .format(format.into())
+            .ty(ty.into())
+            .tiling(tiling.into())
+            .usage(usage.into())
+            .flags(flags.into());
+
+        let mut external_image_format_info = if let Some(handle_type) = external_memory_handle_type
+        {
+            if !(self.api_version() >= Version::V1_1
+                || self
+                    .instance()
+                    .enabled_extensions()
+                    .khr_external_memory_capabilities)
+            {
+                // Can't query this, return unsupported
+                return Ok(None);
+            }
+
+            Some(
+                ash::vk::PhysicalDeviceExternalImageFormatInfo::builder()
+                    .handle_type(handle_type.into()),
+            )
+        } else {
+            None
+        };
+
+        if let Some(next) = external_image_format_info.as_mut() {
+            format_info2 = format_info2.push_next(next);
+        }
+
+        let mut image_format_properties2 = ash::vk::ImageFormatProperties2::default();
+
+        let result = unsafe {
+            let fns = self.instance.fns();
+
+            check_errors(if self.api_version() >= Version::V1_1 {
+                fns.v1_1.get_physical_device_image_format_properties2(
+                    self.info.handle,
+                    &format_info2.build(),
+                    &mut image_format_properties2,
+                )
+            } else if self
+                .instance
+                .enabled_extensions()
+                .khr_get_physical_device_properties2
+            {
+                fns.khr_get_physical_device_properties2
+                    .get_physical_device_image_format_properties2_khr(
+                        self.info.handle,
+                        &format_info2.build(),
+                        &mut image_format_properties2,
+                    )
+            } else {
+                // Can't query this, return unsupported
+                if !format_info2.p_next.is_null() {
+                    return Ok(None);
+                }
+
+                fns.v1_0.get_physical_device_image_format_properties(
+                    self.info.handle,
+                    format_info2.format,
+                    format_info2.ty,
+                    format_info2.tiling,
+                    format_info2.usage,
+                    format_info2.flags,
+                    &mut image_format_properties2.image_format_properties,
+                )
+            })
+        };
+
+        match result {
+            Ok(_) => Ok(Some(
+                image_format_properties2.image_format_properties.into(),
+            )),
+            Err(Error::FormatNotSupported) => Ok(None),
+            Err(err) => Err(err.into()),
+        }
     }
 
     /// Builds an iterator that enumerates all the memory types on this physical device.
@@ -927,5 +1085,242 @@ impl From<ash::vk::ShaderCorePropertiesFlagsAMD> for ShaderCoreProperties {
     #[inline]
     fn from(val: ash::vk::ShaderCorePropertiesFlagsAMD) -> Self {
         Self {}
+    }
+}
+
+/// The properties of a format that are supported by a physical device.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct FormatProperties {
+    /// Features available for images with linear tiling.
+    pub linear_tiling_features: FormatFeatures,
+
+    /// Features available for images with optimal tiling.
+    pub optimal_tiling_features: FormatFeatures,
+
+    /// Features available for buffers.
+    pub buffer_features: FormatFeatures,
+}
+
+/// The features supported by a device for an image or buffer with a particular format.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[allow(missing_docs)]
+pub struct FormatFeatures {
+    // Image usage
+    /// Can be used with a sampled image descriptor.
+    pub sampled_image: bool,
+    /// Can be used with a storage image descriptor.
+    pub storage_image: bool,
+    /// Can be used with a storage image descriptor with atomic operations in a shader.
+    pub storage_image_atomic: bool,
+    /// Can be used with a storage image descriptor for reading, without specifying a format on the
+    /// image view.
+    pub storage_read_without_format: bool,
+    /// Can be used with a storage image descriptor for writing, without specifying a format on the
+    /// image view.
+    pub storage_write_without_format: bool,
+    /// Can be used with a color attachment in a framebuffer, or with an input attachment
+    /// descriptor.
+    pub color_attachment: bool,
+    /// Can be used with a color attachment in a framebuffer with blending, or with an input
+    /// attachment descriptor.
+    pub color_attachment_blend: bool,
+    /// Can be used with a depth/stencil attachment in a framebuffer, or with an input attachment
+    /// descriptor.
+    pub depth_stencil_attachment: bool,
+    /// Can be used with a fragment density map attachment in a framebuffer.
+    pub fragment_density_map: bool,
+    /// Can be used with a fragment shading rate attachment in a framebuffer.
+    pub fragment_shading_rate_attachment: bool,
+    /// Can be used with the source image in a transfer (copy) operation.
+    pub transfer_src: bool,
+    /// Can be used with the destination image in a transfer (copy) operation.
+    pub transfer_dst: bool,
+    /// Can be used with the source image in a blit operation.
+    pub blit_src: bool,
+    /// Can be used with the destination image in a blit operation.
+    pub blit_dst: bool,
+
+    // Sampling
+    /// Can be used with samplers or as a blit source, using the
+    /// [`Linear`](crate::sampler::Filter::Linear) filter.
+    pub sampled_image_filter_linear: bool,
+    /// Can be used with samplers or as a blit source, using the
+    /// [`Cubic`](crate::sampler::Filter::Cubic) filter.
+    pub sampled_image_filter_cubic: bool,
+    /// Can be used with samplers using a reduction mode of
+    /// [`Min`](crate::sampler::SamplerReductionMode::Min) or
+    /// [`Max`](crate::sampler::SamplerReductionMode::Max).
+    pub sampled_image_filter_minmax: bool,
+    /// Can be used with sampler YCbCr conversions using a chroma offset of
+    /// [`Midpoint`](crate::sampler::ycbcr::ChromaLocation::Midpoint).
+    pub midpoint_chroma_samples: bool,
+    /// Can be used with sampler YCbCr conversions using a chroma offset of
+    /// [`CositedEven`](crate::sampler::ycbcr::ChromaLocation::CositedEven).
+    pub cosited_chroma_samples: bool,
+    /// Can be used with sampler YCbCr conversions using the
+    /// [`Linear`](crate::sampler::Filter::Linear) chroma filter.
+    pub sampled_image_ycbcr_conversion_linear_filter: bool,
+    /// Can be used with sampler YCbCr conversions whose chroma filter differs from the filters of
+    /// the base sampler.
+    pub sampled_image_ycbcr_conversion_separate_reconstruction_filter: bool,
+    /// When used with a sampler YCbCr conversion, the implementation will always perform
+    /// explicit chroma reconstruction.
+    pub sampled_image_ycbcr_conversion_chroma_reconstruction_explicit: bool,
+    /// Can be used with sampler YCbCr conversions with forced explicit reconstruction.
+    pub sampled_image_ycbcr_conversion_chroma_reconstruction_explicit_forceable: bool,
+    /// Can be used with samplers using depth comparison.
+    pub sampled_image_depth_comparison: bool,
+
+    // Video
+    /// Can be used with the output image of a video decode operation.
+    pub video_decode_output: bool,
+    /// Can be used with the DPB image of a video decode operation.
+    pub video_decode_dpb: bool,
+    /// Can be used with the input image of a video encode operation.
+    pub video_encode_input: bool,
+    /// Can be used with the DPB image of a video encode operation.
+    pub video_encode_dpb: bool,
+
+    // Misc image features
+    /// For multi-planar formats, can be used with images created with the `disjoint` flag.
+    pub disjoint: bool,
+
+    // Buffer usage
+    /// Can be used with a uniform texel buffer descriptor.
+    pub uniform_texel_buffer: bool,
+    /// Can be used with a storage texel buffer descriptor.
+    pub storage_texel_buffer: bool,
+    /// Can be used with a storage texel buffer descriptor with atomic operations in a shader.
+    pub storage_texel_buffer_atomic: bool,
+    /// Can be used as the format of a vertex attribute in the vertex input state of a graphics
+    /// pipeline.
+    pub vertex_buffer: bool,
+    /// Can be used with the vertex buffer of an acceleration structure.
+    pub acceleration_structure_vertex_buffer: bool,
+}
+
+impl From<ash::vk::FormatFeatureFlags> for FormatFeatures {
+    #[inline]
+    #[rustfmt::skip]
+    fn from(val: ash::vk::FormatFeatureFlags) -> FormatFeatures {
+        FormatFeatures {
+            sampled_image: val.intersects(ash::vk::FormatFeatureFlags::SAMPLED_IMAGE),
+            storage_image: val.intersects(ash::vk::FormatFeatureFlags::STORAGE_IMAGE),
+            storage_image_atomic: val.intersects(ash::vk::FormatFeatureFlags::STORAGE_IMAGE_ATOMIC),
+            storage_read_without_format: false, // FormatFeatureFlags2KHR only
+            storage_write_without_format: false, // FormatFeatureFlags2KHR only
+            color_attachment: val.intersects(ash::vk::FormatFeatureFlags::COLOR_ATTACHMENT),
+            color_attachment_blend: val.intersects(ash::vk::FormatFeatureFlags::COLOR_ATTACHMENT_BLEND),
+            depth_stencil_attachment: val.intersects(ash::vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT),
+            fragment_density_map: val.intersects(ash::vk::FormatFeatureFlags::FRAGMENT_DENSITY_MAP_EXT),
+            fragment_shading_rate_attachment: val.intersects(ash::vk::FormatFeatureFlags::FRAGMENT_SHADING_RATE_ATTACHMENT_KHR),
+            transfer_src: val.intersects(ash::vk::FormatFeatureFlags::TRANSFER_SRC),
+            transfer_dst: val.intersects(ash::vk::FormatFeatureFlags::TRANSFER_DST),
+            blit_src: val.intersects(ash::vk::FormatFeatureFlags::BLIT_SRC),
+            blit_dst: val.intersects(ash::vk::FormatFeatureFlags::BLIT_DST),
+
+            sampled_image_filter_linear: val.intersects(ash::vk::FormatFeatureFlags::SAMPLED_IMAGE_FILTER_LINEAR),
+            sampled_image_filter_cubic: val.intersects(ash::vk::FormatFeatureFlags::SAMPLED_IMAGE_FILTER_CUBIC_EXT),
+            sampled_image_filter_minmax: val.intersects(ash::vk::FormatFeatureFlags::SAMPLED_IMAGE_FILTER_MINMAX),
+            midpoint_chroma_samples: val.intersects(ash::vk::FormatFeatureFlags::MIDPOINT_CHROMA_SAMPLES),
+            cosited_chroma_samples: val.intersects(ash::vk::FormatFeatureFlags::COSITED_CHROMA_SAMPLES),
+            sampled_image_ycbcr_conversion_linear_filter: val.intersects(ash::vk::FormatFeatureFlags::SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER),
+            sampled_image_ycbcr_conversion_separate_reconstruction_filter: val.intersects(ash::vk::FormatFeatureFlags::SAMPLED_IMAGE_YCBCR_CONVERSION_SEPARATE_RECONSTRUCTION_FILTER),
+            sampled_image_ycbcr_conversion_chroma_reconstruction_explicit: val.intersects(ash::vk::FormatFeatureFlags::SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT),
+            sampled_image_ycbcr_conversion_chroma_reconstruction_explicit_forceable: val.intersects(ash::vk::FormatFeatureFlags::SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT_FORCEABLE),
+            sampled_image_depth_comparison: false, // FormatFeatureFlags2KHR only
+
+            video_decode_output: val.intersects(ash::vk::FormatFeatureFlags::VIDEO_DECODE_OUTPUT_KHR),
+            video_decode_dpb: val.intersects(ash::vk::FormatFeatureFlags::VIDEO_DECODE_DPB_KHR),
+            video_encode_input: val.intersects(ash::vk::FormatFeatureFlags::VIDEO_ENCODE_INPUT_KHR),
+            video_encode_dpb: val.intersects(ash::vk::FormatFeatureFlags::VIDEO_ENCODE_DPB_KHR),
+
+            disjoint: val.intersects(ash::vk::FormatFeatureFlags::DISJOINT),
+
+            uniform_texel_buffer: val.intersects(ash::vk::FormatFeatureFlags::UNIFORM_TEXEL_BUFFER),
+            storage_texel_buffer: val.intersects(ash::vk::FormatFeatureFlags::STORAGE_TEXEL_BUFFER),
+            storage_texel_buffer_atomic: val.intersects(ash::vk::FormatFeatureFlags::STORAGE_TEXEL_BUFFER_ATOMIC),
+            vertex_buffer: val.intersects(ash::vk::FormatFeatureFlags::VERTEX_BUFFER),
+            acceleration_structure_vertex_buffer: val.intersects(ash::vk::FormatFeatureFlags::ACCELERATION_STRUCTURE_VERTEX_BUFFER_KHR),
+        }
+    }
+}
+
+impl From<ash::vk::FormatFeatureFlags2KHR> for FormatFeatures {
+    #[inline]
+    #[rustfmt::skip]
+    fn from(val: ash::vk::FormatFeatureFlags2KHR) -> FormatFeatures {
+        FormatFeatures {
+            sampled_image: val.intersects(ash::vk::FormatFeatureFlags2KHR::SAMPLED_IMAGE),
+            storage_image: val.intersects(ash::vk::FormatFeatureFlags2KHR::STORAGE_IMAGE),
+            storage_image_atomic: val.intersects(ash::vk::FormatFeatureFlags2KHR::STORAGE_IMAGE_ATOMIC),
+            storage_read_without_format: val.intersects(ash::vk::FormatFeatureFlags2KHR::STORAGE_READ_WITHOUT_FORMAT),
+            storage_write_without_format: val.intersects(ash::vk::FormatFeatureFlags2KHR::STORAGE_WRITE_WITHOUT_FORMAT),
+            color_attachment: val.intersects(ash::vk::FormatFeatureFlags2KHR::COLOR_ATTACHMENT),
+            color_attachment_blend: val.intersects(ash::vk::FormatFeatureFlags2KHR::COLOR_ATTACHMENT_BLEND),
+            depth_stencil_attachment: val.intersects(ash::vk::FormatFeatureFlags2KHR::DEPTH_STENCIL_ATTACHMENT),
+            fragment_density_map: val.intersects(ash::vk::FormatFeatureFlags2KHR::FRAGMENT_DENSITY_MAP_EXT),
+            fragment_shading_rate_attachment: val.intersects(ash::vk::FormatFeatureFlags2KHR::FRAGMENT_SHADING_RATE_ATTACHMENT),
+            transfer_src: val.intersects(ash::vk::FormatFeatureFlags2KHR::TRANSFER_SRC),
+            transfer_dst: val.intersects(ash::vk::FormatFeatureFlags2KHR::TRANSFER_DST),
+            blit_src: val.intersects(ash::vk::FormatFeatureFlags2KHR::BLIT_SRC),
+            blit_dst: val.intersects(ash::vk::FormatFeatureFlags2KHR::BLIT_DST),
+
+            sampled_image_filter_linear: val.intersects(ash::vk::FormatFeatureFlags2KHR::SAMPLED_IMAGE_FILTER_LINEAR),
+            sampled_image_filter_cubic: val.intersects(ash::vk::FormatFeatureFlags2KHR::SAMPLED_IMAGE_FILTER_CUBIC_EXT),
+            sampled_image_filter_minmax: val.intersects(ash::vk::FormatFeatureFlags2KHR::SAMPLED_IMAGE_FILTER_MINMAX),
+            midpoint_chroma_samples: val.intersects(ash::vk::FormatFeatureFlags2KHR::MIDPOINT_CHROMA_SAMPLES),
+            cosited_chroma_samples: val.intersects(ash::vk::FormatFeatureFlags2KHR::COSITED_CHROMA_SAMPLES),
+            sampled_image_ycbcr_conversion_linear_filter: val.intersects(ash::vk::FormatFeatureFlags2KHR::SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER),
+            sampled_image_ycbcr_conversion_separate_reconstruction_filter: val.intersects(ash::vk::FormatFeatureFlags2KHR::SAMPLED_IMAGE_YCBCR_CONVERSION_SEPARATE_RECONSTRUCTION_FILTER),
+            sampled_image_ycbcr_conversion_chroma_reconstruction_explicit: val.intersects(ash::vk::FormatFeatureFlags2KHR::SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT),
+            sampled_image_ycbcr_conversion_chroma_reconstruction_explicit_forceable: val.intersects(ash::vk::FormatFeatureFlags2KHR::SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT_FORCEABLE),
+            sampled_image_depth_comparison: val.intersects(ash::vk::FormatFeatureFlags2KHR::SAMPLED_IMAGE_DEPTH_COMPARISON),
+
+            video_decode_output: val.intersects(ash::vk::FormatFeatureFlags2KHR::VIDEO_DECODE_OUTPUT),
+            video_decode_dpb: val.intersects(ash::vk::FormatFeatureFlags2KHR::VIDEO_DECODE_DPB),
+            video_encode_input: val.intersects(ash::vk::FormatFeatureFlags2KHR::VIDEO_ENCODE_INPUT),
+            video_encode_dpb: val.intersects(ash::vk::FormatFeatureFlags2KHR::VIDEO_ENCODE_DPB),
+
+            disjoint: val.intersects(ash::vk::FormatFeatureFlags2KHR::DISJOINT),
+
+            uniform_texel_buffer: val.intersects(ash::vk::FormatFeatureFlags2KHR::UNIFORM_TEXEL_BUFFER),
+            storage_texel_buffer: val.intersects(ash::vk::FormatFeatureFlags2KHR::STORAGE_TEXEL_BUFFER),
+            storage_texel_buffer_atomic: val.intersects(ash::vk::FormatFeatureFlags2KHR::STORAGE_TEXEL_BUFFER_ATOMIC),
+            vertex_buffer: val.intersects(ash::vk::FormatFeatureFlags2KHR::VERTEX_BUFFER),
+            acceleration_structure_vertex_buffer: val.intersects(ash::vk::FormatFeatureFlags2KHR::ACCELERATION_STRUCTURE_VERTEX_BUFFER),
+        }
+    }
+}
+
+/// The properties that are supported by a physical device for images of a certain type.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ImageFormatProperties {
+    /// The maximum dimensions.
+    pub max_extent: [u32; 3],
+    /// The maximum number of mipmap levels.
+    pub max_mip_levels: u32,
+    /// The maximum number of array layers.
+    pub max_array_layers: u32,
+    /// The supported sample counts.
+    pub sample_counts: SampleCounts,
+    /// The maximum total size of an image, in bytes. This is guaranteed to be at least
+    /// 0x80000000.
+    pub max_resource_size: DeviceSize,
+}
+
+impl From<ash::vk::ImageFormatProperties> for ImageFormatProperties {
+    fn from(props: ash::vk::ImageFormatProperties) -> Self {
+        Self {
+            max_extent: [
+                props.max_extent.width,
+                props.max_extent.height,
+                props.max_extent.depth,
+            ],
+            max_mip_levels: props.max_mip_levels,
+            max_array_layers: props.max_array_layers,
+            sample_counts: props.sample_counts.into(),
+            max_resource_size: props.max_resource_size,
+        }
     }
 }

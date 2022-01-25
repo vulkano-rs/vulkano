@@ -252,6 +252,7 @@ pub struct SamplerBuilder {
 }
 
 impl SamplerBuilder {
+    /// Creates the `Sampler`.
     pub fn build(self) -> Result<Arc<Sampler>, SamplerCreationError> {
         let device = self.device;
 
@@ -706,6 +707,303 @@ impl SamplerBuilder {
     }
 }
 
+/// Error that can happen when creating an instance.
+#[derive(Clone, Debug, PartialEq)]
+pub enum SamplerCreationError {
+    /// Not enough memory.
+    OomError(OomError),
+
+    /// Too many sampler objects have been created. You must destroy some before creating new ones.
+    /// Note the specs guarantee that at least 4000 samplers can exist simultaneously.
+    TooManyObjects,
+
+    ExtensionNotEnabled {
+        extension: &'static str,
+        reason: &'static str,
+    },
+    FeatureNotEnabled {
+        feature: &'static str,
+        reason: &'static str,
+    },
+
+    /// Anisotropy was enabled with an invalid filter.
+    AnisotropyInvalidFilter {
+        mag_filter: Filter,
+        min_filter: Filter,
+    },
+
+    /// Depth comparison was enabled with an invalid reduction mode.
+    CompareInvalidReductionMode {
+        reduction_mode: SamplerReductionMode,
+    },
+
+    /// The requested anisotropy level exceeds the device's limits.
+    MaxSamplerAnisotropyExceeded {
+        /// The value that was requested.
+        requested: f32,
+        /// The maximum supported value.
+        maximum: f32,
+    },
+
+    /// The requested mip lod bias exceeds the device's limits.
+    MaxSamplerLodBiasExceeded {
+        /// The value that was requested.
+        requested: f32,
+        /// The maximum supported value.
+        maximum: f32,
+    },
+
+    /// Unnormalized coordinates were enabled together with anisotropy.
+    UnnormalizedCoordinatesAnisotropyEnabled,
+
+    /// Unnormalized coordinates were enabled together with depth comparison.
+    UnnormalizedCoordinatesCompareEnabled,
+
+    /// Unnormalized coordinates were enabled, but the min and mag filters were not equal.
+    UnnormalizedCoordinatesFiltersNotEqual {
+        mag_filter: Filter,
+        min_filter: Filter,
+    },
+
+    /// Unnormalized coordinates were enabled, but the address mode for u or v was something other
+    /// than `ClampToEdge` or `ClampToBorder`.
+    UnnormalizedCoordinatesInvalidAddressMode {
+        address_mode_u: SamplerAddressMode,
+        address_mode_v: SamplerAddressMode,
+    },
+
+    /// Unnormalized coordinates were enabled, but the mipmap mode was not `Nearest`.
+    UnnormalizedCoordinatesInvalidMipmapMode { mipmap_mode: SamplerMipmapMode },
+
+    /// Unnormalized coordinates were enabled, but the LOD range was not zero.
+    UnnormalizedCoordinatesNonzeroLod { lod: RangeInclusive<f32> },
+}
+
+impl error::Error for SamplerCreationError {
+    #[inline]
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match *self {
+            SamplerCreationError::OomError(ref err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for SamplerCreationError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match *self {
+            Self::OomError(_) => write!(fmt, "not enough memory available"),
+            Self::TooManyObjects => write!(fmt, "too many simultaneous sampler objects",),
+            Self::ExtensionNotEnabled { extension, reason } => write!(
+                fmt,
+                "the extension {} must be enabled: {}",
+                extension, reason
+            ),
+            Self::FeatureNotEnabled { feature, reason } => {
+                write!(fmt, "the feature {} must be enabled: {}", feature, reason)
+            }
+            Self::AnisotropyInvalidFilter { .. } => write!(fmt, "anisotropy was enabled with an invalid filter"),
+            Self::CompareInvalidReductionMode { .. } => write!(fmt, "depth comparison was enabled with an invalid reduction mode"),
+            Self::MaxSamplerAnisotropyExceeded { .. } => {
+                write!(fmt, "max_sampler_anisotropy limit exceeded")
+            }
+            Self::MaxSamplerLodBiasExceeded { .. } => write!(fmt, "mip lod bias limit exceeded"),
+            Self::UnnormalizedCoordinatesAnisotropyEnabled => write!(
+                fmt,
+                "unnormalized coordinates were enabled together with anisotropy"
+            ),
+            Self::UnnormalizedCoordinatesCompareEnabled => write!(
+                fmt,
+                "unnormalized coordinates were enabled together with depth comparison"
+            ),
+            Self::UnnormalizedCoordinatesFiltersNotEqual { .. } => write!(
+                fmt,
+                "unnormalized coordinates were enabled, but the min and mag filters were not equal"
+            ),
+            Self::UnnormalizedCoordinatesInvalidAddressMode { .. } => write!(
+                fmt,
+                "unnormalized coordinates were enabled, but the address mode for u or v was something other than `ClampToEdge` or `ClampToBorder`"
+            ),
+            Self::UnnormalizedCoordinatesInvalidMipmapMode { .. } => write!(
+                fmt,
+                "unnormalized coordinates were enabled, but the mipmap mode was not `Nearest`"
+            ),
+            Self::UnnormalizedCoordinatesNonzeroLod { .. } => write!(
+                fmt,
+                "unnormalized coordinates were enabled, but the LOD range was not zero"
+            ),
+        }
+    }
+}
+
+impl From<OomError> for SamplerCreationError {
+    #[inline]
+    fn from(err: OomError) -> SamplerCreationError {
+        SamplerCreationError::OomError(err)
+    }
+}
+
+impl From<Error> for SamplerCreationError {
+    #[inline]
+    fn from(err: Error) -> SamplerCreationError {
+        match err {
+            err @ Error::OutOfHostMemory => SamplerCreationError::OomError(OomError::from(err)),
+            err @ Error::OutOfDeviceMemory => SamplerCreationError::OomError(OomError::from(err)),
+            Error::TooManyObjects => SamplerCreationError::TooManyObjects,
+            _ => panic!("unexpected error: {:?}", err),
+        }
+    }
+}
+
+/// A mapping between components of a source format and components read by a shader.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub struct ComponentMapping {
+    /// First component.
+    pub r: ComponentSwizzle,
+    /// Second component.
+    pub g: ComponentSwizzle,
+    /// Third component.
+    pub b: ComponentSwizzle,
+    /// Fourth component.
+    pub a: ComponentSwizzle,
+}
+
+impl ComponentMapping {
+    /// Creates a `ComponentMapping` with all components identity swizzled.
+    #[inline]
+    pub fn identity() -> Self {
+        Self::default()
+    }
+
+    /// Returns `true` if all components are identity swizzled,
+    /// meaning that all the members are `Identity` or the name of that member.
+    ///
+    /// Certain operations require views that are identity swizzled, and will return an error
+    /// otherwise. For example, attaching a view to a framebuffer is only possible if the view is
+    /// identity swizzled.
+    #[inline]
+    pub fn is_identity(&self) -> bool {
+        self.r_is_identity() && self.g_is_identity() && self.b_is_identity() && self.a_is_identity()
+    }
+
+    /// Returns `true` if the red component mapping is identity swizzled.
+    #[inline]
+    pub fn r_is_identity(&self) -> bool {
+        matches!(self.r, ComponentSwizzle::Identity | ComponentSwizzle::Red)
+    }
+
+    /// Returns `true` if the green component mapping is identity swizzled.
+    #[inline]
+    pub fn g_is_identity(&self) -> bool {
+        matches!(self.g, ComponentSwizzle::Identity | ComponentSwizzle::Green)
+    }
+
+    /// Returns `true` if the blue component mapping is identity swizzled.
+    #[inline]
+    pub fn b_is_identity(&self) -> bool {
+        matches!(self.b, ComponentSwizzle::Identity | ComponentSwizzle::Blue)
+    }
+
+    /// Returns `true` if the alpha component mapping is identity swizzled.
+    #[inline]
+    pub fn a_is_identity(&self) -> bool {
+        matches!(self.a, ComponentSwizzle::Identity | ComponentSwizzle::Alpha)
+    }
+
+    /// Returns the component indices that each component reads from. The index is `None` if the
+    /// component has a fixed value and is not read from anywhere (`Zero` or `One`).
+    #[inline]
+    pub fn component_map(&self) -> [Option<usize>; 4] {
+        [
+            match self.r {
+                ComponentSwizzle::Identity => Some(0),
+                ComponentSwizzle::Zero => None,
+                ComponentSwizzle::One => None,
+                ComponentSwizzle::Red => Some(0),
+                ComponentSwizzle::Green => Some(1),
+                ComponentSwizzle::Blue => Some(2),
+                ComponentSwizzle::Alpha => Some(3),
+            },
+            match self.g {
+                ComponentSwizzle::Identity => Some(1),
+                ComponentSwizzle::Zero => None,
+                ComponentSwizzle::One => None,
+                ComponentSwizzle::Red => Some(0),
+                ComponentSwizzle::Green => Some(1),
+                ComponentSwizzle::Blue => Some(2),
+                ComponentSwizzle::Alpha => Some(3),
+            },
+            match self.b {
+                ComponentSwizzle::Identity => Some(2),
+                ComponentSwizzle::Zero => None,
+                ComponentSwizzle::One => None,
+                ComponentSwizzle::Red => Some(0),
+                ComponentSwizzle::Green => Some(1),
+                ComponentSwizzle::Blue => Some(2),
+                ComponentSwizzle::Alpha => Some(3),
+            },
+            match self.a {
+                ComponentSwizzle::Identity => Some(3),
+                ComponentSwizzle::Zero => None,
+                ComponentSwizzle::One => None,
+                ComponentSwizzle::Red => Some(0),
+                ComponentSwizzle::Green => Some(1),
+                ComponentSwizzle::Blue => Some(2),
+                ComponentSwizzle::Alpha => Some(3),
+            },
+        ]
+    }
+}
+
+impl From<ComponentMapping> for ash::vk::ComponentMapping {
+    #[inline]
+    fn from(value: ComponentMapping) -> Self {
+        Self {
+            r: value.r.into(),
+            g: value.g.into(),
+            b: value.b.into(),
+            a: value.a.into(),
+        }
+    }
+}
+
+/// Describes the value that an individual component must return when being accessed.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(i32)]
+pub enum ComponentSwizzle {
+    /// Returns the value that this component should normally have.
+    ///
+    /// This is the `Default` value.
+    Identity = ash::vk::ComponentSwizzle::IDENTITY.as_raw(),
+    /// Always return zero.
+    Zero = ash::vk::ComponentSwizzle::ZERO.as_raw(),
+    /// Always return one.
+    One = ash::vk::ComponentSwizzle::ONE.as_raw(),
+    /// Returns the value of the first component.
+    Red = ash::vk::ComponentSwizzle::R.as_raw(),
+    /// Returns the value of the second component.
+    Green = ash::vk::ComponentSwizzle::G.as_raw(),
+    /// Returns the value of the third component.
+    Blue = ash::vk::ComponentSwizzle::B.as_raw(),
+    /// Returns the value of the fourth component.
+    Alpha = ash::vk::ComponentSwizzle::A.as_raw(),
+}
+
+impl From<ComponentSwizzle> for ash::vk::ComponentSwizzle {
+    #[inline]
+    fn from(val: ComponentSwizzle) -> Self {
+        Self::from_raw(val as i32)
+    }
+}
+
+impl Default for ComponentSwizzle {
+    #[inline]
+    fn default() -> ComponentSwizzle {
+        ComponentSwizzle::Identity
+    }
+}
+
 /// Describes how the color of each pixel should be determined.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[repr(i32)]
@@ -864,155 +1162,6 @@ impl From<SamplerReductionMode> for ash::vk::SamplerReductionMode {
     #[inline]
     fn from(val: SamplerReductionMode) -> Self {
         Self::from_raw(val as i32)
-    }
-}
-
-/// Error that can happen when creating an instance.
-#[derive(Clone, Debug, PartialEq)]
-pub enum SamplerCreationError {
-    /// Not enough memory.
-    OomError(OomError),
-
-    /// Too many sampler objects have been created. You must destroy some before creating new ones.
-    /// Note the specs guarantee that at least 4000 samplers can exist simultaneously.
-    TooManyObjects,
-
-    ExtensionNotEnabled {
-        extension: &'static str,
-        reason: &'static str,
-    },
-    FeatureNotEnabled {
-        feature: &'static str,
-        reason: &'static str,
-    },
-
-    /// Anisotropy was enabled with an invalid filter.
-    AnisotropyInvalidFilter {
-        mag_filter: Filter,
-        min_filter: Filter,
-    },
-
-    /// Depth comparison was enabled with an invalid reduction mode.
-    CompareInvalidReductionMode {
-        reduction_mode: SamplerReductionMode,
-    },
-
-    /// The requested anisotropy level exceeds the device's limits.
-    MaxSamplerAnisotropyExceeded {
-        /// The value that was requested.
-        requested: f32,
-        /// The maximum supported value.
-        maximum: f32,
-    },
-
-    /// The requested mip lod bias exceeds the device's limits.
-    MaxSamplerLodBiasExceeded {
-        /// The value that was requested.
-        requested: f32,
-        /// The maximum supported value.
-        maximum: f32,
-    },
-
-    /// Unnormalized coordinates were enabled together with anisotropy.
-    UnnormalizedCoordinatesAnisotropyEnabled,
-
-    /// Unnormalized coordinates were enabled together with depth comparison.
-    UnnormalizedCoordinatesCompareEnabled,
-
-    /// Unnormalized coordinates were enabled, but the min and mag filters were not equal.
-    UnnormalizedCoordinatesFiltersNotEqual {
-        mag_filter: Filter,
-        min_filter: Filter,
-    },
-
-    /// Unnormalized coordinates were enabled, but the address mode for u or v was something other
-    /// than `ClampToEdge` or `ClampToBorder`.
-    UnnormalizedCoordinatesInvalidAddressMode {
-        address_mode_u: SamplerAddressMode,
-        address_mode_v: SamplerAddressMode,
-    },
-
-    /// Unnormalized coordinates were enabled, but the mipmap mode was not `Nearest`.
-    UnnormalizedCoordinatesInvalidMipmapMode { mipmap_mode: SamplerMipmapMode },
-
-    /// Unnormalized coordinates were enabled, but the LOD range was not zero.
-    UnnormalizedCoordinatesNonzeroLod { lod: RangeInclusive<f32> },
-}
-
-impl error::Error for SamplerCreationError {
-    #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match *self {
-            SamplerCreationError::OomError(ref err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl fmt::Display for SamplerCreationError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match *self {
-            Self::OomError(_) => write!(fmt, "not enough memory available"),
-            Self::TooManyObjects => write!(fmt, "too many simultaneous sampler objects",),
-            Self::ExtensionNotEnabled { extension, reason } => write!(
-                fmt,
-                "the extension {} must be enabled: {}",
-                extension, reason
-            ),
-            Self::FeatureNotEnabled { feature, reason } => {
-                write!(fmt, "the feature {} must be enabled: {}", feature, reason)
-            }
-            Self::AnisotropyInvalidFilter { .. } => write!(fmt, "anisotropy was enabled with an invalid filter"),
-            Self::CompareInvalidReductionMode { .. } => write!(fmt, "depth comparison was enabled with an invalid reduction mode"),
-            Self::MaxSamplerAnisotropyExceeded { .. } => {
-                write!(fmt, "max_sampler_anisotropy limit exceeded")
-            }
-            Self::MaxSamplerLodBiasExceeded { .. } => write!(fmt, "mip lod bias limit exceeded"),
-            Self::UnnormalizedCoordinatesAnisotropyEnabled => write!(
-                fmt,
-                "unnormalized coordinates were enabled together with anisotropy"
-            ),
-            Self::UnnormalizedCoordinatesCompareEnabled => write!(
-                fmt,
-                "unnormalized coordinates were enabled together with depth comparison"
-            ),
-            Self::UnnormalizedCoordinatesFiltersNotEqual { .. } => write!(
-                fmt,
-                "unnormalized coordinates were enabled, but the min and mag filters were not equal"
-            ),
-            Self::UnnormalizedCoordinatesInvalidAddressMode { .. } => write!(
-                fmt,
-                "unnormalized coordinates were enabled, but the address mode for u or v was something other than `ClampToEdge` or `ClampToBorder`"
-            ),
-            Self::UnnormalizedCoordinatesInvalidMipmapMode { .. } => write!(
-                fmt,
-                "unnormalized coordinates were enabled, but the mipmap mode was not `Nearest`"
-            ),
-            Self::UnnormalizedCoordinatesNonzeroLod { .. } => write!(
-                fmt,
-                "unnormalized coordinates were enabled, but the LOD range was not zero"
-            ),
-        }
-    }
-}
-
-impl From<OomError> for SamplerCreationError {
-    #[inline]
-    fn from(err: OomError) -> SamplerCreationError {
-        SamplerCreationError::OomError(err)
-    }
-}
-
-impl From<Error> for SamplerCreationError {
-    #[inline]
-    fn from(err: Error) -> SamplerCreationError {
-        match err {
-            err @ Error::OutOfHostMemory => SamplerCreationError::OomError(OomError::from(err)),
-            err @ Error::OutOfDeviceMemory => SamplerCreationError::OomError(OomError::from(err)),
-            Error::TooManyObjects => SamplerCreationError::TooManyObjects,
-            _ => panic!("unexpected error: {:?}", err),
-        }
     }
 }
 

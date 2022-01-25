@@ -128,7 +128,7 @@ impl TryFrom<u32> for SampleCount {
 }
 
 /// Specifies how many sample counts supported for an image used for storage operations.
-#[derive(Debug, Copy, Clone, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SampleCounts {
     // specify an image with one sample per pixel
     pub sample1: bool,
@@ -144,6 +144,22 @@ pub struct SampleCounts {
     pub sample32: bool,
     // specify an image with 64 samples per pixel
     pub sample64: bool,
+}
+
+impl SampleCounts {
+    /// Returns true if `self` has the `sample_count` value set.
+    #[inline]
+    pub fn contains(&self, sample_count: SampleCount) -> bool {
+        match sample_count {
+            SampleCount::Sample1 => self.sample1,
+            SampleCount::Sample2 => self.sample2,
+            SampleCount::Sample4 => self.sample4,
+            SampleCount::Sample8 => self.sample8,
+            SampleCount::Sample16 => self.sample16,
+            SampleCount::Sample32 => self.sample32,
+            SampleCount::Sample64 => self.sample64,
+        }
+    }
 }
 
 impl From<ash::vk::SampleCountFlags> for SampleCounts {
@@ -193,7 +209,7 @@ impl From<SampleCounts> for ash::vk::SampleCountFlags {
 /// Specifies how many mipmaps must be allocated.
 ///
 /// Note that at least one mipmap must be allocated, to store the main level of the image.
-#[derive(Debug, Copy, Clone)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum MipmapsCount {
     /// Allocates the number of mipmaps required to store all the mipmaps of the image where each
     /// mipmap is half the dimensions of the previous level. Guaranteed to be always supported.
@@ -214,75 +230,6 @@ impl From<u32> for MipmapsCount {
     #[inline]
     fn from(num: u32) -> MipmapsCount {
         MipmapsCount::Specific(num)
-    }
-}
-
-/// Helper type for creating extents
-#[derive(Debug, Copy, Clone)]
-pub enum Extent {
-    E1D([u32; 1]),
-    E2D([u32; 2]),
-    E3D([u32; 3]),
-}
-
-impl From<ash::vk::Extent2D> for Extent {
-    fn from(extent: ash::vk::Extent2D) -> Self {
-        Extent::E2D([extent.width, extent.height])
-    }
-}
-
-impl From<ash::vk::Extent3D> for Extent {
-    fn from(extent: ash::vk::Extent3D) -> Self {
-        Extent::E3D([extent.width, extent.height, extent.depth])
-    }
-}
-impl TryFrom<Extent> for ash::vk::Extent2D {
-    type Error = ();
-
-    fn try_from(extent: Extent) -> Result<Self, Self::Error> {
-        match extent {
-            Extent::E2D(a) => Ok(ash::vk::Extent2D {
-                width: a[0],
-                height: a[1],
-            }),
-            _ => Err(()),
-        }
-    }
-}
-
-impl TryFrom<Extent> for ash::vk::Extent3D {
-    type Error = ();
-
-    fn try_from(extent: Extent) -> Result<Self, Self::Error> {
-        match extent {
-            Extent::E3D(a) => Ok(ash::vk::Extent3D {
-                width: a[0],
-                height: a[1],
-                depth: a[2],
-            }),
-            _ => Err(()),
-        }
-    }
-}
-
-/// Helper type returned from Device's `fn image_format_properties()`
-pub struct ImageFormatProperties {
-    pub max_extent: Extent,
-    pub max_mip_levels: MipmapsCount,
-    pub max_array_layers: u32,
-    pub sample_counts: SampleCounts,
-    pub max_resource_size: usize,
-}
-
-impl From<ash::vk::ImageFormatProperties> for ImageFormatProperties {
-    fn from(props: ash::vk::ImageFormatProperties) -> Self {
-        Self {
-            max_extent: props.max_extent.into(),
-            max_mip_levels: props.max_mip_levels.into(),
-            max_array_layers: props.max_array_layers,
-            sample_counts: props.sample_counts.into(),
-            max_resource_size: props.max_resource_size as usize,
-        }
     }
 }
 
@@ -712,7 +659,7 @@ mod tests {
                 queue.clone(),
             )
             .unwrap();
-            assert_eq!(image.mipmap_levels(), 1);
+            assert_eq!(image.mip_levels(), 1);
         }
         {
             let mut vec = Vec::new();
@@ -727,7 +674,7 @@ mod tests {
                 queue.clone(),
             )
             .unwrap();
-            assert_eq!(image.mipmap_levels(), 10);
+            assert_eq!(image.mip_levels(), 10);
         }
     }
 }

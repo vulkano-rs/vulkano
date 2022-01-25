@@ -256,7 +256,7 @@ impl WriteDescriptorSet {
                 DescriptorWriteInfo::BufferView(
                     elements
                         .iter()
-                        .map(|buffer_view| buffer_view.inner())
+                        .map(|buffer_view| buffer_view.internal_object())
                         .collect(),
                 )
             }
@@ -278,7 +278,7 @@ impl WriteDescriptorSet {
                             );
                             ash::vk::DescriptorImageInfo {
                                 sampler: ash::vk::Sampler::null(),
-                                image_view: image_view.inner().internal_object(),
+                                image_view: image_view.internal_object(),
                                 image_layout: layouts.layout_for(descriptor_type).into(),
                             }
                         })
@@ -299,7 +299,7 @@ impl WriteDescriptorSet {
                             );
                             ash::vk::DescriptorImageInfo {
                                 sampler: sampler.internal_object(),
-                                image_view: image_view.inner().internal_object(),
+                                image_view: image_view.internal_object(),
                                 image_layout: layouts.layout_for(descriptor_type).into(),
                             }
                         })

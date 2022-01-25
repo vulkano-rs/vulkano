@@ -360,8 +360,8 @@ impl SyncCommandBufferBuilder {
                                         let b = &mut self.pending_barrier;
                                         b.add_image_memory_barrier(
                                             image.as_ref(),
-                                            image.current_miplevels_access(),
-                                            image.current_layer_levels_access(),
+                                            image.current_mip_levels_access(),
+                                            image.current_array_layers_access(),
                                             entry.memory.stages,
                                             entry.memory.access,
                                             memory.stages,
@@ -436,11 +436,7 @@ impl SyncCommandBufferBuilder {
                                             actually_exclusive = true;
                                             initial_layout_requirement
                                         } else {
-                                            if image.preinitialized_layout() {
-                                                ImageLayout::Preinitialized
-                                            } else {
-                                                ImageLayout::Undefined
-                                            }
+                                            image.initial_layout()
                                         };
                                         if initial_layout_requirement != start_layout {
                                             actual_start_layout = initial_layout_requirement;
@@ -448,8 +444,8 @@ impl SyncCommandBufferBuilder {
                                         let b = &mut self.pending_barrier;
                                         b.add_image_memory_barrier(
                                             image.as_ref(),
-                                            image.current_miplevels_access(),
-                                            image.current_layer_levels_access(),
+                                            image.current_mip_levels_access(),
+                                            image.current_array_layers_access(),
                                             PipelineStages {
                                                 bottom_of_pipe: true,
                                                 ..PipelineStages::none()
@@ -555,8 +551,8 @@ impl SyncCommandBufferBuilder {
 
                     barrier.add_image_memory_barrier(
                         image.as_ref(),
-                        image.current_miplevels_access(),
-                        image.current_layer_levels_access(),
+                        image.current_mip_levels_access(),
+                        image.current_array_layers_access(),
                         state.memory.stages,
                         state.memory.access,
                         PipelineStages {

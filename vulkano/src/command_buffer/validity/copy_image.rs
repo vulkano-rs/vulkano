@@ -9,6 +9,7 @@
 
 use super::ranges::{is_overlapping_ranges, is_overlapping_regions};
 use crate::device::Device;
+use crate::device::DeviceOwned;
 use crate::format::NumericType;
 use crate::image::ImageAccess;
 use crate::image::ImageDimensions;
@@ -74,7 +75,7 @@ where
         // currently expose this information, so to be safe, we simply disallow compressed formats.
         if source.format().compression().is_some()
             || destination.format().compression().is_some()
-            || (source.format().size() != destination.format().size())
+            || (source.format().block_size() != destination.format().block_size())
         {
             return Err(CheckCopyImageError::SizeIncompatibleFormatTypes {
                 source_type,
