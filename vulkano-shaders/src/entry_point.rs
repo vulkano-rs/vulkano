@@ -12,8 +12,8 @@ use proc_macro2::TokenStream;
 use vulkano::pipeline::layout::PipelineLayoutPcRange;
 use vulkano::shader::spirv::ExecutionModel;
 use vulkano::shader::{
-    DescriptorIdentifier, DescriptorRequirements, GeometryShaderExecution, ShaderExecution,
-    ShaderInterfaceEntry, ShaderInterfaceEntryType, SpecializationConstantRequirements,
+    DescriptorIdentifier, DescriptorRequirements, ShaderExecution, ShaderInterfaceEntry,
+    ShaderInterfaceEntryType, SpecializationConstantRequirements,
 };
 use vulkano::shader::{EntryPointInfo, ShaderInterface, ShaderStages};
 
@@ -24,7 +24,7 @@ pub(super) fn write_entry_point(
 ) -> TokenStream {
     let execution = write_shader_execution(&info.execution);
     let model = syn::parse_str::<syn::Path>(&format!(
-        "vulkano::shader::spirv::ExecutionModel::{:?}",
+        "::vulkano::shader::spirv::ExecutionModel::{:?}",
         model
     ))
     .unwrap();
@@ -40,7 +40,7 @@ pub(super) fn write_entry_point(
         (
             #name.to_owned(),
             #model,
-            EntryPointInfo {
+            ::vulkano::shader::EntryPointInfo {
                 execution: #execution,
                 descriptor_requirements: #descriptor_requirements.into_iter().collect(),
                 push_constant_requirements: #push_constant_requirements,
@@ -54,21 +54,23 @@ pub(super) fn write_entry_point(
 
 fn write_shader_execution(execution: &ShaderExecution) -> TokenStream {
     match execution {
-        ShaderExecution::Vertex => quote! { ShaderExecution::Vertex },
-        ShaderExecution::TessellationControl => quote! { ShaderExecution::TessellationControl },
-        ShaderExecution::TessellationEvaluation => {
-            quote! { ShaderExecution::TessellationEvaluation }
+        ShaderExecution::Vertex => quote! { ::vulkano::shader::ShaderExecution::Vertex },
+        ShaderExecution::TessellationControl => {
+            quote! { ::vulkano::shader::ShaderExecution::TessellationControl }
         }
-        ShaderExecution::Geometry(GeometryShaderExecution { input }) => {
+        ShaderExecution::TessellationEvaluation => {
+            quote! { ::vulkano::shader::ShaderExecution::TessellationEvaluation }
+        }
+        ShaderExecution::Geometry(::vulkano::shader::GeometryShaderExecution { input }) => {
             let input = format_ident!("{}", format!("{:?}", input));
             quote! {
-                ShaderExecution::Geometry {
+                ::vulkano::shader::ShaderExecution::Geometry {
                     input: GeometryShaderInput::#input,
                 }
             }
         }
-        ShaderExecution::Fragment => quote! { ShaderExecution::Fragment },
-        ShaderExecution::Compute => quote! { ShaderExecution::Compute },
+        ShaderExecution::Fragment => quote! { ::vulkano::shader::ShaderExecution::Fragment },
+        ShaderExecution::Compute => quote! { ::vulkano::shader::ShaderExecution::Compute },
     }
 }
 
@@ -80,36 +82,46 @@ fn write_descriptor_requirements(
         let DescriptorRequirements {
             descriptor_types,
             descriptor_count,
-            format,
+            image_format,
+            image_multisampled,
+            image_scalar_type,
             image_view_type,
-            multisampled,
-            mutable,
-            sampler_no_unnormalized,
+            sampler_compare,
+            sampler_no_unnormalized_coordinates,
             sampler_with_images,
             stages,
             storage_image_atomic,
+            storage_read,
+            storage_write,
         } = reqs;
 
         let descriptor_types = descriptor_types.into_iter().map(|ty| {
             let ident = format_ident!("{}", format!("{:?}", ty));
-            quote! { DescriptorType::#ident }
+            quote! { ::vulkano::descriptor_set::layout::DescriptorType::#ident }
         });
-        let format = match format {
-            Some(format) => {
-                let ident = format_ident!("{}", format!("{:?}", format));
-                quote! { Some(Format::#ident) }
+        let image_format = match image_format {
+            Some(image_format) => {
+                let ident = format_ident!("{}", format!("{:?}", image_format));
+                quote! { Some(::vulkano::format::Format::#ident) }
+            }
+            None => quote! { None },
+        };
+        let image_scalar_type = match image_scalar_type {
+            Some(image_scalar_type) => {
+                let ident = format_ident!("{}", format!("{:?}", image_scalar_type));
+                quote! { Some(::vulkano::shader::ShaderScalarType::#ident) }
             }
             None => quote! { None },
         };
         let image_view_type = match image_view_type {
             Some(image_view_type) => {
                 let ident = format_ident!("{}", format!("{:?}", image_view_type));
-                quote! { Some(ImageViewType::#ident) }
+                quote! { Some(::vulkano::image::view::ImageViewType::#ident) }
             }
             None => quote! { None },
         };
-        let mutable = mutable.iter();
-        let sampler_no_unnormalized = sampler_no_unnormalized.iter();
+        let sampler_compare = sampler_compare.iter();
+        let sampler_no_unnormalized_coordinates = sampler_no_unnormalized_coordinates.iter();
         let sampler_with_images = {
             sampler_with_images.iter().map(|(&index, identifiers)| {
                 let identifiers = identifiers.iter().map(
@@ -119,7 +131,7 @@ fn write_descriptor_requirements(
                          index,
                      }| {
                         quote! {
-                            vulkano::shader::DescriptorIdentifier {
+                            ::vulkano::shader::DescriptorIdentifier {
                                 set: #set,
                                 binding: #binding,
                                 index: #index,
@@ -152,7 +164,7 @@ fn write_descriptor_requirements(
             } = stages;
 
             quote! {
-                ShaderStages {
+                ::vulkano::shader::ShaderStages {
                     vertex: #vertex,
                     tessellation_control: #tessellation_control,
                     tessellation_evaluation: #tessellation_evaluation,
@@ -169,21 +181,26 @@ fn write_descriptor_requirements(
             }
         };
         let storage_image_atomic = storage_image_atomic.iter();
+        let storage_read = storage_read.iter();
+        let storage_write = storage_write.iter();
 
         quote! {
             (
                 (#set_num, #binding_num),
-                DescriptorRequirements {
+                ::vulkano::shader::DescriptorRequirements {
                     descriptor_types: vec![#(#descriptor_types),*],
                     descriptor_count: #descriptor_count,
-                    format: #format,
+                    image_format: #image_format,
+                    image_multisampled: #image_multisampled,
+                    image_scalar_type: #image_scalar_type,
                     image_view_type: #image_view_type,
-                    multisampled: #multisampled,
-                    mutable: [#(#mutable),*].into_iter().collect(),
-                    sampler_no_unnormalized: [#(#sampler_no_unnormalized),*].into_iter().collect(),
+                    sampler_compare: [#(#sampler_compare),*].into_iter().collect(),
+                    sampler_no_unnormalized_coordinates: [#(#sampler_no_unnormalized_coordinates),*].into_iter().collect(),
                     sampler_with_images: [#(#sampler_with_images),*].into_iter().collect(),
                     stages: #stages,
                     storage_image_atomic: [#(#storage_image_atomic),*].into_iter().collect(),
+                    storage_read: [#(#storage_read),*].into_iter().collect(),
+                    storage_write: [#(#storage_write),*].into_iter().collect(),
                 },
             ),
         }
@@ -222,7 +239,7 @@ fn write_push_constant_requirements(
                 } = stages;
 
                 quote! {
-                    ShaderStages {
+                    ::vulkano::shader::ShaderStages {
                         vertex: #vertex,
                         tessellation_control: #tessellation_control,
                         tessellation_evaluation: #tessellation_evaluation,
@@ -240,7 +257,7 @@ fn write_push_constant_requirements(
             };
 
             quote! {
-                Some(PipelineLayoutPcRange {
+                Some(::vulkano::pipeline::layout::PipelineLayoutPcRange {
                     offset: #offset,
                     size: #size,
                     stages: #stages,
@@ -263,7 +280,7 @@ fn write_specialization_constant_requirements(
             quote! {
                 (
                     #constant_id,
-                    SpecializationConstantRequirements {
+                    ::vulkano::shader::SpecializationConstantRequirements {
                         size: #size,
                     },
                 ),

@@ -102,14 +102,14 @@ where
         }
     }
 
-    let source_dimensions = match source.dimensions().mipmap_dimensions(source_mip_level) {
+    let source_dimensions = match source.dimensions().mip_level_dimensions(source_mip_level) {
         Some(d) => d,
         None => return Err(CheckBlitImageError::SourceCoordinatesOutOfRange),
     };
 
     let destination_dimensions = match destination
         .dimensions()
-        .mipmap_dimensions(destination_mip_level)
+        .mip_level_dimensions(destination_mip_level)
     {
         Some(d) => d,
         None => return Err(CheckBlitImageError::DestinationCoordinatesOutOfRange),

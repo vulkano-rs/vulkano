@@ -20,7 +20,7 @@
 use crate::check_errors;
 use crate::descriptor_set::layout::DescriptorType;
 use crate::device::Device;
-use crate::format::Format;
+use crate::format::{Format, NumericType};
 use crate::image::view::ImageViewType;
 use crate::pipeline::graphics::input_assembly::PrimitiveTopology;
 use crate::pipeline::layout::PipelineLayoutPcRange;
@@ -540,22 +540,26 @@ pub struct DescriptorRequirements {
 
     /// The image format that is required for image views bound to this descriptor. If this is
     /// `None`, then any image format is allowed.
-    pub format: Option<Format>,
-
-    /// The view type that is required for image views bound to this descriptor. This is `None` for
-    /// non-image descriptors.
-    pub image_view_type: Option<ImageViewType>,
+    pub image_format: Option<Format>,
 
     /// Whether image views bound to this descriptor must have multisampling enabled or disabled.
-    pub multisampled: bool,
+    pub image_multisampled: bool,
 
-    /// The descriptor indices that require mutable (exclusive) access to the bound resource.
-    pub mutable: FnvHashSet<u32>,
+    /// The base scalar type required for the format of image views bound to this descriptor.
+    /// This is `None` for non-image descriptors.
+    pub image_scalar_type: Option<ShaderScalarType>,
+
+    /// The view type that is required for image views bound to this descriptor.
+    /// This is `None` for non-image descriptors.
+    pub image_view_type: Option<ImageViewType>,
+
+    /// For sampler bindings, the descriptor indices that require a depth comparison sampler.
+    pub sampler_compare: FnvHashSet<u32>,
 
     /// For sampler bindings, the descriptor indices that perform sampling operations that are not
     /// permitted with unnormalized coordinates. This includes sampling with `ImplicitLod`,
     /// `Dref` or `Proj` SPIR-V instructions or with an LOD bias or offset.
-    pub sampler_no_unnormalized: FnvHashSet<u32>,
+    pub sampler_no_unnormalized_coordinates: FnvHashSet<u32>,
 
     /// For sampler bindings, the sampled image descriptors that are used in combination with each
     /// sampler descriptor index.
@@ -566,6 +570,14 @@ pub struct DescriptorRequirements {
 
     /// For storage image bindings, the descriptor indices that atomic operations are used with.
     pub storage_image_atomic: FnvHashSet<u32>,
+
+    /// For storage images and storage texel buffers, the descriptor indices that perform read
+    /// operations on the bound resource.
+    pub storage_read: FnvHashSet<u32>,
+
+    /// For storage buffers, storage images and storage texel buffers, the descriptor indices that
+    /// perform write operations on the bound resource.
+    pub storage_write: FnvHashSet<u32>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -590,9 +602,15 @@ impl DescriptorRequirements {
             return Err(DescriptorRequirementsIncompatible::DescriptorType);
         }
 
-        if let (Some(first), Some(second)) = (self.format, other.format) {
+        if let (Some(first), Some(second)) = (self.image_format, other.image_format) {
             if first != second {
-                return Err(DescriptorRequirementsIncompatible::Format);
+                return Err(DescriptorRequirementsIncompatible::ImageFormat);
+            }
+        }
+
+        if let (Some(first), Some(second)) = (self.image_scalar_type, other.image_scalar_type) {
+            if first != second {
+                return Err(DescriptorRequirementsIncompatible::ImageScalarType);
             }
         }
 
@@ -602,8 +620,8 @@ impl DescriptorRequirements {
             }
         }
 
-        if self.multisampled != other.multisampled {
-            return Err(DescriptorRequirementsIncompatible::Multisampled);
+        if self.image_multisampled != other.image_multisampled {
+            return Err(DescriptorRequirementsIncompatible::ImageMultisampled);
         }
 
         let sampler_with_images = {
@@ -619,14 +637,18 @@ impl DescriptorRequirements {
         Ok(Self {
             descriptor_types,
             descriptor_count: self.descriptor_count.max(other.descriptor_count),
-            format: self.format.or(other.format),
+            image_format: self.image_format.or(other.image_format),
+            image_multisampled: self.image_multisampled,
+            image_scalar_type: self.image_scalar_type.or(other.image_scalar_type),
             image_view_type: self.image_view_type.or(other.image_view_type),
-            multisampled: self.multisampled,
-            mutable: &self.mutable | &other.mutable,
-            sampler_no_unnormalized: &self.sampler_no_unnormalized | &other.sampler_no_unnormalized,
+            sampler_compare: &self.sampler_compare | &other.sampler_compare,
+            sampler_no_unnormalized_coordinates: &self.sampler_no_unnormalized_coordinates
+                | &other.sampler_no_unnormalized_coordinates,
             sampler_with_images,
             stages: self.stages | other.stages,
             storage_image_atomic: &self.storage_image_atomic | &other.storage_image_atomic,
+            storage_read: &self.storage_read | &other.storage_read,
+            storage_write: &self.storage_write | &other.storage_write,
         })
     }
 }
@@ -638,35 +660,36 @@ pub enum DescriptorRequirementsIncompatible {
     /// The allowed descriptor types of the descriptors do not overlap.
     DescriptorType,
     /// The descriptors require different formats.
-    Format,
+    ImageFormat,
+    /// The descriptors require different scalar types.
+    ImageScalarType,
+    /// The multisampling requirements of the descriptors differ.
+    ImageMultisampled,
     /// The descriptors require different image view types.
     ImageViewType,
-    /// The multisampling requirements of the descriptors differ.
-    Multisampled,
 }
 
 impl Error for DescriptorRequirementsIncompatible {}
 
 impl Display for DescriptorRequirementsIncompatible {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DescriptorRequirementsIncompatible::DescriptorType => {
-                write!(
-                    f,
-                    "the allowed descriptor types of the two descriptors do not overlap"
-                )
+            DescriptorRequirementsIncompatible::DescriptorType => write!(
+                fmt,
+                "the allowed descriptor types of the two descriptors do not overlap",
+            ),
+            DescriptorRequirementsIncompatible::ImageFormat => {
+                write!(fmt, "the descriptors require different formats",)
             }
-            DescriptorRequirementsIncompatible::Format => {
-                write!(f, "the descriptors require different formats")
+            DescriptorRequirementsIncompatible::ImageMultisampled => write!(
+                fmt,
+                "the multisampling requirements of the descriptors differ",
+            ),
+            DescriptorRequirementsIncompatible::ImageScalarType => {
+                write!(fmt, "the descriptors require different scalar types",)
             }
             DescriptorRequirementsIncompatible::ImageViewType => {
-                write!(f, "the descriptors require different image view types")
-            }
-            DescriptorRequirementsIncompatible::Multisampled => {
-                write!(
-                    f,
-                    "the multisampling requirements of the descriptors differ"
-                )
+                write!(fmt, "the descriptors require different image view types",)
             }
         }
     }
@@ -928,12 +951,29 @@ impl ShaderInterfaceEntryType {
     }
 }
 
-/// The numeric base type of a shader interface variable.
+/// The numeric base type of a shader variable.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ShaderScalarType {
     Float,
     Sint,
     Uint,
+}
+
+// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/chap43.html#formats-numericformat
+impl From<NumericType> for ShaderScalarType {
+    fn from(val: NumericType) -> Self {
+        match val {
+            NumericType::SFLOAT => Self::Float,
+            NumericType::UFLOAT => Self::Float,
+            NumericType::SINT => Self::Sint,
+            NumericType::UINT => Self::Uint,
+            NumericType::SNORM => Self::Float,
+            NumericType::UNORM => Self::Float,
+            NumericType::SSCALED => Self::Float,
+            NumericType::USCALED => Self::Float,
+            NumericType::SRGB => Self::Float,
+        }
+    }
 }
 
 /// Error that can happen when the interface mismatches between two shader stages.

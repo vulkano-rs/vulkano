@@ -66,6 +66,32 @@ impl ImageAspects {
             memory_plane2: false,
         }
     }
+
+    pub const fn contains(&self, other: &Self) -> bool {
+        let Self {
+            color,
+            depth,
+            stencil,
+            metadata,
+            plane0,
+            plane1,
+            plane2,
+            memory_plane0,
+            memory_plane1,
+            memory_plane2,
+        } = *self;
+
+        (color || !other.color)
+            && (depth || !other.depth)
+            && (stencil || !other.stencil)
+            && (metadata || !other.metadata)
+            && (plane0 || !other.plane0)
+            && (plane1 || !other.plane1)
+            && (plane2 || !other.plane2)
+            && (memory_plane0 || !other.memory_plane0)
+            && (memory_plane1 || !other.memory_plane1)
+            && (memory_plane2 || !other.memory_plane2)
+    }
 }
 
 impl BitOr for ImageAspects {

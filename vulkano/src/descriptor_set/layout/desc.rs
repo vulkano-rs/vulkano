@@ -311,14 +311,17 @@ impl DescriptorDesc {
         let DescriptorRequirements {
             descriptor_types,
             descriptor_count,
-            format,
+            image_format,
+            image_multisampled,
+            image_scalar_type,
             image_view_type,
-            multisampled,
-            mutable,
-            sampler_no_unnormalized,
+            sampler_compare,
+            sampler_no_unnormalized_coordinates,
             sampler_with_images,
             stages,
             storage_image_atomic,
+            storage_read,
+            storage_write,
         } = descriptor_requirements;
 
         if !descriptor_types.contains(&self.ty) {

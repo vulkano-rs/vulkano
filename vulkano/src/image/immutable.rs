@@ -127,11 +127,11 @@ fn generate_mipmaps<L>(
 ) {
     for level in 1..image.mip_levels() {
         let [xs, ys, ds] = dimensions
-            .mipmap_dimensions(level - 1)
+            .mip_level_dimensions(level - 1)
             .unwrap()
             .width_height_depth();
         let [xd, yd, dd] = dimensions
-            .mipmap_dimensions(level)
+            .mip_level_dimensions(level)
             .unwrap()
             .width_height_depth();
 

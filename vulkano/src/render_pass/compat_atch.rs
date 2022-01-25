@@ -64,7 +64,7 @@ where
             .any(|&(n, _)| n == attachment_num)
         {
             debug_assert!(aspects.color); // Was normally checked by the render pass.
-            if !image_view.image().inner().image.usage().color_attachment {
+            if !image_view.usage().color_attachment {
                 return Err(IncompatibleRenderPassAttachmentError::MissingColorAttachmentUsage);
             }
         }
@@ -73,13 +73,7 @@ where
             if ds == attachment_num {
                 // Was normally checked by the render pass.
                 debug_assert!(aspects.depth || aspects.stencil);
-                if !image_view
-                    .image()
-                    .inner()
-                    .image
-                    .usage()
-                    .depth_stencil_attachment
-                {
+                if !image_view.usage().depth_stencil_attachment {
                     return Err(
                         IncompatibleRenderPassAttachmentError::MissingDepthStencilAttachmentUsage,
                     );
@@ -92,7 +86,7 @@ where
             .iter()
             .any(|&(n, _)| n == attachment_num)
         {
-            if !image_view.image().inner().image.usage().input_attachment {
+            if !image_view.usage().input_attachment {
                 return Err(IncompatibleRenderPassAttachmentError::MissingInputAttachmentUsage);
             }
         }

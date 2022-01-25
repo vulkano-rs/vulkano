@@ -2732,7 +2732,7 @@ impl SyncCommandBufferBuilder {
 
             let access = (0..).map(|index| {
                 let mut access = access;
-                let mutable = reqs.mutable.contains(&index);
+                let mutable = reqs.storage_write.contains(&index);
                 access.access.shader_write = mutable;
                 access.exclusive = mutable;
                 access

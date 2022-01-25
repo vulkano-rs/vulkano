@@ -86,7 +86,7 @@ where
         return Err(CheckCopyBufferImageError::UnexpectedMultisampled);
     }
 
-    let image_dimensions = match image.dimensions().mipmap_dimensions(image_mipmap) {
+    let image_dimensions = match image.dimensions().mip_level_dimensions(image_mipmap) {
         Some(d) => d,
         None => return Err(CheckCopyBufferImageError::ImageCoordinatesOutOfRange),
     };
