@@ -22,6 +22,7 @@ use std::ffi::CStr;
 use std::fmt;
 use std::hash::Hash;
 use std::mem::MaybeUninit;
+use std::ops::BitOr;
 use std::ptr;
 use std::sync::Arc;
 
@@ -1239,6 +1240,70 @@ pub struct FormatFeatures {
     pub vertex_buffer: bool,
     /// Can be used with the vertex buffer of an acceleration structure.
     pub acceleration_structure_vertex_buffer: bool,
+}
+
+impl BitOr for &FormatFeatures {
+    type Output = FormatFeatures;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        Self::Output {
+            sampled_image: self.sampled_image || rhs.sampled_image,
+            storage_image: self.storage_image || rhs.storage_image,
+            storage_image_atomic: self.storage_image_atomic || rhs.storage_image_atomic,
+            storage_read_without_format: self.storage_read_without_format
+                || rhs.storage_read_without_format,
+            storage_write_without_format: self.storage_write_without_format
+                || rhs.storage_write_without_format,
+            color_attachment: self.color_attachment || rhs.color_attachment,
+            color_attachment_blend: self.color_attachment_blend || rhs.color_attachment_blend,
+            depth_stencil_attachment: self.depth_stencil_attachment || rhs.depth_stencil_attachment,
+            fragment_density_map: self.fragment_density_map || rhs.fragment_density_map,
+            fragment_shading_rate_attachment: self.fragment_shading_rate_attachment
+                || rhs.fragment_shading_rate_attachment,
+            transfer_src: self.transfer_src || rhs.transfer_src,
+            transfer_dst: self.transfer_dst || rhs.transfer_dst,
+            blit_src: self.blit_src || rhs.blit_src,
+            blit_dst: self.blit_dst || rhs.blit_dst,
+
+            sampled_image_filter_linear: self.sampled_image_filter_linear
+                || rhs.sampled_image_filter_linear,
+            sampled_image_filter_cubic: self.sampled_image_filter_cubic
+                || rhs.sampled_image_filter_cubic,
+            sampled_image_filter_minmax: self.sampled_image_filter_minmax
+                || rhs.sampled_image_filter_minmax,
+            midpoint_chroma_samples: self.midpoint_chroma_samples || rhs.midpoint_chroma_samples,
+            cosited_chroma_samples: self.cosited_chroma_samples || rhs.cosited_chroma_samples,
+            sampled_image_ycbcr_conversion_linear_filter: self
+                .sampled_image_ycbcr_conversion_linear_filter
+                || rhs.sampled_image_ycbcr_conversion_linear_filter,
+            sampled_image_ycbcr_conversion_separate_reconstruction_filter: self
+                .sampled_image_ycbcr_conversion_separate_reconstruction_filter
+                || rhs.sampled_image_ycbcr_conversion_separate_reconstruction_filter,
+            sampled_image_ycbcr_conversion_chroma_reconstruction_explicit: self
+                .sampled_image_ycbcr_conversion_chroma_reconstruction_explicit
+                || rhs.sampled_image_ycbcr_conversion_chroma_reconstruction_explicit,
+            sampled_image_ycbcr_conversion_chroma_reconstruction_explicit_forceable: self
+                .sampled_image_ycbcr_conversion_chroma_reconstruction_explicit_forceable
+                || rhs.sampled_image_ycbcr_conversion_chroma_reconstruction_explicit_forceable,
+            sampled_image_depth_comparison: self.sampled_image_depth_comparison
+                || rhs.sampled_image_depth_comparison,
+
+            video_decode_output: self.video_decode_output || rhs.video_decode_output,
+            video_decode_dpb: self.video_decode_dpb || rhs.video_decode_dpb,
+            video_encode_input: self.video_encode_input || rhs.video_encode_input,
+            video_encode_dpb: self.video_encode_dpb || rhs.video_encode_dpb,
+
+            disjoint: self.disjoint || rhs.disjoint,
+
+            uniform_texel_buffer: self.uniform_texel_buffer || rhs.uniform_texel_buffer,
+            storage_texel_buffer: self.storage_texel_buffer || rhs.storage_texel_buffer,
+            storage_texel_buffer_atomic: self.storage_texel_buffer_atomic
+                || rhs.storage_texel_buffer_atomic,
+            vertex_buffer: self.vertex_buffer || rhs.vertex_buffer,
+            acceleration_structure_vertex_buffer: self.acceleration_structure_vertex_buffer
+                || rhs.acceleration_structure_vertex_buffer,
+        }
+    }
 }
 
 impl From<ash::vk::FormatFeatureFlags> for FormatFeatures {
