@@ -371,6 +371,55 @@ fn inspect_entry_point(
 
                     &Instruction::FunctionEnd => return,
 
+                    &Instruction::ImageGather {
+                        sampled_image,
+                        ref image_operands,
+                        ..
+                    }
+                    | &Instruction::ImageSparseGather {
+                        sampled_image,
+                        ref image_operands,
+                        ..
+                    } => {
+                        if let Some((variable, Some(index))) = instruction_chain(
+                            result,
+                            global,
+                            spirv,
+                            [inst_sampled_image, inst_load],
+                            sampled_image,
+                        ) {
+                            variable.reqs.sampler_no_ycbcr_conversion.insert(index);
+
+                            if image_operands.as_ref().map_or(false, |image_operands| {
+                                image_operands.bias.is_some()
+                                    || image_operands.const_offset.is_some()
+                                    || image_operands.offset.is_some()
+                            }) {
+                                variable
+                                    .reqs
+                                    .sampler_no_unnormalized_coordinates
+                                    .insert(index);
+                            }
+                        }
+                    }
+
+                    &Instruction::ImageDrefGather { sampled_image, .. }
+                    | &Instruction::ImageSparseDrefGather { sampled_image, .. } => {
+                        if let Some((variable, Some(index))) = instruction_chain(
+                            result,
+                            global,
+                            spirv,
+                            [inst_sampled_image, inst_load],
+                            sampled_image,
+                        ) {
+                            variable
+                                .reqs
+                                .sampler_no_unnormalized_coordinates
+                                .insert(index);
+                            variable.reqs.sampler_no_ycbcr_conversion.insert(index);
+                        }
+                    }
+
                     &Instruction::ImageSampleImplicitLod {
                         sampled_image,
                         ref image_operands,
@@ -402,6 +451,13 @@ fn inspect_entry_point(
                                 .reqs
                                 .sampler_no_unnormalized_coordinates
                                 .insert(index);
+
+                            if image_operands.as_ref().map_or(false, |image_operands| {
+                                image_operands.const_offset.is_some()
+                                    || image_operands.offset.is_some()
+                            }) {
+                                variable.reqs.sampler_no_ycbcr_conversion.insert(index);
+                            }
                         }
                     }
 
@@ -426,6 +482,12 @@ fn inspect_entry_point(
                                 .reqs
                                 .sampler_no_unnormalized_coordinates
                                 .insert(index);
+
+                            if image_operands.const_offset.is_some()
+                                || image_operands.offset.is_some()
+                            {
+                                variable.reqs.sampler_no_ycbcr_conversion.insert(index);
+                            }
                         }
                     }
 
@@ -461,6 +523,13 @@ fn inspect_entry_point(
                                 .sampler_no_unnormalized_coordinates
                                 .insert(index);
                             variable.reqs.sampler_compare.insert(index);
+
+                            if image_operands.as_ref().map_or(false, |image_operands| {
+                                image_operands.const_offset.is_some()
+                                    || image_operands.offset.is_some()
+                            }) {
+                                variable.reqs.sampler_no_ycbcr_conversion.insert(index);
+                            }
                         }
                     }
 
@@ -496,6 +565,12 @@ fn inspect_entry_point(
                                 .sampler_no_unnormalized_coordinates
                                 .insert(index);
                             variable.reqs.sampler_compare.insert(index);
+
+                            if image_operands.const_offset.is_some()
+                                || image_operands.offset.is_some()
+                            {
+                                variable.reqs.sampler_no_ycbcr_conversion.insert(index);
+                            }
                         }
                     }
 
@@ -518,13 +593,18 @@ fn inspect_entry_point(
                         ) {
                             if image_operands.bias.is_some()
                                 || image_operands.const_offset.is_some()
-                                || image_operands.const_offsets.is_some()
                                 || image_operands.offset.is_some()
                             {
                                 variable
                                     .reqs
                                     .sampler_no_unnormalized_coordinates
                                     .insert(index);
+                            }
+
+                            if image_operands.const_offset.is_some()
+                                || image_operands.offset.is_some()
+                            {
+                                variable.reqs.sampler_no_ycbcr_conversion.insert(index);
                             }
                         }
                     }

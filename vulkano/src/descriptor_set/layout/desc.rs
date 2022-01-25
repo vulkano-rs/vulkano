@@ -319,6 +319,7 @@ impl DescriptorDesc {
             image_view_type,
             sampler_compare,
             sampler_no_unnormalized_coordinates,
+            sampler_no_ycbcr_conversion,
             sampler_with_images,
             stages,
             storage_image_atomic,

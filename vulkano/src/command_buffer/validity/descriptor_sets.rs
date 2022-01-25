@@ -183,6 +183,16 @@ pub(in super::super) fn check_descriptor_sets_validity<'a, P: Pipeline>(
                 return Err(InvalidDescriptorResource::SamplerUnnormalizedCoordinatesNotAllowed);
             }
 
+            // - OpImageFetch, OpImageSparseFetch, OpImage*Gather, and OpImageSparse*Gather must not
+            //   be used with a sampler that enables sampler Y′CBCR conversion.
+            // - The ConstOffset and Offset operands must not be used with a sampler that enables
+            //   sampler Y′CBCR conversion.
+            if reqs.sampler_no_ycbcr_conversion.contains(&index)
+                && sampler.sampler_ycbcr_conversion().is_some()
+            {
+                return Err(InvalidDescriptorResource::SamplerYcbcrConversionNotAllowed);
+            }
+
             /*
                 Instruction/Sampler/Image View Validation
                 https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/chap16.html#textures-input-validation
@@ -424,6 +434,7 @@ pub enum InvalidDescriptorResource {
         image_view_index: u32,
         error: SamplerImageViewIncompatibleError,
     },
+    SamplerYcbcrConversionNotAllowed,
     SamplerUnnormalizedCoordinatesNotAllowed,
     StorageImageAtomicNotSupported,
     StorageReadWithoutFormatNotSupported,
@@ -473,6 +484,12 @@ impl fmt::Display for InvalidDescriptorResource {
                 write!(
                     fmt,
                     "the bound sampler did not have the required depth comparison state; required {}, obtained {}", required, obtained
+                )
+            }
+            Self::SamplerYcbcrConversionNotAllowed => {
+                write!(
+                    fmt,
+                    "the bound sampler is required to have no attached sampler YCbCr conversion"
                 )
             }
             Self::SamplerUnnormalizedCoordinatesNotAllowed => {

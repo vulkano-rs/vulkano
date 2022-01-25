@@ -88,6 +88,7 @@ fn write_descriptor_requirements(
             image_view_type,
             sampler_compare,
             sampler_no_unnormalized_coordinates,
+            sampler_no_ycbcr_conversion,
             sampler_with_images,
             stages,
             storage_image_atomic,
@@ -122,6 +123,7 @@ fn write_descriptor_requirements(
         };
         let sampler_compare = sampler_compare.iter();
         let sampler_no_unnormalized_coordinates = sampler_no_unnormalized_coordinates.iter();
+        let sampler_no_ycbcr_conversion = sampler_no_ycbcr_conversion.iter();
         let sampler_with_images = {
             sampler_with_images.iter().map(|(&index, identifiers)| {
                 let identifiers = identifiers.iter().map(
@@ -196,6 +198,7 @@ fn write_descriptor_requirements(
                     image_view_type: #image_view_type,
                     sampler_compare: [#(#sampler_compare),*].into_iter().collect(),
                     sampler_no_unnormalized_coordinates: [#(#sampler_no_unnormalized_coordinates),*].into_iter().collect(),
+                    sampler_no_ycbcr_conversion: [#(#sampler_no_ycbcr_conversion),*].into_iter().collect(),
                     sampler_with_images: [#(#sampler_with_images),*].into_iter().collect(),
                     stages: #stages,
                     storage_image_atomic: [#(#storage_image_atomic),*].into_iter().collect(),

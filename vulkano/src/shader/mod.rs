@@ -561,6 +561,11 @@ pub struct DescriptorRequirements {
     /// `Dref` or `Proj` SPIR-V instructions or with an LOD bias or offset.
     pub sampler_no_unnormalized_coordinates: FnvHashSet<u32>,
 
+    /// For sampler bindings, the descriptor indices that perform sampling operations that are not
+    /// permitted with a sampler YCbCr conversion. This includes sampling with `Gather` SPIR-V
+    /// instructions or with an offset.
+    pub sampler_no_ycbcr_conversion: FnvHashSet<u32>,
+
     /// For sampler bindings, the sampled image descriptors that are used in combination with each
     /// sampler descriptor index.
     pub sampler_with_images: FnvHashMap<u32, FnvHashSet<DescriptorIdentifier>>,
@@ -644,6 +649,8 @@ impl DescriptorRequirements {
             sampler_compare: &self.sampler_compare | &other.sampler_compare,
             sampler_no_unnormalized_coordinates: &self.sampler_no_unnormalized_coordinates
                 | &other.sampler_no_unnormalized_coordinates,
+            sampler_no_ycbcr_conversion: &self.sampler_no_ycbcr_conversion
+                | &other.sampler_no_ycbcr_conversion,
             sampler_with_images,
             stages: self.stages | other.stages,
             storage_image_atomic: &self.storage_image_atomic | &other.storage_image_atomic,
