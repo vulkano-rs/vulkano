@@ -15,7 +15,7 @@
 
 use crate::device::physical::FormatFeatures;
 use crate::device::{Device, DeviceOwned};
-use crate::format::Format;
+use crate::format::{ChromaSampling, Format};
 use crate::image::{
     ImageAccess, ImageAspects, ImageDimensions, ImageTiling, ImageType, ImageUsage, SampleCount,
 };
@@ -466,14 +466,6 @@ where
             return Err(ImageViewCreationError::FormatNotCompatible);
         }
 
-        // VUID-VkImageViewCreateInfo-format-06415
-        if image_inner.format().ycbcr_chroma_sampling().is_some() {
-            // VUID-VkImageViewCreateInfo-format-04714
-            // VUID-VkImageViewCreateInfo-format-04715
-            // VUID-VkImageViewCreateInfo-pNext-01970
-            unimplemented!()
-        }
-
         // VUID-VkImageViewCreateInfo-imageViewType-04973
         if (ty == ImageViewType::Dim1d || ty == ImageViewType::Dim2d || ty == ImageViewType::Dim3d)
             && layer_count != 1
@@ -489,12 +481,35 @@ where
             return Err(ImageViewCreationError::TypeCubeArrayNotMultipleOf6ArrayLayers);
         }
 
+        // VUID-VkImageViewCreateInfo-format-04714
+        // VUID-VkImageViewCreateInfo-format-04715
+        match format.ycbcr_chroma_sampling() {
+            Some(ChromaSampling::Mode422) => {
+                if image_inner.dimensions().width() % 2 != 0 {
+                    return Err(
+                        ImageViewCreationError::FormatChromaSubsamplingInvalidImageDimensions,
+                    );
+                }
+            }
+            Some(ChromaSampling::Mode420) => {
+                if image_inner.dimensions().width() % 2 != 0
+                    || image_inner.dimensions().height() % 2 != 0
+                {
+                    return Err(
+                        ImageViewCreationError::FormatChromaSubsamplingInvalidImageDimensions,
+                    );
+                }
+            }
+            _ => (),
+        }
+
         // Don't need to check features because you can't create a conversion object without the
         // feature anyway.
         let mut sampler_ycbcr_conversion_info = if let Some(conversion) = &sampler_ycbcr_conversion
         {
             assert_eq!(image_inner.device(), conversion.device());
 
+            // VUID-VkImageViewCreateInfo-pNext-01970
             if !component_mapping.is_identity() {
                 return Err(
                     ImageViewCreationError::SamplerYcbcrConversionComponentMappingNotIdentity {
@@ -508,6 +523,7 @@ where
                 ..Default::default()
             })
         } else {
+            // VUID-VkImageViewCreateInfo-format-06415
             if format.ycbcr_chroma_sampling().is_some() {
                 return Err(
                     ImageViewCreationError::FormatRequiresSamplerYcbcrConversion { format },
@@ -739,6 +755,10 @@ pub enum ImageViewCreationError {
     /// requested, and the image view type was `Dim3d`.
     BlockTexelViewCompatibleUncompressedIs3d,
 
+    /// The requested format has chroma subsampling, but the width and/or height of the image was
+    /// not a multiple of 2.
+    FormatChromaSubsamplingInvalidImageDimensions,
+
     /// The requested format was not compatible with the image.
     FormatNotCompatible,
 
@@ -840,6 +860,10 @@ impl fmt::Display for ImageViewCreationError {
             Self::BlockTexelViewCompatibleUncompressedIs3d => write!(
                 fmt,
                 "the image has the `block_texel_view_compatible` flag, and an uncompressed format was requested, and the image view type was `Dim3d`",
+            ),
+            Self::FormatChromaSubsamplingInvalidImageDimensions => write!(
+                fmt,
+                "the requested format has chroma subsampling, but the width and/or height of the image was not a multiple of 2",
             ),
             Self::FormatNotCompatible => write!(
                 fmt,

@@ -2471,10 +2471,6 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
             (ash::vk::QUEUE_FAMILY_IGNORED, ash::vk::QUEUE_FAMILY_IGNORED)
         };
 
-        if image.format().ycbcr_chroma_sampling().is_some() {
-            unimplemented!();
-        }
-
         // TODO: Let user choose
         let aspects = image.format().aspects();
         let image = image.inner();
