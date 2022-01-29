@@ -104,12 +104,6 @@ pub use crate::extensions::{
     ExtensionRestriction, ExtensionRestrictionError, SupportedExtensionsError,
 };
 use crate::fns::DeviceFunctions;
-use crate::format::Format;
-use crate::image::ImageCreateFlags;
-use crate::image::ImageFormatProperties;
-use crate::image::ImageTiling;
-use crate::image::ImageType;
-use crate::image::ImageUsage;
 use crate::instance::Instance;
 use crate::memory::pool::StdMemoryPool;
 use crate::Error;
@@ -587,43 +581,6 @@ impl Device {
                 .set_debug_utils_object_name_ext(self.device, &info),
         )?;
         Ok(())
-    }
-
-    /// Checks the given combination of image attributes/configuration for compatibility with the physical device.
-    ///
-    /// Returns a struct with additional capabilities available for this image configuration.
-    pub fn image_format_properties(
-        &self,
-        format: Format,
-        ty: ImageType,
-        tiling: ImageTiling,
-        usage: ImageUsage,
-        create_flags: ImageCreateFlags,
-    ) -> Result<ImageFormatProperties, String> {
-        let fns_i = self.instance().fns();
-        let mut output = MaybeUninit::uninit();
-        let physical_device = self.physical_device().internal_object();
-        unsafe {
-            let r = fns_i.v1_0.get_physical_device_image_format_properties(
-                physical_device,
-                format.into(),
-                ty.into(),
-                tiling.into(),
-                usage.into(),
-                create_flags.into(),
-                output.as_mut_ptr(),
-            );
-
-            match check_errors(r) {
-                Ok(_) => Ok(output.assume_init().into()),
-                Err(e) => {
-                    return Err(String::from(format!(
-                        "Image properties not supported. {:#?}",
-                        e
-                    )))
-                }
-            }
-        }
     }
 }
 

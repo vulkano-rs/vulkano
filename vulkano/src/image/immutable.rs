@@ -31,7 +31,6 @@ use crate::image::ImageInner;
 use crate::image::ImageLayout;
 use crate::image::ImageUsage;
 use crate::image::MipmapsCount;
-use crate::image::SampleCount;
 use crate::memory::pool::AllocFromRequirementsFilter;
 use crate::memory::pool::AllocLayout;
 use crate::memory::pool::MappingRequirement;
@@ -68,12 +67,12 @@ pub struct ImmutableImage<A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> 
 /// We define a part of one image here by a level of mipmap, or a layer of an array
 /// The image attribute must be an implementation of ImageAccess
 /// The mip_levels_access must be a range showing which mipmaps will be accessed
-/// The layer_levels_access must be a range showing which layers will be accessed
+/// The array_layers_access must be a range showing which layers will be accessed
 /// The layout must be the layout of the image at the beginning and at the end of the command buffer
 pub struct SubImage {
     image: Arc<dyn ImageAccess>,
     mip_levels_access: std::ops::Range<u32>,
-    layer_levels_access: std::ops::Range<u32>,
+    array_layers_access: std::ops::Range<u32>,
     layout: ImageLayout,
 }
 
@@ -86,19 +85,19 @@ impl SubImage {
         layer_level_count: u32,
         layout: ImageLayout,
     ) -> Arc<SubImage> {
-        debug_assert!(mip_level + mip_level_count <= image.mipmap_levels());
+        debug_assert!(mip_level + mip_level_count <= image.mip_levels());
         debug_assert!(layer_level + layer_level_count <= image.dimensions().array_layers());
 
         let last_level = mip_level + mip_level_count;
         let mip_levels_access = mip_level..last_level;
 
         let last_level = layer_level + layer_level_count;
-        let layer_levels_access = layer_level..last_level;
+        let array_layers_access = layer_level..last_level;
 
         Arc::new(SubImage {
             image,
             mip_levels_access,
-            layer_levels_access,
+            array_layers_access,
             layout,
         })
     }
@@ -109,7 +108,7 @@ pub struct ImmutableImageInitialization<A = PotentialDedicatedAllocation<StdMemo
     image: Arc<ImmutableImage<A>>,
     used: AtomicBool,
     mip_levels_access: std::ops::Range<u32>,
-    layer_levels_access: std::ops::Range<u32>,
+    array_layers_access: std::ops::Range<u32>,
 }
 
 fn has_mipmaps(mipmaps: MipmapsCount) -> bool {
@@ -126,7 +125,7 @@ fn generate_mipmaps<L>(
     dimensions: ImageDimensions,
     layout: ImageLayout,
 ) {
-    for level in 1..image.mipmap_levels() {
+    for level in 1..image.mip_levels() {
         for layer in 0..image.dimensions().array_layers() {
             let [xs, ys, ds] = dimensions
                 .mipmap_dimensions(level - 1)
@@ -159,12 +158,12 @@ fn generate_mipmaps<L>(
                 src,                               //source
                 [0, 0, 0],                         //source_top_left
                 [xs as i32, ys as i32, ds as i32], //source_bottom_right
-                layer,                                 //source_base_array_layer
+                layer,                             //source_base_array_layer
                 level - 1,                         //source_mip_level
                 dst,                               //destination
                 [0, 0, 0],                         //destination_top_left
                 [xd as i32, yd as i32, dd as i32], //destination_bottom_right
-                layer,                                 //destination_base_array_layer
+                layer,                             //destination_base_array_layer
                 level,                             //destination_mip_level
                 1,                                 //layer_count
                 Filter::Linear,                    //filter
@@ -202,7 +201,7 @@ impl ImmutableImage {
         device: Arc<Device>,
         dimensions: ImageDimensions,
         format: Format,
-        mipmaps: M,
+        mip_levels: M,
         queue_families: I,
     ) -> Result<Arc<ImmutableImage>, ImageCreationError>
     where
@@ -222,7 +221,7 @@ impl ImmutableImage {
             device,
             dimensions,
             format,
-            mipmaps,
+            mip_levels,
             usage,
             flags,
             ImageLayout::ShaderReadOnlyOptimal,
@@ -239,7 +238,7 @@ impl ImmutableImage {
         device: Arc<Device>,
         dimensions: ImageDimensions,
         format: Format,
-        mipmaps: M,
+        mip_levels: M,
         usage: ImageUsage,
         flags: ImageCreateFlags,
         layout: ImageLayout,
@@ -254,27 +253,20 @@ impl ImmutableImage {
             .map(|f| f.id())
             .collect::<SmallVec<[u32; 4]>>();
 
-        let (image, mem_reqs) = unsafe {
-            let sharing = if queue_families.len() >= 2 {
+        let image = UnsafeImage::start(device.clone())
+            .flags(flags)
+            .dimensions(dimensions)
+            .format(format)
+            .mip_levels(mip_levels)
+            .sharing(if queue_families.len() >= 2 {
                 Sharing::Concurrent(queue_families.iter().cloned())
             } else {
                 Sharing::Exclusive
-            };
+            })
+            .usage(usage)
+            .build()?;
 
-            UnsafeImage::new(
-                device.clone(),
-                usage,
-                format,
-                flags,
-                dimensions,
-                SampleCount::Sample1,
-                mipmaps,
-                sharing,
-                false,
-                false,
-            )?
-        };
-
+        let mem_reqs = image.memory_requirements();
         let memory = MemoryPool::alloc_from_requirements(
             &Device::standard_pool(&device),
             &mem_reqs,
@@ -306,8 +298,8 @@ impl ImmutableImage {
         let init = Arc::new(ImmutableImageInitialization {
             image: image.clone(),
             used: AtomicBool::new(false),
-            mip_levels_access: 0..image.mipmap_levels(),
-            layer_levels_access: 0..image.dimensions().array_layers(),
+            mip_levels_access: 0..image.mip_levels(),
+            array_layers_access: 0..image.dimensions().array_layers(),
         });
 
         Ok((image, init))
@@ -318,7 +310,7 @@ impl ImmutableImage {
     pub fn from_iter<Px, I>(
         iter: I,
         dimensions: ImageDimensions,
-        mipmaps: MipmapsCount,
+        mip_levels: MipmapsCount,
         format: Format,
         queue: Arc<Queue>,
     ) -> Result<
@@ -339,14 +331,14 @@ impl ImmutableImage {
             false,
             iter,
         )?;
-        ImmutableImage::from_buffer(source, dimensions, mipmaps, format, queue)
+        ImmutableImage::from_buffer(source, dimensions, mip_levels, format, queue)
     }
 
     /// Construct an ImmutableImage containing a copy of the data in `source`.
     pub fn from_buffer<B, Px>(
         source: Arc<B>,
         dimensions: ImageDimensions,
-        mipmaps: MipmapsCount,
+        mip_levels: MipmapsCount,
         format: Format,
         queue: Arc<Queue>,
     ) -> Result<
@@ -360,7 +352,7 @@ impl ImmutableImage {
         B: TypedBufferAccess<Content = [Px]> + 'static,
         Px: Pixel + Send + Sync + Clone + 'static,
     {
-        let need_to_generate_mipmaps = has_mipmaps(mipmaps);
+        let need_to_generate_mipmaps = has_mipmaps(mip_levels);
         let usage = ImageUsage {
             transfer_destination: true,
             transfer_source: need_to_generate_mipmaps,
@@ -374,7 +366,7 @@ impl ImmutableImage {
             source.device().clone(),
             dimensions,
             format,
-            mipmaps,
+            mip_levels,
             usage,
             flags,
             layout,
@@ -432,7 +424,7 @@ where
             first_layer: 0,
             num_layers: self.image.dimensions().array_layers() as usize,
             first_mipmap_level: 0,
-            num_mipmap_levels: self.image.mipmap_levels() as usize,
+            num_mipmap_levels: self.image.mip_levels() as usize,
         }
     }
 
@@ -495,12 +487,12 @@ where
     }
 
     #[inline]
-    fn current_miplevels_access(&self) -> std::ops::Range<u32> {
-        0..self.mipmap_levels()
+    fn current_mip_levels_access(&self) -> std::ops::Range<u32> {
+        0..self.mip_levels()
     }
 
     #[inline]
-    fn current_layer_levels_access(&self) -> std::ops::Range<u32> {
+    fn current_array_layers_access(&self) -> std::ops::Range<u32> {
         0..self.dimensions().array_layers()
     }
 }
@@ -536,12 +528,12 @@ unsafe impl ImageAccess for SubImage {
         None
     }
 
-    fn current_miplevels_access(&self) -> std::ops::Range<u32> {
+    fn current_mip_levels_access(&self) -> std::ops::Range<u32> {
         self.mip_levels_access.clone()
     }
 
-    fn current_layer_levels_access(&self) -> std::ops::Range<u32> {
-        self.layer_levels_access.clone()
+    fn current_array_layers_access(&self) -> std::ops::Range<u32> {
+        self.array_layers_access.clone()
     }
 
     #[inline]
@@ -670,13 +662,13 @@ where
     }
 
     #[inline]
-    fn current_miplevels_access(&self) -> std::ops::Range<u32> {
+    fn current_mip_levels_access(&self) -> std::ops::Range<u32> {
         self.mip_levels_access.clone()
     }
 
     #[inline]
-    fn current_layer_levels_access(&self) -> std::ops::Range<u32> {
-        self.layer_levels_access.clone()
+    fn current_array_layers_access(&self) -> std::ops::Range<u32> {
+        self.array_layers_access.clone()
     }
 }
 

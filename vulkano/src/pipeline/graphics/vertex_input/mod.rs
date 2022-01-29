@@ -313,12 +313,12 @@ impl VertexInputState {
                     );
                 }
 
-                if !attribute_desc
-                    .format
-                    .properties(device.physical_device())
-                    .buffer_features
-                    .vertex_buffer
-                {
+                let format_features = device
+                    .physical_device()
+                    .format_properties(attribute_desc.format)
+                    .buffer_features;
+
+                if !format_features.vertex_buffer {
                     return Err(
                         GraphicsPipelineCreationError::VertexInputAttributeUnsupportedFormat {
                             location,

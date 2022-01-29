@@ -161,7 +161,7 @@ fn required_len_for_format<Px>(
 where
     Px: Pixel,
 {
-    let [block_width, block_height] = format.block_dimensions();
+    let [block_width, block_height, _block_depth] = format.block_extent();
     let num_blocks = (image_size[0] + block_width - 1) / block_width
         * ((image_size[1] + block_height - 1) / block_height)
         * image_size[2]

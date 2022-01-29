@@ -45,9 +45,8 @@ use crate::memory::DedicatedAlloc;
     target_os = "netbsd",
     target_os = "openbsd"
 ))]
-use crate::memory::{DeviceMemoryAllocError, ExternalMemoryHandleType};
+use crate::memory::{DeviceMemoryAllocError, ExternalMemoryHandleTypes};
 use crate::sync::AccessError;
-use crate::sync::Sharing;
 #[cfg(any(
     target_os = "linux",
     target_os = "dragonflybsd",
@@ -66,7 +65,6 @@ use crate::DeviceSize;
 use std::fs::File;
 use std::hash::Hash;
 use std::hash::Hasher;
-use std::iter::Empty;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -448,33 +446,22 @@ impl AttachmentImage {
             panic!() // TODO: message?
         }
 
-        let usage = ImageUsage {
-            color_attachment: !is_depth,
-            depth_stencil_attachment: is_depth,
-            ..base_usage
-        };
-
-        let (image, mem_reqs) = unsafe {
-            let dims = ImageDimensions::Dim2d {
+        let image = UnsafeImage::start(device.clone())
+            .dimensions(ImageDimensions::Dim2d {
                 width: dimensions[0],
                 height: dimensions[1],
                 array_layers,
-            };
+            })
+            .format(format)
+            .samples(samples)
+            .usage(ImageUsage {
+                color_attachment: !is_depth,
+                depth_stencil_attachment: is_depth,
+                ..base_usage
+            })
+            .build()?;
 
-            UnsafeImage::new(
-                device.clone(),
-                usage,
-                format,
-                ImageCreateFlags::none(),
-                dims,
-                samples,
-                1,
-                Sharing::Exclusive::<Empty<u32>>,
-                false,
-                false,
-            )?
-        };
-
+        let mem_reqs = image.memory_requirements();
         let memory = MemoryPool::alloc_from_requirements(
             &Device::standard_pool(&device),
             &mem_reqs,
@@ -528,36 +515,30 @@ impl AttachmentImage {
         let aspects = format.aspects();
         let is_depth = aspects.depth || aspects.stencil;
 
-        let usage = ImageUsage {
-            color_attachment: !is_depth,
-            depth_stencil_attachment: is_depth,
-            ..base_usage
-        };
-
-        let (image, mem_reqs) = unsafe {
-            let dims = ImageDimensions::Dim2d {
+        let image = UnsafeImage::start(device.clone())
+            .dimensions(ImageDimensions::Dim2d {
                 width: dimensions[0],
                 height: dimensions[1],
                 array_layers,
-            };
+            })
+            .external_memory_handle_types(ExternalMemoryHandleTypes {
+                opaque_fd: true,
+                ..ExternalMemoryHandleTypes::none()
+            })
+            .flags(ImageCreateFlags {
+                mutable_format: true,
+                ..ImageCreateFlags::none()
+            })
+            .format(format)
+            .samples(samples)
+            .usage(ImageUsage {
+                color_attachment: !is_depth,
+                depth_stencil_attachment: is_depth,
+                ..base_usage
+            })
+            .build()?;
 
-            UnsafeImage::new_with_exportable_fd(
-                device.clone(),
-                usage,
-                format,
-                ImageCreateFlags {
-                    mutable_format: true,
-                    ..ImageCreateFlags::none()
-                },
-                dims,
-                samples,
-                1,
-                Sharing::Exclusive::<Empty<u32>>,
-                false,
-                false,
-            )?
-        };
-
+        let mem_reqs = image.memory_requirements();
         let memory = alloc_dedicated_with_exportable_fd(
             device.clone(),
             &mem_reqs,
@@ -605,7 +586,7 @@ impl AttachmentImage {
     pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryAllocError> {
         self.memory
             .memory()
-            .export_fd(ExternalMemoryHandleType::posix())
+            .export_fd(ExternalMemoryHandleTypes::posix())
     }
 
     /// Return the size of the allocated memory (used for e.g. with cuda)
@@ -730,12 +711,12 @@ where
     }
 
     #[inline]
-    fn current_miplevels_access(&self) -> std::ops::Range<u32> {
-        0..self.mipmap_levels()
+    fn current_mip_levels_access(&self) -> std::ops::Range<u32> {
+        0..self.mip_levels()
     }
 
     #[inline]
-    fn current_layer_levels_access(&self) -> std::ops::Range<u32> {
+    fn current_array_layers_access(&self) -> std::ops::Range<u32> {
         0..self.dimensions().array_layers()
     }
 }

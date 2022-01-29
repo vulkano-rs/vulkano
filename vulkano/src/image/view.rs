@@ -13,36 +13,34 @@
 //! an image and describes how the GPU should interpret the data. It is needed when an image is
 //! to be used in a shader descriptor or as a framebuffer attachment.
 
-use crate::check_errors;
-use crate::device::Device;
-use crate::device::DeviceOwned;
+use crate::device::physical::FormatFeatures;
+use crate::device::{Device, DeviceOwned};
 use crate::format::Format;
-use crate::image::sys::UnsafeImage;
-use crate::image::ImageAccess;
-use crate::image::ImageDimensions;
-use crate::memory::DeviceMemoryAllocError;
+use crate::image::{ImageAccess, ImageDimensions, ImageTiling};
+use crate::sampler::ComponentMapping;
 use crate::OomError;
 use crate::VulkanObject;
+use crate::{check_errors, Error};
 use std::error;
 use std::fmt;
-use std::hash::Hash;
-use std::hash::Hasher;
+use std::hash::{Hash, Hasher};
 use std::mem::MaybeUninit;
 use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 
-/// A safe image view that checks for validity and keeps its attached image alive.
+/// A wrapper around an image that makes it available to shaders or framebuffers.
 pub struct ImageView<I>
 where
     I: ImageAccess,
 {
-    inner: UnsafeImageView,
+    handle: ash::vk::ImageView,
     image: Arc<I>,
 
     array_layers: Range<u32>,
     component_mapping: ComponentMapping,
     format: Format,
+    format_features: FormatFeatures,
     ty: ImageViewType,
 }
 
@@ -69,14 +67,14 @@ where
             ImageDimensions::Dim2d { .. } => ImageViewType::Dim2dArray,
             ImageDimensions::Dim3d { .. } => ImageViewType::Dim3d,
         };
-        let mipmap_levels = 0..image.mipmap_levels();
+        let mip_levels = 0..image.mip_levels();
         let array_layers = 0..image.dimensions().array_layers();
 
         ImageViewBuilder {
             array_layers,
             component_mapping: ComponentMapping::default(),
             format: image.format(),
-            mipmap_levels,
+            mip_levels,
             ty,
 
             image,
@@ -89,12 +87,72 @@ where
     }
 }
 
+unsafe impl<I> VulkanObject for ImageView<I>
+where
+    I: ImageAccess,
+{
+    type Object = ash::vk::ImageView;
+
+    #[inline]
+    fn internal_object(&self) -> ash::vk::ImageView {
+        self.handle
+    }
+}
+
 unsafe impl<I> DeviceOwned for ImageView<I>
 where
     I: ImageAccess,
 {
     fn device(&self) -> &Arc<Device> {
-        self.inner.device()
+        self.image.inner().image.device()
+    }
+}
+
+impl<I> fmt::Debug for ImageView<I>
+where
+    I: ImageAccess,
+{
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "<Vulkan image view {:?}>", self.handle)
+    }
+}
+
+impl<I> Drop for ImageView<I>
+where
+    I: ImageAccess,
+{
+    #[inline]
+    fn drop(&mut self) {
+        unsafe {
+            let device = self.device();
+            let fns = device.fns();
+            fns.v1_0
+                .destroy_image_view(device.internal_object(), self.handle, ptr::null());
+        }
+    }
+}
+
+impl<I> PartialEq for ImageView<I>
+where
+    I: ImageAccess,
+{
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.handle == other.handle && self.device() == other.device()
+    }
+}
+
+impl<I> Eq for ImageView<I> where I: ImageAccess {}
+
+impl<I> Hash for ImageView<I>
+where
+    I: ImageAccess,
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.handle.hash(state);
+        self.device().hash(state);
     }
 }
 
@@ -103,7 +161,7 @@ pub struct ImageViewBuilder<I> {
     array_layers: Range<u32>,
     component_mapping: ComponentMapping,
     format: Format,
-    mipmap_levels: Range<u32>,
+    mip_levels: Range<u32>,
     ty: ImageViewType,
 
     image: Arc<I>,
@@ -113,54 +171,6 @@ impl<I> ImageViewBuilder<I>
 where
     I: ImageAccess,
 {
-    /// Sets the image view type.
-    ///
-    /// By default, this is determined from the image, based on its dimensions and number of layers.
-    /// The value of `ty` must be compatible with the dimensions of the image and the selected
-    /// array layers.
-    #[inline]
-    pub fn with_type(mut self, ty: ImageViewType) -> Self {
-        self.ty = ty;
-        self
-    }
-
-    /// Sets how to map components of each pixel.
-    ///
-    /// By default, this is the identity mapping, with every component mapped directly.
-    #[inline]
-    pub fn with_component_mapping(mut self, component_mapping: ComponentMapping) -> Self {
-        self.component_mapping = component_mapping;
-        self
-    }
-
-    /// Sets the format of the image view.
-    ///
-    /// By default, this is the format of the image. Using a different format requires enabling the
-    /// `mutable_format` flag on the image.
-    #[inline]
-    pub fn with_format(mut self, format: Format) -> Self {
-        self.format = format;
-        self
-    }
-
-    /// Sets the range of mipmap levels that the view should cover.
-    ///
-    /// By default, this is the full range of mipmaps present in the image.
-    #[inline]
-    pub fn with_mipmap_levels(mut self, mipmap_levels: Range<u32>) -> Self {
-        self.mipmap_levels = mipmap_levels;
-        self
-    }
-
-    /// Sets the range of array layers that the view should cover.
-    ///
-    /// By default, this is the full range of array layers present in the image.
-    #[inline]
-    pub fn with_array_layers(mut self, array_layers: Range<u32>) -> Self {
-        self.array_layers = array_layers;
-        self
-    }
-
     /// Builds the `ImageView`.
     pub fn build(self) -> Result<Arc<ImageView<I>>, ImageViewCreationError> {
         let dimensions = self.image.dimensions();
@@ -169,10 +179,13 @@ where
         let image_format = image_inner.format();
         let image_usage = image_inner.usage();
 
-        if self.mipmap_levels.end <= self.mipmap_levels.start
-            || self.mipmap_levels.end > image_inner.mipmap_levels()
+        // TODO: Let user choose
+        let aspects = image_format.aspects();
+
+        if self.mip_levels.end <= self.mip_levels.start
+            || self.mip_levels.end > image_inner.mip_levels()
         {
-            return Err(ImageViewCreationError::MipMapLevelsOutOfRange);
+            return Err(ImageViewCreationError::MipLevelsOutOfRange);
         }
 
         if self.array_layers.end <= self.array_layers.start
@@ -196,7 +209,7 @@ where
             self.ty,
             self.image.dimensions(),
             self.array_layers.end - self.array_layers.start,
-            self.mipmap_levels.end - self.mipmap_levels.start,
+            self.mip_levels.end - self.mip_levels.start,
         ) {
             (ImageViewType::Dim1d, ImageDimensions::Dim1d { .. }, 1, _) => (),
             (ImageViewType::Dim1dArray, ImageDimensions::Dim1d { .. }, _, _) => (),
@@ -226,13 +239,13 @@ where
             _ => return Err(ImageViewCreationError::IncompatibleType),
         }
 
-        if image_format.requires_sampler_ycbcr_conversion() {
+        if image_format.ycbcr_chroma_sampling().is_some() {
             unimplemented!()
         }
 
         if image_flags.block_texel_view_compatible {
             if self.format.compatibility() != image_format.compatibility()
-                || self.format.size() != image_format.size()
+                || self.format.block_size() != image_format.block_size()
             {
                 return Err(ImageViewCreationError::IncompatibleFormat);
             }
@@ -241,8 +254,8 @@ where
                 return Err(ImageViewCreationError::ArrayLayersOutOfRange);
             }
 
-            if self.mipmap_levels.end - self.mipmap_levels.start != 1 {
-                return Err(ImageViewCreationError::MipMapLevelsOutOfRange);
+            if self.mip_levels.end - self.mip_levels.start != 1 {
+                return Err(ImageViewCreationError::MipLevelsOutOfRange);
             }
 
             if self.format.compression().is_none() && self.ty == ImageViewType::Dim3d {
@@ -272,37 +285,120 @@ where
             return Err(ImageViewCreationError::IncompatibleFormat);
         }
 
-        if self.format != image_format {
+        let format_features = if self.format != image_format {
             if !(image_flags.mutable_format && image_format.planes().is_empty()) {
                 return Err(ImageViewCreationError::IncompatibleFormat);
             } else if self.format.compatibility() != image_format.compatibility() {
                 if !image_flags.block_texel_view_compatible {
                     return Err(ImageViewCreationError::IncompatibleFormat);
-                } else if self.format.size() != image_format.size() {
+                } else if self.format.block_size() != image_format.block_size() {
                     return Err(ImageViewCreationError::IncompatibleFormat);
                 }
             }
-        }
 
-        let inner = unsafe {
-            UnsafeImageView::new(
-                image_inner,
-                self.ty,
-                self.component_mapping,
-                self.mipmap_levels,
-                self.array_layers.clone(),
-            )?
+            let format_properties = image_inner
+                .device()
+                .physical_device()
+                .format_properties(self.format);
+
+            match image_inner.tiling() {
+                ImageTiling::Optimal => format_properties.optimal_tiling_features,
+                ImageTiling::Linear => format_properties.linear_tiling_features,
+            }
+        } else {
+            *image_inner.format_features()
+        };
+
+        let create_info = ash::vk::ImageViewCreateInfo {
+            flags: ash::vk::ImageViewCreateFlags::empty(),
+            image: image_inner.internal_object(),
+            view_type: self.ty.into(),
+            format: image_format.into(),
+            components: self.component_mapping.into(),
+            subresource_range: ash::vk::ImageSubresourceRange {
+                aspect_mask: aspects.into(),
+                base_mip_level: self.mip_levels.start,
+                level_count: self.mip_levels.end - self.mip_levels.start,
+                base_array_layer: self.array_layers.start,
+                layer_count: self.array_layers.end - self.array_layers.start,
+            },
+            ..Default::default()
+        };
+
+        let handle = unsafe {
+            let fns = image_inner.device().fns();
+            let mut output = MaybeUninit::uninit();
+            check_errors(fns.v1_0.create_image_view(
+                image_inner.device().internal_object(),
+                &create_info,
+                ptr::null(),
+                output.as_mut_ptr(),
+            ))?;
+            output.assume_init()
         };
 
         Ok(Arc::new(ImageView {
-            inner,
+            handle,
             image: self.image,
 
             array_layers: self.array_layers,
             component_mapping: self.component_mapping,
             format: self.format,
+            format_features,
             ty: self.ty,
         }))
+    }
+
+    /// Sets the image view type.
+    ///
+    /// The view type must be compatible with the dimensions of the image and the selected array
+    /// layers.
+    ///
+    /// The default value is determined from the image, based on its dimensions and number of
+    /// layers.
+    #[inline]
+    pub fn ty(mut self, ty: ImageViewType) -> Self {
+        self.ty = ty;
+        self
+    }
+
+    /// Sets the format of the image view.
+    ///
+    /// If this is set to a format that is different from the image, the image must be created with
+    /// the `mutable_format` flag.
+    ///
+    /// The default value is the format of the image.
+    #[inline]
+    pub fn format(mut self, format: Format) -> Self {
+        self.format = format;
+        self
+    }
+
+    /// Sets how to map components of each pixel.
+    ///
+    /// The default value is [`ComponentMapping::identity()`].
+    #[inline]
+    pub fn component_mapping(mut self, component_mapping: ComponentMapping) -> Self {
+        self.component_mapping = component_mapping;
+        self
+    }
+
+    /// Sets the range of mipmap levels that the view should cover.
+    ///
+    /// The default value is the full range of mipmaps present in the image.
+    #[inline]
+    pub fn mip_levels(mut self, mip_levels: Range<u32>) -> Self {
+        self.mip_levels = mip_levels;
+        self
+    }
+
+    /// Sets the range of array layers that the view should cover.
+    ///
+    /// The default value is the full range of array layers present in the image.
+    #[inline]
+    pub fn array_layers(mut self, array_layers: Range<u32>) -> Self {
+        self.array_layers = array_layers;
+        self
     }
 }
 
@@ -310,26 +406,37 @@ where
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ImageViewCreationError {
     /// Allocating memory failed.
-    AllocError(DeviceMemoryAllocError),
+    OomError(OomError),
+
     /// The specified range of array layers was out of range for the image.
     ArrayLayersOutOfRange,
+
+    /// The format requires a sampler YCbCr conversion, but none was provided.
+    FormatRequiresSamplerYcbcrConversion { format: Format },
+
     /// The specified range of mipmap levels was out of range for the image.
-    MipMapLevelsOutOfRange,
+    MipLevelsOutOfRange,
+
     /// The requested format was not compatible with the image.
     IncompatibleFormat,
+
     /// The requested [`ImageViewType`] was not compatible with the image, or with the specified ranges of array layers and mipmap levels.
     IncompatibleType,
+
     /// The image was not created with
     /// [one of the required usages](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/vkspec.html#valid-imageview-imageusage)
     /// for image views.
     InvalidImageUsage,
+
+    /// Sampler YCbCr conversion was enabled, but `component_mapping` was not the identity mapping.
+    SamplerYcbcrConversionComponentMappingNotIdentity { component_mapping: ComponentMapping },
 }
 
 impl error::Error for ImageViewCreationError {
     #[inline]
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
-            ImageViewCreationError::AllocError(ref err) => Some(err),
+            ImageViewCreationError::OomError(ref err) => Some(err),
             _ => None,
         }
     }
@@ -342,14 +449,16 @@ impl fmt::Display for ImageViewCreationError {
             fmt,
             "{}",
             match *self {
-                ImageViewCreationError::AllocError(err) => "allocating memory failed",
-                ImageViewCreationError::ArrayLayersOutOfRange => "array layers are out of range",
-                ImageViewCreationError::MipMapLevelsOutOfRange => "mipmap levels are out of range",
-                ImageViewCreationError::IncompatibleFormat => "format is not compatible with image",
-                ImageViewCreationError::IncompatibleType =>
+                Self::OomError(err) => "allocating memory failed",
+                Self::ArrayLayersOutOfRange => "array layers are out of range",
+                Self::FormatRequiresSamplerYcbcrConversion { .. } => "the format requires a sampler YCbCr conversion, but none was provided",
+                Self::MipLevelsOutOfRange => "mipmap levels are out of range",
+                Self::IncompatibleFormat => "format is not compatible with image",
+                Self::IncompatibleType =>
                     "image view type is not compatible with image, array layers or mipmap levels",
-                ImageViewCreationError::InvalidImageUsage =>
+                Self::InvalidImageUsage =>
                     "the usage of the image is not compatible with image views",
+                Self::SamplerYcbcrConversionComponentMappingNotIdentity { .. } => "sampler YCbCr conversion was enabled, but `component_mapping` was not the identity mapping",
             }
         )
     }
@@ -358,131 +467,18 @@ impl fmt::Display for ImageViewCreationError {
 impl From<OomError> for ImageViewCreationError {
     #[inline]
     fn from(err: OomError) -> ImageViewCreationError {
-        ImageViewCreationError::AllocError(DeviceMemoryAllocError::OomError(err))
+        ImageViewCreationError::OomError(err)
     }
 }
 
-/// A low-level wrapper around a `vkImageView`.
-pub struct UnsafeImageView {
-    view: ash::vk::ImageView,
-    device: Arc<Device>,
-}
-
-impl UnsafeImageView {
-    /// Creates a new view from an image.
-    ///
-    /// # Safety
-    /// - The returned `UnsafeImageView` must not outlive `image`.
-    /// - `image` must have a usage that is compatible with image views.
-    /// - `ty` must be compatible with the dimensions and flags of the image.
-    /// - `mipmap_levels` must not be empty, must be within the range of levels of the image, and be compatible with the requested `ty`.
-    /// - `array_layers` must not be empty, must be within the range of layers of the image, and be compatible with the requested `ty`.
-    ///
-    /// # Panics
-    /// Panics if the image is a YcbCr image, since the Vulkano API is not yet flexible enough to
-    /// specify the aspect of image.
-    pub unsafe fn new(
-        image: &UnsafeImage,
-        ty: ImageViewType,
-        component_mapping: ComponentMapping,
-        mipmap_levels: Range<u32>,
-        array_layers: Range<u32>,
-    ) -> Result<UnsafeImageView, OomError> {
-        let fns = image.device().fns();
-
-        debug_assert!(mipmap_levels.end > mipmap_levels.start);
-        debug_assert!(mipmap_levels.end <= image.mipmap_levels());
-        debug_assert!(array_layers.end > array_layers.start);
-        debug_assert!(array_layers.end <= image.dimensions().array_layers());
-
-        if image.format().requires_sampler_ycbcr_conversion() {
-            unimplemented!();
+impl From<Error> for ImageViewCreationError {
+    #[inline]
+    fn from(err: Error) -> ImageViewCreationError {
+        match err {
+            err @ Error::OutOfHostMemory => OomError::from(err).into(),
+            err @ Error::OutOfDeviceMemory => OomError::from(err).into(),
+            _ => panic!("unexpected error: {:?}", err),
         }
-
-        // TODO: Let user choose
-        let aspects = image.format().aspects();
-
-        let view = {
-            let infos = ash::vk::ImageViewCreateInfo {
-                flags: ash::vk::ImageViewCreateFlags::empty(),
-                image: image.internal_object(),
-                view_type: ty.into(),
-                format: image.format().into(),
-                components: component_mapping.into(),
-                subresource_range: ash::vk::ImageSubresourceRange {
-                    aspect_mask: aspects.into(),
-                    base_mip_level: mipmap_levels.start,
-                    level_count: mipmap_levels.end - mipmap_levels.start,
-                    base_array_layer: array_layers.start,
-                    layer_count: array_layers.end - array_layers.start,
-                },
-                ..Default::default()
-            };
-
-            let mut output = MaybeUninit::uninit();
-            check_errors(fns.v1_0.create_image_view(
-                image.device().internal_object(),
-                &infos,
-                ptr::null(),
-                output.as_mut_ptr(),
-            ))?;
-            output.assume_init()
-        };
-
-        Ok(UnsafeImageView {
-            view,
-            device: image.device().clone(),
-        })
-    }
-}
-
-unsafe impl VulkanObject for UnsafeImageView {
-    type Object = ash::vk::ImageView;
-
-    #[inline]
-    fn internal_object(&self) -> ash::vk::ImageView {
-        self.view
-    }
-}
-
-unsafe impl DeviceOwned for UnsafeImageView {
-    fn device(&self) -> &Arc<Device> {
-        &self.device
-    }
-}
-
-impl fmt::Debug for UnsafeImageView {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "<Vulkan image view {:?}>", self.view)
-    }
-}
-
-impl Drop for UnsafeImageView {
-    #[inline]
-    fn drop(&mut self) {
-        unsafe {
-            let fns = self.device.fns();
-            fns.v1_0
-                .destroy_image_view(self.device.internal_object(), self.view, ptr::null());
-        }
-    }
-}
-
-impl PartialEq for UnsafeImageView {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.view == other.view && self.device == other.device
-    }
-}
-
-impl Eq for UnsafeImageView {}
-
-impl Hash for UnsafeImageView {
-    #[inline]
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.view.hash(state);
-        self.device.hash(state);
     }
 }
 
@@ -515,102 +511,24 @@ impl From<ImageViewType> for ash::vk::ImageViewType {
     }
 }
 
-/// Specifies how the components of an image must be mapped.
-///
-/// When creating an image view, it is possible to ask the implementation to modify the value
-/// returned when accessing a given component from within a shader.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
-pub struct ComponentMapping {
-    /// First component.
-    pub r: ComponentSwizzle,
-    /// Second component.
-    pub g: ComponentSwizzle,
-    /// Third component.
-    pub b: ComponentSwizzle,
-    /// Fourth component.
-    pub a: ComponentSwizzle,
-}
-
-impl ComponentMapping {
-    /// Returns `true` if the component mapping is identity swizzled,
-    /// meaning that all the members are `Identity`.
-    ///
-    /// Certain operations require views that are identity swizzled, and will return an error
-    /// otherwise. For example, attaching a view to a framebuffer is only possible if the view is
-    /// identity swizzled.
-    #[inline]
-    pub fn is_identity(&self) -> bool {
-        self.r == ComponentSwizzle::Identity
-            && self.g == ComponentSwizzle::Identity
-            && self.b == ComponentSwizzle::Identity
-            && self.a == ComponentSwizzle::Identity
-    }
-}
-
-impl From<ComponentMapping> for ash::vk::ComponentMapping {
-    #[inline]
-    fn from(value: ComponentMapping) -> Self {
-        Self {
-            r: value.r.into(),
-            g: value.g.into(),
-            b: value.b.into(),
-            a: value.a.into(),
-        }
-    }
-}
-
-/// Describes the value that an individual component must return when being accessed.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[repr(i32)]
-pub enum ComponentSwizzle {
-    /// Returns the value that this component should normally have.
-    ///
-    /// This is the `Default` value.
-    Identity = ash::vk::ComponentSwizzle::IDENTITY.as_raw(),
-    /// Always return zero.
-    Zero = ash::vk::ComponentSwizzle::ZERO.as_raw(),
-    /// Always return one.
-    One = ash::vk::ComponentSwizzle::ONE.as_raw(),
-    /// Returns the value of the first component.
-    Red = ash::vk::ComponentSwizzle::R.as_raw(),
-    /// Returns the value of the second component.
-    Green = ash::vk::ComponentSwizzle::G.as_raw(),
-    /// Returns the value of the third component.
-    Blue = ash::vk::ComponentSwizzle::B.as_raw(),
-    /// Returns the value of the fourth component.
-    Alpha = ash::vk::ComponentSwizzle::A.as_raw(),
-}
-
-impl From<ComponentSwizzle> for ash::vk::ComponentSwizzle {
-    #[inline]
-    fn from(val: ComponentSwizzle) -> Self {
-        Self::from_raw(val as i32)
-    }
-}
-
-impl Default for ComponentSwizzle {
-    #[inline]
-    fn default() -> ComponentSwizzle {
-        ComponentSwizzle::Identity
-    }
-}
-
 /// Trait for types that represent the GPU can access an image view.
-pub unsafe trait ImageViewAbstract: DeviceOwned + Send + Sync {
+pub unsafe trait ImageViewAbstract:
+    VulkanObject<Object = ash::vk::ImageView> + DeviceOwned + Send + Sync
+{
     /// Returns the wrapped image that this image view was created from.
     fn image(&self) -> Arc<dyn ImageAccess>;
-
-    /// Returns the inner unsafe image view object used by this image view.
-    fn inner(&self) -> &UnsafeImageView;
 
     /// Returns the range of array layers of the wrapped image that this view exposes.
     fn array_layers(&self) -> Range<u32>;
 
+    /// Returns the component mapping of this view.
+    fn component_mapping(&self) -> ComponentMapping;
+
     /// Returns the format of this view. This can be different from the parent's format.
     fn format(&self) -> Format;
 
-    /// Returns the component mapping of this view.
-    fn component_mapping(&self) -> ComponentMapping;
+    /// Returns the features supported by the image view's format.
+    fn format_features(&self) -> &FormatFeatures;
 
     /// Returns the [`ImageViewType`] of this image view.
     fn ty(&self) -> ImageViewType;
@@ -626,24 +544,23 @@ where
     }
 
     #[inline]
-    fn inner(&self) -> &UnsafeImageView {
-        &self.inner
-    }
-
-    #[inline]
     fn array_layers(&self) -> Range<u32> {
         self.array_layers.clone()
     }
 
     #[inline]
+    fn component_mapping(&self) -> ComponentMapping {
+        self.component_mapping
+    }
+
+    #[inline]
     fn format(&self) -> Format {
-        // TODO: remove this default impl
         self.format
     }
 
     #[inline]
-    fn component_mapping(&self) -> ComponentMapping {
-        self.component_mapping
+    fn format_features(&self) -> &FormatFeatures {
+        &self.format_features
     }
 
     #[inline]
@@ -655,7 +572,7 @@ where
 impl PartialEq for dyn ImageViewAbstract {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.inner() == other.inner()
+        self.internal_object() == other.internal_object() && self.device() == other.device()
     }
 }
 
@@ -664,6 +581,7 @@ impl Eq for dyn ImageViewAbstract {}
 impl Hash for dyn ImageViewAbstract {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.inner().hash(state);
+        self.internal_object().hash(state);
+        self.device().hash(state);
     }
 }

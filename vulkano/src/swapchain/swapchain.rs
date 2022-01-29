@@ -651,18 +651,19 @@ impl<W> SwapchainBuilder<W> {
         let flags = ImageCreateFlags::none();
 
         // check that the physical device supports the swapchain image configuration
-        match device.image_format_properties(
-            format,
-            ImageType::Dim2d,
-            ImageTiling::Optimal,
-            usage,
-            flags,
-        ) {
-            Ok(_) => (),
-            Err(e) => {
-                eprintln!("{}", e);
-                return Err(SwapchainCreationError::UnsupportedImageConfiguration);
-            }
+        if device
+            .physical_device()
+            .image_format_properties(
+                format,
+                ImageType::Dim2d,
+                ImageTiling::Optimal,
+                usage,
+                flags,
+                None,
+            )?
+            .is_none()
+        {
+            return Err(SwapchainCreationError::UnsupportedImageConfiguration);
         }
 
         // If we recreate a swapchain, make sure that the surface is the same.
