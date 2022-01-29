@@ -19,6 +19,59 @@
 //! descriptor set. The conversion must be attached on both the image view and sampler in the
 //! descriptor, and the sampler must be included in the descriptor set layout as an immutable
 //! sampler.
+//!
+//! # Examples
+//!
+//! ```
+//! # let device: std::sync::Arc<vulkano::device::Device> = return;
+//! # let image_data: Vec<u8> = return;
+//! # let queue: std::sync::Arc<vulkano::device::Queue> = return;
+//! use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
+//! use vulkano::descriptor_set::layout::{DescriptorDesc, DescriptorSetLayout, DescriptorSetDesc, DescriptorType};
+//! use vulkano::format::Format;
+//! use vulkano::image::{ImmutableImage, ImageCreateFlags, ImageDimensions, ImageUsage, MipmapsCount};
+//! use vulkano::image::view::ImageView;
+//! use vulkano::sampler::Sampler;
+//! use vulkano::sampler::ycbcr::{SamplerYcbcrConversion, SamplerYcbcrModelConversion};
+//! use vulkano::shader::ShaderStage;
+//!
+//! let conversion = SamplerYcbcrConversion::start()
+//!     .format(Some(Format::G8_B8_R8_3PLANE_420_UNORM))
+//!     .ycbcr_model(SamplerYcbcrModelConversion::YcbcrIdentity)
+//!     .build(device.clone()).unwrap();
+//!
+//! let sampler = Sampler::start(device.clone())
+//!     .sampler_ycbcr_conversion(Some(conversion.clone()))
+//!     .build().unwrap();
+//!
+//! let descriptor_set_layout = DescriptorSetLayout::new(
+//!     device.clone(),
+//!     DescriptorSetDesc::new([Some(DescriptorDesc {
+//!         ty: DescriptorType::CombinedImageSampler,
+//!         descriptor_count: 1,
+//!         variable_count: false,
+//!         stages: ShaderStage::Fragment.into(),
+//!         immutable_samplers: vec![sampler],
+//!     })]),
+//! ).unwrap();
+//!
+//! let (image, init) = ImmutableImage::from_iter(
+//!     image_data,
+//!     ImageDimensions::Dim2d { width: 1920, height: 1080, array_layers: 1 },
+//!     MipmapsCount::One,
+//!     Format::G8_B8_R8_3PLANE_420_UNORM,
+//!     queue.clone(),
+//! ).unwrap();
+//!
+//! let image_view = ImageView::start(image)
+//!     .sampler_ycbcr_conversion(Some(conversion.clone()))
+//!     .build().unwrap();
+//!
+//! let descriptor_set = PersistentDescriptorSet::new(
+//!     descriptor_set_layout.clone(),
+//!     [WriteDescriptorSet::image_view(0, image_view)],
+//! ).unwrap();
+//! ```
 
 use crate::{
     check_errors,
@@ -46,7 +99,7 @@ impl SamplerYcbcrConversion {
             ycbcr_model: SamplerYcbcrModelConversion::RgbIdentity,
             ycbcr_range: SamplerYcbcrRange::ItuFull,
             component_mapping: ComponentMapping::identity(),
-            chroma_offset: [ChromaLocation::Midpoint; 2],
+            chroma_offset: [ChromaLocation::CositedEven; 2],
             chroma_filter: Filter::Nearest,
             force_explicit_reconstruction: false,
         }
@@ -387,7 +440,7 @@ impl SamplerYcbcrConversionBuilder {
     /// The value is ignored if the filter is `Nearest` or the corresponding axis is not chroma
     /// subsampled. If the value is not ignored, the format must support the chosen mode.
     ///
-    /// The default value is [`Midpoint`](ChromaLocation::Midpoint) for both axes.
+    /// The default value is [`CositedEven`](ChromaLocation::CositedEven) for both axes.
     #[inline]
     pub fn chroma_offset(mut self, offsets: [ChromaLocation; 2]) -> Self {
         self.chroma_offset = offsets;
