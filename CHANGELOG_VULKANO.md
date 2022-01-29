@@ -66,6 +66,7 @@
 - The `ImageViewAbstract` trait now includes a `format_features` method.
 - The `BufferViewAbstract` trait now includes `format` and `format_features` methods.
 - Add `boxed_send()`, `boxed_sync()`, `boxed_send_sync()` for `GpuFuture`.
+- Fixed mipmap generation for 2D array images.
 
 # Version 0.27.1 (2021-12-07)
 
