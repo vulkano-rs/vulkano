@@ -63,7 +63,7 @@ contributing(opening a PR) into [README.md](https://github.com/vulkano-rs/vulkan
 | [Ferret](https://github.com/Rua/ferret) | Doom-compatible game engine |
 | [Sandbox](https://github.com/hakolao/sandbox) | 2D Pixel Physics Simulator |
 | [Egui Winit Vulkano](https://github.com/hakolao/egui_winit_vulkano) | Vulkano integration with Egui |
-| [VideowindowW](https://www.videowindow.eu/) | Uses Vulkano under the hood to enable asynchronous video stream compositing |
+| [VideowindoW](https://www.videowindow.eu/) | Uses Vulkano under the hood to enable asynchronous video stream compositing |
 
 We would love to help you keep your project in sync with the most recent changes in Vulkano
 if you give us feedback by adding your project into this list.
