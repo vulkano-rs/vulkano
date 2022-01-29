@@ -55,7 +55,7 @@
 //!     })]),
 //! ).unwrap();
 //!
-//! let (image, init) = ImmutableImage::from_iter(
+//! let (image, future) = ImmutableImage::from_iter(
 //!     image_data,
 //!     ImageDimensions::Dim2d { width: 1920, height: 1080, array_layers: 1 },
 //!     MipmapsCount::One,
