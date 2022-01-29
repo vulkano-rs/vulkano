@@ -434,8 +434,8 @@ pub enum InvalidDescriptorResource {
         image_view_index: u32,
         error: SamplerImageViewIncompatibleError,
     },
-    SamplerYcbcrConversionNotAllowed,
     SamplerUnnormalizedCoordinatesNotAllowed,
+    SamplerYcbcrConversionNotAllowed,
     StorageImageAtomicNotSupported,
     StorageReadWithoutFormatNotSupported,
     StorageWriteWithoutFormatNotSupported,
@@ -486,16 +486,16 @@ impl fmt::Display for InvalidDescriptorResource {
                     "the bound sampler did not have the required depth comparison state; required {}, obtained {}", required, obtained
                 )
             }
-            Self::SamplerYcbcrConversionNotAllowed => {
-                write!(
-                    fmt,
-                    "the bound sampler is required to have no attached sampler YCbCr conversion"
-                )
-            }
             Self::SamplerUnnormalizedCoordinatesNotAllowed => {
                 write!(
                     fmt,
                     "the bound sampler is required to have unnormalized coordinates disabled"
+                )
+            }
+            Self::SamplerYcbcrConversionNotAllowed => {
+                write!(
+                    fmt,
+                    "the bound sampler is required to have no attached sampler YCbCr conversion"
                 )
             }
             Self::StorageImageAtomicNotSupported => {
