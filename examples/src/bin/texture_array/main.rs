@@ -18,21 +18,21 @@ use winit::window::{Window, WindowBuilder};
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
-use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
+use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::format::Format;
-use vulkano::image::{
-    ImageDimensions, ImageUsage, ImmutableImage, MipmapsCount, SwapchainImage, view::ImageView,
-};
 use vulkano::image::ImageAccess;
+use vulkano::image::{
+    view::ImageView, ImageDimensions, ImageUsage, ImmutableImage, MipmapsCount, SwapchainImage,
+};
 use vulkano::instance::Instance;
-use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::pipeline::graphics::color_blend::ColorBlendState;
 use vulkano::pipeline::graphics::input_assembly::{InputAssemblyState, PrimitiveTopology};
 use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
+use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
-use vulkano::sampler::{Filter, Sampler, SamplerAddressMode};
+use vulkano::sampler::{Sampler};
 use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
 use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano::Version;
@@ -86,7 +86,7 @@ fn main() {
             .union(&device_extensions),
         [(queue_family, 0.5)].iter().cloned(),
     )
-        .unwrap();
+    .unwrap();
     let queue = queues.next().unwrap();
 
     let (mut swapchain, images) = {
@@ -131,10 +131,10 @@ fn main() {
                 position: [0.5, 0.2],
             },
         ]
-            .iter()
-            .cloned(),
+        .iter()
+        .cloned(),
     )
-        .unwrap();
+    .unwrap();
 
     let vs = vs::load(device.clone()).unwrap();
     let fs = fs::load(device.clone()).unwrap();
@@ -153,11 +153,16 @@ fn main() {
             depth_stencil: {}
         }
     )
-        .unwrap();
+    .unwrap();
 
     let (texture, tex_future) = {
-        let image_array_data: Vec<_> = vec![include_bytes!("square.png").to_vec(), include_bytes!("star.png").to_vec(), include_bytes!("asterisk.png").to_vec()]
-            .into_iter().flat_map(|png_bytes| {
+        let image_array_data: Vec<_> = vec![
+            include_bytes!("square.png").to_vec(),
+            include_bytes!("star.png").to_vec(),
+            include_bytes!("asterisk.png").to_vec(),
+        ]
+        .into_iter()
+        .flat_map(|png_bytes| {
             let cursor = Cursor::new(png_bytes);
             let decoder = png::Decoder::new(cursor);
             let mut reader = decoder.read_info().unwrap();
@@ -166,7 +171,8 @@ fn main() {
             image_data.resize((info.width * info.height * 4) as usize, 0);
             reader.next_frame(&mut image_data).unwrap();
             image_data
-        }).collect();
+        })
+        .collect();
         let dimensions = ImageDimensions::Dim2d {
             width: 128,
             height: 128,
@@ -179,7 +185,7 @@ fn main() {
             Format::R8G8B8A8_SRGB,
             queue.clone(),
         )
-            .unwrap();
+        .unwrap();
         (ImageView::new(image).unwrap(), future)
     };
 
@@ -206,7 +212,7 @@ fn main() {
             sampler.clone(),
         )],
     )
-        .unwrap();
+    .unwrap();
 
     let mut viewport = Viewport {
         origin: [0.0, 0.0],
@@ -269,7 +275,7 @@ fn main() {
                 queue.family(),
                 CommandBufferUsage::OneTimeSubmit,
             )
-                .unwrap();
+            .unwrap();
             builder
                 .begin_render_pass(
                     framebuffers[image_num].clone(),

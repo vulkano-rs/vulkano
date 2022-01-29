@@ -9,6 +9,7 @@
 
 use crate::device::{DeviceExtensions, Features, FeaturesFfi, Properties, PropertiesFfi};
 use crate::format::Format;
+use crate::image::view::ImageViewType;
 use crate::image::{ImageCreateFlags, ImageTiling, ImageType, ImageUsage, SampleCounts};
 use crate::instance::{Instance, InstanceCreationError};
 use crate::memory::ExternalMemoryHandleType;
@@ -494,7 +495,10 @@ impl<'a> PhysicalDevice<'a> {
         usage: ImageUsage,
         flags: ImageCreateFlags,
         external_memory_handle_type: Option<ExternalMemoryHandleType>,
+        image_view_type: Option<ImageViewType>,
     ) -> Result<Option<ImageFormatProperties>, OomError> {
+        /* Input */
+
         let mut format_info2 = ash::vk::PhysicalDeviceImageFormatInfo2::builder()
             .format(format.into())
             .ty(ty.into())
@@ -526,7 +530,40 @@ impl<'a> PhysicalDevice<'a> {
             format_info2 = format_info2.push_next(next);
         }
 
+        let mut image_view_image_format_info = if let Some(image_view_type) = image_view_type {
+            if !self.supported_extensions().ext_filter_cubic {
+                // Can't query this, return unsupported
+                return Ok(None);
+            }
+
+            if !image_view_type.is_compatible_with(ty) {
+                return Ok(None);
+            }
+
+            Some(
+                ash::vk::PhysicalDeviceImageViewImageFormatInfoEXT::builder()
+                    .image_view_type(image_view_type.into()),
+            )
+        } else {
+            None
+        };
+
+        if let Some(next) = image_view_image_format_info.as_mut() {
+            format_info2 = format_info2.push_next(next);
+        }
+
+        /* Output */
+
         let mut image_format_properties2 = ash::vk::ImageFormatProperties2::default();
+        let mut filter_cubic_image_view_image_format_properties =
+            ash::vk::FilterCubicImageViewImageFormatPropertiesEXT::default();
+
+        if image_view_type.is_some() {
+            filter_cubic_image_view_image_format_properties.p_next =
+                image_format_properties2.p_next;
+            image_format_properties2.p_next =
+                &mut filter_cubic_image_view_image_format_properties as *mut _ as *mut _;
+        }
 
         let result = unsafe {
             let fns = self.instance.fns();
@@ -567,9 +604,14 @@ impl<'a> PhysicalDevice<'a> {
         };
 
         match result {
-            Ok(_) => Ok(Some(
-                image_format_properties2.image_format_properties.into(),
-            )),
+            Ok(_) => Ok(Some(ImageFormatProperties {
+                filter_cubic: filter_cubic_image_view_image_format_properties.filter_cubic
+                    != ash::vk::FALSE,
+                filter_cubic_minmax: filter_cubic_image_view_image_format_properties
+                    .filter_cubic_minmax
+                    != ash::vk::FALSE,
+                ..image_format_properties2.image_format_properties.into()
+            })),
             Err(Error::FormatNotSupported) => Ok(None),
             Err(err) => Err(err.into()),
         }
@@ -1307,6 +1349,14 @@ pub struct ImageFormatProperties {
     /// The maximum total size of an image, in bytes. This is guaranteed to be at least
     /// 0x80000000.
     pub max_resource_size: DeviceSize,
+    /// When querying with an image view type, whether such image views support sampling with
+    /// a [`Cubic`](crate::sampler::Filter::Cubic) `mag_filter` or `min_filter`.
+    pub filter_cubic: bool,
+    /// When querying with an image view type, whether such image views support sampling with
+    /// a [`Cubic`](crate::sampler::Filter::Cubic) `mag_filter` or `min_filter`, and with a
+    /// [`Min`](crate::sampler::SamplerReductionMode::Min) or
+    /// [`Max`](crate::sampler::SamplerReductionMode::Max) `reduction_mode`.
+    pub filter_cubic_minmax: bool,
 }
 
 impl From<ash::vk::ImageFormatProperties> for ImageFormatProperties {
@@ -1321,6 +1371,8 @@ impl From<ash::vk::ImageFormatProperties> for ImageFormatProperties {
             max_array_layers: props.max_array_layers,
             sample_counts: props.sample_counts.into(),
             max_resource_size: props.max_resource_size,
+            filter_cubic: false,
+            filter_cubic_minmax: false,
         }
     }
 }

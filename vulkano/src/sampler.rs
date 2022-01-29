@@ -47,8 +47,10 @@
 use crate::check_errors;
 use crate::device::Device;
 use crate::device::DeviceOwned;
+use crate::image::view::ImageViewType;
 use crate::image::ImageViewAbstract;
 use crate::pipeline::graphics::depth_stencil::CompareOp;
+use crate::shader::ShaderScalarType;
 use crate::Error;
 use crate::OomError;
 use crate::VulkanObject;
@@ -89,11 +91,14 @@ use std::sync::Arc;
 pub struct Sampler {
     handle: ash::vk::Sampler,
     device: Arc<Device>,
-    compare_mode: bool,
-    unnormalized: bool,
-    usable_with_float_formats: bool,
-    usable_with_int_formats: bool,
-    usable_with_swizzling: bool,
+
+    border_color: Option<BorderColor>,
+    compare: Option<CompareOp>,
+    mag_filter: Filter,
+    min_filter: Filter,
+    mipmap_mode: SamplerMipmapMode,
+    reduction_mode: SamplerReductionMode,
+    unnormalized_coordinates: bool,
 }
 
 impl Sampler {
@@ -147,44 +152,195 @@ impl Sampler {
             .build()
     }
 
-    /// Returns whether this sampler is allowed to sample `image_view`.
-    pub fn can_sample<I>(&self, image_view: &I) -> bool
+    /// Checks whether this sampler is compatible with `image_view`.
+    pub fn check_can_sample<I>(
+        &self,
+        image_view: &I,
+    ) -> Result<(), SamplerImageViewIncompatibleError>
     where
         I: ImageViewAbstract + ?Sized,
     {
-        // TODO: many more things need to be tested here
+        /*
+            Note: Most of these checks come from the Instruction/Sampler/Image View Validation
+            section, and are not strictly VUIDs.
+            https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/chap16.html#textures-input-validation
+        */
 
-        true
+        if self.compare.is_some() {
+            // VUID-vkCmdDispatch-None-06479
+            if !image_view.format_features().sampled_image_depth_comparison {
+                return Err(SamplerImageViewIncompatibleError::DepthComparisonNotSupported);
+            }
+
+            // The SPIR-V instruction is one of the OpImage*Dref* instructions, the image
+            // view format is one of the depth/stencil formats, and the image view aspect
+            // is not VK_IMAGE_ASPECT_DEPTH_BIT.
+            if !image_view.aspects().depth {
+                return Err(SamplerImageViewIncompatibleError::DepthComparisonWrongAspect);
+            }
+        } else {
+            if !image_view.format_features().sampled_image_filter_linear {
+                // VUID-vkCmdDispatch-magFilter-04553
+                if self.mag_filter == Filter::Linear || self.min_filter == Filter::Linear {
+                    return Err(SamplerImageViewIncompatibleError::FilterLinearNotSupported);
+                }
+
+                // VUID-vkCmdDispatch-mipmapMode-04770
+                if self.mipmap_mode == SamplerMipmapMode::Linear {
+                    return Err(SamplerImageViewIncompatibleError::MipmapModeLinearNotSupported);
+                }
+            }
+        }
+
+        if self.mag_filter == Filter::Cubic || self.min_filter == Filter::Cubic {
+            // VUID-vkCmdDispatch-None-02692
+            if !image_view.format_features().sampled_image_filter_cubic {
+                return Err(SamplerImageViewIncompatibleError::FilterCubicNotSupported);
+            }
+
+            // VUID-vkCmdDispatch-filterCubic-02694
+            if !image_view.filter_cubic() {
+                return Err(SamplerImageViewIncompatibleError::FilterCubicNotSupported);
+            }
+
+            // VUID-vkCmdDispatch-filterCubicMinmax-02695
+            if matches!(
+                self.reduction_mode,
+                SamplerReductionMode::Min | SamplerReductionMode::Max
+            ) && !image_view.filter_cubic_minmax()
+            {
+                return Err(SamplerImageViewIncompatibleError::FilterCubicMinmaxNotSupported);
+            }
+        }
+
+        if let Some(border_color) = self.border_color {
+            let aspects = image_view.aspects();
+            let view_scalar_type = ShaderScalarType::from(
+                if aspects.color || aspects.plane0 || aspects.plane1 || aspects.plane2 {
+                    image_view.format().type_color().unwrap()
+                } else if aspects.depth {
+                    image_view.format().type_depth().unwrap()
+                } else if aspects.stencil {
+                    image_view.format().type_stencil().unwrap()
+                } else {
+                    // Per `ImageViewBuilder::aspects` and
+                    // VUID-VkDescriptorImageInfo-imageView-01976
+                    unreachable!()
+                },
+            );
+
+            match border_color {
+                BorderColor::IntTransparentBlack
+                | BorderColor::IntOpaqueBlack
+                | BorderColor::IntOpaqueWhite => {
+                    // The sampler borderColor is an integer type and the image view
+                    // format is not one of the VkFormat integer types or a stencil
+                    // component of a depth/stencil format.
+                    if !matches!(
+                        view_scalar_type,
+                        ShaderScalarType::Sint | ShaderScalarType::Uint
+                    ) {
+                        return Err(
+                            SamplerImageViewIncompatibleError::BorderColorFormatNotCompatible,
+                        );
+                    }
+                }
+                BorderColor::FloatTransparentBlack
+                | BorderColor::FloatOpaqueBlack
+                | BorderColor::FloatOpaqueWhite => {
+                    // The sampler borderColor is a float type and the image view
+                    // format is not one of the VkFormat float types or a depth
+                    // component of a depth/stencil format.
+                    if !matches!(view_scalar_type, ShaderScalarType::Float) {
+                        return Err(
+                            SamplerImageViewIncompatibleError::BorderColorFormatNotCompatible,
+                        );
+                    }
+                }
+            }
+
+            // The sampler borderColor is one of the opaque black colors
+            // (VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK or VK_BORDER_COLOR_INT_OPAQUE_BLACK)
+            // and the image view VkComponentSwizzle for any of the VkComponentMapping
+            // components is not the identity swizzle, and
+            // VkPhysicalDeviceBorderColorSwizzleFeaturesEXT::borderColorSwizzleFromImage
+            // feature is not enabled, and
+            // VkSamplerBorderColorComponentMappingCreateInfoEXT is not specified.
+            if matches!(
+                border_color,
+                BorderColor::FloatOpaqueBlack | BorderColor::IntOpaqueBlack
+            ) && !image_view.component_mapping().is_identity()
+            {
+                return Err(
+                    SamplerImageViewIncompatibleError::BorderColorOpaqueBlackNotIdentitySwizzled,
+                );
+            }
+        }
+
+        // The sampler unnormalizedCoordinates is VK_TRUE and any of the limitations of
+        // unnormalized coordinates are violated.
+        // https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/chap13.html#samplers-unnormalizedCoordinates
+        if self.unnormalized_coordinates {
+            // The viewType must be either VK_IMAGE_VIEW_TYPE_1D or
+            // VK_IMAGE_VIEW_TYPE_2D.
+            // VUID-vkCmdDispatch-None-02702
+            if !matches!(image_view.ty(), ImageViewType::Dim1d | ImageViewType::Dim2d) {
+                return Err(
+                    SamplerImageViewIncompatibleError::UnnormalizedCoordinatesViewTypeNotCompatible,
+                );
+            }
+
+            // The image view must have a single layer and a single mip level.
+            if image_view.mip_levels().end - image_view.mip_levels().start != 1 {
+                return Err(
+                    SamplerImageViewIncompatibleError::UnnormalizedCoordinatesMultipleMipLevels,
+                );
+            }
+        }
+
+        Ok(())
     }
 
-    /// Returns true if the sampler is a compare-mode sampler.
+    /// Returns the border color if one is used by this sampler.
     #[inline]
-    pub fn compare_mode(&self) -> bool {
-        self.compare_mode
+    pub fn border_color(&self) -> Option<BorderColor> {
+        self.border_color
     }
 
-    /// Returns true if the sampler is unnormalized.
+    /// Returns the compare operation if the sampler is a compare-mode sampler.
     #[inline]
-    pub fn is_unnormalized(&self) -> bool {
-        self.unnormalized
+    pub fn compare(&self) -> Option<CompareOp> {
+        self.compare
     }
 
-    /// Returns true if the sampler can be used with floating-point image views.
+    /// Returns the magnification filter.
     #[inline]
-    pub fn usable_with_float_formats(&self) -> bool {
-        self.usable_with_float_formats
+    pub fn mag_filter(&self) -> Filter {
+        self.mag_filter
     }
 
-    /// Returns true if the sampler can be used with integer image views.
+    /// Returns the minification filter.
     #[inline]
-    pub fn usable_with_int_formats(&self) -> bool {
-        self.usable_with_int_formats
+    pub fn min_filter(&self) -> Filter {
+        self.min_filter
     }
 
-    /// Returns true if the sampler can be used with image views that have non-identity swizzling.
+    /// Returns the mipmap mode.
     #[inline]
-    pub fn usable_with_swizzling(&self) -> bool {
-        self.usable_with_swizzling
+    pub fn mipmap_mode(&self) -> SamplerMipmapMode {
+        self.mipmap_mode
+    }
+
+    /// Returns the reduction mode.
+    #[inline]
+    pub fn reduction_mode(&self) -> SamplerReductionMode {
+        self.reduction_mode
+    }
+
+    /// Returns true if the sampler uses unnormalized coordinates.
+    #[inline]
+    pub fn unnormalized_coordinates(&self) -> bool {
+        self.unnormalized_coordinates
     }
 }
 
@@ -254,15 +410,26 @@ pub struct SamplerBuilder {
 impl SamplerBuilder {
     /// Creates the `Sampler`.
     pub fn build(self) -> Result<Arc<Sampler>, SamplerCreationError> {
-        let device = self.device;
+        let Self {
+            device,
+            mag_filter,
+            min_filter,
+            mipmap_mode,
+            address_mode_u,
+            address_mode_v,
+            address_mode_w,
+            mip_lod_bias,
+            anisotropy,
+            compare,
+            lod,
+            border_color,
+            unnormalized_coordinates,
+            reduction_mode,
+        } = self;
 
-        if [
-            self.address_mode_u,
-            self.address_mode_v,
-            self.address_mode_w,
-        ]
-        .into_iter()
-        .any(|mode| mode == SamplerAddressMode::MirrorClampToEdge)
+        if [address_mode_u, address_mode_v, address_mode_w]
+            .into_iter()
+            .any(|mode| mode == SamplerAddressMode::MirrorClampToEdge)
         {
             if !device.enabled_features().sampler_mirror_clamp_to_edge
                 && !device.enabled_extensions().khr_sampler_mirror_clamp_to_edge
@@ -287,15 +454,15 @@ impl SamplerBuilder {
 
         {
             let limit = device.physical_device().properties().max_sampler_lod_bias;
-            if self.mip_lod_bias.abs() > limit {
+            if mip_lod_bias.abs() > limit {
                 return Err(SamplerCreationError::MaxSamplerLodBiasExceeded {
-                    requested: self.mip_lod_bias,
+                    requested: mip_lod_bias,
                     maximum: limit,
                 });
             }
         }
 
-        let (anisotropy_enable, max_anisotropy) = if let Some(max_anisotropy) = self.anisotropy {
+        let (anisotropy_enable, max_anisotropy) = if let Some(max_anisotropy) = anisotropy {
             if !device.enabled_features().sampler_anisotropy {
                 return Err(SamplerCreationError::FeatureNotEnabled {
                     feature: "sampler_anisotropy",
@@ -311,13 +478,13 @@ impl SamplerBuilder {
                 });
             }
 
-            if [self.mag_filter, self.min_filter]
+            if [mag_filter, min_filter]
                 .into_iter()
                 .any(|filter| filter == Filter::Cubic)
             {
                 return Err(SamplerCreationError::AnisotropyInvalidFilter {
-                    mag_filter: self.mag_filter,
-                    min_filter: self.min_filter,
+                    mag_filter: mag_filter,
+                    min_filter: min_filter,
                 });
             }
 
@@ -326,11 +493,9 @@ impl SamplerBuilder {
             (ash::vk::FALSE, 1.0)
         };
 
-        let (compare_enable, compare_op) = if let Some(compare_op) = self.compare {
-            if self.reduction_mode != SamplerReductionMode::WeightedAverage {
-                return Err(SamplerCreationError::CompareInvalidReductionMode {
-                    reduction_mode: self.reduction_mode,
-                });
+        let (compare_enable, compare_op) = if let Some(compare_op) = compare {
+            if reduction_mode != SamplerReductionMode::WeightedAverage {
+                return Err(SamplerCreationError::CompareInvalidReductionMode { reduction_mode });
             }
 
             (ash::vk::TRUE, compare_op)
@@ -338,60 +503,47 @@ impl SamplerBuilder {
             (ash::vk::FALSE, CompareOp::Never)
         };
 
-        let border_color_used = [
-            self.address_mode_u,
-            self.address_mode_v,
-            self.address_mode_w,
-        ]
-        .into_iter()
-        .any(|mode| mode == SamplerAddressMode::ClampToBorder);
-
-        if self.unnormalized_coordinates {
-            if self.min_filter != self.mag_filter {
+        if unnormalized_coordinates {
+            if min_filter != mag_filter {
                 return Err(
                     SamplerCreationError::UnnormalizedCoordinatesFiltersNotEqual {
-                        mag_filter: self.mag_filter,
-                        min_filter: self.min_filter,
+                        mag_filter,
+                        min_filter,
                     },
                 );
             }
 
-            if self.mipmap_mode != SamplerMipmapMode::Nearest {
+            if mipmap_mode != SamplerMipmapMode::Nearest {
                 return Err(
-                    SamplerCreationError::UnnormalizedCoordinatesInvalidMipmapMode {
-                        mipmap_mode: self.mipmap_mode,
-                    },
+                    SamplerCreationError::UnnormalizedCoordinatesInvalidMipmapMode { mipmap_mode },
                 );
             }
 
-            if self.lod != (0.0..=0.0) {
+            if lod != (0.0..=0.0) {
                 return Err(SamplerCreationError::UnnormalizedCoordinatesNonzeroLod {
-                    lod: self.lod.clone(),
+                    lod: lod.clone(),
                 });
             }
 
-            if [self.address_mode_u, self.address_mode_v]
-                .into_iter()
-                .any(|mode| {
-                    !matches!(
-                        mode,
-                        SamplerAddressMode::ClampToEdge | SamplerAddressMode::ClampToBorder
-                    )
-                })
-            {
+            if [address_mode_u, address_mode_v].into_iter().any(|mode| {
+                !matches!(
+                    mode,
+                    SamplerAddressMode::ClampToEdge | SamplerAddressMode::ClampToBorder
+                )
+            }) {
                 return Err(
                     SamplerCreationError::UnnormalizedCoordinatesInvalidAddressMode {
-                        address_mode_u: self.address_mode_u,
-                        address_mode_v: self.address_mode_v,
+                        address_mode_u,
+                        address_mode_v,
                     },
                 );
             }
 
-            if self.anisotropy.is_some() {
+            if anisotropy.is_some() {
                 return Err(SamplerCreationError::UnnormalizedCoordinatesAnisotropyEnabled);
             }
 
-            if self.compare.is_some() {
+            if compare.is_some() {
                 return Err(SamplerCreationError::UnnormalizedCoordinatesCompareEnabled);
             }
         }
@@ -401,11 +553,11 @@ impl SamplerBuilder {
                 || device.enabled_extensions().ext_sampler_filter_minmax
             {
                 Some(ash::vk::SamplerReductionModeCreateInfo {
-                    reduction_mode: self.reduction_mode.into(),
+                    reduction_mode: reduction_mode.into(),
                     ..Default::default()
                 })
             } else {
-                if self.reduction_mode != SamplerReductionMode::WeightedAverage {
+                if reduction_mode != SamplerReductionMode::WeightedAverage {
                     if device
                         .physical_device()
                         .supported_features()
@@ -430,21 +582,21 @@ impl SamplerBuilder {
         let handle = unsafe {
             let mut create_info = ash::vk::SamplerCreateInfo {
                 flags: ash::vk::SamplerCreateFlags::empty(),
-                mag_filter: self.mag_filter.into(),
-                min_filter: self.min_filter.into(),
-                mipmap_mode: self.mipmap_mode.into(),
-                address_mode_u: self.address_mode_u.into(),
-                address_mode_v: self.address_mode_v.into(),
-                address_mode_w: self.address_mode_w.into(),
-                mip_lod_bias: self.mip_lod_bias,
+                mag_filter: mag_filter.into(),
+                min_filter: min_filter.into(),
+                mipmap_mode: mipmap_mode.into(),
+                address_mode_u: address_mode_u.into(),
+                address_mode_v: address_mode_v.into(),
+                address_mode_w: address_mode_w.into(),
+                mip_lod_bias,
                 anisotropy_enable,
                 max_anisotropy,
                 compare_enable,
                 compare_op: compare_op.into(),
-                min_lod: *self.lod.start(),
-                max_lod: *self.lod.end(),
-                border_color: self.border_color.into(),
-                unnormalized_coordinates: self.unnormalized_coordinates as ash::vk::Bool32,
+                min_lod: *lod.start(),
+                max_lod: *lod.end(),
+                border_color: border_color.into(),
+                unnormalized_coordinates: unnormalized_coordinates as ash::vk::Bool32,
                 ..Default::default()
             };
 
@@ -468,28 +620,17 @@ impl SamplerBuilder {
         Ok(Arc::new(Sampler {
             handle,
             device,
-            compare_mode: self.compare.is_some(),
-            unnormalized: self.unnormalized_coordinates,
-            usable_with_float_formats: !border_color_used
-                || matches!(
-                    self.border_color,
-                    BorderColor::FloatTransparentBlack
-                        | BorderColor::FloatOpaqueBlack
-                        | BorderColor::FloatOpaqueWhite
-                ),
-            usable_with_int_formats: (!border_color_used
-                || matches!(
-                    self.border_color,
-                    BorderColor::IntTransparentBlack
-                        | BorderColor::IntOpaqueBlack
-                        | BorderColor::IntOpaqueWhite
-                ))
-                && self.compare.is_none(),
-            usable_with_swizzling: !border_color_used
-                || !matches!(
-                    self.border_color,
-                    BorderColor::FloatOpaqueBlack | BorderColor::IntOpaqueBlack
-                ),
+
+            border_color: [address_mode_u, address_mode_v, address_mode_w]
+                .into_iter()
+                .any(|mode| mode == SamplerAddressMode::ClampToBorder)
+                .then(|| border_color),
+            compare,
+            mag_filter,
+            min_filter,
+            mipmap_mode,
+            reduction_mode,
+            unnormalized_coordinates,
         }))
     }
 
@@ -1165,6 +1306,64 @@ impl From<SamplerReductionMode> for ash::vk::SamplerReductionMode {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum SamplerImageViewIncompatibleError {
+    /// The sampler has a border color with a numeric type different from the image view.
+    BorderColorFormatNotCompatible,
+
+    /// The sampler has an opaque black border color, but the image view is not identity swizzled.
+    BorderColorOpaqueBlackNotIdentitySwizzled,
+
+    /// The sampler has depth comparison enabled, but this is not supported by the image view.
+    DepthComparisonNotSupported,
+
+    /// The sampler has depth comparison enabled, but the image view does not select the `depth`
+    /// aspect.
+    DepthComparisonWrongAspect,
+
+    /// The sampler uses a linear filter, but this is not supported by the image view's format
+    /// features.
+    FilterLinearNotSupported,
+
+    /// The sampler uses a cubic filter, but this is not supported by the image view's format
+    /// features.
+    FilterCubicNotSupported,
+
+    /// The sampler uses a cubic filter with a `Min` or `Max` reduction mode, but this is not
+    /// supported by the image view's format features.
+    FilterCubicMinmaxNotSupported,
+
+    /// The sampler uses a linear mipmap mode, but this is not supported by the image view's format
+    /// features.
+    MipmapModeLinearNotSupported,
+
+    /// The sampler uses unnormalized coordinates, but the image view has multiple mip levels.
+    UnnormalizedCoordinatesMultipleMipLevels,
+
+    /// The sampler uses unnormalized coordinates, but the image view has a type other than `Dim1d`
+    /// or `Dim2d`.
+    UnnormalizedCoordinatesViewTypeNotCompatible,
+}
+
+impl error::Error for SamplerImageViewIncompatibleError {}
+
+impl fmt::Display for SamplerImageViewIncompatibleError {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        match self {
+            Self::BorderColorFormatNotCompatible => write!(fmt, "the sampler has a border color with a numeric type different from the image view"),
+            Self::BorderColorOpaqueBlackNotIdentitySwizzled => write!(fmt, "the sampler has an opaque black border color, but the image view is not identity swizzled"),
+            Self::DepthComparisonNotSupported => write!(fmt, "the sampler has depth comparison enabled, but this is not supported by the image view"),
+            Self::DepthComparisonWrongAspect => write!(fmt, "the sampler has depth comparison enabled, but the image view does not select the `depth` aspect"),
+            Self::FilterLinearNotSupported => write!(fmt, "the sampler uses a linear filter, but this is not supported by the image view's format features"),
+            Self::FilterCubicNotSupported => write!(fmt, "the sampler uses a cubic filter, but this is not supported by the image view's format features"),
+            Self::FilterCubicMinmaxNotSupported => write!(fmt, "the sampler uses a cubic filter with a `Min` or `Max` reduction mode, but this is not supported by the image view's format features"),
+            Self::MipmapModeLinearNotSupported => write!(fmt, "the sampler uses a linear mipmap mode, but this is not supported by the image view's format features"),
+            Self::UnnormalizedCoordinatesMultipleMipLevels => write!(fmt, "the sampler uses unnormalized coordinates, but the image view has multiple mip levels"),
+            Self::UnnormalizedCoordinatesViewTypeNotCompatible => write!(fmt, "the sampler uses unnormalized coordinates, but the image view has a type other than `Dim1d` or `Dim2d`"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
@@ -1185,8 +1384,8 @@ mod tests {
             .lod(0.0..=2.0)
             .build()
             .unwrap();
-        assert!(!s.compare_mode());
-        assert!(!s.is_unnormalized());
+        assert!(!s.compare().is_some());
+        assert!(!s.unnormalized_coordinates());
     }
 
     #[test]
@@ -1201,8 +1400,8 @@ mod tests {
             .lod(0.0..=2.0)
             .build()
             .unwrap();
-        assert!(s.compare_mode());
-        assert!(!s.is_unnormalized());
+        assert!(s.compare().is_some());
+        assert!(!s.unnormalized_coordinates());
     }
 
     #[test]
@@ -1214,8 +1413,8 @@ mod tests {
             .unnormalized_coordinates(true)
             .build()
             .unwrap();
-        assert!(!s.compare_mode());
-        assert!(s.is_unnormalized());
+        assert!(!s.compare().is_some());
+        assert!(s.unnormalized_coordinates());
     }
 
     #[test]

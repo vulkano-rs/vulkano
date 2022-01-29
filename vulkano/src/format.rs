@@ -113,6 +113,58 @@ impl Format {
         physical_device.format_properties(*self)
     }
 
+    /// Returns whether the format can be used with a storage image, without specifying
+    /// the format in the shader, if the
+    /// [`shader_storage_image_read_without_format`](crate::device::Features::shader_storage_image_read_without_format)
+    /// and/or
+    /// [`shader_storage_image_write_without_format`](crate::device::Features::shader_storage_image_write_without_format)
+    /// features are enabled on the device.
+    #[inline]
+    pub fn shader_storage_image_without_format(&self) -> bool {
+        matches!(
+            *self,
+            Format::R8G8B8A8_UNORM
+                | Format::R8G8B8A8_SNORM
+                | Format::R8G8B8A8_UINT
+                | Format::R8G8B8A8_SINT
+                | Format::R32_UINT
+                | Format::R32_SINT
+                | Format::R32_SFLOAT
+                | Format::R32G32_UINT
+                | Format::R32G32_SINT
+                | Format::R32G32_SFLOAT
+                | Format::R32G32B32A32_UINT
+                | Format::R32G32B32A32_SINT
+                | Format::R32G32B32A32_SFLOAT
+                | Format::R16G16B16A16_UINT
+                | Format::R16G16B16A16_SINT
+                | Format::R16G16B16A16_SFLOAT
+                | Format::R16G16_SFLOAT
+                | Format::B10G11R11_UFLOAT_PACK32
+                | Format::R16_SFLOAT
+                | Format::R16G16B16A16_UNORM
+                | Format::A2B10G10R10_UNORM_PACK32
+                | Format::R16G16_UNORM
+                | Format::R8G8_UNORM
+                | Format::R16_UNORM
+                | Format::R8_UNORM
+                | Format::R16G16B16A16_SNORM
+                | Format::R16G16_SNORM
+                | Format::R8G8_SNORM
+                | Format::R16_SNORM
+                | Format::R8_SNORM
+                | Format::R16G16_SINT
+                | Format::R8G8_SINT
+                | Format::R16_SINT
+                | Format::R8_SINT
+                | Format::A2B10G10R10_UINT_PACK32
+                | Format::R16G16_UINT
+                | Format::R8G8_UINT
+                | Format::R16_UINT
+                | Format::R8_UINT
+        )
+    }
+
     #[inline]
     pub fn decode_clear_value(&self, value: ClearValue) -> ClearValue {
         let aspects = self.aspects();
@@ -156,6 +208,7 @@ impl From<Format> for ash::vk::Format {
     }
 }
 
+// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/chap46.html#spirvenv-image-formats
 impl From<ImageFormat> for Option<Format> {
     fn from(val: ImageFormat) -> Self {
         match val {

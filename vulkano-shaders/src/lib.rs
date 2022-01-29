@@ -895,34 +895,6 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let uses = &input.types_meta.uses;
 
     let result = quote! {
-        #[allow(unused_imports)]
-        use std::sync::Arc;
-        #[allow(unused_imports)]
-        use std::vec::IntoIter as VecIntoIter;
-
-        #[allow(unused_imports)]
-        use vulkano::device::Device;
-        #[allow(unused_imports)]
-        use vulkano::descriptor_set::layout::DescriptorType;
-        #[allow(unused_imports)]
-        use vulkano::format::Format;
-        #[allow(unused_imports)]
-        use vulkano::image::view::ImageViewType;
-        #[allow(unused_imports)]
-        use vulkano::pipeline::layout::PipelineLayout;
-        #[allow(unused_imports)]
-        use vulkano::pipeline::layout::PipelineLayoutPcRange;
-        #[allow(unused_imports)]
-        use vulkano::shader::DescriptorRequirements;
-        #[allow(unused_imports)]
-        use vulkano::shader::ShaderStages;
-        #[allow(unused_imports)]
-        use vulkano::shader::SpecializationConstants as SpecConstsTrait;
-        #[allow(unused_imports)]
-        use vulkano::shader::SpecializationMapEntry;
-        #[allow(unused_imports)]
-        use vulkano::Version;
-
         #(
             #shaders_code
         )*

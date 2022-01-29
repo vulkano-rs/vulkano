@@ -510,7 +510,7 @@ impl UnsafeImageBuilder {
         // Compute the number of mip levels
         let mip_levels = match mip_levels.into() {
             MipmapsCount::Specific(num) => num,
-            MipmapsCount::Log2 => dimensions.max_mipmaps(),
+            MipmapsCount::Log2 => dimensions.max_mip_levels(),
             MipmapsCount::One => 1,
         };
 
@@ -533,9 +533,10 @@ impl UnsafeImageBuilder {
         };
 
         // Check mip levels
-        let max_mip_levels = dimensions.max_mipmaps();
+        let max_mip_levels = dimensions.max_mip_levels();
         debug_assert!(max_mip_levels >= 1);
 
+        // VUID-VkImageCreateInfo-mipLevels-00958
         if mip_levels > max_mip_levels {
             return Err(ImageCreationError::MaxMipLevelsExceeded {
                 mip_levels,
@@ -543,7 +544,7 @@ impl UnsafeImageBuilder {
             });
         }
 
-        // Check limits for multisampled images
+        // VUID-VkImageCreateInfo-samples-02257
         if samples != SampleCount::Sample1 {
             if image_type != ImageType::Dim2d {
                 return Err(ImageCreationError::MultisampleNot2d);
@@ -564,18 +565,22 @@ impl UnsafeImageBuilder {
 
         // Check limits for YCbCr formats
         if let Some(chroma_sampling) = format.ycbcr_chroma_sampling() {
+            // VUID-VkImageCreateInfo-format-06410
             if mip_levels != 1 {
                 return Err(ImageCreationError::YcbcrFormatMultipleMipLevels);
             }
 
+            // VUID-VkImageCreateInfo-format-06411
             if samples != SampleCount::Sample1 {
                 return Err(ImageCreationError::YcbcrFormatMultisampling);
             }
 
+            // VUID-VkImageCreateInfo-format-06412
             if image_type != ImageType::Dim2d {
                 return Err(ImageCreationError::YcbcrFormatNot2d);
             }
 
+            // VUID-VkImageCreateInfo-format-06413
             if array_layers > 1 && !device.enabled_features().ycbcr_image_arrays {
                 return Err(ImageCreationError::FeatureNotEnabled {
                     feature: "ycbcr_image_arrays",
@@ -586,11 +591,14 @@ impl UnsafeImageBuilder {
             match chroma_sampling {
                 ChromaSampling::Mode444 => (),
                 ChromaSampling::Mode422 => {
+                    // VUID-VkImageCreateInfo-format-04712
                     if !(extent[0] % 2 == 0) {
                         return Err(ImageCreationError::YcbcrFormatInvalidDimensions);
                     }
                 }
                 ChromaSampling::Mode420 => {
+                    // VUID-VkImageCreateInfo-format-04712
+                    // VUID-VkImageCreateInfo-format-04713
                     if !(extent[0] % 2 == 0 && extent[1] % 2 == 0) {
                         return Err(ImageCreationError::YcbcrFormatInvalidDimensions);
                     }
@@ -624,6 +632,8 @@ impl UnsafeImageBuilder {
             });
         }
 
+        // VUID-VkImageCreateInfo-usage-00964
+        // VUID-VkImageCreateInfo-usage-00965
         if (usage.color_attachment
             || usage.depth_stencil_attachment
             || usage.input_attachment
@@ -645,8 +655,7 @@ impl UnsafeImageBuilder {
                 return Err(ImageCreationError::FormatUsageNotSupported { usage: "storage" });
             }
 
-            // If the `shaderStorageImageMultisample` feature is not enabled and we have
-            // `usage_storage` set to true, then the number of samples must be 1.
+            // VUID-VkImageCreateInfo-usage-00968
             if samples != SampleCount::Sample1
                 && !device.enabled_features().shader_storage_image_multisample
             {
@@ -674,30 +683,31 @@ impl UnsafeImageBuilder {
         /* Check flags requirements */
 
         if flags.cube_compatible {
+            // VUID-VkImageCreateInfo-flags-00949
             if image_type != ImageType::Dim2d {
                 return Err(ImageCreationError::CubeCompatibleNot2d);
             }
 
+            // VUID-VkImageCreateInfo-imageType-00954
             if extent[0] != extent[1] {
                 return Err(ImageCreationError::CubeCompatibleNotSquare);
             }
 
+            // VUID-VkImageCreateInfo-imageType-00954
             if array_layers < 6 {
                 return Err(ImageCreationError::CubeCompatibleNotEnoughArrayLayers);
-            }
-
-            if samples != SampleCount::Sample1 {
-                return Err(ImageCreationError::CubeCompatibleMultisampling);
             }
         }
 
         if flags.array_2d_compatible {
+            // VUID-VkImageCreateInfo-flags-00950
             if image_type != ImageType::Dim3d {
                 return Err(ImageCreationError::Array2dCompatibleNot3d);
             }
         }
 
         if flags.block_texel_view_compatible {
+            // VUID-VkImageCreateInfo-flags-01572
             if format.compression().is_none() {
                 return Err(ImageCreationError::BlockTexelViewCompatibleNotCompressed);
             }
@@ -716,6 +726,7 @@ impl UnsafeImageBuilder {
                 debug_assert!(ids.len() >= 2);
 
                 for &id in ids {
+                    // VUID-VkImageCreateInfo-sharingMode-01420
                     if device.physical_device().queue_family_by_id(id).is_none() {
                         return Err(ImageCreationError::SharingInvalidQueueFamilyId { id });
                     }
@@ -737,6 +748,7 @@ impl UnsafeImageBuilder {
                 });
             }
 
+            // VUID-VkImageCreateInfo-pNext-01443
             if initial_layout != ImageLayout::Undefined {
                 return Err(ImageCreationError::ExternalMemoryInvalidInitialLayout);
             }
@@ -940,6 +952,7 @@ impl UnsafeImageBuilder {
                     usage,
                     flags,
                     handle_type,
+                    None,
                 )?;
 
                 let ImageFormatProperties {
@@ -948,11 +961,15 @@ impl UnsafeImageBuilder {
                     max_array_layers,
                     sample_counts,
                     max_resource_size,
+                    ..
                 } = match image_format_properties {
                     Some(x) => x,
                     None => return Err(ImageCreationError::ImageFormatPropertiesNotSupported),
                 };
 
+                // VUID-VkImageCreateInfo-extent-02252
+                // VUID-VkImageCreateInfo-extent-02253
+                // VUID-VkImageCreateInfo-extent-02254
                 if extent[0] > max_extent[0]
                     || extent[1] > max_extent[1]
                     || extent[2] > max_extent[2]
@@ -963,6 +980,7 @@ impl UnsafeImageBuilder {
                     });
                 }
 
+                // VUID-VkImageCreateInfo-mipLevels-02255
                 if mip_levels > max_mip_levels {
                     return Err(ImageCreationError::MaxMipLevelsExceeded {
                         mip_levels,
@@ -970,6 +988,7 @@ impl UnsafeImageBuilder {
                     });
                 }
 
+                // VUID-VkImageCreateInfo-arrayLayers-02256
                 if array_layers > max_array_layers {
                     return Err(ImageCreationError::MaxArrayLayersExceeded {
                         array_layers,
@@ -977,6 +996,7 @@ impl UnsafeImageBuilder {
                     });
                 }
 
+                // VUID-VkImageCreateInfo-samples-02258
                 if !sample_counts.contains(samples) {
                     return Err(ImageCreationError::SampleCountNotSupported {
                         samples,
@@ -1056,9 +1076,17 @@ impl UnsafeImageBuilder {
     #[inline]
     pub fn dimensions(mut self, dimensions: ImageDimensions) -> Self {
         let extent = dimensions.width_height_depth();
+
+        // VUID-VkImageCreateInfo-extent-00944
         assert!(extent[0] != 0);
+
+        // VUID-VkImageCreateInfo-extent-00945
         assert!(extent[1] != 0);
+
+        // VUID-VkImageCreateInfo-extent-00946
         assert!(extent[2] != 0);
+
+        // VUID-VkImageCreateInfo-arrayLayers-00948
         assert!(dimensions.array_layers() != 0);
 
         self.dimensions = Some(dimensions);
@@ -1088,7 +1116,9 @@ impl UnsafeImageBuilder {
     /// - Panics if `flags` contains `block_texel_view_compatible` but not `mutable_format`.
     #[inline]
     pub fn flags(mut self, flags: ImageCreateFlags) -> Self {
+        // VUID-VkImageCreateInfo-flags-01573
         assert!(!(flags.block_texel_view_compatible && !flags.mutable_format));
+
         self.flags = flags;
         self
     }
@@ -1113,10 +1143,12 @@ impl UnsafeImageBuilder {
     ///   [`Preinitialized`](ImageLayout::Preinitialized).
     #[inline]
     pub fn initial_layout(mut self, layout: ImageLayout) -> Self {
+        // VUID-VkImageCreateInfo-initialLayout-00993
         assert!(matches!(
             layout,
             ImageLayout::Undefined | ImageLayout::Preinitialized
         ));
+
         self.initial_layout = layout;
         self
     }
@@ -1134,7 +1166,10 @@ impl UnsafeImageBuilder {
         M: Into<MipmapsCount>,
     {
         let mip_levels = mip_levels.into();
+
+        // VUID-VkImageCreateInfo-mipLevels-00947
         assert!(!matches!(mip_levels, MipmapsCount::Specific(0)));
+
         self.mip_levels = mip_levels;
         self
     }
@@ -1164,9 +1199,12 @@ impl UnsafeImageBuilder {
             Sharing::Exclusive => Sharing::Exclusive,
             Sharing::Concurrent(ids) => {
                 let mut ids: SmallVec<[u32; 4]> = ids.into_iter().collect();
+
+                // VUID-VkImageCreateInfo-sharingMode-00942
                 ids.sort_unstable();
                 ids.dedup();
                 assert!(ids.len() >= 2);
+
                 Sharing::Concurrent(ids)
             }
         };
@@ -1194,15 +1232,16 @@ impl UnsafeImageBuilder {
     ///   other than these.
     #[inline]
     pub fn usage(mut self, usage: ImageUsage) -> Self {
+        // VUID-VkImageCreateInfo-usage-requiredbitmask
         assert!(usage != ImageUsage::none());
 
         if usage.transient_attachment {
-            // At least one of these must also be set
+            // VUID-VkImageCreateInfo-usage-00966
             assert!(
                 usage.color_attachment || usage.depth_stencil_attachment || usage.input_attachment
             );
 
-            // And no others must be set
+            // VUID-VkImageCreateInfo-usage-00963
             assert!(
                 ImageUsage {
                     transient_attachment: false,

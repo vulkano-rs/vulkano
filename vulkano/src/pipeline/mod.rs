@@ -20,6 +20,7 @@
 pub use self::compute::ComputePipeline;
 pub use self::graphics::GraphicsPipeline;
 pub use self::layout::PipelineLayout;
+use crate::device::DeviceOwned;
 use std::sync::Arc;
 
 pub mod cache;
@@ -28,7 +29,7 @@ pub mod graphics;
 pub mod layout;
 
 /// A trait for operations shared between pipeline types.
-pub trait Pipeline {
+pub trait Pipeline: DeviceOwned {
     /// Returns the bind point of this pipeline.
     fn bind_point(&self) -> PipelineBindPoint;
 

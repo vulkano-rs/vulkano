@@ -814,7 +814,7 @@ pub(super) fn write_specialization_constants<'a>(
             let constant_id = spec_const.constant_id;
             let rust_size = spec_const.rust_size;
             map_entries.push(quote! {
-                SpecializationMapEntry {
+                ::vulkano::shader::SpecializationMapEntry {
                     constant_id: #constant_id,
                     offset: #curr_offset,
                     size: #rust_size,
@@ -857,9 +857,9 @@ pub(super) fn write_specialization_constants<'a>(
             }
         }
 
-        unsafe impl SpecConstsTrait for #struct_name {
-            fn descriptors() -> &'static [SpecializationMapEntry] {
-                static DESCRIPTORS: [SpecializationMapEntry; #num_map_entries] = [
+        unsafe impl ::vulkano::shader::SpecializationConstants for #struct_name {
+            fn descriptors() -> &'static [::vulkano::shader::SpecializationMapEntry] {
+                static DESCRIPTORS: [::vulkano::shader::SpecializationMapEntry; #num_map_entries] = [
                     #( #map_entries ),*
                 ];
                 &DESCRIPTORS

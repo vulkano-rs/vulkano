@@ -128,32 +128,18 @@ fn generate_mipmaps<L>(
     for level in 1..image.mip_levels() {
         for layer in 0..image.dimensions().array_layers() {
             let [xs, ys, ds] = dimensions
-                .mipmap_dimensions(level - 1)
+                .mip_level_dimensions(level - 1)
                 .unwrap()
                 .width_height_depth();
             let [xd, yd, dd] = dimensions
-                .mipmap_dimensions(level)
+                .mip_level_dimensions(level)
                 .unwrap()
                 .width_height_depth();
-    
-            let src = SubImage::new(
-                image.clone(),
-                level - 1,
-                1,
-                layer,
-                1,
-                layout,
-            );
-    
-            let dst = SubImage::new(
-                image.clone(),
-                level,
-                1,
-                layer,
-                1,
-                layout,
-            );
-    
+
+            let src = SubImage::new(image.clone(), level - 1, 1, layer, 1, layout);
+
+            let dst = SubImage::new(image.clone(), level, 1, layer, 1, layout);
+
             cbb.blit_image(
                 src,                               //source
                 [0, 0, 0],                         //source_top_left

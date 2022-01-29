@@ -16,7 +16,9 @@
 use crate::device::physical::FormatFeatures;
 use crate::device::{Device, DeviceOwned};
 use crate::format::Format;
-use crate::image::{ImageAccess, ImageDimensions, ImageTiling};
+use crate::image::{
+    ImageAccess, ImageAspects, ImageDimensions, ImageTiling, ImageType, ImageUsage, SampleCount,
+};
 use crate::sampler::ComponentMapping;
 use crate::OomError;
 use crate::VulkanObject;
@@ -38,10 +40,16 @@ where
     image: Arc<I>,
 
     array_layers: Range<u32>,
+    aspects: ImageAspects,
     component_mapping: ComponentMapping,
     format: Format,
     format_features: FormatFeatures,
+    mip_levels: Range<u32>,
     ty: ImageViewType,
+    usage: ImageUsage,
+
+    filter_cubic: bool,
+    filter_cubic_minmax: bool,
 }
 
 impl<I> ImageView<I>
@@ -56,6 +64,26 @@ where
 
     /// Begins building an `ImageView`.
     pub fn start(image: Arc<I>) -> ImageViewBuilder<I> {
+        let array_layers = 0..image.dimensions().array_layers();
+        let aspects = {
+            let aspects = image.format().aspects();
+            if aspects.depth || aspects.stencil {
+                debug_assert!(!aspects.color);
+                ImageAspects {
+                    depth: aspects.depth,
+                    stencil: aspects.stencil,
+                    ..Default::default()
+                }
+            } else {
+                debug_assert!(aspects.color);
+                ImageAspects {
+                    color: true,
+                    ..Default::default()
+                }
+            }
+        };
+        let format = image.format();
+        let mip_levels = 0..image.mip_levels();
         let ty = match image.dimensions() {
             ImageDimensions::Dim1d {
                 array_layers: 1, ..
@@ -67,17 +95,16 @@ where
             ImageDimensions::Dim2d { .. } => ImageViewType::Dim2dArray,
             ImageDimensions::Dim3d { .. } => ImageViewType::Dim3d,
         };
-        let mip_levels = 0..image.mip_levels();
-        let array_layers = 0..image.dimensions().array_layers();
 
         ImageViewBuilder {
+            image,
+
             array_layers,
+            aspects,
             component_mapping: ComponentMapping::default(),
-            format: image.format(),
+            format,
             mip_levels,
             ty,
-
-            image,
         }
     }
 
@@ -158,13 +185,14 @@ where
 
 #[derive(Debug)]
 pub struct ImageViewBuilder<I> {
+    image: Arc<I>,
+
     array_layers: Range<u32>,
+    aspects: ImageAspects,
     component_mapping: ComponentMapping,
     format: Format,
     mip_levels: Range<u32>,
     ty: ImageViewType,
-
-    image: Arc<I>,
 }
 
 impl<I> ImageViewBuilder<I>
@@ -173,154 +201,301 @@ where
 {
     /// Builds the `ImageView`.
     pub fn build(self) -> Result<Arc<ImageView<I>>, ImageViewCreationError> {
-        let dimensions = self.image.dimensions();
-        let image_inner = self.image.inner().image;
-        let image_flags = image_inner.flags();
-        let image_format = image_inner.format();
-        let image_usage = image_inner.usage();
+        let Self {
+            array_layers,
+            aspects,
+            component_mapping,
+            format,
+            mip_levels,
+            ty,
+            image,
+        } = self;
 
-        // TODO: Let user choose
-        let aspects = image_format.aspects();
+        let image_inner = image.inner().image;
+        let level_count = mip_levels.end - mip_levels.start;
+        let layer_count = array_layers.end - array_layers.start;
 
-        if self.mip_levels.end <= self.mip_levels.start
-            || self.mip_levels.end > image_inner.mip_levels()
-        {
-            return Err(ImageViewCreationError::MipLevelsOutOfRange);
+        // Get format features
+        let format_features = {
+            let format_features = if format != image_inner.format() {
+                let format_properties = image_inner
+                    .device()
+                    .physical_device()
+                    .format_properties(self.format);
+
+                match image_inner.tiling() {
+                    ImageTiling::Optimal => format_properties.optimal_tiling_features,
+                    ImageTiling::Linear => format_properties.linear_tiling_features,
+                }
+            } else {
+                *image_inner.format_features()
+            };
+
+            // Per https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/chap12.html#resources-image-view-format-features
+            if image_inner
+                .device()
+                .enabled_extensions()
+                .khr_format_feature_flags2
+            {
+                format_features
+            } else {
+                let is_without_format = format.shader_storage_image_without_format();
+
+                FormatFeatures {
+                    sampled_image_depth_comparison: format.type_color().is_none()
+                        && format_features.sampled_image,
+                    storage_read_without_format: is_without_format
+                        && image_inner
+                            .device()
+                            .enabled_features()
+                            .shader_storage_image_read_without_format,
+                    storage_write_without_format: is_without_format
+                        && image_inner
+                            .device()
+                            .enabled_features()
+                            .shader_storage_image_write_without_format,
+                    ..format_features
+                }
+            }
+        };
+
+        // No VUID apparently, but this seems like something we want to check?
+        if !image_inner.format().aspects().contains(&aspects) {
+            return Err(ImageViewCreationError::ImageAspectsNotCompatible {
+                aspects,
+                image_aspects: image_inner.format().aspects(),
+            });
         }
 
-        if self.array_layers.end <= self.array_layers.start
-            || self.array_layers.end > dimensions.array_layers()
-        {
-            return Err(ImageViewCreationError::ArrayLayersOutOfRange);
+        // VUID-VkImageViewCreateInfo-None-02273
+        if format_features == FormatFeatures::default() {
+            return Err(ImageViewCreationError::FormatNotSupported);
         }
 
-        if !(image_usage.sampled
-            || image_usage.storage
-            || image_usage.color_attachment
-            || image_usage.depth_stencil_attachment
-            || image_usage.input_attachment
-            || image_usage.transient_attachment)
+        // Get usage
+        // Can be different from image usage, see
+        // https://khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkImageViewCreateInfo.html#_description
+        let usage = *image_inner.usage();
+
+        // Check for compatibility with the image
+        let image_type = image.dimensions().image_type();
+
+        // VUID-VkImageViewCreateInfo-subResourceRange-01021
+        if !ty.is_compatible_with(image_type) {
+            return Err(ImageViewCreationError::ImageTypeNotCompatible);
+        }
+
+        // VUID-VkImageViewCreateInfo-image-01003
+        if (ty == ImageViewType::Cube || ty == ImageViewType::CubeArray)
+            && !image_inner.flags().cube_compatible
+        {
+            return Err(ImageViewCreationError::ImageNotCubeCompatible);
+        }
+
+        // VUID-VkImageViewCreateInfo-viewType-01004
+        if ty == ImageViewType::CubeArray
+            && !image_inner.device().enabled_features().image_cube_array
+        {
+            return Err(ImageViewCreationError::FeatureNotEnabled {
+                feature: "image_cube_array",
+                reason: "the `CubeArray` view type was requested",
+            });
+        }
+
+        // VUID-VkImageViewCreateInfo-subresourceRange-01718
+        if mip_levels.end > image_inner.mip_levels() {
+            return Err(ImageViewCreationError::MipLevelsOutOfRange {
+                range_end: mip_levels.end,
+                max: image_inner.mip_levels(),
+            });
+        }
+
+        if image_type == ImageType::Dim3d
+            && (ty == ImageViewType::Dim2d || ty == ImageViewType::Dim2dArray)
+        {
+            // VUID-VkImageViewCreateInfo-image-01005
+            if !image_inner.flags().array_2d_compatible {
+                return Err(ImageViewCreationError::ImageNotArray2dCompatible);
+            }
+
+            // VUID-VkImageViewCreateInfo-image-04970
+            if level_count != 1 {
+                return Err(ImageViewCreationError::Array2dCompatibleMultipleMipLevels);
+            }
+
+            // VUID-VkImageViewCreateInfo-image-02724
+            // VUID-VkImageViewCreateInfo-subresourceRange-02725
+            // We're using the depth dimension as array layers, but because of mip scaling, the
+            // depth, and therefore number of layers available, shrinks as the mip level gets
+            // higher.
+            let max = image_inner
+                .dimensions()
+                .mip_level_dimensions(mip_levels.start)
+                .unwrap()
+                .depth();
+            if array_layers.end > max {
+                return Err(ImageViewCreationError::ArrayLayersOutOfRange {
+                    range_end: array_layers.end,
+                    max,
+                });
+            }
+        } else {
+            // VUID-VkImageViewCreateInfo-image-01482
+            // VUID-VkImageViewCreateInfo-subresourceRange-01483
+            if array_layers.end > image_inner.dimensions().array_layers() {
+                return Err(ImageViewCreationError::ArrayLayersOutOfRange {
+                    range_end: array_layers.end,
+                    max: image_inner.dimensions().array_layers(),
+                });
+            }
+        }
+
+        // VUID-VkImageViewCreateInfo-image-04972
+        if image_inner.samples() != SampleCount::Sample1
+            && !(ty == ImageViewType::Dim2d || ty == ImageViewType::Dim2dArray)
+        {
+            return Err(ImageViewCreationError::MultisamplingNot2d);
+        }
+
+        /* Check usage requirements */
+
+        // VUID-VkImageViewCreateInfo-image-04441
+        if !(image_inner.usage().sampled
+            || image_inner.usage().storage
+            || image_inner.usage().color_attachment
+            || image_inner.usage().depth_stencil_attachment
+            || image_inner.usage().input_attachment
+            || image_inner.usage().transient_attachment)
         {
             return Err(ImageViewCreationError::InvalidImageUsage);
         }
 
-        // Check for compatibility with the image
-        match (
-            self.ty,
-            self.image.dimensions(),
-            self.array_layers.end - self.array_layers.start,
-            self.mip_levels.end - self.mip_levels.start,
-        ) {
-            (ImageViewType::Dim1d, ImageDimensions::Dim1d { .. }, 1, _) => (),
-            (ImageViewType::Dim1dArray, ImageDimensions::Dim1d { .. }, _, _) => (),
-            (ImageViewType::Dim2d, ImageDimensions::Dim2d { .. }, 1, _) => (),
-            (ImageViewType::Dim2dArray, ImageDimensions::Dim2d { .. }, _, _) => (),
-            (ImageViewType::Cube, ImageDimensions::Dim2d { .. }, 6, _)
-                if image_flags.cube_compatible =>
-            {
-                ()
-            }
-            (ImageViewType::CubeArray, ImageDimensions::Dim2d { .. }, n, _)
-                if image_flags.cube_compatible && n % 6 == 0 =>
-            {
-                ()
-            }
-            (ImageViewType::Dim3d, ImageDimensions::Dim3d { .. }, 1, _) => (),
-            (ImageViewType::Dim2d, ImageDimensions::Dim3d { .. }, 1, 1)
-                if image_flags.array_2d_compatible =>
-            {
-                ()
-            }
-            (ImageViewType::Dim2dArray, ImageDimensions::Dim3d { .. }, _, 1)
-                if image_flags.array_2d_compatible =>
-            {
-                ()
-            }
-            _ => return Err(ImageViewCreationError::IncompatibleType),
+        // VUID-VkImageViewCreateInfo-usage-02274
+        if usage.sampled && !format_features.sampled_image {
+            return Err(ImageViewCreationError::FormatUsageNotSupported { usage: "sampled" });
         }
 
-        if image_format.ycbcr_chroma_sampling().is_some() {
+        // VUID-VkImageViewCreateInfo-usage-02275
+        if usage.storage && !format_features.storage_image {
+            return Err(ImageViewCreationError::FormatUsageNotSupported { usage: "storage" });
+        }
+
+        // VUID-VkImageViewCreateInfo-usage-02276
+        if usage.color_attachment && !format_features.color_attachment {
+            return Err(ImageViewCreationError::FormatUsageNotSupported {
+                usage: "color_attachment",
+            });
+        }
+
+        // VUID-VkImageViewCreateInfo-usage-02277
+        if usage.depth_stencil_attachment && !format_features.depth_stencil_attachment {
+            return Err(ImageViewCreationError::FormatUsageNotSupported {
+                usage: "depth_stencil_attachment",
+            });
+        }
+
+        // VUID-VkImageViewCreateInfo-usage-02652
+        if usage.input_attachment
+            && !(format_features.color_attachment || format_features.depth_stencil_attachment)
+        {
+            return Err(ImageViewCreationError::FormatUsageNotSupported {
+                usage: "input_attachment",
+            });
+        }
+
+        /* Check flags requirements */
+
+        if image_inner.flags().block_texel_view_compatible {
+            // VUID-VkImageViewCreateInfo-image-01583
+            if !(format.compatibility() == image_inner.format().compatibility()
+                || format.block_size() == image_inner.format().block_size())
+            {
+                return Err(ImageViewCreationError::FormatNotCompatible);
+            }
+
+            // VUID-VkImageViewCreateInfo-image-01584
+            if layer_count != 1 {
+                return Err(ImageViewCreationError::BlockTexelViewCompatibleMultipleArrayLayers);
+            }
+
+            // VUID-VkImageViewCreateInfo-image-01584
+            if level_count != 1 {
+                return Err(ImageViewCreationError::BlockTexelViewCompatibleMultipleMipLevels);
+            }
+
+            // VUID-VkImageViewCreateInfo-image-04739
+            if format.compression().is_none() && ty == ImageViewType::Dim3d {
+                return Err(ImageViewCreationError::BlockTexelViewCompatibleUncompressedIs3d);
+            }
+        }
+        // VUID-VkImageViewCreateInfo-image-01761
+        else if image_inner.flags().mutable_format
+            && image_inner.format().planes().is_empty()
+            && format.compatibility() != image_inner.format().compatibility()
+        {
+            return Err(ImageViewCreationError::FormatNotCompatible);
+        }
+
+        if image_inner.flags().mutable_format
+            && !image_inner.format().planes().is_empty()
+            && !aspects.color
+        {
+            let plane = if aspects.plane0 {
+                0
+            } else if aspects.plane1 {
+                1
+            } else if aspects.plane2 {
+                2
+            } else {
+                unreachable!()
+            };
+            let plane_format = image_inner.format().planes()[plane];
+
+            // VUID-VkImageViewCreateInfo-image-01586
+            if format.compatibility() != plane_format.compatibility() {
+                return Err(ImageViewCreationError::FormatNotCompatible);
+            }
+        }
+        // VUID-VkImageViewCreateInfo-image-01762
+        else if format != image_inner.format() {
+            return Err(ImageViewCreationError::FormatNotCompatible);
+        }
+
+        // VUID-VkImageViewCreateInfo-format-06415
+        if image_inner.format().ycbcr_chroma_sampling().is_some() {
+            // VUID-VkImageViewCreateInfo-format-04714
+            // VUID-VkImageViewCreateInfo-format-04715
+            // VUID-VkImageViewCreateInfo-pNext-01970
             unimplemented!()
         }
 
-        if image_flags.block_texel_view_compatible {
-            if self.format.compatibility() != image_format.compatibility()
-                || self.format.block_size() != image_format.block_size()
-            {
-                return Err(ImageViewCreationError::IncompatibleFormat);
-            }
-
-            if self.array_layers.end - self.array_layers.start != 1 {
-                return Err(ImageViewCreationError::ArrayLayersOutOfRange);
-            }
-
-            if self.mip_levels.end - self.mip_levels.start != 1 {
-                return Err(ImageViewCreationError::MipLevelsOutOfRange);
-            }
-
-            if self.format.compression().is_none() && self.ty == ImageViewType::Dim3d {
-                return Err(ImageViewCreationError::IncompatibleType);
-            }
-        } else if image_flags.mutable_format {
-            if image_format.planes().is_empty() {
-                if self.format != image_format {
-                    return Err(ImageViewCreationError::IncompatibleFormat);
-                }
-            } else {
-                // TODO: VUID-VkImageViewCreateInfo-image-01586
-                // If image was created with the VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT flag, if the
-                // format of the image is a multi-planar format, and if subresourceRange.aspectMask
-                // is one of VK_IMAGE_ASPECT_PLANE_0_BIT, VK_IMAGE_ASPECT_PLANE_1_BIT, or
-                // VK_IMAGE_ASPECT_PLANE_2_BIT, then format must be compatible with the VkFormat for
-                // the plane of the image format indicated by subresourceRange.aspectMask, as
-                // defined in Compatible formats of planes of multi-planar formats
-
-                // TODO: VUID-VkImageViewCreateInfo-image-01762
-                // If image was not created with the VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT flag, or if
-                // the format of the image is a multi-planar format and if
-                // subresourceRange.aspectMask is VK_IMAGE_ASPECT_COLOR_BIT, format must be
-                // identical to the format used to create image
-            }
-        } else if self.format != image_format {
-            return Err(ImageViewCreationError::IncompatibleFormat);
+        // VUID-VkImageViewCreateInfo-imageViewType-04973
+        if (ty == ImageViewType::Dim1d || ty == ImageViewType::Dim2d || ty == ImageViewType::Dim3d)
+            && layer_count != 1
+        {
+            return Err(ImageViewCreationError::TypeNonArrayedMultipleArrayLayers);
         }
-
-        let format_features = if self.format != image_format {
-            if !(image_flags.mutable_format && image_format.planes().is_empty()) {
-                return Err(ImageViewCreationError::IncompatibleFormat);
-            } else if self.format.compatibility() != image_format.compatibility() {
-                if !image_flags.block_texel_view_compatible {
-                    return Err(ImageViewCreationError::IncompatibleFormat);
-                } else if self.format.block_size() != image_format.block_size() {
-                    return Err(ImageViewCreationError::IncompatibleFormat);
-                }
-            }
-
-            let format_properties = image_inner
-                .device()
-                .physical_device()
-                .format_properties(self.format);
-
-            match image_inner.tiling() {
-                ImageTiling::Optimal => format_properties.optimal_tiling_features,
-                ImageTiling::Linear => format_properties.linear_tiling_features,
-            }
-        } else {
-            *image_inner.format_features()
-        };
+        // VUID-VkImageViewCreateInfo-viewType-02960
+        else if ty == ImageViewType::Cube && layer_count != 6 {
+            return Err(ImageViewCreationError::TypeCubeNot6ArrayLayers);
+        }
+        // VUID-VkImageViewCreateInfo-viewType-02961
+        else if ty == ImageViewType::CubeArray && layer_count % 6 != 0 {
+            return Err(ImageViewCreationError::TypeCubeArrayNotMultipleOf6ArrayLayers);
+        }
 
         let create_info = ash::vk::ImageViewCreateInfo {
             flags: ash::vk::ImageViewCreateFlags::empty(),
             image: image_inner.internal_object(),
-            view_type: self.ty.into(),
-            format: image_format.into(),
-            components: self.component_mapping.into(),
+            view_type: ty.into(),
+            format: format.into(),
+            components: component_mapping.into(),
             subresource_range: ash::vk::ImageSubresourceRange {
                 aspect_mask: aspects.into(),
-                base_mip_level: self.mip_levels.start,
-                level_count: self.mip_levels.end - self.mip_levels.start,
-                base_array_layer: self.array_layers.start,
-                layer_count: self.array_layers.end - self.array_layers.start,
+                base_mip_level: mip_levels.start,
+                level_count,
+                base_array_layer: array_layers.start,
+                layer_count,
             },
             ..Default::default()
         };
@@ -337,32 +512,106 @@ where
             output.assume_init()
         };
 
+        let (filter_cubic, filter_cubic_minmax) = if let Some(properties) = image_inner
+            .device()
+            .physical_device()
+            .image_format_properties(
+                image_inner.format(),
+                image_type,
+                image_inner.tiling(),
+                *image_inner.usage(),
+                image_inner.flags(),
+                None,
+                Some(ty),
+            )? {
+            (properties.filter_cubic, properties.filter_cubic_minmax)
+        } else {
+            (false, false)
+        };
+
         Ok(Arc::new(ImageView {
             handle,
-            image: self.image,
+            image,
 
-            array_layers: self.array_layers,
-            component_mapping: self.component_mapping,
-            format: self.format,
+            array_layers,
+            aspects,
+            component_mapping,
+            format,
             format_features,
-            ty: self.ty,
+            mip_levels,
+            ty,
+            usage,
+
+            filter_cubic,
+            filter_cubic_minmax,
         }))
     }
 
-    /// Sets the image view type.
+    /// The range of array layers of the image that the view should cover.
     ///
-    /// The view type must be compatible with the dimensions of the image and the selected array
-    /// layers.
+    /// The default value is the full range of array layers present in the image.
     ///
-    /// The default value is determined from the image, based on its dimensions and number of
-    /// layers.
+    /// # Panics
+    ///
+    /// - Panics if `array_layers` is empty.
     #[inline]
-    pub fn ty(mut self, ty: ImageViewType) -> Self {
-        self.ty = ty;
+    pub fn array_layers(mut self, array_layers: Range<u32>) -> Self {
+        assert!(!array_layers.is_empty());
+        self.array_layers = array_layers;
         self
     }
 
-    /// Sets the format of the image view.
+    /// The aspects of the image that the view should cover.
+    ///
+    /// The default value is `color` if the image is a color format, `depth` and/or `stencil` if
+    /// the image is a depth/stencil format.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if aspects other than `color`, `depth`, `stencil`, `plane0`, `plane1` or `plane2`
+    ///   are selected.
+    /// - Panics if more than one aspect is selected, unless `depth` and `stencil` are the only
+    ///   aspects selected.
+    #[inline]
+    pub fn aspects(mut self, aspects: ImageAspects) -> Self {
+        let ImageAspects {
+            color,
+            depth,
+            stencil,
+            metadata,
+            plane0,
+            plane1,
+            plane2,
+            memory_plane0,
+            memory_plane1,
+            memory_plane2,
+        } = aspects;
+
+        assert!(!(metadata || memory_plane0 || memory_plane1 || memory_plane2));
+        assert!({
+            let num_bits = color as u8
+                + depth as u8
+                + stencil as u8
+                + plane0 as u8
+                + plane1 as u8
+                + plane2 as u8;
+            num_bits == 1 || depth && stencil && !(color || plane0 || plane1 || plane2)
+        });
+
+        self.aspects = aspects;
+        self
+    }
+
+    /// How to map components of each pixel.
+    ///
+    /// The default value is [`ComponentMapping::identity()`].
+    #[inline]
+    pub fn component_mapping(mut self, component_mapping: ComponentMapping) -> Self {
+        self.component_mapping = component_mapping;
+        self
+    }
+
+    /// The format of the image view.
     ///
     /// If this is set to a format that is different from the image, the image must be created with
     /// the `mutable_format` flag.
@@ -374,30 +623,30 @@ where
         self
     }
 
-    /// Sets how to map components of each pixel.
-    ///
-    /// The default value is [`ComponentMapping::identity()`].
-    #[inline]
-    pub fn component_mapping(mut self, component_mapping: ComponentMapping) -> Self {
-        self.component_mapping = component_mapping;
-        self
-    }
-
-    /// Sets the range of mipmap levels that the view should cover.
+    /// The range of mipmap levels of the image that the view should cover.
     ///
     /// The default value is the full range of mipmaps present in the image.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `mip_levels` is empty.
     #[inline]
     pub fn mip_levels(mut self, mip_levels: Range<u32>) -> Self {
+        assert!(!mip_levels.is_empty());
         self.mip_levels = mip_levels;
         self
     }
 
-    /// Sets the range of array layers that the view should cover.
+    /// The image view type.
     ///
-    /// The default value is the full range of array layers present in the image.
+    /// The view type must be compatible with the dimensions of the image and the selected array
+    /// layers.
+    ///
+    /// The default value is determined from the image, based on its dimensions and number of
+    /// layers.
     #[inline]
-    pub fn array_layers(mut self, array_layers: Range<u32>) -> Self {
-        self.array_layers = array_layers;
+    pub fn ty(mut self, ty: ImageViewType) -> Self {
+        self.ty = ty;
         self
     }
 }
@@ -408,19 +657,61 @@ pub enum ImageViewCreationError {
     /// Allocating memory failed.
     OomError(OomError),
 
-    /// The specified range of array layers was out of range for the image.
-    ArrayLayersOutOfRange,
+    FeatureNotEnabled {
+        feature: &'static str,
+        reason: &'static str,
+    },
+
+    /// A 2D image view was requested from a 3D image, but a range of multiple mip levels was
+    /// specified.
+    Array2dCompatibleMultipleMipLevels,
+
+    /// The specified range of array layers was not a subset of those in the image.
+    ArrayLayersOutOfRange { range_end: u32, max: u32 },
+
+    /// The image has the `block_texel_view_compatible` flag, but a range of multiple array layers
+    /// was specified.
+    BlockTexelViewCompatibleMultipleArrayLayers,
+
+    /// The image has the `block_texel_view_compatible` flag, but a range of multiple mip levels
+    /// was specified.
+    BlockTexelViewCompatibleMultipleMipLevels,
+
+    /// The image has the `block_texel_view_compatible` flag, and an uncompressed format was
+    /// requested, and the image view type was `Dim3d`.
+    BlockTexelViewCompatibleUncompressedIs3d,
+
+    /// The requested format was not compatible with the image.
+    FormatNotCompatible,
+
+    /// The given format was not supported by the device.
+    FormatNotSupported,
 
     /// The format requires a sampler YCbCr conversion, but none was provided.
     FormatRequiresSamplerYcbcrConversion { format: Format },
 
-    /// The specified range of mipmap levels was out of range for the image.
-    MipLevelsOutOfRange,
+    /// A requested usage flag was not supported by the given format.
+    FormatUsageNotSupported { usage: &'static str },
 
-    /// The requested format was not compatible with the image.
-    IncompatibleFormat,
+    /// An aspect was selected that was not present in the image.
+    ImageAspectsNotCompatible {
+        aspects: ImageAspects,
+        image_aspects: ImageAspects,
+    },
 
-    /// The requested [`ImageViewType`] was not compatible with the image, or with the specified ranges of array layers and mipmap levels.
+    /// A 2D image view was requested from a 3D image, but the image was not created with the
+    /// `array_2d_compatible` flag.
+    ImageNotArray2dCompatible,
+
+    /// A cube image view type was requested, but the image was not created with the
+    /// `cube_compatible` flag.
+    ImageNotCubeCompatible,
+
+    /// The given image view type was not compatible with the type of the image.
+    ImageTypeNotCompatible,
+
+    /// The requested [`ImageViewType`] was not compatible with the image, or with the specified
+    /// ranges of array layers and mipmap levels.
     IncompatibleType,
 
     /// The image was not created with
@@ -428,8 +719,27 @@ pub enum ImageViewCreationError {
     /// for image views.
     InvalidImageUsage,
 
+    /// The specified range of mip levels was not a subset of those in the image.
+    MipLevelsOutOfRange { range_end: u32, max: u32 },
+
+    /// The image has multisampling enabled, but the image view type was not `Dim2d` or
+    /// `Dim2dArray`.
+    MultisamplingNot2d,
+
     /// Sampler YCbCr conversion was enabled, but `component_mapping` was not the identity mapping.
     SamplerYcbcrConversionComponentMappingNotIdentity { component_mapping: ComponentMapping },
+
+    /// The `CubeArray` image view type was specified, but the range of array layers did not have a
+    /// size that is a multiple 6.
+    TypeCubeArrayNotMultipleOf6ArrayLayers,
+
+    /// The `Cube` image view type was specified, but the range of array layers did not have a size
+    /// of 6.
+    TypeCubeNot6ArrayLayers,
+
+    /// A non-arrayed image view type was specified, but a range of multiple array layers was
+    /// specified.
+    TypeNonArrayedMultipleArrayLayers,
 }
 
 impl error::Error for ImageViewCreationError {
@@ -445,22 +755,99 @@ impl error::Error for ImageViewCreationError {
 impl fmt::Display for ImageViewCreationError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                Self::OomError(err) => "allocating memory failed",
-                Self::ArrayLayersOutOfRange => "array layers are out of range",
-                Self::FormatRequiresSamplerYcbcrConversion { .. } => "the format requires a sampler YCbCr conversion, but none was provided",
-                Self::MipLevelsOutOfRange => "mipmap levels are out of range",
-                Self::IncompatibleFormat => "format is not compatible with image",
-                Self::IncompatibleType =>
-                    "image view type is not compatible with image, array layers or mipmap levels",
-                Self::InvalidImageUsage =>
-                    "the usage of the image is not compatible with image views",
-                Self::SamplerYcbcrConversionComponentMappingNotIdentity { .. } => "sampler YCbCr conversion was enabled, but `component_mapping` was not the identity mapping",
+        match *self {
+            Self::OomError(err) => write!(
+                fmt,
+                "allocating memory failed",
+            ),
+            Self::FeatureNotEnabled { feature, reason } => {
+                write!(fmt, "the feature {} must be enabled: {}", feature, reason)
             }
-        )
+            Self::Array2dCompatibleMultipleMipLevels => write!(
+                fmt,
+                "a 2D image view was requested from a 3D image, but a range of multiple mip levels was specified",
+            ),
+            Self::ArrayLayersOutOfRange { .. } => write!(
+                fmt,
+                "the specified range of array layers was not a subset of those in the image",
+            ),
+            Self::BlockTexelViewCompatibleMultipleArrayLayers => write!(
+                fmt,
+                "the image has the `block_texel_view_compatible` flag, but a range of multiple array layers was specified",
+            ),
+            Self::BlockTexelViewCompatibleMultipleMipLevels => write!(
+                fmt,
+                "the image has the `block_texel_view_compatible` flag, but a range of multiple mip levels was specified",
+            ),
+            Self::BlockTexelViewCompatibleUncompressedIs3d => write!(
+                fmt,
+                "the image has the `block_texel_view_compatible` flag, and an uncompressed format was requested, and the image view type was `Dim3d`",
+            ),
+            Self::FormatNotCompatible => write!(
+                fmt,
+                "the requested format was not compatible with the image",
+            ),
+            Self::FormatNotSupported => write!(
+                fmt,
+                "the given format was not supported by the device"
+            ),
+            Self::FormatRequiresSamplerYcbcrConversion { .. } => write!(
+                fmt,
+                "the format requires a sampler YCbCr conversion, but none was provided",
+            ),
+            Self::FormatUsageNotSupported { usage } => write!(
+                fmt,
+                "a requested usage flag was not supported by the given format"
+            ),
+            Self::ImageAspectsNotCompatible { .. } => write!(
+                fmt,
+                "an aspect was selected that was not present in the image",
+            ),
+            Self::ImageNotArray2dCompatible => write!(
+                fmt,
+                "a 2D image view was requested from a 3D image, but the image was not created with the `array_2d_compatible` flag",
+            ),
+            Self::ImageNotCubeCompatible => write!(
+                fmt,
+                "a cube image view type was requested, but the image was not created with the `cube_compatible` flag",
+            ),
+            Self::ImageTypeNotCompatible => write!(
+                fmt,
+                "the given image view type was not compatible with the type of the image",
+            ),
+            Self::IncompatibleType => write!(
+                fmt,
+                "image view type is not compatible with image, array layers or mipmap levels",
+            ),
+            Self::InvalidImageUsage => write!(
+                fmt,
+                "the usage of the image is not compatible with image views",
+            ),
+            Self::MipLevelsOutOfRange { .. } => write!(
+                fmt,
+                "the specified range of mip levels was not a subset of those in the image",
+            ),
+            Self::MultisamplingNot2d => write!(
+                fmt,
+                "the image has multisampling enabled, but the image view type was not `Dim2d` or `Dim2dArray`",
+            ),
+            Self::SamplerYcbcrConversionComponentMappingNotIdentity { .. } => write!(
+                fmt,
+                "sampler YCbCr conversion was enabled, but `component_mapping` was not the identity mapping",
+            ),
+            Self::TypeCubeArrayNotMultipleOf6ArrayLayers => write!(
+                fmt,
+                "the `CubeArray` image view type was specified, but the range of array layers did not have a size that is a multiple 6"
+            ),
+            Self::TypeCubeNot6ArrayLayers => write!(
+                fmt,
+                "the `Cube` image view type was specified, but the range of array layers did not have a size of 6"
+            ),
+            Self::TypeNonArrayedMultipleArrayLayers => write!(
+                fmt,
+                "a non-arrayed image view type was specified, but a range of multiple array layers was specified"
+            )
+        }
     }
 }
 
@@ -496,12 +883,31 @@ pub enum ImageViewType {
 }
 
 impl ImageViewType {
+    /// Returns whether the type is arrayed.
     #[inline]
     pub fn is_arrayed(&self) -> bool {
         match self {
             Self::Dim1d | Self::Dim2d | Self::Dim3d | Self::Cube => false,
             Self::Dim1dArray | Self::Dim2dArray | Self::CubeArray => true,
         }
+    }
+
+    /// Returns whether `self` is compatible with the given `image_type`.
+    #[inline]
+    pub fn is_compatible_with(&self, image_type: ImageType) -> bool {
+        matches!(
+            (*self, image_type,),
+            (
+                ImageViewType::Dim1d | ImageViewType::Dim1dArray,
+                ImageType::Dim1d
+            ) | (
+                ImageViewType::Dim2d | ImageViewType::Dim2dArray,
+                ImageType::Dim2d | ImageType::Dim3d
+            ) | (
+                ImageViewType::Cube | ImageViewType::CubeArray,
+                ImageType::Dim2d
+            ) | (ImageViewType::Dim3d, ImageType::Dim3d)
+        )
     }
 }
 
@@ -521,8 +927,21 @@ pub unsafe trait ImageViewAbstract:
     /// Returns the range of array layers of the wrapped image that this view exposes.
     fn array_layers(&self) -> Range<u32>;
 
+    /// Returns the aspects of the wrapped image that this view exposes.
+    fn aspects(&self) -> &ImageAspects;
+
     /// Returns the component mapping of this view.
     fn component_mapping(&self) -> ComponentMapping;
+
+    /// Returns whether the image view supports sampling with a
+    /// [`Cubic`](crate::sampler::Filter::Cubic) `mag_filter` or `min_filter`.
+    fn filter_cubic(&self) -> bool;
+
+    /// Returns whether the image view supports sampling with a
+    /// [`Cubic`](crate::sampler::Filter::Cubic) `mag_filter` or `min_filter`, and with a
+    /// [`Min`](crate::sampler::SamplerReductionMode::Min) or
+    /// [`Max`](crate::sampler::SamplerReductionMode::Max) `reduction_mode`.
+    fn filter_cubic_minmax(&self) -> bool;
 
     /// Returns the format of this view. This can be different from the parent's format.
     fn format(&self) -> Format;
@@ -530,8 +949,14 @@ pub unsafe trait ImageViewAbstract:
     /// Returns the features supported by the image view's format.
     fn format_features(&self) -> &FormatFeatures;
 
+    /// Returns the range of mip levels of the wrapped image that this view exposes.
+    fn mip_levels(&self) -> Range<u32>;
+
     /// Returns the [`ImageViewType`] of this image view.
     fn ty(&self) -> ImageViewType;
+
+    /// Returns the usage of the image view.
+    fn usage(&self) -> &ImageUsage;
 }
 
 unsafe impl<I> ImageViewAbstract for ImageView<I>
@@ -549,8 +974,23 @@ where
     }
 
     #[inline]
+    fn aspects(&self) -> &ImageAspects {
+        &self.aspects
+    }
+
+    #[inline]
     fn component_mapping(&self) -> ComponentMapping {
         self.component_mapping
+    }
+
+    #[inline]
+    fn filter_cubic(&self) -> bool {
+        self.filter_cubic
+    }
+
+    #[inline]
+    fn filter_cubic_minmax(&self) -> bool {
+        self.filter_cubic_minmax
     }
 
     #[inline]
@@ -564,8 +1004,18 @@ where
     }
 
     #[inline]
+    fn mip_levels(&self) -> Range<u32> {
+        self.mip_levels.clone()
+    }
+
+    #[inline]
     fn ty(&self) -> ImageViewType {
         self.ty
+    }
+
+    #[inline]
+    fn usage(&self) -> &ImageUsage {
+        &self.usage
     }
 }
 

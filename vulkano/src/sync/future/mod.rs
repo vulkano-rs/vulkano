@@ -291,33 +291,33 @@ pub unsafe trait GpuFuture: DeviceOwned {
     {
         Box::new(self) as _
     }
-        
+
     /// Turn the current future into a `Box<dyn GpuFuture + Send>`.
     ///
     /// This is a helper function that calls `Box::new(yourFuture) as Box<dyn GpuFuture + Send>`.
     fn boxed_send(self) -> Box<dyn GpuFuture + Send>
-        where
-            Self: Sized + Send + 'static,
+    where
+        Self: Sized + Send + 'static,
     {
         Box::new(self) as _
     }
-    
+
     /// Turn the current future into a `Box<dyn GpuFuture + Sync>`.
     ///
     /// This is a helper function that calls `Box::new(yourFuture) as Box<dyn GpuFuture + Sync>`.
     fn boxed_sync(self) -> Box<dyn GpuFuture + Sync>
-        where
-            Self: Sized + Sync + 'static,
+    where
+        Self: Sized + Sync + 'static,
     {
         Box::new(self) as _
     }
-    
+
     /// Turn the current future into a `Box<dyn GpuFuture + Send + Sync>`.
     ///
     /// This is a helper function that calls `Box::new(yourFuture) as Box<dyn GpuFuture + Send + Sync>`.
     fn boxed_send_sync(self) -> Box<dyn GpuFuture + Send + Sync>
-        where
-            Self: Sized + Send + Sync + 'static,
+    where
+        Self: Sized + Send + Sync + 'static,
     {
         Box::new(self) as _
     }
