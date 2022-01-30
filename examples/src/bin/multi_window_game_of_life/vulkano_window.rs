@@ -142,7 +142,7 @@ impl VulkanoWindow {
         self.recreate_swapchain = true;
     }
 
-    /// Add interim image view that can be used to render e.g. camera views or other views using
+    /// Add an image view that can be used to render e.g. camera views or other views using
     /// the render pipeline. Not giving a view size ensures the image view follows swapchain (window).
     pub fn add_image_target(&mut self, key: usize, view_size: Option<[u32; 2]>, format: Format) {
         let size = if let Some(s) = view_size {

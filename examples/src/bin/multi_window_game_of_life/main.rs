@@ -8,7 +8,7 @@
 // according to those terms.
 
 mod app;
-mod game_of_life_compute_pipeline;
+mod game_of_life;
 mod pixels_draw;
 mod render_pass;
 mod vulkano_config;
@@ -29,13 +29,18 @@ use winit::{
     platform::run_return::EventLoopExtRunReturn,
 };
 
-// A multi windowed game of life application. You could use this to learn how to handle multiple window inputs,
-// how to draw on a canvas, how to organize compute shader with graphics. The possibilities are limitless ;)
+// A multi windowed game of life application. You could use this to learn:
+// - how to handle multiple window inputs,
+// - how to draw on a canvas
+// - how to organize compute shader with graphics
+// - how to do a cellular automata simulation using compute shaders
+// The possibilities are limitless ;)
 
 // Architecture:
-// `VulkanoConfig`: Information for device creation
+// `VulkanoConfig`: Information for device & context creation
 // `VulkanoContext`: A struct containing everything related to vulkano device, instance and queues. Separated to make it convenient to handle multiple windows.
 // `VulkanoWindow`: A struct owning winit windows and target images. This is used to begin and end frame. And between that you should call your render pipelines.
+// `App`: Holds the windows in a hash map, retains id of the primary window, render pipelines per window and context.
 
 pub const WINDOW_WIDTH: u32 = 1024;
 pub const WINDOW_HEIGHT: u32 = 1024;
@@ -44,6 +49,7 @@ pub const WINDOW2_HEIGHT: u32 = 512;
 pub const SCALING: u32 = 2;
 
 fn main() {
+    println!("Welcome to Vulkano Game of Life\n Use Mouse to draw life on the grid(s)\n");
     // Create event loop
     let mut event_loop = EventLoop::new();
     // Create app with vulkano context

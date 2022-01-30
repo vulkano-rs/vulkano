@@ -55,7 +55,6 @@ unsafe impl Send for VulkanoContext {}
 
 impl VulkanoContext {
     pub fn new(config: &VulkanoConfig) -> Self {
-        println!("Creating VulkanoContext");
         let instance = create_vk_instance(config.instance_extensions, &config.layers);
         let is_debug = config
             .layers

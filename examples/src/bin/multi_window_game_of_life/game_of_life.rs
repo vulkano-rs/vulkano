@@ -22,6 +22,11 @@ use vulkano::image::ImageAccess;
 use vulkano::pipeline::{ComputePipeline, Pipeline, PipelineBindPoint};
 use vulkano::sync::GpuFuture;
 
+/// Pipeline holding double buffered grid & color image.
+/// Grids are used to calculate the state, and color image is used to show the output.
+/// Because each step we determine state in parallel, we need to write the output to
+/// another grid. Otherwise the state would not be correctly determined as one thread might read
+/// data that was just written by another thread
 pub struct GameOfLifeComputePipeline {
     compute_queue: Arc<Queue>,
     compute_life_pipeline: Arc<ComputePipeline>,
@@ -30,7 +35,7 @@ pub struct GameOfLifeComputePipeline {
     image: DeviceImageView,
 }
 
-fn rand_0_to_1(compute_queue: &Arc<Queue>, size: [u32; 2]) -> Arc<CpuAccessibleBuffer<[u32]>> {
+fn rand_grid(compute_queue: &Arc<Queue>, size: [u32; 2]) -> Arc<CpuAccessibleBuffer<[u32]>> {
     CpuAccessibleBuffer::from_iter(
         compute_queue.device().clone(),
         BufferUsage::all(),
@@ -44,8 +49,8 @@ fn rand_0_to_1(compute_queue: &Arc<Queue>, size: [u32; 2]) -> Arc<CpuAccessibleB
 
 impl GameOfLifeComputePipeline {
     pub fn new(compute_queue: Arc<Queue>, size: [u32; 2]) -> GameOfLifeComputePipeline {
-        let life_in = rand_0_to_1(&compute_queue, size);
-        let life_out = rand_0_to_1(&compute_queue, size);
+        let life_in = rand_grid(&compute_queue, size);
+        let life_out = rand_grid(&compute_queue, size);
 
         let compute_life_pipeline = {
             let shader = compute_life_cs::load(compute_queue.device().clone()).unwrap();
@@ -96,7 +101,9 @@ impl GameOfLifeComputePipeline {
         )
         .unwrap();
 
+        // First compute the next state
         self.dispatch(&mut builder, life_color, dead_color, 0);
+        // Then color based on the next steate
         self.dispatch(&mut builder, life_color, dead_color, 1);
 
         let command_buffer = builder.build().unwrap();
@@ -105,17 +112,19 @@ impl GameOfLifeComputePipeline {
             .unwrap();
         let after_pipeline = finished.then_signal_fence_and_flush().unwrap().boxed();
 
-        // Swap input and output
+        // Swap input and output so the output becomes the input for next frame
         std::mem::swap(&mut self.life_in, &mut self.life_out);
 
         after_pipeline
     }
 
+    /// Build the command for a dispatch.
     fn dispatch(
         &mut self,
         builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
         life_color: [f32; 4],
         dead_color: [f32; 4],
+        // Step determines whether we color or compute life (see branch in the shader)s
         step: i32,
     ) {
         // Resize image if needed

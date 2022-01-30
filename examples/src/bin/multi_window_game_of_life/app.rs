@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::game_of_life_compute_pipeline::GameOfLifeComputePipeline;
+use crate::game_of_life::GameOfLifeComputePipeline;
 use crate::render_pass::RenderPassPlaceOverFrame;
 use crate::vulkano_config::VulkanoConfig;
 use crate::vulkano_context::VulkanoContext;
