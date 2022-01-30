@@ -15,10 +15,11 @@
 
 use crate::device::physical::FormatFeatures;
 use crate::device::{Device, DeviceOwned};
-use crate::format::Format;
+use crate::format::{ChromaSampling, Format};
 use crate::image::{
     ImageAccess, ImageAspects, ImageDimensions, ImageTiling, ImageType, ImageUsage, SampleCount,
 };
+use crate::sampler::ycbcr::SamplerYcbcrConversion;
 use crate::sampler::ComponentMapping;
 use crate::OomError;
 use crate::VulkanObject;
@@ -45,6 +46,7 @@ where
     format: Format,
     format_features: FormatFeatures,
     mip_levels: Range<u32>,
+    sampler_ycbcr_conversion: Option<Arc<SamplerYcbcrConversion>>,
     ty: ImageViewType,
     usage: ImageUsage,
 
@@ -104,6 +106,7 @@ where
             component_mapping: ComponentMapping::default(),
             format,
             mip_levels,
+            sampler_ycbcr_conversion: None,
             ty,
         }
     }
@@ -192,6 +195,7 @@ pub struct ImageViewBuilder<I> {
     component_mapping: ComponentMapping,
     format: Format,
     mip_levels: Range<u32>,
+    sampler_ycbcr_conversion: Option<Arc<SamplerYcbcrConversion>>,
     ty: ImageViewType,
 }
 
@@ -208,6 +212,7 @@ where
             format,
             mip_levels,
             ty,
+            sampler_ycbcr_conversion,
             image,
         } = self;
 
@@ -461,14 +466,6 @@ where
             return Err(ImageViewCreationError::FormatNotCompatible);
         }
 
-        // VUID-VkImageViewCreateInfo-format-06415
-        if image_inner.format().ycbcr_chroma_sampling().is_some() {
-            // VUID-VkImageViewCreateInfo-format-04714
-            // VUID-VkImageViewCreateInfo-format-04715
-            // VUID-VkImageViewCreateInfo-pNext-01970
-            unimplemented!()
-        }
-
         // VUID-VkImageViewCreateInfo-imageViewType-04973
         if (ty == ImageViewType::Dim1d || ty == ImageViewType::Dim2d || ty == ImageViewType::Dim3d)
             && layer_count != 1
@@ -484,7 +481,59 @@ where
             return Err(ImageViewCreationError::TypeCubeArrayNotMultipleOf6ArrayLayers);
         }
 
-        let create_info = ash::vk::ImageViewCreateInfo {
+        // VUID-VkImageViewCreateInfo-format-04714
+        // VUID-VkImageViewCreateInfo-format-04715
+        match format.ycbcr_chroma_sampling() {
+            Some(ChromaSampling::Mode422) => {
+                if image_inner.dimensions().width() % 2 != 0 {
+                    return Err(
+                        ImageViewCreationError::FormatChromaSubsamplingInvalidImageDimensions,
+                    );
+                }
+            }
+            Some(ChromaSampling::Mode420) => {
+                if image_inner.dimensions().width() % 2 != 0
+                    || image_inner.dimensions().height() % 2 != 0
+                {
+                    return Err(
+                        ImageViewCreationError::FormatChromaSubsamplingInvalidImageDimensions,
+                    );
+                }
+            }
+            _ => (),
+        }
+
+        // Don't need to check features because you can't create a conversion object without the
+        // feature anyway.
+        let mut sampler_ycbcr_conversion_info = if let Some(conversion) = &sampler_ycbcr_conversion
+        {
+            assert_eq!(image_inner.device(), conversion.device());
+
+            // VUID-VkImageViewCreateInfo-pNext-01970
+            if !component_mapping.is_identity() {
+                return Err(
+                    ImageViewCreationError::SamplerYcbcrConversionComponentMappingNotIdentity {
+                        component_mapping,
+                    },
+                );
+            }
+
+            Some(ash::vk::SamplerYcbcrConversionInfo {
+                conversion: conversion.internal_object(),
+                ..Default::default()
+            })
+        } else {
+            // VUID-VkImageViewCreateInfo-format-06415
+            if format.ycbcr_chroma_sampling().is_some() {
+                return Err(
+                    ImageViewCreationError::FormatRequiresSamplerYcbcrConversion { format },
+                );
+            }
+
+            None
+        };
+
+        let mut create_info = ash::vk::ImageViewCreateInfo {
             flags: ash::vk::ImageViewCreateFlags::empty(),
             image: image_inner.internal_object(),
             view_type: ty.into(),
@@ -499,6 +548,11 @@ where
             },
             ..Default::default()
         };
+
+        if let Some(sampler_ycbcr_conversion_info) = sampler_ycbcr_conversion_info.as_mut() {
+            sampler_ycbcr_conversion_info.p_next = create_info.p_next;
+            create_info.p_next = sampler_ycbcr_conversion_info as *const _ as *const _;
+        }
 
         let handle = unsafe {
             let fns = image_inner.device().fns();
@@ -539,6 +593,7 @@ where
             format,
             format_features,
             mip_levels,
+            sampler_ycbcr_conversion,
             ty,
             usage,
 
@@ -637,6 +692,25 @@ where
         self
     }
 
+    /// The sampler YCbCr conversion to be used with the image view.
+    ///
+    /// If set to `Some`, several restrictions apply:
+    /// - The `component_mapping` must be the identity swizzle for all components.
+    /// - If the image view is to be used in a shader, it must be in a combined image sampler
+    ///   descriptor, a separate sampled image descriptor is not allowed.
+    /// - The corresponding sampler must have the same sampler YCbCr object or an identically
+    ///   created one, and must be used as an immutable sampler within a descriptor set layout.
+    ///
+    /// The default value is `None`.
+    #[inline]
+    pub fn sampler_ycbcr_conversion(
+        mut self,
+        conversion: Option<Arc<SamplerYcbcrConversion>>,
+    ) -> Self {
+        self.sampler_ycbcr_conversion = conversion;
+        self
+    }
+
     /// The image view type.
     ///
     /// The view type must be compatible with the dimensions of the image and the selected array
@@ -680,6 +754,10 @@ pub enum ImageViewCreationError {
     /// The image has the `block_texel_view_compatible` flag, and an uncompressed format was
     /// requested, and the image view type was `Dim3d`.
     BlockTexelViewCompatibleUncompressedIs3d,
+
+    /// The requested format has chroma subsampling, but the width and/or height of the image was
+    /// not a multiple of 2.
+    FormatChromaSubsamplingInvalidImageDimensions,
 
     /// The requested format was not compatible with the image.
     FormatNotCompatible,
@@ -782,6 +860,10 @@ impl fmt::Display for ImageViewCreationError {
             Self::BlockTexelViewCompatibleUncompressedIs3d => write!(
                 fmt,
                 "the image has the `block_texel_view_compatible` flag, and an uncompressed format was requested, and the image view type was `Dim3d`",
+            ),
+            Self::FormatChromaSubsamplingInvalidImageDimensions => write!(
+                fmt,
+                "the requested format has chroma subsampling, but the width and/or height of the image was not a multiple of 2",
             ),
             Self::FormatNotCompatible => write!(
                 fmt,
@@ -952,6 +1034,9 @@ pub unsafe trait ImageViewAbstract:
     /// Returns the range of mip levels of the wrapped image that this view exposes.
     fn mip_levels(&self) -> Range<u32>;
 
+    /// Returns the sampler YCbCr conversion that this image view was created with, if any.
+    fn sampler_ycbcr_conversion(&self) -> Option<&Arc<SamplerYcbcrConversion>>;
+
     /// Returns the [`ImageViewType`] of this image view.
     fn ty(&self) -> ImageViewType;
 
@@ -1006,6 +1091,11 @@ where
     #[inline]
     fn mip_levels(&self) -> Range<u32> {
         self.mip_levels.clone()
+    }
+
+    #[inline]
+    fn sampler_ycbcr_conversion(&self) -> Option<&Arc<SamplerYcbcrConversion>> {
+        self.sampler_ycbcr_conversion.as_ref()
     }
 
     #[inline]

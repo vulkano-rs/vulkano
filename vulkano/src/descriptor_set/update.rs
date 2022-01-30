@@ -637,6 +637,16 @@ pub(crate) fn check_descriptor_write<'a>(
                             index: descriptor_range_start + index as u32,
                         });
                     }
+
+                    // VUID-VkWriteDescriptorSet-descriptorType-01946
+                    if image_view.sampler_ycbcr_conversion().is_some() {
+                        return Err(
+                            DescriptorSetUpdateError::ImageViewHasSamplerYcbcrConversion {
+                                binding: write.binding(),
+                                index: descriptor_range_start + index as u32,
+                            },
+                        );
+                    }
                 }
             }
             DescriptorType::StorageImage => {
@@ -683,6 +693,16 @@ pub(crate) fn check_descriptor_write<'a>(
                             index: descriptor_range_start + index as u32,
                         });
                     }
+
+                    // VUID??
+                    if image_view.sampler_ycbcr_conversion().is_some() {
+                        return Err(
+                            DescriptorSetUpdateError::ImageViewHasSamplerYcbcrConversion {
+                                binding: write.binding(),
+                                index: descriptor_range_start + index as u32,
+                            },
+                        );
+                    }
                 }
             }
             DescriptorType::InputAttachment => {
@@ -728,6 +748,16 @@ pub(crate) fn check_descriptor_write<'a>(
                             binding: write.binding(),
                             index: descriptor_range_start + index as u32,
                         });
+                    }
+
+                    // VUID??
+                    if image_view.sampler_ycbcr_conversion().is_some() {
+                        return Err(
+                            DescriptorSetUpdateError::ImageViewHasSamplerYcbcrConversion {
+                                binding: write.binding(),
+                                index: descriptor_range_start + index as u32,
+                            },
+                        );
                     }
 
                     // VUID??
@@ -793,6 +823,22 @@ pub(crate) fn check_descriptor_write<'a>(
                         });
                     }
 
+                    if image_view.sampler_ycbcr_conversion().is_some() {
+                        return Err(
+                            DescriptorSetUpdateError::ImageViewHasSamplerYcbcrConversion {
+                                binding: write.binding(),
+                                index: descriptor_range_start + index as u32,
+                            },
+                        );
+                    }
+
+                    if sampler.sampler_ycbcr_conversion().is_some() {
+                        return Err(DescriptorSetUpdateError::SamplerHasSamplerYcbcrConversion {
+                            binding: write.binding(),
+                            index: descriptor_range_start + index as u32,
+                        });
+                    }
+
                     if let Err(error) = sampler.check_can_sample(image_view.as_ref()) {
                         return Err(DescriptorSetUpdateError::ImageViewIncompatibleSampler {
                             binding: write.binding(),
@@ -816,11 +862,18 @@ pub(crate) fn check_descriptor_write<'a>(
                     });
                 }
 
-                for sampler in elements {
+                for (index, sampler) in elements.iter().enumerate() {
                     assert_eq!(
                         sampler.device().internal_object(),
                         layout.device().internal_object(),
                     );
+
+                    if sampler.sampler_ycbcr_conversion().is_some() {
+                        return Err(DescriptorSetUpdateError::SamplerHasSamplerYcbcrConversion {
+                            binding: write.binding(),
+                            index: descriptor_range_start + index as u32,
+                        });
+                    }
                 }
             }
             _ => {
@@ -852,6 +905,10 @@ pub enum DescriptorSetUpdateError {
     /// Tried to write an image view that has both the `depth` and `stencil` aspects.
     ImageViewDepthAndStencil { binding: u32, index: u32 },
 
+    /// Tried to write an image view with an attached sampler YCbCr conversion to a binding that
+    /// does not support it.
+    ImageViewHasSamplerYcbcrConversion { binding: u32, index: u32 },
+
     /// Tried to write an image view of an arrayed type to a descriptor type that does not support
     /// it.
     ImageViewIsArrayed { binding: u32, index: u32 },
@@ -881,6 +938,9 @@ pub enum DescriptorSetUpdateError {
         index: u32,
         usage: &'static str,
     },
+
+    /// Tried to write a sampler that has an attached sampler YCbCr conversion.
+    SamplerHasSamplerYcbcrConversion { binding: u32, index: u32 },
 
     /// Tried to write a sampler to a binding with immutable samplers.
     SamplerIsImmutable { binding: u32 },
@@ -918,6 +978,11 @@ impl std::fmt::Display for DescriptorSetUpdateError {
                 "tried to write an image view to binding {} index {} that has both the `depth` and `stencil` aspects",
                 binding, index,
             ),
+            Self::ImageViewHasSamplerYcbcrConversion { binding, index } => write!(
+                fmt,
+                "tried to write an image view to binding {} index {} with an attached sampler YCbCr conversion to binding that does not support it",
+                binding, index,
+            ),
             Self::ImageViewIsArrayed { binding, index } => write!(
                 fmt,
                 "tried to write an image view of an arrayed type to binding {} index {}, but this binding has a descriptor type that does not support arrayed image views",
@@ -951,6 +1016,11 @@ impl std::fmt::Display for DescriptorSetUpdateError {
                 fmt,
                 "tried to write a resource to binding {} index {} that did not have the required usage {} enabled",
                 binding, index, usage,
+            ),
+            Self::SamplerHasSamplerYcbcrConversion { binding, index } => write!(
+                fmt,
+                "tried to write a sampler to binding {} index {} that has an attached sampler YCbCr conversion",
+                binding, index,
             ),
             Self::SamplerIsImmutable { binding } => write!(
                 fmt,

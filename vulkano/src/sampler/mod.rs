@@ -44,12 +44,15 @@
 //! - Positive: **minification**. The rendered object is further from the viewer, and each pixel in
 //!   the texture corresponds to less than one framebuffer pixel.
 
+pub mod ycbcr;
+
 use crate::check_errors;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::image::view::ImageViewType;
 use crate::image::ImageViewAbstract;
 use crate::pipeline::graphics::depth_stencil::CompareOp;
+use crate::sampler::ycbcr::SamplerYcbcrConversion;
 use crate::shader::ShaderScalarType;
 use crate::Error;
 use crate::OomError;
@@ -98,6 +101,7 @@ pub struct Sampler {
     min_filter: Filter,
     mipmap_mode: SamplerMipmapMode,
     reduction_mode: SamplerReductionMode,
+    sampler_ycbcr_conversion: Option<Arc<SamplerYcbcrConversion>>,
     unnormalized_coordinates: bool,
 }
 
@@ -120,6 +124,7 @@ impl Sampler {
             border_color: BorderColor::FloatTransparentBlack,
             unnormalized_coordinates: false,
             reduction_mode: SamplerReductionMode::WeightedAverage,
+            sampler_ycbcr_conversion: None,
         }
     }
 
@@ -337,6 +342,12 @@ impl Sampler {
         self.reduction_mode
     }
 
+    /// Returns a reference to the sampler YCbCr conversion of this sampler, if any.
+    #[inline]
+    pub fn sampler_ycbcr_conversion(&self) -> Option<&Arc<SamplerYcbcrConversion>> {
+        self.sampler_ycbcr_conversion.as_ref()
+    }
+
     /// Returns true if the sampler uses unnormalized coordinates.
     #[inline]
     pub fn unnormalized_coordinates(&self) -> bool {
@@ -405,6 +416,7 @@ pub struct SamplerBuilder {
     border_color: BorderColor,
     unnormalized_coordinates: bool,
     reduction_mode: SamplerReductionMode,
+    sampler_ycbcr_conversion: Option<Arc<SamplerYcbcrConversion>>,
 }
 
 impl SamplerBuilder {
@@ -425,6 +437,7 @@ impl SamplerBuilder {
             border_color,
             unnormalized_coordinates,
             reduction_mode,
+            sampler_ycbcr_conversion,
         } = self;
 
         if [address_mode_u, address_mode_v, address_mode_w]
@@ -578,35 +591,114 @@ impl SamplerBuilder {
                 None
             };
 
-        let fns = device.fns();
-        let handle = unsafe {
-            let mut create_info = ash::vk::SamplerCreateInfo {
-                flags: ash::vk::SamplerCreateFlags::empty(),
-                mag_filter: mag_filter.into(),
-                min_filter: min_filter.into(),
-                mipmap_mode: mipmap_mode.into(),
-                address_mode_u: address_mode_u.into(),
-                address_mode_v: address_mode_v.into(),
-                address_mode_w: address_mode_w.into(),
-                mip_lod_bias,
-                anisotropy_enable,
-                max_anisotropy,
-                compare_enable,
-                compare_op: compare_op.into(),
-                min_lod: *lod.start(),
-                max_lod: *lod.end(),
-                border_color: border_color.into(),
-                unnormalized_coordinates: unnormalized_coordinates as ash::vk::Bool32,
-                ..Default::default()
+        // Don't need to check features because you can't create a conversion object without the
+        // feature anyway.
+        let mut sampler_ycbcr_conversion_info =
+            if let Some(sampler_ycbcr_conversion) = &sampler_ycbcr_conversion {
+                assert_eq!(&device, sampler_ycbcr_conversion.device());
+
+                let format_properties = device
+                    .physical_device()
+                    .format_properties(sampler_ycbcr_conversion.format().unwrap());
+                let potential_format_features = &format_properties.linear_tiling_features
+                    | &format_properties.optimal_tiling_features;
+
+                // VUID-VkSamplerCreateInfo-minFilter-01645
+                if !potential_format_features
+                    .sampled_image_ycbcr_conversion_separate_reconstruction_filter
+                    && !(self.mag_filter == sampler_ycbcr_conversion.chroma_filter()
+                        && self.min_filter == sampler_ycbcr_conversion.chroma_filter())
+                {
+                    return Err(
+                        SamplerCreationError::SamplerYcbcrConversionChromaFilterMismatch {
+                            chroma_filter: sampler_ycbcr_conversion.chroma_filter(),
+                            mag_filter: self.mag_filter,
+                            min_filter: self.min_filter,
+                        },
+                    );
+                }
+
+                // VUID-VkSamplerCreateInfo-addressModeU-01646
+                if [
+                    self.address_mode_u,
+                    self.address_mode_v,
+                    self.address_mode_w,
+                ]
+                .into_iter()
+                .any(|mode| !matches!(mode, SamplerAddressMode::ClampToEdge))
+                {
+                    return Err(
+                        SamplerCreationError::SamplerYcbcrConversionInvalidAddressMode {
+                            address_mode_u: self.address_mode_u,
+                            address_mode_v: self.address_mode_v,
+                            address_mode_w: self.address_mode_w,
+                        },
+                    );
+                }
+
+                // VUID-VkSamplerCreateInfo-addressModeU-01646
+                if self.anisotropy.is_some() {
+                    return Err(SamplerCreationError::SamplerYcbcrConversionAnisotropyEnabled);
+                }
+
+                // VUID-VkSamplerCreateInfo-addressModeU-01646
+                if self.unnormalized_coordinates {
+                    return Err(
+                        SamplerCreationError::SamplerYcbcrConversionUnnormalizedCoordinatesEnabled,
+                    );
+                }
+
+                // VUID-VkSamplerCreateInfo-None-01647
+                if self.reduction_mode != SamplerReductionMode::WeightedAverage {
+                    return Err(
+                        SamplerCreationError::SamplerYcbcrConversionInvalidReductionMode {
+                            reduction_mode: self.reduction_mode,
+                        },
+                    );
+                }
+
+                Some(ash::vk::SamplerYcbcrConversionInfo {
+                    conversion: sampler_ycbcr_conversion.internal_object(),
+                    ..Default::default()
+                })
+            } else {
+                None
             };
 
-            if let Some(sampler_reduction_mode_create_info) =
-                sampler_reduction_mode_create_info.as_mut()
-            {
-                sampler_reduction_mode_create_info.p_next = create_info.p_next;
-                create_info.p_next = sampler_reduction_mode_create_info as *const _ as *const _;
-            }
+        let mut create_info = ash::vk::SamplerCreateInfo {
+            flags: ash::vk::SamplerCreateFlags::empty(),
+            mag_filter: mag_filter.into(),
+            min_filter: min_filter.into(),
+            mipmap_mode: mipmap_mode.into(),
+            address_mode_u: address_mode_u.into(),
+            address_mode_v: address_mode_v.into(),
+            address_mode_w: address_mode_w.into(),
+            mip_lod_bias: mip_lod_bias,
+            anisotropy_enable,
+            max_anisotropy,
+            compare_enable,
+            compare_op: compare_op.into(),
+            min_lod: *lod.start(),
+            max_lod: *lod.end(),
+            border_color: border_color.into(),
+            unnormalized_coordinates: unnormalized_coordinates as ash::vk::Bool32,
+            ..Default::default()
+        };
 
+        if let Some(sampler_reduction_mode_create_info) =
+            sampler_reduction_mode_create_info.as_mut()
+        {
+            sampler_reduction_mode_create_info.p_next = create_info.p_next;
+            create_info.p_next = sampler_reduction_mode_create_info as *const _ as *const _;
+        }
+
+        if let Some(sampler_ycbcr_conversion_info) = sampler_ycbcr_conversion_info.as_mut() {
+            sampler_ycbcr_conversion_info.p_next = create_info.p_next;
+            create_info.p_next = sampler_ycbcr_conversion_info as *const _ as *const _;
+        }
+
+        let handle = unsafe {
+            let fns = device.fns();
             let mut output = MaybeUninit::uninit();
             check_errors(fns.v1_0.create_sampler(
                 device.internal_object(),
@@ -630,6 +722,7 @@ impl SamplerBuilder {
             min_filter,
             mipmap_mode,
             reduction_mode,
+            sampler_ycbcr_conversion,
             unnormalized_coordinates,
         }))
     }
@@ -846,6 +939,29 @@ impl SamplerBuilder {
         self.reduction_mode = mode;
         self
     }
+
+    /// Adds a sampler YCbCr conversion to the sampler.
+    ///
+    /// If set to `Some`, several restrictions apply:
+    /// - If the `format` of `conversion` does not support
+    ///   `sampled_image_ycbcr_conversion_separate_reconstruction_filter`, then `mag_filter` and
+    ///   `min_filter` must be equal to the `chroma_filter` of `conversion`.
+    /// - `address_mode` for u, v and w must be [`ClampToEdge`](`SamplerAddressMode::ClampToEdge`).
+    /// - Anisotropy and unnormalized coordinates must be disabled.
+    /// - The `reduction_mode` must be [`WeightedAverage`](SamplerReductionMode::WeightedAverage).
+    ///
+    /// In addition, the sampler must only be used as an immutable sampler within a descriptor set
+    /// layout, and only in a combined image sampler descriptor.
+    ///
+    /// The default value is `None`.
+    #[inline]
+    pub fn sampler_ycbcr_conversion(
+        mut self,
+        conversion: Option<Arc<SamplerYcbcrConversion>>,
+    ) -> Self {
+        self.sampler_ycbcr_conversion = conversion;
+        self
+    }
 }
 
 /// Error that can happen when creating an instance.
@@ -893,6 +1009,35 @@ pub enum SamplerCreationError {
         /// The maximum supported value.
         maximum: f32,
     },
+
+    /// Sampler YCbCr conversion was enabled together with anisotropy.
+    SamplerYcbcrConversionAnisotropyEnabled,
+
+    /// Sampler YCbCr conversion was enabled, and its format does not support
+    /// `sampled_image_ycbcr_conversion_separate_reconstruction_filter`, but `mag_filter` or
+    /// `min_filter` did not match the conversion's `chroma_filter`.
+    SamplerYcbcrConversionChromaFilterMismatch {
+        chroma_filter: Filter,
+        mag_filter: Filter,
+        min_filter: Filter,
+    },
+
+    /// Sampler YCbCr conversion was enabled, but the address mode for u, v or w was something other
+    /// than `ClampToEdge`.
+    SamplerYcbcrConversionInvalidAddressMode {
+        address_mode_u: SamplerAddressMode,
+        address_mode_v: SamplerAddressMode,
+        address_mode_w: SamplerAddressMode,
+    },
+
+    /// Sampler YCbCr conversion was enabled, but the reduction mode was something other than
+    /// `WeightedAverage`.
+    SamplerYcbcrConversionInvalidReductionMode {
+        reduction_mode: SamplerReductionMode,
+    },
+
+    /// Sampler YCbCr conversion was enabled together with unnormalized coordinates.
+    SamplerYcbcrConversionUnnormalizedCoordinatesEnabled,
 
     /// Unnormalized coordinates were enabled together with anisotropy.
     UnnormalizedCoordinatesAnisotropyEnabled,
@@ -950,6 +1095,17 @@ impl fmt::Display for SamplerCreationError {
                 write!(fmt, "max_sampler_anisotropy limit exceeded")
             }
             Self::MaxSamplerLodBiasExceeded { .. } => write!(fmt, "mip lod bias limit exceeded"),
+            Self::SamplerYcbcrConversionAnisotropyEnabled => write!(
+                fmt,
+                "sampler YCbCr conversion was enabled together with anisotropy"
+            ),
+            Self::SamplerYcbcrConversionChromaFilterMismatch { .. } => write!(fmt, "sampler YCbCr conversion was enabled, and its format does not support `sampled_image_ycbcr_conversion_separate_reconstruction_filter`, but `mag_filter` or `min_filter` did not match the conversion's `chroma_filter`"),
+            Self::SamplerYcbcrConversionInvalidAddressMode { .. } => write!(fmt, "sampler YCbCr conversion was enabled, but the address mode for u, v or w was something other than `ClampToEdge`"),
+            Self::SamplerYcbcrConversionInvalidReductionMode { .. } => write!(fmt, "sampler YCbCr conversion was enabled, but the reduction mode was something other than `WeightedAverage`"),
+            Self::SamplerYcbcrConversionUnnormalizedCoordinatesEnabled => write!(
+                fmt,
+                "sampler YCbCr conversion was enabled together with unnormalized coordinates"
+            ),
             Self::UnnormalizedCoordinatesAnisotropyEnabled => write!(
                 fmt,
                 "unnormalized coordinates were enabled together with anisotropy"

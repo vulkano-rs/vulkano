@@ -16,8 +16,8 @@
 //!
 //! Not all formats are supported by every device. Those that devices do support may only be
 //! supported for certain use cases. It is an error to use a format where it is not supported, but
-//! you can query a device beforehand for its support by calling the `properties` method on a format
-//! value. You can use this to select a usable format from one or more suitable alternatives.
+//! you can query a device beforehand for its support by calling `format_properties` on the physical
+//! device. You can use this to select a usable format from one or more suitable alternatives.
 //! Some formats are required to be always supported for a particular usage. These are listed in the
 //! [tables in the Vulkan specification](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/chap43.html#features-required-format-support).
 //!
@@ -60,14 +60,13 @@
 //! applications. In Vulkan, the formats used to encode YCbCr data use the green channel to
 //! represent the luma component, while the blue and red components hold the chroma.
 //!
-//! To use most YCbCr formats in an [image view](crate::image::view), a feature known as
-//! *sampler YCbCr conversion* is needed. It must be enabled on both the image view and any
-//! combined image samplers in shaders that the image view is attached to. This feature handles
-//! the correct conversion between YCbCr input data and RGB data inside the shader. To query whether
-//! a format requires the conversion, you can call `requires_sampler_ycbcr_conversion` on a format.
-//! As a rule, any format with `444`, `422`, `420`, `3PACK` or `4PACK` in the name requires it.
+//! To use most YCbCr formats in an [image view](crate::image::view), a
+//! [sampler YCbCr conversion](crate::sampler::ycbcr) object must be created, and attached to both
+//! the image view and the sampler. To query whether a format requires the conversion, you can call
+//! `ycbcr_chroma_sampling` on a format. As a rule, any format with `444`, `422`, `420`,
+//! `3PACK` or `4PACK` in the name requires it.
 //!
-//! Almost all YCbCr formats make use of **chroma subsampling**. This is a technique whereby the two
+//! Many YCbCr formats make use of **chroma subsampling**. This is a technique whereby the two
 //! chroma components are encoded using a lower resolution than the luma component. The human eye is
 //! less sensitive to color detail than to detail in brightness, so this allows more detail to be
 //! encoded in less data. Chroma subsampling is indicated with one of three numbered suffixes in a
