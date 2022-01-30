@@ -6,12 +6,15 @@
 // at your option. All files in the project carrying such
 // notice may not be copied, modified, or distributed except
 // according to those terms.
+
 mod app;
 mod game_of_life_compute_pipeline;
 mod pixels_draw;
 mod render_pass;
 mod vulkano_config;
+#[allow(unused)]
 mod vulkano_context;
+#[allow(unused)]
 mod vulkano_window;
 
 use crate::app::{App, RenderPipeline};
@@ -19,25 +22,26 @@ use crate::vulkano_window::VulkanoWindow;
 use cgmath::Vector2;
 use time::Instant;
 use vulkano::image::ImageAccess;
-use vulkano::sync;
-use vulkano::sync::GpuFuture;
 use winit::event::{ElementState, MouseButton};
-use winit::window::WindowId;
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     platform::run_return::EventLoopExtRunReturn,
 };
 
-pub const WINDOW_WIDTH: u32 = 1920;
-pub const WINDOW_HEIGHT: u32 = 1080;
+// A multi windowed game of life application. You could use this to learn how to handle multiple window inputs,
+// how to draw on a canvas, how to organize compute shader with graphics. The possibilities are limitless ;)
+
+// Architecture:
+// `VulkanoConfig`: Information for device creation
+// `VulkanoContext`: A struct containing everything related to vulkano device, instance and queues. Separated to make it convenient to handle multiple windows.
+// `VulkanoWindow`: A struct owning winit windows and target images. This is used to begin and end frame. And between that you should call your render pipelines.
+
+pub const WINDOW_WIDTH: u32 = 1024;
+pub const WINDOW_HEIGHT: u32 = 1024;
 pub const WINDOW2_WIDTH: u32 = 512;
 pub const WINDOW2_HEIGHT: u32 = 512;
-pub const SCALING: u32 = 4;
-
-/*
-A multi windowed game of life application
- */
+pub const SCALING: u32 = 2;
 
 fn main() {
     // Create event loop

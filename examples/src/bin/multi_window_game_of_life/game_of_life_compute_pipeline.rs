@@ -10,10 +10,11 @@
 use crate::vulkano_context::DeviceImageView;
 use crate::vulkano_window::create_device_image;
 use cgmath::Vector2;
+use rand::Rng;
 use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
+use vulkano::command_buffer::PrimaryAutoCommandBuffer;
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
-use vulkano::command_buffer::{PrimaryAutoCommandBuffer, PrimaryCommandBuffer};
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::device::Queue;
 use vulkano::format::Format;
@@ -29,22 +30,22 @@ pub struct GameOfLifeComputePipeline {
     image: DeviceImageView,
 }
 
+fn rand_0_to_1(compute_queue: &Arc<Queue>, size: [u32; 2]) -> Arc<CpuAccessibleBuffer<[u32]>> {
+    CpuAccessibleBuffer::from_iter(
+        compute_queue.device().clone(),
+        BufferUsage::all(),
+        false,
+        (0..(size[0] * size[1]))
+            .map(|_| rand::thread_rng().gen_range(0u32..=1))
+            .collect::<Vec<u32>>(),
+    )
+    .unwrap()
+}
+
 impl GameOfLifeComputePipeline {
     pub fn new(compute_queue: Arc<Queue>, size: [u32; 2]) -> GameOfLifeComputePipeline {
-        let life_in = CpuAccessibleBuffer::from_iter(
-            compute_queue.device().clone(),
-            BufferUsage::all(),
-            false,
-            vec![0; (size[0] * size[1]) as usize],
-        )
-        .unwrap();
-        let life_out = CpuAccessibleBuffer::from_iter(
-            compute_queue.device().clone(),
-            BufferUsage::all(),
-            false,
-            vec![0; (size[0] * size[1]) as usize],
-        )
-        .unwrap();
+        let life_in = rand_0_to_1(&compute_queue, size);
+        let life_out = rand_0_to_1(&compute_queue, size);
 
         let compute_life_pipeline = {
             let shader = compute_life_cs::load(compute_queue.device().clone()).unwrap();
@@ -168,10 +169,41 @@ int get_index(ivec2 pos) {
     return pos.y * dims.x + pos.x;
 }
 
+// https://en.wikipedia.org/wiki/Conway%27s_Game_of_Life
 void compute_life() {
     ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
     int index = get_index(pos);
-    life_out[index] = life_in[index];
+    
+    ivec2 up_left = pos + ivec2(-1, 1);
+    ivec2 up = pos + ivec2(0, 1);
+    ivec2 up_right = pos + ivec2(1, 1);
+    ivec2 right = pos + ivec2(1, 0);
+    ivec2 down_right = pos + ivec2(1, -1);
+    ivec2 down = pos + ivec2(0, -1);
+    ivec2 down_left = pos + ivec2(-1, -1);
+    ivec2 left = pos + ivec2(-1, 0);
+
+    int alive_count = 0;
+    if (life_out[get_index(up_left)] == 1) { alive_count += 1; }
+    if (life_out[get_index(up)] == 1) { alive_count += 1; }
+    if (life_out[get_index(up_right)] == 1) { alive_count += 1; }
+    if (life_out[get_index(right)] == 1) { alive_count += 1; }
+    if (life_out[get_index(down_right)] == 1) { alive_count += 1; }
+    if (life_out[get_index(down)] == 1) { alive_count += 1; }
+    if (life_out[get_index(down_left)] == 1) { alive_count += 1; }
+    if (life_out[get_index(left)] == 1) { alive_count += 1; }
+
+    // Dead becomes alive
+    if (life_out[index] == 0 && alive_count == 3) {
+        life_out[index] = 1;
+    } // Becomes dead
+    else if (life_out[index] == 1 && alive_count < 2 || alive_count > 3) {
+        life_out[index] = 0;
+    } // Else Do nothing
+    else {
+       
+        life_out[index] = life_in[index];
+    }
 }
 
 void compute_color() {

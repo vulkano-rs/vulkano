@@ -102,7 +102,7 @@ impl PixelsDrawPipeline {
         }
     }
 
-    fn create_descriptor_set(
+    fn create_image_sampler_nearest(
         &self,
         image: Arc<dyn ImageViewAbstract>,
     ) -> Arc<PersistentDescriptorSet> {
@@ -113,9 +113,9 @@ impl PixelsDrawPipeline {
             .get(0)
             .unwrap();
         let sampler = Sampler::start(self.gfx_queue.device().clone())
-            .filter(Filter::Linear)
+            .filter(Filter::Nearest)
             .address_mode(SamplerAddressMode::Repeat)
-            .mipmap_mode(SamplerMipmapMode::Linear)
+            .mipmap_mode(SamplerMipmapMode::Nearest)
             .build()
             .unwrap();
 
@@ -143,7 +143,7 @@ impl PixelsDrawPipeline {
             self.pipeline.subpass().clone(),
         )
         .unwrap();
-        let desc_set = self.create_descriptor_set(image);
+        let desc_set = self.create_image_sampler_nearest(image);
         builder
             .set_viewport(
                 0,
