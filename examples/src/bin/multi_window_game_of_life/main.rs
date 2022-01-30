@@ -22,6 +22,7 @@ use vulkano::image::ImageAccess;
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
 use winit::event::{ElementState, MouseButton};
+use winit::window::WindowId;
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
@@ -48,12 +49,28 @@ fn main() {
     // Time & inputs...
     let mut time = Instant::now();
     let mut cursor_pos = Vector2::new(0.0, 0.0);
-
+    // An extremely crude way to handle input state... But works for this example.
+    let mut mouse_is_pressed_w1 = false;
+    let mut mouse_is_pressed_w2 = false;
     loop {
-        if !handle_events(&mut event_loop, &mut app, &mut cursor_pos) {
+        // Event handling
+        if !handle_events(
+            &mut event_loop,
+            &mut app,
+            &mut cursor_pos,
+            &mut mouse_is_pressed_w1,
+            &mut mouse_is_pressed_w2,
+        ) {
             break;
         }
-        // Render 60fps
+        // Draw life on windows if mouse is down
+        draw_life(
+            &mut app,
+            cursor_pos,
+            mouse_is_pressed_w1,
+            mouse_is_pressed_w2,
+        );
+        // Compute life & render 60fps
         if (Instant::now() - time).as_seconds_f64() > 1.0 / 60.0 {
             compute_then_render_per_window(&mut app);
             time = Instant::now();
@@ -66,6 +83,8 @@ fn handle_events(
     event_loop: &mut EventLoop<()>,
     app: &mut App,
     cursor_pos: &mut Vector2<f32>,
+    mouse_pressed_w1: &mut bool,
+    mouse_pressed_w2: &mut bool,
 ) -> bool {
     let mut is_running = true;
     event_loop.run_return(|event, _, control_flow| {
@@ -93,25 +112,17 @@ fn handle_events(
                 }
                 // Mouse button event
                 WindowEvent::MouseInput { state, button, .. } => {
+                    let mut mouse_pressed = false;
                     if button == &MouseButton::Left && state == &ElementState::Pressed {
-                        let window_size = app.windows.get(window_id).unwrap().window_size();
-                        let compute_pipeline =
-                            &mut app.pipelines.get_mut(window_id).unwrap().compute;
-                        let mut normalized_pos = Vector2::new(
-                            (cursor_pos.x / window_size[0] as f32).clamp(0.0, 1.0),
-                            (cursor_pos.y / window_size[1] as f32).clamp(0.0, 1.0),
-                        );
-                        // flip y
-                        normalized_pos.y = 1.0 - normalized_pos.y;
-                        let image_size = compute_pipeline
-                            .color_image()
-                            .image()
-                            .dimensions()
-                            .width_height();
-                        compute_pipeline.draw_life(Vector2::new(
-                            (image_size[0] as f32 * normalized_pos.x) as i32,
-                            (image_size[1] as f32 * normalized_pos.y) as i32,
-                        ))
+                        mouse_pressed = true;
+                    }
+                    if button == &MouseButton::Left && state == &ElementState::Released {
+                        mouse_pressed = false;
+                    }
+                    if window_id == &app.primary_window_id {
+                        *mouse_pressed_w1 = mouse_pressed;
+                    } else {
+                        *mouse_pressed_w2 = mouse_pressed;
                     }
                 }
                 _ => (),
@@ -121,6 +132,39 @@ fn handle_events(
         }
     });
     is_running
+}
+
+fn draw_life(
+    app: &mut App,
+    cursor_pos: Vector2<f32>,
+    mouse_is_pressed_w1: bool,
+    mouse_is_pressed_w2: bool,
+) {
+    for (id, window) in app.windows.iter_mut() {
+        if id == &app.primary_window_id && !mouse_is_pressed_w1 {
+            continue;
+        }
+        if id != &app.primary_window_id && !mouse_is_pressed_w2 {
+            continue;
+        }
+        let window_size = window.window_size();
+        let compute_pipeline = &mut app.pipelines.get_mut(id).unwrap().compute;
+        let mut normalized_pos = Vector2::new(
+            (cursor_pos.x / window_size[0] as f32).clamp(0.0, 1.0),
+            (cursor_pos.y / window_size[1] as f32).clamp(0.0, 1.0),
+        );
+        // flip y
+        normalized_pos.y = 1.0 - normalized_pos.y;
+        let image_size = compute_pipeline
+            .color_image()
+            .image()
+            .dimensions()
+            .width_height();
+        compute_pipeline.draw_life(Vector2::new(
+            (image_size[0] as f32 * normalized_pos.x) as i32,
+            (image_size[1] as f32 * normalized_pos.y) as i32,
+        ))
+    }
 }
 
 /// Compute and render per window
