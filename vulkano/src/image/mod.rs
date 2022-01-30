@@ -128,7 +128,7 @@ impl TryFrom<u32> for SampleCount {
 }
 
 /// Specifies how many sample counts supported for an image used for storage operations.
-#[derive(Debug, Copy, Clone, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SampleCounts {
     // specify an image with one sample per pixel
     pub sample1: bool,
@@ -144,6 +144,22 @@ pub struct SampleCounts {
     pub sample32: bool,
     // specify an image with 64 samples per pixel
     pub sample64: bool,
+}
+
+impl SampleCounts {
+    /// Returns true if `self` has the `sample_count` value set.
+    #[inline]
+    pub fn contains(&self, sample_count: SampleCount) -> bool {
+        match sample_count {
+            SampleCount::Sample1 => self.sample1,
+            SampleCount::Sample2 => self.sample2,
+            SampleCount::Sample4 => self.sample4,
+            SampleCount::Sample8 => self.sample8,
+            SampleCount::Sample16 => self.sample16,
+            SampleCount::Sample32 => self.sample32,
+            SampleCount::Sample64 => self.sample64,
+        }
+    }
 }
 
 impl From<ash::vk::SampleCountFlags> for SampleCounts {
@@ -193,7 +209,7 @@ impl From<SampleCounts> for ash::vk::SampleCountFlags {
 /// Specifies how many mipmaps must be allocated.
 ///
 /// Note that at least one mipmap must be allocated, to store the main level of the image.
-#[derive(Debug, Copy, Clone)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum MipmapsCount {
     /// Allocates the number of mipmaps required to store all the mipmaps of the image where each
     /// mipmap is half the dimensions of the previous level. Guaranteed to be always supported.
@@ -214,75 +230,6 @@ impl From<u32> for MipmapsCount {
     #[inline]
     fn from(num: u32) -> MipmapsCount {
         MipmapsCount::Specific(num)
-    }
-}
-
-/// Helper type for creating extents
-#[derive(Debug, Copy, Clone)]
-pub enum Extent {
-    E1D([u32; 1]),
-    E2D([u32; 2]),
-    E3D([u32; 3]),
-}
-
-impl From<ash::vk::Extent2D> for Extent {
-    fn from(extent: ash::vk::Extent2D) -> Self {
-        Extent::E2D([extent.width, extent.height])
-    }
-}
-
-impl From<ash::vk::Extent3D> for Extent {
-    fn from(extent: ash::vk::Extent3D) -> Self {
-        Extent::E3D([extent.width, extent.height, extent.depth])
-    }
-}
-impl TryFrom<Extent> for ash::vk::Extent2D {
-    type Error = ();
-
-    fn try_from(extent: Extent) -> Result<Self, Self::Error> {
-        match extent {
-            Extent::E2D(a) => Ok(ash::vk::Extent2D {
-                width: a[0],
-                height: a[1],
-            }),
-            _ => Err(()),
-        }
-    }
-}
-
-impl TryFrom<Extent> for ash::vk::Extent3D {
-    type Error = ();
-
-    fn try_from(extent: Extent) -> Result<Self, Self::Error> {
-        match extent {
-            Extent::E3D(a) => Ok(ash::vk::Extent3D {
-                width: a[0],
-                height: a[1],
-                depth: a[2],
-            }),
-            _ => Err(()),
-        }
-    }
-}
-
-/// Helper type returned from Device's `fn image_format_properties()`
-pub struct ImageFormatProperties {
-    pub max_extent: Extent,
-    pub max_mip_levels: MipmapsCount,
-    pub max_array_layers: u32,
-    pub sample_counts: SampleCounts,
-    pub max_resource_size: usize,
-}
-
-impl From<ash::vk::ImageFormatProperties> for ImageFormatProperties {
-    fn from(props: ash::vk::ImageFormatProperties) -> Self {
-        Self {
-            max_extent: props.max_extent.into(),
-            max_mip_levels: props.max_mip_levels.into(),
-            max_array_layers: props.max_array_layers,
-            sample_counts: props.sample_counts.into(),
-            max_resource_size: props.max_resource_size as usize,
-        }
     }
 }
 
@@ -468,9 +415,18 @@ impl ImageDimensions {
         self.width() * self.height() * self.depth() * self.array_layers()
     }
 
-    /// Returns the maximum number of mipmaps for these image dimensions.
+    #[inline]
+    pub fn image_type(&self) -> ImageType {
+        match *self {
+            ImageDimensions::Dim1d { .. } => ImageType::Dim1d,
+            ImageDimensions::Dim2d { .. } => ImageType::Dim2d,
+            ImageDimensions::Dim3d { .. } => ImageType::Dim3d,
+        }
+    }
+
+    /// Returns the maximum number of mipmap levels for these image dimensions.
     ///
-    /// The returned value is always at least superior or equal to 1.
+    /// The returned value is always at least 1.
     ///
     /// # Example
     ///
@@ -483,17 +439,28 @@ impl ImageDimensions {
     ///     array_layers: 1,
     /// };
     ///
-    /// assert_eq!(dims.max_mipmaps(), 6);
+    /// assert_eq!(dims.max_mip_levels(), 6);
     /// ```
     ///
-    pub fn max_mipmaps(&self) -> u32 {
-        32 - (self.width() | self.height() | self.depth()).leading_zeros()
+    #[inline]
+    pub fn max_mip_levels(&self) -> u32 {
+        // This calculates `log2(max(width, height, depth)) + 1` using fast integer operations.
+        let max = match *self {
+            ImageDimensions::Dim1d { width, .. } => width,
+            ImageDimensions::Dim2d { width, height, .. } => width | height,
+            ImageDimensions::Dim3d {
+                width,
+                height,
+                depth,
+            } => width | height | depth,
+        };
+        32 - max.leading_zeros()
     }
 
     /// Returns the dimensions of the `level`th mipmap level. If `level` is 0, then the dimensions
     /// are left unchanged.
     ///
-    /// Returns `None` if `level` is superior or equal to `max_mipmaps()`.
+    /// Returns `None` if `level` is superior or equal to `max_mip_levels()`.
     ///
     /// # Example
     ///
@@ -506,23 +473,23 @@ impl ImageDimensions {
     ///     array_layers: 1,
     /// };
     ///
-    /// assert_eq!(dims.mipmap_dimensions(0), Some(dims));
-    /// assert_eq!(dims.mipmap_dimensions(1), Some(ImageDimensions::Dim2d {
+    /// assert_eq!(dims.mip_level_dimensions(0), Some(dims));
+    /// assert_eq!(dims.mip_level_dimensions(1), Some(ImageDimensions::Dim2d {
     ///     width: 481,
     ///     height: 128,
     ///     array_layers: 1,
     /// }));
-    /// assert_eq!(dims.mipmap_dimensions(6), Some(ImageDimensions::Dim2d {
+    /// assert_eq!(dims.mip_level_dimensions(6), Some(ImageDimensions::Dim2d {
     ///     width: 15,
     ///     height: 4,
     ///     array_layers: 1,
     /// }));
-    /// assert_eq!(dims.mipmap_dimensions(9), Some(ImageDimensions::Dim2d {
+    /// assert_eq!(dims.mip_level_dimensions(9), Some(ImageDimensions::Dim2d {
     ///     width: 1,
     ///     height: 1,
     ///     array_layers: 1,
     /// }));
-    /// assert_eq!(dims.mipmap_dimensions(11), None);
+    /// assert_eq!(dims.mip_level_dimensions(11), None);
     /// ```
     ///
     /// # Panic
@@ -530,12 +497,12 @@ impl ImageDimensions {
     /// In debug mode, Panics if `width`, `height` or `depth` is equal to 0. In release, returns
     /// an unspecified value.
     ///
-    pub fn mipmap_dimensions(&self, level: u32) -> Option<ImageDimensions> {
+    pub fn mip_level_dimensions(&self, level: u32) -> Option<ImageDimensions> {
         if level == 0 {
             return Some(*self);
         }
 
-        if level >= self.max_mipmaps() {
+        if level >= self.max_mip_levels() {
             return None;
         }
 
@@ -591,39 +558,39 @@ mod tests {
     use crate::image::MipmapsCount;
 
     #[test]
-    fn max_mipmaps() {
+    fn max_mip_levels() {
         let dims = ImageDimensions::Dim2d {
             width: 2,
             height: 1,
             array_layers: 1,
         };
-        assert_eq!(dims.max_mipmaps(), 2);
+        assert_eq!(dims.max_mip_levels(), 2);
 
         let dims = ImageDimensions::Dim2d {
             width: 2,
             height: 3,
             array_layers: 1,
         };
-        assert_eq!(dims.max_mipmaps(), 2);
+        assert_eq!(dims.max_mip_levels(), 2);
 
         let dims = ImageDimensions::Dim2d {
             width: 512,
             height: 512,
             array_layers: 1,
         };
-        assert_eq!(dims.max_mipmaps(), 10);
+        assert_eq!(dims.max_mip_levels(), 10);
     }
 
     #[test]
-    fn mipmap_dimensions() {
+    fn mip_level_dimensions() {
         let dims = ImageDimensions::Dim2d {
             width: 283,
             height: 175,
             array_layers: 1,
         };
-        assert_eq!(dims.mipmap_dimensions(0), Some(dims));
+        assert_eq!(dims.mip_level_dimensions(0), Some(dims));
         assert_eq!(
-            dims.mipmap_dimensions(1),
+            dims.mip_level_dimensions(1),
             Some(ImageDimensions::Dim2d {
                 width: 141,
                 height: 87,
@@ -631,7 +598,7 @@ mod tests {
             })
         );
         assert_eq!(
-            dims.mipmap_dimensions(2),
+            dims.mip_level_dimensions(2),
             Some(ImageDimensions::Dim2d {
                 width: 70,
                 height: 43,
@@ -639,7 +606,7 @@ mod tests {
             })
         );
         assert_eq!(
-            dims.mipmap_dimensions(3),
+            dims.mip_level_dimensions(3),
             Some(ImageDimensions::Dim2d {
                 width: 35,
                 height: 21,
@@ -648,7 +615,7 @@ mod tests {
         );
 
         assert_eq!(
-            dims.mipmap_dimensions(4),
+            dims.mip_level_dimensions(4),
             Some(ImageDimensions::Dim2d {
                 width: 17,
                 height: 10,
@@ -656,7 +623,7 @@ mod tests {
             })
         );
         assert_eq!(
-            dims.mipmap_dimensions(5),
+            dims.mip_level_dimensions(5),
             Some(ImageDimensions::Dim2d {
                 width: 8,
                 height: 5,
@@ -664,7 +631,7 @@ mod tests {
             })
         );
         assert_eq!(
-            dims.mipmap_dimensions(6),
+            dims.mip_level_dimensions(6),
             Some(ImageDimensions::Dim2d {
                 width: 4,
                 height: 2,
@@ -672,7 +639,7 @@ mod tests {
             })
         );
         assert_eq!(
-            dims.mipmap_dimensions(7),
+            dims.mip_level_dimensions(7),
             Some(ImageDimensions::Dim2d {
                 width: 2,
                 height: 1,
@@ -680,14 +647,14 @@ mod tests {
             })
         );
         assert_eq!(
-            dims.mipmap_dimensions(8),
+            dims.mip_level_dimensions(8),
             Some(ImageDimensions::Dim2d {
                 width: 1,
                 height: 1,
                 array_layers: 1,
             })
         );
-        assert_eq!(dims.mipmap_dimensions(9), None);
+        assert_eq!(dims.mip_level_dimensions(9), None);
     }
 
     #[test]
@@ -712,7 +679,7 @@ mod tests {
                 queue.clone(),
             )
             .unwrap();
-            assert_eq!(image.mipmap_levels(), 1);
+            assert_eq!(image.mip_levels(), 1);
         }
         {
             let mut vec = Vec::new();
@@ -727,7 +694,7 @@ mod tests {
                 queue.clone(),
             )
             .unwrap();
-            assert_eq!(image.mipmap_levels(), 10);
+            assert_eq!(image.mip_levels(), 10);
         }
     }
 }

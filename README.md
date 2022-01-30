@@ -5,6 +5,7 @@
 [![Crates.io](https://img.shields.io/crates/v/vulkano.svg)](https://crates.io/crates/vulkano)
 [![Docs](https://docs.rs/vulkano/badge.svg)](https://docs.rs/vulkano)
 [![Build Status](https://github.com/vulkano-rs/vulkano/workflows/Rust/badge.svg)](https://github.com/vulkano-rs/vulkano/actions?query=workflow%3ARust)
+[![Discord](https://img.shields.io/discord/937149253296476201?label=discord)](https://discord.gg/bncB9W2VDV)
 
 See also [vulkano.rs](https://vulkano.rs).
 
@@ -62,6 +63,8 @@ contributing(opening a PR) into [README.md](https://github.com/vulkano-rs/vulkan
 | [Basalt](https://github.com/AustinJ235/basalt) | GUI framework for Desktop applications |
 | [Ferret](https://github.com/Rua/ferret) | Doom-compatible game engine |
 | [Sandbox](https://github.com/hakolao/sandbox) | 2D Pixel Physics Simulator |
+| [Egui Winit Vulkano](https://github.com/hakolao/egui_winit_vulkano) | Vulkano integration with Egui |
+| [VideowindoW](https://www.videowindow.eu/) | Uses Vulkano under the hood to enable asynchronous video stream compositing |
 
 We would love to help you keep your project in sync with the most recent changes in Vulkano
 if you give us feedback by adding your project into this list.

@@ -9,6 +9,7 @@
 
 use super::ranges::{is_overlapping_ranges, is_overlapping_regions};
 use crate::device::Device;
+use crate::device::DeviceOwned;
 use crate::format::NumericType;
 use crate::image::ImageAccess;
 use crate::image::ImageDimensions;
@@ -101,14 +102,14 @@ where
         }
     }
 
-    let source_dimensions = match source.dimensions().mipmap_dimensions(source_mip_level) {
+    let source_dimensions = match source.dimensions().mip_level_dimensions(source_mip_level) {
         Some(d) => d,
         None => return Err(CheckBlitImageError::SourceCoordinatesOutOfRange),
     };
 
     let destination_dimensions = match destination
         .dimensions()
-        .mipmap_dimensions(destination_mip_level)
+        .mip_level_dimensions(destination_mip_level)
     {
         Some(d) => d,
         None => return Err(CheckBlitImageError::DestinationCoordinatesOutOfRange),
@@ -287,7 +288,7 @@ where
             if !source_inner
                 .image
                 .format_features()
-                .img_sampled_image_filter_cubic
+                .sampled_image_filter_cubic
             {
                 return Err(CheckBlitImageError::FilterFormatNotSupported);
             }

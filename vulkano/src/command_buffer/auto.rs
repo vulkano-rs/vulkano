@@ -1008,10 +1008,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         image: Arc<dyn ImageAccess>,
         color: ClearValue,
     ) -> Result<&mut Self, ClearColorImageError> {
-        let layers = image.dimensions().array_layers();
-        let levels = image.mipmap_levels();
+        let array_layers = image.dimensions().array_layers();
+        let mip_levels = image.mip_levels();
 
-        self.clear_color_image_dimensions(image, 0, layers, 0, levels, color)
+        self.clear_color_image_dimensions(image, 0, array_layers, 0, mip_levels, color)
     }
 
     /// Adds a command that clears a color image with a specific value.
@@ -1023,10 +1023,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     pub fn clear_color_image_dimensions(
         &mut self,
         image: Arc<dyn ImageAccess>,
-        first_layer: u32,
-        num_layers: u32,
-        first_mipmap: u32,
-        num_mipmaps: u32,
+        base_array_layer: u32,
+        layer_count: u32,
+        base_mip_level: u32,
+        level_count: u32,
         color: ClearValue,
     ) -> Result<&mut Self, ClearColorImageError> {
         unsafe {
@@ -1038,10 +1038,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             check_clear_color_image(
                 self.device(),
                 image.as_ref(),
-                first_layer,
-                num_layers,
-                first_mipmap,
-                num_mipmaps,
+                base_array_layer,
+                layer_count,
+                base_mip_level,
+                level_count,
             )?;
 
             match color {
@@ -1050,10 +1050,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             };
 
             let region = UnsafeCommandBufferBuilderColorImageClear {
-                base_mip_level: first_mipmap,
-                level_count: num_mipmaps,
-                base_array_layer: first_layer,
-                layer_count: num_layers,
+                base_mip_level,
+                level_count,
+                base_array_layer,
+                layer_count,
             };
 
             // TODO: let choose layout
@@ -1093,8 +1093,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     pub fn clear_depth_stencil_image_dimensions(
         &mut self,
         image: Arc<dyn ImageAccess>,
-        first_layer: u32,
-        num_layers: u32,
+        base_array_layer: u32,
+        layer_count: u32,
         clear_value: ClearValue,
     ) -> Result<&mut Self, ClearDepthStencilImageError> {
         unsafe {
@@ -1106,8 +1106,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             check_clear_depth_stencil_image(
                 self.device(),
                 image.as_ref(),
-                first_layer,
-                num_layers,
+                base_array_layer,
+                layer_count,
             )?;
 
             let (clear_depth, clear_stencil) = match clear_value {
@@ -1118,8 +1118,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             };
 
             let region = UnsafeCommandBufferBuilderDepthStencilImageClear {
-                base_array_layer: first_layer,
-                layer_count: num_layers,
+                base_array_layer,
+                layer_count,
                 clear_depth,
                 clear_stencil,
             };
@@ -1231,9 +1231,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         destination: Arc<dyn ImageAccess>,
         offset: [u32; 3],
         size: [u32; 3],
-        first_layer: u32,
-        num_layers: u32,
-        mipmap: u32,
+        base_array_layer: u32,
+        layer_count: u32,
+        mip_level: u32,
     ) -> Result<&mut Self, CopyBufferImageError>
     where
         S: TypedBufferAccess<Content = [Px]> + 'static,
@@ -1249,9 +1249,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 CheckCopyBufferImageTy::BufferToImage,
                 offset,
                 size,
-                first_layer,
-                num_layers,
-                mipmap,
+                base_array_layer,
+                layer_count,
+                mip_level,
             )?;
 
             let copy = UnsafeCommandBufferBuilderBufferImageCopy {
@@ -1263,9 +1263,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 } else {
                     unimplemented!()
                 },
-                image_mip_level: mipmap,
-                image_base_array_layer: first_layer,
-                image_layer_count: num_layers,
+                image_mip_level: mip_level,
+                image_base_array_layer: base_array_layer,
+                image_layer_count: layer_count,
                 image_offset: [offset[0] as i32, offset[1] as i32, offset[2] as i32],
                 image_extent: size,
             };
@@ -1406,9 +1406,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         destination: Arc<D>,
         offset: [u32; 3],
         size: [u32; 3],
-        first_layer: u32,
-        num_layers: u32,
-        mipmap: u32,
+        base_array_layer: u32,
+        layer_count: u32,
+        mip_level: u32,
     ) -> Result<&mut Self, CopyBufferImageError>
     where
         D: TypedBufferAccess<Content = [Px]> + 'static,
@@ -1424,9 +1424,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 CheckCopyBufferImageTy::ImageToBuffer,
                 offset,
                 size,
-                first_layer,
-                num_layers,
-                mipmap,
+                base_array_layer,
+                layer_count,
+                mip_level,
             )?;
 
             let source_aspects = source.format().aspects();
@@ -1444,9 +1444,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 } else {
                     unimplemented!()
                 },
-                image_mip_level: mipmap,
-                image_base_array_layer: first_layer,
-                image_layer_count: num_layers,
+                image_mip_level: mip_level,
+                image_base_array_layer: base_array_layer,
+                image_layer_count: layer_count,
                 image_offset: [offset[0] as i32, offset[1] as i32, offset[2] as i32],
                 image_extent: size,
             };

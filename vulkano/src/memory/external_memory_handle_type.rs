@@ -9,13 +9,38 @@
 
 use std::ops::BitOr;
 
-/// Describes the handle type used for Vulkan external memory apis.  This is **not** just a
+/// Describes a handle type used for Vulkan external memory apis.  This is **not** just a
 /// suggestion.  Check out vkExternalMemoryHandleTypeFlagBits in the Vulkan spec.
 ///
 /// If you specify an handle type that doesnt make sense (for example, using a dma-buf handle type
 /// on Windows) when using this handle, a panic will happen.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct ExternalMemoryHandleType {
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[repr(u32)]
+pub enum ExternalMemoryHandleType {
+    OpaqueFd = ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD.as_raw(),
+    OpaqueWin32 = ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_WIN32.as_raw(),
+    OpaqueWin32Kmt = ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_WIN32_KMT.as_raw(),
+    D3D11Texture = ash::vk::ExternalMemoryHandleTypeFlags::D3D11_TEXTURE.as_raw(),
+    D3D11TextureKmt = ash::vk::ExternalMemoryHandleTypeFlags::D3D11_TEXTURE_KMT.as_raw(),
+    D3D12Heap = ash::vk::ExternalMemoryHandleTypeFlags::D3D12_HEAP.as_raw(),
+    D3D12Resource = ash::vk::ExternalMemoryHandleTypeFlags::D3D12_RESOURCE.as_raw(),
+    DmaBuf = ash::vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT.as_raw(),
+    AndroidHardwareBuffer =
+        ash::vk::ExternalMemoryHandleTypeFlags::ANDROID_HARDWARE_BUFFER_ANDROID.as_raw(),
+    HostAllocation = ash::vk::ExternalMemoryHandleTypeFlags::HOST_ALLOCATION_EXT.as_raw(),
+    HostMappedForeignMemory =
+        ash::vk::ExternalMemoryHandleTypeFlags::HOST_MAPPED_FOREIGN_MEMORY_EXT.as_raw(),
+}
+
+impl From<ExternalMemoryHandleType> for ash::vk::ExternalMemoryHandleTypeFlags {
+    fn from(val: ExternalMemoryHandleType) -> Self {
+        Self::from_raw(val as u32)
+    }
+}
+
+/// A mask of multiple handle types.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct ExternalMemoryHandleTypes {
     pub opaque_fd: bool,
     pub opaque_win32: bool,
     pub opaque_win32_kmt: bool,
@@ -29,22 +54,22 @@ pub struct ExternalMemoryHandleType {
     pub host_mapped_foreign_memory: bool,
 }
 
-impl ExternalMemoryHandleType {
-    /// Builds a `ExternalMemoryHandleType` with all values set to false. Useful as a default value.
+impl ExternalMemoryHandleTypes {
+    /// Builds a `ExternalMemoryHandleTypes` with all values set to false. Useful as a default value.
     ///
     /// # Example
     ///
     /// ```rust
-    /// use vulkano::memory::ExternalMemoryHandleType as ExternalMemoryHandleType;
+    /// use vulkano::memory::ExternalMemoryHandleTypes as ExternalMemoryHandleTypes;
     ///
-    /// let _handle_type = ExternalMemoryHandleType {
+    /// let _handle_type = ExternalMemoryHandleTypes {
     ///     opaque_fd: true,
-    ///     .. ExternalMemoryHandleType::none()
+    ///     .. ExternalMemoryHandleTypes::none()
     /// };
     /// ```
     #[inline]
-    pub fn none() -> ExternalMemoryHandleType {
-        ExternalMemoryHandleType {
+    pub fn none() -> Self {
+        ExternalMemoryHandleTypes {
             opaque_fd: false,
             opaque_win32: false,
             opaque_win32_kmt: false,
@@ -59,27 +84,92 @@ impl ExternalMemoryHandleType {
         }
     }
 
-    /// Builds an `ExternalMemoryHandleType` for a posix file descriptor.
+    /// Builds an `ExternalMemoryHandleTypes` for a posix file descriptor.
     ///
     /// # Example
     ///
     /// ```rust
-    /// use vulkano::memory::ExternalMemoryHandleType as ExternalMemoryHandleType;
+    /// use vulkano::memory::ExternalMemoryHandleTypes as ExternalMemoryHandleTypes;
     ///
-    /// let _handle_type = ExternalMemoryHandleType::posix();
+    /// let _handle_type = ExternalMemoryHandleTypes::posix();
     /// ```
     #[inline]
-    pub fn posix() -> ExternalMemoryHandleType {
-        ExternalMemoryHandleType {
+    pub fn posix() -> ExternalMemoryHandleTypes {
+        ExternalMemoryHandleTypes {
             opaque_fd: true,
-            ..ExternalMemoryHandleType::none()
+            ..ExternalMemoryHandleTypes::none()
         }
+    }
+
+    /// Returns whether any of the fields are set.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        let ExternalMemoryHandleTypes {
+            opaque_fd,
+            opaque_win32,
+            opaque_win32_kmt,
+            d3d11_texture,
+            d3d11_texture_kmt,
+            d3d12_heap,
+            d3d12_resource,
+            dma_buf,
+            android_hardware_buffer,
+            host_allocation,
+            host_mapped_foreign_memory,
+        } = *self;
+
+        !(opaque_fd
+            || opaque_win32
+            || opaque_win32_kmt
+            || d3d11_texture
+            || d3d11_texture_kmt
+            || d3d12_heap
+            || d3d12_resource
+            || dma_buf
+            || android_hardware_buffer
+            || host_allocation
+            || host_mapped_foreign_memory)
+    }
+
+    /// Returns an iterator of `ExternalMemoryHandleType` enum values, representing the fields that
+    /// are set in `self`.
+    #[inline]
+    pub fn iter(&self) -> impl Iterator<Item = ExternalMemoryHandleType> {
+        let ExternalMemoryHandleTypes {
+            opaque_fd,
+            opaque_win32,
+            opaque_win32_kmt,
+            d3d11_texture,
+            d3d11_texture_kmt,
+            d3d12_heap,
+            d3d12_resource,
+            dma_buf,
+            android_hardware_buffer,
+            host_allocation,
+            host_mapped_foreign_memory,
+        } = *self;
+
+        [
+            opaque_fd.then(|| ExternalMemoryHandleType::OpaqueFd),
+            opaque_win32.then(|| ExternalMemoryHandleType::OpaqueWin32),
+            opaque_win32_kmt.then(|| ExternalMemoryHandleType::OpaqueWin32Kmt),
+            d3d11_texture.then(|| ExternalMemoryHandleType::D3D11Texture),
+            d3d11_texture_kmt.then(|| ExternalMemoryHandleType::D3D11TextureKmt),
+            d3d12_heap.then(|| ExternalMemoryHandleType::D3D12Heap),
+            d3d12_resource.then(|| ExternalMemoryHandleType::D3D12Resource),
+            dma_buf.then(|| ExternalMemoryHandleType::DmaBuf),
+            android_hardware_buffer.then(|| ExternalMemoryHandleType::AndroidHardwareBuffer),
+            host_allocation.then(|| ExternalMemoryHandleType::HostAllocation),
+            host_mapped_foreign_memory.then(|| ExternalMemoryHandleType::HostMappedForeignMemory),
+        ]
+        .into_iter()
+        .flatten()
     }
 }
 
-impl From<ExternalMemoryHandleType> for ash::vk::ExternalMemoryHandleTypeFlags {
+impl From<ExternalMemoryHandleTypes> for ash::vk::ExternalMemoryHandleTypeFlags {
     #[inline]
-    fn from(val: ExternalMemoryHandleType) -> Self {
+    fn from(val: ExternalMemoryHandleTypes) -> Self {
         let mut result = ash::vk::ExternalMemoryHandleTypeFlags::empty();
         if val.opaque_fd {
             result |= ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD;
@@ -118,9 +208,9 @@ impl From<ExternalMemoryHandleType> for ash::vk::ExternalMemoryHandleTypeFlags {
     }
 }
 
-impl From<ash::vk::ExternalMemoryHandleTypeFlags> for ExternalMemoryHandleType {
+impl From<ash::vk::ExternalMemoryHandleTypeFlags> for ExternalMemoryHandleTypes {
     fn from(val: ash::vk::ExternalMemoryHandleTypeFlags) -> Self {
-        ExternalMemoryHandleType {
+        ExternalMemoryHandleTypes {
             opaque_fd: !(val & ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD).is_empty(),
             opaque_win32: !(val & ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_WIN32).is_empty(),
             opaque_win32_kmt: !(val & ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_WIN32_KMT)
@@ -145,12 +235,12 @@ impl From<ash::vk::ExternalMemoryHandleTypeFlags> for ExternalMemoryHandleType {
     }
 }
 
-impl BitOr for ExternalMemoryHandleType {
+impl BitOr for ExternalMemoryHandleTypes {
     type Output = Self;
 
     #[inline]
     fn bitor(self, rhs: Self) -> Self {
-        ExternalMemoryHandleType {
+        ExternalMemoryHandleTypes {
             opaque_fd: self.opaque_fd || rhs.opaque_fd,
             opaque_win32: self.opaque_win32 || rhs.opaque_win32,
             opaque_win32_kmt: self.opaque_win32_kmt || rhs.opaque_win32_kmt,

@@ -14,12 +14,11 @@ use crate::image::view::ImageViewType;
 use crate::shader::ShaderScalarType;
 use crate::DeviceSize;
 use crate::{
-    format::Format,
     pipeline::layout::PipelineLayoutPcRange,
     shader::{
         spirv::{
-            Capability, Decoration, Dim, ExecutionMode, ExecutionModel, Id, ImageFormat,
-            Instruction, Spirv, StorageClass,
+            Capability, Decoration, Dim, ExecutionMode, ExecutionModel, Id, Instruction, Spirv,
+            StorageClass,
         },
         DescriptorIdentifier, DescriptorRequirements, EntryPointInfo, GeometryShaderExecution,
         GeometryShaderInput, ShaderExecution, ShaderInterface, ShaderInterfaceEntry,
@@ -372,6 +371,55 @@ fn inspect_entry_point(
 
                     &Instruction::FunctionEnd => return,
 
+                    &Instruction::ImageGather {
+                        sampled_image,
+                        ref image_operands,
+                        ..
+                    }
+                    | &Instruction::ImageSparseGather {
+                        sampled_image,
+                        ref image_operands,
+                        ..
+                    } => {
+                        if let Some((variable, Some(index))) = instruction_chain(
+                            result,
+                            global,
+                            spirv,
+                            [inst_sampled_image, inst_load],
+                            sampled_image,
+                        ) {
+                            variable.reqs.sampler_no_ycbcr_conversion.insert(index);
+
+                            if image_operands.as_ref().map_or(false, |image_operands| {
+                                image_operands.bias.is_some()
+                                    || image_operands.const_offset.is_some()
+                                    || image_operands.offset.is_some()
+                            }) {
+                                variable
+                                    .reqs
+                                    .sampler_no_unnormalized_coordinates
+                                    .insert(index);
+                            }
+                        }
+                    }
+
+                    &Instruction::ImageDrefGather { sampled_image, .. }
+                    | &Instruction::ImageSparseDrefGather { sampled_image, .. } => {
+                        if let Some((variable, Some(index))) = instruction_chain(
+                            result,
+                            global,
+                            spirv,
+                            [inst_sampled_image, inst_load],
+                            sampled_image,
+                        ) {
+                            variable
+                                .reqs
+                                .sampler_no_unnormalized_coordinates
+                                .insert(index);
+                            variable.reqs.sampler_no_ycbcr_conversion.insert(index);
+                        }
+                    }
+
                     &Instruction::ImageSampleImplicitLod {
                         sampled_image,
                         ref image_operands,
@@ -391,8 +439,59 @@ fn inspect_entry_point(
                         sampled_image,
                         ref image_operands,
                         ..
+                    } => {
+                        if let Some((variable, Some(index))) = instruction_chain(
+                            result,
+                            global,
+                            spirv,
+                            [inst_sampled_image, inst_load],
+                            sampled_image,
+                        ) {
+                            variable
+                                .reqs
+                                .sampler_no_unnormalized_coordinates
+                                .insert(index);
+
+                            if image_operands.as_ref().map_or(false, |image_operands| {
+                                image_operands.const_offset.is_some()
+                                    || image_operands.offset.is_some()
+                            }) {
+                                variable.reqs.sampler_no_ycbcr_conversion.insert(index);
+                            }
+                        }
                     }
-                    | &Instruction::ImageSampleDrefImplicitLod {
+
+                    &Instruction::ImageSampleProjExplicitLod {
+                        sampled_image,
+                        ref image_operands,
+                        ..
+                    }
+                    | &Instruction::ImageSparseSampleProjExplicitLod {
+                        sampled_image,
+                        ref image_operands,
+                        ..
+                    } => {
+                        if let Some((variable, Some(index))) = instruction_chain(
+                            result,
+                            global,
+                            spirv,
+                            [inst_sampled_image, inst_load],
+                            sampled_image,
+                        ) {
+                            variable
+                                .reqs
+                                .sampler_no_unnormalized_coordinates
+                                .insert(index);
+
+                            if image_operands.const_offset.is_some()
+                                || image_operands.offset.is_some()
+                            {
+                                variable.reqs.sampler_no_ycbcr_conversion.insert(index);
+                            }
+                        }
+                    }
+
+                    &Instruction::ImageSampleDrefImplicitLod {
                         sampled_image,
                         ref image_operands,
                         ..
@@ -419,21 +518,22 @@ fn inspect_entry_point(
                             [inst_sampled_image, inst_load],
                             sampled_image,
                         ) {
-                            variable.reqs.sampler_no_unnormalized.insert(index);
+                            variable
+                                .reqs
+                                .sampler_no_unnormalized_coordinates
+                                .insert(index);
+                            variable.reqs.sampler_compare.insert(index);
+
+                            if image_operands.as_ref().map_or(false, |image_operands| {
+                                image_operands.const_offset.is_some()
+                                    || image_operands.offset.is_some()
+                            }) {
+                                variable.reqs.sampler_no_ycbcr_conversion.insert(index);
+                            }
                         }
                     }
 
-                    &Instruction::ImageSampleProjExplicitLod {
-                        sampled_image,
-                        ref image_operands,
-                        ..
-                    }
-                    | &Instruction::ImageSparseSampleProjExplicitLod {
-                        sampled_image,
-                        ref image_operands,
-                        ..
-                    }
-                    | &Instruction::ImageSampleDrefExplicitLod {
+                    &Instruction::ImageSampleDrefExplicitLod {
                         sampled_image,
                         ref image_operands,
                         ..
@@ -460,7 +560,17 @@ fn inspect_entry_point(
                             [inst_sampled_image, inst_load],
                             sampled_image,
                         ) {
-                            variable.reqs.sampler_no_unnormalized.insert(index);
+                            variable
+                                .reqs
+                                .sampler_no_unnormalized_coordinates
+                                .insert(index);
+                            variable.reqs.sampler_compare.insert(index);
+
+                            if image_operands.const_offset.is_some()
+                                || image_operands.offset.is_some()
+                            {
+                                variable.reqs.sampler_no_ycbcr_conversion.insert(index);
+                            }
                         }
                     }
 
@@ -483,10 +593,18 @@ fn inspect_entry_point(
                         ) {
                             if image_operands.bias.is_some()
                                 || image_operands.const_offset.is_some()
-                                || image_operands.const_offsets.is_some()
                                 || image_operands.offset.is_some()
                             {
-                                variable.reqs.sampler_no_unnormalized.insert(index);
+                                variable
+                                    .reqs
+                                    .sampler_no_unnormalized_coordinates
+                                    .insert(index);
+                            }
+
+                            if image_operands.const_offset.is_some()
+                                || image_operands.offset.is_some()
+                            {
+                                variable.reqs.sampler_no_ycbcr_conversion.insert(index);
                             }
                         }
                     }
@@ -497,11 +615,19 @@ fn inspect_entry_point(
                         instruction_chain(result, global, spirv, [], image);
                     }
 
+                    &Instruction::ImageRead { image, .. } => {
+                        if let Some((variable, Some(index))) =
+                            instruction_chain(result, global, spirv, [inst_load], image)
+                        {
+                            variable.reqs.storage_read.insert(index);
+                        }
+                    }
+
                     &Instruction::ImageWrite { image, .. } => {
                         if let Some((variable, Some(index))) =
                             instruction_chain(result, global, spirv, [inst_load], image)
                         {
-                            variable.reqs.mutable.insert(index);
+                            variable.reqs.storage_write.insert(index);
                         }
                     }
 
@@ -536,7 +662,7 @@ fn inspect_entry_point(
                         if let Some((variable, Some(index))) =
                             instruction_chain(result, global, spirv, [], pointer)
                         {
-                            variable.reqs.mutable.insert(index);
+                            variable.reqs.storage_write.insert(index);
                         }
                     }
 
@@ -635,6 +761,7 @@ fn descriptor_requirements_of(spirv: &Spirv, variable_id: Id) -> DescriptorVaria
             }
 
             &Instruction::TypeImage {
+                sampled_type,
                 ref dim,
                 arrayed,
                 ms,
@@ -642,25 +769,39 @@ fn descriptor_requirements_of(spirv: &Spirv, variable_id: Id) -> DescriptorVaria
                 ref image_format,
                 ..
             } => {
-                let multisampled = ms != 0;
                 assert!(sampled != 0, "Vulkan requires that variables of type OpTypeImage have a Sampled operand of 1 or 2");
-                let format: Option<Format> = image_format.clone().into();
+                reqs.image_format = image_format.clone().into();
+                reqs.image_multisampled = ms != 0;
+                reqs.image_scalar_type = Some(match spirv.id(sampled_type).instruction() {
+                    &Instruction::TypeInt {
+                        width, signedness, ..
+                    } => {
+                        assert!(width == 32); // TODO: 64-bit components
+                        match signedness {
+                            0 => ShaderScalarType::Uint,
+                            1 => ShaderScalarType::Sint,
+                            _ => unreachable!(),
+                        }
+                    }
+                    &Instruction::TypeFloat { width, .. } => {
+                        assert!(width == 32); // TODO: 64-bit components
+                        ShaderScalarType::Float
+                    }
+                    _ => unreachable!(),
+                });
 
                 match dim {
                     Dim::SubpassData => {
                         assert!(
-                            *image_format == ImageFormat::Unknown,
+                            reqs.image_format.is_none(),
                             "If Dim is SubpassData, Image Format must be Unknown"
                         );
                         assert!(sampled == 2, "If Dim is SubpassData, Sampled must be 2");
                         assert!(arrayed == 0, "If Dim is SubpassData, Arrayed must be 0");
 
                         reqs.descriptor_types = vec![DescriptorType::InputAttachment];
-                        reqs.multisampled = multisampled;
                     }
                     Dim::Buffer => {
-                        reqs.format = format;
-
                         if sampled == 1 {
                             reqs.descriptor_types = vec![DescriptorType::UniformTexelBuffer];
                         } else {
@@ -668,7 +809,7 @@ fn descriptor_requirements_of(spirv: &Spirv, variable_id: Id) -> DescriptorVaria
                         }
                     }
                     _ => {
-                        let image_view_type = Some(match (dim, arrayed) {
+                        reqs.image_view_type = Some(match (dim, arrayed) {
                             (Dim::Dim1D, 0) => ImageViewType::Dim1d,
                             (Dim::Dim1D, 1) => ImageViewType::Dim1dArray,
                             (Dim::Dim2D, 0) => ImageViewType::Dim2d,
@@ -684,10 +825,6 @@ fn descriptor_requirements_of(spirv: &Spirv, variable_id: Id) -> DescriptorVaria
                             }
                             _ => unreachable!(),
                         });
-
-                        reqs.format = format;
-                        reqs.multisampled = multisampled;
-                        reqs.image_view_type = image_view_type;
 
                         if reqs.descriptor_types.is_empty() {
                             if sampled == 1 {

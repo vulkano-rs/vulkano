@@ -36,6 +36,39 @@
 - Added `buffer_self_copy_overlapping` and `buffer_self_copy_not_overlapping` as unit tests for self_copy feature (#1782).
 - Removed test `basic_conflict` (failed after #1782).
 - Added VertexMember implementations for nalgebra Vectors and Points as an optional crate feature.
+- **Breaking** The spelling `mip_level` is used everywhere as a function and variable name for consistency with Vulkan naming.
+- **Breaking** Changes to `UnsafeImage`:
+  - It is now constructed with a builder.
+  - It is no longer unsafe to construct, only to use.
+  - Memory requirements are no longer returned on construction, but retrieved by calling `memory_requirements` on the `UnsafeImage`.
+  - `format_features` now returns a reference.
+  - `preinitialized_layout` is replaced by `initial_layout`, which returns an `ImageLayout` value.
+- **Breaking** Changes to the `ImageAccess` trait:
+  - Added a `format_features` method, and removed `supports_blit_source` and `supports_blit_destination`.
+  - `preinitialized_layout` is replaced by `initial_layout`, which returns an `ImageLayout` value.
+  - `current_layer_levels_access` was misnamed, and is now named `current_array_layers_access`.
+  - `current_miplevels_access` is now named `current_mip_levels_access`.
+- **Breaking** Changes to `ImageView`:
+  - `UnsafeImageView` has been merged into `ImageView`.
+  - Removed `with_` from all the builder functions.
+  - The `ImageViewAbstract` trait now has `VulkanObject` as a supertrait, and no longer has an `inner` method.
+- **Breaking** Changes to `Format`:
+  - `properties` has been moved to `PhysicalDevice::format_properties`. It now supports the `khr_format_feature_flags2` extension.
+  - `requires_sampler_ycbcr_conversion` has been renamed to `ycbcr_chroma_sampling` and returns `Option<ChromaSampling>`, where `Some` replaces `true`.
+  - `size` has been renamed to `block_size`.
+  - `block_dimensions` has been renamed to `block_extent`.
+  - The members of the `CompressionType` enum have changed.
+- **Breaking** The `BufferViewAbstract` trait now has `VulkanObject` as a supertrait.
+- **Breaking** `ExternalMemoryHandleType` has been renamed to `ExternalMemoryHandleTypes`, and the singular name `ExternalMemoryHandleType` has been introduced as an enum.
+- **Breaking** `ComponentMapping` and `ComponentSwizzle` have been moved to the `sampler` module.
+- Added `PhysicalDevice::image_format_properties`.
+- Added `UnsafeImage::tiling`.
+- The `ImageViewAbstract` trait now includes a `format_features` method.
+- The `BufferViewAbstract` trait now includes `format` and `format_features` methods.
+- Add `boxed_send()`, `boxed_sync()`, `boxed_send_sync()` for `GpuFuture`.
+- Fixed mipmap generation for 2D array images.
+- Added `aspects` to the builder of `ImageView`, to choose which aspect(s) of an image to use in the view.
+- Added `SamplerYcbcrConversion`, and the ability to attach it to a sampler or image view.
 
 # Version 0.27.1 (2021-12-07)
 

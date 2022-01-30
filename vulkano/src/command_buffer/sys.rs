@@ -463,7 +463,7 @@ impl UnsafeCommandBufferBuilder {
         debug_assert!(
             source.format().compression().is_some()
                 || destination.format().compression().is_some()
-                || source.format().size() == destination.format().size()
+                || source.format().block_size() == destination.format().block_size()
         );
 
         // Depth/Stencil formats are required to match exactly.
@@ -2439,8 +2439,8 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
     pub unsafe fn add_image_memory_barrier<I>(
         &mut self,
         image: &I,
-        mipmaps: Range<u32>,
-        layers: Range<u32>,
+        mip_levels: Range<u32>,
+        array_layers: Range<u32>,
         source_stage: PipelineStages,
         source_access: AccessFlags,
         destination_stage: PipelineStages,
@@ -2460,20 +2460,16 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
         debug_assert_ne!(new_layout, ImageLayout::Undefined);
         debug_assert_ne!(new_layout, ImageLayout::Preinitialized);
 
-        debug_assert!(mipmaps.start < mipmaps.end);
-        debug_assert!(mipmaps.end <= image.mipmap_levels());
-        debug_assert!(layers.start < layers.end);
-        debug_assert!(layers.end <= image.dimensions().array_layers());
+        debug_assert!(mip_levels.start < mip_levels.end);
+        debug_assert!(mip_levels.end <= image.mip_levels());
+        debug_assert!(array_layers.start < array_layers.end);
+        debug_assert!(array_layers.end <= image.dimensions().array_layers());
 
         let (src_queue, dest_queue) = if let Some((src_queue, dest_queue)) = queue_transfer {
             (src_queue, dest_queue)
         } else {
             (ash::vk::QUEUE_FAMILY_IGNORED, ash::vk::QUEUE_FAMILY_IGNORED)
         };
-
-        if image.format().requires_sampler_ycbcr_conversion() {
-            unimplemented!();
-        }
 
         // TODO: Let user choose
         let aspects = image.format().aspects();
@@ -2489,10 +2485,10 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
             image: image.image.internal_object(),
             subresource_range: ash::vk::ImageSubresourceRange {
                 aspect_mask: aspects.into(),
-                base_mip_level: mipmaps.start + image.first_mipmap_level as u32,
-                level_count: mipmaps.end - mipmaps.start,
-                base_array_layer: layers.start + image.first_layer as u32,
-                layer_count: layers.end - layers.start,
+                base_mip_level: mip_levels.start + image.first_mipmap_level as u32,
+                level_count: mip_levels.end - mip_levels.start,
+                base_array_layer: array_layers.start + image.first_layer as u32,
+                layer_count: array_layers.end - array_layers.start,
             },
             ..Default::default()
         });

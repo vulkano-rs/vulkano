@@ -285,7 +285,7 @@ impl FramebufferBuilder {
         };
 
         let mut raw_ids = self.raw_ids;
-        raw_ids.push(attachment.inner().internal_object());
+        raw_ids.push(attachment.internal_object());
 
         let mut attachments = self.attachments;
         attachments.push(attachment);
@@ -334,7 +334,7 @@ impl FramebufferBuilder {
             }
         }
 
-        let mut layers = 1;
+        let mut layers = dimensions[2];
 
         if let Some(multiview) = self.render_pass.desc().multiview() {
             // There needs to be at least as many layers in the framebuffer

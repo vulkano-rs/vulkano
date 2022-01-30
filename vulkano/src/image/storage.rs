@@ -22,7 +22,6 @@ use crate::image::ImageDimensions;
 use crate::image::ImageInner;
 use crate::image::ImageLayout;
 use crate::image::ImageUsage;
-use crate::image::SampleCount;
 #[cfg(any(
     target_os = "linux",
     target_os = "dragonflybsd",
@@ -46,7 +45,7 @@ use crate::memory::DedicatedAlloc;
     target_os = "netbsd",
     target_os = "openbsd"
 ))]
-use crate::memory::{DeviceMemoryAllocError, ExternalMemoryHandleType};
+use crate::memory::{DeviceMemoryAllocError, ExternalMemoryHandleTypes};
 use crate::sync::AccessError;
 use crate::sync::Sharing;
 #[cfg(any(
@@ -149,27 +148,19 @@ impl StorageImage {
             .map(|f| f.id())
             .collect::<SmallVec<[u32; 4]>>();
 
-        let (image, mem_reqs) = unsafe {
-            let sharing = if queue_families.len() >= 2 {
+        let image = UnsafeImage::start(device.clone())
+            .dimensions(dimensions)
+            .flags(flags)
+            .format(format)
+            .sharing(if queue_families.len() >= 2 {
                 Sharing::Concurrent(queue_families.iter().cloned())
             } else {
                 Sharing::Exclusive
-            };
+            })
+            .usage(usage)
+            .build()?;
 
-            UnsafeImage::new(
-                device.clone(),
-                usage,
-                format,
-                flags,
-                dimensions,
-                SampleCount::Sample1,
-                1,
-                sharing,
-                false,
-                false,
-            )?
-        };
-
+        let mem_reqs = image.memory_requirements();
         let memory = MemoryPool::alloc_from_requirements(
             &Device::standard_pool(&device),
             &mem_reqs,
@@ -222,27 +213,23 @@ impl StorageImage {
             .map(|f| f.id())
             .collect::<SmallVec<[u32; 4]>>();
 
-        let (image, mem_reqs) = unsafe {
-            let sharing = if queue_families.len() >= 2 {
+        let image = UnsafeImage::start(device.clone())
+            .dimensions(dimensions)
+            .external_memory_handle_types(ExternalMemoryHandleTypes {
+                opaque_fd: true,
+                ..ExternalMemoryHandleTypes::none()
+            })
+            .flags(flags)
+            .format(format)
+            .usage(usage)
+            .sharing(if queue_families.len() >= 2 {
                 Sharing::Concurrent(queue_families.iter().cloned())
             } else {
                 Sharing::Exclusive
-            };
+            })
+            .build()?;
 
-            UnsafeImage::new_with_exportable_fd(
-                device.clone(),
-                usage,
-                format,
-                flags,
-                dimensions,
-                SampleCount::Sample1,
-                1,
-                sharing,
-                false,
-                false,
-            )?
-        };
-
+        let mem_reqs = image.memory_requirements();
         let memory = alloc_dedicated_with_exportable_fd(
             device.clone(),
             &mem_reqs,
@@ -285,7 +272,7 @@ impl StorageImage {
     pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryAllocError> {
         self.memory
             .memory()
-            .export_fd(ExternalMemoryHandleType::posix())
+            .export_fd(ExternalMemoryHandleTypes::posix())
     }
 
     /// Return the size of the allocated memory (used for e.g. with cuda)
@@ -380,12 +367,12 @@ where
     }
 
     #[inline]
-    fn current_miplevels_access(&self) -> std::ops::Range<u32> {
-        0..self.mipmap_levels()
+    fn current_mip_levels_access(&self) -> std::ops::Range<u32> {
+        0..self.mip_levels()
     }
 
     #[inline]
-    fn current_layer_levels_access(&self) -> std::ops::Range<u32> {
+    fn current_array_layers_access(&self) -> std::ops::Range<u32> {
         0..self.dimensions().array_layers()
     }
 }

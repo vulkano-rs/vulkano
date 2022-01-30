@@ -11,6 +11,7 @@ use std::error;
 use std::fmt;
 
 use crate::device::Device;
+use crate::device::DeviceOwned;
 use crate::image::ImageAccess;
 use crate::VulkanObject;
 

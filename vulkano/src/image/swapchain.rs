@@ -142,12 +142,12 @@ where
     }
 
     #[inline]
-    fn current_miplevels_access(&self) -> std::ops::Range<u32> {
-        0..self.mipmap_levels()
+    fn current_mip_levels_access(&self) -> std::ops::Range<u32> {
+        0..self.mip_levels()
     }
 
     #[inline]
-    fn current_layer_levels_access(&self) -> std::ops::Range<u32> {
+    fn current_array_layers_access(&self) -> std::ops::Range<u32> {
         0..1
     }
 }

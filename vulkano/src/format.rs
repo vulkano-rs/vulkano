@@ -16,8 +16,8 @@
 //!
 //! Not all formats are supported by every device. Those that devices do support may only be
 //! supported for certain use cases. It is an error to use a format where it is not supported, but
-//! you can query a device beforehand for its support by calling the `properties` method on a format
-//! value. You can use this to select a usable format from one or more suitable alternatives.
+//! you can query a device beforehand for its support by calling `format_properties` on the physical
+//! device. You can use this to select a usable format from one or more suitable alternatives.
 //! Some formats are required to be always supported for a particular usage. These are listed in the
 //! [tables in the Vulkan specification](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/chap43.html#features-required-format-support).
 //!
@@ -60,14 +60,13 @@
 //! applications. In Vulkan, the formats used to encode YCbCr data use the green channel to
 //! represent the luma component, while the blue and red components hold the chroma.
 //!
-//! To use most YCbCr formats in an [image view](crate::image::view), a feature known as
-//! *sampler YCbCr conversion* is needed. It must be enabled on both the image view and any
-//! combined image samplers in shaders that the image view is attached to. This feature handles
-//! the correct conversion between YCbCr input data and RGB data inside the shader. To query whether
-//! a format requires the conversion, you can call `requires_sampler_ycbcr_conversion` on a format.
-//! As a rule, any format with `444`, `422`, `420`, `3PACK` or `4PACK` in the name requires it.
+//! To use most YCbCr formats in an [image view](crate::image::view), a
+//! [sampler YCbCr conversion](crate::sampler::ycbcr) object must be created, and attached to both
+//! the image view and the sampler. To query whether a format requires the conversion, you can call
+//! `ycbcr_chroma_sampling` on a format. As a rule, any format with `444`, `422`, `420`,
+//! `3PACK` or `4PACK` in the name requires it.
 //!
-//! Almost all YCbCr formats make use of **chroma subsampling**. This is a technique whereby the two
+//! Many YCbCr formats make use of **chroma subsampling**. This is a technique whereby the two
 //! chroma components are encoded using a lower resolution than the luma component. The human eye is
 //! less sensitive to color detail than to detail in brightness, so this allows more detail to be
 //! encoded in less data. Chroma subsampling is indicated with one of three numbered suffixes in a
@@ -93,13 +92,12 @@
 //! behaves as a regular image, and even has its own format, which can be queried with the `plane`
 //! method on a format.
 
+use crate::device::physical::FormatProperties;
 use crate::device::physical::PhysicalDevice;
 use crate::image::ImageAspects;
 use crate::shader::spirv::ImageFormat;
 use crate::DeviceSize;
-use crate::VulkanObject;
 use half::f16;
-use std::mem::MaybeUninit;
 use std::vec::IntoIter as VecIntoIter;
 use std::{error, fmt, mem};
 
@@ -107,37 +105,63 @@ use std::{error, fmt, mem};
 include!(concat!(env!("OUT_DIR"), "/formats.rs"));
 
 impl Format {
-    /// Returns whether sampler YCbCr conversion is required for image views of this format.
-    #[inline]
-    pub fn requires_sampler_ycbcr_conversion(&self) -> bool {
-        matches!(
-            self.compatibility().0,
-            FormatCompatibilityInner::YCbCrRGBA { .. }
-                | FormatCompatibilityInner::YCbCr1Plane { .. }
-                | FormatCompatibilityInner::YCbCr2Plane { .. }
-                | FormatCompatibilityInner::YCbCr3Plane { .. }
-        )
-    }
-
     /// Retrieves the properties of a format when used by a certain device.
+    #[deprecated(since = "0.28", note = "Use PhysicalDevice::format_properties instead")]
     #[inline]
     pub fn properties(&self, physical_device: PhysicalDevice) -> FormatProperties {
-        let vk_properties = unsafe {
-            let fns_i = physical_device.instance().fns();
-            let mut output = MaybeUninit::uninit();
-            fns_i.v1_0.get_physical_device_format_properties(
-                physical_device.internal_object(),
-                (*self).into(),
-                output.as_mut_ptr(),
-            );
-            output.assume_init()
-        };
+        physical_device.format_properties(*self)
+    }
 
-        FormatProperties {
-            linear_tiling_features: vk_properties.linear_tiling_features.into(),
-            optimal_tiling_features: vk_properties.optimal_tiling_features.into(),
-            buffer_features: vk_properties.buffer_features.into(),
-        }
+    /// Returns whether the format can be used with a storage image, without specifying
+    /// the format in the shader, if the
+    /// [`shader_storage_image_read_without_format`](crate::device::Features::shader_storage_image_read_without_format)
+    /// and/or
+    /// [`shader_storage_image_write_without_format`](crate::device::Features::shader_storage_image_write_without_format)
+    /// features are enabled on the device.
+    #[inline]
+    pub fn shader_storage_image_without_format(&self) -> bool {
+        matches!(
+            *self,
+            Format::R8G8B8A8_UNORM
+                | Format::R8G8B8A8_SNORM
+                | Format::R8G8B8A8_UINT
+                | Format::R8G8B8A8_SINT
+                | Format::R32_UINT
+                | Format::R32_SINT
+                | Format::R32_SFLOAT
+                | Format::R32G32_UINT
+                | Format::R32G32_SINT
+                | Format::R32G32_SFLOAT
+                | Format::R32G32B32A32_UINT
+                | Format::R32G32B32A32_SINT
+                | Format::R32G32B32A32_SFLOAT
+                | Format::R16G16B16A16_UINT
+                | Format::R16G16B16A16_SINT
+                | Format::R16G16B16A16_SFLOAT
+                | Format::R16G16_SFLOAT
+                | Format::B10G11R11_UFLOAT_PACK32
+                | Format::R16_SFLOAT
+                | Format::R16G16B16A16_UNORM
+                | Format::A2B10G10R10_UNORM_PACK32
+                | Format::R16G16_UNORM
+                | Format::R8G8_UNORM
+                | Format::R16_UNORM
+                | Format::R8_UNORM
+                | Format::R16G16B16A16_SNORM
+                | Format::R16G16_SNORM
+                | Format::R8G8_SNORM
+                | Format::R16_SNORM
+                | Format::R8_SNORM
+                | Format::R16G16_SINT
+                | Format::R8G8_SINT
+                | Format::R16_SINT
+                | Format::R8_SINT
+                | Format::A2B10G10R10_UINT_PACK32
+                | Format::R16G16_UINT
+                | Format::R8G8_UINT
+                | Format::R16_UINT
+                | Format::R8_UINT
+        )
     }
 
     #[inline]
@@ -183,6 +207,7 @@ impl From<Format> for ash::vk::Format {
     }
 }
 
+// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/chap46.html#spirvenv-image-formats
 impl From<ImageFormat> for Option<Format> {
     fn from(val: ImageFormat) -> Self {
         match val {
@@ -234,33 +259,32 @@ impl From<ImageFormat> for Option<Format> {
 
 /// The block compression scheme used in a format.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[allow(non_camel_case_types)]
 pub enum CompressionType {
-    /// Adaptive Scalable Texture Compression.
-    ASTC,
-    /// S3TC Block Compression 1, also known as DXT1.
-    BC1,
-    /// S3TC Block Compression 2,
-    /// also known as DXT2 (with premultiplied alpha) and DXT3 (no premultiplied alpha).
-    BC2,
-    /// S3TC Block Compression 3,
-    /// also known as DXT4 (with premultiplied alpha) and DXT5 (no premultiplied alpha).
-    BC3,
-    /// S3TC Block Compression 4.
-    BC4,
-    /// S3TC Block Compression 5.
-    BC5,
-    /// S3TC Block Compression 6 or 6H.
-    BC6H,
-    /// S3TC Block Compression 7.
-    BC7,
+    /// Adaptive Scalable Texture Compression, low dynamic range.
+    ASTC_LDR,
+    /// Adaptive Scalable Texture Compression, high dynamic range.
+    ASTC_HDR,
+    /// S3TC Block Compression.
+    BC,
     /// Ericsson Texture Compression 2.
     ETC2,
     /// ETC2 Alpha Compression.
     EAC,
-    /// PowerVR Texture Compression 1.
-    PVRTC1,
-    /// PowerVR Texture Compression 2.
-    PVRTC2,
+    /// PowerVR Texture Compression.
+    PVRTC,
+}
+
+/// For YCbCr formats, the type of chroma sampling used.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ChromaSampling {
+    /// The chroma components are represented at the same resolution as the luma component.
+    Mode444,
+    /// The chroma components have half the horizontal resolution as the luma component.
+    Mode422,
+    /// The chroma components have half the horizontal and vertical resolution as the luma
+    /// component.
+    Mode420,
 }
 
 /// The numeric type that represents data of a format in memory.
@@ -295,32 +319,90 @@ pub enum NumericType {
 pub struct FormatCompatibility(pub(crate) &'static FormatCompatibilityInner);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[allow(non_camel_case_types)]
 pub(crate) enum FormatCompatibilityInner {
-    Normal {
-        size: u8,
-    },
-    DepthStencil {
-        ty: u8,
-    },
-    Compressed {
-        compression: CompressionType,
-        subtype: u8,
-    },
-    YCbCrRGBA {
-        bits: u8,
-    },
-    YCbCr1Plane {
-        bits: u8,
-        g_even: bool,
-    },
-    YCbCr2Plane {
-        bits: u8,
-        block_texels: u8,
-    },
-    YCbCr3Plane {
-        bits: u8,
-        block_texels: u8,
-    },
+    Class_8bit,
+    Class_16bit,
+    Class_24bit,
+    Class_32bit,
+    Class_48bit,
+    Class_64bit,
+    Class_96bit,
+    Class_128bit,
+    Class_192bit,
+    Class_256bit,
+    Class_D16,
+    Class_D24,
+    Class_D32,
+    Class_S8,
+    Class_D16S8,
+    Class_D24S8,
+    Class_D32S8,
+    Class_64bit_R10G10B10A10,
+    Class_64bit_R12G12B12A12,
+    Class_BC1_RGB,
+    Class_BC1_RGBA,
+    Class_BC2,
+    Class_BC3,
+    Class_BC4,
+    Class_BC5,
+    Class_BC6H,
+    Class_BC7,
+    Class_ETC2_RGB,
+    Class_ETC2_RGBA,
+    Class_ETC2_EAC_RGBA,
+    Class_EAC_R,
+    Class_EAC_RG,
+    Class_ASTC_4x4,
+    Class_ASTC_5x4,
+    Class_ASTC_5x5,
+    Class_ASTC_6x5,
+    Class_ASTC_6x6,
+    Class_ASTC_8x5,
+    Class_ASTC_8x6,
+    Class_ASTC_8x8,
+    Class_ASTC_10x5,
+    Class_ASTC_10x6,
+    Class_ASTC_10x8,
+    Class_ASTC_10x10,
+    Class_ASTC_12x10,
+    Class_ASTC_12x12,
+    Class_PVRTC1_2BPP,
+    Class_PVRTC1_4BPP,
+    Class_PVRTC2_2BPP,
+    Class_PVRTC2_4BPP,
+    Class_32bit_G8B8G8R8,
+    Class_32bit_B8G8R8G8,
+    Class_64bit_G10B10G10R10,
+    Class_64bit_B10G10R10G10,
+    Class_64bit_G12B12G12R12,
+    Class_64bit_B12G12R12G12,
+    Class_64bit_G16B16G16R16,
+    Class_64bit_B16G16R16G16,
+    Class_8bit_3plane_420,
+    Class_8bit_2plane_420,
+    Class_10bit_3plane_420,
+    Class_10bit_2plane_420,
+    Class_12bit_3plane_420,
+    Class_12bit_2plane_420,
+    Class_16bit_3plane_420,
+    Class_16bit_2plane_420,
+    Class_8bit_3plane_422,
+    Class_8bit_2plane_422,
+    Class_10bit_3plane_422,
+    Class_10bit_2plane_422,
+    Class_12bit_3plane_422,
+    Class_12bit_2plane_422,
+    Class_16bit_3plane_422,
+    Class_16bit_2plane_422,
+    Class_8bit_3plane_444,
+    Class_10bit_3plane_444,
+    Class_12bit_3plane_444,
+    Class_16bit_3plane_444,
+    Class_8bit_2plane_444,
+    Class_10bit_2plane_444,
+    Class_12bit_2plane_444,
+    Class_16bit_2plane_444,
 }
 
 /// Trait for Rust types that can represent a pixel in an image.
@@ -368,7 +450,7 @@ macro_rules! impl_pixel {
         unsafe impl Pixel for $ty {
             fn ensure_accepts(format: Format) -> Result<(), IncompatiblePixelsType> {
                 // TODO: Be more strict: accept only if the format has a matching AcceptsPixels impl.
-                if format.size().map_or(false, |x| x % mem::size_of::<$ty>() as DeviceSize == 0) {
+                if format.block_size().map_or(false, |x| x % mem::size_of::<$ty>() as DeviceSize == 0) {
                     Ok(())
                 } else {
                     Err(IncompatiblePixelsType)
@@ -376,7 +458,7 @@ macro_rules! impl_pixel {
             }
 
             fn rate(format: Format) -> u32 {
-                (format.size().expect("this format cannot accept pixels") / mem::size_of::<$ty>() as DeviceSize) as u32
+                (format.block_size().expect("this format cannot accept pixels") / mem::size_of::<$ty>() as DeviceSize) as u32
             }
         }
     }
@@ -552,83 +634,3 @@ macro_rules! impl_clear_values_tuple {
 }
 
 impl_clear_values_tuple!(A B C D E F G H I J K L M N O P Q R S T U V W X Y Z);
-
-/// The properties of an image format that are supported by a physical device.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
-pub struct FormatProperties {
-    /// Features available for images with linear tiling.
-    pub linear_tiling_features: FormatFeatures,
-
-    /// Features available for images with optimal tiling.
-    pub optimal_tiling_features: FormatFeatures,
-
-    /// Features available for buffers.
-    pub buffer_features: FormatFeatures,
-}
-
-/// The features supported by a device for images with a particular format.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-#[allow(missing_docs)]
-pub struct FormatFeatures {
-    pub sampled_image: bool,
-    pub storage_image: bool,
-    pub storage_image_atomic: bool,
-    pub uniform_texel_buffer: bool,
-    pub storage_texel_buffer: bool,
-    pub storage_texel_buffer_atomic: bool,
-    pub vertex_buffer: bool,
-    pub color_attachment: bool,
-    pub color_attachment_blend: bool,
-    pub depth_stencil_attachment: bool,
-    pub blit_src: bool,
-    pub blit_dst: bool,
-    pub sampled_image_filter_linear: bool,
-    pub transfer_src: bool,
-    pub transfer_dst: bool,
-    pub midpoint_chroma_samples: bool,
-    pub sampled_image_ycbcr_conversion_linear_filter: bool,
-    pub sampled_image_ycbcr_conversion_separate_reconstruction_filter: bool,
-    pub sampled_image_ycbcr_conversion_chroma_reconstruction_explicit: bool,
-    pub sampled_image_ycbcr_conversion_chroma_reconstruction_explicit_forceable: bool,
-    pub disjoint: bool,
-    pub cosited_chroma_samples: bool,
-    pub sampled_image_filter_minmax: bool,
-    pub img_sampled_image_filter_cubic: bool,
-    pub khr_acceleration_structure_vertex_buffer: bool,
-    pub ext_fragment_density_map: bool,
-}
-
-impl From<ash::vk::FormatFeatureFlags> for FormatFeatures {
-    #[inline]
-    #[rustfmt::skip]
-    fn from(val: ash::vk::FormatFeatureFlags) -> FormatFeatures {
-        FormatFeatures {
-            sampled_image: !(val & ash::vk::FormatFeatureFlags::SAMPLED_IMAGE).is_empty(),
-            storage_image: !(val & ash::vk::FormatFeatureFlags::STORAGE_IMAGE).is_empty(),
-            storage_image_atomic: !(val & ash::vk::FormatFeatureFlags::STORAGE_IMAGE_ATOMIC).is_empty(),
-            uniform_texel_buffer: !(val & ash::vk::FormatFeatureFlags::UNIFORM_TEXEL_BUFFER).is_empty(),
-            storage_texel_buffer: !(val & ash::vk::FormatFeatureFlags::STORAGE_TEXEL_BUFFER).is_empty(),
-            storage_texel_buffer_atomic: !(val & ash::vk::FormatFeatureFlags::STORAGE_TEXEL_BUFFER_ATOMIC).is_empty(),
-            vertex_buffer: !(val & ash::vk::FormatFeatureFlags::VERTEX_BUFFER).is_empty(),
-            color_attachment: !(val & ash::vk::FormatFeatureFlags::COLOR_ATTACHMENT).is_empty(),
-            color_attachment_blend: !(val & ash::vk::FormatFeatureFlags::COLOR_ATTACHMENT_BLEND).is_empty(),
-            depth_stencil_attachment: !(val & ash::vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT).is_empty(),
-            blit_src: !(val & ash::vk::FormatFeatureFlags::BLIT_SRC).is_empty(),
-            blit_dst: !(val & ash::vk::FormatFeatureFlags::BLIT_DST).is_empty(),
-            sampled_image_filter_linear: !(val & ash::vk::FormatFeatureFlags::SAMPLED_IMAGE_FILTER_LINEAR).is_empty(),
-            transfer_src: !(val & ash::vk::FormatFeatureFlags::TRANSFER_SRC).is_empty(),
-            transfer_dst: !(val & ash::vk::FormatFeatureFlags::TRANSFER_DST).is_empty(),
-            midpoint_chroma_samples: !(val & ash::vk::FormatFeatureFlags::MIDPOINT_CHROMA_SAMPLES).is_empty(),
-            sampled_image_ycbcr_conversion_linear_filter: !(val & ash::vk::FormatFeatureFlags::SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER).is_empty(),
-            sampled_image_ycbcr_conversion_separate_reconstruction_filter: !(val & ash::vk::FormatFeatureFlags::SAMPLED_IMAGE_YCBCR_CONVERSION_SEPARATE_RECONSTRUCTION_FILTER).is_empty(),
-            sampled_image_ycbcr_conversion_chroma_reconstruction_explicit: !(val & ash::vk::FormatFeatureFlags::SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT).is_empty(),
-            sampled_image_ycbcr_conversion_chroma_reconstruction_explicit_forceable: !(val & ash::vk::FormatFeatureFlags::SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT_FORCEABLE).is_empty(),
-            disjoint: !(val & ash::vk::FormatFeatureFlags::DISJOINT).is_empty(),
-            cosited_chroma_samples: !(val & ash::vk::FormatFeatureFlags::COSITED_CHROMA_SAMPLES).is_empty(),
-            sampled_image_filter_minmax: !(val & ash::vk::FormatFeatureFlags::SAMPLED_IMAGE_FILTER_MINMAX).is_empty(),
-            img_sampled_image_filter_cubic: !(val & ash::vk::FormatFeatureFlags::SAMPLED_IMAGE_FILTER_CUBIC_IMG).is_empty(),
-            khr_acceleration_structure_vertex_buffer: !(val & ash::vk::FormatFeatureFlags::ACCELERATION_STRUCTURE_VERTEX_BUFFER_KHR).is_empty(),
-            ext_fragment_density_map: !(val & ash::vk::FormatFeatureFlags::FRAGMENT_DENSITY_MAP_EXT).is_empty(),
-        }
-    }
-}

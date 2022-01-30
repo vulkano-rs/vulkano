@@ -40,6 +40,7 @@ use crate::buffer::BufferAccess;
 use crate::buffer::BufferInner;
 use crate::buffer::TypedBufferAccess;
 use crate::check_errors;
+use crate::device::physical::FormatFeatures;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::format::Format;
@@ -61,7 +62,9 @@ where
 {
     handle: ash::vk::BufferView,
     buffer: Arc<B>,
-    atomic_accesses: bool,
+
+    format: Format,
+    format_features: FormatFeatures,
 }
 
 impl<B> BufferView<B>
@@ -108,21 +111,24 @@ where
             return Err(BufferViewCreationError::WrongBufferUsage);
         }
 
-        let buffer_features = format.properties(device.physical_device()).buffer_features;
+        let format_features = device
+            .physical_device()
+            .format_properties(format)
+            .buffer_features;
 
         if buffer.usage().uniform_texel_buffer {
-            if !buffer_features.uniform_texel_buffer {
+            if !format_features.uniform_texel_buffer {
                 return Err(BufferViewCreationError::UnsupportedFormat);
             }
         }
 
         if buffer.usage().storage_texel_buffer {
-            if !buffer_features.storage_texel_buffer {
+            if !format_features.storage_texel_buffer {
                 return Err(BufferViewCreationError::UnsupportedFormat);
             }
         }
 
-        let elements = size / format.size().expect(
+        let elements = size / format.block_size().expect(
             "Format has no size. If you see this error, please submit a new bug report to Vulkano.",
         );
         if elements as u32
@@ -158,7 +164,9 @@ where
         Ok(Arc::new(BufferView {
             handle,
             buffer: org_buffer,
-            atomic_accesses: buffer_features.storage_texel_buffer_atomic,
+
+            format,
+            format_features,
         }))
     }
 
@@ -166,24 +174,6 @@ where
     #[inline]
     pub fn buffer(&self) -> &Arc<B> {
         &self.buffer
-    }
-
-    /// Returns true if the buffer view can be used as a uniform texel buffer.
-    #[inline]
-    pub fn uniform_texel_buffer(&self) -> bool {
-        self.buffer.inner().buffer.usage().uniform_texel_buffer
-    }
-
-    /// Returns true if the buffer view can be used as a storage texel buffer.
-    #[inline]
-    pub fn storage_texel_buffer(&self) -> bool {
-        self.buffer.inner().buffer.usage().storage_texel_buffer
-    }
-
-    /// Returns true if the buffer view can be used as a storage texel buffer with atomic accesses.
-    #[inline]
-    pub fn storage_texel_buffer_atomic(&self) -> bool {
-        self.atomic_accesses && self.storage_texel_buffer()
     }
 }
 
@@ -238,12 +228,17 @@ where
     }
 }
 
-pub unsafe trait BufferViewAbstract: DeviceOwned + Send + Sync {
-    /// Returns the inner handle used by this buffer view.
-    fn inner(&self) -> ash::vk::BufferView;
-
+pub unsafe trait BufferViewAbstract:
+    VulkanObject<Object = ash::vk::BufferView> + DeviceOwned + Send + Sync
+{
     /// Returns the wrapped buffer that this buffer view was created from.
     fn buffer(&self) -> Arc<dyn BufferAccess>;
+
+    /// Returns the format of the buffer view.
+    fn format(&self) -> Format;
+
+    /// Returns the features supported by the buffer view's format.
+    fn format_features(&self) -> &FormatFeatures;
 }
 
 unsafe impl<B> BufferViewAbstract for BufferView<B>
@@ -251,13 +246,18 @@ where
     B: BufferAccess + 'static,
 {
     #[inline]
-    fn inner(&self) -> ash::vk::BufferView {
-        self.handle
+    fn buffer(&self) -> Arc<dyn BufferAccess> {
+        self.buffer.clone() as Arc<_>
     }
 
     #[inline]
-    fn buffer(&self) -> Arc<dyn BufferAccess> {
-        self.buffer.clone() as Arc<_>
+    fn format(&self) -> Format {
+        self.format
+    }
+
+    #[inline]
+    fn format_features(&self) -> &FormatFeatures {
+        &self.format_features
     }
 }
 
@@ -353,9 +353,7 @@ mod tests {
         let (buffer, _) =
             ImmutableBuffer::<[[u8; 4]]>::from_iter((0..128).map(|_| [0; 4]), usage, queue.clone())
                 .unwrap();
-        let view = BufferView::new(buffer, Format::R8G8B8A8_UNORM).unwrap();
-
-        assert!(view.uniform_texel_buffer());
+        BufferView::new(buffer, Format::R8G8B8A8_UNORM).unwrap();
     }
 
     #[test]
@@ -371,9 +369,7 @@ mod tests {
         let (buffer, _) =
             ImmutableBuffer::<[[u8; 4]]>::from_iter((0..128).map(|_| [0; 4]), usage, queue.clone())
                 .unwrap();
-        let view = BufferView::new(buffer, Format::R8G8B8A8_UNORM).unwrap();
-
-        assert!(view.storage_texel_buffer());
+        BufferView::new(buffer, Format::R8G8B8A8_UNORM).unwrap();
     }
 
     #[test]
@@ -388,10 +384,7 @@ mod tests {
 
         let (buffer, _) =
             ImmutableBuffer::<[u32]>::from_iter((0..128).map(|_| 0), usage, queue.clone()).unwrap();
-        let view = BufferView::new(buffer, Format::R32_UINT).unwrap();
-
-        assert!(view.storage_texel_buffer());
-        assert!(view.storage_texel_buffer_atomic());
+        BufferView::new(buffer, Format::R32_UINT).unwrap();
     }
 
     #[test]

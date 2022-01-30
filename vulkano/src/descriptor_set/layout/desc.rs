@@ -296,7 +296,9 @@ pub struct DescriptorDesc {
     /// do not need to be provided when creating a descriptor set.
     ///
     /// The list must be either empty, or contain exactly `descriptor_count` samplers. It must be
-    /// empty if `ty` is something other than `Sampler` or `CombinedImageSampler`.
+    /// empty if `ty` is something other than `Sampler` or `CombinedImageSampler`. If any of the
+    /// samplers has an attached sampler YCbCr conversion, then only `CombinedImageSampler` is
+    /// allowed.
     pub immutable_samplers: Vec<Arc<Sampler>>,
 }
 
@@ -311,14 +313,18 @@ impl DescriptorDesc {
         let DescriptorRequirements {
             descriptor_types,
             descriptor_count,
-            format,
+            image_format,
+            image_multisampled,
+            image_scalar_type,
             image_view_type,
-            multisampled,
-            mutable,
-            sampler_no_unnormalized,
+            sampler_compare,
+            sampler_no_unnormalized_coordinates,
+            sampler_no_ycbcr_conversion,
             sampler_with_images,
             stages,
             storage_image_atomic,
+            storage_read,
+            storage_write,
         } = descriptor_requirements;
 
         if !descriptor_types.contains(&self.ty) {

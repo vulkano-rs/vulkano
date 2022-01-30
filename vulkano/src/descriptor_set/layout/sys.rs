@@ -116,11 +116,21 @@ impl DescriptorSetLayout {
             let mut binding_flags = ash::vk::DescriptorBindingFlags::empty();
 
             let p_immutable_samplers = if !binding_desc.immutable_samplers.is_empty() {
-                if !matches!(
-                    ty,
-                    DescriptorType::Sampler | DescriptorType::CombinedImageSampler
-                ) {
-                    return Err(DescriptorSetLayoutError::ImmutableSamplersWrongDescriptorType);
+                if binding_desc
+                    .immutable_samplers
+                    .iter()
+                    .any(|sampler| sampler.sampler_ycbcr_conversion().is_some())
+                {
+                    if !matches!(ty, DescriptorType::CombinedImageSampler) {
+                        return Err(DescriptorSetLayoutError::ImmutableSamplersWrongDescriptorType);
+                    }
+                } else {
+                    if !matches!(
+                        ty,
+                        DescriptorType::Sampler | DescriptorType::CombinedImageSampler
+                    ) {
+                        return Err(DescriptorSetLayoutError::ImmutableSamplersWrongDescriptorType);
+                    }
                 }
 
                 if binding_desc.descriptor_count != binding_desc.immutable_samplers.len() as u32 {
@@ -359,7 +369,8 @@ pub enum DescriptorSetLayoutError {
     },
 
     /// Immutable samplers were included on a descriptor type other than `Sampler` or
-    /// `CombinedImageSampler`.
+    /// `CombinedImageSampler`, or, if any of the samplers had a sampler YCbCr conversion, were
+    /// included on a descriptor type other than `CombinedImageSampler`.
     ImmutableSamplersWrongDescriptorType,
 
     /// The maximum number of push descriptors has been exceeded.
@@ -417,7 +428,7 @@ impl std::fmt::Display for DescriptorSetLayoutError {
             Self::ImmutableSamplersWrongDescriptorType => {
                 write!(
                     fmt,
-                    "immutable samplers were included on a descriptor type other than Sampler or CombinedImageSampler"
+                    "immutable samplers were included on a descriptor type other than Sampler or CombinedImageSampler, or, if any of the samplers had a sampler YCbCr conversion, were included on a descriptor type other than CombinedImageSampler"
                 )
             }
             Self::MaxPushDescriptorsExceeded { .. } => {

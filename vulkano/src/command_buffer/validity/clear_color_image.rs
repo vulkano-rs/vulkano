@@ -11,6 +11,7 @@ use std::error;
 use std::fmt;
 
 use crate::device::Device;
+use crate::device::DeviceOwned;
 use crate::image::ImageAccess;
 use crate::VulkanObject;
 
@@ -23,10 +24,10 @@ use crate::VulkanObject;
 pub fn check_clear_color_image<I>(
     device: &Device,
     image: &I,
-    first_layer: u32,
-    num_layers: u32,
-    first_mipmap: u32,
-    num_mipmaps: u32,
+    base_array_layer: u32,
+    layer_count: u32,
+    base_mip_level: u32,
+    level_count: u32,
 ) -> Result<(), CheckClearColorImageError>
 where
     I: ?Sized + ImageAccess,
@@ -40,11 +41,11 @@ where
         return Err(CheckClearColorImageError::MissingTransferUsage);
     }
 
-    if first_layer + num_layers > image.dimensions().array_layers() {
+    if base_array_layer + layer_count > image.dimensions().array_layers() {
         return Err(CheckClearColorImageError::OutOfRange);
     }
 
-    if first_mipmap + num_mipmaps > image.mipmap_levels() {
+    if base_mip_level + level_count > image.mip_levels() {
         return Err(CheckClearColorImageError::OutOfRange);
     }
 

@@ -231,7 +231,7 @@ where
         let minor = spirv.version().minor;
         let patch = spirv.version().patch;
         quote! {
-            Version {
+            ::vulkano::Version {
                 major: #major,
                 minor: #minor,
                 patch: #patch,
@@ -240,7 +240,7 @@ where
     };
     let spirv_capabilities = reflect::spirv_capabilities(&spirv).map(|capability| {
         let name = format_ident!("{}", format!("{:?}", capability));
-        quote! { &Capability::#name }
+        quote! { &::vulkano::shader::spirv::Capability::#name }
     });
     let spirv_extensions = reflect::spirv_extensions(&spirv);
     let entry_points = reflect::entry_points(&spirv)
@@ -267,21 +267,12 @@ where
         pub fn #load_name(device: ::std::sync::Arc<::vulkano::device::Device>)
             -> Result<::std::sync::Arc<::vulkano::shader::ShaderModule>, ::vulkano::shader::ShaderCreationError>
         {
-            use vulkano::shader::EntryPointInfo;
-            use vulkano::shader::GeometryShaderExecution;
-            use vulkano::shader::ShaderExecution;
-            use vulkano::shader::ShaderModule;
-            use vulkano::shader::ShaderStage;
-            use vulkano::shader::SpecializationConstantRequirements;
-            use vulkano::shader::spirv::Capability;
-            use vulkano::Version;
-
             let _bytes = ( #( #include_bytes),* );
 
             static WORDS: &[u32] = &[ #( #words ),* ];
 
             unsafe {
-                Ok(ShaderModule::from_words_with_data(
+                Ok(::vulkano::shader::ShaderModule::from_words_with_data(
                     device,
                     WORDS,
                     #spirv_version,

@@ -11,8 +11,9 @@ use crate::buffer::{BufferAccess, BufferInner, BufferViewAbstract};
 use crate::descriptor_set::layout::{DescriptorDesc, DescriptorType};
 use crate::descriptor_set::DescriptorSetLayout;
 use crate::device::DeviceOwned;
-use crate::image::ImageViewAbstract;
-use crate::sampler::Sampler;
+use crate::image::view::ImageViewType;
+use crate::image::{ImageType, ImageViewAbstract};
+use crate::sampler::{Sampler, SamplerImageViewIncompatibleError};
 use crate::DeviceSize;
 use crate::VulkanObject;
 use smallvec::SmallVec;
@@ -256,7 +257,7 @@ impl WriteDescriptorSet {
                 DescriptorWriteInfo::BufferView(
                     elements
                         .iter()
-                        .map(|buffer_view| buffer_view.inner())
+                        .map(|buffer_view| buffer_view.internal_object())
                         .collect(),
                 )
             }
@@ -278,7 +279,7 @@ impl WriteDescriptorSet {
                             );
                             ash::vk::DescriptorImageInfo {
                                 sampler: ash::vk::Sampler::null(),
-                                image_view: image_view.inner().internal_object(),
+                                image_view: image_view.internal_object(),
                                 image_layout: layouts.layout_for(descriptor_type).into(),
                             }
                         })
@@ -299,7 +300,7 @@ impl WriteDescriptorSet {
                             );
                             ash::vk::DescriptorImageInfo {
                                 sampler: sampler.internal_object(),
-                                image_view: image_view.inner().internal_object(),
+                                image_view: image_view.internal_object(),
                                 image_layout: layouts.layout_for(descriptor_type).into(),
                             }
                         })
@@ -561,7 +562,8 @@ pub(crate) fn check_descriptor_write<'a>(
                         layout.device().internal_object(),
                     );
 
-                    if !image_view.image().inner().image.usage().sampled {
+                    // VUID-VkWriteDescriptorSet-descriptorType-00337
+                    if !image_view.usage().sampled {
                         return Err(DescriptorSetUpdateError::MissingUsage {
                             binding: write.binding(),
                             index: descriptor_range_start + index as u32,
@@ -569,10 +571,32 @@ pub(crate) fn check_descriptor_write<'a>(
                         });
                     }
 
-                    if !sampler.can_sample(image_view.as_ref()) {
+                    // VUID-VkDescriptorImageInfo-imageView-00343
+                    if matches!(
+                        image_view.ty(),
+                        ImageViewType::Dim2d | ImageViewType::Dim2dArray
+                    ) && image_view.image().inner().image.dimensions().image_type()
+                        == ImageType::Dim3d
+                    {
+                        return Err(DescriptorSetUpdateError::ImageView2dFrom3d {
+                            binding: write.binding(),
+                            index: descriptor_range_start + index as u32,
+                        });
+                    }
+
+                    // VUID-VkDescriptorImageInfo-imageView-01976
+                    if image_view.aspects().depth && image_view.aspects().stencil {
+                        return Err(DescriptorSetUpdateError::ImageViewDepthAndStencil {
+                            binding: write.binding(),
+                            index: descriptor_range_start + index as u32,
+                        });
+                    }
+
+                    if let Err(error) = sampler.check_can_sample(image_view.as_ref()) {
                         return Err(DescriptorSetUpdateError::ImageViewIncompatibleSampler {
                             binding: write.binding(),
                             index: descriptor_range_start + index as u32,
+                            error,
                         });
                     }
                 }
@@ -584,12 +608,44 @@ pub(crate) fn check_descriptor_write<'a>(
                         layout.device().internal_object(),
                     );
 
-                    if !image_view.image().inner().image.usage().sampled {
+                    // VUID-VkWriteDescriptorSet-descriptorType-00337
+                    if !image_view.usage().sampled {
                         return Err(DescriptorSetUpdateError::MissingUsage {
                             binding: write.binding(),
                             index: descriptor_range_start + index as u32,
                             usage: "sampled",
                         });
+                    }
+
+                    // VUID-VkDescriptorImageInfo-imageView-00343
+                    if matches!(
+                        image_view.ty(),
+                        ImageViewType::Dim2d | ImageViewType::Dim2dArray
+                    ) && image_view.image().inner().image.dimensions().image_type()
+                        == ImageType::Dim3d
+                    {
+                        return Err(DescriptorSetUpdateError::ImageView2dFrom3d {
+                            binding: write.binding(),
+                            index: descriptor_range_start + index as u32,
+                        });
+                    }
+
+                    // VUID-VkDescriptorImageInfo-imageView-01976
+                    if image_view.aspects().depth && image_view.aspects().stencil {
+                        return Err(DescriptorSetUpdateError::ImageViewDepthAndStencil {
+                            binding: write.binding(),
+                            index: descriptor_range_start + index as u32,
+                        });
+                    }
+
+                    // VUID-VkWriteDescriptorSet-descriptorType-01946
+                    if image_view.sampler_ycbcr_conversion().is_some() {
+                        return Err(
+                            DescriptorSetUpdateError::ImageViewHasSamplerYcbcrConversion {
+                                binding: write.binding(),
+                                index: descriptor_range_start + index as u32,
+                            },
+                        );
                     }
                 }
             }
@@ -600,7 +656,8 @@ pub(crate) fn check_descriptor_write<'a>(
                         layout.device().internal_object(),
                     );
 
-                    if !image_view.image().inner().image.usage().storage {
+                    // VUID-VkWriteDescriptorSet-descriptorType-00339
+                    if !image_view.usage().storage {
                         return Err(DescriptorSetUpdateError::MissingUsage {
                             binding: write.binding(),
                             index: descriptor_range_start + index as u32,
@@ -608,11 +665,43 @@ pub(crate) fn check_descriptor_write<'a>(
                         });
                     }
 
+                    // VUID-VkDescriptorImageInfo-imageView-00343
+                    if matches!(
+                        image_view.ty(),
+                        ImageViewType::Dim2d | ImageViewType::Dim2dArray
+                    ) && image_view.image().inner().image.dimensions().image_type()
+                        == ImageType::Dim3d
+                    {
+                        return Err(DescriptorSetUpdateError::ImageView2dFrom3d {
+                            binding: write.binding(),
+                            index: descriptor_range_start + index as u32,
+                        });
+                    }
+
+                    // VUID-VkDescriptorImageInfo-imageView-01976
+                    if image_view.aspects().depth && image_view.aspects().stencil {
+                        return Err(DescriptorSetUpdateError::ImageViewDepthAndStencil {
+                            binding: write.binding(),
+                            index: descriptor_range_start + index as u32,
+                        });
+                    }
+
+                    // VUID-VkWriteDescriptorSet-descriptorType-00336
                     if !image_view.component_mapping().is_identity() {
                         return Err(DescriptorSetUpdateError::ImageViewNotIdentitySwizzled {
                             binding: write.binding(),
                             index: descriptor_range_start + index as u32,
                         });
+                    }
+
+                    // VUID??
+                    if image_view.sampler_ycbcr_conversion().is_some() {
+                        return Err(
+                            DescriptorSetUpdateError::ImageViewHasSamplerYcbcrConversion {
+                                binding: write.binding(),
+                                index: descriptor_range_start + index as u32,
+                            },
+                        );
                     }
                 }
             }
@@ -623,7 +712,8 @@ pub(crate) fn check_descriptor_write<'a>(
                         layout.device().internal_object(),
                     );
 
-                    if !image_view.image().inner().image.usage().input_attachment {
+                    // VUID-VkWriteDescriptorSet-descriptorType-00338
+                    if !image_view.usage().input_attachment {
                         return Err(DescriptorSetUpdateError::MissingUsage {
                             binding: write.binding(),
                             index: descriptor_range_start + index as u32,
@@ -631,6 +721,28 @@ pub(crate) fn check_descriptor_write<'a>(
                         });
                     }
 
+                    // VUID-VkDescriptorImageInfo-imageView-00343
+                    if matches!(
+                        image_view.ty(),
+                        ImageViewType::Dim2d | ImageViewType::Dim2dArray
+                    ) && image_view.image().inner().image.dimensions().image_type()
+                        == ImageType::Dim3d
+                    {
+                        return Err(DescriptorSetUpdateError::ImageView2dFrom3d {
+                            binding: write.binding(),
+                            index: descriptor_range_start + index as u32,
+                        });
+                    }
+
+                    // VUID-VkDescriptorImageInfo-imageView-01976
+                    if image_view.aspects().depth && image_view.aspects().stencil {
+                        return Err(DescriptorSetUpdateError::ImageViewDepthAndStencil {
+                            binding: write.binding(),
+                            index: descriptor_range_start + index as u32,
+                        });
+                    }
+
+                    // VUID-VkWriteDescriptorSet-descriptorType-00336
                     if !image_view.component_mapping().is_identity() {
                         return Err(DescriptorSetUpdateError::ImageViewNotIdentitySwizzled {
                             binding: write.binding(),
@@ -638,9 +750,17 @@ pub(crate) fn check_descriptor_write<'a>(
                         });
                     }
 
-                    let image_layers = image_view.array_layers();
-                    let num_layers = image_layers.end - image_layers.start;
+                    // VUID??
+                    if image_view.sampler_ycbcr_conversion().is_some() {
+                        return Err(
+                            DescriptorSetUpdateError::ImageViewHasSamplerYcbcrConversion {
+                                binding: write.binding(),
+                                index: descriptor_range_start + index as u32,
+                            },
+                        );
+                    }
 
+                    // VUID??
                     if image_view.ty().is_arrayed() {
                         return Err(DescriptorSetUpdateError::ImageViewIsArrayed {
                             binding: write.binding(),
@@ -673,7 +793,8 @@ pub(crate) fn check_descriptor_write<'a>(
                         layout.device().internal_object(),
                     );
 
-                    if !image_view.image().inner().image.usage().sampled {
+                    // VUID-VkWriteDescriptorSet-descriptorType-00337
+                    if !image_view.usage().sampled {
                         return Err(DescriptorSetUpdateError::MissingUsage {
                             binding: write.binding(),
                             index: descriptor_range_start + index as u32,
@@ -681,10 +802,48 @@ pub(crate) fn check_descriptor_write<'a>(
                         });
                     }
 
-                    if !sampler.can_sample(image_view.as_ref()) {
+                    // VUID-VkDescriptorImageInfo-imageView-00343
+                    if matches!(
+                        image_view.ty(),
+                        ImageViewType::Dim2d | ImageViewType::Dim2dArray
+                    ) && image_view.image().inner().image.dimensions().image_type()
+                        == ImageType::Dim3d
+                    {
+                        return Err(DescriptorSetUpdateError::ImageView2dFrom3d {
+                            binding: write.binding(),
+                            index: descriptor_range_start + index as u32,
+                        });
+                    }
+
+                    // VUID-VkDescriptorImageInfo-imageView-01976
+                    if image_view.aspects().depth && image_view.aspects().stencil {
+                        return Err(DescriptorSetUpdateError::ImageViewDepthAndStencil {
+                            binding: write.binding(),
+                            index: descriptor_range_start + index as u32,
+                        });
+                    }
+
+                    if image_view.sampler_ycbcr_conversion().is_some() {
+                        return Err(
+                            DescriptorSetUpdateError::ImageViewHasSamplerYcbcrConversion {
+                                binding: write.binding(),
+                                index: descriptor_range_start + index as u32,
+                            },
+                        );
+                    }
+
+                    if sampler.sampler_ycbcr_conversion().is_some() {
+                        return Err(DescriptorSetUpdateError::SamplerHasSamplerYcbcrConversion {
+                            binding: write.binding(),
+                            index: descriptor_range_start + index as u32,
+                        });
+                    }
+
+                    if let Err(error) = sampler.check_can_sample(image_view.as_ref()) {
                         return Err(DescriptorSetUpdateError::ImageViewIncompatibleSampler {
                             binding: write.binding(),
                             index: descriptor_range_start + index as u32,
+                            error,
                         });
                     }
                 }
@@ -703,11 +862,18 @@ pub(crate) fn check_descriptor_write<'a>(
                     });
                 }
 
-                for sampler in elements {
+                for (index, sampler) in elements.iter().enumerate() {
                     assert_eq!(
                         sampler.device().internal_object(),
                         layout.device().internal_object(),
                     );
+
+                    if sampler.sampler_ycbcr_conversion().is_some() {
+                        return Err(DescriptorSetUpdateError::SamplerHasSamplerYcbcrConversion {
+                            binding: write.binding(),
+                            index: descriptor_range_start + index as u32,
+                        });
+                    }
                 }
             }
             _ => {
@@ -721,7 +887,7 @@ pub(crate) fn check_descriptor_write<'a>(
     Ok(layout_binding)
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug)]
 pub enum DescriptorSetUpdateError {
     /// Tried to write more elements than were available in a binding.
     ArrayIndexOutOfBounds {
@@ -733,13 +899,27 @@ pub enum DescriptorSetUpdateError {
         written_count: u32,
     },
 
+    /// Tried to write an image view with a 2D type and a 3D underlying image.
+    ImageView2dFrom3d { binding: u32, index: u32 },
+
+    /// Tried to write an image view that has both the `depth` and `stencil` aspects.
+    ImageViewDepthAndStencil { binding: u32, index: u32 },
+
+    /// Tried to write an image view with an attached sampler YCbCr conversion to a binding that
+    /// does not support it.
+    ImageViewHasSamplerYcbcrConversion { binding: u32, index: u32 },
+
     /// Tried to write an image view of an arrayed type to a descriptor type that does not support
     /// it.
     ImageViewIsArrayed { binding: u32, index: u32 },
 
     /// Tried to write an image view that was not compatible with the sampler that was provided as
     /// part of the update or immutably in the layout.
-    ImageViewIncompatibleSampler { binding: u32, index: u32 },
+    ImageViewIncompatibleSampler {
+        binding: u32,
+        index: u32,
+        error: SamplerImageViewIncompatibleError,
+    },
 
     /// Tried to write an image view to a descriptor type that requires it to be identity swizzled,
     /// but it was not.
@@ -759,11 +939,21 @@ pub enum DescriptorSetUpdateError {
         usage: &'static str,
     },
 
+    /// Tried to write a sampler that has an attached sampler YCbCr conversion.
+    SamplerHasSamplerYcbcrConversion { binding: u32, index: u32 },
+
     /// Tried to write a sampler to a binding with immutable samplers.
     SamplerIsImmutable { binding: u32 },
 }
 
-impl std::error::Error for DescriptorSetUpdateError {}
+impl std::error::Error for DescriptorSetUpdateError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::ImageViewIncompatibleSampler { error, .. } => Some(error),
+            _ => None,
+        }
+    }
+}
 
 impl std::fmt::Display for DescriptorSetUpdateError {
     #[inline]
@@ -778,12 +968,27 @@ impl std::fmt::Display for DescriptorSetUpdateError {
                 "tried to write up to element {} to binding {}, but only {} descriptors are available",
                 written_count, binding, available_count,
             ),
+            Self::ImageView2dFrom3d { binding, index } => write!(
+                fmt,
+                "tried to write an image view to binding {} index {} with a 2D type and a 3D underlying image",
+                binding, index,
+            ),
+            Self::ImageViewDepthAndStencil { binding, index } => write!(
+                fmt,
+                "tried to write an image view to binding {} index {} that has both the `depth` and `stencil` aspects",
+                binding, index,
+            ),
+            Self::ImageViewHasSamplerYcbcrConversion { binding, index } => write!(
+                fmt,
+                "tried to write an image view to binding {} index {} with an attached sampler YCbCr conversion to binding that does not support it",
+                binding, index,
+            ),
             Self::ImageViewIsArrayed { binding, index } => write!(
                 fmt,
                 "tried to write an image view of an arrayed type to binding {} index {}, but this binding has a descriptor type that does not support arrayed image views",
                 binding, index,
             ),
-            Self::ImageViewIncompatibleSampler { binding, index } => write!(
+            Self::ImageViewIncompatibleSampler { binding, index, .. } => write!(
                 fmt,
                 "tried to write an image view to binding {} index {}, that was not compatible with the sampler that was provided as part of the update or immutably in the layout",
                 binding, index,
@@ -811,6 +1016,11 @@ impl std::fmt::Display for DescriptorSetUpdateError {
                 fmt,
                 "tried to write a resource to binding {} index {} that did not have the required usage {} enabled",
                 binding, index, usage,
+            ),
+            Self::SamplerHasSamplerYcbcrConversion { binding, index } => write!(
+                fmt,
+                "tried to write a sampler to binding {} index {} that has an attached sampler YCbCr conversion",
+                binding, index,
             ),
             Self::SamplerIsImmutable { binding } => write!(
                 fmt,
