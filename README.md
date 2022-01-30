@@ -5,6 +5,7 @@
 [![Crates.io](https://img.shields.io/crates/v/vulkano.svg)](https://crates.io/crates/vulkano)
 [![Docs](https://docs.rs/vulkano/badge.svg)](https://docs.rs/vulkano)
 [![Build Status](https://github.com/vulkano-rs/vulkano/workflows/Rust/badge.svg)](https://github.com/vulkano-rs/vulkano/actions?query=workflow%3ARust)
+![Discord](https://img.shields.io/discord/937149253296476201?label=discord)
 
 See also [vulkano.rs](https://vulkano.rs).
 
