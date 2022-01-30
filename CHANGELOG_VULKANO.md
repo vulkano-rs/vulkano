@@ -68,6 +68,7 @@
 - Add `boxed_send()`, `boxed_sync()`, `boxed_send_sync()` for `GpuFuture`.
 - Fixed mipmap generation for 2D array images.
 - Added `aspects` to the builder of `ImageView`, to choose which aspect(s) of an image to use in the view.
+- Added `SamplerYcbcrConversion`, and the ability to attach it to a sampler or image view.
 
 # Version 0.27.1 (2021-12-07)
 
