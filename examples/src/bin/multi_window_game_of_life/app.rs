@@ -3,6 +3,7 @@ use crate::render_pass::RenderPassPlaceOverFrame;
 use crate::vulkano_config::VulkanoConfig;
 use crate::vulkano_context::VulkanoContext;
 use crate::vulkano_window::VulkanoWindow;
+use crate::{SCALING, WINDOW2_HEIGHT, WINDOW2_WIDTH, WINDOW_HEIGHT, WINDOW_WIDTH};
 use std::collections::HashMap;
 use std::sync::Arc;
 use vulkano::device::Queue;
@@ -40,10 +41,16 @@ impl App {
     pub fn open(&mut self, event_loop: &EventLoop<()>) {
         // Create windows & pipelines
         let winit_window_primary_builder = WindowBuilder::new()
-            .with_inner_size(winit::dpi::LogicalSize::new(1920.0, 1080.0))
+            .with_inner_size(winit::dpi::LogicalSize::new(
+                WINDOW_WIDTH as f32,
+                WINDOW_HEIGHT as f32,
+            ))
             .with_title("Game of Life Primary");
         let winit_window_secondary_builder = WindowBuilder::new()
-            .with_inner_size(winit::dpi::LogicalSize::new(512.0, 512.0))
+            .with_inner_size(winit::dpi::LogicalSize::new(
+                WINDOW2_WIDTH as f32,
+                WINDOW2_HEIGHT as f32,
+            ))
             .with_title("Game of Life Secondary");
         let winit_window_primary = winit_window_primary_builder.build(&event_loop).unwrap();
         let winit_window_secondary = winit_window_secondary_builder.build(&event_loop).unwrap();
@@ -52,18 +59,19 @@ impl App {
         self.pipelines.insert(
             window_primary.window().id(),
             RenderPipeline::new(
-                self.context.compute_queue(),
+                // Use same queue.. for synchronization
                 self.context.graphics_queue(),
-                [1920, 1080],
+                self.context.graphics_queue(),
+                [WINDOW_WIDTH / SCALING, WINDOW_HEIGHT / SCALING],
                 window_primary.swapchain_format(),
             ),
         );
         self.pipelines.insert(
             window_secondary.window().id(),
             RenderPipeline::new(
-                self.context.compute_queue(),
                 self.context.graphics_queue(),
-                [512, 512],
+                self.context.graphics_queue(),
+                [WINDOW2_WIDTH / SCALING, WINDOW2_HEIGHT / SCALING],
                 window_secondary.swapchain_format(),
             ),
         );

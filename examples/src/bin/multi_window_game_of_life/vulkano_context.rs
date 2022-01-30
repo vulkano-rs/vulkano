@@ -49,7 +49,11 @@ impl VulkanoContext {
     pub fn new(config: &VulkanoConfig) -> Self {
         println!("Creating VulkanoContext");
         let instance = create_vk_instance(config.instance_extensions, &config.layers);
-        let debug_callback = create_vk_debug_callback(&instance);
+        let is_debug = config
+            .layers
+            .contains(&"VK_LAYER_LUNARG_standard_validation")
+            || config.layers.contains(&"VK_LAYER_KHRONOS_validation");
+        let debug_callback = create_vk_debug_callback(&instance, is_debug);
         // Get desired device
         let physical_device = PhysicalDevice::enumerate(&instance)
             .min_by_key(|p| match p.properties().device_type {
@@ -237,13 +241,17 @@ pub fn create_vk_instance(
 }
 
 // Create vk debug call back (to exists outside renderer)
-pub fn create_vk_debug_callback(instance: &Arc<Instance>) -> DebugCallback {
+pub fn create_vk_debug_callback(instance: &Arc<Instance>, is_debug: bool) -> DebugCallback {
     // Create debug callback for printing vulkan errors and warnings. This will do nothing unless the layers are enabled
-    let severity = MessageSeverity {
-        error: true,
-        warning: true,
-        information: true,
-        verbose: true,
+    let severity = if is_debug {
+        MessageSeverity {
+            error: true,
+            warning: true,
+            information: true,
+            verbose: true,
+        }
+    } else {
+        MessageSeverity::none()
     };
 
     let ty = MessageType::all();

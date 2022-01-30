@@ -19,6 +19,7 @@ use crate::vulkano_window::VulkanoWindow;
 use cgmath::Vector2;
 use time::Instant;
 use vulkano::image::ImageAccess;
+use vulkano::sync;
 use vulkano::sync::GpuFuture;
 use winit::event::{ElementState, MouseButton};
 use winit::{
@@ -26,6 +27,12 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
     platform::run_return::EventLoopExtRunReturn,
 };
+
+pub const WINDOW_WIDTH: u32 = 1920;
+pub const WINDOW_HEIGHT: u32 = 1080;
+pub const WINDOW2_WIDTH: u32 = 512;
+pub const WINDOW2_HEIGHT: u32 = 512;
+pub const SCALING: u32 = 4;
 
 /*
 A multi windowed game of life application
@@ -90,10 +97,12 @@ fn handle_events(
                         let window_size = app.windows.get(window_id).unwrap().window_size();
                         let compute_pipeline =
                             &mut app.pipelines.get_mut(window_id).unwrap().compute;
-                        let normalized_pos = Vector2::new(
+                        let mut normalized_pos = Vector2::new(
                             (cursor_pos.x / window_size[0] as f32).clamp(0.0, 1.0),
                             (cursor_pos.y / window_size[1] as f32).clamp(0.0, 1.0),
                         );
+                        // flip y
+                        normalized_pos.y = 1.0 - normalized_pos.y;
                         let image_size = compute_pipeline
                             .color_image()
                             .image()
@@ -143,19 +152,17 @@ fn compute_then_render(
     };
 
     // Compute
-    let after_compute = pipeline.compute.compute_life();
-    let after_color = pipeline
+    let after_compute = pipeline
         .compute
-        .compute_color(life_color, dead_color)
-        .join(after_compute)
-        .join(before_pipeline_future);
-    let color_image = pipeline.compute.color_image();
+        .compute(before_pipeline_future, life_color, dead_color);
 
     // Render
+    let color_image = pipeline.compute.color_image();
     let target_image = vulkano_window.final_image();
+
     let after_render = pipeline
         .place_over_frame
-        .render(after_color, color_image, target_image);
+        .render(after_compute, color_image, target_image);
 
     // Finish frame
     vulkano_window.finish_frame(after_render);
