@@ -334,7 +334,7 @@ impl FramebufferBuilder {
             }
         }
 
-        let mut layers = 1;
+        let mut layers = dimensions[2];
 
         if let Some(multiview) = self.render_pass.desc().multiview() {
             // There needs to be at least as many layers in the framebuffer
