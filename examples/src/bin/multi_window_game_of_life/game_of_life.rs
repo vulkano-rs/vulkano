@@ -101,9 +101,13 @@ impl GameOfLifeComputePipeline {
         )
         .unwrap();
 
+        // Dispatch will mutate the builder adding commands which won't be sent before we build the command buffer
+        // after dispatches. This will minimize the commands we send to the GPU. For example, we could be doing
+        // tens of dispatches here depending on our needs. Maybe we wanted to simulate 10 steps at a time...
+
         // First compute the next state
         self.dispatch(&mut builder, life_color, dead_color, 0);
-        // Then color based on the next steate
+        // Then color based on the next state
         self.dispatch(&mut builder, life_color, dead_color, 1);
 
         let command_buffer = builder.build().unwrap();
