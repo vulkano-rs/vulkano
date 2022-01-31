@@ -231,7 +231,7 @@ pub fn create_vk_instance(
             Err(e) => {
                 match e {
                     InstanceCreationError::LoadingError(le) => {
-                        error!("{:?}, Did you install vulkanSDK from https://vulkan.lunarg.com/sdk/home?", le);
+                        println!("{:?}, Did you install vulkanSDK from https://vulkan.lunarg.com/sdk/home ?", le);
                         Err(le).expect("")
                     }
                     _ => Err(e).expect("Failed to create instance"),
