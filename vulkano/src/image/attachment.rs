@@ -15,6 +15,13 @@ use crate::image::sys::UnsafeImage;
 use crate::image::traits::ImageAccess;
 use crate::image::traits::ImageClearValue;
 use crate::image::traits::ImageContent;
+#[cfg(any(
+    target_os = "linux",
+    target_os = "dragonflybsd",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd"
+))]
 use crate::image::ImageCreateFlags;
 use crate::image::ImageDescriptorLayouts;
 use crate::image::ImageDimensions;
