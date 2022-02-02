@@ -7,7 +7,7 @@
     Pull Request merge. 
 -->
 
-# Version 0.28.0 (2022-01-30)
+# Version 0.28.0 (2022-02-02)
 
 - **Breaking** Updated to ash 0.35, half 1.8, smallvec 1.7, winit 0.26, raw-window-handle 0.4.
 - **Breaking** `ColorSpace::DciP3Linear` is renamed to `DisplayP3Linear` to match an equivalent change in the Vulkan naming.
