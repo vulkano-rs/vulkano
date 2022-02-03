@@ -25,6 +25,7 @@ fn requires_features(name: &str) -> &'static [&'static str] {
         "sparseImageInt64Atomics" => &["shaderImageInt64Atomics"],
         "sparseImageFloat32Atomics" => &["shaderImageFloat32Atomics"],
         "sparseImageFloat32AtomicAdd" => &["shaderImageFloat32AtomicAdd"],
+        "sparseImageFloat32AtomicMinMax" => &["shaderImageFloat32AtomicMinMax"],
         _ => &[],
     }
 }

@@ -32,15 +32,15 @@ use std::fs::File;
 use std::io::Read;
 use std::io::Write;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{Device, DeviceExtensions, Features};
-use vulkano::instance::{Instance, InstanceExtensions};
+use vulkano::device::QueueCreate;
+use vulkano::device::{Device, DeviceExtensions};
+use vulkano::instance::Instance;
 use vulkano::pipeline::cache::PipelineCache;
 use vulkano::pipeline::ComputePipeline;
-use vulkano::Version;
 
 fn main() {
     // As with other examples, the first step is to create an instance.
-    let instance = Instance::new(None, Version::V1_1, &InstanceExtensions::none(), None).unwrap();
+    let instance = Instance::start().build().unwrap();
 
     // Choose which physical device to use.
     let device_extensions = DeviceExtensions {
@@ -70,15 +70,15 @@ fn main() {
     );
 
     // Now initializing the device.
-    let (device, _) = Device::new(
-        physical_device,
-        &Features::none(),
-        &physical_device
-            .required_extensions()
-            .union(&device_extensions),
-        [(queue_family, 0.5)].iter().cloned(),
-    )
-    .unwrap();
+    let (device, _) = Device::start()
+        .queues([QueueCreate::family(queue_family)])
+        .enabled_extensions(
+            physical_device
+                .required_extensions()
+                .union(&device_extensions),
+        )
+        .build(physical_device)
+        .unwrap();
 
     // We are creating an empty PipelineCache to start somewhere.
     let pipeline_cache = PipelineCache::empty(device.clone()).unwrap();

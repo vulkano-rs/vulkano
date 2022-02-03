@@ -13,7 +13,7 @@ use vulkano::instance::InstanceCreationError;
 use vulkano::{
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
-        Device, DeviceExtensions, Features, Queue,
+        Device, DeviceExtensions, Features, Queue, QueueCreate,
     },
     image::{view::ImageView, ImageUsage},
     instance::{
@@ -123,30 +123,25 @@ impl VulkanoContext {
 
         // If we can create a compute queue, do so. Else use same queue as graphics
         if let Some((_compute_index, queue_family_compute)) = compute_family_data {
-            let (device, mut queues) = {
-                Device::new(
-                    physical,
-                    &features,
-                    &physical.required_extensions().union(&device_extensions),
-                    [(queue_family_graphics, 1.0), (queue_family_compute, 0.5)]
-                        .iter()
-                        .cloned(),
-                )
-                .unwrap()
-            };
+            let (device, mut queues) = Device::start()
+                .queues([
+                    QueueCreate::family(queue_family_graphics).queues([1.0]),
+                    QueueCreate::family(queue_family_compute).queues([0.5]),
+                ])
+                .enabled_extensions(physical.required_extensions().union(&device_extensions))
+                .enabled_features(features)
+                .build(physical)
+                .unwrap();
             let gfx_queue = queues.next().unwrap();
             let compute_queue = queues.next().unwrap();
             (device, gfx_queue, compute_queue)
         } else {
-            let (device, mut queues) = {
-                Device::new(
-                    physical,
-                    &features,
-                    &physical.required_extensions().union(&device_extensions),
-                    [(queue_family_graphics, 1.0)].iter().cloned(),
-                )
-                .unwrap()
-            };
+            let (device, mut queues) = Device::start()
+                .queues([QueueCreate::family(queue_family_graphics)])
+                .enabled_extensions(physical.required_extensions().union(&device_extensions))
+                .enabled_features(features)
+                .build(physical)
+                .unwrap();
             let gfx_queue = queues.next().unwrap();
             let compute_queue = gfx_queue.clone();
             (device, gfx_queue, compute_queue)
@@ -224,27 +219,31 @@ pub fn create_vk_instance(
     instance_extensions: InstanceExtensions,
     layers: &[&str],
 ) -> Arc<Instance> {
-    // Create instance. On mac os, it will ask you to install vulkan sdk if you have not done so.
+    // Create instance.
+    let result = Instance::start()
+        .enabled_extensions(instance_extensions)
+        .enabled_layers(layers.to_vec())
+        .build();
+
+    // Handle errors. On mac os, it will ask you to install vulkan sdk if you have not done so.
     #[cfg(target_os = "macos")]
-    {
-        match Instance::new(None, Version::V1_2, &instance_extensions, layers.to_vec()) {
-            Err(e) => {
-                match e {
-                    InstanceCreationError::LoadingError(le) => {
-                        println!("{:?}, Did you install vulkanSDK from https://vulkan.lunarg.com/sdk/home ?", le);
-                        Err(le).expect("")
-                    }
-                    _ => Err(e).expect("Failed to create instance"),
-                }
+    let instance = match result {
+        Err(e) => match e {
+            InstanceCreationError::LoadingError(le) => {
+                println!(
+                    "{:?}, Did you install vulkanSDK from https://vulkan.lunarg.com/sdk/home ?",
+                    le
+                );
+                Err(le).expect("")
             }
-            Ok(i) => i,
-        }
-    }
+            _ => Err(e).expect("Failed to create instance"),
+        },
+        Ok(i) => i,
+    };
     #[cfg(not(target_os = "macos"))]
-    {
-        Instance::new(None, Version::V1_2, &instance_extensions, layers.to_vec())
-            .expect("Failed to create instance")
-    }
+    let instance = result.expect("Failed to create instance");
+
+    instance
 }
 
 // Create vk debug call back (to exists outside renderer)

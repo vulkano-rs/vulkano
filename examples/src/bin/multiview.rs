@@ -20,7 +20,7 @@ use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{Device, DeviceExtensions, Features};
+use vulkano::device::{Device, DeviceExtensions, Features, QueueCreate};
 use vulkano::format::Format;
 use vulkano::image::view::ImageView;
 use vulkano::image::{
@@ -37,20 +37,15 @@ use vulkano::render_pass::{
     Subpass, SubpassDesc,
 };
 use vulkano::sync::{self, GpuFuture};
-use vulkano::Version;
 
 fn main() {
-    let instance = Instance::new(
-        None,
-        Version::V1_1,
-        &InstanceExtensions {
+    let instance = Instance::start()
+        .enabled_extensions(InstanceExtensions {
             khr_get_physical_device_properties2: true, // required to get multiview limits
-
             ..InstanceExtensions::none()
-        },
-        None,
-    )
-    .unwrap();
+        })
+        .build()
+        .unwrap();
 
     let device_extensions = DeviceExtensions {
         ..DeviceExtensions::none()
@@ -99,15 +94,16 @@ fn main() {
         physical_device.properties().device_type
     );
 
-    let (device, mut queues) = Device::new(
-        physical_device,
-        &features,
-        &physical_device
-            .required_extensions()
-            .union(&device_extensions),
-        [(queue_family, 0.5)].iter().cloned(),
-    )
-    .unwrap();
+    let (device, mut queues) = Device::start()
+        .queues([QueueCreate::family(queue_family)])
+        .enabled_extensions(
+            physical_device
+                .required_extensions()
+                .union(&device_extensions),
+        )
+        .enabled_features(features)
+        .build(physical_device)
+        .unwrap();
 
     let queue = queues.next().unwrap();
 

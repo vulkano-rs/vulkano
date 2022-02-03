@@ -288,7 +288,7 @@ fn init_info2(instance: &Instance, info: &mut PhysicalDeviceInfo) {
 /// # use vulkano::Version;
 /// use vulkano::device::physical::PhysicalDevice;
 ///
-/// # let instance = Instance::new(None, Version::V1_1, &InstanceExtensions::none(), None).unwrap();
+/// # let instance = Instance::start().build().unwrap();
 /// for physical_device in PhysicalDevice::enumerate(&instance) {
 ///     print_infos(physical_device);
 /// }
@@ -315,7 +315,7 @@ impl<'a> PhysicalDevice<'a> {
     /// # use vulkano::Version;
     /// use vulkano::device::physical::PhysicalDevice;
     ///
-    /// # let instance = Instance::new(None, Version::V1_1, &InstanceExtensions::none(), None).unwrap();
+    /// # let instance = Instance::start().build().unwrap();
     /// for physical_device in PhysicalDevice::enumerate(&instance) {
     ///     println!("Available device: {}", physical_device.properties().device_name);
     /// }
@@ -347,7 +347,7 @@ impl<'a> PhysicalDevice<'a> {
     /// use vulkano::device::physical::PhysicalDevice;
     /// use vulkano::Version;
     ///
-    /// let instance = Instance::new(None, Version::V1_1, &InstanceExtensions::none(), None).unwrap();
+    /// let instance = Instance::start().build().unwrap();
     /// let first_physical_device = PhysicalDevice::from_index(&instance, 0).unwrap();
     /// ```
     #[inline]

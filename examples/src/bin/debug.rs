@@ -8,7 +8,7 @@
 // according to those terms.
 
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{Device, DeviceExtensions, Features};
+use vulkano::device::{Device, DeviceExtensions, QueueCreate};
 use vulkano::format::Format;
 use vulkano::image::ImageDimensions;
 use vulkano::image::ImmutableImage;
@@ -16,7 +16,6 @@ use vulkano::image::MipmapsCount;
 use vulkano::instance;
 use vulkano::instance::debug::{DebugCallback, MessageSeverity, MessageType};
 use vulkano::instance::{Instance, InstanceExtensions};
-use vulkano::Version;
 
 fn main() {
     // Vulkano Debugging Example Code
@@ -57,7 +56,10 @@ fn main() {
     let layers = vec!["VK_LAYER_KHRONOS_validation"];
 
     // Important: pass the extension(s) and layer(s) when creating the vulkano instance
-    let instance = Instance::new(None, Version::V1_1, &extensions, layers)
+    let instance = Instance::start()
+        .enabled_extensions(extensions)
+        .enabled_layers(layers)
+        .build()
         .expect("failed to create Vulkan instance");
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -135,15 +137,15 @@ fn main() {
         })
         .expect("no device available");
 
-    let (_, mut queues) = Device::new(
-        physical_device,
-        &Features::none(),
-        &physical_device
-            .required_extensions()
-            .union(&device_extensions),
-        vec![(queue_family, 0.5)],
-    )
-    .expect("failed to create device");
+    let (_, mut queues) = Device::start()
+        .queues([QueueCreate::family(queue_family)])
+        .enabled_extensions(
+            physical_device
+                .required_extensions()
+                .union(&device_extensions),
+        )
+        .build(physical_device)
+        .expect("failed to create device");
     let queue = queues.next().unwrap();
 
     // Create an image in order to generate some additional logging:

@@ -344,25 +344,21 @@ mod tests {
     ))]
     fn semaphore_export() {
         use crate::device::physical::PhysicalDevice;
-        use crate::device::{Device, DeviceExtensions};
+        use crate::device::{Device, DeviceExtensions, QueueCreate};
         use crate::instance::{Instance, InstanceExtensions};
-        use crate::Version;
 
         let supported_ext = InstanceExtensions::supported_by_core().unwrap();
         if supported_ext.khr_get_display_properties2
             && supported_ext.khr_external_semaphore_capabilities
         {
-            let instance = Instance::new(
-                None,
-                Version::V1_1,
-                &InstanceExtensions {
+            let instance = Instance::start()
+                .enabled_extensions(InstanceExtensions {
                     khr_get_physical_device_properties2: true,
                     khr_external_semaphore_capabilities: true,
                     ..InstanceExtensions::none()
-                },
-                None,
-            )
-            .unwrap();
+                })
+                .build()
+                .unwrap();
 
             let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
 
@@ -373,13 +369,11 @@ mod tests {
                 khr_external_semaphore_fd: true,
                 ..DeviceExtensions::none()
             };
-            let (device, _) = Device::new(
-                physical,
-                physical.supported_features(),
-                &device_ext,
-                [(queue_family, 0.5)].iter().cloned(),
-            )
-            .unwrap();
+            let (device, _) = Device::start()
+                .queues([QueueCreate::family(queue_family)])
+                .enabled_extensions(device_ext)
+                .build(physical)
+                .unwrap();
 
             let supported_ext = physical.supported_extensions();
             if supported_ext.khr_external_semaphore && supported_ext.khr_external_semaphore_fd {

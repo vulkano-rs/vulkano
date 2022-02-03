@@ -20,7 +20,7 @@ use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{Device, DeviceExtensions, Features};
+use vulkano::device::{Device, DeviceExtensions, QueueCreate};
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageAccess, ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
@@ -31,7 +31,6 @@ use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
 use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
 use vulkano::sync::{self, FlushError, GpuFuture};
-use vulkano::Version;
 use vulkano_win::VkSurfaceBuild;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -48,7 +47,10 @@ fn main() {
     let required_extensions = vulkano_win::required_extensions();
 
     // Now creating the instance.
-    let instance = Instance::new(None, Version::V1_1, &required_extensions, None).unwrap();
+    let instance = Instance::start()
+        .enabled_extensions(required_extensions)
+        .build()
+        .unwrap();
 
     // The objective of this example is to draw a triangle on a window. To do so, we first need to
     // create the window.
@@ -136,33 +138,26 @@ fn main() {
 
     // Now initializing the device. This is probably the most important object of Vulkan.
     //
-    // We have to pass four parameters when creating a device:
-    //
-    // - Which physical device to connect to.
-    //
-    // - A list of optional features and extensions that our program needs to work correctly.
-    //   Some parts of the Vulkan specs are optional and must be enabled manually at device
-    //   creation. In this example the only thing we are going to need is the `khr_swapchain`
-    //   extension that allows us to draw to a window.
-    //
-    // - The list of queues that we are going to use. The exact parameter is an iterator whose
-    //   items are `(Queue, f32)` where the floating-point represents the priority of the queue
-    //   between 0.0 and 1.0. The priority of the queue is a hint to the implementation about how
-    //   much it should prioritize queues between one another.
-    //
     // The iterator of created queues is returned by the function alongside the device.
-    let (device, mut queues) = Device::new(
-        physical_device,
-        &Features::none(),
-        // Some devices require certain extensions to be enabled if they are present
-        // (e.g. `khr_portability_subset`). We add them to the device extensions that we're going to
-        // enable.
-        &physical_device
-            .required_extensions()
-            .union(&device_extensions),
-        [(queue_family, 0.5)].iter().cloned(),
-    )
-    .unwrap();
+    let (device, mut queues) = Device::start()
+        // The list of queues that we are going to use. Here we only use one queue, from the
+        // previously chosen queue family.
+        .queues([QueueCreate::family(queue_family)])
+        // A list of optional features and extensions that our program needs to work correctly.
+        // Some parts of the Vulkan specs are optional and must be enabled manually at device
+        // creation. In this example the only thing we are going to need is the `khr_swapchain`
+        // extension that allows us to draw to a window.
+        .enabled_extensions(
+            physical_device
+                // Some devices require certain extensions to be enabled if they are present
+                // (e.g. `khr_portability_subset`). We add them to the device extensions that we're
+                // going to enable.
+                .required_extensions()
+                .union(&device_extensions),
+        )
+        // Which physical device to connect to.
+        .build(physical_device)
+        .unwrap();
 
     // Since we can request multiple queues, the `queues` variable is in fact an iterator. We
     // only use one queue in this example, so we just retrieve the first and only element of the

@@ -21,7 +21,7 @@ use vulkano::{
     descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
-        Device, DeviceExtensions, Queue,
+        Device, DeviceExtensions, Queue, QueueCreate,
     },
     format::Format,
     image::{view::ImageView, ImageCreateFlags, ImageUsage, StorageImage, SwapchainImage},
@@ -37,7 +37,6 @@ use vulkano::{
     sampler::{Filter, Sampler, SamplerAddressMode},
     swapchain::{AcquireError, Swapchain, SwapchainCreationError},
     sync::{now, FlushError, GpuFuture, PipelineStages, Semaphore},
-    Version,
 };
 #[cfg(target_os = "linux")]
 use vulkano_win::VkSurfaceBuild;
@@ -348,25 +347,23 @@ fn vk_setup(
     Arc<GraphicsPipeline>,
     Arc<CpuAccessibleBuffer<[Vertex]>>,
 ) {
-    use vulkano::device::Features;
-
     let required_extensions = vulkano_win::required_extensions();
 
-    let instance = Instance::new(
-        None,
-        Version::V1_2,
-        &(InstanceExtensions {
-            khr_get_physical_device_properties2: true,
-            khr_external_memory_capabilities: true,
-            khr_external_semaphore_capabilities: true,
-            khr_external_fence_capabilities: true,
-            ext_debug_utils: true,
-            ..InstanceExtensions::none()
-        }
-        .union(&required_extensions)),
-        vec![],
-    )
-    .unwrap();
+    let instance = Instance::start()
+        .enabled_extensions(
+            InstanceExtensions {
+                khr_get_physical_device_properties2: true,
+                khr_external_memory_capabilities: true,
+                khr_external_semaphore_capabilities: true,
+                khr_external_fence_capabilities: true,
+                ext_debug_utils: true,
+
+                ..InstanceExtensions::none()
+            }
+            .union(&required_extensions),
+        )
+        .build()
+        .unwrap();
 
     let _debug_callback = DebugCallback::errors_and_warnings(&instance, |msg| {
         println!(
@@ -384,7 +381,7 @@ fn vk_setup(
         .build_vk_surface(&event_loop, instance.clone())
         .unwrap();
 
-    let device_ext = DeviceExtensions {
+    let device_extensions = DeviceExtensions {
         khr_external_semaphore: true,
         khr_external_semaphore_fd: true,
         khr_external_memory: true,
@@ -396,7 +393,7 @@ fn vk_setup(
     };
 
     let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-        .filter(|&p| p.supported_extensions().is_superset_of(&device_ext))
+        .filter(|&p| p.supported_extensions().is_superset_of(&device_extensions))
         .filter_map(|p| {
             p.queue_families()
                 .find(|&q| q.supports_graphics() && surface.is_supported(q).unwrap_or(false))
@@ -424,13 +421,11 @@ fn vk_setup(
         physical_device.properties().device_type,
     );
 
-    let (device, mut queues) = Device::new(
-        physical_device,
-        &Features::none(),
-        &device_ext,
-        [(queue_family, 0.5)].iter().cloned(),
-    )
-    .unwrap();
+    let (device, mut queues) = Device::start()
+        .queues([QueueCreate::family(queue_family)])
+        .enabled_extensions(device_extensions)
+        .build(physical_device)
+        .unwrap();
 
     let queue = queues.next().unwrap();
 

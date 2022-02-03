@@ -12,15 +12,9 @@
 /// Creates an instance or returns if initialization fails.
 macro_rules! instance {
     () => {{
-        use crate::instance;
-        use crate::Version;
+        use crate::instance::Instance;
 
-        match instance::Instance::new(
-            None,
-            Version::V1_1,
-            &instance::InstanceExtensions::none(),
-            None,
-        ) {
+        match Instance::start().build() {
             Ok(i) => i,
             Err(_) => return,
         }
@@ -31,8 +25,7 @@ macro_rules! instance {
 macro_rules! gfx_dev_and_queue {
     ($($feature:ident),*) => ({
         use crate::device::physical::PhysicalDevice;
-        use crate::device::Device;
-        use crate::device::DeviceExtensions;
+        use crate::device::{Device, DeviceExtensions, QueueCreate};
         use crate::device::Features;
 
         let instance = instance!();
@@ -42,7 +35,7 @@ macro_rules! gfx_dev_and_queue {
             None => return
         };
 
-        let queue = match physical.queue_families().find(|q| q.supports_graphics()) {
+        let queue_family = match physical.queue_families().find(|q| q.supports_graphics()) {
             Some(q) => q,
             None => return
         };
@@ -61,8 +54,11 @@ macro_rules! gfx_dev_and_queue {
             return;
         }
 
-        let (device, mut queues) = match Device::new(physical, &features,
-                                                     &extensions, [(queue, 0.5)].iter().cloned())
+        let (device, mut queues) = match Device::start()
+            .queues([QueueCreate::family(queue_family)])
+            .enabled_extensions(extensions)
+            .enabled_features(features)
+            .build(physical)
         {
             Ok(r) => r,
             Err(_) => return

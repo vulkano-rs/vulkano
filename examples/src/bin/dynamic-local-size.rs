@@ -21,29 +21,25 @@ use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{Device, DeviceExtensions, Features};
+use vulkano::device::{Device, DeviceExtensions, QueueCreate};
 use vulkano::format::Format;
 use vulkano::image::{view::ImageView, ImageDimensions, StorageImage};
 use vulkano::instance::{Instance, InstanceExtensions};
 use vulkano::pipeline::{ComputePipeline, Pipeline, PipelineBindPoint};
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
-use vulkano::Version;
 
 fn main() {
-    let instance = Instance::new(
-        None,
-        Version::V1_1,
-        &InstanceExtensions {
+    let instance = Instance::start()
+        .enabled_extensions(InstanceExtensions {
             // This extension is required to obtain physical device metadata
             // about the device workgroup size limits
             khr_get_physical_device_properties2: true,
 
             ..InstanceExtensions::none()
-        },
-        None,
-    )
-    .unwrap();
+        })
+        .build()
+        .unwrap();
 
     let device_extensions = DeviceExtensions {
         ..DeviceExtensions::none()
@@ -70,15 +66,15 @@ fn main() {
         physical_device.properties().device_type
     );
 
-    let (device, mut queues) = Device::new(
-        physical_device,
-        &Features::none(),
-        &physical_device
-            .required_extensions()
-            .union(&device_extensions),
-        [(queue_family, 0.5)].iter().cloned(),
-    )
-    .unwrap();
+    let (device, mut queues) = Device::start()
+        .queues([QueueCreate::family(queue_family)])
+        .enabled_extensions(
+            physical_device
+                .required_extensions()
+                .union(&device_extensions),
+        )
+        .build(physical_device)
+        .unwrap();
     let queue = queues.next().unwrap();
 
     mod cs {

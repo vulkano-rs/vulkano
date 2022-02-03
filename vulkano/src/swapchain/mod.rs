@@ -67,7 +67,9 @@
 //!         .. InstanceExtensions::none()
 //!     };
 //!
-//!      match Instance::new(None, Version::V1_1, &extensions, None) {
+//!     match Instance::start()
+//!         .enabled_extensions(extensions)
+//!         .build() {
 //!         Ok(i) => i,
 //!         Err(err) => panic!("Couldn't build instance: {:?}", err)
 //!     }
