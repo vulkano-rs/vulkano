@@ -466,7 +466,7 @@ impl<'qf> DeviceBuilder<'qf> {
             SmallVec::with_capacity(queue_create.len());
         let mut queues_to_get: SmallVec<[_; 2]> = SmallVec::with_capacity(queue_create.len());
 
-        for QueueCreate { family, queues } in queue_create {
+        for QueueCreate { family, queues } in &queue_create {
             assert_eq!(
                 family.physical_device().internal_object(),
                 physical_device.internal_object()
@@ -481,7 +481,7 @@ impl<'qf> DeviceBuilder<'qf> {
                 flags: ash::vk::DeviceQueueCreateFlags::empty(),
                 queue_family_index: family,
                 queue_count: queues.len() as u32,
-                p_queue_priorities: queues.as_ptr(),
+                p_queue_priorities: queues.as_ptr(), // borrows from queue_create
                 ..Default::default()
             });
             active_queue_families.push(family);
