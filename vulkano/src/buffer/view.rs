@@ -33,7 +33,10 @@
 //!
 //! let (buffer, _future) = ImmutableBuffer::<[u32]>::from_iter((0..128).map(|n| n), usage,
 //!                                                             queue.clone()).unwrap();
-//! let _view = BufferView::new(buffer, Format::R32_UINT).unwrap();
+//! let _view = BufferView::start(buffer)
+//!     .format(Format::R32_UINT)
+//!     .build()
+//!     .unwrap();
 //! ```
 
 use crate::buffer::BufferAccess;
