@@ -99,6 +99,10 @@ enum CurrentGpuAccess {
 
 impl<T> CpuAccessibleBuffer<T> {
     /// Builds a new buffer with some data in it. Only allowed for sized data.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `T` has zero size.
     pub fn from_data(
         device: Arc<Device>,
         usage: BufferUsage,
@@ -131,6 +135,10 @@ impl<T> CpuAccessibleBuffer<T> {
     }
 
     /// Builds a new uninitialized buffer. Only allowed for sized data.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `T` has zero size.
     #[inline]
     pub unsafe fn uninitialized(
         device: Arc<Device>,
@@ -150,6 +158,11 @@ impl<T> CpuAccessibleBuffer<T> {
 impl<T> CpuAccessibleBuffer<[T]> {
     /// Builds a new buffer that contains an array `T`. The initial data comes from an iterator
     /// that produces that list of Ts.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `T` has zero size.
+    /// - Panics if `data` is empty.
     pub fn from_iter<I>(
         device: Arc<Device>,
         usage: BufferUsage,
@@ -188,6 +201,11 @@ impl<T> CpuAccessibleBuffer<[T]> {
     }
 
     /// Builds a new buffer. Can be used for arrays.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `T` has zero size.
+    /// - Panics if `len` is zero.
     #[inline]
     pub unsafe fn uninitialized_array(
         device: Arc<Device>,
@@ -210,8 +228,11 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
     ///
     /// # Safety
     ///
-    /// You must ensure that the size that you pass is correct for `T`.
+    /// - You must ensure that the size that you pass is correct for `T`.
     ///
+    /// # Panics
+    ///
+    /// - Panics if `size` is zero.
     pub unsafe fn raw<'a, I>(
         device: Arc<Device>,
         size: DeviceSize,
@@ -227,20 +248,24 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
             .map(|f| f.id())
             .collect::<SmallVec<[u32; 4]>>();
 
-        let (buffer, mem_reqs) = {
-            let sharing = if queue_families.len() >= 2 {
-                Sharing::Concurrent(queue_families.iter().cloned())
-            } else {
-                Sharing::Exclusive
-            };
-
-            match UnsafeBuffer::new(device.clone(), size, usage, sharing, None) {
+        let buffer = {
+            match UnsafeBuffer::start()
+                .sharing(if queue_families.len() >= 2 {
+                    Sharing::Concurrent(queue_families.iter().cloned())
+                } else {
+                    Sharing::Exclusive
+                })
+                .size(size)
+                .usage(usage)
+                .build(device.clone())
+            {
                 Ok(b) => b,
                 Err(BufferCreationError::AllocError(err)) => return Err(err),
                 Err(_) => unreachable!(), // We don't use sparse binding, therefore the other
                                           // errors can't happen
             }
         };
+        let mem_reqs = buffer.memory_requirements();
 
         let mem = MemoryPool::alloc_from_requirements(
             &Device::standard_pool(&device),
@@ -665,7 +690,11 @@ mod tests {
 
         const EMPTY: [i32; 0] = [];
 
-        let _ = CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), false, EMPTY);
-        let _ = CpuAccessibleBuffer::from_iter(device, BufferUsage::all(), false, EMPTY.iter());
+        assert_should_panic!({
+            CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), false, EMPTY)
+                .unwrap();
+            CpuAccessibleBuffer::from_iter(device, BufferUsage::all(), false, EMPTY.iter())
+                .unwrap();
+        });
     }
 }

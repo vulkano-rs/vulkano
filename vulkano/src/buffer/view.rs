@@ -38,18 +38,18 @@
 
 use crate::buffer::BufferAccess;
 use crate::buffer::BufferInner;
-use crate::buffer::TypedBufferAccess;
 use crate::check_errors;
 use crate::device::physical::FormatFeatures;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::format::Format;
-use crate::format::Pixel;
+use crate::DeviceSize;
 use crate::Error;
 use crate::OomError;
 use crate::VulkanObject;
 use std::error;
 use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
@@ -69,105 +69,15 @@ where
 
 impl<B> BufferView<B>
 where
-    B: BufferAccess,
+    B: BufferAccess + ?Sized,
 {
-    /// Builds a new buffer view.
+    /// Starts constructing a new `BufferView`.
     #[inline]
-    pub fn new<Px>(
-        buffer: Arc<B>,
-        format: Format,
-    ) -> Result<Arc<BufferView<B>>, BufferViewCreationError>
-    where
-        B: TypedBufferAccess<Content = [Px]>,
-        Px: Pixel,
-    {
-        unsafe { BufferView::unchecked(buffer, format) }
-    }
-
-    /// Builds a new buffer view without checking that the format is correct.
-    pub unsafe fn unchecked(
-        org_buffer: Arc<B>,
-        format: Format,
-    ) -> Result<Arc<BufferView<B>>, BufferViewCreationError>
-    where
-        B: BufferAccess,
-    {
-        let size = org_buffer.size();
-        let BufferInner { buffer, offset } = org_buffer.inner();
-
-        let device = buffer.device();
-
-        if (offset
-            % device
-                .physical_device()
-                .properties()
-                .min_texel_buffer_offset_alignment)
-            != 0
-        {
-            return Err(BufferViewCreationError::WrongBufferAlignment);
+    pub fn start(buffer: Arc<B>) -> BufferViewBuilder<B> {
+        BufferViewBuilder {
+            buffer,
+            format: None,
         }
-
-        if !(buffer.usage().uniform_texel_buffer || buffer.usage().storage_texel_buffer) {
-            return Err(BufferViewCreationError::WrongBufferUsage);
-        }
-
-        let format_features = device
-            .physical_device()
-            .format_properties(format)
-            .buffer_features;
-
-        if buffer.usage().uniform_texel_buffer {
-            if !format_features.uniform_texel_buffer {
-                return Err(BufferViewCreationError::UnsupportedFormat);
-            }
-        }
-
-        if buffer.usage().storage_texel_buffer {
-            if !format_features.storage_texel_buffer {
-                return Err(BufferViewCreationError::UnsupportedFormat);
-            }
-        }
-
-        let elements = size / format.block_size().expect(
-            "Format has no size. If you see this error, please submit a new bug report to Vulkano.",
-        );
-        if elements as u32
-            > device
-                .physical_device()
-                .properties()
-                .max_texel_buffer_elements
-        {
-            return Err(BufferViewCreationError::MaxTexelBufferElementsExceeded);
-        }
-
-        let handle = {
-            let infos = ash::vk::BufferViewCreateInfo {
-                flags: ash::vk::BufferViewCreateFlags::empty(),
-                buffer: buffer.internal_object(),
-                format: format.into(),
-                offset,
-                range: size,
-                ..Default::default()
-            };
-
-            let fns = device.fns();
-            let mut output = MaybeUninit::uninit();
-            check_errors(fns.v1_0.create_buffer_view(
-                device.internal_object(),
-                &infos,
-                ptr::null(),
-                output.as_mut_ptr(),
-            ))?;
-            output.assume_init()
-        };
-
-        Ok(Arc::new(BufferView {
-            handle,
-            buffer: org_buffer,
-
-            format,
-            format_features,
-        }))
     }
 
     /// Returns the buffer associated to this view.
@@ -179,7 +89,7 @@ where
 
 unsafe impl<B> VulkanObject for BufferView<B>
 where
-    B: BufferAccess,
+    B: BufferAccess + ?Sized,
 {
     type Object = ash::vk::BufferView;
 
@@ -191,7 +101,7 @@ where
 
 unsafe impl<B> DeviceOwned for BufferView<B>
 where
-    B: BufferAccess,
+    B: BufferAccess + ?Sized,
 {
     #[inline]
     fn device(&self) -> &Arc<Device> {
@@ -201,7 +111,7 @@ where
 
 impl<B> fmt::Debug for BufferView<B>
 where
-    B: BufferAccess + fmt::Debug,
+    B: BufferAccess + ?Sized + fmt::Debug,
 {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         fmt.debug_struct("BufferView")
@@ -228,6 +138,253 @@ where
     }
 }
 
+impl<B> PartialEq for BufferView<B>
+where
+    B: BufferAccess + ?Sized,
+{
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.handle == other.handle && self.device() == other.device()
+    }
+}
+
+impl<B> Eq for BufferView<B> where B: BufferAccess + ?Sized {}
+
+impl<B> Hash for BufferView<B>
+where
+    B: BufferAccess + ?Sized,
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.handle.hash(state);
+        self.device().hash(state);
+    }
+}
+
+/// Used to construct a new `BufferView`.
+#[derive(Clone, Debug)]
+pub struct BufferViewBuilder<B>
+where
+    B: BufferAccess + ?Sized,
+{
+    buffer: Arc<B>,
+    format: Option<Format>,
+}
+
+impl<B> BufferViewBuilder<B>
+where
+    B: BufferAccess + ?Sized,
+{
+    /// Builds the `BufferView`.
+    pub fn build(self) -> Result<Arc<BufferView<B>>, BufferViewCreationError> {
+        let Self { buffer, format } = self;
+
+        let device = buffer.device();
+        let properties = device.physical_device().properties();
+        let range = buffer.size();
+        let BufferInner {
+            buffer: inner_buffer,
+            offset,
+        } = buffer.inner();
+
+        // No default value, must be provided
+        let format = format.unwrap();
+
+        // VUID-VkBufferViewCreateInfo-buffer-00932
+        if !(inner_buffer.usage().uniform_texel_buffer || inner_buffer.usage().storage_texel_buffer)
+        {
+            return Err(BufferViewCreationError::BufferMissingUsage);
+        }
+
+        let format_features = device
+            .physical_device()
+            .format_properties(format)
+            .buffer_features;
+
+        // VUID-VkBufferViewCreateInfo-buffer-00933
+        if inner_buffer.usage().uniform_texel_buffer && !format_features.uniform_texel_buffer {
+            return Err(BufferViewCreationError::UnsupportedFormat);
+        }
+
+        // VUID-VkBufferViewCreateInfo-buffer-00934
+        if inner_buffer.usage().storage_texel_buffer && !format_features.storage_texel_buffer {
+            return Err(BufferViewCreationError::UnsupportedFormat);
+        }
+
+        let block_size = format.block_size().unwrap();
+        let texels_per_block = format.texels_per_block();
+
+        // VUID-VkBufferViewCreateInfo-range-00929
+        if range % block_size != 0 {
+            return Err(BufferViewCreationError::RangeNotAligned {
+                range,
+                required_alignment: block_size,
+            });
+        }
+
+        // VUID-VkBufferViewCreateInfo-range-00930
+        if ((range / block_size) * texels_per_block as DeviceSize) as u32
+            > properties.max_texel_buffer_elements
+        {
+            return Err(BufferViewCreationError::MaxTexelBufferElementsExceeded);
+        }
+
+        if device.enabled_features().texel_buffer_alignment {
+            let element_size = if block_size % 3 == 0 {
+                block_size / 3
+            } else {
+                block_size
+            };
+
+            if inner_buffer.usage().storage_texel_buffer {
+                let mut required_alignment = properties
+                    .storage_texel_buffer_offset_alignment_bytes
+                    .unwrap();
+
+                if properties
+                    .storage_texel_buffer_offset_single_texel_alignment
+                    .unwrap()
+                {
+                    required_alignment = required_alignment.min(element_size);
+                }
+
+                // VUID-VkBufferViewCreateInfo-buffer-02750
+                if offset % required_alignment != 0 {
+                    return Err(BufferViewCreationError::OffsetNotAligned {
+                        offset,
+                        required_alignment,
+                    });
+                }
+            }
+
+            if inner_buffer.usage().uniform_texel_buffer {
+                let mut required_alignment = properties
+                    .uniform_texel_buffer_offset_alignment_bytes
+                    .unwrap();
+
+                if properties
+                    .uniform_texel_buffer_offset_single_texel_alignment
+                    .unwrap()
+                {
+                    required_alignment = required_alignment.min(element_size);
+                }
+
+                // VUID-VkBufferViewCreateInfo-buffer-02751
+                if offset % required_alignment != 0 {
+                    return Err(BufferViewCreationError::OffsetNotAligned {
+                        offset,
+                        required_alignment,
+                    });
+                }
+            }
+        } else {
+            let required_alignment = properties.min_texel_buffer_offset_alignment;
+
+            // VUID-VkBufferViewCreateInfo-offset-02749
+            if offset % required_alignment != 0 {
+                return Err(BufferViewCreationError::OffsetNotAligned {
+                    offset,
+                    required_alignment,
+                });
+            }
+        }
+
+        let create_info = ash::vk::BufferViewCreateInfo {
+            flags: ash::vk::BufferViewCreateFlags::empty(),
+            buffer: inner_buffer.internal_object(),
+            format: format.into(),
+            offset,
+            range,
+            ..Default::default()
+        };
+
+        let handle = unsafe {
+            let fns = device.fns();
+            let mut output = MaybeUninit::uninit();
+            check_errors(fns.v1_0.create_buffer_view(
+                device.internal_object(),
+                &create_info,
+                ptr::null(),
+                output.as_mut_ptr(),
+            ))?;
+            output.assume_init()
+        };
+
+        Ok(Arc::new(BufferView {
+            handle,
+            buffer,
+
+            format,
+            format_features,
+        }))
+    }
+
+    /// The format of the buffer view.
+    ///
+    /// There is no default value, this value must be provided.
+    #[inline]
+    pub fn format(mut self, format: Format) -> Self {
+        self.format = Some(format);
+        self
+    }
+}
+
+impl error::Error for BufferViewCreationError {
+    #[inline]
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match *self {
+            BufferViewCreationError::OomError(ref err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for BufferViewCreationError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match *self {
+            BufferViewCreationError::OomError(_) => write!(
+                fmt,
+                "out of memory when creating buffer view",
+            ),
+            BufferViewCreationError::BufferMissingUsage => write!(
+                fmt,
+                "the buffer was not created with one of the `storage_texel_buffer` or `uniform_texel_buffer` usages",
+            ),
+            BufferViewCreationError::OffsetNotAligned { .. } => write!(
+                fmt,
+                "the offset within the buffer is not a multiple of the required alignment",
+            ),
+            BufferViewCreationError::RangeNotAligned { .. } => write!(
+                fmt,
+                "the range within the buffer is not a multiple of the required alignment",
+            ),
+            BufferViewCreationError::UnsupportedFormat => write!(
+                fmt,
+                "the requested format is not supported for this usage",
+            ),
+            BufferViewCreationError::MaxTexelBufferElementsExceeded => write!(
+                fmt,
+                "the `max_texel_buffer_elements` limit has been exceeded",
+            ),
+        }
+    }
+}
+
+impl From<OomError> for BufferViewCreationError {
+    #[inline]
+    fn from(err: OomError) -> BufferViewCreationError {
+        BufferViewCreationError::OomError(err)
+    }
+}
+
+impl From<Error> for BufferViewCreationError {
+    #[inline]
+    fn from(err: Error) -> BufferViewCreationError {
+        OomError::from(err).into()
+    }
+}
+
 pub unsafe trait BufferViewAbstract:
     VulkanObject<Object = ash::vk::BufferView> + DeviceOwned + Send + Sync
 {
@@ -247,7 +404,7 @@ where
 {
     #[inline]
     fn buffer(&self) -> Arc<dyn BufferAccess> {
-        self.buffer.clone() as Arc<_>
+        self.buffer.clone()
     }
 
     #[inline]
@@ -261,75 +418,67 @@ where
     }
 }
 
+unsafe impl BufferViewAbstract for BufferView<dyn BufferAccess> {
+    #[inline]
+    fn buffer(&self) -> Arc<dyn BufferAccess> {
+        self.buffer.clone()
+    }
+
+    #[inline]
+    fn format(&self) -> Format {
+        self.format
+    }
+
+    #[inline]
+    fn format_features(&self) -> &FormatFeatures {
+        &self.format_features
+    }
+}
+
+impl PartialEq for dyn BufferViewAbstract {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.internal_object() == other.internal_object() && self.device() == other.device()
+    }
+}
+
+impl Eq for dyn BufferViewAbstract {}
+
+impl Hash for dyn BufferViewAbstract {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.internal_object().hash(state);
+        self.device().hash(state);
+    }
+}
+
 /// Error that can happen when creating a buffer view.
 #[derive(Debug, Copy, Clone)]
 pub enum BufferViewCreationError {
     /// Out of memory.
     OomError(OomError),
 
-    /// The buffer was not creating with one of the `storage_texel_buffer` or
+    /// The buffer was not created with one of the `storage_texel_buffer` or
     /// `uniform_texel_buffer` usages.
-    WrongBufferUsage,
+    BufferMissingUsage,
 
-    /// The offset within the buffer is not a multiple of the `min_texel_buffer_offset_alignment`
-    /// limit.
-    WrongBufferAlignment,
+    /// The offset within the buffer is not a multiple of the required alignment.
+    OffsetNotAligned {
+        offset: DeviceSize,
+        required_alignment: DeviceSize,
+    },
+
+    /// The range within the buffer is not a multiple of the required alignment.
+    RangeNotAligned {
+        range: DeviceSize,
+        required_alignment: DeviceSize,
+    },
 
     /// The requested format is not supported for this usage.
     UnsupportedFormat,
 
-    /// The maximum number of elements in the buffer view has been exceeded.
+    /// The `max_texel_buffer_elements` limit has been exceeded.
     MaxTexelBufferElementsExceeded,
-}
-
-impl error::Error for BufferViewCreationError {
-    #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match *self {
-            BufferViewCreationError::OomError(ref err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl fmt::Display for BufferViewCreationError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                BufferViewCreationError::OomError(_) => "out of memory when creating buffer view",
-                BufferViewCreationError::WrongBufferUsage => {
-                    "the buffer is missing correct usage flags"
-                }
-                BufferViewCreationError::WrongBufferAlignment => {
-                    "the offset within the buffer is not a multiple of the
-                 `min_texel_buffer_offset_alignment` limit"
-                }
-                BufferViewCreationError::UnsupportedFormat => {
-                    "the requested format is not supported for this usage"
-                }
-                BufferViewCreationError::MaxTexelBufferElementsExceeded => {
-                    "the maximum number of texel elements is exceeded"
-                }
-            }
-        )
-    }
-}
-
-impl From<OomError> for BufferViewCreationError {
-    #[inline]
-    fn from(err: OomError) -> BufferViewCreationError {
-        BufferViewCreationError::OomError(err)
-    }
-}
-
-impl From<Error> for BufferViewCreationError {
-    #[inline]
-    fn from(err: Error) -> BufferViewCreationError {
-        OomError::from(err).into()
-    }
 }
 
 #[cfg(test)]
@@ -353,7 +502,10 @@ mod tests {
         let (buffer, _) =
             ImmutableBuffer::<[[u8; 4]]>::from_iter((0..128).map(|_| [0; 4]), usage, queue.clone())
                 .unwrap();
-        BufferView::new(buffer, Format::R8G8B8A8_UNORM).unwrap();
+        BufferView::start(buffer)
+            .format(Format::R8G8B8A8_UNORM)
+            .build()
+            .unwrap();
     }
 
     #[test]
@@ -369,7 +521,10 @@ mod tests {
         let (buffer, _) =
             ImmutableBuffer::<[[u8; 4]]>::from_iter((0..128).map(|_| [0; 4]), usage, queue.clone())
                 .unwrap();
-        BufferView::new(buffer, Format::R8G8B8A8_UNORM).unwrap();
+        BufferView::start(buffer)
+            .format(Format::R8G8B8A8_UNORM)
+            .build()
+            .unwrap();
     }
 
     #[test]
@@ -384,7 +539,10 @@ mod tests {
 
         let (buffer, _) =
             ImmutableBuffer::<[u32]>::from_iter((0..128).map(|_| 0), usage, queue.clone()).unwrap();
-        BufferView::new(buffer, Format::R32_UINT).unwrap();
+        BufferView::start(buffer)
+            .format(Format::R32_UINT)
+            .build()
+            .unwrap();
     }
 
     #[test]
@@ -399,8 +557,11 @@ mod tests {
         )
         .unwrap();
 
-        match BufferView::new(buffer, Format::R8G8B8A8_UNORM) {
-            Err(BufferViewCreationError::WrongBufferUsage) => (),
+        match BufferView::start(buffer)
+            .format(Format::R8G8B8A8_UNORM)
+            .build()
+        {
+            Err(BufferViewCreationError::BufferMissingUsage) => (),
             _ => panic!(),
         }
     }
@@ -423,7 +584,10 @@ mod tests {
         .unwrap();
 
         // TODO: what if R64G64B64A64_SFLOAT is supported?
-        match BufferView::new(buffer, Format::R64G64B64A64_SFLOAT) {
+        match BufferView::start(buffer)
+            .format(Format::R64G64B64A64_SFLOAT)
+            .build()
+        {
             Err(BufferViewCreationError::UnsupportedFormat) => (),
             _ => panic!(),
         }

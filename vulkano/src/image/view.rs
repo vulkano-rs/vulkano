@@ -35,7 +35,7 @@ use std::sync::Arc;
 /// A wrapper around an image that makes it available to shaders or framebuffers.
 pub struct ImageView<I>
 where
-    I: ImageAccess,
+    I: ImageAccess + ?Sized,
 {
     handle: ash::vk::ImageView,
     image: Arc<I>,
@@ -56,7 +56,7 @@ where
 
 impl<I> ImageView<I>
 where
-    I: ImageAccess,
+    I: ImageAccess + ?Sized,
 {
     /// Creates a default `ImageView`. Equivalent to `ImageView::start(image).build()`.
     #[inline]
@@ -119,7 +119,7 @@ where
 
 unsafe impl<I> VulkanObject for ImageView<I>
 where
-    I: ImageAccess,
+    I: ImageAccess + ?Sized,
 {
     type Object = ash::vk::ImageView;
 
@@ -131,7 +131,7 @@ where
 
 unsafe impl<I> DeviceOwned for ImageView<I>
 where
-    I: ImageAccess,
+    I: ImageAccess + ?Sized,
 {
     fn device(&self) -> &Arc<Device> {
         self.image.inner().image.device()
@@ -140,7 +140,7 @@ where
 
 impl<I> fmt::Debug for ImageView<I>
 where
-    I: ImageAccess,
+    I: ImageAccess + ?Sized,
 {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
@@ -150,7 +150,7 @@ where
 
 impl<I> Drop for ImageView<I>
 where
-    I: ImageAccess,
+    I: ImageAccess + ?Sized,
 {
     #[inline]
     fn drop(&mut self) {
@@ -165,7 +165,7 @@ where
 
 impl<I> PartialEq for ImageView<I>
 where
-    I: ImageAccess,
+    I: ImageAccess + ?Sized,
 {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
@@ -173,11 +173,11 @@ where
     }
 }
 
-impl<I> Eq for ImageView<I> where I: ImageAccess {}
+impl<I> Eq for ImageView<I> where I: ImageAccess + ?Sized {}
 
 impl<I> Hash for ImageView<I>
 where
-    I: ImageAccess,
+    I: ImageAccess + ?Sized,
 {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -186,8 +186,12 @@ where
     }
 }
 
+/// Used to construct a new `ImageView`.
 #[derive(Debug)]
-pub struct ImageViewBuilder<I> {
+pub struct ImageViewBuilder<I>
+where
+    I: ImageAccess + ?Sized,
+{
     image: Arc<I>,
 
     array_layers: Range<u32>,
@@ -201,7 +205,7 @@ pub struct ImageViewBuilder<I> {
 
 impl<I> ImageViewBuilder<I>
 where
-    I: ImageAccess,
+    I: ImageAccess + ?Sized,
 {
     /// Builds the `ImageView`.
     pub fn build(self) -> Result<Arc<ImageView<I>>, ImageViewCreationError> {
@@ -372,7 +376,7 @@ where
             || image_inner.usage().input_attachment
             || image_inner.usage().transient_attachment)
         {
-            return Err(ImageViewCreationError::InvalidImageUsage);
+            return Err(ImageViewCreationError::ImageMissingUsage);
         }
 
         // VUID-VkImageViewCreateInfo-usage-02274
@@ -777,6 +781,11 @@ pub enum ImageViewCreationError {
         image_aspects: ImageAspects,
     },
 
+    /// The image was not created with
+    /// [one of the required usages](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/vkspec.html#valid-imageview-imageusage)
+    /// for image views.
+    ImageMissingUsage,
+
     /// A 2D image view was requested from a 3D image, but the image was not created with the
     /// `array_2d_compatible` flag.
     ImageNotArray2dCompatible,
@@ -791,11 +800,6 @@ pub enum ImageViewCreationError {
     /// The requested [`ImageViewType`] was not compatible with the image, or with the specified
     /// ranges of array layers and mipmap levels.
     IncompatibleType,
-
-    /// The image was not created with
-    /// [one of the required usages](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/vkspec.html#valid-imageview-imageusage)
-    /// for image views.
-    InvalidImageUsage,
 
     /// The specified range of mip levels was not a subset of those in the image.
     MipLevelsOutOfRange { range_end: u32, max: u32 },
@@ -885,6 +889,10 @@ impl fmt::Display for ImageViewCreationError {
                 fmt,
                 "an aspect was selected that was not present in the image",
             ),
+            Self::ImageMissingUsage => write!(
+                fmt,
+                "the image was not created with one of the required usages for image views",
+            ),
             Self::ImageNotArray2dCompatible => write!(
                 fmt,
                 "a 2D image view was requested from a 3D image, but the image was not created with the `array_2d_compatible` flag",
@@ -900,10 +908,6 @@ impl fmt::Display for ImageViewCreationError {
             Self::IncompatibleType => write!(
                 fmt,
                 "image view type is not compatible with image, array layers or mipmap levels",
-            ),
-            Self::InvalidImageUsage => write!(
-                fmt,
-                "the usage of the image is not compatible with image views",
             ),
             Self::MipLevelsOutOfRange { .. } => write!(
                 fmt,
@@ -1050,7 +1054,69 @@ where
 {
     #[inline]
     fn image(&self) -> Arc<dyn ImageAccess> {
-        self.image.clone() as Arc<_>
+        self.image.clone()
+    }
+
+    #[inline]
+    fn array_layers(&self) -> Range<u32> {
+        self.array_layers.clone()
+    }
+
+    #[inline]
+    fn aspects(&self) -> &ImageAspects {
+        &self.aspects
+    }
+
+    #[inline]
+    fn component_mapping(&self) -> ComponentMapping {
+        self.component_mapping
+    }
+
+    #[inline]
+    fn filter_cubic(&self) -> bool {
+        self.filter_cubic
+    }
+
+    #[inline]
+    fn filter_cubic_minmax(&self) -> bool {
+        self.filter_cubic_minmax
+    }
+
+    #[inline]
+    fn format(&self) -> Format {
+        self.format
+    }
+
+    #[inline]
+    fn format_features(&self) -> &FormatFeatures {
+        &self.format_features
+    }
+
+    #[inline]
+    fn mip_levels(&self) -> Range<u32> {
+        self.mip_levels.clone()
+    }
+
+    #[inline]
+    fn sampler_ycbcr_conversion(&self) -> Option<&Arc<SamplerYcbcrConversion>> {
+        self.sampler_ycbcr_conversion.as_ref()
+    }
+
+    #[inline]
+    fn ty(&self) -> ImageViewType {
+        self.ty
+    }
+
+    #[inline]
+    fn usage(&self) -> &ImageUsage {
+        &self.usage
+    }
+}
+
+unsafe impl ImageViewAbstract for ImageView<dyn ImageAccess> {
+    #[inline]
+    fn image(&self) -> Arc<dyn ImageAccess> {
+        self.image.clone()
     }
 
     #[inline]

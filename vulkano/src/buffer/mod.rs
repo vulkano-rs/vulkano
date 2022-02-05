@@ -90,6 +90,7 @@ pub use self::immutable::ImmutableBuffer;
 pub use self::slice::BufferSlice;
 pub use self::sys::BufferCreationError;
 pub use self::traits::BufferAccess;
+pub use self::traits::BufferDeviceAddressError;
 pub use self::traits::BufferInner;
 pub use self::traits::TypedBufferAccess;
 pub use self::usage::BufferUsage;

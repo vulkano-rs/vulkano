@@ -26,7 +26,6 @@ use crate::memory::pool::StdMemoryPool;
 use crate::memory::DedicatedAlloc;
 use crate::memory::DeviceMemoryAllocError;
 use crate::sync::AccessError;
-use crate::sync::Sharing;
 use crate::DeviceSize;
 use crate::OomError;
 use std::cmp;
@@ -194,8 +193,13 @@ where
 
 impl<T> CpuBufferPool<T> {
     /// Builds a `CpuBufferPool`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `T` has zero size.
     #[inline]
     pub fn new(device: Arc<Device>, usage: BufferUsage) -> CpuBufferPool<T> {
+        assert!(mem::size_of::<T>() > 0);
         let pool = Device::standard_pool(&device);
 
         CpuBufferPool {
@@ -211,6 +215,10 @@ impl<T> CpuBufferPool<T> {
     ///
     /// Shortcut for a pool that can only be used as transfer source and with exclusive queue
     /// family accesses.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `T` has zero size.
     #[inline]
     pub fn upload(device: Arc<Device>) -> CpuBufferPool<T> {
         CpuBufferPool::new(device, BufferUsage::transfer_source())
@@ -220,6 +228,10 @@ impl<T> CpuBufferPool<T> {
     ///
     /// Shortcut for a pool that can only be used as transfer destination and with exclusive queue
     /// family accesses.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `T` has zero size.
     #[inline]
     pub fn download(device: Arc<Device>) -> CpuBufferPool<T> {
         CpuBufferPool::new(device, BufferUsage::transfer_destination())
@@ -229,6 +241,10 @@ impl<T> CpuBufferPool<T> {
     ///
     /// Shortcut for a pool that can only be used as uniform buffer and with exclusive queue
     /// family accesses.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `T` has zero size.
     #[inline]
     pub fn uniform_buffer(device: Arc<Device>) -> CpuBufferPool<T> {
         CpuBufferPool::new(device, BufferUsage::uniform_buffer())
@@ -238,6 +254,10 @@ impl<T> CpuBufferPool<T> {
     ///
     /// Shortcut for a pool that can only be used as vertex buffer and with exclusive queue
     /// family accesses.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `T` has zero size.
     #[inline]
     pub fn vertex_buffer(device: Arc<Device>) -> CpuBufferPool<T> {
         CpuBufferPool::new(device, BufferUsage::vertex_buffer())
@@ -247,6 +267,10 @@ impl<T> CpuBufferPool<T> {
     ///
     /// Shortcut for a pool that can only be used as indirect buffer and with exclusive queue
     /// family accesses.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `T` has zero size.
     #[inline]
     pub fn indirect_buffer(device: Arc<Device>) -> CpuBufferPool<T> {
         CpuBufferPool::new(device, BufferUsage::indirect_buffer())
@@ -270,6 +294,10 @@ where
     ///
     /// Since this can involve a memory allocation, an `OomError` can happen.
     pub fn reserve(&self, capacity: DeviceSize) -> Result<(), DeviceMemoryAllocError> {
+        if capacity == 0 {
+            return Ok(());
+        }
+
         let mut cur_buf = self.current_buffer.lock().unwrap();
 
         // Check current capacity.
@@ -333,7 +361,7 @@ where
 
         let next_capacity = match *mutex {
             Some(ref b) if (data.len() as DeviceSize) < b.capacity => 2 * b.capacity,
-            _ => 2 * data.len() as DeviceSize,
+            _ => 2 * data.len().max(1) as DeviceSize,
         };
 
         self.reset_buf(&mut mutex, next_capacity)?;
@@ -366,31 +394,27 @@ where
         cur_buf_mutex: &mut MutexGuard<Option<Arc<ActualBuffer<A>>>>,
         capacity: DeviceSize,
     ) -> Result<(), DeviceMemoryAllocError> {
+        let size_bytes = match (mem::size_of::<T>() as DeviceSize).checked_mul(capacity) {
+            Some(s) => s,
+            None => {
+                return Err(DeviceMemoryAllocError::OomError(
+                    OomError::OutOfDeviceMemory,
+                ))
+            }
+        };
+        let buffer = match UnsafeBuffer::start()
+            .size(size_bytes)
+            .usage(self.usage)
+            .build(self.device.clone())
+        {
+            Ok(b) => b,
+            Err(BufferCreationError::AllocError(err)) => return Err(err),
+            Err(_) => unreachable!(), // We don't use sparse binding, therefore the other
+                                      // errors can't happen
+        };
+        let mem_reqs = buffer.memory_requirements();
+
         unsafe {
-            let (buffer, mem_reqs) = {
-                let size_bytes = match (mem::size_of::<T>() as DeviceSize).checked_mul(capacity) {
-                    Some(s) => s,
-                    None => {
-                        return Err(DeviceMemoryAllocError::OomError(
-                            OomError::OutOfDeviceMemory,
-                        ))
-                    }
-                };
-
-                match UnsafeBuffer::new(
-                    self.device.clone(),
-                    size_bytes as DeviceSize,
-                    self.usage,
-                    Sharing::Exclusive::<iter::Empty<_>>,
-                    None,
-                ) {
-                    Ok(b) => b,
-                    Err(BufferCreationError::AllocError(err)) => return Err(err),
-                    Err(_) => unreachable!(), // We don't use sparse binding, therefore the other
-                                              // errors can't happen
-                }
-            };
-
             let mem = MemoryPool::alloc_from_requirements(
                 &self.pool,
                 &mem_reqs,

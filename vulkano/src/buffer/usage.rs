@@ -26,8 +26,6 @@ pub struct BufferUsage {
     pub index_buffer: bool,
     pub vertex_buffer: bool,
     pub indirect_buffer: bool,
-    /// Requires the `buffer_device_address` feature. If that feature is not enabled, this will
-    /// be silently ignored.
     pub device_address: bool,
 }
 
