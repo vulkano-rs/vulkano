@@ -197,7 +197,7 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
             pub(crate) fn required_if_supported_extensions() -> Self {
                 Self {
                     #(#required_if_supported_extensions_items)*
-                    _unbuildable: Unbuildable(())
+                    _ne: crate::NonExhaustive(()),
                 }
             }
         }
@@ -358,11 +358,7 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
         pub struct #struct_name {
             #(#struct_items)*
 
-            /// This field ensures that an instance of this `Extensions` struct
-            /// can only be created through Vulkano functions and the update
-            /// syntax. This way, extensions can be added to Vulkano without
-            /// breaking existing code.
-            pub _unbuildable: Unbuildable,
+            pub _ne: crate::NonExhaustive,
         }
 
         impl #struct_name {
@@ -371,7 +367,7 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
             pub const fn none() -> Self {
                 Self {
                     #(#none_items)*
-                    _unbuildable: Unbuildable(())
+                    _ne: crate::NonExhaustive(()),
                 }
             }
 
@@ -388,7 +384,7 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
             pub const fn union(&self, other: &Self) -> Self {
                 Self {
                     #(#union_items)*
-                    _unbuildable: Unbuildable(())
+                    _ne: crate::NonExhaustive(()),
                 }
             }
 
@@ -397,7 +393,7 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
             pub const fn intersection(&self, other: &Self) -> Self {
                 Self {
                     #(#intersection_items)*
-                    _unbuildable: Unbuildable(())
+                    _ne: crate::NonExhaustive(()),
                 }
             }
 
@@ -406,7 +402,7 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
             pub const fn difference(&self, other: &Self) -> Self {
                 Self {
                     #(#difference_items)*
-                    _unbuildable: Unbuildable(())
+                    _ne: crate::NonExhaustive(()),
                 }
             }
         }
