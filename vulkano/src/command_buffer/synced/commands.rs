@@ -332,7 +332,9 @@ impl SyncCommandBufferBuilder {
         let mut resources: SmallVec<[_; 2]> = SmallVec::new();
 
         // if its the same image in source and destination, we need to lock it once
-        if source.conflict_key() == destination.conflict_key() {
+        let source_key = ResourceKey::from(source.as_ref());
+        let destination_key = ResourceKey::from(destination.as_ref());
+        if source_key == destination_key {
             resources.push((
                 KeyTy::Image(source.clone()),
                 "source_and_destination".into(),
@@ -463,7 +465,9 @@ impl SyncCommandBufferBuilder {
         let mut resources: SmallVec<[_; 2]> = SmallVec::new();
 
         // if its the same image in source and destination, we need to lock it once
-        if source.conflict_key() == destination.conflict_key() {
+        let source_key = ResourceKey::from(source.as_ref());
+        let destination_key = ResourceKey::from(destination.as_ref());
+        if source_key == destination_key {
             resources.push((
                 KeyTy::Image(source.clone()),
                 "source_and_destination".into(),
