@@ -10,7 +10,6 @@
 use crate::check_errors;
 pub use crate::extensions::{
     ExtensionRestriction, ExtensionRestrictionError, OneOfRequirements, SupportedExtensionsError,
-    Unbuildable,
 };
 use crate::instance::loader;
 use crate::instance::loader::LoadingError;
