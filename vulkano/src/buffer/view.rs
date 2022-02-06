@@ -80,7 +80,7 @@ where
         buffer: Arc<B>,
         create_info: BufferViewCreateInfo,
     ) -> Result<Arc<BufferView<B>>, BufferViewCreationError> {
-        let BufferViewCreateInfo { format } = create_info;
+        let BufferViewCreateInfo { format, _ne: _ } = create_info;
 
         let device = buffer.device();
         let properties = device.physical_device().properties();
@@ -293,17 +293,21 @@ where
 
 /// Parameters to construct a new `BufferView`.
 #[derive(Clone, Debug)]
-#[non_exhaustive]
 pub struct BufferViewCreateInfo {
     /// The format of the buffer view.
     ///
     /// The default value is `None`, which must be overridden.
     pub format: Option<Format>,
+
+    pub _ne: crate::NonExhaustive,
 }
 
 impl Default for BufferViewCreateInfo {
     fn default() -> Self {
-        Self { format: None }
+        Self {
+            format: None,
+            _ne: crate::NonExhaustive(()),
+        }
     }
 }
 
@@ -483,6 +487,7 @@ mod tests {
             buffer,
             BufferViewCreateInfo {
                 format: Some(Format::R8G8B8A8_UNORM),
+                ..Default::default()
             },
         )
         .unwrap();
@@ -505,6 +510,7 @@ mod tests {
             buffer,
             BufferViewCreateInfo {
                 format: Some(Format::R8G8B8A8_UNORM),
+                ..Default::default()
             },
         )
         .unwrap();
@@ -526,6 +532,7 @@ mod tests {
             buffer,
             BufferViewCreateInfo {
                 format: Some(Format::R32_UINT),
+                ..Default::default()
             },
         )
         .unwrap();
@@ -547,6 +554,7 @@ mod tests {
             buffer,
             BufferViewCreateInfo {
                 format: Some(Format::R8G8B8A8_UNORM),
+                ..Default::default()
             },
         ) {
             Err(BufferViewCreationError::BufferMissingUsage) => (),
@@ -576,6 +584,7 @@ mod tests {
             buffer,
             BufferViewCreateInfo {
                 format: Some(Format::R64G64B64A64_SFLOAT),
+                ..Default::default()
             },
         ) {
             Err(BufferViewCreationError::UnsupportedFormat) => (),

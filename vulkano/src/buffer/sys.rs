@@ -73,6 +73,7 @@ impl UnsafeBuffer {
             size,
             sparse,
             usage,
+            _ne: _,
         } = create_info;
 
         // VUID-VkBufferCreateInfo-size-00912
@@ -377,7 +378,6 @@ impl Hash for UnsafeBuffer {
 
 /// Parameters to construct a new `UnsafeBuffer`.
 #[derive(Clone, Debug)]
-#[non_exhaustive]
 pub struct UnsafeBufferCreateInfo {
     /// Whether the buffer can be shared across multiple queues, or is limited to a single queue.
     ///
@@ -398,6 +398,8 @@ pub struct UnsafeBufferCreateInfo {
     ///
     /// The default value is [`BufferUsage::none()`], which must be overridden.
     pub usage: BufferUsage,
+
+    pub _ne: crate::NonExhaustive,
 }
 
 impl Default for UnsafeBufferCreateInfo {
@@ -407,6 +409,7 @@ impl Default for UnsafeBufferCreateInfo {
             size: 0,
             sparse: None,
             usage: BufferUsage::none(),
+            _ne: crate::NonExhaustive(()),
         }
     }
 }
@@ -492,10 +495,10 @@ impl From<Error> for BufferCreationError {
 
 /// The level of sparse binding that a buffer should be created with.
 #[derive(Clone, Copy, Debug, Default)]
-#[non_exhaustive]
 pub struct SparseLevel {
     pub sparse_residency: bool,
     pub sparse_aliased: bool,
+    pub _ne: crate::NonExhaustive,
 }
 
 impl SparseLevel {
@@ -504,6 +507,7 @@ impl SparseLevel {
         SparseLevel {
             sparse_residency: false,
             sparse_aliased: false,
+            _ne: crate::NonExhaustive(()),
         }
     }
 }
@@ -581,6 +585,7 @@ mod tests {
                 sparse: Some(SparseLevel {
                     sparse_residency: true,
                     sparse_aliased: false,
+                    ..Default::default()
                 }),
                 usage: BufferUsage::all(),
                 ..Default::default()
@@ -604,6 +609,7 @@ mod tests {
                 sparse: Some(SparseLevel {
                     sparse_residency: false,
                     sparse_aliased: true,
+                    ..Default::default()
                 }),
                 usage: BufferUsage::all(),
                 ..Default::default()
