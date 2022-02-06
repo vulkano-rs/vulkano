@@ -21,7 +21,7 @@
 //! # use std::sync::Arc;
 //! use vulkano::buffer::immutable::ImmutableBuffer;
 //! use vulkano::buffer::BufferUsage;
-//! use vulkano::buffer::BufferView;
+//! use vulkano::buffer::view::{BufferView, BufferViewCreateInfo};
 //! use vulkano::format::Format;
 //!
 //! # let device: Arc<vulkano::device::Device> = return;
@@ -33,10 +33,13 @@
 //!
 //! let (buffer, _future) = ImmutableBuffer::<[u32]>::from_iter((0..128).map(|n| n), usage,
 //!                                                             queue.clone()).unwrap();
-//! let _view = BufferView::start(buffer)
-//!     .format(Format::R32_UINT)
-//!     .build()
-//!     .unwrap();
+//! let _view = BufferView::new(
+//!     buffer,
+//!     BufferViewCreateInfo {
+//!         format: Some(Format::R32_UINT),
+//!         ..Default::default()
+//!     },
+//! ).unwrap();
 //! ```
 
 use crate::buffer::BufferAccess;
