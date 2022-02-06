@@ -7,6 +7,8 @@
     Pull Request merge. 
 -->
 
+- Fix sync bug in `copy_image` and `blit_image` where the `src` and `dest` images are the same but with different mip level and/or array layer.
+
 # Version 0.28.0 (2022-02-02)
 
 - **Breaking** Updated to ash 0.35, half 1.8, smallvec 1.7, winit 0.26, raw-window-handle 0.4.
