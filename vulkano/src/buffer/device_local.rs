@@ -15,6 +15,7 @@
 
 use crate::buffer::sys::BufferCreationError;
 use crate::buffer::sys::UnsafeBuffer;
+use crate::buffer::sys::UnsafeBufferCreateInfo;
 use crate::buffer::traits::BufferAccess;
 use crate::buffer::traits::BufferInner;
 use crate::buffer::traits::TypedBufferAccess;
@@ -263,16 +264,19 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
         queue_families: &SmallVec<[u32; 4]>,
     ) -> Result<(UnsafeBuffer, MemoryRequirements), DeviceMemoryAllocError> {
         let buffer = {
-            match UnsafeBuffer::start()
-                .sharing(if queue_families.len() >= 2 {
-                    Sharing::Concurrent(queue_families.iter().cloned())
-                } else {
-                    Sharing::Exclusive
-                })
-                .size(size)
-                .usage(usage)
-                .build(device.clone())
-            {
+            match UnsafeBuffer::new(
+                device.clone(),
+                UnsafeBufferCreateInfo {
+                    sharing: if queue_families.len() >= 2 {
+                        Sharing::Concurrent(queue_families.clone())
+                    } else {
+                        Sharing::Exclusive
+                    },
+                    size,
+                    usage,
+                    ..Default::default()
+                },
+            ) {
                 Ok(b) => b,
                 Err(BufferCreationError::AllocError(err)) => return Err(err),
                 Err(_) => unreachable!(), // We don't use sparse binding, therefore the other

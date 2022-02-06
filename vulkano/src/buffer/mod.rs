@@ -94,8 +94,6 @@ pub use self::traits::BufferDeviceAddressError;
 pub use self::traits::BufferInner;
 pub use self::traits::TypedBufferAccess;
 pub use self::usage::BufferUsage;
-pub use self::view::BufferView;
-pub use self::view::BufferViewAbstract;
 
 pub mod cpu_access;
 pub mod cpu_pool;

@@ -59,6 +59,7 @@ use std::sync::Arc;
 
 /// Represents a way for the GPU to interpret buffer data. See the documentation of the
 /// `view` module.
+#[derive(Debug)]
 pub struct BufferView<B>
 where
     B: BufferAccess + ?Sized,
@@ -74,113 +75,12 @@ impl<B> BufferView<B>
 where
     B: BufferAccess + ?Sized,
 {
-    /// Starts constructing a new `BufferView`.
-    #[inline]
-    pub fn start(buffer: Arc<B>) -> BufferViewBuilder<B> {
-        BufferViewBuilder {
-            buffer,
-            format: None,
-        }
-    }
-
-    /// Returns the buffer associated to this view.
-    #[inline]
-    pub fn buffer(&self) -> &Arc<B> {
-        &self.buffer
-    }
-}
-
-unsafe impl<B> VulkanObject for BufferView<B>
-where
-    B: BufferAccess + ?Sized,
-{
-    type Object = ash::vk::BufferView;
-
-    #[inline]
-    fn internal_object(&self) -> ash::vk::BufferView {
-        self.handle
-    }
-}
-
-unsafe impl<B> DeviceOwned for BufferView<B>
-where
-    B: BufferAccess + ?Sized,
-{
-    #[inline]
-    fn device(&self) -> &Arc<Device> {
-        self.buffer.device()
-    }
-}
-
-impl<B> fmt::Debug for BufferView<B>
-where
-    B: BufferAccess + ?Sized + fmt::Debug,
-{
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        fmt.debug_struct("BufferView")
-            .field("raw", &self.handle)
-            .field("buffer", &self.buffer)
-            .finish()
-    }
-}
-
-impl<B> Drop for BufferView<B>
-where
-    B: BufferAccess + ?Sized,
-{
-    #[inline]
-    fn drop(&mut self) {
-        unsafe {
-            let fns = self.buffer.inner().buffer.device().fns();
-            fns.v1_0.destroy_buffer_view(
-                self.buffer.inner().buffer.device().internal_object(),
-                self.handle,
-                ptr::null(),
-            );
-        }
-    }
-}
-
-impl<B> PartialEq for BufferView<B>
-where
-    B: BufferAccess + ?Sized,
-{
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.handle == other.handle && self.device() == other.device()
-    }
-}
-
-impl<B> Eq for BufferView<B> where B: BufferAccess + ?Sized {}
-
-impl<B> Hash for BufferView<B>
-where
-    B: BufferAccess + ?Sized,
-{
-    #[inline]
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.handle.hash(state);
-        self.device().hash(state);
-    }
-}
-
-/// Used to construct a new `BufferView`.
-#[derive(Clone, Debug)]
-pub struct BufferViewBuilder<B>
-where
-    B: BufferAccess + ?Sized,
-{
-    buffer: Arc<B>,
-    format: Option<Format>,
-}
-
-impl<B> BufferViewBuilder<B>
-where
-    B: BufferAccess + ?Sized,
-{
-    /// Builds the `BufferView`.
-    pub fn build(self) -> Result<Arc<BufferView<B>>, BufferViewCreationError> {
-        let Self { buffer, format } = self;
+    /// Creates a new `BufferView`.
+    pub fn new(
+        buffer: Arc<B>,
+        create_info: BufferViewCreateInfo,
+    ) -> Result<Arc<BufferView<B>>, BufferViewCreationError> {
+        let BufferViewCreateInfo { format } = create_info;
 
         let device = buffer.device();
         let properties = device.physical_device().properties();
@@ -190,7 +90,7 @@ where
             offset,
         } = buffer.inner();
 
-        // No default value, must be provided
+        // No VUID, but seems sensible?
         let format = format.unwrap();
 
         // VUID-VkBufferViewCreateInfo-buffer-00932
@@ -322,14 +222,118 @@ where
         }))
     }
 
+    /// Returns the buffer associated to this view.
+    #[inline]
+    pub fn buffer(&self) -> &Arc<B> {
+        &self.buffer
+    }
+}
+
+unsafe impl<B> VulkanObject for BufferView<B>
+where
+    B: BufferAccess + ?Sized,
+{
+    type Object = ash::vk::BufferView;
+
+    #[inline]
+    fn internal_object(&self) -> ash::vk::BufferView {
+        self.handle
+    }
+}
+
+unsafe impl<B> DeviceOwned for BufferView<B>
+where
+    B: BufferAccess + ?Sized,
+{
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.buffer.device()
+    }
+}
+
+impl<B> Drop for BufferView<B>
+where
+    B: BufferAccess + ?Sized,
+{
+    #[inline]
+    fn drop(&mut self) {
+        unsafe {
+            let fns = self.buffer.inner().buffer.device().fns();
+            fns.v1_0.destroy_buffer_view(
+                self.buffer.inner().buffer.device().internal_object(),
+                self.handle,
+                ptr::null(),
+            );
+        }
+    }
+}
+
+impl<B> PartialEq for BufferView<B>
+where
+    B: BufferAccess + ?Sized,
+{
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.handle == other.handle && self.device() == other.device()
+    }
+}
+
+impl<B> Eq for BufferView<B> where B: BufferAccess + ?Sized {}
+
+impl<B> Hash for BufferView<B>
+where
+    B: BufferAccess + ?Sized,
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.handle.hash(state);
+        self.device().hash(state);
+    }
+}
+
+/// Parameters to construct a new `BufferView`.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct BufferViewCreateInfo {
     /// The format of the buffer view.
     ///
-    /// There is no default value, this value must be provided.
-    #[inline]
-    pub fn format(mut self, format: Format) -> Self {
-        self.format = Some(format);
-        self
+    /// The default value is `None`, which must be overridden.
+    pub format: Option<Format>,
+}
+
+impl Default for BufferViewCreateInfo {
+    fn default() -> Self {
+        Self { format: None }
     }
+}
+
+/// Error that can happen when creating a buffer view.
+#[derive(Debug, Copy, Clone)]
+pub enum BufferViewCreationError {
+    /// Out of memory.
+    OomError(OomError),
+
+    /// The buffer was not created with one of the `storage_texel_buffer` or
+    /// `uniform_texel_buffer` usages.
+    BufferMissingUsage,
+
+    /// The offset within the buffer is not a multiple of the required alignment.
+    OffsetNotAligned {
+        offset: DeviceSize,
+        required_alignment: DeviceSize,
+    },
+
+    /// The range within the buffer is not a multiple of the required alignment.
+    RangeNotAligned {
+        range: DeviceSize,
+        required_alignment: DeviceSize,
+    },
+
+    /// The requested format is not supported for this usage.
+    UnsupportedFormat,
+
+    /// The `max_texel_buffer_elements` limit has been exceeded.
+    MaxTexelBufferElementsExceeded,
 }
 
 impl error::Error for BufferViewCreationError {
@@ -455,41 +459,11 @@ impl Hash for dyn BufferViewAbstract {
     }
 }
 
-/// Error that can happen when creating a buffer view.
-#[derive(Debug, Copy, Clone)]
-pub enum BufferViewCreationError {
-    /// Out of memory.
-    OomError(OomError),
-
-    /// The buffer was not created with one of the `storage_texel_buffer` or
-    /// `uniform_texel_buffer` usages.
-    BufferMissingUsage,
-
-    /// The offset within the buffer is not a multiple of the required alignment.
-    OffsetNotAligned {
-        offset: DeviceSize,
-        required_alignment: DeviceSize,
-    },
-
-    /// The range within the buffer is not a multiple of the required alignment.
-    RangeNotAligned {
-        range: DeviceSize,
-        required_alignment: DeviceSize,
-    },
-
-    /// The requested format is not supported for this usage.
-    UnsupportedFormat,
-
-    /// The `max_texel_buffer_elements` limit has been exceeded.
-    MaxTexelBufferElementsExceeded,
-}
-
 #[cfg(test)]
 mod tests {
     use crate::buffer::immutable::ImmutableBuffer;
-    use crate::buffer::view::BufferViewCreationError;
+    use crate::buffer::view::{BufferView, BufferViewCreateInfo, BufferViewCreationError};
     use crate::buffer::BufferUsage;
-    use crate::buffer::BufferView;
     use crate::format::Format;
 
     #[test]
@@ -505,10 +479,13 @@ mod tests {
         let (buffer, _) =
             ImmutableBuffer::<[[u8; 4]]>::from_iter((0..128).map(|_| [0; 4]), usage, queue.clone())
                 .unwrap();
-        BufferView::start(buffer)
-            .format(Format::R8G8B8A8_UNORM)
-            .build()
-            .unwrap();
+        BufferView::new(
+            buffer,
+            BufferViewCreateInfo {
+                format: Some(Format::R8G8B8A8_UNORM),
+            },
+        )
+        .unwrap();
     }
 
     #[test]
@@ -524,10 +501,13 @@ mod tests {
         let (buffer, _) =
             ImmutableBuffer::<[[u8; 4]]>::from_iter((0..128).map(|_| [0; 4]), usage, queue.clone())
                 .unwrap();
-        BufferView::start(buffer)
-            .format(Format::R8G8B8A8_UNORM)
-            .build()
-            .unwrap();
+        BufferView::new(
+            buffer,
+            BufferViewCreateInfo {
+                format: Some(Format::R8G8B8A8_UNORM),
+            },
+        )
+        .unwrap();
     }
 
     #[test]
@@ -542,10 +522,13 @@ mod tests {
 
         let (buffer, _) =
             ImmutableBuffer::<[u32]>::from_iter((0..128).map(|_| 0), usage, queue.clone()).unwrap();
-        BufferView::start(buffer)
-            .format(Format::R32_UINT)
-            .build()
-            .unwrap();
+        BufferView::new(
+            buffer,
+            BufferViewCreateInfo {
+                format: Some(Format::R32_UINT),
+            },
+        )
+        .unwrap();
     }
 
     #[test]
@@ -560,10 +543,12 @@ mod tests {
         )
         .unwrap();
 
-        match BufferView::start(buffer)
-            .format(Format::R8G8B8A8_UNORM)
-            .build()
-        {
+        match BufferView::new(
+            buffer,
+            BufferViewCreateInfo {
+                format: Some(Format::R8G8B8A8_UNORM),
+            },
+        ) {
             Err(BufferViewCreationError::BufferMissingUsage) => (),
             _ => panic!(),
         }
@@ -587,10 +572,12 @@ mod tests {
         .unwrap();
 
         // TODO: what if R64G64B64A64_SFLOAT is supported?
-        match BufferView::start(buffer)
-            .format(Format::R64G64B64A64_SFLOAT)
-            .build()
-        {
+        match BufferView::new(
+            buffer,
+            BufferViewCreateInfo {
+                format: Some(Format::R64G64B64A64_SFLOAT),
+            },
+        ) {
             Err(BufferViewCreationError::UnsupportedFormat) => (),
             _ => panic!(),
         }

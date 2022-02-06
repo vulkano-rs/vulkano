@@ -9,6 +9,7 @@
 
 use crate::buffer::sys::BufferCreationError;
 use crate::buffer::sys::UnsafeBuffer;
+use crate::buffer::sys::UnsafeBufferCreateInfo;
 use crate::buffer::traits::BufferAccess;
 use crate::buffer::traits::BufferInner;
 use crate::buffer::traits::TypedBufferAccess;
@@ -394,7 +395,7 @@ where
         cur_buf_mutex: &mut MutexGuard<Option<Arc<ActualBuffer<A>>>>,
         capacity: DeviceSize,
     ) -> Result<(), DeviceMemoryAllocError> {
-        let size_bytes = match (mem::size_of::<T>() as DeviceSize).checked_mul(capacity) {
+        let size = match (mem::size_of::<T>() as DeviceSize).checked_mul(capacity) {
             Some(s) => s,
             None => {
                 return Err(DeviceMemoryAllocError::OomError(
@@ -402,11 +403,14 @@ where
                 ))
             }
         };
-        let buffer = match UnsafeBuffer::start()
-            .size(size_bytes)
-            .usage(self.usage)
-            .build(self.device.clone())
-        {
+        let buffer = match UnsafeBuffer::new(
+            self.device.clone(),
+            UnsafeBufferCreateInfo {
+                size,
+                usage: self.usage,
+                ..Default::default()
+            },
+        ) {
             Ok(b) => b,
             Err(BufferCreationError::AllocError(err)) => return Err(err),
             Err(_) => unreachable!(), // We don't use sparse binding, therefore the other

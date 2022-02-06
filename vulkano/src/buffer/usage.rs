@@ -15,7 +15,8 @@ use std::ops::BitOr;
 ///
 /// Some methods are provided to build `BufferUsage` structs for some common situations. However
 /// there is no restriction in the combination of BufferUsages that can be enabled.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct BufferUsage {
     pub transfer_source: bool,
     pub transfer_destination: bool,
