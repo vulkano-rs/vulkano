@@ -238,3 +238,12 @@ fn check_errors(result: ash::vk::Result) -> Result<Success, Error> {
         c => unreachable!("Unexpected error code returned by Vulkan: {}", c),
     }
 }
+
+/// A helper type for non-exhaustive structs.
+///
+/// This type cannot be constructed outside Vulkano. Structures with a field of this type can only
+/// be constructed by calling a function such as `Default::default()`. The effect is similar to the
+/// standard Rust `#[non_exhaustive]` attribute, except that it does not prevent update syntax from
+/// being used.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)] // add traits as needed
+pub struct NonExhaustive(pub(crate) ());
