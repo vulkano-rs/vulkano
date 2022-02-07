@@ -332,6 +332,17 @@ impl UnsafeBuffer {
     }
 }
 
+impl Drop for UnsafeBuffer {
+    #[inline]
+    fn drop(&mut self) {
+        unsafe {
+            let fns = self.device.fns();
+            fns.v1_0
+                .destroy_buffer(self.device.internal_object(), self.handle, ptr::null());
+        }
+    }
+}
+
 unsafe impl VulkanObject for UnsafeBuffer {
     type Object = ash::vk::Buffer;
 
@@ -345,17 +356,6 @@ unsafe impl DeviceOwned for UnsafeBuffer {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.device
-    }
-}
-
-impl Drop for UnsafeBuffer {
-    #[inline]
-    fn drop(&mut self) {
-        unsafe {
-            let fns = self.device.fns();
-            fns.v1_0
-                .destroy_buffer(self.device.internal_object(), self.handle, ptr::null());
-        }
     }
 }
 
@@ -376,7 +376,7 @@ impl Hash for UnsafeBuffer {
     }
 }
 
-/// Parameters to construct a new `UnsafeBuffer`.
+/// Parameters to create a new `UnsafeBuffer`.
 #[derive(Clone, Debug)]
 pub struct UnsafeBufferCreateInfo {
     /// Whether the buffer can be shared across multiple queues, or is limited to a single queue.
@@ -403,6 +403,7 @@ pub struct UnsafeBufferCreateInfo {
 }
 
 impl Default for UnsafeBufferCreateInfo {
+    #[inline]
     fn default() -> Self {
         Self {
             sharing: Sharing::Exclusive,

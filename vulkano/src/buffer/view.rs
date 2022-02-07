@@ -232,6 +232,23 @@ where
     }
 }
 
+impl<B> Drop for BufferView<B>
+where
+    B: BufferAccess + ?Sized,
+{
+    #[inline]
+    fn drop(&mut self) {
+        unsafe {
+            let fns = self.buffer.inner().buffer.device().fns();
+            fns.v1_0.destroy_buffer_view(
+                self.buffer.inner().buffer.device().internal_object(),
+                self.handle,
+                ptr::null(),
+            );
+        }
+    }
+}
+
 unsafe impl<B> VulkanObject for BufferView<B>
 where
     B: BufferAccess + ?Sized,
@@ -251,23 +268,6 @@ where
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.buffer.device()
-    }
-}
-
-impl<B> Drop for BufferView<B>
-where
-    B: BufferAccess + ?Sized,
-{
-    #[inline]
-    fn drop(&mut self) {
-        unsafe {
-            let fns = self.buffer.inner().buffer.device().fns();
-            fns.v1_0.destroy_buffer_view(
-                self.buffer.inner().buffer.device().internal_object(),
-                self.handle,
-                ptr::null(),
-            );
-        }
     }
 }
 
@@ -294,7 +294,7 @@ where
     }
 }
 
-/// Parameters to construct a new `BufferView`.
+/// Parameters to create a new `BufferView`.
 #[derive(Clone, Debug)]
 pub struct BufferViewCreateInfo {
     /// The format of the buffer view.
@@ -306,6 +306,7 @@ pub struct BufferViewCreateInfo {
 }
 
 impl Default for BufferViewCreateInfo {
+    #[inline]
     fn default() -> Self {
         Self {
             format: None,
