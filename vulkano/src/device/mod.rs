@@ -695,6 +695,8 @@ pub struct DeviceCreateInfo<'qf> {
     pub enabled_features: Features,
 
     /// The queues to create for the device.
+    ///
+    /// The default value is empty, which must be overridden.
     pub queue_create_infos: Vec<QueueCreateInfo<'qf>>,
 
     pub _ne: crate::NonExhaustive,
