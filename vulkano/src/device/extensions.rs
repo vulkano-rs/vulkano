@@ -10,7 +10,6 @@
 use crate::device::physical::PhysicalDevice;
 pub use crate::extensions::{
     ExtensionRestriction, ExtensionRestrictionError, OneOfRequirements, SupportedExtensionsError,
-    Unbuildable,
 };
 use crate::instance::InstanceExtensions;
 use crate::Version;
