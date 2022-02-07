@@ -344,21 +344,22 @@ mod tests {
     ))]
     fn semaphore_export() {
         use crate::device::physical::PhysicalDevice;
-        use crate::device::{Device, DeviceExtensions, QueueCreate};
-        use crate::instance::{Instance, InstanceExtensions};
+        use crate::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
+        use crate::instance::{Instance, InstanceCreateInfo, InstanceExtensions};
 
         let supported_ext = InstanceExtensions::supported_by_core().unwrap();
         if supported_ext.khr_get_display_properties2
             && supported_ext.khr_external_semaphore_capabilities
         {
-            let instance = Instance::start()
-                .enabled_extensions(InstanceExtensions {
+            let instance = Instance::new(InstanceCreateInfo {
+                enabled_extensions: InstanceExtensions {
                     khr_get_physical_device_properties2: true,
                     khr_external_semaphore_capabilities: true,
                     ..InstanceExtensions::none()
-                })
-                .build()
-                .unwrap();
+                },
+                ..Default::default()
+            })
+            .unwrap();
 
             let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
 
@@ -369,11 +370,15 @@ mod tests {
                 khr_external_semaphore_fd: true,
                 ..DeviceExtensions::none()
             };
-            let (device, _) = Device::start()
-                .queues([QueueCreate::family(queue_family)])
-                .enabled_extensions(device_ext)
-                .build(physical)
-                .unwrap();
+            let (device, _) = Device::new(
+                physical,
+                DeviceCreateInfo {
+                    enabled_extensions: device_ext,
+                    queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+                    ..Default::default()
+                },
+            )
+            .unwrap();
 
             let supported_ext = physical.supported_extensions();
             if supported_ext.khr_external_semaphore && supported_ext.khr_external_semaphore_fd {

@@ -38,7 +38,7 @@ use std::os::raw::c_void;
 use std::path::Path;
 
 /// Implemented on objects that grant access to a Vulkan implementation.
-pub unsafe trait Loader {
+pub unsafe trait Loader: Send + Sync {
     /// Calls the `vkGetInstanceProcAddr` function. The parameters are the same.
     ///
     /// The returned function must stay valid for as long as `self` is alive.
@@ -51,7 +51,7 @@ pub unsafe trait Loader {
 
 unsafe impl<T> Loader for T
 where
-    T: SafeDeref,
+    T: SafeDeref + Send + Sync,
     T::Target: Loader,
 {
     #[inline]
@@ -61,6 +61,13 @@ where
         name: *const c_char,
     ) -> *const c_void {
         (**self).get_instance_proc_addr(instance, name)
+    }
+}
+
+impl fmt::Debug for dyn Loader {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        Ok(())
     }
 }
 
@@ -112,6 +119,7 @@ unsafe impl Loader for DynamicLibraryLoader {
 }
 
 /// Wraps around a loader and contains function pointers.
+#[derive(Debug)]
 pub struct FunctionPointers<L> {
     loader: L,
     fns: EntryFunctions,
@@ -218,17 +226,16 @@ macro_rules! statically_linked_vulkan_loader {
 /// This function tries to auto-guess where to find the Vulkan implementation, and loads it in a
 /// `lazy_static!`. The content of the lazy_static is then returned, or an error if we failed to
 /// load Vulkan.
-pub fn auto_loader(
-) -> Result<&'static FunctionPointers<Box<dyn Loader + Send + Sync>>, LoadingError> {
+pub fn auto_loader() -> Result<&'static FunctionPointers<Box<dyn Loader>>, LoadingError> {
     #[cfg(target_os = "ios")]
     #[allow(non_snake_case)]
-    fn def_loader_impl() -> Result<Box<Loader + Send + Sync>, LoadingError> {
+    fn def_loader_impl() -> Result<Box<Loader>, LoadingError> {
         let loader = statically_linked_vulkan_loader!();
         Ok(Box::new(loader))
     }
 
     #[cfg(not(target_os = "ios"))]
-    fn def_loader_impl() -> Result<Box<dyn Loader + Send + Sync>, LoadingError> {
+    fn def_loader_impl() -> Result<Box<dyn Loader>, LoadingError> {
         #[cfg(windows)]
         fn get_path() -> &'static Path {
             Path::new("vulkan-1.dll")
@@ -252,7 +259,7 @@ pub fn auto_loader(
     }
 
     lazy_static! {
-        static ref DEFAULT_LOADER: Result<FunctionPointers<Box<dyn Loader + Send + Sync>>, LoadingError> =
+        static ref DEFAULT_LOADER: Result<FunctionPointers<Box<dyn Loader>>, LoadingError> =
             def_loader_impl().map(FunctionPointers::new);
     }
 

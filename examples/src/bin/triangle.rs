@@ -20,10 +20,10 @@ use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{Device, DeviceExtensions, QueueCreate};
+use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageAccess, ImageUsage, SwapchainImage};
-use vulkano::instance::Instance;
+use vulkano::instance::{Instance, InstanceCreateInfo};
 use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
 use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
@@ -47,10 +47,11 @@ fn main() {
     let required_extensions = vulkano_win::required_extensions();
 
     // Now creating the instance.
-    let instance = Instance::start()
-        .enabled_extensions(required_extensions)
-        .build()
-        .unwrap();
+    let instance = Instance::new(InstanceCreateInfo {
+        enabled_extensions: required_extensions,
+        ..Default::default()
+    })
+    .unwrap();
 
     // The objective of this example is to draw a triangle on a window. To do so, we first need to
     // create the window.
@@ -139,25 +140,29 @@ fn main() {
     // Now initializing the device. This is probably the most important object of Vulkan.
     //
     // The iterator of created queues is returned by the function alongside the device.
-    let (device, mut queues) = Device::start()
-        // The list of queues that we are going to use. Here we only use one queue, from the
-        // previously chosen queue family.
-        .queues([QueueCreate::family(queue_family)])
-        // A list of optional features and extensions that our program needs to work correctly.
-        // Some parts of the Vulkan specs are optional and must be enabled manually at device
-        // creation. In this example the only thing we are going to need is the `khr_swapchain`
-        // extension that allows us to draw to a window.
-        .enabled_extensions(
-            physical_device
+    let (device, mut queues) = Device::new(
+        // Which physical device to connect to.
+        physical_device,
+        DeviceCreateInfo {
+            // A list of optional features and extensions that our program needs to work correctly.
+            // Some parts of the Vulkan specs are optional and must be enabled manually at device
+            // creation. In this example the only thing we are going to need is the `khr_swapchain`
+            // extension that allows us to draw to a window.
+            enabled_extensions: physical_device
                 // Some devices require certain extensions to be enabled if they are present
                 // (e.g. `khr_portability_subset`). We add them to the device extensions that we're
                 // going to enable.
                 .required_extensions()
                 .union(&device_extensions),
-        )
-        // Which physical device to connect to.
-        .build(physical_device)
-        .unwrap();
+
+            // The list of queues that we are going to use. Here we only use one queue, from the
+            // previously chosen queue family.
+            queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+
+            ..Default::default()
+        },
+    )
+    .unwrap();
 
     // Since we can request multiple queues, the `queues` variable is in fact an iterator. We
     // only use one queue in this example, so we just retrieve the first and only element of the

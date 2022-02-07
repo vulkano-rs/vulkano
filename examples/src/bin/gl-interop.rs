@@ -21,11 +21,11 @@ use vulkano::{
     descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
-        Device, DeviceExtensions, Queue, QueueCreate,
+        Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo,
     },
     format::Format,
     image::{view::ImageView, ImageCreateFlags, ImageUsage, StorageImage, SwapchainImage},
-    instance::{debug::DebugCallback, Instance, InstanceExtensions},
+    instance::{debug::DebugCallback, Instance, InstanceCreateInfo, InstanceExtensions},
     pipeline::{
         graphics::color_blend::ColorBlendState,
         graphics::input_assembly::{InputAssemblyState, PrimitiveTopology},
@@ -349,21 +349,20 @@ fn vk_setup(
 ) {
     let required_extensions = vulkano_win::required_extensions();
 
-    let instance = Instance::start()
-        .enabled_extensions(
-            InstanceExtensions {
-                khr_get_physical_device_properties2: true,
-                khr_external_memory_capabilities: true,
-                khr_external_semaphore_capabilities: true,
-                khr_external_fence_capabilities: true,
-                ext_debug_utils: true,
+    let instance = Instance::new(InstanceCreateInfo {
+        enabled_extensions: InstanceExtensions {
+            khr_get_physical_device_properties2: true,
+            khr_external_memory_capabilities: true,
+            khr_external_semaphore_capabilities: true,
+            khr_external_fence_capabilities: true,
+            ext_debug_utils: true,
 
-                ..InstanceExtensions::none()
-            }
-            .union(&required_extensions),
-        )
-        .build()
-        .unwrap();
+            ..InstanceExtensions::none()
+        }
+        .union(&required_extensions),
+        ..Default::default()
+    })
+    .unwrap();
 
     let _debug_callback = DebugCallback::errors_and_warnings(&instance, |msg| {
         println!(
@@ -421,11 +420,15 @@ fn vk_setup(
         physical_device.properties().device_type,
     );
 
-    let (device, mut queues) = Device::start()
-        .queues([QueueCreate::family(queue_family)])
-        .enabled_extensions(device_extensions)
-        .build(physical_device)
-        .unwrap();
+    let (device, mut queues) = Device::new(
+        physical_device,
+        DeviceCreateInfo {
+            enabled_extensions: device_extensions,
+            queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+            ..Default::default()
+        },
+    )
+    .unwrap();
 
     let queue = queues.next().unwrap();
 

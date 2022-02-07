@@ -38,10 +38,10 @@ use vulkano::command_buffer::{
 };
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{Device, DeviceExtensions, QueueCreate};
+use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageAccess, ImageUsage, SwapchainImage};
-use vulkano::instance::Instance;
+use vulkano::instance::{Instance, InstanceCreateInfo};
 use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
 use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
@@ -65,10 +65,11 @@ impl_vertex!(Vertex, position);
 
 fn main() {
     let required_extensions = vulkano_win::required_extensions();
-    let instance = Instance::start()
-        .enabled_extensions(required_extensions)
-        .build()
-        .unwrap();
+    let instance = Instance::new(InstanceCreateInfo {
+        enabled_extensions: required_extensions,
+        ..Default::default()
+    })
+    .unwrap();
 
     let event_loop = EventLoop::new();
     let surface = WindowBuilder::new()
@@ -102,15 +103,17 @@ fn main() {
         physical_device.properties().device_type,
     );
 
-    let (device, mut queues) = Device::start()
-        .queues([QueueCreate::family(queue_family)])
-        .enabled_extensions(
-            physical_device
+    let (device, mut queues) = Device::new(
+        physical_device,
+        DeviceCreateInfo {
+            enabled_extensions: physical_device
                 .required_extensions()
                 .union(&device_extensions),
-        )
-        .build(physical_device)
-        .unwrap();
+            queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+            ..Default::default()
+        },
+    )
+    .unwrap();
 
     let queue = queues.next().unwrap();
 

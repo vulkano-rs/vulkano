@@ -4189,7 +4189,7 @@ mod tests {
     use crate::command_buffer::ExecuteCommandsError;
     use crate::command_buffer::PrimaryCommandBuffer;
     use crate::device::physical::PhysicalDevice;
-    use crate::device::{Device, QueueCreate};
+    use crate::device::{Device, DeviceCreateInfo, QueueCreateInfo};
     use crate::sync::GpuFuture;
     use std::sync::Arc;
 
@@ -4207,10 +4207,14 @@ mod tests {
             None => return,
         };
 
-        let (device, mut queues) = Device::start()
-            .queues([QueueCreate::family(queue_family)])
-            .build(phys)
-            .unwrap();
+        let (device, mut queues) = Device::new(
+            phys,
+            DeviceCreateInfo {
+                queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+                ..Default::default()
+            },
+        )
+        .unwrap();
 
         let queue = queues.next().unwrap();
 

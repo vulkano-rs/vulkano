@@ -16,12 +16,12 @@
 //!
 //! ```no_run
 //! use vulkano::device::physical::PhysicalDevice;
-//! use vulkano::device::{Device, DeviceExtensions, Features, QueueCreate};
+//! use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, Features, QueueCreateInfo};
 //! use vulkano::instance::{Instance, InstanceExtensions};
 //! use vulkano::Version;
 //!
 //! // Creating the instance. See the documentation of the `instance` module.
-//! let instance = match Instance::start().build() {
+//! let instance = match Instance::new(Default::default()) {
 //!     Ok(i) => i,
 //!     Err(err) => panic!("Couldn't build instance: {:?}", err)
 //! };
@@ -36,11 +36,15 @@
 //!     let features = Features::none();
 //!     let extensions = DeviceExtensions::none();
 //!
-//!     match Device::start()
-//!         .queues([QueueCreate::family(queue_family)])
-//!         .enabled_extensions(extensions)
-//!         .enabled_features(features)
-//!         .build(physical_device) {
+//!     match Device::new(
+//!         physical_device,
+//!         DeviceCreateInfo {
+//!             enabled_extensions: extensions,
+//!             enabled_features: features,
+//!             queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+//!             ..Default::default()
+//!         },
+//!     ) {
 //!         Ok(d) => d,
 //!         Err(err) => panic!("Couldn't build device: {:?}", err)
 //!     }
@@ -114,7 +118,7 @@ use crate::Version;
 use crate::VulkanObject;
 use ash::vk::Handle;
 use fnv::FnvHasher;
-use smallvec::{smallvec, SmallVec};
+use smallvec::SmallVec;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::error;
@@ -139,6 +143,7 @@ pub mod physical;
 pub(crate) mod properties;
 
 /// Represents a Vulkan context.
+#[derive(Debug)]
 pub struct Device {
     handle: ash::vk::Device,
     instance: Arc<Instance>,
@@ -168,14 +173,274 @@ unsafe impl Send for Device {}
 unsafe impl Sync for Device {}
 
 impl Device {
-    /// Starts constructing a new `Device`.
-    #[inline]
-    pub fn start() -> DeviceBuilder<'static> {
-        DeviceBuilder {
-            enabled_extensions: DeviceExtensions::none(),
-            enabled_features: Features::none(),
-            queue_create: Default::default(),
+    /// Creates a new `Device`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `create_info.queues` is empty.
+    /// - Panics if one of the queue families in `create_info.queues` doesn't belong to the given
+    ///   physical device.
+    /// - Panics if `create_info.queues` contains multiple elements for the same queue family.
+    /// - Panics if `create_info.queues` contains an element where `queues` is empty.
+    /// - Panics if `create_info.queues` contains an element where `queues` contains a value that is
+    ///   not between 0.0 and 1.0 inclusive.
+    pub fn new(
+        physical_device: PhysicalDevice,
+        create_info: DeviceCreateInfo,
+    ) -> Result<(Arc<Device>, impl ExactSizeIterator<Item = Arc<Queue>>), DeviceCreationError> {
+        let DeviceCreateInfo {
+            enabled_extensions,
+            mut enabled_features,
+            queue_create_infos,
+            _ne: _,
+        } = create_info;
+
+        let instance = physical_device.instance();
+        let fns_i = instance.fns();
+        let api_version = physical_device.api_version();
+
+        /*
+            Queues
+        */
+
+        struct QueueToGet {
+            family: u32,
+            id: u32,
         }
+
+        // VUID-VkDeviceCreateInfo-queueCreateInfoCount-arraylength
+        assert!(!queue_create_infos.is_empty());
+
+        let mut queue_create_infos_vk: SmallVec<[_; 2]> =
+            SmallVec::with_capacity(queue_create_infos.len());
+        let mut active_queue_families: SmallVec<[_; 2]> =
+            SmallVec::with_capacity(queue_create_infos.len());
+        let mut queues_to_get: SmallVec<[_; 2]> = SmallVec::with_capacity(queue_create_infos.len());
+
+        for QueueCreateInfo {
+            family,
+            queues,
+            _ne: _,
+        } in &queue_create_infos
+        {
+            assert_eq!(
+                family.physical_device().internal_object(),
+                physical_device.internal_object()
+            );
+
+            // VUID-VkDeviceCreateInfo-queueFamilyIndex-02802
+            assert!(
+                queue_create_infos
+                    .iter()
+                    .filter(|qc2| qc2.family == *family)
+                    .count()
+                    == 1
+            );
+
+            // VUID-VkDeviceQueueCreateInfo-queueCount-arraylength
+            assert!(!queues.is_empty());
+
+            // VUID-VkDeviceQueueCreateInfo-pQueuePriorities-00383
+            assert!(queues
+                .iter()
+                .all(|&priority| priority >= 0.0 && priority <= 1.0));
+
+            if queues.len() > family.queues_count() {
+                return Err(DeviceCreationError::TooManyQueuesForFamily);
+            }
+
+            let family = family.id();
+            queue_create_infos_vk.push(ash::vk::DeviceQueueCreateInfo {
+                flags: ash::vk::DeviceQueueCreateFlags::empty(),
+                queue_family_index: family,
+                queue_count: queues.len() as u32,
+                p_queue_priorities: queues.as_ptr(), // borrows from queue_create
+                ..Default::default()
+            });
+            active_queue_families.push(family);
+            queues_to_get.extend((0..queues.len() as u32).map(move |id| QueueToGet { family, id }));
+        }
+
+        active_queue_families.sort_unstable();
+        active_queue_families.dedup();
+
+        /*
+            Extensions
+        */
+
+        // VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-01840
+        // VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-03328
+        // VUID-VkDeviceCreateInfo-pProperties-04451
+        enabled_extensions.check_requirements(
+            physical_device.supported_extensions(),
+            api_version,
+            instance.enabled_extensions(),
+        )?;
+
+        let enabled_extensions_strings = Vec::<CString>::from(&enabled_extensions);
+        let enabled_extensions_ptrs = enabled_extensions_strings
+            .iter()
+            .map(|extension| extension.as_ptr())
+            .collect::<SmallVec<[_; 16]>>();
+
+        /*
+            Features
+        */
+
+        // TODO: The plan regarding `robust_buffer_access` is to check the shaders' code to see
+        //       if they can possibly perform out-of-bounds reads and writes. If the user tries
+        //       to use a shader that can perform out-of-bounds operations without having
+        //       `robust_buffer_access` enabled, an error is returned.
+        //
+        //       However for the moment this verification isn't performed. In order to be safe,
+        //       we always enable the `robust_buffer_access` feature as it is guaranteed to be
+        //       supported everywhere.
+        //
+        //       The only alternative (while waiting for shaders introspection to work) is to
+        //       make all shaders depend on `robust_buffer_access`. But since usually the
+        //       majority of shaders don't need this feature, it would be very annoying to have
+        //       to enable it manually when you don't need it.
+        //
+        //       Note that if we ever remove this, don't forget to adjust the change in
+        //       `Device`'s construction below.
+        enabled_features.robust_buffer_access = true;
+
+        // VUID-VkDeviceCreateInfo-pNext-04748
+        // VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-04476
+        // VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-02831
+        // VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-02832
+        // VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-02833
+        // VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-02834
+        // VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-02835
+        // VUID-VkDeviceCreateInfo-shadingRateImage-04478
+        // VUID-VkDeviceCreateInfo-shadingRateImage-04479
+        // VUID-VkDeviceCreateInfo-shadingRateImage-04480
+        // VUID-VkDeviceCreateInfo-fragmentDensityMap-04481
+        // VUID-VkDeviceCreateInfo-fragmentDensityMap-04482
+        // VUID-VkDeviceCreateInfo-fragmentDensityMap-04483
+        // VUID-VkDeviceCreateInfo-None-04896
+        // VUID-VkDeviceCreateInfo-None-04897
+        // VUID-VkDeviceCreateInfo-None-04898
+        // VUID-VkDeviceCreateInfo-sparseImageFloat32AtomicMinMax-04975
+        enabled_features.check_requirements(
+            physical_device.supported_features(),
+            api_version,
+            &enabled_extensions,
+        )?;
+
+        // VUID-VkDeviceCreateInfo-pNext-02829
+        // VUID-VkDeviceCreateInfo-pNext-02830
+        // VUID-VkDeviceCreateInfo-pNext-06532
+        let mut features_ffi = FeaturesFfi::default();
+        features_ffi.make_chain(
+            api_version,
+            &enabled_extensions,
+            instance.enabled_extensions(),
+        );
+        features_ffi.write(&enabled_features);
+
+        // Device layers were deprecated in Vulkan 1.0.13, and device layer requests should be
+        // ignored by the driver. For backwards compatibility, the spec recommends passing the
+        // exact instance layers to the device as well. There's no need to support separate
+        // requests at device creation time for legacy drivers: the spec claims that "[at] the
+        // time of deprecation there were no known device-only layers."
+        //
+        // Because there's no way to query the list of layers enabled for an instance, we need
+        // to save it alongside the instance. (`vkEnumerateDeviceLayerProperties` should get
+        // the right list post-1.0.13, but not pre-1.0.13, so we can't use it here.)
+        let enabled_layers_cstr: Vec<CString> = instance
+            .enabled_layers()
+            .iter()
+            .map(|name| CString::new(name.clone()).unwrap())
+            .collect();
+        let enabled_layers_ptrs = enabled_layers_cstr
+            .iter()
+            .map(|layer| layer.as_ptr())
+            .collect::<SmallVec<[_; 2]>>();
+
+        /*
+            Create the device
+        */
+
+        let has_khr_get_physical_device_properties2 = instance
+            .enabled_extensions()
+            .khr_get_physical_device_properties2;
+
+        let mut create_info = ash::vk::DeviceCreateInfo {
+            flags: ash::vk::DeviceCreateFlags::empty(),
+            queue_create_info_count: queue_create_infos_vk.len() as u32,
+            p_queue_create_infos: queue_create_infos_vk.as_ptr(),
+            enabled_layer_count: enabled_layers_ptrs.len() as u32,
+            pp_enabled_layer_names: enabled_layers_ptrs.as_ptr(),
+            enabled_extension_count: enabled_extensions_ptrs.len() as u32,
+            pp_enabled_extension_names: enabled_extensions_ptrs.as_ptr(),
+            p_enabled_features: ptr::null(),
+            ..Default::default()
+        };
+
+        // VUID-VkDeviceCreateInfo-pNext-00373
+        if has_khr_get_physical_device_properties2 {
+            create_info.p_next = features_ffi.head_as_ref() as *const _ as _;
+        } else {
+            create_info.p_enabled_features = &features_ffi.head_as_ref().features;
+        }
+
+        let handle = unsafe {
+            let mut output = MaybeUninit::uninit();
+            check_errors(fns_i.v1_0.create_device(
+                physical_device.internal_object(),
+                &create_info,
+                ptr::null(),
+                output.as_mut_ptr(),
+            ))?;
+            output.assume_init()
+        };
+
+        // loading the function pointers of the newly-created device
+        let fns = DeviceFunctions::load(|name| unsafe {
+            mem::transmute(fns_i.v1_0.get_device_proc_addr(handle, name.as_ptr()))
+        });
+
+        let device = Arc::new(Device {
+            handle,
+            instance: physical_device.instance().clone(),
+            physical_device: physical_device.index(),
+            api_version,
+            fns,
+            standard_pool: Mutex::new(Weak::new()),
+            standard_descriptor_pool: Mutex::new(Weak::new()),
+            standard_command_pools: Mutex::new(Default::default()),
+            enabled_extensions,
+            enabled_features,
+            active_queue_families,
+            allocation_count: Mutex::new(0),
+            fence_pool: Mutex::new(Vec::new()),
+            semaphore_pool: Mutex::new(Vec::new()),
+            event_pool: Mutex::new(Vec::new()),
+        });
+
+        // Iterator to return the queues
+        let queues_iter = {
+            let device = device.clone();
+            queues_to_get
+                .into_iter()
+                .map(move |QueueToGet { family, id }| unsafe {
+                    let mut output = MaybeUninit::uninit();
+                    device
+                        .fns()
+                        .v1_0
+                        .get_device_queue(handle, family, id, output.as_mut_ptr());
+
+                    Arc::new(Queue {
+                        handle: Mutex::new(output.assume_init()),
+                        device: device.clone(),
+                        family,
+                        id,
+                    })
+                })
+        };
+
+        Ok((device, queues_iter))
     }
 
     /// Returns the Vulkan version supported by the device.
@@ -366,22 +631,6 @@ impl Device {
     }
 }
 
-impl fmt::Debug for Device {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "<Vulkan device {:?}>", self.handle)
-    }
-}
-
-unsafe impl VulkanObject for Device {
-    type Object = ash::vk::Device;
-
-    #[inline]
-    fn internal_object(&self) -> ash::vk::Device {
-        self.handle
-    }
-}
-
 impl Drop for Device {
     #[inline]
     fn drop(&mut self) {
@@ -406,6 +655,15 @@ impl Drop for Device {
     }
 }
 
+unsafe impl VulkanObject for Device {
+    type Object = ash::vk::Device;
+
+    #[inline]
+    fn internal_object(&self) -> ash::vk::Device {
+        self.handle
+    }
+}
+
 impl PartialEq for Device {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
@@ -423,313 +681,42 @@ impl Hash for Device {
     }
 }
 
+/// Parameters to create a new `Device`.
 #[derive(Clone, Debug)]
-pub struct DeviceBuilder<'qf> {
-    enabled_extensions: DeviceExtensions,
-    enabled_features: Features,
-    queue_create: SmallVec<[QueueCreate<'qf>; 2]>,
-}
-
-impl<'qf> DeviceBuilder<'qf> {
-    /// Creates the `Device`.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if one of the queue families doesn't belong to the given device.
-    pub fn build(
-        self,
-        physical_device: PhysicalDevice,
-    ) -> Result<(Arc<Device>, impl ExactSizeIterator<Item = Arc<Queue>>), DeviceCreationError> {
-        let Self {
-            enabled_extensions,
-            mut enabled_features,
-            queue_create,
-        } = self;
-
-        let instance = physical_device.instance();
-        let fns_i = instance.fns();
-        let api_version = physical_device.api_version();
-
-        /*
-            Queues
-        */
-
-        struct QueueToGet {
-            family: u32,
-            id: u32,
-        }
-
-        assert!(!queue_create.is_empty());
-
-        let mut queue_create_infos: SmallVec<[_; 2]> = SmallVec::with_capacity(queue_create.len());
-        let mut active_queue_families: SmallVec<[_; 2]> =
-            SmallVec::with_capacity(queue_create.len());
-        let mut queues_to_get: SmallVec<[_; 2]> = SmallVec::with_capacity(queue_create.len());
-
-        for QueueCreate { family, queues } in &queue_create {
-            assert_eq!(
-                family.physical_device().internal_object(),
-                physical_device.internal_object()
-            );
-
-            if queues.len() > family.queues_count() {
-                return Err(DeviceCreationError::TooManyQueuesForFamily);
-            }
-
-            let family = family.id();
-            queue_create_infos.push(ash::vk::DeviceQueueCreateInfo {
-                flags: ash::vk::DeviceQueueCreateFlags::empty(),
-                queue_family_index: family,
-                queue_count: queues.len() as u32,
-                p_queue_priorities: queues.as_ptr(), // borrows from queue_create
-                ..Default::default()
-            });
-            active_queue_families.push(family);
-            queues_to_get.extend((0..queues.len() as u32).map(move |id| QueueToGet { family, id }));
-        }
-
-        active_queue_families.sort_unstable();
-        active_queue_families.dedup();
-
-        /*
-            Extensions
-        */
-
-        // VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-01840
-        // VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-03328
-        // VUID-VkDeviceCreateInfo-pProperties-04451
-        enabled_extensions.check_requirements(
-            physical_device.supported_extensions(),
-            api_version,
-            instance.enabled_extensions(),
-        )?;
-
-        let enabled_extensions_strings = Vec::<CString>::from(&enabled_extensions);
-        let enabled_extensions_ptrs = enabled_extensions_strings
-            .iter()
-            .map(|extension| extension.as_ptr())
-            .collect::<SmallVec<[_; 16]>>();
-
-        /*
-            Features
-        */
-
-        // TODO: The plan regarding `robust_buffer_access` is to check the shaders' code to see
-        //       if they can possibly perform out-of-bounds reads and writes. If the user tries
-        //       to use a shader that can perform out-of-bounds operations without having
-        //       `robust_buffer_access` enabled, an error is returned.
-        //
-        //       However for the moment this verification isn't performed. In order to be safe,
-        //       we always enable the `robust_buffer_access` feature as it is guaranteed to be
-        //       supported everywhere.
-        //
-        //       The only alternative (while waiting for shaders introspection to work) is to
-        //       make all shaders depend on `robust_buffer_access`. But since usually the
-        //       majority of shaders don't need this feature, it would be very annoying to have
-        //       to enable it manually when you don't need it.
-        //
-        //       Note that if we ever remove this, don't forget to adjust the change in
-        //       `Device`'s construction below.
-        enabled_features.robust_buffer_access = true;
-
-        // VUID-VkDeviceCreateInfo-pNext-04748
-        // VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-04476
-        // VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-02831
-        // VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-02832
-        // VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-02833
-        // VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-02834
-        // VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-02835
-        // VUID-VkDeviceCreateInfo-shadingRateImage-04478
-        // VUID-VkDeviceCreateInfo-shadingRateImage-04479
-        // VUID-VkDeviceCreateInfo-shadingRateImage-04480
-        // VUID-VkDeviceCreateInfo-fragmentDensityMap-04481
-        // VUID-VkDeviceCreateInfo-fragmentDensityMap-04482
-        // VUID-VkDeviceCreateInfo-fragmentDensityMap-04483
-        // VUID-VkDeviceCreateInfo-None-04896
-        // VUID-VkDeviceCreateInfo-None-04897
-        // VUID-VkDeviceCreateInfo-None-04898
-        // VUID-VkDeviceCreateInfo-sparseImageFloat32AtomicMinMax-04975
-        enabled_features.check_requirements(
-            physical_device.supported_features(),
-            api_version,
-            &enabled_extensions,
-        )?;
-
-        // VUID-VkDeviceCreateInfo-pNext-02829
-        // VUID-VkDeviceCreateInfo-pNext-02830
-        // VUID-VkDeviceCreateInfo-pNext-06532
-        let mut features_ffi = FeaturesFfi::default();
-        features_ffi.make_chain(
-            api_version,
-            &enabled_extensions,
-            instance.enabled_extensions(),
-        );
-        features_ffi.write(&enabled_features);
-
-        // Device layers were deprecated in Vulkan 1.0.13, and device layer requests should be
-        // ignored by the driver. For backwards compatibility, the spec recommends passing the
-        // exact instance layers to the device as well. There's no need to support separate
-        // requests at device creation time for legacy drivers: the spec claims that "[at] the
-        // time of deprecation there were no known device-only layers."
-        //
-        // Because there's no way to query the list of layers enabled for an instance, we need
-        // to save it alongside the instance. (`vkEnumerateDeviceLayerProperties` should get
-        // the right list post-1.0.13, but not pre-1.0.13, so we can't use it here.)
-        let layers_ptrs = instance
-            .enabled_layers()
-            .map(|layer| layer.as_ptr())
-            .collect::<SmallVec<[_; 16]>>();
-
-        /*
-            Create the device
-        */
-
-        let has_khr_get_physical_device_properties2 = instance
-            .enabled_extensions()
-            .khr_get_physical_device_properties2;
-
-        let mut create_info = ash::vk::DeviceCreateInfo {
-            flags: ash::vk::DeviceCreateFlags::empty(),
-            queue_create_info_count: queue_create_infos.len() as u32,
-            p_queue_create_infos: queue_create_infos.as_ptr(),
-            enabled_layer_count: layers_ptrs.len() as u32,
-            pp_enabled_layer_names: layers_ptrs.as_ptr(),
-            enabled_extension_count: enabled_extensions_ptrs.len() as u32,
-            pp_enabled_extension_names: enabled_extensions_ptrs.as_ptr(),
-            p_enabled_features: ptr::null(),
-            ..Default::default()
-        };
-
-        // VUID-VkDeviceCreateInfo-pNext-00373
-        if has_khr_get_physical_device_properties2 {
-            create_info.p_next = features_ffi.head_as_ref() as *const _ as _;
-        } else {
-            create_info.p_enabled_features = &features_ffi.head_as_ref().features;
-        }
-
-        let handle = unsafe {
-            let mut output = MaybeUninit::uninit();
-            check_errors(fns_i.v1_0.create_device(
-                physical_device.internal_object(),
-                &create_info,
-                ptr::null(),
-                output.as_mut_ptr(),
-            ))?;
-            output.assume_init()
-        };
-
-        // loading the function pointers of the newly-created device
-        let fns = DeviceFunctions::load(|name| unsafe {
-            mem::transmute(fns_i.v1_0.get_device_proc_addr(handle, name.as_ptr()))
-        });
-
-        let device = Arc::new(Device {
-            handle,
-            instance: physical_device.instance().clone(),
-            physical_device: physical_device.index(),
-            api_version,
-            fns,
-            standard_pool: Mutex::new(Weak::new()),
-            standard_descriptor_pool: Mutex::new(Weak::new()),
-            standard_command_pools: Mutex::new(Default::default()),
-            enabled_extensions,
-            enabled_features,
-            active_queue_families,
-            allocation_count: Mutex::new(0),
-            fence_pool: Mutex::new(Vec::new()),
-            semaphore_pool: Mutex::new(Vec::new()),
-            event_pool: Mutex::new(Vec::new()),
-        });
-
-        // Iterator to return the queues
-        let queues_iter = {
-            let device = device.clone();
-            queues_to_get
-                .into_iter()
-                .map(move |QueueToGet { family, id }| unsafe {
-                    let mut output = MaybeUninit::uninit();
-                    device
-                        .fns()
-                        .v1_0
-                        .get_device_queue(handle, family, id, output.as_mut_ptr());
-
-                    Arc::new(Queue {
-                        handle: Mutex::new(output.assume_init()),
-                        device: device.clone(),
-                        family,
-                        id,
-                    })
-                })
-        };
-
-        Ok((device, queues_iter))
-    }
-
+pub struct DeviceCreateInfo<'qf> {
     /// The extensions to enable on the device.
     ///
     /// The default value is [`DeviceExtensions::none()`].
-    #[inline]
-    pub fn enabled_extensions(mut self, extensions: DeviceExtensions) -> Self {
-        self.enabled_extensions = extensions;
-        self
-    }
+    pub enabled_extensions: DeviceExtensions,
 
     /// The features to enable on the device.
     ///
     /// The default value is [`Features::none()`].
-    #[inline]
-    pub fn enabled_features(mut self, features: Features) -> Self {
-        self.enabled_features = features;
-        self
-    }
+    pub enabled_features: Features,
 
     /// The queues to create for the device.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if `queues` is empty.
-    /// - Panics if `queues` contains multiple elements for the same queue family.
-    pub fn queues<'qf2>(
-        self,
-        queues: impl IntoIterator<Item = QueueCreate<'qf2>>,
-    ) -> DeviceBuilder<'qf2> {
-        let queue_create: SmallVec<[QueueCreate<'qf2>; 2]> = queues.into_iter().collect();
+    pub queue_create_infos: Vec<QueueCreateInfo<'qf>>,
 
-        // VUID-VkDeviceCreateInfo-queueCreateInfoCount-arraylength
-        assert!(!queue_create.is_empty());
-
-        // VUID-VkDeviceCreateInfo-queueFamilyIndex-02802
-        assert!(queue_create.iter().all(|qc| {
-            queue_create
-                .iter()
-                .filter(|qc2| qc2.family == qc.family)
-                .count()
-                == 1
-        }));
-
-        DeviceBuilder {
-            enabled_extensions: self.enabled_extensions,
-            enabled_features: self.enabled_features,
-            queue_create,
-        }
-    }
+    pub _ne: crate::NonExhaustive,
 }
 
-#[derive(Clone, Debug)]
-pub struct QueueCreate<'qf> {
-    family: QueueFamily<'qf>,
-    queues: SmallVec<[f32; 1]>,
-}
-
-impl<'qf> QueueCreate<'qf> {
-    /// Start creating queues for the given queue family.
+impl Default for DeviceCreateInfo<'static> {
     #[inline]
-    pub fn family<'qf2>(family: QueueFamily<'qf2>) -> QueueCreate<'qf2> {
-        QueueCreate {
-            family,
-            queues: smallvec![0.5],
+    fn default() -> Self {
+        Self {
+            enabled_extensions: DeviceExtensions::none(),
+            enabled_features: Features::none(),
+            queue_create_infos: Vec::new(),
+            _ne: crate::NonExhaustive(()),
         }
     }
+}
+
+/// Parameters to create queues in a new `Device`.
+#[derive(Clone, Debug)]
+pub struct QueueCreateInfo<'qf> {
+    /// The queue family to create queues for.
+    pub family: QueueFamily<'qf>,
 
     /// The queues to create for the given queue family, each with a relative priority.
     ///
@@ -739,25 +726,20 @@ impl<'qf> QueueCreate<'qf> {
     /// guarantees about its behavior.
     ///
     /// The default value is a single queue with a priority of 0.5.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if `queues` is empty.
-    /// - Panics if `queues` contains a value that is not between 0.0 and 1.0 inclusive.
+    pub queues: Vec<f32>,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl<'qf> QueueCreateInfo<'qf> {
+    /// Returns a `QueueCreateInfo` with the given queue family.
     #[inline]
-    pub fn queues(mut self, queues: impl IntoIterator<Item = f32>) -> Self {
-        let queues: SmallVec<_> = queues.into_iter().collect();
-
-        // VUID-VkDeviceQueueCreateInfo-queueCount-arraylength
-        assert!(!queues.is_empty());
-
-        // VUID-VkDeviceQueueCreateInfo-pQueuePriorities-00383
-        assert!(queues
-            .iter()
-            .all(|&priority| priority >= 0.0 && priority <= 1.0));
-
-        self.queues = queues;
-        self
+    pub fn family<'qf2>(family: QueueFamily<'qf2>) -> QueueCreateInfo<'qf2> {
+        QueueCreateInfo {
+            family,
+            queues: vec![0.5],
+            _ne: crate::NonExhaustive(()),
+        }
     }
 }
 
@@ -782,57 +764,6 @@ where
         (**self).device()
     }
 }
-
-/// Iterator that returns the queues produced when creating a device.
-pub struct QueuesIter {
-    next_queue: usize,
-    device: Arc<Device>,
-    families_and_ids: SmallVec<[(u32, u32); 8]>,
-}
-
-unsafe impl DeviceOwned for QueuesIter {
-    fn device(&self) -> &Arc<Device> {
-        &self.device
-    }
-}
-
-impl Iterator for QueuesIter {
-    type Item = Arc<Queue>;
-
-    fn next(&mut self) -> Option<Arc<Queue>> {
-        unsafe {
-            let &(family, id) = match self.families_and_ids.get(self.next_queue) {
-                Some(a) => a,
-                None => return None,
-            };
-
-            self.next_queue += 1;
-
-            let mut output = MaybeUninit::uninit();
-            self.device.fns.v1_0.get_device_queue(
-                self.device.handle,
-                family,
-                id,
-                output.as_mut_ptr(),
-            );
-
-            Some(Arc::new(Queue {
-                handle: Mutex::new(output.assume_init()),
-                device: self.device.clone(),
-                family: family,
-                id: id,
-            }))
-        }
-    }
-
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let len = self.families_and_ids.len().saturating_sub(self.next_queue);
-        (len, Some(len))
-    }
-}
-
-impl ExactSizeIterator for QueuesIter {}
 
 /// Error that can be returned when creating a device.
 #[derive(Copy, Clone, Debug)]
@@ -1016,7 +947,7 @@ unsafe impl SynchronizedVulkanObject for Queue {
 #[cfg(test)]
 mod tests {
     use crate::device::physical::PhysicalDevice;
-    use crate::device::{Device, DeviceCreationError, QueueCreate};
+    use crate::device::{Device, DeviceCreateInfo, DeviceCreationError, QueueCreateInfo};
     use crate::device::{FeatureRestriction, FeatureRestrictionError, Features};
     use std::sync::Arc;
 
@@ -1037,12 +968,16 @@ mod tests {
         let family = physical.queue_families().next().unwrap();
         let queues = (0..family.queues_count() + 1).map(|_| (family, 1.0));
 
-        match Device::start()
-            .queues([
-                QueueCreate::family(family).queues((0..family.queues_count() + 1).map(|_| (0.5)))
-            ])
-            .build(physical)
-        {
+        match Device::new(
+            physical,
+            DeviceCreateInfo {
+                queue_create_infos: vec![QueueCreateInfo {
+                    queues: (0..family.queues_count() + 1).map(|_| (0.5)).collect(),
+                    ..QueueCreateInfo::family(family)
+                }],
+                ..Default::default()
+            },
+        ) {
             Err(DeviceCreationError::TooManyQueuesForFamily) => return, // Success
             _ => panic!(),
         };
@@ -1064,11 +999,14 @@ mod tests {
             return;
         }
 
-        match Device::start()
-            .queues([QueueCreate::family(family)])
-            .enabled_features(features)
-            .build(physical)
-        {
+        match Device::new(
+            physical,
+            DeviceCreateInfo {
+                enabled_features: features,
+                queue_create_infos: vec![QueueCreateInfo::family(family)],
+                ..Default::default()
+            },
+        ) {
             Err(DeviceCreationError::FeatureRestrictionNotMet(FeatureRestrictionError {
                 restriction: FeatureRestriction::NotSupported,
                 ..
@@ -1088,11 +1026,29 @@ mod tests {
         let family = physical.queue_families().next().unwrap();
 
         assert_should_panic!({
-            Device::start().queues([QueueCreate::family(family).queues([1.4])])
+            Device::new(
+                physical,
+                DeviceCreateInfo {
+                    queue_create_infos: vec![QueueCreateInfo {
+                        queues: vec![1.4],
+                        ..QueueCreateInfo::family(family)
+                    }],
+                    ..Default::default()
+                },
+            )
         });
 
         assert_should_panic!({
-            Device::start().queues([QueueCreate::family(family).queues([-0.2])])
+            Device::new(
+                physical,
+                DeviceCreateInfo {
+                    queue_create_infos: vec![QueueCreateInfo {
+                        queues: vec![-0.2],
+                        ..QueueCreateInfo::family(family)
+                    }],
+                    ..Default::default()
+                },
+            )
         });
     }
 }

@@ -18,7 +18,7 @@
 //! use vulkano::instance::InstanceExtensions;
 //! use vulkano::Version;
 //!
-//! let instance = match Instance::start().build() {
+//! let instance = match Instance::new(Default::default()) {
 //!     Ok(i) => i,
 //!     Err(err) => panic!("Couldn't build instance: {:?}", err)
 //! };
@@ -33,7 +33,7 @@
 //! # use vulkano::Version;
 //! use vulkano::device::physical::PhysicalDevice;
 //!
-//! # let instance = Instance::start().build().unwrap();
+//! # let instance = Instance::new(Default::default()).unwrap();
 //! for physical_device in PhysicalDevice::enumerate(&instance) {
 //!     println!("Available device: {}", physical_device.properties().device_name);
 //! }
@@ -77,7 +77,6 @@ use std::hash::Hasher;
 use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::ptr;
-use std::slice;
 use std::sync::Arc;
 
 pub mod debug;
@@ -99,12 +98,10 @@ pub mod loader;
 /// ```no_run
 /// # #[macro_use] extern crate vulkano;
 /// # fn main() {
-/// use vulkano::instance::{Instance, InstanceExtensions};
+/// use vulkano::instance::{Instance, InstanceCreateInfo, InstanceExtensions};
 /// use vulkano::Version;
 ///
-/// let _instance = Instance::start()
-///     .application_from_cargo_toml()
-///     .build().unwrap();
+/// let _instance = Instance::new(InstanceCreateInfo::application_from_cargo_toml()).unwrap();
 /// # }
 /// ```
 ///
@@ -155,8 +152,7 @@ pub mod loader;
 /// succeed on anything else than an Android-running device.
 ///
 /// ```no_run
-/// use vulkano::instance::Instance;
-/// use vulkano::instance::InstanceExtensions;
+/// use vulkano::instance::{Instance, InstanceCreateInfo, InstanceExtensions};
 /// use vulkano::Version;
 ///
 /// let extensions = InstanceExtensions {
@@ -165,9 +161,10 @@ pub mod loader;
 ///     .. InstanceExtensions::none()
 /// };
 ///
-/// let instance = match Instance::start()
-///     .enabled_extensions(extensions)
-///     .build() {
+/// let instance = match Instance::new(InstanceCreateInfo {
+///     enabled_extensions: extensions,
+///     ..Default::default()
+/// }) {
 ///     Ok(i) => i,
 ///     Err(err) => panic!("Couldn't build instance: {:?}", err)
 /// };
@@ -202,6 +199,7 @@ pub mod loader;
 /// # use std::error::Error;
 /// # use vulkano::instance;
 /// # use vulkano::instance::Instance;
+/// # use vulkano::instance::InstanceCreateInfo;
 /// # use vulkano::instance::InstanceExtensions;
 /// # use vulkano::Version;
 /// # fn test() -> Result<Arc<Instance>, Box<dyn Error>> {
@@ -211,16 +209,15 @@ pub mod loader;
 ///     .filter(|l| l.description().contains("foo"))
 ///     .collect();
 ///
-/// let layer_names = layers.iter()
-///     .map(|l| l.name());
-///
-/// let instance = Instance::start()
-///     .enabled_layers(layer_names)
-///     .build()?;
+/// let instance = Instance::new(InstanceCreateInfo {
+///     enabled_layers: layers.iter().map(|l| l.name().to_owned()).collect(),
+///     ..Default::default()
+/// })?;
 /// # Ok(instance)
 /// # }
 /// ```
 // TODO: mention that extensions must be supported by layers as well
+#[derive(Debug)]
 pub struct Instance {
     handle: ash::vk::Instance,
     fns: InstanceFunctions,
@@ -228,8 +225,8 @@ pub struct Instance {
 
     api_version: Version,
     enabled_extensions: InstanceExtensions,
-    enabled_layers: Vec<CString>,
-    function_pointers: OwnedOrRef<FunctionPointers<Box<dyn Loader + Send + Sync>>>,
+    enabled_layers: Vec<String>,
+    function_pointers: OwnedOrRef<FunctionPointers<Box<dyn Loader>>>,
     max_api_version: Version,
 }
 
@@ -238,114 +235,15 @@ impl ::std::panic::UnwindSafe for Instance {}
 impl ::std::panic::RefUnwindSafe for Instance {}
 
 impl Instance {
-    /// Starts constructing a new `Instance`.
-    #[inline]
-    pub fn start() -> InstanceBuilder {
-        InstanceBuilder {
-            application_name: None,
-            application_version: Version::major_minor(0, 0),
-            enabled_extensions: InstanceExtensions::none(),
-            enabled_layers: Vec::new(),
-            engine_name: None,
-            engine_version: Version::major_minor(0, 0),
-            function_pointers: None,
-            max_api_version: None,
-        }
-    }
-
-    /// Returns the Vulkan version supported by the instance.
+    /// Creates a new `Instance`.
     ///
-    /// This is the lower of the
-    /// [driver's supported version](crate::instance::loader::FunctionPointers::api_version) and
-    /// [`max_api_version`](Instance::max_api_version).
-    #[inline]
-    pub fn api_version(&self) -> Version {
-        self.api_version
-    }
-
-    /// Returns the maximum Vulkan version that was specified when creating the instance.
-    #[inline]
-    pub fn max_api_version(&self) -> Version {
-        self.max_api_version
-    }
-
-    /// Grants access to the Vulkan functions of the instance.
-    #[inline]
-    pub fn fns(&self) -> &InstanceFunctions {
-        &self.fns
-    }
-
-    /// Returns the extensions that have been enabled on the instance.
-    #[inline]
-    pub fn enabled_extensions(&self) -> &InstanceExtensions {
-        &self.enabled_extensions
-    }
-
-    /// Returns the layers that have been enabled on the instance.
-    #[doc(hidden)]
-    #[inline]
-    pub fn enabled_layers(&self) -> slice::Iter<CString> {
-        self.enabled_layers.iter()
-    }
-}
-
-impl fmt::Debug for Instance {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "<Vulkan instance {:?}>", self.handle)
-    }
-}
-
-unsafe impl VulkanObject for Instance {
-    type Object = ash::vk::Instance;
-
-    #[inline]
-    fn internal_object(&self) -> ash::vk::Instance {
-        self.handle
-    }
-}
-
-impl Drop for Instance {
-    #[inline]
-    fn drop(&mut self) {
-        unsafe {
-            self.fns.v1_0.destroy_instance(self.handle, ptr::null());
-        }
-    }
-}
-
-impl PartialEq for Instance {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.handle == other.handle
-    }
-}
-
-impl Eq for Instance {}
-
-impl Hash for Instance {
-    #[inline]
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.handle.hash(state);
-    }
-}
-
-/// Used to construct a new `Instance`.
-pub struct InstanceBuilder {
-    application_name: Option<CString>,
-    application_version: Version,
-    enabled_extensions: InstanceExtensions,
-    enabled_layers: Vec<CString>,
-    engine_name: Option<CString>,
-    engine_version: Version,
-    function_pointers: Option<FunctionPointers<Box<dyn Loader + Send + Sync>>>,
-    max_api_version: Option<Version>,
-}
-
-impl InstanceBuilder {
-    /// Creates the `Instance`.
-    pub fn build(self) -> Result<Arc<Instance>, InstanceCreationError> {
-        let Self {
+    /// # Panics
+    ///
+    /// - Panics if any version numbers in `create_info` contain a field too large to be converted
+    ///   into a Vulkan version number.
+    /// - Panics if `create_info.max_api_version` is not at least `V1_0`.
+    pub fn new(create_info: InstanceCreateInfo) -> Result<Arc<Instance>, InstanceCreationError> {
+        let InstanceCreateInfo {
             application_name,
             application_version,
             enabled_extensions,
@@ -354,7 +252,8 @@ impl InstanceBuilder {
             engine_version,
             function_pointers,
             max_api_version,
-        } = self;
+            _ne: _,
+        } = create_info;
 
         let function_pointers = if let Some(function_pointers) = function_pointers {
             OwnedOrRef::Owned(function_pointers)
@@ -375,6 +274,9 @@ impl InstanceBuilder {
             (std::cmp::min(max_api_version, api_version), max_api_version)
         };
 
+        // VUID-VkApplicationInfo-apiVersion-04010
+        assert!(max_api_version >= Version::V1_0);
+
         // Check if the extensions are correct
         enabled_extensions.check_requirements(
             &InstanceExtensions::supported_by_core_with_loader(&function_pointers)?,
@@ -382,26 +284,32 @@ impl InstanceBuilder {
         )?;
 
         // FIXME: check whether each layer is supported
-        let enabled_layers_ptrs = enabled_layers
+        let enabled_layers_cstr: Vec<CString> = enabled_layers
+            .iter()
+            .map(|name| CString::new(name.clone()).unwrap())
+            .collect();
+        let enabled_layers_ptrs = enabled_layers_cstr
             .iter()
             .map(|layer| layer.as_ptr())
             .collect::<SmallVec<[_; 2]>>();
 
-        let enabled_extensions_list = Vec::<CString>::from(&enabled_extensions);
-        let enabled_extensions_ptrs = enabled_extensions_list
+        let enabled_extensions_cstr: Vec<CString> = (&enabled_extensions).into();
+        let enabled_extensions_ptrs = enabled_extensions_cstr
             .iter()
             .map(|extension| extension.as_ptr())
             .collect::<SmallVec<[_; 2]>>();
 
+        let application_name_cstr = application_name.map(|name| CString::new(name).unwrap());
+        let engine_name_cstr = engine_name.map(|name| CString::new(name).unwrap());
         let application_info = ash::vk::ApplicationInfo {
-            p_application_name: application_name
+            p_application_name: application_name_cstr
                 .as_ref()
                 .map(|s| s.as_ptr())
                 .unwrap_or(ptr::null()),
             application_version: application_version
                 .try_into()
                 .expect("Version out of range"),
-            p_engine_name: engine_name
+            p_engine_name: engine_name_cstr
                 .as_ref()
                 .map(|s| s.as_ptr())
                 .unwrap_or(ptr::null()),
@@ -456,118 +364,112 @@ impl InstanceBuilder {
         Ok(Arc::new(instance))
     }
 
-    /// Sets the `application_name` and `application_version` from information in your
-    /// crate's Cargo.toml file.
+    /// Returns the Vulkan version supported by the instance.
     ///
-    /// # Panics
-    ///
-    /// - Panics if the required environment variables are missing, which happens if the project
-    ///   wasn't built by Cargo.
+    /// This is the lower of the
+    /// [driver's supported version](crate::instance::loader::FunctionPointers::api_version) and
+    /// [`max_api_version`](Instance::max_api_version).
     #[inline]
-    pub fn application_from_cargo_toml(mut self) -> Self {
-        self.application_name = Some(CString::new(env!("CARGO_PKG_NAME")).unwrap());
-        self.application_version = Version {
-            major: env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap(),
-            minor: env!("CARGO_PKG_VERSION_MINOR").parse().unwrap(),
-            patch: env!("CARGO_PKG_VERSION_PATCH").parse().unwrap(),
-        };
-        self
+    pub fn api_version(&self) -> Version {
+        self.api_version
     }
 
+    /// Returns the maximum Vulkan version that was specified when creating the instance.
+    #[inline]
+    pub fn max_api_version(&self) -> Version {
+        self.max_api_version
+    }
+
+    /// Grants access to the Vulkan functions of the instance.
+    #[inline]
+    pub fn fns(&self) -> &InstanceFunctions {
+        &self.fns
+    }
+
+    /// Returns the extensions that have been enabled on the instance.
+    #[inline]
+    pub fn enabled_extensions(&self) -> &InstanceExtensions {
+        &self.enabled_extensions
+    }
+
+    /// Returns the layers that have been enabled on the instance.
+    #[inline]
+    pub fn enabled_layers(&self) -> &[String] {
+        &self.enabled_layers
+    }
+}
+
+impl Drop for Instance {
+    #[inline]
+    fn drop(&mut self) {
+        unsafe {
+            self.fns.v1_0.destroy_instance(self.handle, ptr::null());
+        }
+    }
+}
+
+unsafe impl VulkanObject for Instance {
+    type Object = ash::vk::Instance;
+
+    #[inline]
+    fn internal_object(&self) -> ash::vk::Instance {
+        self.handle
+    }
+}
+
+impl PartialEq for Instance {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.handle == other.handle
+    }
+}
+
+impl Eq for Instance {}
+
+impl Hash for Instance {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.handle.hash(state);
+    }
+}
+
+/// Parameters to create a new `Instance`.
+#[derive(Debug)]
+pub struct InstanceCreateInfo {
     /// A string of your choice stating the name of your application.
     ///
-    /// # Panics
-    ///
-    /// - Panics if `name` contains a NUL character.
-    #[inline]
-    pub fn application_name(mut self, name: impl Into<Vec<u8>>) -> Self {
-        self.application_name = Some(CString::new(name).unwrap());
-        self
-    }
+    /// The default value is `None`.
+    pub application_name: Option<String>,
 
     /// A version number of your choice specifying the version of your application.
     ///
     /// The default value is zero.
+    pub application_version: Version,
+
+    /// The extensions to enable on the instance.
     ///
-    /// # Panics
+    /// The default value is [`InstanceExtensions::none()`].
+    pub enabled_extensions: InstanceExtensions,
+
+    /// The layers to enable on the instance.
     ///
-    /// - Panics if `version` contains a field too large to be converted into a Vulkan version
-    ///   number.
-    #[inline]
-    pub fn application_version(mut self, version: Version) -> Self {
-        assert!(u32::try_from(version).is_ok());
-        self.application_version = version;
-        self
-    }
+    /// The default value is empty.
+    pub enabled_layers: Vec<String>,
 
     /// A string of your choice stating the name of the engine used to power the application.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if `name` contains a NUL character.
-    #[inline]
-    pub fn engine_name(mut self, name: impl Into<Vec<u8>>) -> Self {
-        self.engine_name = Some(CString::new(name).unwrap());
-        self
-    }
+    pub engine_name: Option<String>,
 
     /// A version number of your choice specifying the version of the engine used to power the
     /// application.
     ///
     /// The default value is zero.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if `version` contains a field too large to be converted into a Vulkan version
-    ///   number.
-    #[inline]
-    pub fn engine_version(mut self, version: Version) -> Self {
-        assert!(u32::try_from(version).is_ok());
-        self.engine_version = version;
-        self
-    }
-
-    /// The extensions to enable on the instance.
-    ///
-    /// The default value is [`InstanceExtensions::none()`].
-    #[inline]
-    pub fn enabled_extensions(mut self, extensions: InstanceExtensions) -> Self {
-        self.enabled_extensions = extensions;
-        self
-    }
-
-    /// The layers to enable on the instance.
-    ///
-    /// The default value is empty.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if an element of `layers` contains a NUL character.
-    #[inline]
-    pub fn enabled_layers<L>(mut self, layers: L) -> Self
-    where
-        L: IntoIterator,
-        L::Item: Into<Vec<u8>>,
-    {
-        self.enabled_layers = layers
-            .into_iter()
-            .map(|layer| CString::new(layer).unwrap())
-            .collect();
-        self
-    }
+    pub engine_version: Version,
 
     /// Function pointers loaded from a custom loader.
     ///
     /// You can use this if you want to load the Vulkan API explicitly, rather than using Vulkano's
     /// default.
-    #[inline]
-    pub fn function_pointers(
-        mut self,
-        function_pointers: FunctionPointers<Box<dyn Loader + Send + Sync>>,
-    ) -> Self {
-        self.function_pointers = Some(function_pointers);
-        self
-    }
+    pub function_pointers: Option<FunctionPointers<Box<dyn Loader>>>,
 
     /// The highest Vulkan API version that the application will use with the instance.
     ///
@@ -575,31 +477,46 @@ impl InstanceBuilder {
     ///
     /// The default value is the highest version currently supported by Vulkano, but if the
     /// supported instance version is 1.0, then it will be 1.0.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if `version` is not at least `V1_0`.
+    pub max_api_version: Option<Version>,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for InstanceCreateInfo {
     #[inline]
-    pub fn max_api_version(mut self, version: Version) -> Self {
-        assert!(version >= Version::V1_0);
-        self.max_api_version = Some(version);
-        self
+    fn default() -> Self {
+        Self {
+            application_name: None,
+            application_version: Version::major_minor(0, 0),
+            enabled_extensions: InstanceExtensions::none(),
+            enabled_layers: Vec::new(),
+            engine_name: None,
+            engine_version: Version::major_minor(0, 0),
+            function_pointers: None,
+            max_api_version: None,
+            _ne: crate::NonExhaustive(()),
+        }
     }
 }
 
-// Same as Cow but less annoying.
-enum OwnedOrRef<T: 'static> {
-    Owned(T),
-    Ref(&'static T),
-}
-
-impl<T> Deref for OwnedOrRef<T> {
-    type Target = T;
+impl InstanceCreateInfo {
+    /// Returns an `InstanceCreateInfo` with the `application_name` and `application_version` set
+    /// from information in your crate's Cargo.toml file.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the required environment variables are missing, which happens if the project
+    ///   wasn't built by Cargo.
     #[inline]
-    fn deref(&self) -> &T {
-        match *self {
-            OwnedOrRef::Owned(ref v) => v,
-            OwnedOrRef::Ref(v) => v,
+    pub fn application_from_cargo_toml() -> Self {
+        Self {
+            application_name: Some(env!("CARGO_PKG_NAME").to_owned()),
+            application_version: Version {
+                major: env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap(),
+                minor: env!("CARGO_PKG_VERSION_MINOR").parse().unwrap(),
+                patch: env!("CARGO_PKG_VERSION_PATCH").parse().unwrap(),
+            },
+            ..Default::default()
         }
     }
 }
@@ -683,6 +600,24 @@ impl From<Error> for InstanceCreationError {
             Error::ExtensionNotPresent => InstanceCreationError::ExtensionNotPresent,
             Error::IncompatibleDriver => InstanceCreationError::IncompatibleDriver,
             _ => panic!("unexpected error: {:?}", err),
+        }
+    }
+}
+
+// Same as Cow but less annoying.
+#[derive(Debug)]
+enum OwnedOrRef<T: 'static> {
+    Owned(T),
+    Ref(&'static T),
+}
+
+impl<T> Deref for OwnedOrRef<T> {
+    type Target = T;
+    #[inline]
+    fn deref(&self) -> &T {
+        match *self {
+            OwnedOrRef::Owned(ref v) => v,
+            OwnedOrRef::Ref(v) => v,
         }
     }
 }

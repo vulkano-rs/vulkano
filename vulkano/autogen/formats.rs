@@ -247,6 +247,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
         #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
         #[repr(i32)]
         #[allow(non_camel_case_types)]
+        #[non_exhaustive]
         pub enum Format {
             #(#enum_items)*
         }

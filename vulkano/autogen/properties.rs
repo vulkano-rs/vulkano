@@ -108,12 +108,14 @@ fn properties_output(members: &[PropertiesMember]) -> TokenStream {
         #[derive(Clone, Debug, Default)]
         pub struct Properties {
             #(#struct_items)*
+            pub _ne: crate::NonExhaustive,
         }
 
         impl From<&PropertiesFfi> for Properties {
             fn from(properties_ffi: &PropertiesFfi) -> Self {
                 Properties {
                     #(#from_items)*
+                    _ne: crate::NonExhaustive(()),
                 }
             }
         }

@@ -6,19 +6,22 @@
 // at your option. All files in the project carrying such
 // notice may not be copied, modified, or distributed except
 // according to those terms.
-use std::sync::Arc;
+use std::{
+    ffi::{CStr, CString},
+    sync::Arc,
+};
 
 #[cfg(target_os = "macos")]
 use vulkano::instance::InstanceCreationError;
 use vulkano::{
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
-        Device, DeviceExtensions, Features, Queue, QueueCreate,
+        Device, DeviceCreateInfo, DeviceExtensions, Features, Queue, QueueCreateInfo,
     },
     image::{view::ImageView, ImageUsage},
     instance::{
         debug::{DebugCallback, MessageSeverity, MessageType},
-        Instance, InstanceExtensions,
+        Instance, InstanceCreateInfo, InstanceExtensions,
     },
     swapchain::{
         ColorSpace, FullscreenExclusive, PresentMode, Surface, SurfaceTransform, Swapchain,
@@ -55,11 +58,10 @@ unsafe impl Send for VulkanoContext {}
 
 impl VulkanoContext {
     pub fn new(config: &VulkanoConfig) -> Self {
-        let instance = create_vk_instance(config.instance_extensions, &config.layers);
-        let is_debug = config
-            .layers
-            .contains(&"VK_LAYER_LUNARG_standard_validation")
-            || config.layers.contains(&"VK_LAYER_KHRONOS_validation");
+        let instance = create_vk_instance(config.instance_extensions, config.layers.clone());
+        let is_debug = config.layers.iter().any(|layer| {
+            layer == "VK_LAYER_LUNARG_standard_validation" || layer == "VK_LAYER_KHRONOS_validation"
+        });
         let debug_callback = create_vk_debug_callback(&instance, is_debug);
         // Get desired device
         let physical_device = PhysicalDevice::enumerate(&instance)
@@ -123,25 +125,39 @@ impl VulkanoContext {
 
         // If we can create a compute queue, do so. Else use same queue as graphics
         if let Some((_compute_index, queue_family_compute)) = compute_family_data {
-            let (device, mut queues) = Device::start()
-                .queues([
-                    QueueCreate::family(queue_family_graphics).queues([1.0]),
-                    QueueCreate::family(queue_family_compute).queues([0.5]),
-                ])
-                .enabled_extensions(physical.required_extensions().union(&device_extensions))
-                .enabled_features(features)
-                .build(physical)
-                .unwrap();
+            let (device, mut queues) = Device::new(
+                physical,
+                DeviceCreateInfo {
+                    enabled_extensions: physical.required_extensions().union(&device_extensions),
+                    enabled_features: features,
+                    queue_create_infos: vec![
+                        QueueCreateInfo {
+                            queues: vec![1.0],
+                            ..QueueCreateInfo::family(queue_family_graphics)
+                        },
+                        QueueCreateInfo {
+                            queues: vec![0.5],
+                            ..QueueCreateInfo::family(queue_family_compute)
+                        },
+                    ],
+                    ..Default::default()
+                },
+            )
+            .unwrap();
             let gfx_queue = queues.next().unwrap();
             let compute_queue = queues.next().unwrap();
             (device, gfx_queue, compute_queue)
         } else {
-            let (device, mut queues) = Device::start()
-                .queues([QueueCreate::family(queue_family_graphics)])
-                .enabled_extensions(physical.required_extensions().union(&device_extensions))
-                .enabled_features(features)
-                .build(physical)
-                .unwrap();
+            let (device, mut queues) = Device::new(
+                physical,
+                DeviceCreateInfo {
+                    enabled_extensions: physical.required_extensions().union(&device_extensions),
+                    enabled_features: features,
+                    queue_create_infos: vec![QueueCreateInfo::family(queue_family_graphics)],
+                    ..Default::default()
+                },
+            )
+            .unwrap();
             let gfx_queue = queues.next().unwrap();
             let compute_queue = gfx_queue.clone();
             (device, gfx_queue, compute_queue)
@@ -217,13 +233,14 @@ impl VulkanoContext {
 // Create vk instance with given layers
 pub fn create_vk_instance(
     instance_extensions: InstanceExtensions,
-    layers: &[&str],
+    layers: Vec<String>,
 ) -> Arc<Instance> {
     // Create instance.
-    let result = Instance::start()
-        .enabled_extensions(instance_extensions)
-        .enabled_layers(layers.to_vec())
-        .build();
+    let result = Instance::new(InstanceCreateInfo {
+        enabled_extensions: instance_extensions,
+        enabled_layers: layers,
+        ..Default::default()
+    });
 
     // Handle errors. On mac os, it will ask you to install vulkan sdk if you have not done so.
     #[cfg(target_os = "macos")]

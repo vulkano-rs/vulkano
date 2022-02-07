@@ -38,6 +38,7 @@ use crate::VulkanObject;
 /// Will use one Vulkan pool per thread in order to avoid locking. Will try to reuse command
 /// buffers. Command buffers can't be moved between threads during the building process, but
 /// finished command buffers can.
+#[derive(Debug)]
 pub struct StandardCommandPool {
     // The device.
     device: Arc<Device>,
@@ -52,6 +53,7 @@ pub struct StandardCommandPool {
 unsafe impl Send for StandardCommandPool {}
 unsafe impl Sync for StandardCommandPool {}
 
+#[derive(Debug)]
 struct StandardCommandPoolPerThread {
     // The Vulkan pool of this thread.
     pool: Mutex<UnsafeCommandPool>,

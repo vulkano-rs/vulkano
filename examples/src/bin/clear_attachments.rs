@@ -10,11 +10,11 @@
 use std::sync::Arc;
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{Device, DeviceExtensions, QueueCreate};
+use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
 use vulkano::format::ClearValue;
 use vulkano::image::attachment::{ClearAttachment, ClearRect};
 use vulkano::image::{view::ImageView, ImageUsage, SwapchainImage};
-use vulkano::instance::Instance;
+use vulkano::instance::{Instance, InstanceCreateInfo};
 use vulkano::pipeline::graphics::viewport::ViewportState;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
@@ -30,10 +30,11 @@ fn main() {
     // `triangle` example if you haven't done so yet.
 
     let required_extensions = vulkano_win::required_extensions();
-    let instance = Instance::start()
-        .enabled_extensions(required_extensions)
-        .build()
-        .unwrap();
+    let instance = Instance::new(InstanceCreateInfo {
+        enabled_extensions: required_extensions,
+        ..Default::default()
+    })
+    .unwrap();
 
     let event_loop = EventLoop::new();
     let surface = WindowBuilder::new()
@@ -66,15 +67,17 @@ fn main() {
         physical_device.properties().device_type,
     );
 
-    let (device, mut queues) = Device::start()
-        .queues([QueueCreate::family(queue_family)])
-        .enabled_extensions(
-            physical_device
+    let (device, mut queues) = Device::new(
+        physical_device,
+        DeviceCreateInfo {
+            enabled_extensions: physical_device
                 .required_extensions()
                 .union(&device_extensions),
-        )
-        .build(physical_device)
-        .unwrap();
+            queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+            ..Default::default()
+        },
+    )
+    .unwrap();
     let queue = queues.next().unwrap();
 
     let (mut swapchain, images) = {

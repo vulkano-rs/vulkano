@@ -17,7 +17,7 @@ use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{Device, DeviceExtensions, QueueCreate};
+use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
 use vulkano::instance::Instance;
 use vulkano::pipeline::{ComputePipeline, Pipeline, PipelineBindPoint};
 use vulkano::sync;
@@ -25,7 +25,7 @@ use vulkano::sync::GpuFuture;
 
 fn main() {
     // As with other examples, the first step is to create an instance.
-    let instance = Instance::start().build().unwrap();
+    let instance = Instance::new(Default::default()).unwrap();
 
     // Choose which physical device to use.
     let device_extensions = DeviceExtensions {
@@ -57,15 +57,17 @@ fn main() {
     );
 
     // Now initializing the device.
-    let (device, mut queues) = Device::start()
-        .queues([QueueCreate::family(queue_family)])
-        .enabled_extensions(
-            physical_device
+    let (device, mut queues) = Device::new(
+        physical_device,
+        DeviceCreateInfo {
+            enabled_extensions: physical_device
                 .required_extensions()
                 .union(&device_extensions),
-        )
-        .build(physical_device)
-        .unwrap();
+            queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+            ..Default::default()
+        },
+    )
+    .unwrap();
 
     // Since we can request multiple queues, the `queues` variable is in fact an iterator. In this
     // example we use only one queue, so we just retrieve the first and only element of the

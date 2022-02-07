@@ -14,7 +14,7 @@ macro_rules! instance {
     () => {{
         use crate::instance::Instance;
 
-        match Instance::start().build() {
+        match Instance::new(Default::default()) {
             Ok(i) => i,
             Err(_) => return,
         }
@@ -25,7 +25,7 @@ macro_rules! instance {
 macro_rules! gfx_dev_and_queue {
     ($($feature:ident),*) => ({
         use crate::device::physical::PhysicalDevice;
-        use crate::device::{Device, DeviceExtensions, QueueCreate};
+        use crate::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
         use crate::device::Features;
 
         let instance = instance!();
@@ -54,12 +54,15 @@ macro_rules! gfx_dev_and_queue {
             return;
         }
 
-        let (device, mut queues) = match Device::start()
-            .queues([QueueCreate::family(queue_family)])
-            .enabled_extensions(extensions)
-            .enabled_features(features)
-            .build(physical)
-        {
+        let (device, mut queues) = match Device::new(
+            physical,
+            DeviceCreateInfo {
+                queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+                enabled_extensions: extensions,
+                enabled_features: features,
+                ..Default::default()
+            }
+        ) {
             Ok(r) => r,
             Err(_) => return
         };

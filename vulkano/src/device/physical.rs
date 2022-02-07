@@ -288,7 +288,7 @@ fn init_info2(instance: &Instance, info: &mut PhysicalDeviceInfo) {
 /// # use vulkano::Version;
 /// use vulkano::device::physical::PhysicalDevice;
 ///
-/// # let instance = Instance::start().build().unwrap();
+/// # let instance = Instance::new(Default::default()).unwrap();
 /// for physical_device in PhysicalDevice::enumerate(&instance) {
 ///     print_infos(physical_device);
 /// }
@@ -315,7 +315,7 @@ impl<'a> PhysicalDevice<'a> {
     /// # use vulkano::Version;
     /// use vulkano::device::physical::PhysicalDevice;
     ///
-    /// # let instance = Instance::start().build().unwrap();
+    /// # let instance = Instance::new(Default::default()).unwrap();
     /// for physical_device in PhysicalDevice::enumerate(&instance) {
     ///     println!("Available device: {}", physical_device.properties().device_name);
     /// }
@@ -347,7 +347,7 @@ impl<'a> PhysicalDevice<'a> {
     /// use vulkano::device::physical::PhysicalDevice;
     /// use vulkano::Version;
     ///
-    /// let instance = Instance::start().build().unwrap();
+    /// let instance = Instance::new(Default::default()).unwrap();
     /// let first_physical_device = PhysicalDevice::from_index(&instance, 0).unwrap();
     /// ```
     #[inline]
@@ -470,6 +470,7 @@ impl<'a> PhysicalDevice<'a> {
                 linear_tiling_features: format_properties3.linear_tiling_features.into(),
                 optimal_tiling_features: format_properties3.optimal_tiling_features.into(),
                 buffer_features: format_properties3.buffer_features.into(),
+                _ne: crate::NonExhaustive(()),
             },
             None => FormatProperties {
                 linear_tiling_features: format_properties2
@@ -481,6 +482,7 @@ impl<'a> PhysicalDevice<'a> {
                     .optimal_tiling_features
                     .into(),
                 buffer_features: format_properties2.format_properties.buffer_features.into(),
+                _ne: crate::NonExhaustive(()),
             },
         }
     }
@@ -1054,6 +1056,8 @@ pub struct SubgroupFeatures {
     pub clustered: bool,
     pub quad: bool,
     pub partitioned: bool,
+
+    pub _ne: crate::NonExhaustive,
 }
 
 impl From<ash::vk::SubgroupFeatureFlags> for SubgroupFeatures {
@@ -1069,6 +1073,8 @@ impl From<ash::vk::SubgroupFeatureFlags> for SubgroupFeatures {
             clustered: val.intersects(ash::vk::SubgroupFeatureFlags::CLUSTERED),
             quad: val.intersects(ash::vk::SubgroupFeatureFlags::QUAD),
             partitioned: val.intersects(ash::vk::SubgroupFeatureFlags::PARTITIONED_NV),
+
+            _ne: crate::NonExhaustive(()),
         }
     }
 }
@@ -1142,6 +1148,8 @@ pub struct FormatProperties {
 
     /// Features available for buffers.
     pub buffer_features: FormatFeatures,
+
+    pub _ne: crate::NonExhaustive,
 }
 
 /// The features supported by a device for an image or buffer with a particular format.
@@ -1240,6 +1248,8 @@ pub struct FormatFeatures {
     pub vertex_buffer: bool,
     /// Can be used with the vertex buffer of an acceleration structure.
     pub acceleration_structure_vertex_buffer: bool,
+
+    pub _ne: crate::NonExhaustive,
 }
 
 impl BitOr for &FormatFeatures {
@@ -1302,6 +1312,8 @@ impl BitOr for &FormatFeatures {
             vertex_buffer: self.vertex_buffer || rhs.vertex_buffer,
             acceleration_structure_vertex_buffer: self.acceleration_structure_vertex_buffer
                 || rhs.acceleration_structure_vertex_buffer,
+
+            _ne: crate::NonExhaustive(()),
         }
     }
 }
@@ -1349,6 +1361,8 @@ impl From<ash::vk::FormatFeatureFlags> for FormatFeatures {
             storage_texel_buffer_atomic: val.intersects(ash::vk::FormatFeatureFlags::STORAGE_TEXEL_BUFFER_ATOMIC),
             vertex_buffer: val.intersects(ash::vk::FormatFeatureFlags::VERTEX_BUFFER),
             acceleration_structure_vertex_buffer: val.intersects(ash::vk::FormatFeatureFlags::ACCELERATION_STRUCTURE_VERTEX_BUFFER_KHR),
+
+            _ne: crate::NonExhaustive(()),
         }
     }
 }
@@ -1396,6 +1410,8 @@ impl From<ash::vk::FormatFeatureFlags2KHR> for FormatFeatures {
             storage_texel_buffer_atomic: val.intersects(ash::vk::FormatFeatureFlags2KHR::STORAGE_TEXEL_BUFFER_ATOMIC),
             vertex_buffer: val.intersects(ash::vk::FormatFeatureFlags2KHR::VERTEX_BUFFER),
             acceleration_structure_vertex_buffer: val.intersects(ash::vk::FormatFeatureFlags2KHR::ACCELERATION_STRUCTURE_VERTEX_BUFFER),
+
+            _ne: crate::NonExhaustive(()),
         }
     }
 }
@@ -1405,23 +1421,30 @@ impl From<ash::vk::FormatFeatureFlags2KHR> for FormatFeatures {
 pub struct ImageFormatProperties {
     /// The maximum dimensions.
     pub max_extent: [u32; 3],
+
     /// The maximum number of mipmap levels.
     pub max_mip_levels: u32,
+
     /// The maximum number of array layers.
     pub max_array_layers: u32,
+
     /// The supported sample counts.
     pub sample_counts: SampleCounts,
+
     /// The maximum total size of an image, in bytes. This is guaranteed to be at least
     /// 0x80000000.
     pub max_resource_size: DeviceSize,
     /// When querying with an image view type, whether such image views support sampling with
     /// a [`Cubic`](crate::sampler::Filter::Cubic) `mag_filter` or `min_filter`.
     pub filter_cubic: bool,
+
     /// When querying with an image view type, whether such image views support sampling with
     /// a [`Cubic`](crate::sampler::Filter::Cubic) `mag_filter` or `min_filter`, and with a
     /// [`Min`](crate::sampler::SamplerReductionMode::Min) or
     /// [`Max`](crate::sampler::SamplerReductionMode::Max) `reduction_mode`.
     pub filter_cubic_minmax: bool,
+
+    pub _ne: crate::NonExhaustive,
 }
 
 impl From<ash::vk::ImageFormatProperties> for ImageFormatProperties {
@@ -1438,6 +1461,8 @@ impl From<ash::vk::ImageFormatProperties> for ImageFormatProperties {
             max_resource_size: props.max_resource_size,
             filter_cubic: false,
             filter_cubic_minmax: false,
+
+            _ne: crate::NonExhaustive(()),
         }
     }
 }

@@ -281,6 +281,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
         #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
         pub struct Features {
             #(#struct_items)*
+            pub _ne: crate::NonExhaustive,
         }
 
         impl Features {
@@ -299,6 +300,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             pub const fn none() -> Features {
                 Features {
                     #(#none_items)*
+                    _ne: crate::NonExhaustive(()),
                 }
             }
 
@@ -309,6 +311,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             pub const fn all() -> Features {
                 Features {
                     #(#all_items)*
+                    _ne: crate::NonExhaustive(()),
                 }
             }
 
@@ -327,6 +330,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             pub const fn intersection(&self, other: &Features) -> Features {
                 Features {
                     #(#intersection_items)*
+                    _ne: crate::NonExhaustive(()),
                 }
             }
 
@@ -336,6 +340,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             pub const fn difference(&self, other: &Features) -> Features {
                 Features {
                     #(#difference_items)*
+                    _ne: crate::NonExhaustive(()),
                 }
             }
         }
@@ -350,6 +355,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             fn from(features_ffi: &FeaturesFfi) -> Self {
                 Features {
                     #(#from_items)*
+                    _ne: crate::NonExhaustive(()),
                 }
             }
         }

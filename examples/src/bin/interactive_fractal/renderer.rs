@@ -14,14 +14,16 @@ use vulkano_win::VkSurfaceBuild;
 use std::collections::HashMap;
 use std::sync::Arc;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{Device, DeviceExtensions, Features, Queue, QueueCreate};
+use vulkano::device::{
+    Device, DeviceCreateInfo, DeviceExtensions, Features, Queue, QueueCreateInfo,
+};
 use vulkano::format::Format;
 use vulkano::image::view::ImageView;
 use vulkano::image::{
     AttachmentImage, ImageAccess, ImageUsage, ImageViewAbstract, SampleCount, SwapchainImage,
 };
-use vulkano::instance::Instance;
 use vulkano::instance::InstanceExtensions;
+use vulkano::instance::{Instance, InstanceCreateInfo};
 use vulkano::swapchain::{
     AcquireError, ColorSpace, FullscreenExclusive, PresentMode, Surface, SurfaceTransform,
     Swapchain, SwapchainCreationError,
@@ -86,10 +88,11 @@ impl Renderer {
             ..vulkano_win::required_extensions()
         };
         // Create instance
-        let instance = Instance::start()
-            .enabled_extensions(instance_extensions)
-            .build()
-            .expect("Failed to create instance");
+        let instance = Instance::new(InstanceCreateInfo {
+            enabled_extensions: instance_extensions,
+            ..Default::default()
+        })
+        .expect("Failed to create instance");
 
         // Get desired device
         let physical_device = PhysicalDevice::enumerate(&instance)
@@ -153,10 +156,10 @@ impl Renderer {
 
     /// Creates vulkan device with required queue families and required extensions
     fn create_device(
-        physical: PhysicalDevice,
+        physical_device: PhysicalDevice,
         surface: Arc<Surface<Window>>,
     ) -> (Arc<Device>, Arc<Queue>) {
-        let queue_family = physical
+        let queue_family = physical_device
             .queue_families()
             .find(|&q| q.supports_graphics() && surface.is_supported(q).unwrap_or(false))
             .unwrap();
@@ -172,12 +175,18 @@ impl Renderer {
             fill_mode_non_solid: true,
             ..Features::none()
         };
-        let (device, mut queues) = Device::start()
-            .queues([QueueCreate::family(queue_family)])
-            .enabled_extensions(physical.required_extensions().union(&device_extensions))
-            .enabled_features(features)
-            .build(physical)
-            .unwrap();
+        let (device, mut queues) = Device::new(
+            physical_device,
+            DeviceCreateInfo {
+                enabled_extensions: physical_device
+                    .required_extensions()
+                    .union(&device_extensions),
+                enabled_features: features,
+                queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+                ..Default::default()
+            },
+        )
+        .unwrap();
         (device, queues.next().unwrap())
     }
 
