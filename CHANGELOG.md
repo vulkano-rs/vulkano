@@ -10,6 +10,8 @@
 - Fixed sync bug in `copy_image` and `blit_image` where the `src` and `dest` images are the same but with different mip level and/or array layer.
 - Fixed bug in `begin_render_pass` causing a panic when clearing a depth-only attachment.
 - Fixed bug in the `QueueFamily::supports_` methods causing a panic when querying support for a stage that needs no queue flags.
+- Fixed buffer overflow bug in `AutoCommandBufferBuilder::push_constants`.
+- Fixed `AutoCommandBufferBuilder::push_constants` to push multiple times in case of range overlap (to accommodate VUIDs 01795 and 01796) 
 
 # Version 0.28.0 (2022-02-02)
 
