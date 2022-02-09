@@ -95,7 +95,7 @@ pub struct PipelineLayout {
     device: Arc<Device>,
     descriptor_set_layouts: SmallVec<[Arc<DescriptorSetLayout>; 4]>,
     push_constant_ranges: SmallVec<[PipelineLayoutPcRange; 5]>,
-    overlapping_push_constant_ranges: SmallVec<[PipelineLayoutPcRange; 5]>,
+    push_constant_ranges_disjoint: SmallVec<[PipelineLayoutPcRange; 5]>,
 }
 
 impl PipelineLayout {
@@ -149,7 +149,7 @@ impl PipelineLayout {
             )
         });
 
-        let mut overlapping_push_constant_ranges: SmallVec<[PipelineLayoutPcRange; 5]> =
+        let mut push_constant_ranges_disjoint: SmallVec<[PipelineLayoutPcRange; 5]> =
             SmallVec::new();
 
         if !push_constant_ranges.is_empty() {
@@ -175,7 +175,7 @@ impl PipelineLayout {
                     break;
                 }
 
-                overlapping_push_constant_ranges.push(PipelineLayoutPcRange {
+                push_constant_ranges_disjoint.push(PipelineLayoutPcRange {
                     offset: min_offset,
                     size: max_offset - min_offset,
                     stages,
@@ -267,7 +267,7 @@ impl PipelineLayout {
             device: device.clone(),
             descriptor_set_layouts,
             push_constant_ranges,
-            overlapping_push_constant_ranges,
+            push_constant_ranges_disjoint,
         }))
     }
 
@@ -286,7 +286,7 @@ impl PipelineLayout {
         &self.push_constant_ranges
     }
 
-    /// Returns a slice containing the push constant ranges in with all overlapping stages.
+    /// Returns a slice containing the push constant ranges in with all disjoint stages.
     ///
     /// For example, if we have these `push_constant_ranges`:
     /// - `offset=0, size=4, stages=vertex`
@@ -295,9 +295,12 @@ impl PipelineLayout {
     /// The returned value will be:
     /// - `offset=0, size=4, stages=vertex|fragment`
     /// - `offset=4, size=8, stages=fragment`
+    ///
+    /// The ranges are guaranteed to be sorted deterministically by offset, and
+    /// guaranteed to be disjoint, meaning that there is no overlap between the ranges.
     #[inline]
-    pub(crate) fn overlapping_push_constant_ranges(&self) -> &[PipelineLayoutPcRange] {
-        &self.overlapping_push_constant_ranges
+    pub(crate) fn push_constant_ranges_disjoint(&self) -> &[PipelineLayoutPcRange] {
+        &self.push_constant_ranges_disjoint
     }
 
     /// Returns whether `self` is compatible with `other` for the given number of sets.
@@ -1083,7 +1086,7 @@ mod tests {
     use super::PipelineLayout;
 
     #[test]
-    fn overlapping_push_constant_ranges() {
+    fn push_constant_ranges_disjoint() {
         let test_cases = [
             // input:
             // - `0..12`, stage=fragment
@@ -1298,7 +1301,7 @@ mod tests {
         for (input, expected) in test_cases {
             let layout = PipelineLayout::new(device.clone(), [], input.iter().cloned()).unwrap();
 
-            assert_eq!(layout.overlapping_push_constant_ranges.as_slice(), expected);
+            assert_eq!(layout.push_constant_ranges_disjoint.as_slice(), expected);
         }
     }
 }

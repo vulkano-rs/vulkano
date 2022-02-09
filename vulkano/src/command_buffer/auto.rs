@@ -1848,7 +1848,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         let mut current_offset = offset;
         let mut remaining_size = size;
         for range in pipeline_layout
-            .overlapping_push_constant_ranges()
+            .push_constant_ranges_disjoint()
             .iter()
             .skip_while(|range| range.offset + range.size <= offset)
         {
