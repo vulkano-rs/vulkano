@@ -923,13 +923,17 @@ impl<'a> QueueFamily<'a> {
     /// Returns `true` if queues of this family can execute graphics operations.
     #[inline]
     pub fn supports_graphics(&self) -> bool {
-        !(self.properties.queue_flags & ash::vk::QueueFlags::GRAPHICS).is_empty()
+        self.properties
+            .queue_flags
+            .contains(ash::vk::QueueFlags::GRAPHICS)
     }
 
     /// Returns `true` if queues of this family can execute compute operations.
     #[inline]
     pub fn supports_compute(&self) -> bool {
-        !(self.properties.queue_flags & ash::vk::QueueFlags::COMPUTE).is_empty()
+        self.properties
+            .queue_flags
+            .contains(ash::vk::QueueFlags::COMPUTE)
     }
 
     /// Returns `true` if queues of this family can execute transfer operations.
@@ -939,19 +943,25 @@ impl<'a> QueueFamily<'a> {
     /// > to indicate a special relationship with the DMA module and more efficient transfers.
     #[inline]
     pub fn explicitly_supports_transfers(&self) -> bool {
-        !(self.properties.queue_flags & ash::vk::QueueFlags::TRANSFER).is_empty()
+        self.properties
+            .queue_flags
+            .contains(ash::vk::QueueFlags::TRANSFER)
     }
 
     /// Returns `true` if queues of this family can execute sparse resources binding operations.
     #[inline]
     pub fn supports_sparse_binding(&self) -> bool {
-        !(self.properties.queue_flags & ash::vk::QueueFlags::SPARSE_BINDING).is_empty()
+        self.properties
+            .queue_flags
+            .contains(ash::vk::QueueFlags::SPARSE_BINDING)
     }
 
     /// Returns `true` if the queues of this family support a particular pipeline stage.
     #[inline]
     pub fn supports_stage(&self, stage: PipelineStage) -> bool {
-        !(self.properties.queue_flags & stage.required_queue_flags()).is_empty()
+        self.properties
+            .queue_flags
+            .contains(stage.required_queue_flags())
     }
 }
 
