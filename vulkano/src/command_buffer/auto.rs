@@ -3248,7 +3248,7 @@ where
                                     atch_i,
                                     clear_value,
                                 );
-                            } else if aspects.depth {
+                            } else if aspects.stencil {
                                 assert!(
                                     matches!(clear_value, ClearValue::Stencil(_)),
                                     "Bad ClearValue! index: {}, attachment index: {}, expected: Stencil, got: {:?}",
