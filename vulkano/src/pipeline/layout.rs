@@ -94,7 +94,8 @@ pub struct PipelineLayout {
     handle: ash::vk::PipelineLayout,
     device: Arc<Device>,
     descriptor_set_layouts: SmallVec<[Arc<DescriptorSetLayout>; 4]>,
-    push_constant_ranges: SmallVec<[PipelineLayoutPcRange; 4]>,
+    push_constant_ranges: SmallVec<[PipelineLayoutPcRange; 5]>,
+    push_constant_ranges_disjoint: SmallVec<[PipelineLayoutPcRange; 5]>,
 }
 
 impl PipelineLayout {
@@ -122,7 +123,7 @@ impl PipelineLayout {
             return Err(PipelineLayoutCreationError::MultiplePushDescriptor);
         }
 
-        let mut push_constant_ranges: SmallVec<[PipelineLayoutPcRange; 4]> =
+        let mut push_constant_ranges: SmallVec<[PipelineLayoutPcRange; 5]> =
             push_constant_ranges.into_iter().collect();
 
         // Check for overlapping stages
@@ -147,6 +148,42 @@ impl PipelineLayout {
                 ash::vk::ShaderStageFlags::from(range.stages),
             )
         });
+
+        let mut push_constant_ranges_disjoint: SmallVec<[PipelineLayoutPcRange; 5]> =
+            SmallVec::new();
+
+        if !push_constant_ranges.is_empty() {
+            let mut min_offset = push_constant_ranges[0].offset;
+            loop {
+                let mut max_offset = u32::MAX;
+                let mut stages = ShaderStages::none();
+
+                for range in &push_constant_ranges {
+                    // new start (begin next time from it)
+                    if range.offset > min_offset {
+                        max_offset = max_offset.min(range.offset);
+                        break;
+                    } else if range.offset + range.size > min_offset {
+                        // inside the range, include the stage
+                        // use the minimum of the end of all ranges that are overlapping
+                        max_offset = max_offset.min(range.offset + range.size);
+                        stages = stages | range.stages;
+                    }
+                }
+                // finished all stages
+                if stages == ShaderStages::none() {
+                    break;
+                }
+
+                push_constant_ranges_disjoint.push(PipelineLayoutPcRange {
+                    offset: min_offset,
+                    size: max_offset - min_offset,
+                    stages,
+                });
+                // prepare for next range
+                min_offset = max_offset;
+            }
+        }
 
         // Check against device limits
         check_desc_against_limits(
@@ -230,6 +267,7 @@ impl PipelineLayout {
             device: device.clone(),
             descriptor_set_layouts,
             push_constant_ranges,
+            push_constant_ranges_disjoint,
         }))
     }
 
@@ -246,6 +284,23 @@ impl PipelineLayout {
     #[inline]
     pub fn push_constant_ranges(&self) -> &[PipelineLayoutPcRange] {
         &self.push_constant_ranges
+    }
+
+    /// Returns a slice containing the push constant ranges in with all disjoint stages.
+    ///
+    /// For example, if we have these `push_constant_ranges`:
+    /// - `offset=0, size=4, stages=vertex`
+    /// - `offset=0, size=12, stages=fragment`
+    ///
+    /// The returned value will be:
+    /// - `offset=0, size=4, stages=vertex|fragment`
+    /// - `offset=4, size=8, stages=fragment`
+    ///
+    /// The ranges are guaranteed to be sorted deterministically by offset, and
+    /// guaranteed to be disjoint, meaning that there is no overlap between the ranges.
+    #[inline]
+    pub(crate) fn push_constant_ranges_disjoint(&self) -> &[PipelineLayoutPcRange] {
+        &self.push_constant_ranges_disjoint
     }
 
     /// Returns whether `self` is compatible with `other` for the given number of sets.
@@ -1020,6 +1075,234 @@ impl Counter {
             max = self.frag;
         }
         max
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use crate::{pipeline::layout::PipelineLayoutPcRange, shader::ShaderStages};
+
+    use super::PipelineLayout;
+
+    #[test]
+    fn push_constant_ranges_disjoint() {
+        let test_cases = [
+            // input:
+            // - `0..12`, stage=fragment
+            // - `0..40`, stage=vertex
+            //
+            // output:
+            // - `0..12`, stage=fragment|vertex
+            // - `12..40`, stage=vertex
+            (
+                &[
+                    PipelineLayoutPcRange {
+                        offset: 0,
+                        size: 12,
+                        stages: ShaderStages {
+                            fragment: true,
+                            ..Default::default()
+                        },
+                    },
+                    PipelineLayoutPcRange {
+                        offset: 0,
+                        size: 40,
+                        stages: ShaderStages {
+                            vertex: true,
+                            ..Default::default()
+                        },
+                    },
+                ][..],
+                &[
+                    PipelineLayoutPcRange {
+                        offset: 0,
+                        size: 12,
+                        stages: ShaderStages {
+                            vertex: true,
+                            fragment: true,
+                            ..Default::default()
+                        },
+                    },
+                    PipelineLayoutPcRange {
+                        offset: 12,
+                        size: 28,
+                        stages: ShaderStages {
+                            vertex: true,
+                            ..Default::default()
+                        },
+                    },
+                ][..],
+            ),
+            // input:
+            // - `0..12`, stage=fragment
+            // - `4..40`, stage=vertex
+            //
+            // output:
+            // - `0..4`, stage=fragment
+            // - `4..12`, stage=fragment|vertex
+            // - `12..40`, stage=vertex
+            (
+                &[
+                    PipelineLayoutPcRange {
+                        offset: 0,
+                        size: 12,
+                        stages: ShaderStages {
+                            fragment: true,
+                            ..Default::default()
+                        },
+                    },
+                    PipelineLayoutPcRange {
+                        offset: 4,
+                        size: 36,
+                        stages: ShaderStages {
+                            vertex: true,
+                            ..Default::default()
+                        },
+                    },
+                ][..],
+                &[
+                    PipelineLayoutPcRange {
+                        offset: 0,
+                        size: 4,
+                        stages: ShaderStages {
+                            fragment: true,
+                            ..Default::default()
+                        },
+                    },
+                    PipelineLayoutPcRange {
+                        offset: 4,
+                        size: 8,
+                        stages: ShaderStages {
+                            fragment: true,
+                            vertex: true,
+                            ..Default::default()
+                        },
+                    },
+                    PipelineLayoutPcRange {
+                        offset: 12,
+                        size: 28,
+                        stages: ShaderStages {
+                            vertex: true,
+                            ..Default::default()
+                        },
+                    },
+                ][..],
+            ),
+            // input:
+            // - `0..12`, stage=fragment
+            // - `8..20`, stage=compute
+            // - `4..16`, stage=vertex
+            // - `8..32`, stage=tess_ctl
+            //
+            // output:
+            // - `0..4`, stage=fragment
+            // - `4..8`, stage=fragment|vertex
+            // - `8..16`, stage=fragment|vertex|compute|tess_ctl
+            // - `16..20`, stage=compute|tess_ctl
+            // - `20..32` stage=tess_ctl
+            (
+                &[
+                    PipelineLayoutPcRange {
+                        offset: 0,
+                        size: 12,
+                        stages: ShaderStages {
+                            fragment: true,
+                            ..Default::default()
+                        },
+                    },
+                    PipelineLayoutPcRange {
+                        offset: 8,
+                        size: 12,
+                        stages: ShaderStages {
+                            compute: true,
+                            ..Default::default()
+                        },
+                    },
+                    PipelineLayoutPcRange {
+                        offset: 4,
+                        size: 12,
+                        stages: ShaderStages {
+                            vertex: true,
+                            ..Default::default()
+                        },
+                    },
+                    PipelineLayoutPcRange {
+                        offset: 8,
+                        size: 24,
+                        stages: ShaderStages {
+                            tessellation_control: true,
+                            ..Default::default()
+                        },
+                    },
+                ][..],
+                &[
+                    PipelineLayoutPcRange {
+                        offset: 0,
+                        size: 4,
+                        stages: ShaderStages {
+                            fragment: true,
+                            ..Default::default()
+                        },
+                    },
+                    PipelineLayoutPcRange {
+                        offset: 4,
+                        size: 4,
+                        stages: ShaderStages {
+                            fragment: true,
+                            vertex: true,
+                            ..Default::default()
+                        },
+                    },
+                    PipelineLayoutPcRange {
+                        offset: 8,
+                        size: 4,
+                        stages: ShaderStages {
+                            vertex: true,
+                            fragment: true,
+                            compute: true,
+                            tessellation_control: true,
+                            ..Default::default()
+                        },
+                    },
+                    PipelineLayoutPcRange {
+                        offset: 12,
+                        size: 4,
+                        stages: ShaderStages {
+                            vertex: true,
+                            compute: true,
+                            tessellation_control: true,
+                            ..Default::default()
+                        },
+                    },
+                    PipelineLayoutPcRange {
+                        offset: 16,
+                        size: 4,
+                        stages: ShaderStages {
+                            compute: true,
+                            tessellation_control: true,
+                            ..Default::default()
+                        },
+                    },
+                    PipelineLayoutPcRange {
+                        offset: 20,
+                        size: 12,
+                        stages: ShaderStages {
+                            tessellation_control: true,
+                            ..Default::default()
+                        },
+                    },
+                ][..],
+            ),
+        ];
+
+        let (device, _) = gfx_dev_and_queue!();
+
+        for (input, expected) in test_cases {
+            let layout = PipelineLayout::new(device.clone(), [], input.iter().cloned()).unwrap();
+
+            assert_eq!(layout.push_constant_ranges_disjoint.as_slice(), expected);
+        }
     }
 }
 
