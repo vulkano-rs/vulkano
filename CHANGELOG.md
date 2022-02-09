@@ -8,6 +8,7 @@
 -->
 
 - Fix sync bug in `copy_image` and `blit_image` where the `src` and `dest` images are the same but with different mip level and/or array layer.
+- Fix bug in `begin_render_pass` causing a panic when clearing a depth-only attachment.
 
 # Version 0.28.0 (2022-02-02)
 
