@@ -79,7 +79,6 @@ use crate::render_pass::Framebuffer;
 use crate::render_pass::LoadOp;
 use crate::render_pass::Subpass;
 use crate::sampler::Filter;
-use crate::shader::ShaderStages;
 use crate::sync::AccessCheckError;
 use crate::sync::AccessFlags;
 use crate::sync::GpuFuture;
@@ -1840,50 +1839,50 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the size of push_constants must be a multiple of 4"
         );
 
-        // Figure out which shader stages in the pipeline layout overlap this byte range.
-        // Also check that none of the bytes being set are outside all push constant ranges.
-        let shader_stages = pipeline_layout
-            .push_constant_ranges()
+        // SAFETY: `&push_constants` is a valid pointer, and the size of the struct is `size`,
+        //         thus, getting a slice of the whole struct is safe if its not modified.
+        let whole_data = unsafe {
+            slice::from_raw_parts(&push_constants as *const Pc as *const u8, size as usize)
+        };
+
+        let mut current_offset = offset;
+        let mut remaining_size = size;
+        for range in pipeline_layout
+            .overlapping_push_constant_ranges()
             .iter()
-            .filter(|range| range.offset < offset + size && offset < range.offset + range.size)
-            .try_fold(
-                (ShaderStages::none(), offset),
-                |(shader_stages, last_bound), range| {
-                    if range.offset > last_bound {
-                        Err(())
-                    } else {
-                        Ok((
-                            shader_stages.union(&range.stages),
-                            last_bound.max(range.offset + range.size),
-                        ))
-                    }
-                },
-            )
-            .and_then(|(shader_stages, last_bound)| {
-                if shader_stages == ShaderStages::none() || last_bound < offset + size {
-                    Err(())
-                } else {
-                    Ok(shader_stages)
-                }
-            })
-            .expect(
-                "not all bytes in push_constants fall within the pipeline layout's push constant ranges",
-            );
+            .skip_while(|range| range.offset + range.size <= offset)
+        {
+            // there is a gap between ranges, but the passed push_constants contains
+            // some bytes in this gap, exit the loop and report error
+            if range.offset > current_offset {
+                break;
+            }
 
-        unsafe {
-            let data = slice::from_raw_parts(
-                (&push_constants as *const Pc as *const u8).offset(offset as isize),
-                size as usize,
-            );
+            // push the minimum of the whole remaining data, and the part until the end of this range
+            let push_size = remaining_size.min(range.offset + range.size - current_offset);
+            let data_offset = (current_offset - offset) as usize;
+            unsafe {
+                self.inner.push_constants::<[u8]>(
+                    pipeline_layout.clone(),
+                    range.stages,
+                    current_offset,
+                    push_size,
+                    &whole_data[data_offset..(data_offset + push_size as usize)],
+                );
+            }
+            current_offset += push_size;
+            remaining_size -= push_size;
 
-            self.inner.push_constants::<[u8]>(
-                pipeline_layout.clone(),
-                shader_stages,
-                offset,
-                size,
-                data,
-            );
+            if remaining_size == 0 {
+                break;
+            }
         }
+
+        assert!(
+            remaining_size == 0,
+            "There exists data at offset {} that is not included in any range",
+            current_offset,
+        );
 
         self
     }
