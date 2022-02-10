@@ -64,9 +64,11 @@ fn write_shader_execution(execution: &ShaderExecution) -> TokenStream {
         ShaderExecution::Geometry(::vulkano::shader::GeometryShaderExecution { input }) => {
             let input = format_ident!("{}", format!("{:?}", input));
             quote! {
-                ::vulkano::shader::ShaderExecution::Geometry {
-                    input: GeometryShaderInput::#input,
-                }
+                ::vulkano::shader::ShaderExecution::Geometry(
+                    ::vulkano::shader::GeometryShaderExecution {
+                        input: ::vulkano::shader::GeometryShaderInput::#input
+                    }
+                )
             }
         }
         ShaderExecution::Fragment => quote! { ::vulkano::shader::ShaderExecution::Fragment },
