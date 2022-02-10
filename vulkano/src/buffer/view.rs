@@ -70,7 +70,7 @@ where
     handle: ash::vk::BufferView,
     buffer: Arc<B>,
 
-    format: Format,
+    format: Option<Format>,
     format_features: FormatFeatures,
 }
 
@@ -220,7 +220,7 @@ where
             handle,
             buffer,
 
-            format,
+            format: Some(format),
             format_features,
         }))
     }
@@ -407,7 +407,7 @@ pub unsafe trait BufferViewAbstract:
     fn buffer(&self) -> Arc<dyn BufferAccess>;
 
     /// Returns the format of the buffer view.
-    fn format(&self) -> Format;
+    fn format(&self) -> Option<Format>;
 
     /// Returns the features supported by the buffer view's format.
     fn format_features(&self) -> &FormatFeatures;
@@ -423,7 +423,7 @@ where
     }
 
     #[inline]
-    fn format(&self) -> Format {
+    fn format(&self) -> Option<Format> {
         self.format
     }
 
@@ -440,7 +440,7 @@ unsafe impl BufferViewAbstract for BufferView<dyn BufferAccess> {
     }
 
     #[inline]
-    fn format(&self) -> Format {
+    fn format(&self) -> Option<Format> {
         self.format
     }
 
