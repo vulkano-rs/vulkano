@@ -21,6 +21,7 @@
 use crate::buffer::sys::BufferCreationError;
 use crate::buffer::sys::UnsafeBuffer;
 use crate::buffer::traits::BufferAccess;
+use crate::buffer::traits::BufferAccessObject;
 use crate::buffer::traits::BufferInner;
 use crate::buffer::traits::TypedBufferAccess;
 use crate::buffer::BufferUsage;
@@ -413,6 +414,17 @@ where
     unsafe fn unlock(&self) {}
 }
 
+impl<T, A> BufferAccessObject for Arc<ImmutableBuffer<T, A>>
+where
+    T: Send + Sync + ?Sized + 'static,
+    A: Send + Sync + 'static,
+{
+    #[inline]
+    fn as_buffer_access_object(&self) -> Arc<dyn BufferAccess> {
+        self.clone()
+    }
+}
+
 unsafe impl<T, A> TypedBufferAccess for ImmutableBuffer<T, A>
 where
     T: Send + Sync + ?Sized,
@@ -513,6 +525,17 @@ where
     #[inline]
     unsafe fn unlock(&self) {
         self.buffer.initialized.store(true, Ordering::Relaxed);
+    }
+}
+
+impl<T, A> BufferAccessObject for Arc<ImmutableBufferInitialization<T, A>>
+where
+    T: Send + Sync + ?Sized + 'static,
+    A: Send + Sync + 'static,
+{
+    #[inline]
+    fn as_buffer_access_object(&self) -> Arc<dyn BufferAccess> {
+        self.clone()
     }
 }
 

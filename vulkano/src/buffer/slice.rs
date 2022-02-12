@@ -8,6 +8,7 @@
 // according to those terms.
 
 use crate::buffer::traits::BufferAccess;
+use crate::buffer::traits::BufferAccessObject;
 use crate::buffer::traits::BufferInner;
 use crate::buffer::traits::TypedBufferAccess;
 use crate::device::Device;
@@ -247,6 +248,17 @@ where
     #[inline]
     unsafe fn unlock(&self) {
         self.resource.unlock()
+    }
+}
+
+impl<T, B> BufferAccessObject for Arc<BufferSlice<T, B>>
+where
+    B: BufferAccess + 'static,
+    T: Send + Sync + ?Sized + 'static,
+{
+    #[inline]
+    fn as_buffer_access_object(&self) -> Arc<dyn BufferAccess> {
+        self.clone()
     }
 }
 
