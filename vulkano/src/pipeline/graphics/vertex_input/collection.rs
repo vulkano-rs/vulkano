@@ -8,59 +8,57 @@
 // according to those terms.
 
 use crate::buffer::BufferAccess;
+use crate::buffer::BufferAccessObject;
 use std::sync::Arc;
 
 /// A collection of vertex buffers.
-pub unsafe trait VertexBuffersCollection {
+pub trait VertexBuffersCollection {
     /// Converts `self` into a list of buffers.
     // TODO: better than a Vec
     fn into_vec(self) -> Vec<Arc<dyn BufferAccess>>;
 }
 
-unsafe impl VertexBuffersCollection for () {
+impl VertexBuffersCollection for () {
     #[inline]
     fn into_vec(self) -> Vec<Arc<dyn BufferAccess>> {
-        vec![]
+        Vec::new()
     }
 }
 
-unsafe impl<T> VertexBuffersCollection for Arc<T>
-where
-    T: BufferAccess + 'static,
-{
+impl<T: BufferAccessObject> VertexBuffersCollection for T {
     #[inline]
     fn into_vec(self) -> Vec<Arc<dyn BufferAccess>> {
-        vec![self as Arc<_>]
+        vec![self.as_buffer_access_object()]
     }
 }
 
-unsafe impl<T> VertexBuffersCollection for Vec<Arc<T>>
-where
-    T: BufferAccess + 'static,
-{
+impl<T: BufferAccessObject> VertexBuffersCollection for Vec<T> {
     #[inline]
     fn into_vec(self) -> Vec<Arc<dyn BufferAccess>> {
-        self.into_iter().map(|source| source as Arc<_>).collect()
+        self.into_iter()
+            .map(|src| src.as_buffer_access_object())
+            .collect()
     }
 }
 
 macro_rules! impl_collection {
     ($first:ident $(, $others:ident)+) => (
-        unsafe impl<$first$(, $others)+> VertexBuffersCollection for (Arc<$first>, $(Arc<$others>),+)
-            where $first: BufferAccess + 'static
-                  $(, $others: BufferAccess + 'static)*
+        impl<$first$(, $others)+> VertexBuffersCollection for ($first, $($others),+)
+            where $first: BufferAccessObject
+                  $(, $others: BufferAccessObject)*
         {
             #[inline]
             fn into_vec(self) -> Vec<Arc<dyn BufferAccess>> {
                 #![allow(non_snake_case)]
 
                 let ($first, $($others,)*) = self;
-
                 let mut list = Vec::new();
-                list.push($first as Arc<_>);
+                list.push($first.as_buffer_access_object());
+
                 $(
-                    list.push($others as Arc<_>);
+                    list.push($others.as_buffer_access_object());
                 )+
+
                 list
             }
         }

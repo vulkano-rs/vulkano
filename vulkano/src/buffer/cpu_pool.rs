@@ -10,6 +10,7 @@
 use crate::buffer::sys::BufferCreationError;
 use crate::buffer::sys::UnsafeBuffer;
 use crate::buffer::traits::BufferAccess;
+use crate::buffer::traits::BufferAccessObject;
 use crate::buffer::traits::BufferInner;
 use crate::buffer::traits::TypedBufferAccess;
 use crate::buffer::BufferUsage;
@@ -716,6 +717,17 @@ where
     }
 }
 
+impl<T, A> BufferAccessObject for Arc<CpuBufferPoolChunk<T, A>>
+where
+    T: Send + Sync + 'static,
+    A: MemoryPool + 'static,
+{
+    #[inline]
+    fn as_buffer_access_object(&self) -> Arc<dyn BufferAccess> {
+        self.clone()
+    }
+}
+
 impl<T, A> Drop for CpuBufferPoolChunk<T, A>
 where
     A: MemoryPool,
@@ -833,6 +845,17 @@ where
     #[inline]
     unsafe fn unlock(&self) {
         self.chunk.unlock()
+    }
+}
+
+impl<T, A> BufferAccessObject for Arc<CpuBufferPoolSubbuffer<T, A>>
+where
+    T: Send + Sync + 'static,
+    A: MemoryPool + 'static,
+{
+    #[inline]
+    fn as_buffer_access_object(&self) -> Arc<dyn BufferAccess> {
+        self.clone()
     }
 }
 

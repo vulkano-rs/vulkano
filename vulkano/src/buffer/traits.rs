@@ -140,6 +140,16 @@ pub unsafe trait BufferAccess: DeviceOwned + Send + Sync {
     }
 }
 
+pub trait BufferAccessObject {
+    fn as_buffer_access_object(&self) -> Arc<dyn BufferAccess>;
+}
+
+impl BufferAccessObject for Arc<dyn BufferAccess> {
+    fn as_buffer_access_object(&self) -> Arc<dyn BufferAccess> {
+        self.clone()
+    }
+}
+
 /// Inner information about a buffer.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct BufferInner<'a> {
