@@ -736,7 +736,7 @@ pub struct QueueCreateInfo<'qf> {
 impl<'qf> QueueCreateInfo<'qf> {
     /// Returns a `QueueCreateInfo` with the given queue family.
     #[inline]
-    pub fn family<'qf2>(family: QueueFamily<'qf2>) -> QueueCreateInfo<'qf2> {
+    pub fn family(family: QueueFamily) -> QueueCreateInfo {
         QueueCreateInfo {
             family,
             queues: vec![0.5],
