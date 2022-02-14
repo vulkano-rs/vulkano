@@ -83,6 +83,13 @@
 - Added `aspects` to the builder of `ImageView`, to choose which aspect(s) of an image to use in the view.
 - Added `SamplerYcbcrConversion`, and the ability to attach it to a sampler or image view.
 - Fixed of not being able to create multi-layer framebuffers.
+- **Breaking** Changes to `UnsafeBuffer`:
+  - Creation parameters are given using `UnsafeBufferCreateInfo`. It is no longer unsafe to construct, only to use.
+  - Memory requirements are no longer returned on construction, but retrieved by calling `memory_requirements` on the `UnsafeBuffer`.
+- **Breaking** Constructing a buffer of zero size now results in a panic (except for `CpuBufferPool` chunks).
+- **Breaking** `BufferView` creation parameters are given using `BufferViewCreateInfo`.
+- **Breaking** The following types are now considered non-exhaustive and must be constructed using a method call and struct update syntax: `BufferUsage`, `SparseLevel`.
+- Added a `Format::texels_per_block` method.
 
 # Version 0.27.1 (2021-12-07)
 
