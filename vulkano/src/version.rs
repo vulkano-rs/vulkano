@@ -160,4 +160,37 @@ mod tests {
         };
         assert!(v2 > v1);
     }
+
+    #[test]
+    fn version_parse() {
+        assert!(matches!(
+            "1.1.1".parse::<Version>(),
+            Ok(Version {
+                major: 1,
+                minor: 1,
+                patch: 1,
+            })
+        ));
+        assert!(matches!(
+            "1.1".parse::<Version>(),
+            Ok(Version {
+                major: 1,
+                minor: 1,
+                patch: 0,
+            })
+        ));
+        assert!(matches!(
+            "1".parse::<Version>(),
+            Ok(Version {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            })
+        ));
+
+        assert!("".parse::<Version>().is_err());
+        assert!("1.1.1.1".parse::<Version>().is_err());
+        assert!("foobar".parse::<Version>().is_err());
+        assert!("1.bar".parse::<Version>().is_err());
+    }
 }
