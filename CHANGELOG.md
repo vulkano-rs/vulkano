@@ -7,6 +7,9 @@
     Pull Request merge. 
 -->
 
+- **Breaking** `Instance` creation parameters are given using `InstanceCreateInfo`.
+- **Breaking** `ApplicationInfo` and the `app_info_from_cargo_toml!` macro are removed, their functionality is now integrated into `InstanceCreateInfo`.
+- **Breaking** `Device` creation parameters are given using `DeviceCreateInfo`.
 - Fixed sync bug in `copy_image` and `blit_image` where the `src` and `dest` images are the same but with different mip level and/or array layer.
 - Fixed bug in `begin_render_pass` causing a panic when clearing a depth-only attachment.
 - Fixed bug in the `QueueFamily::supports_` methods causing a panic when querying support for a stage that needs no queue flags.
@@ -80,9 +83,6 @@
 - Added `aspects` to the builder of `ImageView`, to choose which aspect(s) of an image to use in the view.
 - Added `SamplerYcbcrConversion`, and the ability to attach it to a sampler or image view.
 - Fixed of not being able to create multi-layer framebuffers.
-- **Breaking** `Instance` creation parameters are given using `InstanceCreateInfo`.
-- **Breaking** `ApplicationInfo` and the `app_info_from_cargo_toml!` macro are removed, their functionality is now integrated into `InstanceCreateInfo`.
-- **Breaking** `Device` creation parameters are given using `DeviceCreateInfo`.
 
 # Version 0.27.1 (2021-12-07)
 
