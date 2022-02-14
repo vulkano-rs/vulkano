@@ -10,13 +10,20 @@
 - **Breaking** `Instance` creation parameters are given using `InstanceCreateInfo`.
 - **Breaking** `ApplicationInfo` and the `app_info_from_cargo_toml!` macro are removed, their functionality is now integrated into `InstanceCreateInfo`.
 - **Breaking** `Device` creation parameters are given using `DeviceCreateInfo`.
+- **Breaking** Changes to `UnsafeBuffer`:
+  - Creation parameters are given using `UnsafeBufferCreateInfo`. It is no longer unsafe to construct, only to use.
+  - Memory requirements are no longer returned on construction, but retrieved by calling `memory_requirements` on the `UnsafeBuffer`.
+- **Breaking** Constructing a buffer of zero size now results in a panic (except for `CpuBufferPool` chunks).
+- **Breaking** `BufferView` creation parameters are given using `BufferViewCreateInfo`.
+- **Breaking** The following types are now considered non-exhaustive and must be constructed using a method call and struct update syntax: `BufferUsage`, `SparseLevel`.
 - Fixed sync bug in `copy_image` and `blit_image` where the `src` and `dest` images are the same but with different mip level and/or array layer.
 - Fixed bug in `begin_render_pass` causing a panic when clearing a depth-only attachment.
 - Fixed bug in the `QueueFamily::supports_` methods causing a panic when querying support for a stage that needs no queue flags.
 - Fixed buffer overflow bug in `AutoCommandBufferBuilder::push_constants`.
 - Fixed `AutoCommandBufferBuilder::push_constants` to push multiple times in case of range overlap (to accommodate VUIDs 01795 and 01796) 
 - Fixed `shader!` macro failing to compile with geometry shaders.
-- Refactored `VertexBuffersCollection` to allow `Arc<dyn BufferAccess>`
+- Refactored `VertexBuffersCollection` to allow `Arc<dyn BufferAccess>`.
+- - Added a `Format::texels_per_block` method.
 
 # Version 0.28.0 (2022-02-02)
 
@@ -83,13 +90,6 @@
 - Added `aspects` to the builder of `ImageView`, to choose which aspect(s) of an image to use in the view.
 - Added `SamplerYcbcrConversion`, and the ability to attach it to a sampler or image view.
 - Fixed of not being able to create multi-layer framebuffers.
-- **Breaking** Changes to `UnsafeBuffer`:
-  - Creation parameters are given using `UnsafeBufferCreateInfo`. It is no longer unsafe to construct, only to use.
-  - Memory requirements are no longer returned on construction, but retrieved by calling `memory_requirements` on the `UnsafeBuffer`.
-- **Breaking** Constructing a buffer of zero size now results in a panic (except for `CpuBufferPool` chunks).
-- **Breaking** `BufferView` creation parameters are given using `BufferViewCreateInfo`.
-- **Breaking** The following types are now considered non-exhaustive and must be constructed using a method call and struct update syntax: `BufferUsage`, `SparseLevel`.
-- Added a `Format::texels_per_block` method.
 
 # Version 0.27.1 (2021-12-07)
 
