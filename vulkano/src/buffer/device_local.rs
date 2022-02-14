@@ -15,6 +15,7 @@
 
 use crate::buffer::sys::BufferCreationError;
 use crate::buffer::sys::UnsafeBuffer;
+use crate::buffer::sys::UnsafeBufferCreateInfo;
 use crate::buffer::traits::BufferAccess;
 use crate::buffer::traits::BufferAccessObject;
 use crate::buffer::traits::BufferInner;
@@ -95,7 +96,10 @@ enum GpuAccess {
 
 impl<T> DeviceLocalBuffer<T> {
     /// Builds a new buffer. Only allowed for sized data.
-    // TODO: unsafe because uninitialized data
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `T` has zero size.
     #[inline]
     pub fn new<'a, I>(
         device: Arc<Device>,
@@ -118,7 +122,11 @@ impl<T> DeviceLocalBuffer<T> {
 
 impl<T> DeviceLocalBuffer<[T]> {
     /// Builds a new buffer. Can be used for arrays.
-    // TODO: unsafe because uninitialized data
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `T` has zero size.
+    /// - Panics if `len` is zero.
     #[inline]
     pub fn array<'a, I>(
         device: Arc<Device>,
@@ -145,8 +153,11 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
     ///
     /// # Safety
     ///
-    /// You must ensure that the size that you pass is correct for `T`.
+    /// - You must ensure that the size that you pass is correct for `T`.
     ///
+    /// # Panics
+    ///
+    /// - Panics if `size` is zero.
     pub unsafe fn raw<'a, I>(
         device: Arc<Device>,
         size: DeviceSize,
@@ -190,6 +201,10 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
     }
 
     /// Same as `raw` but with exportable fd option for the allocated memory on Linux/BSD
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `size` is zero.
     #[cfg(any(
         target_os = "linux",
         target_os = "dragonflybsd",
@@ -249,20 +264,27 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
         usage: BufferUsage,
         queue_families: &SmallVec<[u32; 4]>,
     ) -> Result<(UnsafeBuffer, MemoryRequirements), DeviceMemoryAllocError> {
-        let (buffer, mem_reqs) = {
-            let sharing = if queue_families.len() >= 2 {
-                Sharing::Concurrent(queue_families.iter().cloned())
-            } else {
-                Sharing::Exclusive
-            };
-
-            match UnsafeBuffer::new(device.clone(), size, usage, sharing, None) {
+        let buffer = {
+            match UnsafeBuffer::new(
+                device.clone(),
+                UnsafeBufferCreateInfo {
+                    sharing: if queue_families.len() >= 2 {
+                        Sharing::Concurrent(queue_families.clone())
+                    } else {
+                        Sharing::Exclusive
+                    },
+                    size,
+                    usage,
+                    ..Default::default()
+                },
+            ) {
                 Ok(b) => b,
                 Err(BufferCreationError::AllocError(err)) => return Err(err),
                 Err(_) => unreachable!(), // We don't use sparse binding, therefore the other
                                           // errors can't happen
             }
         };
+        let mem_reqs = buffer.memory_requirements();
         Ok((buffer, mem_reqs))
     }
 

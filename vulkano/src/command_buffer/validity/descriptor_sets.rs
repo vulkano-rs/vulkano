@@ -7,14 +7,13 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::buffer::view::BufferViewAbstract;
 use crate::buffer::BufferAccess;
-use crate::buffer::BufferViewAbstract;
 use crate::command_buffer::synced::CommandBufferState;
 use crate::descriptor_set::layout::DescriptorType;
 use crate::descriptor_set::DescriptorBindingResources;
 use crate::format::Format;
-use crate::image::view::ImageViewType;
-use crate::image::ImageViewAbstract;
+use crate::image::view::{ImageViewAbstract, ImageViewType};
 use crate::image::SampleCount;
 use crate::pipeline::Pipeline;
 use crate::sampler::Sampler;

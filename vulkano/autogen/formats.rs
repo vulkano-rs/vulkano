@@ -41,6 +41,7 @@ struct FormatMember {
     compression: Option<Ident>,
     planes: Vec<Ident>,
     rust_type: Option<TokenStream>,
+    texels_per_block: u8,
     type_color: Option<Ident>,
     type_depth: Option<Ident>,
     type_stencil: Option<Ident>,
@@ -191,6 +192,18 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
                 Some(quote! { Self::#name => &[#(Self::#planes),*], })
             }
         });
+    let texels_per_block_items = members.iter().filter_map(
+        |FormatMember {
+             name,
+             texels_per_block,
+             ..
+         }| {
+            (*texels_per_block != 1).then(|| {
+                let texels_per_block = Literal::u8_unsuffixed(*texels_per_block);
+                quote! { Self::#name => #texels_per_block, }
+            })
+        },
+    );
     let type_color_items = members.iter().filter_map(
         |FormatMember {
              name, type_color, ..
@@ -268,8 +281,8 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
 
             /// Returns the extent in texels (horizontally and vertically) of a single texel
             /// block of this format. A texel block is a rectangle of pixels that is represented by
-            /// a single element of this format. It is also the minimum granularity of the size of
-            /// an image; images must always have a size that's a multiple of the block size.
+            /// a single element of this format. It is also the minimum granularity of the extent of
+            /// an image; images must always have an extent that's a multiple of the block extent.
             ///
             /// For normal formats, the block extent is [1, 1, 1], meaning that each element of the
             /// format represents one texel. Block-compressed formats encode multiple texels into
@@ -316,7 +329,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
             /// multi-planar formats, this is the number of bits across all planes.
             ///
             /// For block-compressed formats, the number of bits in individual components is not
-            /// well-defined, and the return value will is merely binary: 1 indicates a component
+            /// well-defined, and the return value is merely binary: 1 indicates a component
             /// that is present in the format, 0 indicates one that is absent.
             pub fn components(&self) -> [u8; 4] {
                 match self {
@@ -341,6 +354,15 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
                 match self {
                     #(#planes_items)*
                     _ => &[],
+                }
+            }
+
+            /// Returns the number of texels for a single texel block. For most formats, this is
+            /// the product of the `block_extent` elements, but for some it differs.
+            pub fn texels_per_block(&self) -> u8 {
+                match self {
+                    #(#texels_per_block_items)*
+                    _ => 1,
                 }
             }
 
@@ -473,6 +495,7 @@ fn formats_members(formats: &[&Format]) -> Vec<FormatMember> {
                     .map(|c| format_ident!("{}", c.replace(" ", "_"))),
                 planes: vec![],
                 rust_type: None,
+                texels_per_block: format.texelsPerBlock,
                 type_color: None,
                 type_depth: None,
                 type_stencil: None,

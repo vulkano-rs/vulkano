@@ -20,6 +20,7 @@
 
 use crate::buffer::sys::BufferCreationError;
 use crate::buffer::sys::UnsafeBuffer;
+use crate::buffer::sys::UnsafeBufferCreateInfo;
 use crate::buffer::traits::BufferAccess;
 use crate::buffer::traits::BufferAccessObject;
 use crate::buffer::traits::BufferInner;
@@ -91,6 +92,10 @@ impl<T: ?Sized> ImmutableBuffer<T> {
     /// the initial upload operation. In order to be allowed to use the `ImmutableBuffer`, you must
     /// either submit your operation after this future, or execute this future and wait for it to
     /// be finished before submitting your own operation.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `T` has zero size.
     pub fn from_data(
         data: T,
         usage: BufferUsage,
@@ -172,6 +177,9 @@ impl<T> ImmutableBuffer<T> {
     /// - The `ImmutableBufferInitialization` should be used to fill the buffer with some initial
     ///   data, otherwise the content is undefined.
     ///
+    /// # Panics
+    ///
+    /// - Panics if `T` has zero size.
     #[inline]
     pub unsafe fn uninitialized(
         device: Arc<Device>,
@@ -193,6 +201,10 @@ impl<T> ImmutableBuffer<T> {
 }
 
 impl<T> ImmutableBuffer<[T]> {
+    /// # Panics
+    ///
+    /// - Panics if `T` has zero size.
+    /// - Panics if `data` is empty.
     pub fn from_iter<D>(
         data: D,
         usage: BufferUsage,
@@ -228,6 +240,10 @@ impl<T> ImmutableBuffer<[T]> {
     /// - The `ImmutableBufferInitialization` should be used to fill the buffer with some initial
     ///   data, otherwise the content is undefined.
     ///
+    /// # Panics
+    ///
+    /// - Panics if `T` has zero size.
+    /// - Panics if `len` is zero.
     #[inline]
     pub unsafe fn uninitialized_array(
         device: Arc<Device>,
@@ -265,6 +281,9 @@ impl<T: ?Sized> ImmutableBuffer<T> {
     /// - The `ImmutableBufferInitialization` should be used to fill the buffer with some initial
     ///   data.
     ///
+    /// # Panics
+    ///
+    /// - Panics if `size` is zero.
     #[inline]
     pub unsafe fn raw<'a, I>(
         device: Arc<Device>,
@@ -299,20 +318,25 @@ impl<T: ?Sized> ImmutableBuffer<T> {
         ),
         DeviceMemoryAllocError,
     > {
-        let (buffer, mem_reqs) = {
-            let sharing = if queue_families.len() >= 2 {
-                Sharing::Concurrent(queue_families.iter().cloned())
-            } else {
-                Sharing::Exclusive
-            };
-
-            match UnsafeBuffer::new(device.clone(), size, usage, sharing, None) {
-                Ok(b) => b,
-                Err(BufferCreationError::AllocError(err)) => return Err(err),
-                Err(_) => unreachable!(), // We don't use sparse binding, therefore the other
-                                          // errors can't happen
-            }
+        let buffer = match UnsafeBuffer::new(
+            device.clone(),
+            UnsafeBufferCreateInfo {
+                sharing: if queue_families.len() >= 2 {
+                    Sharing::Concurrent(queue_families.clone())
+                } else {
+                    Sharing::Exclusive
+                },
+                size,
+                usage,
+                ..Default::default()
+            },
+        ) {
+            Ok(b) => b,
+            Err(BufferCreationError::AllocError(err)) => return Err(err),
+            Err(_) => unreachable!(), // We don't use sparse binding, therefore the other
+                                      // errors can't happen
         };
+        let mem_reqs = buffer.memory_requirements();
 
         let mem = MemoryPool::alloc_from_requirements(
             &Device::standard_pool(&device),
@@ -799,10 +823,13 @@ mod tests {
     }
 
     #[test]
+    #[allow(unused)]
     fn create_buffer_zero_size_data() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let _ = ImmutableBuffer::from_data((), BufferUsage::all(), queue.clone());
+        assert_should_panic!({
+            ImmutableBuffer::from_data((), BufferUsage::all(), queue.clone()).unwrap();
+        });
     }
 
     // TODO: write tons of tests that try to exploit loopholes

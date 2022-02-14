@@ -7,12 +7,13 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::buffer::{BufferAccess, BufferInner, BufferViewAbstract};
+use crate::buffer::view::BufferViewAbstract;
+use crate::buffer::{BufferAccess, BufferInner};
 use crate::descriptor_set::layout::{DescriptorDesc, DescriptorType};
 use crate::descriptor_set::DescriptorSetLayout;
 use crate::device::DeviceOwned;
-use crate::image::view::ImageViewType;
-use crate::image::{ImageType, ImageViewAbstract};
+use crate::image::view::{ImageViewAbstract, ImageViewType};
+use crate::image::ImageType;
 use crate::sampler::{Sampler, SamplerImageViewIncompatibleError};
 use crate::DeviceSize;
 use crate::VulkanObject;

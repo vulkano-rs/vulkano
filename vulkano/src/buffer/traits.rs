@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::buffer::sys::{DeviceAddressUsageNotEnabledError, UnsafeBuffer};
+use crate::buffer::sys::UnsafeBuffer;
 use crate::buffer::BufferSlice;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
@@ -16,6 +16,8 @@ use crate::sync::AccessError;
 use crate::DeviceSize;
 use crate::SafeDeref;
 use crate::VulkanObject;
+use std::error;
+use std::fmt;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::num::NonZeroU64;
@@ -113,23 +115,29 @@ pub unsafe trait BufferAccess: DeviceOwned + Send + Sync {
     /// No lock checking or waiting is performed. This is nevertheless still safe because the
     /// returned value isn't directly dereferencable. Unsafe code is required to dereference the
     /// value in a shader.
-    fn raw_device_address(&self) -> Result<NonZeroU64, DeviceAddressUsageNotEnabledError> {
+    fn raw_device_address(&self) -> Result<NonZeroU64, BufferDeviceAddressError> {
         let inner = self.inner();
+        let device = self.device();
 
-        if !inner.buffer.usage().device_address {
-            return Err(DeviceAddressUsageNotEnabledError);
+        // VUID-vkGetBufferDeviceAddress-bufferDeviceAddress-03324
+        if !device.enabled_features().buffer_device_address {
+            return Err(BufferDeviceAddressError::FeatureNotEnabled);
         }
 
-        let dev = self.device();
+        // VUID-VkBufferDeviceAddressInfo-buffer-02601
+        if !inner.buffer.usage().device_address {
+            return Err(BufferDeviceAddressError::BufferMissingUsage);
+        }
+
         unsafe {
             let info = ash::vk::BufferDeviceAddressInfo {
                 buffer: inner.buffer.internal_object(),
                 ..Default::default()
             };
-            let ptr = dev
+            let ptr = device
                 .fns()
                 .ext_buffer_device_address
-                .get_buffer_device_address_ext(dev.internal_object(), &info);
+                .get_buffer_device_address_ext(device.internal_object(), &info);
 
             if ptr == 0 {
                 panic!("got null ptr from a valid GetBufferDeviceAddressEXT call");
@@ -235,5 +243,30 @@ impl Hash for dyn BufferAccess {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
         self.size().hash(state);
+    }
+}
+
+/// Error that can happen when querying the device address of a buffer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BufferDeviceAddressError {
+    BufferMissingUsage,
+    FeatureNotEnabled,
+}
+
+impl error::Error for BufferDeviceAddressError {}
+
+impl fmt::Display for BufferDeviceAddressError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::BufferMissingUsage => write!(
+                fmt,
+                "the device address usage flag was not set on this buffer",
+            ),
+            Self::FeatureNotEnabled => write!(
+                fmt,
+                "the buffer_device_address feature was not enabled on the device",
+            ),
+        }
     }
 }
