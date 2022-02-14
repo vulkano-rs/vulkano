@@ -20,6 +20,7 @@ use crate::buffer::sys::BufferCreationError;
 use crate::buffer::sys::UnsafeBuffer;
 use crate::buffer::sys::UnsafeBufferCreateInfo;
 use crate::buffer::traits::BufferAccess;
+use crate::buffer::traits::BufferAccessObject;
 use crate::buffer::traits::BufferInner;
 use crate::buffer::traits::TypedBufferAccess;
 use crate::buffer::BufferUsage;
@@ -511,6 +512,17 @@ where
                 num: AtomicUsize::new(0),
             };
         }
+    }
+}
+
+impl<T: ?Sized, A> BufferAccessObject for Arc<CpuAccessibleBuffer<T, A>>
+where
+    T: Send + Sync + 'static,
+    A: Send + Sync + 'static,
+{
+    #[inline]
+    fn as_buffer_access_object(&self) -> Arc<dyn BufferAccess> {
+        self.clone()
     }
 }
 

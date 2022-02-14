@@ -12,6 +12,8 @@
 - Fixed bug in the `QueueFamily::supports_` methods causing a panic when querying support for a stage that needs no queue flags.
 - Fixed buffer overflow bug in `AutoCommandBufferBuilder::push_constants`.
 - Fixed `AutoCommandBufferBuilder::push_constants` to push multiple times in case of range overlap (to accommodate VUIDs 01795 and 01796) 
+- Fixed `shader!` macro failing to compile with geometry shaders.
+- Refactored `VertexBuffersCollection` to allow `Arc<dyn BufferAccess>`
 
 # Version 0.28.0 (2022-02-02)
 

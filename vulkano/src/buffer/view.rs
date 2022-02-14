@@ -42,8 +42,7 @@
 //! ).unwrap();
 //! ```
 
-use crate::buffer::BufferAccess;
-use crate::buffer::BufferInner;
+use crate::buffer::{BufferAccess, BufferAccessObject, BufferInner};
 use crate::check_errors;
 use crate::device::physical::FormatFeatures;
 use crate::device::Device;
@@ -415,28 +414,12 @@ pub unsafe trait BufferViewAbstract:
 
 unsafe impl<B> BufferViewAbstract for BufferView<B>
 where
-    B: BufferAccess + 'static,
+    B: BufferAccess + ?Sized + 'static,
+    Arc<B>: BufferAccessObject,
 {
     #[inline]
     fn buffer(&self) -> Arc<dyn BufferAccess> {
-        self.buffer.clone()
-    }
-
-    #[inline]
-    fn format(&self) -> Option<Format> {
-        self.format
-    }
-
-    #[inline]
-    fn format_features(&self) -> &FormatFeatures {
-        &self.format_features
-    }
-}
-
-unsafe impl BufferViewAbstract for BufferView<dyn BufferAccess> {
-    #[inline]
-    fn buffer(&self) -> Arc<dyn BufferAccess> {
-        self.buffer.clone()
+        self.buffer.as_buffer_access_object()
     }
 
     #[inline]
@@ -487,7 +470,7 @@ mod tests {
         let (buffer, _) =
             ImmutableBuffer::<[[u8; 4]]>::from_iter((0..128).map(|_| [0; 4]), usage, queue.clone())
                 .unwrap();
-        BufferView::new(
+        let view = BufferView::new(
             buffer,
             BufferViewCreateInfo {
                 format: Some(Format::R8G8B8A8_UNORM),
