@@ -80,6 +80,9 @@
 - Added `aspects` to the builder of `ImageView`, to choose which aspect(s) of an image to use in the view.
 - Added `SamplerYcbcrConversion`, and the ability to attach it to a sampler or image view.
 - Fixed of not being able to create multi-layer framebuffers.
+- **Breaking** `Instance` creation parameters are given using `InstanceCreateInfo`.
+- **Breaking** `ApplicationInfo` and the `app_info_from_cargo_toml!` macro are removed, their functionality is now integrated into `InstanceCreateInfo`.
+- **Breaking** `Device` creation parameters are given using `DeviceCreateInfo`.
 
 # Version 0.27.1 (2021-12-07)
 
