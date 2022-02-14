@@ -55,8 +55,7 @@
 //!
 //! ```no_run
 //! use std::ptr;
-//! use vulkano::instance::Instance;
-//! use vulkano::instance::InstanceExtensions;
+//! use vulkano::instance::{Instance, InstanceCreateInfo, InstanceExtensions};
 //! use vulkano::swapchain::Surface;
 //! use vulkano::Version;
 //!
@@ -67,7 +66,10 @@
 //!         .. InstanceExtensions::none()
 //!     };
 //!
-//!      match Instance::new(None, Version::V1_1, &extensions, None) {
+//!     match Instance::new(InstanceCreateInfo {
+//!         enabled_extensions: extensions,
+//!         ..Default::default()
+//!     }) {
 //!         Ok(i) => i,
 //!         Err(err) => panic!("Couldn't build instance: {:?}", err)
 //!     }

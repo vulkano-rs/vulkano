@@ -19,7 +19,7 @@ pub struct VulkanoConfig {
     pub instance_extensions: InstanceExtensions,
     pub device_extensions: DeviceExtensions,
     pub features: Features,
-    pub layers: Vec<&'static str>,
+    pub layers: Vec<String>,
 }
 
 impl Default for VulkanoConfig {

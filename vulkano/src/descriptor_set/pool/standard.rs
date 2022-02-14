@@ -29,11 +29,13 @@ use std::sync::Mutex;
 /// Whenever a set is allocated, this implementation will try to find a pool that has some space
 /// for it. If there is one, allocate from it. If there is none, create a new pool whose capacity
 /// is 40 sets and 40 times the requested descriptors. This number is arbitrary.
+#[derive(Debug)]
 pub struct StdDescriptorPool {
     device: Arc<Device>,
     pools: Mutex<Vec<Arc<Mutex<Pool>>>>,
 }
 
+#[derive(Debug)]
 struct Pool {
     pool: UnsafeDescriptorPool,
     remaining_capacity: DescriptorsCount,

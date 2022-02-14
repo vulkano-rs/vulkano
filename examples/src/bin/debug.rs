@@ -8,15 +8,14 @@
 // according to those terms.
 
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{Device, DeviceExtensions, Features};
+use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
 use vulkano::format::Format;
 use vulkano::image::ImageDimensions;
 use vulkano::image::ImmutableImage;
 use vulkano::image::MipmapsCount;
-use vulkano::instance;
 use vulkano::instance::debug::{DebugCallback, MessageSeverity, MessageType};
+use vulkano::instance::{self, InstanceCreateInfo};
 use vulkano::instance::{Instance, InstanceExtensions};
-use vulkano::Version;
 
 fn main() {
     // Vulkano Debugging Example Code
@@ -51,14 +50,18 @@ fn main() {
 
     // NOTE: To simplify the example code we won't verify these layer(s) are actually in the layers list:
     #[cfg(not(target_os = "macos"))]
-    let layers = vec!["VK_LAYER_LUNARG_standard_validation"];
+    let layers = vec!["VK_LAYER_LUNARG_standard_validation".to_owned()];
 
     #[cfg(target_os = "macos")]
-    let layers = vec!["VK_LAYER_KHRONOS_validation"];
+    let layers = vec!["VK_LAYER_KHRONOS_validation".to_owned()];
 
     // Important: pass the extension(s) and layer(s) when creating the vulkano instance
-    let instance = Instance::new(None, Version::V1_1, &extensions, layers)
-        .expect("failed to create Vulkan instance");
+    let instance = Instance::new(InstanceCreateInfo {
+        enabled_extensions: extensions,
+        enabled_layers: layers,
+        ..Default::default()
+    })
+    .expect("failed to create Vulkan instance");
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // After creating the instance we must register the debugging callback.                                      //
@@ -137,11 +140,13 @@ fn main() {
 
     let (_, mut queues) = Device::new(
         physical_device,
-        &Features::none(),
-        &physical_device
-            .required_extensions()
-            .union(&device_extensions),
-        vec![(queue_family, 0.5)],
+        DeviceCreateInfo {
+            enabled_extensions: physical_device
+                .required_extensions()
+                .union(&device_extensions),
+            queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+            ..Default::default()
+        },
     )
     .expect("failed to create device");
     let queue = queues.next().unwrap();

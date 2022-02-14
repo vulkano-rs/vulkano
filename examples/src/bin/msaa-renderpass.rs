@@ -73,24 +73,27 @@ use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBuffer, SubpassContents,
 };
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{Device, DeviceExtensions, Features};
+use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
 use vulkano::format::ClearValue;
 use vulkano::format::Format;
 use vulkano::image::{
     view::ImageView, AttachmentImage, ImageDimensions, SampleCount, StorageImage,
 };
-use vulkano::instance::Instance;
+use vulkano::instance::{Instance, InstanceCreateInfo};
 use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, Subpass};
 use vulkano::sync::GpuFuture;
-use vulkano::Version;
 
 fn main() {
     // The usual Vulkan initialization.
     let required_extensions = vulkano_win::required_extensions();
-    let instance = Instance::new(None, Version::V1_1, &required_extensions, None).unwrap();
+    let instance = Instance::new(InstanceCreateInfo {
+        enabled_extensions: required_extensions,
+        ..Default::default()
+    })
+    .unwrap();
 
     let device_extensions = DeviceExtensions {
         khr_swapchain: true,
@@ -120,11 +123,13 @@ fn main() {
 
     let (device, mut queues) = Device::new(
         physical_device,
-        &Features::none(),
-        &physical_device
-            .required_extensions()
-            .union(&device_extensions),
-        [(queue_family, 0.5)].iter().cloned(),
+        DeviceCreateInfo {
+            enabled_extensions: physical_device
+                .required_extensions()
+                .union(&device_extensions),
+            queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+            ..Default::default()
+        },
     )
     .unwrap();
     let queue = queues.next().unwrap();

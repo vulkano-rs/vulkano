@@ -31,15 +31,16 @@ use cgmath::Matrix4;
 use cgmath::SquareMatrix;
 use cgmath::Vector3;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{Device, DeviceExtensions, Features};
+use vulkano::device::DeviceCreateInfo;
+use vulkano::device::QueueCreateInfo;
+use vulkano::device::{Device, DeviceExtensions};
 use vulkano::image::view::ImageView;
 use vulkano::image::ImageUsage;
-use vulkano::instance::Instance;
+use vulkano::instance::{Instance, InstanceCreateInfo};
 use vulkano::swapchain;
 use vulkano::swapchain::{AcquireError, Swapchain, SwapchainCreationError};
 use vulkano::sync;
 use vulkano::sync::{FlushError, GpuFuture};
-use vulkano::Version;
 use vulkano_win::VkSurfaceBuild;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -52,7 +53,11 @@ fn main() {
     // Basic initialization. See the triangle example if you want more details about this.
 
     let required_extensions = vulkano_win::required_extensions();
-    let instance = Instance::new(None, Version::V1_1, &required_extensions, None).unwrap();
+    let instance = Instance::new(InstanceCreateInfo {
+        enabled_extensions: required_extensions,
+        ..Default::default()
+    })
+    .unwrap();
 
     let event_loop = EventLoop::new();
     let surface = WindowBuilder::new()
@@ -87,11 +92,13 @@ fn main() {
 
     let (device, mut queues) = Device::new(
         physical_device,
-        &Features::none(),
-        &physical_device
-            .required_extensions()
-            .union(&device_extensions),
-        [(queue_family, 0.5)].iter().cloned(),
+        DeviceCreateInfo {
+            enabled_extensions: physical_device
+                .required_extensions()
+                .union(&device_extensions),
+            queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+            ..Default::default()
+        },
     )
     .unwrap();
     let queue = queues.next().unwrap();

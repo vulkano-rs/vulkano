@@ -20,10 +20,10 @@ use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{Device, DeviceExtensions, Features};
+use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageAccess, ImageUsage, SwapchainImage};
-use vulkano::instance::Instance;
+use vulkano::instance::{Instance, InstanceCreateInfo};
 use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
 use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
@@ -31,7 +31,6 @@ use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
 use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
 use vulkano::sync::{self, FlushError, GpuFuture};
-use vulkano::Version;
 use vulkano_win::VkSurfaceBuild;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -48,7 +47,11 @@ fn main() {
     let required_extensions = vulkano_win::required_extensions();
 
     // Now creating the instance.
-    let instance = Instance::new(None, Version::V1_1, &required_extensions, None).unwrap();
+    let instance = Instance::new(InstanceCreateInfo {
+        enabled_extensions: required_extensions,
+        ..Default::default()
+    })
+    .unwrap();
 
     // The objective of this example is to draw a triangle on a window. To do so, we first need to
     // create the window.
@@ -136,31 +139,28 @@ fn main() {
 
     // Now initializing the device. This is probably the most important object of Vulkan.
     //
-    // We have to pass four parameters when creating a device:
-    //
-    // - Which physical device to connect to.
-    //
-    // - A list of optional features and extensions that our program needs to work correctly.
-    //   Some parts of the Vulkan specs are optional and must be enabled manually at device
-    //   creation. In this example the only thing we are going to need is the `khr_swapchain`
-    //   extension that allows us to draw to a window.
-    //
-    // - The list of queues that we are going to use. The exact parameter is an iterator whose
-    //   items are `(Queue, f32)` where the floating-point represents the priority of the queue
-    //   between 0.0 and 1.0. The priority of the queue is a hint to the implementation about how
-    //   much it should prioritize queues between one another.
-    //
     // The iterator of created queues is returned by the function alongside the device.
     let (device, mut queues) = Device::new(
+        // Which physical device to connect to.
         physical_device,
-        &Features::none(),
-        // Some devices require certain extensions to be enabled if they are present
-        // (e.g. `khr_portability_subset`). We add them to the device extensions that we're going to
-        // enable.
-        &physical_device
-            .required_extensions()
-            .union(&device_extensions),
-        [(queue_family, 0.5)].iter().cloned(),
+        DeviceCreateInfo {
+            // A list of optional features and extensions that our program needs to work correctly.
+            // Some parts of the Vulkan specs are optional and must be enabled manually at device
+            // creation. In this example the only thing we are going to need is the `khr_swapchain`
+            // extension that allows us to draw to a window.
+            enabled_extensions: physical_device
+                // Some devices require certain extensions to be enabled if they are present
+                // (e.g. `khr_portability_subset`). We add them to the device extensions that we're
+                // going to enable.
+                .required_extensions()
+                .union(&device_extensions),
+
+            // The list of queues that we are going to use. Here we only use one queue, from the
+            // previously chosen queue family.
+            queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+
+            ..Default::default()
+        },
     )
     .unwrap();
 

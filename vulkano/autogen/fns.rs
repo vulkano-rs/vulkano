@@ -63,6 +63,7 @@ fn fns_output(extension_members: &[FnsMember], fns_level: &str) -> TokenStream {
     quote! {
         pub struct #struct_name {
             #(#struct_items)*
+            pub _ne: crate::NonExhaustive,
         }
 
         impl #struct_name {
@@ -71,7 +72,15 @@ fn fns_output(extension_members: &[FnsMember], fns_level: &str) -> TokenStream {
             {
                 #struct_name {
                     #(#load_items)*
+                    _ne: crate::NonExhaustive(()),
                 }
+            }
+        }
+
+        impl std::fmt::Debug for #struct_name {
+            #[inline]
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+                Ok(())
             }
         }
     }

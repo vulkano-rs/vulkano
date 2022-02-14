@@ -9,7 +9,7 @@
 
 // The `Version` object is reexported from the `instance` module.
 
-use std::fmt;
+use std::{fmt, num::ParseIntError, str::FromStr};
 
 /// Represents an API version of Vulkan.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -70,6 +70,23 @@ impl TryFrom<Version> for u32 {
         } else {
             Err(())
         }
+    }
+}
+
+impl FromStr for Version {
+    type Err = ParseIntError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut iter = s.splitn(3, '.');
+        let major: u32 = iter.next().unwrap().parse()?;
+        let minor: u32 = iter.next().map_or(Ok(0), |n| n.parse())?;
+        let patch: u32 = iter.next().map_or(Ok(0), |n| n.parse())?;
+
+        Ok(Version {
+            major,
+            minor,
+            patch,
+        })
     }
 }
 

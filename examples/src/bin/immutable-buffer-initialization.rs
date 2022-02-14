@@ -13,18 +13,17 @@ use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{Device, DeviceExtensions, Features};
-use vulkano::instance::{Instance, InstanceExtensions};
+use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
+use vulkano::instance::Instance;
 use vulkano::pipeline::{ComputePipeline, Pipeline, PipelineBindPoint};
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
-use vulkano::Version;
 
 fn main() {
     // The most part of this example is exactly the same as `basic-compute-shader`. You should read the
     // `basic-compute-shader` example if you haven't done so yet.
 
-    let instance = Instance::new(None, Version::V1_1, &InstanceExtensions::none(), None).unwrap();
+    let instance = Instance::new(Default::default()).unwrap();
 
     let device_extensions = DeviceExtensions {
         khr_storage_buffer_storage_class: true,
@@ -54,11 +53,13 @@ fn main() {
 
     let (device, mut queues) = Device::new(
         physical_device,
-        &Features::none(),
-        &physical_device
-            .required_extensions()
-            .union(&device_extensions),
-        [(queue_family, 0.5)].iter().cloned(),
+        DeviceCreateInfo {
+            enabled_extensions: physical_device
+                .required_extensions()
+                .union(&device_extensions),
+            queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+            ..Default::default()
+        },
     )
     .unwrap();
 

@@ -20,14 +20,14 @@ use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{Device, DeviceExtensions, Features};
+use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, Features, QueueCreateInfo};
 use vulkano::format::Format;
 use vulkano::image::view::ImageView;
 use vulkano::image::{
     ImageAccess, ImageCreateFlags, ImageDimensions, ImageLayout, ImageUsage, SampleCount,
     StorageImage,
 };
-use vulkano::instance::{Instance, InstanceExtensions};
+use vulkano::instance::{Instance, InstanceCreateInfo, InstanceExtensions};
 use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
 use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
@@ -37,19 +37,15 @@ use vulkano::render_pass::{
     Subpass, SubpassDesc,
 };
 use vulkano::sync::{self, GpuFuture};
-use vulkano::Version;
 
 fn main() {
-    let instance = Instance::new(
-        None,
-        Version::V1_1,
-        &InstanceExtensions {
+    let instance = Instance::new(InstanceCreateInfo {
+        enabled_extensions: InstanceExtensions {
             khr_get_physical_device_properties2: true, // required to get multiview limits
-
             ..InstanceExtensions::none()
         },
-        None,
-    )
+        ..Default::default()
+    })
     .unwrap();
 
     let device_extensions = DeviceExtensions {
@@ -101,11 +97,14 @@ fn main() {
 
     let (device, mut queues) = Device::new(
         physical_device,
-        &features,
-        &physical_device
-            .required_extensions()
-            .union(&device_extensions),
-        [(queue_family, 0.5)].iter().cloned(),
+        DeviceCreateInfo {
+            enabled_extensions: physical_device
+                .required_extensions()
+                .union(&device_extensions),
+            enabled_features: features,
+            queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+            ..Default::default()
+        },
     )
     .unwrap();
 

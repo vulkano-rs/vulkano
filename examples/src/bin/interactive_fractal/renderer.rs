@@ -14,20 +14,22 @@ use vulkano_win::VkSurfaceBuild;
 use std::collections::HashMap;
 use std::sync::Arc;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{Device, DeviceExtensions, Features, Queue};
+use vulkano::device::{
+    Device, DeviceCreateInfo, DeviceExtensions, Features, Queue, QueueCreateInfo,
+};
 use vulkano::format::Format;
 use vulkano::image::view::ImageView;
 use vulkano::image::{
     AttachmentImage, ImageAccess, ImageUsage, ImageViewAbstract, SampleCount, SwapchainImage,
 };
-use vulkano::instance::Instance;
 use vulkano::instance::InstanceExtensions;
+use vulkano::instance::{Instance, InstanceCreateInfo};
 use vulkano::swapchain::{
     AcquireError, ColorSpace, FullscreenExclusive, PresentMode, Surface, SurfaceTransform,
     Swapchain, SwapchainCreationError,
 };
 use vulkano::sync::{FlushError, GpuFuture};
-use vulkano::{swapchain, sync, Version};
+use vulkano::{swapchain, sync};
 use winit::event_loop::EventLoop;
 use winit::window::{Fullscreen, Window, WindowBuilder};
 
@@ -86,11 +88,14 @@ impl Renderer {
             ..vulkano_win::required_extensions()
         };
         // Create instance
-        let _instance = Instance::new(None, Version::V1_2, &instance_extensions, None)
-            .expect("Failed to create instance");
+        let instance = Instance::new(InstanceCreateInfo {
+            enabled_extensions: instance_extensions,
+            ..Default::default()
+        })
+        .expect("Failed to create instance");
 
         // Get desired device
-        let physical_device = PhysicalDevice::enumerate(&_instance)
+        let physical_device = PhysicalDevice::enumerate(&instance)
             .min_by_key(|p| match p.properties().device_type {
                 PhysicalDeviceType::DiscreteGpu => 0,
                 PhysicalDeviceType::IntegratedGpu => 1,
@@ -108,7 +113,7 @@ impl Renderer {
                 opts.window_size[1],
             ))
             .with_title(opts.title)
-            .build_vk_surface(event_loop, _instance.clone())
+            .build_vk_surface(event_loop, instance.clone())
             .unwrap();
         println!("Window scale factor {}", surface.window().scale_factor());
 
@@ -134,7 +139,7 @@ impl Renderer {
         };
 
         Renderer {
-            _instance,
+            _instance: instance,
             device,
             surface,
             queue,
@@ -151,10 +156,10 @@ impl Renderer {
 
     /// Creates vulkan device with required queue families and required extensions
     fn create_device(
-        physical: PhysicalDevice,
+        physical_device: PhysicalDevice,
         surface: Arc<Surface<Window>>,
     ) -> (Arc<Device>, Arc<Queue>) {
-        let queue_family = physical
+        let queue_family = physical_device
             .queue_families()
             .find(|&q| q.supports_graphics() && surface.is_supported(q).unwrap_or(false))
             .unwrap();
@@ -170,15 +175,18 @@ impl Renderer {
             fill_mode_non_solid: true,
             ..Features::none()
         };
-        let (device, mut queues) = {
-            Device::new(
-                physical,
-                &features,
-                &physical.required_extensions().union(&device_extensions),
-                [(queue_family, 0.5)].iter().cloned(),
-            )
-            .unwrap()
-        };
+        let (device, mut queues) = Device::new(
+            physical_device,
+            DeviceCreateInfo {
+                enabled_extensions: physical_device
+                    .required_extensions()
+                    .union(&device_extensions),
+                enabled_features: features,
+                queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+                ..Default::default()
+            },
+        )
+        .unwrap();
         (device, queues.next().unwrap())
     }
 
