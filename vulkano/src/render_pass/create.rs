@@ -1327,7 +1327,7 @@ impl RenderPass {
     }
 }
 
-/// Error that can happen when creating a compute pipeline.
+/// Error that can happen when creating a `RenderPass`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RenderPassCreationError {
     /// Not enough memory.

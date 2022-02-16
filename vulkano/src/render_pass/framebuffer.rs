@@ -472,7 +472,7 @@ impl Default for FramebufferCreateInfo {
     }
 }
 
-/// Error that can happen when creating a framebuffer object.
+/// Error that can happen when creating a `Framebuffer`.
 #[derive(Copy, Clone, Debug)]
 pub enum FramebufferCreationError {
     /// Out of memory.
