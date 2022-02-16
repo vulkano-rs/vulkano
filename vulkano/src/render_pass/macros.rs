@@ -162,8 +162,8 @@ macro_rules! ordered_passes_renderpass {
                         all_graphics: true,
                         ..$crate::sync::PipelineStages::none()
                     };
-                    let source_access = source_stages.allowed_access();
-                    let destination_access = destination_stages.allowed_access();
+                    let source_access = source_stages.supported_access();
+                    let destination_access = destination_stages.supported_access();
 
                     $crate::render_pass::SubpassDependency {
                         source_subpass: id.into(),

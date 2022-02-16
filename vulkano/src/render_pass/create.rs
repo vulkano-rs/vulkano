@@ -603,7 +603,7 @@ impl RenderPass {
 
                 // VUID-VkSubpassDependency2-srcAccessMask-03088
                 // VUID-VkSubpassDependency2-dstAccessMask-03089
-                if !stages.allowed_access().contains(access) {
+                if !stages.supported_access().contains(access) {
                     return Err(
                         RenderPassCreationError::DependencyAccessNotSupportedByStages {
                             dependency: dependency_num,

@@ -84,13 +84,13 @@ macro_rules! pipeline_stages {
 }
 
 impl PipelineStages {
-    /// Returns the access types that are allowed with the given pipeline stages.
+    /// Returns the access types that are supported with the given pipeline stages.
     ///
     /// Corresponds to the table
     /// "[Supported access types](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-access-types-supported)"
     /// in the Vulkan specification.
     #[inline]
-    pub fn allowed_access(&self) -> AccessFlags {
+    pub fn supported_access(&self) -> AccessFlags {
         if self.all_commands {
             return AccessFlags::all();
         }

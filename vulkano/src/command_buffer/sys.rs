@@ -2345,9 +2345,9 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
         destination_access: AccessFlags,
         by_region: bool,
     ) {
-        debug_assert!(source_stage.allowed_access().contains(&source_access));
+        debug_assert!(source_stage.supported_access().contains(&source_access));
         debug_assert!(destination_stage
-            .allowed_access()
+            .supported_access()
             .contains(&destination_access));
 
         self.add_execution_dependency(source_stage, destination_stage, by_region);
@@ -2388,9 +2388,9 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
     ) where
         B: ?Sized + BufferAccess,
     {
-        debug_assert!(source_stage.allowed_access().contains(&source_access));
+        debug_assert!(source_stage.supported_access().contains(&source_access));
         debug_assert!(destination_stage
-            .allowed_access()
+            .supported_access()
             .contains(&destination_access));
 
         self.add_execution_dependency(source_stage, destination_stage, by_region);
@@ -2453,9 +2453,9 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
     ) where
         I: ?Sized + ImageAccess,
     {
-        debug_assert!(source_stage.allowed_access().contains(&source_access));
+        debug_assert!(source_stage.supported_access().contains(&source_access));
         debug_assert!(destination_stage
-            .allowed_access()
+            .supported_access()
             .contains(&destination_access));
 
         self.add_execution_dependency(source_stage, destination_stage, by_region);
