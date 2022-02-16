@@ -725,8 +725,9 @@ pub struct SubpassDescription {
 
     /// The attachments of the render pass that are to be used as color attachments in this subpass.
     ///
-    /// The number of color attachments must be less than the limit of the physical device.
-    /// All color attachments must have the same `samples` value.
+    /// The number of color attachments must be less than the
+    /// [`max_color_attachments`](crate::device::Properties::max_color_attachments) limit of the
+    /// physical device. All color attachments must have the same `samples` value.
     ///
     /// The default value is empty.
     pub color_attachments: Vec<Option<AttachmentReference>>,
@@ -738,8 +739,7 @@ pub struct SubpassDescription {
     /// empty, then each resolve attachment is paired with the color attachment of the same index.
     /// The resolve attachments must all have a `samples` value of [`SampleCount::Sample1`], while
     /// the color attachments must have a `samples` value other than [`SampleCount::Sample1`].
-    /// Each resolve attachment must have have the same `format` as the corresponding color
-    /// attachment.
+    /// Each resolve attachment must have the same `format` as the corresponding color attachment.
     ///
     /// The default value is empty.
     pub resolve_attachments: Vec<Option<AttachmentReference>>,
