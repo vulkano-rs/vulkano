@@ -33,8 +33,8 @@ use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{
-    AttachmentDesc, Framebuffer, LoadOp, MultiviewDesc, RenderPass, RenderPassDesc, StoreOp,
-    Subpass, SubpassDesc,
+    AttachmentDescription, AttachmentReference, Framebuffer, FramebufferCreateInfo, LoadOp,
+    RenderPass, RenderPassCreateInfo, StoreOp, Subpass, SubpassDescription,
 };
 use vulkano::sync::{self, GpuFuture};
 
@@ -197,44 +197,45 @@ fn main() {
     let vs = vs::load(device.clone()).unwrap();
     let fs = fs::load(device.clone()).unwrap();
 
-    let render_pass_description = RenderPassDesc::with_multiview(
-        vec![AttachmentDesc {
-            format: image.format(),
+    let render_pass_description = RenderPassCreateInfo {
+        attachments: vec![AttachmentDescription {
+            format: Some(image.format()),
             samples: SampleCount::Sample1,
-            load: LoadOp::Clear,
-            store: StoreOp::Store,
-            stencil_load: LoadOp::Clear,
-            stencil_store: StoreOp::Store,
+            load_op: LoadOp::Clear,
+            store_op: StoreOp::Store,
+            stencil_load_op: LoadOp::Clear,
+            stencil_store_op: StoreOp::Store,
             initial_layout: ImageLayout::ColorAttachmentOptimal,
             final_layout: ImageLayout::ColorAttachmentOptimal,
+            ..Default::default()
         }],
-        vec![SubpassDesc {
-            color_attachments: vec![(0, ImageLayout::ColorAttachmentOptimal)],
-            depth_stencil: None,
-            input_attachments: vec![],
-            resolve_attachments: vec![],
-            preserve_attachments: vec![],
+        subpasses: vec![SubpassDescription {
+            // the view mask indicates which layers of the framebuffer should be rendered for each
+            // subpass
+            view_mask: 0b11,
+            color_attachments: vec![Some(AttachmentReference {
+                attachment: 0,
+                layout: ImageLayout::ColorAttachmentOptimal,
+                ..Default::default()
+            })],
+            ..Default::default()
         }],
-        vec![],
-        MultiviewDesc {
-            // the view masks indicate which layers of the framebuffer
-            // should be rendered for each subpass
-            view_masks: vec![0b11],
-            // the correlation masks indicate sets of views that may be more efficient to render concurrently
-            correlation_masks: vec![0b11],
-            // for each dependency the view offset controls which views in the source subpass
-            // the views in the destination subpass depend on
-            view_offsets: vec![],
-        },
-    );
+        // the correlated view masks indicate sets of views that may be more efficient to render
+        // concurrently
+        correlated_view_masks: vec![0b11],
+        ..Default::default()
+    };
 
     let render_pass = RenderPass::new(device.clone(), render_pass_description).unwrap();
 
-    let framebuffer = Framebuffer::start(render_pass.clone())
-        .add(image_view)
-        .unwrap()
-        .build()
-        .unwrap();
+    let framebuffer = Framebuffer::new(
+        render_pass.clone(),
+        FramebufferCreateInfo {
+            attachments: vec![image_view],
+            ..Default::default()
+        },
+    )
+    .unwrap();
 
     let pipeline = GraphicsPipeline::start()
         .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())

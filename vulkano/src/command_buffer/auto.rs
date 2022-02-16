@@ -135,7 +135,7 @@ struct RenderPassState {
     subpass: Subpass,
     contents: SubpassContents,
     attached_layers_ranges: SmallVec<[Range<u32>; 4]>,
-    dimensions: [u32; 3],
+    extent: [u32; 2],
     framebuffer: ash::vk::Framebuffer, // Always null for secondary command buffers
 }
 
@@ -296,10 +296,7 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
                      }| RenderPassState {
                         subpass: subpass.clone(),
                         contents: SubpassContents::Inline,
-                        dimensions: framebuffer
-                            .as_ref()
-                            .map(|f| f.dimensions())
-                            .unwrap_or_default(),
+                        extent: framebuffer.as_ref().map(|f| f.extent()).unwrap_or_default(),
                         attached_layers_ranges: framebuffer
                             .as_ref()
                             .map(|f| f.attached_layers_ranges())
@@ -486,8 +483,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         if !pipeline
             .subpass()
             .render_pass()
-            .desc()
-            .is_compatible_with_desc(&render_pass_state.subpass.render_pass().desc())
+            .is_compatible_with(&render_pass_state.subpass.render_pass())
         {
             return Err(AutoCommandBufferBuilderContextError::IncompatibleRenderPass);
         }
@@ -933,10 +929,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
         let render_pass_state = self.render_pass_state.as_ref().unwrap();
         let subpass = &render_pass_state.subpass;
-        let multiview = subpass.render_pass().desc().multiview().is_some();
         let has_depth_stencil_attachment = subpass.has_depth_stencil_attachment();
         let num_color_attachments = subpass.num_color_attachments();
-        let dimensions = render_pass_state.dimensions;
         let attached_layers_ranges = &render_pass_state.attached_layers_ranges;
 
         let attachments: SmallVec<[ClearAttachment; 3]> = attachments.into_iter().collect();
@@ -965,8 +959,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             if rect.rect_extent[0] == 0 || rect.rect_extent[1] == 0 {
                 return Err(ClearAttachmentsError::ZeroRectExtent);
             }
-            if rect.rect_offset[0] + rect.rect_extent[0] > dimensions[0]
-                || rect.rect_offset[1] + rect.rect_extent[1] > dimensions[1]
+            if rect.rect_offset[0] + rect.rect_extent[0] > render_pass_state.extent[0]
+                || rect.rect_offset[1] + rect.rect_extent[1] > render_pass_state.extent[1]
             {
                 return Err(ClearAttachmentsError::RectOutOfBounds);
             }
@@ -974,7 +968,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             if rect.layer_count == 0 {
                 return Err(ClearAttachmentsError::ZeroLayerCount);
             }
-            if multiview && (rect.base_array_layer != 0 || rect.layer_count != 1) {
+            if subpass.render_pass().views_used() != 0
+                && (rect.base_array_layer != 0 || rect.layer_count != 1)
+            {
                 return Err(ClearAttachmentsError::InvalidMultiviewLayerRange);
             }
 
@@ -3212,24 +3208,22 @@ where
 
             self.ensure_outside_render_pass()?;
 
-            let clear_values = framebuffer
-                .render_pass()
-                .desc()
-                .convert_clear_values(clear_values);
+            let clear_values = framebuffer.render_pass().convert_clear_values(clear_values);
             let clear_values = clear_values.collect::<Vec<_>>().into_iter(); // TODO: necessary for Send + Sync ; needs an API rework of convert_clear_values
             let mut clear_values_copy = clear_values.clone().enumerate(); // TODO: Proper errors for clear value errors instead of panics
 
             for (atch_i, atch_desc) in framebuffer
                 .render_pass()
-                .desc()
                 .attachments()
                 .into_iter()
                 .enumerate()
             {
                 match clear_values_copy.next() {
                     Some((clear_i, clear_value)) => {
-                        if atch_desc.load == LoadOp::Clear {
-                            let aspects = atch_desc.format.aspects();
+                        if atch_desc.load_op == LoadOp::Clear {
+                            let aspects = atch_desc
+                                .format
+                                .map_or(ImageAspects::none(), |f| f.aspects());
 
                             if aspects.depth && aspects.stencil {
                                 assert!(
@@ -3255,7 +3249,9 @@ where
                                     atch_i,
                                     clear_value,
                                 );
-                            } else if let Some(numeric_type) = atch_desc.format.type_color() {
+                            } else if let Some(numeric_type) =
+                                atch_desc.format.and_then(|f| f.type_color())
+                            {
                                 match numeric_type {
                                     NumericType::SFLOAT
                                     | NumericType::UFLOAT
@@ -3312,28 +3308,12 @@ where
                 panic!("Too many clear values")
             }
 
-            if let Some(multiview_desc) = framebuffer.render_pass().desc().multiview() {
-                // When multiview is enabled, at the beginning of each subpass all non-render pass state is undefined
-                self.inner.reset_state();
-
-                // ensure that the framebuffer is compatible with the render pass multiview configuration
-                if multiview_desc
-                    .view_masks
-                    .iter()
-                    .chain(multiview_desc.correlation_masks.iter())
-                    .map(|&mask| 32 - mask.leading_zeros()) // calculates the highest used layer index of the mask
-                    .any(|highest_used_layer| highest_used_layer > framebuffer.layers())
-                {
-                    panic!("A multiview mask references more layers than exist in the framebuffer");
-                }
-            }
-
             let framebuffer_object = framebuffer.internal_object();
             self.inner
                 .begin_render_pass(framebuffer.clone(), contents, clear_values)?;
             self.render_pass_state = Some(RenderPassState {
                 subpass: framebuffer.render_pass().clone().first_subpass(),
-                dimensions: framebuffer.dimensions(),
+                extent: framebuffer.extent(),
                 attached_layers_ranges: framebuffer.attached_layers_ranges(),
                 contents,
                 framebuffer: framebuffer_object,
@@ -3352,12 +3332,7 @@ where
             if let Some(render_pass_state) = self.render_pass_state.as_ref() {
                 if !render_pass_state.subpass.is_last_subpass() {
                     return Err(AutoCommandBufferBuilderContextError::NumSubpassesMismatch {
-                        actual: render_pass_state
-                            .subpass
-                            .render_pass()
-                            .desc()
-                            .subpasses()
-                            .len() as u32,
+                        actual: render_pass_state.subpass.render_pass().subpasses().len() as u32,
                         current: render_pass_state.subpass.index(),
                     });
                 }
@@ -3510,8 +3485,7 @@ where
         if !render_pass
             .subpass
             .render_pass()
-            .desc()
-            .is_compatible_with_desc(render_pass_state.subpass.render_pass().desc())
+            .is_compatible_with(render_pass_state.subpass.render_pass())
         {
             return Err(AutoCommandBufferBuilderContextError::IncompatibleRenderPass);
         }
@@ -3539,18 +3513,12 @@ where
                     render_pass_state.contents = contents;
                 } else {
                     return Err(AutoCommandBufferBuilderContextError::NumSubpassesMismatch {
-                        actual: render_pass_state
-                            .subpass
-                            .render_pass()
-                            .desc()
-                            .subpasses()
-                            .len() as u32,
+                        actual: render_pass_state.subpass.render_pass().subpasses().len() as u32,
                         current: render_pass_state.subpass.index(),
                     });
                 }
 
-                if let Some(multiview) = render_pass_state.subpass.render_pass().desc().multiview()
-                {
+                if render_pass_state.subpass.render_pass().views_used() != 0 {
                     // When multiview is enabled, at the beginning of each subpass all non-render pass state is undefined
                     self.inner.reset_state();
                 }

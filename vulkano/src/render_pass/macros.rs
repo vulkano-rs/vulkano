@@ -64,63 +64,75 @@ macro_rules! ordered_passes_renderpass {
     ) => ({
         use $crate::render_pass::RenderPass;
 
-        let desc = {
-            use $crate::render_pass::AttachmentDesc;
-            use $crate::render_pass::RenderPassDesc;
-            use $crate::render_pass::SubpassDependencyDesc;
-            use $crate::render_pass::SubpassDesc;
-            use $crate::image::ImageLayout;
-            use $crate::sync::AccessFlags;
-            use $crate::sync::PipelineStages;
-            use std::convert::TryFrom;
-
+        let create_info = {
+            #[allow(unused)]
             let mut attachment_num = 0;
             $(
                 let $atch_name = attachment_num;
                 attachment_num += 1;
             )*
 
-            let mut layouts: Vec<(Option<ImageLayout>, Option<ImageLayout>)> = vec![(None, None); attachment_num];
+            #[allow(unused)]
+            let mut layouts: Vec<(
+                Option<$crate::image::ImageLayout>,
+                Option<$crate::image::ImageLayout>
+            )> = vec![(None, None); attachment_num as usize];
 
             let subpasses = vec![
                 $({
-                    let desc = SubpassDesc {
+                    let desc = $crate::render_pass::SubpassDescription {
                         color_attachments: vec![
                             $({
-                                let layout = &mut layouts[$color_atch];
-                                layout.0 = layout.0.or(Some(ImageLayout::ColorAttachmentOptimal));
-                                layout.1 = Some(ImageLayout::ColorAttachmentOptimal);
+                                let layout = &mut layouts[$color_atch as usize];
+                                layout.0 = layout.0.or(Some($crate::image::ImageLayout::ColorAttachmentOptimal));
+                                layout.1 = Some($crate::image::ImageLayout::ColorAttachmentOptimal);
 
-                                ($color_atch, ImageLayout::ColorAttachmentOptimal)
+                                Some($crate::render_pass::AttachmentReference {
+                                    attachment: $color_atch,
+                                    layout: $crate::image::ImageLayout::ColorAttachmentOptimal,
+                                    ..Default::default()
+                                })
                             }),*
                         ],
-                        depth_stencil: {
-                            let depth: Option<(usize, ImageLayout)> = None;
+                        depth_stencil_attachment: {
+                            let depth: Option<$crate::render_pass::AttachmentReference> = None;
                             $(
-                                let layout = &mut layouts[$depth_atch];
-                                layout.1 = Some(ImageLayout::DepthStencilAttachmentOptimal);
+                                let layout = &mut layouts[$depth_atch as usize];
+                                layout.1 = Some($crate::image::ImageLayout::DepthStencilAttachmentOptimal);
                                 layout.0 = layout.0.or(layout.1);
 
-                                let depth = Some(($depth_atch, ImageLayout::DepthStencilAttachmentOptimal));
+                                let depth = Some($crate::render_pass::AttachmentReference {
+                                    attachment: $depth_atch,
+                                    layout: $crate::image::ImageLayout::DepthStencilAttachmentOptimal,
+                                    ..Default::default()
+                                });
                             )*
                             depth
                         },
                         input_attachments: vec![
                             $({
-                                let layout = &mut layouts[$input_atch];
-                                layout.1 = Some(ImageLayout::ShaderReadOnlyOptimal);
+                                let layout = &mut layouts[$input_atch as usize];
+                                layout.1 = Some($crate::image::ImageLayout::ShaderReadOnlyOptimal);
                                 layout.0 = layout.0.or(layout.1);
 
-                                ($input_atch, ImageLayout::ShaderReadOnlyOptimal)
+                                Some($crate::render_pass::AttachmentReference {
+                                    attachment: $input_atch,
+                                    layout: $crate::image::ImageLayout::ShaderReadOnlyOptimal,
+                                    ..Default::default()
+                                })
                             }),*
                         ],
                         resolve_attachments: vec![
                             $($({
-                                let layout = &mut layouts[$resolve_atch];
-                                layout.1 = Some(ImageLayout::TransferDstOptimal);
+                                let layout = &mut layouts[$resolve_atch as usize];
+                                layout.1 = Some($crate::image::ImageLayout::TransferDstOptimal);
                                 layout.0 = layout.0.or(layout.1);
 
-                                ($resolve_atch, ImageLayout::TransferDstOptimal)
+                                Some($crate::render_pass::AttachmentReference {
+                                    attachment: $resolve_atch,
+                                    layout: $crate::image::ImageLayout::TransferDstOptimal,
+                                    ..Default::default()
+                                })
                             }),*)*
                         ],
                         preserve_attachments: (0 .. attachment_num).filter(|&a| {
@@ -129,7 +141,8 @@ macro_rules! ordered_passes_renderpass {
                             $(if a == $input_atch { return false; })*
                             $($(if a == $resolve_atch { return false; })*)*
                             true
-                        }).collect()
+                        }).collect(),
+                        ..Default::default()
                     };
 
                     assert!(desc.resolve_attachments.is_empty() ||
@@ -138,39 +151,46 @@ macro_rules! ordered_passes_renderpass {
                 }),*
             ];
 
-            let dependencies = (0..subpasses.len().saturating_sub(1))
+            let dependencies: Vec<_> = (0..subpasses.len().saturating_sub(1) as u32)
                 .map(|id| {
-                    SubpassDependencyDesc {
-                        source_subpass: id,
-                        destination_subpass: id + 1,
-                        source_stages: PipelineStages {
-                            all_graphics: true,
-                            ..PipelineStages::none()
-                        }, // TODO: correct values
-                        destination_stages: PipelineStages {
-                            all_graphics: true,
-                            ..PipelineStages::none()
-                        }, // TODO: correct values
-                        source_access: AccessFlags::all(), // TODO: correct values
-                        destination_access: AccessFlags::all(), // TODO: correct values
+                    // TODO: correct values
+                    let source_stages = $crate::sync::PipelineStages {
+                        all_graphics: true,
+                        ..$crate::sync::PipelineStages::none()
+                    };
+                    let destination_stages = $crate::sync::PipelineStages {
+                        all_graphics: true,
+                        ..$crate::sync::PipelineStages::none()
+                    };
+                    let source_access = source_stages.allowed_access();
+                    let destination_access = destination_stages.allowed_access();
+
+                    $crate::render_pass::SubpassDependency {
+                        source_subpass: id.into(),
+                        destination_subpass: (id + 1).into(),
+                        source_stages,
+                        destination_stages,
+                        source_access,
+                        destination_access,
                         by_region: true,                      // TODO: correct values
+                        ..Default::default()
                     }
                 })
                 .collect();
 
             let attachments = vec![
                 $({
-                    let layout = &mut layouts[$atch_name];
+                    let layout = &mut layouts[$atch_name as usize];
                     $(layout.0 = Some($init_layout);)*
                     $(layout.1 = Some($final_layout);)*
 
-                    AttachmentDesc {
-                        format: $format,
+                    $crate::render_pass::AttachmentDescription {
+                        format: Some($format),
                         samples: $crate::image::SampleCount::try_from($samples).unwrap(),
-                        load: $crate::render_pass::LoadOp::$load,
-                        store: $crate::render_pass::StoreOp::$store,
-                        stencil_load: $crate::render_pass::LoadOp::$load,
-                        stencil_store: $crate::render_pass::StoreOp::$store,
+                        load_op: $crate::render_pass::LoadOp::$load,
+                        store_op: $crate::render_pass::StoreOp::$store,
+                        stencil_load_op: $crate::render_pass::LoadOp::$load,
+                        stencil_store_op: $crate::render_pass::StoreOp::$store,
                         initial_layout: layout.0.expect(
                             format!(
                                 "Attachment {} is missing initial_layout, this is normally \
@@ -189,18 +209,20 @@ macro_rules! ordered_passes_renderpass {
                             )
                             .as_ref(),
                         ),
+                        ..Default::default()
                     }
                 }),*
             ];
 
-            RenderPassDesc::new(
+            $crate::render_pass::RenderPassCreateInfo {
                 attachments,
                 subpasses,
                 dependencies,
-            )
+                ..Default::default()
+            }
         };
 
-        RenderPass::new($device, desc)
+        RenderPass::new($device, create_info)
     });
 }
 

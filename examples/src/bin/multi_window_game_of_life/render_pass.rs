@@ -14,7 +14,7 @@ use vulkano::{
     device::Queue,
     format::Format,
     image::ImageAccess,
-    render_pass::{Framebuffer, RenderPass, Subpass},
+    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     sync::GpuFuture,
 };
 
@@ -68,11 +68,14 @@ impl RenderPassPlaceOverFrame {
         // Get dimensions
         let img_dims = target.image().dimensions();
         // Create framebuffer (must be in same order as render pass description in `new`
-        let framebuffer = Framebuffer::start(self.render_pass.clone())
-            .add(target)
-            .unwrap()
-            .build()
-            .unwrap();
+        let framebuffer = Framebuffer::new(
+            self.render_pass.clone(),
+            FramebufferCreateInfo {
+                attachments: vec![target],
+                ..Default::default()
+            },
+        )
+        .unwrap();
         // Create primary command buffer builder
         let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
             self.gfx_queue.device().clone(),

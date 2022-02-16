@@ -287,10 +287,7 @@ impl UnsafeCommandBufferBuilder {
             .collect();
 
         // TODO: allow customizing
-        let rect = [
-            0..framebuffer.dimensions()[0],
-            0..framebuffer.dimensions()[1],
-        ];
+        let rect = framebuffer.extent().map(|x| 0..x);
 
         let begin = ash::vk::RenderPassBeginInfo {
             render_pass: raw_render_pass,
@@ -2348,8 +2345,10 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
         destination_access: AccessFlags,
         by_region: bool,
     ) {
-        debug_assert!(source_access.is_compatible_with(&source_stage));
-        debug_assert!(destination_access.is_compatible_with(&destination_stage));
+        debug_assert!(source_stage.allowed_access().contains(&source_access));
+        debug_assert!(destination_stage
+            .allowed_access()
+            .contains(&destination_access));
 
         self.add_execution_dependency(source_stage, destination_stage, by_region);
 
@@ -2389,8 +2388,10 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
     ) where
         B: ?Sized + BufferAccess,
     {
-        debug_assert!(source_access.is_compatible_with(&source_stage));
-        debug_assert!(destination_access.is_compatible_with(&destination_stage));
+        debug_assert!(source_stage.allowed_access().contains(&source_access));
+        debug_assert!(destination_stage
+            .allowed_access()
+            .contains(&destination_access));
 
         self.add_execution_dependency(source_stage, destination_stage, by_region);
 
@@ -2452,8 +2453,10 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
     ) where
         I: ?Sized + ImageAccess,
     {
-        debug_assert!(source_access.is_compatible_with(&source_stage));
-        debug_assert!(destination_access.is_compatible_with(&destination_stage));
+        debug_assert!(source_stage.allowed_access().contains(&source_access));
+        debug_assert!(destination_stage
+            .allowed_access()
+            .contains(&destination_access));
 
         self.add_execution_dependency(source_stage, destination_stage, by_region);
 

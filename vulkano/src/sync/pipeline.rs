@@ -83,6 +83,127 @@ macro_rules! pipeline_stages {
     );
 }
 
+impl PipelineStages {
+    /// Returns the access types that are allowed with the given pipeline stages.
+    ///
+    /// Corresponds to the table
+    /// "[Supported access types](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-access-types-supported)"
+    /// in the Vulkan specification.
+    #[inline]
+    pub fn allowed_access(&self) -> AccessFlags {
+        if self.all_commands {
+            return AccessFlags::all();
+        }
+
+        let PipelineStages {
+            top_of_pipe,
+            mut draw_indirect,
+            mut vertex_input,
+            mut vertex_shader,
+            mut tessellation_control_shader,
+            mut tessellation_evaluation_shader,
+            mut geometry_shader,
+            mut fragment_shader,
+            mut early_fragment_tests,
+            mut late_fragment_tests,
+            mut color_attachment_output,
+            compute_shader,
+            transfer,
+            bottom_of_pipe,
+            host,
+            all_graphics,
+            all_commands,
+            ray_tracing_shader,
+        } = *self;
+
+        if all_graphics {
+            draw_indirect = true;
+            //task_shader = true;
+            //mesh_shader = true;
+            vertex_input = true;
+            vertex_shader = true;
+            tessellation_control_shader = true;
+            tessellation_evaluation_shader = true;
+            geometry_shader = true;
+            fragment_shader = true;
+            early_fragment_tests = true;
+            late_fragment_tests = true;
+            color_attachment_output = true;
+            //conditional_rendering = true;
+            //transform_feedback = true;
+            //fragment_shading_rate_attachment = true;
+            //fragment_density_process = true;
+        }
+
+        AccessFlags {
+            indirect_command_read: draw_indirect, /*|| acceleration_structure_build*/
+            index_read: vertex_input,
+            vertex_attribute_read: vertex_input,
+            uniform_read:
+                // task_shader
+                // mesh_shader
+                ray_tracing_shader
+                || vertex_shader
+                || tessellation_control_shader
+                || tessellation_evaluation_shader
+                || geometry_shader
+                || fragment_shader
+                || compute_shader,
+            shader_read:
+                // acceleration_structure_build
+                // task_shader
+                // mesh_shader
+                ray_tracing_shader
+                || vertex_shader
+                || tessellation_control_shader
+                || tessellation_evaluation_shader
+                || geometry_shader
+                || fragment_shader
+                || compute_shader,
+            shader_write:
+                // task_shader
+                //  mesh_shader
+                ray_tracing_shader
+                || vertex_shader
+                || tessellation_control_shader
+                || tessellation_evaluation_shader
+                || geometry_shader
+                || fragment_shader
+                || compute_shader,
+            input_attachment_read:
+                // subpass_shading
+                fragment_shader,
+            color_attachment_read: color_attachment_output,
+            color_attachment_write: color_attachment_output,
+            depth_stencil_attachment_read: early_fragment_tests || late_fragment_tests,
+            depth_stencil_attachment_write: early_fragment_tests || late_fragment_tests,
+            transfer_read: transfer,
+                // acceleration_structure_build
+            transfer_write: transfer,
+                // acceleration_structure_build
+            host_read: host,
+            host_write: host,
+            memory_read: true,
+            memory_write: true,
+
+            /*
+            color_attachment_read_noncoherent: color_attachment_output,
+            preprocess_read: command_preprocess,
+            preprocess_write: command_preprocess,
+            conditional_rendering_read: conditional_rendering,
+            fragment_shading_rate_attachment_read: fragment_shading_rate_attachment,
+            invocation_mask_read: invocation_mask,
+            transform_feedback_write: transform_feedback,
+            transform_feedback_counter_write: transform_feedback,
+            transform_feedback_counter_read: transform_feedback || draw_indirect,
+            acceleration_structure_read: task_shader || mesh_shader || vertex_shader || tessellation_control_shader || tessellation_evaluation_shader || geometry_shader || fragment_shader || compute_shader || ray_tracing_shader || acceleration_structure_build,
+            acceleration_structure_write: acceleration_structure_build,
+            fragment_density_map_read: fragment_density_process,
+            */
+        }
+    }
+}
+
 impl From<PipelineStage> for ash::vk::PipelineStageFlags {
     #[inline]
     fn from(val: PipelineStage) -> Self {
@@ -139,6 +260,13 @@ macro_rules! access_flags {
                     )+
                 }
             }
+
+            /// Returns whether all flags in `other` are also set in `self`.
+            pub const fn contains(&self, other: &Self) -> bool {
+                $(
+                    (self.$elem || !other.$elem)
+                )&&+
+            }
         }
 
         impl From<AccessFlags> for ash::vk::AccessFlags {
@@ -194,70 +322,6 @@ access_flags! {
     host_write => ash::vk::AccessFlags::HOST_WRITE,
     memory_read => ash::vk::AccessFlags::MEMORY_READ,
     memory_write => ash::vk::AccessFlags::MEMORY_WRITE,
-}
-
-impl AccessFlags {
-    /// Returns true if the access flags can be used with the given pipeline stages.
-    ///
-    /// Corresponds to `Table 4. Supported access types` in section `6.1.3. Access Types` of the
-    /// Vulkan specs.
-    pub fn is_compatible_with(&self, stages: &PipelineStages) -> bool {
-        if stages.all_commands {
-            return true;
-        }
-
-        if self.indirect_command_read && !stages.draw_indirect && !stages.all_graphics {
-            return false;
-        }
-
-        if (self.index_read || self.vertex_attribute_read)
-            && !stages.vertex_input
-            && !stages.all_graphics
-        {
-            return false;
-        }
-
-        if (self.uniform_read || self.shader_read || self.shader_write)
-            && !stages.vertex_shader
-            && !stages.tessellation_control_shader
-            && !stages.tessellation_evaluation_shader
-            && !stages.geometry_shader
-            && !stages.fragment_shader
-            && !stages.compute_shader
-            && !stages.all_graphics
-        {
-            return false;
-        }
-
-        if self.input_attachment_read && !stages.fragment_shader && !stages.all_graphics {
-            return false;
-        }
-
-        if (self.color_attachment_read || self.color_attachment_write)
-            && !stages.color_attachment_output
-            && !stages.all_graphics
-        {
-            return false;
-        }
-
-        if (self.depth_stencil_attachment_read || self.depth_stencil_attachment_write)
-            && !stages.early_fragment_tests
-            && !stages.late_fragment_tests
-            && !stages.all_graphics
-        {
-            return false;
-        }
-
-        if (self.transfer_read || self.transfer_write) && !stages.transfer {
-            return false;
-        }
-
-        if (self.host_read || self.host_write) && !stages.host {
-            return false;
-        }
-
-        true
-    }
 }
 
 /// The full specification of memory access by the pipeline for a particular resource.

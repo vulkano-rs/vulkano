@@ -26,6 +26,7 @@ use vulkano::image::ImageAccess;
 use vulkano::image::ImageUsage;
 use vulkano::image::ImageViewAbstract;
 use vulkano::render_pass::Framebuffer;
+use vulkano::render_pass::FramebufferCreateInfo;
 use vulkano::render_pass::RenderPass;
 use vulkano::render_pass::Subpass;
 use vulkano::sync::GpuFuture;
@@ -281,17 +282,19 @@ impl FrameSystem {
 
         // Build the framebuffer. The image must be attached in the same order as they were defined
         // with the `ordered_passes_renderpass!` macro.
-        let framebuffer = Framebuffer::start(self.render_pass.clone())
-            .add(final_image.clone())
-            .unwrap()
-            .add(self.diffuse_buffer.clone())
-            .unwrap()
-            .add(self.normals_buffer.clone())
-            .unwrap()
-            .add(self.depth_buffer.clone())
-            .unwrap()
-            .build()
-            .unwrap();
+        let framebuffer = Framebuffer::new(
+            self.render_pass.clone(),
+            FramebufferCreateInfo {
+                attachments: vec![
+                    final_image.clone(),
+                    self.diffuse_buffer.clone(),
+                    self.normals_buffer.clone(),
+                    self.depth_buffer.clone(),
+                ],
+                ..Default::default()
+            },
+        )
+        .unwrap();
 
         // Start the command buffer builder that will be filled throughout the frame handling.
         let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
@@ -448,8 +451,7 @@ impl<'f, 's: 'f> DrawPass<'f, 's> {
     /// Returns the dimensions in pixels of the viewport.
     #[inline]
     pub fn viewport_dimensions(&self) -> [u32; 2] {
-        let dims = self.frame.framebuffer.dimensions();
-        [dims[0], dims[1]]
+        self.frame.framebuffer.extent()
     }
 
     /// Returns the 4x4 matrix that turns world coordinates into 2D coordinates on the framebuffer.
@@ -470,9 +472,8 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
     ///
     /// All the objects will be colored with an intensity of `color`.
     pub fn ambient_light(&mut self, color: [f32; 3]) {
-        let dims = self.frame.framebuffer.dimensions();
         let command_buffer = self.frame.system.ambient_lighting_system.draw(
-            [dims[0], dims[1]],
+            self.frame.framebuffer.extent(),
             self.frame.system.diffuse_buffer.clone(),
             color,
         );
@@ -489,9 +490,8 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
     /// All the objects will be colored with an intensity varying between `[0, 0, 0]` and `color`,
     /// depending on the dot product of their normal and `direction`.
     pub fn directional_light(&mut self, direction: Vector3<f32>, color: [f32; 3]) {
-        let dims = self.frame.framebuffer.dimensions();
         let command_buffer = self.frame.system.directional_lighting_system.draw(
-            [dims[0], dims[1]],
+            self.frame.framebuffer.extent(),
             self.frame.system.diffuse_buffer.clone(),
             self.frame.system.normals_buffer.clone(),
             direction,
@@ -511,10 +511,9 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
     /// depending on their distance with `position`. Objects that aren't facing `position` won't
     /// receive any light.
     pub fn point_light(&mut self, position: Vector3<f32>, color: [f32; 3]) {
-        let dims = self.frame.framebuffer.dimensions();
         let command_buffer = {
             self.frame.system.point_lighting_system.draw(
-                [dims[0], dims[1]],
+                self.frame.framebuffer.extent(),
                 self.frame.system.diffuse_buffer.clone(),
                 self.frame.system.normals_buffer.clone(),
                 self.frame.system.depth_buffer.clone(),

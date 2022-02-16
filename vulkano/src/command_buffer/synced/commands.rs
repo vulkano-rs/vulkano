@@ -143,13 +143,12 @@ impl SyncCommandBufferBuilder {
 
         let resources = framebuffer
             .render_pass()
-            .desc()
             .attachments()
             .iter()
             .enumerate()
             .map(|(num, desc)| {
                 (
-                    KeyTy::Image(framebuffer.attached_image_view(num).unwrap().image()),
+                    KeyTy::Image(framebuffer.attachments()[num].image()),
                     format!("attachment {}", num).into(),
                     Some((
                         PipelineMemoryAccess {
@@ -170,7 +169,7 @@ impl SyncCommandBufferBuilder {
                         desc.initial_layout,
                         desc.final_layout,
                         match desc.initial_layout != ImageLayout::Undefined
-                            || desc.load == LoadOp::Clear
+                            || desc.load_op == LoadOp::Clear
                         {
                             true => ImageUninitializedSafe::Safe,
                             false => ImageUninitializedSafe::Unsafe,
