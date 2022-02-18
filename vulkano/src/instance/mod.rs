@@ -61,7 +61,7 @@ use crate::device::physical::{init_physical_devices, PhysicalDeviceInfo};
 pub use crate::extensions::{
     ExtensionRestriction, ExtensionRestrictionError, SupportedExtensionsError,
 };
-use crate::fns::InstanceFunctions;
+pub use crate::fns::InstanceFunctions;
 use crate::instance::loader::FunctionPointers;
 use crate::instance::loader::Loader;
 pub use crate::version::Version;
