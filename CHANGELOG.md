@@ -23,7 +23,8 @@
 - Fixed `AutoCommandBufferBuilder::push_constants` to push multiple times in case of range overlap (to accommodate VUIDs 01795 and 01796) 
 - Fixed `shader!` macro failing to compile with geometry shaders.
 - Refactored `VertexBuffersCollection` to allow `Arc<dyn BufferAccess>`.
-- Added a `Format::texels_per_block` method.
+- Added a `Format::texels_per_block` method.\
+- Fixed bug on certain drivers where samplers would behave oddly when minmax samplers are enabled.
 
 # Version 0.28.0 (2022-02-02)
 
