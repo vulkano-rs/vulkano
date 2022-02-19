@@ -415,6 +415,11 @@ where
     }
 
     #[inline]
+    fn is_layout_initialized(&self) -> bool {
+        true
+    }
+
+    #[inline]
     fn initial_layout_requirement(&self) -> ImageLayout {
         self.layout
     }
