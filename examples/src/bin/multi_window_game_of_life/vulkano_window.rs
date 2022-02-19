@@ -9,15 +9,17 @@
 use std::sync::Arc;
 
 use vulkano::{
-    device::Queue,
+    device::{DeviceOwned, Queue},
     format::Format,
     image::{view::ImageView, ImageAccess, ImageViewAbstract},
     swapchain,
-    swapchain::{AcquireError, PresentMode, Surface, Swapchain, SwapchainCreationError},
+    swapchain::{
+        AcquireError, PresentMode, Surface, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+    },
     sync,
     sync::{FlushError, GpuFuture},
 };
-use vulkano_win::create_vk_surface_from_handle;
+use vulkano_win::create_surface_from_handle;
 use winit::window::Window;
 
 use crate::vulkano_context::{DeviceImageView, FinalImageView, VulkanoContext};
@@ -28,7 +30,7 @@ use vulkano::image::{ImageCreateFlags, ImageDimensions, ImageUsage, StorageImage
 pub struct VulkanoWindow {
     surface: Arc<Surface<Window>>,
     graphics_queue: Arc<Queue>,
-    swap_chain: Arc<Swapchain<Window>>,
+    swapchain: Arc<Swapchain<Window>>,
     final_views: Vec<FinalImageView>,
     /// Image view that is to be rendered with our pipeline.
     /// (bool refers to whether it should get resized with swapchain resize)
@@ -51,11 +53,10 @@ impl VulkanoWindow {
         vsync: bool,
     ) -> VulkanoWindow {
         // Create rendering surface from window
-        let surface = create_vk_surface_from_handle(window, vulkano_context.instance()).unwrap();
+        let surface = create_surface_from_handle(window, vulkano_context.instance()).unwrap();
         // Create swap chain & frame(s) to which we'll render
-        let (swap_chain, final_views) = vulkano_context.create_swap_chain(
+        let (swapchain, final_views) = vulkano_context.create_swapchain(
             surface.clone(),
-            vulkano_context.graphics_queue(),
             if vsync {
                 PresentMode::Fifo
             } else {
@@ -68,7 +69,7 @@ impl VulkanoWindow {
         VulkanoWindow {
             surface,
             graphics_queue: vulkano_context.graphics_queue(),
-            swap_chain,
+            swapchain,
             final_views,
             image_views: HashMap::default(),
             recreate_swapchain: false,
@@ -186,7 +187,7 @@ impl VulkanoWindow {
 
         // Acquire next image in the swapchain
         let (image_num, suboptimal, acquire_future) =
-            match swapchain::acquire_next_image(self.swap_chain.clone(), None) {
+            match swapchain::acquire_next_image(self.swapchain.clone(), None) {
                 Ok(r) => r,
                 Err(AcquireError::OutOfDate) => {
                     self.recreate_swapchain = true;
@@ -210,7 +211,7 @@ impl VulkanoWindow {
         let future = after_future
             .then_swapchain_present(
                 self.graphics_queue.clone(),
-                self.swap_chain.clone(),
+                self.swapchain.clone(),
                 self.image_index,
             )
             .then_signal_fence_and_flush();
@@ -239,21 +240,19 @@ impl VulkanoWindow {
 
     /// Recreates swapchain images and image views that should follow swap chain image size
     fn recreate_swapchain_and_views(&mut self) {
-        let dimensions: [u32; 2] = self.window().inner_size().into();
-        let (new_swapchain, new_images) =
-            match self.swap_chain.recreate().dimensions(dimensions).build() {
-                Ok(r) => r,
-                Err(SwapchainCreationError::UnsupportedDimensions) => {
-                    println!(
-                        "{}",
-                        SwapchainCreationError::UnsupportedDimensions.to_string()
-                    );
-                    return;
-                }
-                Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
-            };
+        let (new_swapchain, new_images) = match self.swapchain.recreate(SwapchainCreateInfo {
+            image_extent: self.window().inner_size().into(),
+            ..self.swapchain.create_info()
+        }) {
+            Ok(r) => r,
+            Err(e @ SwapchainCreationError::ImageExtentNotSupported { .. }) => {
+                println!("{}", e);
+                return;
+            }
+            Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
+        };
 
-        self.swap_chain = new_swapchain;
+        self.swapchain = new_swapchain;
         let new_images = new_images
             .into_iter()
             .map(|image| ImageView::new(image).unwrap())

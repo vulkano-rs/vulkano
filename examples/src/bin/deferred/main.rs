@@ -38,7 +38,7 @@ use vulkano::image::view::ImageView;
 use vulkano::image::ImageUsage;
 use vulkano::instance::{Instance, InstanceCreateInfo};
 use vulkano::swapchain;
-use vulkano::swapchain::{AcquireError, Swapchain, SwapchainCreationError};
+use vulkano::swapchain::{AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError};
 use vulkano::sync;
 use vulkano::sync::{FlushError, GpuFuture};
 use vulkano_win::VkSurfaceBuild;
@@ -72,7 +72,7 @@ fn main() {
         .filter(|&p| p.supported_extensions().is_superset_of(&device_extensions))
         .filter_map(|p| {
             p.queue_families()
-                .find(|&q| q.supports_graphics() && surface.is_supported(q).unwrap_or(false))
+                .find(|&q| q.supports_graphics() && q.supports_surface(&surface).unwrap_or(false))
                 .map(|q| (p, q))
         })
         .min_by_key(|(p, _)| match p.properties().device_type {
@@ -104,20 +104,33 @@ fn main() {
     let queue = queues.next().unwrap();
 
     let (mut swapchain, mut images) = {
-        let caps = surface.capabilities(physical_device).unwrap();
-        let composite_alpha = caps.supported_composite_alpha.iter().next().unwrap();
-        let format = caps.supported_formats[0].0;
-        let dimensions: [u32; 2] = surface.window().inner_size().into();
-
-        let (swapchain, images) = Swapchain::start(device.clone(), surface.clone())
-            .num_images(caps.min_image_count)
-            .format(format)
-            .dimensions(dimensions)
-            .usage(ImageUsage::color_attachment())
-            .sharing_mode(&queue)
-            .composite_alpha(composite_alpha)
-            .build()
+        let surface_capabilities = physical_device
+            .surface_capabilities(&surface, Default::default())
             .unwrap();
+        let image_format = Some(
+            physical_device
+                .surface_formats(&surface, Default::default())
+                .unwrap()[0]
+                .0,
+        );
+
+        let (swapchain, images) = Swapchain::new(
+            device.clone(),
+            surface.clone(),
+            SwapchainCreateInfo {
+                min_image_count: surface_capabilities.min_image_count,
+                image_format,
+                image_extent: surface.window().inner_size().into(),
+                image_usage: ImageUsage::color_attachment(),
+                composite_alpha: surface_capabilities
+                    .supported_composite_alpha
+                    .iter()
+                    .next()
+                    .unwrap(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let images = images
             .into_iter()
             .map(|image| ImageView::new(image.clone()).unwrap())
@@ -126,7 +139,7 @@ fn main() {
     };
 
     // Here is the basic initialization for the deferred system.
-    let mut frame_system = FrameSystem::new(queue.clone(), swapchain.format());
+    let mut frame_system = FrameSystem::new(queue.clone(), swapchain.image_format());
     let triangle_draw_system =
         TriangleDrawSystem::new(queue.clone(), frame_system.deferred_subpass());
 
@@ -150,13 +163,14 @@ fn main() {
             previous_frame_end.as_mut().unwrap().cleanup_finished();
 
             if recreate_swapchain {
-                let dimensions: [u32; 2] = surface.window().inner_size().into();
-                let (new_swapchain, new_images) =
-                    match swapchain.recreate().dimensions(dimensions).build() {
-                        Ok(r) => r,
-                        Err(SwapchainCreationError::UnsupportedDimensions) => return,
-                        Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
-                    };
+                let (new_swapchain, new_images) = match swapchain.recreate(SwapchainCreateInfo {
+                    image_extent: surface.window().inner_size().into(),
+                    ..swapchain.create_info()
+                }) {
+                    Ok(r) => r,
+                    Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
+                    Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
+                };
                 let new_images = new_images
                     .into_iter()
                     .map(|image| ImageView::new(image.clone()).unwrap())

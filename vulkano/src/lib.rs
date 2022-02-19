@@ -198,7 +198,7 @@ pub(crate) enum Error {
     IncompatibleDisplay = ash::vk::Result::ERROR_INCOMPATIBLE_DISPLAY_KHR.as_raw(),
     ValidationFailed = ash::vk::Result::ERROR_VALIDATION_FAILED_EXT.as_raw(),
     OutOfPoolMemory = ash::vk::Result::ERROR_OUT_OF_POOL_MEMORY_KHR.as_raw(),
-    FullscreenExclusiveLost = ash::vk::Result::ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT.as_raw(),
+    FullScreenExclusiveLost = ash::vk::Result::ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT.as_raw(),
 }
 
 /// Checks whether the result returned correctly.
@@ -229,7 +229,7 @@ fn check_errors(result: ash::vk::Result) -> Result<Success, Error> {
         ash::vk::Result::ERROR_VALIDATION_FAILED_EXT => Err(Error::ValidationFailed),
         ash::vk::Result::ERROR_OUT_OF_POOL_MEMORY_KHR => Err(Error::OutOfPoolMemory),
         ash::vk::Result::ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT => {
-            Err(Error::FullscreenExclusiveLost)
+            Err(Error::FullScreenExclusiveLost)
         }
         ash::vk::Result::ERROR_INVALID_SHADER_NV => panic!(
             "Vulkan function returned \

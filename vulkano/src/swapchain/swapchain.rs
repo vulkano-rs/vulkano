@@ -7,12 +7,16 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use super::SupportedCompositeAlpha;
+use super::SupportedSurfaceTransforms;
 use crate::buffer::BufferAccess;
 use crate::check_errors;
 use crate::command_buffer::submit::SubmitAnyBuilder;
 use crate::command_buffer::submit::SubmitPresentBuilder;
 use crate::command_buffer::submit::SubmitPresentError;
 use crate::command_buffer::submit::SubmitSemaphoresWaitBuilder;
+use crate::device::physical::SurfaceInfo;
+use crate::device::physical::SurfacePropertiesError;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
@@ -28,12 +32,12 @@ use crate::image::ImageTiling;
 use crate::image::ImageType;
 use crate::image::ImageUsage;
 use crate::image::SampleCount;
-use crate::swapchain::CapabilitiesError;
 use crate::swapchain::ColorSpace;
 use crate::swapchain::CompositeAlpha;
 use crate::swapchain::PresentMode;
 use crate::swapchain::PresentRegion;
 use crate::swapchain::Surface;
+use crate::swapchain::SurfaceApi;
 use crate::swapchain::SurfaceSwapchainLock;
 use crate::swapchain::SurfaceTransform;
 use crate::sync::semaphore::SemaphoreError;
@@ -45,14 +49,15 @@ use crate::sync::FlushError;
 use crate::sync::GpuFuture;
 use crate::sync::PipelineStages;
 use crate::sync::Semaphore;
-use crate::sync::SharingMode;
+use crate::sync::Sharing;
 use crate::Error;
 use crate::OomError;
 use crate::Success;
 use crate::VulkanObject;
+use smallvec::SmallVec;
 use std::error;
 use std::fmt;
-use std::mem;
+use std::hash::{Hash, Hasher};
 use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::atomic::AtomicBool;
@@ -61,31 +66,1305 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
 
-/// The way fullscreen exclusivity is handled.
+/// Contains the swapping system and the images that can be shown on a surface.
+#[derive(Debug)]
+pub struct Swapchain<W> {
+    handle: ash::vk::SwapchainKHR,
+    device: Arc<Device>,
+    surface: Arc<Surface<W>>,
+
+    min_image_count: u32,
+    image_format: Format,
+    image_color_space: ColorSpace,
+    image_extent: [u32; 2],
+    image_array_layers: u32,
+    image_usage: ImageUsage,
+    image_sharing: Sharing<SmallVec<[u32; 4]>>,
+    pre_transform: SurfaceTransform,
+    composite_alpha: CompositeAlpha,
+    present_mode: PresentMode,
+    clipped: bool,
+    full_screen_exclusive: FullScreenExclusive,
+    win32_monitor: Option<Win32Monitor>,
+
+    // Whether full-screen exclusive is currently held.
+    full_screen_exclusive_held: AtomicBool,
+
+    // The images of this swapchain.
+    images: Vec<ImageEntry>,
+
+    // If true, that means we have tried to use this swapchain to recreate a new swapchain. The current
+    // swapchain can no longer be used for anything except presenting already-acquired images.
+    //
+    // We use a `Mutex` instead of an `AtomicBool` because we want to keep that locked while
+    // we acquire the image.
+    retired: Mutex<bool>,
+}
+
+#[derive(Debug)]
+struct ImageEntry {
+    // The actual image.
+    image: UnsafeImage,
+    // If true, then the image is still in the undefined layout and must be transitioned.
+    undefined_layout: AtomicBool,
+}
+
+impl<W> Swapchain<W> {
+    /// Creates a new `Swapchain`.
+    ///
+    /// This function returns the swapchain plus a list of the images that belong to the
+    /// swapchain. The order in which the images are returned is important for the
+    /// `acquire_next_image` and `present` functions.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the device and the surface don't belong to the same instance.
+    /// - Panics if `create_info.usage` is empty.
+    ///
+    // TODO: isn't it unsafe to take the surface through an Arc when it comes to vulkano-win?
+    pub fn new(
+        device: Arc<Device>,
+        surface: Arc<Surface<W>>,
+        mut create_info: SwapchainCreateInfo,
+    ) -> Result<(Arc<Swapchain<W>>, Vec<Arc<SwapchainImage<W>>>), SwapchainCreationError> {
+        assert_eq!(
+            device.instance().internal_object(),
+            surface.instance().internal_object()
+        );
+
+        if !device.enabled_extensions().khr_swapchain {
+            return Err(SwapchainCreationError::ExtensionNotEnabled {
+                extension: "khr_swapchain",
+                reason: "created a new swapchain",
+            });
+        }
+
+        Self::validate(&device, &surface, &mut create_info)?;
+
+        // Checking that the surface doesn't already have a swapchain.
+        if surface.flag().swap(true, Ordering::AcqRel) {
+            return Err(SwapchainCreationError::SurfaceInUse);
+        }
+
+        let (handle, images) = unsafe {
+            let (handle, image_handles) = Self::create(&device, &surface, &create_info, None)?;
+            let images = Self::wrap_images(&device, image_handles, &create_info);
+            (handle, images)
+        };
+
+        let SwapchainCreateInfo {
+            min_image_count,
+            image_format,
+            image_color_space,
+            image_extent,
+            image_array_layers,
+            image_usage,
+            image_sharing,
+            pre_transform,
+            composite_alpha,
+            present_mode,
+            clipped,
+            full_screen_exclusive,
+            win32_monitor,
+            _ne: _,
+        } = create_info;
+
+        let swapchain = Arc::new(Swapchain {
+            handle,
+            device,
+            surface,
+
+            min_image_count,
+            image_format: image_format.unwrap(),
+            image_color_space,
+            image_extent,
+            image_array_layers,
+            image_usage,
+            image_sharing,
+            pre_transform,
+            composite_alpha,
+            present_mode,
+            clipped,
+            full_screen_exclusive,
+            win32_monitor,
+
+            full_screen_exclusive_held: AtomicBool::new(false),
+            images,
+            retired: Mutex::new(false),
+        });
+
+        let swapchain_images = (0..swapchain.images.len())
+            .map(|n| unsafe { SwapchainImage::from_raw(swapchain.clone(), n) })
+            .collect::<Result<_, _>>()?;
+
+        Ok((swapchain, swapchain_images))
+    }
+
+    /// Creates a new swapchain from this one.
+    ///
+    /// Use this when a swapchain has become invalidated, such as due to window resizes.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `create_info.usage` is empty.
+    #[inline]
+    pub fn recreate(
+        self: &Arc<Self>,
+        mut create_info: SwapchainCreateInfo,
+    ) -> Result<(Arc<Swapchain<W>>, Vec<Arc<SwapchainImage<W>>>), SwapchainCreationError> {
+        Self::validate(&self.device, &self.surface, &mut create_info)?;
+
+        {
+            let mut retired = self.retired.lock().unwrap();
+
+            // The swapchain has already been used to create a new one.
+            if *retired {
+                return Err(SwapchainCreationError::SwapchainAlreadyRetired);
+            } else {
+                // According to the documentation of VkSwapchainCreateInfoKHR:
+                //
+                // > Upon calling vkCreateSwapchainKHR with a oldSwapchain that is not VK_NULL_HANDLE,
+                // > any images not acquired by the application may be freed by the implementation,
+                // > which may occur even if creation of the new swapchain fails.
+                //
+                // Therefore, we set retired to true and keep it to true even if the call to `vkCreateSwapchainKHR` below fails.
+                *retired = true;
+            }
+        }
+
+        let (handle, images) = unsafe {
+            let (handle, image_handles) =
+                Self::create(&self.device, &self.surface, &create_info, Some(self))?;
+            let images = Self::wrap_images(&self.device, image_handles, &create_info);
+            (handle, images)
+        };
+
+        let full_screen_exclusive_held =
+            if self.full_screen_exclusive != FullScreenExclusive::ApplicationControlled {
+                false
+            } else {
+                self.full_screen_exclusive_held.load(Ordering::SeqCst)
+            };
+
+        let SwapchainCreateInfo {
+            min_image_count,
+            image_format,
+            image_color_space,
+            image_extent,
+            image_array_layers,
+            image_usage,
+            image_sharing,
+            pre_transform,
+            composite_alpha,
+            present_mode,
+            clipped,
+            full_screen_exclusive,
+            win32_monitor,
+            _ne: _,
+        } = create_info;
+
+        let swapchain = Arc::new(Swapchain {
+            handle,
+            device: self.device.clone(),
+            surface: self.surface.clone(),
+
+            min_image_count,
+            image_format: image_format.unwrap(),
+            image_color_space,
+            image_extent,
+            image_array_layers,
+            image_usage,
+            image_sharing,
+            pre_transform,
+            composite_alpha,
+            present_mode,
+            clipped,
+            full_screen_exclusive,
+            win32_monitor,
+
+            full_screen_exclusive_held: AtomicBool::new(full_screen_exclusive_held),
+            images,
+            retired: Mutex::new(false),
+        });
+
+        let swapchain_images = (0..swapchain.images.len())
+            .map(|n| unsafe { SwapchainImage::from_raw(swapchain.clone(), n) })
+            .collect::<Result<_, _>>()?;
+
+        Ok((swapchain, swapchain_images))
+    }
+
+    fn validate(
+        device: &Device,
+        surface: &Surface<W>,
+        create_info: &mut SwapchainCreateInfo,
+    ) -> Result<(), SwapchainCreationError> {
+        let &mut SwapchainCreateInfo {
+            min_image_count,
+            ref mut image_format,
+            image_color_space,
+            ref mut image_extent,
+            image_array_layers,
+            image_usage,
+            ref mut image_sharing,
+            pre_transform,
+            composite_alpha,
+            present_mode,
+            clipped,
+            full_screen_exclusive,
+            win32_monitor,
+            _ne: _,
+        } = create_info;
+
+        // VUID-VkSwapchainCreateInfoKHR-imageUsage-requiredbitmask
+        assert!(image_usage != ImageUsage::none());
+
+        if full_screen_exclusive != FullScreenExclusive::Default
+            && !device.enabled_extensions().ext_full_screen_exclusive
+        {
+            return Err(SwapchainCreationError::ExtensionNotEnabled {
+                extension: "ext_full_screen_exclusive",
+                reason: "`full_screen_exclusive` was not `FullScreenExclusive::Default`",
+            });
+        }
+
+        if surface.api() == SurfaceApi::Win32
+            && full_screen_exclusive == FullScreenExclusive::ApplicationControlled
+        {
+            if win32_monitor.is_none() {
+                return Err(SwapchainCreationError::Win32MonitorInvalid);
+            }
+        } else {
+            if win32_monitor.is_some() {
+                return Err(SwapchainCreationError::Win32MonitorInvalid);
+            }
+        }
+
+        // VUID-VkSwapchainCreateInfoKHR-surface-01270
+        *image_format = Some({
+            let surface_formats = device.physical_device().surface_formats(
+                &surface,
+                SurfaceInfo {
+                    full_screen_exclusive,
+                    win32_monitor,
+                    ..Default::default()
+                },
+            )?;
+
+            if let Some(format) = image_format {
+                // VUID-VkSwapchainCreateInfoKHR-imageFormat-01273
+                if !surface_formats
+                    .into_iter()
+                    .any(|(f, c)| f == *format && c == image_color_space)
+                {
+                    return Err(SwapchainCreationError::FormatColorSpaceNotSupported);
+                }
+                *format
+            } else {
+                surface_formats
+                    .into_iter()
+                    .find_map(|(f, c)| {
+                        (c == image_color_space
+                            && [Format::R8G8B8A8_UNORM, Format::B8G8R8A8_UNORM].contains(&f))
+                        .then(|| f)
+                    })
+                    .ok_or_else(|| SwapchainCreationError::FormatColorSpaceNotSupported)?
+            }
+        });
+
+        let surface_capabilities = device.physical_device().surface_capabilities(
+            &surface,
+            SurfaceInfo {
+                full_screen_exclusive,
+                win32_monitor,
+                ..Default::default()
+            },
+        )?;
+
+        // VUID-VkSwapchainCreateInfoKHR-minImageCount-01272
+        // VUID-VkSwapchainCreateInfoKHR-presentMode-02839
+        if min_image_count < surface_capabilities.min_image_count
+            || surface_capabilities
+                .max_image_count
+                .map_or(false, |c| min_image_count > c)
+        {
+            return Err(SwapchainCreationError::MinImageCountNotSupported {
+                provided: min_image_count,
+                min_supported: surface_capabilities.min_image_count,
+                max_supported: surface_capabilities.max_image_count,
+            });
+        }
+
+        if image_extent[0] == 0 || image_extent[1] == 0 {
+            *image_extent = surface_capabilities.current_extent.unwrap();
+        }
+
+        // VUID-VkSwapchainCreateInfoKHR-imageExtent-01274
+        if image_extent[0] < surface_capabilities.min_image_extent[0]
+            || image_extent[1] < surface_capabilities.min_image_extent[1]
+            || image_extent[0] > surface_capabilities.max_image_extent[0]
+            || image_extent[1] > surface_capabilities.max_image_extent[1]
+        {
+            return Err(SwapchainCreationError::ImageExtentNotSupported {
+                provided: *image_extent,
+                min_supported: surface_capabilities.min_image_extent,
+                max_supported: surface_capabilities.max_image_extent,
+            });
+        }
+
+        // VUID-VkSwapchainCreateInfoKHR-imageExtent-01689
+        // Shouldn't be possible with a properly behaving device
+        assert!(image_extent[0] != 0 || image_extent[1] != 0);
+
+        // VUID-VkSwapchainCreateInfoKHR-imageArrayLayers-01275
+        if image_array_layers == 0
+            || image_array_layers > surface_capabilities.max_image_array_layers
+        {
+            return Err(SwapchainCreationError::ImageArrayLayersNotSupported {
+                provided: image_array_layers,
+                max_supported: surface_capabilities.max_image_array_layers,
+            });
+        }
+
+        // VUID-VkSwapchainCreateInfoKHR-presentMode-01427
+        if (ash::vk::ImageUsageFlags::from(image_usage)
+            & ash::vk::ImageUsageFlags::from(surface_capabilities.supported_usage_flags))
+            != ash::vk::ImageUsageFlags::from(image_usage)
+        {
+            return Err(SwapchainCreationError::ImageUsageNotSupported {
+                provided: image_usage,
+                supported: surface_capabilities.supported_usage_flags,
+            });
+        }
+
+        match image_sharing {
+            Sharing::Exclusive => (),
+            Sharing::Concurrent(ids) => {
+                // VUID-VkSwapchainCreateInfoKHR-imageSharingMode-01278
+                // VUID-VkSwapchainCreateInfoKHR-imageSharingMode-01428
+                ids.sort_unstable();
+                ids.dedup();
+                assert!(ids.len() >= 2);
+
+                for &id in ids.iter() {
+                    // VUID-VkSwapchainCreateInfoKHR-imageSharingMode-01428
+                    if device.physical_device().queue_family_by_id(id).is_none() {
+                        return Err(SwapchainCreationError::ImageSharingInvalidQueueFamilyId {
+                            id,
+                        });
+                    }
+                }
+            }
+        };
+
+        // VUID-VkSwapchainCreateInfoKHR-preTransform-01279
+        if !surface_capabilities
+            .supported_transforms
+            .supports(pre_transform)
+        {
+            return Err(SwapchainCreationError::PreTransformNotSupported {
+                provided: pre_transform,
+                supported: surface_capabilities.supported_transforms,
+            });
+        }
+
+        // VUID-VkSwapchainCreateInfoKHR-compositeAlpha-01280
+        if !surface_capabilities
+            .supported_composite_alpha
+            .supports(composite_alpha)
+        {
+            return Err(SwapchainCreationError::CompositeAlphaNotSupported {
+                provided: composite_alpha,
+                supported: surface_capabilities.supported_composite_alpha,
+            });
+        }
+
+        // VUID-VkSwapchainCreateInfoKHR-presentMode-01281
+        if !device
+            .physical_device()
+            .surface_present_modes(&surface)?
+            .any(|mode| mode == present_mode)
+        {
+            return Err(SwapchainCreationError::PresentModeNotSupported);
+        }
+
+        // VUID-VkSwapchainCreateInfoKHR-imageFormat-01778
+        if device
+            .physical_device()
+            .image_format_properties(
+                image_format.unwrap(),
+                ImageType::Dim2d,
+                ImageTiling::Optimal,
+                image_usage,
+                ImageCreateFlags::none(),
+                None,
+                None,
+            )?
+            .is_none()
+        {
+            return Err(SwapchainCreationError::ImageFormatPropertiesNotSupported);
+        }
+
+        Ok(())
+    }
+
+    unsafe fn create(
+        device: &Device,
+        surface: &Surface<W>,
+        create_info: &SwapchainCreateInfo,
+        old_swapchain: Option<&Swapchain<W>>,
+    ) -> Result<(ash::vk::SwapchainKHR, Vec<ash::vk::Image>), SwapchainCreationError> {
+        let &SwapchainCreateInfo {
+            min_image_count,
+            image_format,
+            image_color_space,
+            image_extent,
+            image_array_layers,
+            image_usage,
+            ref image_sharing,
+            pre_transform,
+            composite_alpha,
+            present_mode,
+            clipped,
+            full_screen_exclusive,
+            win32_monitor,
+            _ne: _,
+        } = create_info;
+
+        let (image_sharing_mode, queue_family_index_count, p_queue_family_indices) =
+            match image_sharing {
+                Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, 0, ptr::null()),
+                Sharing::Concurrent(ref ids) => (
+                    ash::vk::SharingMode::CONCURRENT,
+                    ids.len() as u32,
+                    ids.as_ptr(),
+                ),
+            };
+
+        let mut surface_full_screen_exclusive_info =
+            if full_screen_exclusive != FullScreenExclusive::Default {
+                Some(ash::vk::SurfaceFullScreenExclusiveInfoEXT {
+                    full_screen_exclusive: full_screen_exclusive.into(),
+                    ..Default::default()
+                })
+            } else {
+                None
+            };
+
+        let mut surface_full_screen_exclusive_win32_info =
+            if let Some(Win32Monitor(hmonitor)) = win32_monitor {
+                Some(ash::vk::SurfaceFullScreenExclusiveWin32InfoEXT {
+                    hmonitor,
+                    ..Default::default()
+                })
+            } else {
+                None
+            };
+
+        let mut create_info = ash::vk::SwapchainCreateInfoKHR {
+            flags: ash::vk::SwapchainCreateFlagsKHR::empty(),
+            surface: surface.internal_object(),
+            min_image_count,
+            image_format: image_format.unwrap().into(),
+            image_color_space: image_color_space.into(),
+            image_extent: ash::vk::Extent2D {
+                width: image_extent[0],
+                height: image_extent[1],
+            },
+            image_array_layers,
+            image_usage: image_usage.into(),
+            image_sharing_mode,
+            queue_family_index_count,
+            p_queue_family_indices,
+            pre_transform: pre_transform.into(),
+            composite_alpha: composite_alpha.into(),
+            present_mode: present_mode.into(),
+            clipped: clipped as ash::vk::Bool32,
+            old_swapchain: old_swapchain.map_or(ash::vk::SwapchainKHR::null(), |os| os.handle),
+            ..Default::default()
+        };
+
+        if let Some(surface_full_screen_exclusive_info) =
+            surface_full_screen_exclusive_info.as_mut()
+        {
+            surface_full_screen_exclusive_info.p_next = create_info.p_next as *mut _;
+            create_info.p_next = surface_full_screen_exclusive_info as *const _ as *const _;
+        }
+
+        if let Some(surface_full_screen_exclusive_win32_info) =
+            surface_full_screen_exclusive_win32_info.as_mut()
+        {
+            surface_full_screen_exclusive_win32_info.p_next = create_info.p_next as *mut _;
+            create_info.p_next = surface_full_screen_exclusive_win32_info as *const _ as *const _;
+        }
+
+        let handle = {
+            let fns = device.fns();
+            let mut output = MaybeUninit::uninit();
+            check_errors(fns.khr_swapchain.create_swapchain_khr(
+                device.internal_object(),
+                &create_info,
+                ptr::null(),
+                output.as_mut_ptr(),
+            ))?;
+            output.assume_init()
+        };
+
+        let image_handles = {
+            let fns = device.fns();
+            let mut num = 0;
+            check_errors(fns.khr_swapchain.get_swapchain_images_khr(
+                device.internal_object(),
+                handle,
+                &mut num,
+                ptr::null_mut(),
+            ))?;
+
+            let mut images = Vec::with_capacity(num as usize);
+            check_errors(fns.khr_swapchain.get_swapchain_images_khr(
+                device.internal_object(),
+                handle,
+                &mut num,
+                images.as_mut_ptr(),
+            ))?;
+            images.set_len(num as usize);
+            images
+        };
+
+        Ok((handle, image_handles))
+    }
+
+    unsafe fn wrap_images(
+        device: &Arc<Device>,
+        image_handles: Vec<ash::vk::Image>,
+        create_info: &SwapchainCreateInfo,
+    ) -> Vec<ImageEntry> {
+        let &SwapchainCreateInfo {
+            image_format,
+            image_extent,
+            image_array_layers,
+            image_usage,
+            ref image_sharing, // TODO: put this in the image too
+            ..
+        } = create_info;
+
+        image_handles
+            .into_iter()
+            .map(|handle| {
+                let dims = ImageDimensions::Dim2d {
+                    width: image_extent[0],
+                    height: image_extent[1],
+                    array_layers: image_array_layers,
+                };
+
+                let img = unsafe {
+                    UnsafeImage::from_raw(
+                        device.clone(),
+                        handle,
+                        image_usage,
+                        image_format.unwrap(),
+                        ImageCreateFlags::none(),
+                        dims,
+                        SampleCount::Sample1,
+                        1,
+                    )
+                };
+
+                ImageEntry {
+                    image: img,
+                    undefined_layout: AtomicBool::new(true),
+                }
+            })
+            .collect()
+    }
+
+    /// Returns the creation parameters of the swapchain.
+    #[inline]
+    pub fn create_info(&self) -> SwapchainCreateInfo {
+        SwapchainCreateInfo {
+            min_image_count: self.min_image_count,
+            image_format: Some(self.image_format),
+            image_color_space: self.image_color_space,
+            image_extent: self.image_extent,
+            image_array_layers: self.image_array_layers,
+            image_usage: self.image_usage,
+            image_sharing: self.image_sharing.clone(),
+            pre_transform: self.pre_transform,
+            composite_alpha: self.composite_alpha,
+            present_mode: self.present_mode,
+            clipped: self.clipped,
+            full_screen_exclusive: self.full_screen_exclusive,
+            win32_monitor: self.win32_monitor,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+
+    /// Returns the saved Surface, from the Swapchain creation.
+    #[inline]
+    pub fn surface(&self) -> &Arc<Surface<W>> {
+        &self.surface
+    }
+
+    /// Returns of the images that belong to this swapchain.
+    #[inline]
+    pub fn raw_image(&self, offset: usize) -> Option<ImageInner> {
+        self.images.get(offset).map(|i| ImageInner {
+            image: &i.image,
+            first_layer: 0,
+            num_layers: self.image_array_layers as usize,
+            first_mipmap_level: 0,
+            num_mipmap_levels: 1,
+        })
+    }
+
+    /// Returns the number of images of the swapchain.
+    #[inline]
+    pub fn image_count(&self) -> u32 {
+        self.images.len() as u32
+    }
+
+    /// Returns the format of the images of the swapchain.
+    #[inline]
+    pub fn image_format(&self) -> Format {
+        self.image_format
+    }
+
+    /// Returns the color space of the images of the swapchain.
+    #[inline]
+    pub fn image_color_space(&self) -> ColorSpace {
+        self.image_color_space
+    }
+
+    /// Returns the extent of the images of the swapchain.
+    #[inline]
+    pub fn image_extent(&self) -> [u32; 2] {
+        self.image_extent
+    }
+
+    /// Returns the number of array layers of the images of the swapchain.
+    #[inline]
+    pub fn image_array_layers(&self) -> u32 {
+        self.image_array_layers
+    }
+
+    /// Returns the pre-transform that was passed when creating the swapchain.
+    #[inline]
+    pub fn pre_transform(&self) -> SurfaceTransform {
+        self.pre_transform
+    }
+
+    /// Returns the alpha mode that was passed when creating the swapchain.
+    #[inline]
+    pub fn composite_alpha(&self) -> CompositeAlpha {
+        self.composite_alpha
+    }
+
+    /// Returns the present mode that was passed when creating the swapchain.
+    #[inline]
+    pub fn present_mode(&self) -> PresentMode {
+        self.present_mode
+    }
+
+    /// Returns the value of `clipped` that was passed when creating the swapchain.
+    #[inline]
+    pub fn clipped(&self) -> bool {
+        self.clipped
+    }
+
+    /// Returns the value of 'full_screen_exclusive` that was passed when creating the swapchain.
+    #[inline]
+    pub fn full_screen_exclusive(&self) -> FullScreenExclusive {
+        self.full_screen_exclusive
+    }
+
+    /// Acquires full-screen exclusivity.
+    ///
+    /// The swapchain must have been created with [`FullScreenExclusive::ApplicationControlled`],
+    /// and must not already hold full-screen exclusivity. Full-screen exclusivity is held until
+    /// either the `release_full_screen_exclusive` is called, or if any of the the other `Swapchain`
+    /// functions return `FullScreenExclusiveLost`.
+    pub fn acquire_full_screen_exclusive(&self) -> Result<(), FullScreenExclusiveError> {
+        if self.full_screen_exclusive != FullScreenExclusive::ApplicationControlled {
+            return Err(FullScreenExclusiveError::NotApplicationControlled);
+        }
+
+        if self.full_screen_exclusive_held.swap(true, Ordering::SeqCst) {
+            return Err(FullScreenExclusiveError::DoubleAcquire);
+        }
+
+        unsafe {
+            check_errors(
+                self.device
+                    .fns()
+                    .ext_full_screen_exclusive
+                    .acquire_full_screen_exclusive_mode_ext(
+                        self.device.internal_object(),
+                        self.handle,
+                    ),
+            )?;
+        }
+
+        Ok(())
+    }
+
+    /// Releases full-screen exclusivity.
+    ///
+    /// The swapchain must have been created with [`FullScreenExclusive::ApplicationControlled`],
+    /// and must currently hold full-screen exclusivity.
+    pub fn release_full_screen_exclusive(&self) -> Result<(), FullScreenExclusiveError> {
+        if self.full_screen_exclusive != FullScreenExclusive::ApplicationControlled {
+            return Err(FullScreenExclusiveError::NotApplicationControlled);
+        }
+
+        if !self
+            .full_screen_exclusive_held
+            .swap(false, Ordering::SeqCst)
+        {
+            return Err(FullScreenExclusiveError::DoubleRelease);
+        }
+
+        unsafe {
+            check_errors(
+                self.device
+                    .fns()
+                    .ext_full_screen_exclusive
+                    .release_full_screen_exclusive_mode_ext(
+                        self.device.internal_object(),
+                        self.handle,
+                    ),
+            )?;
+        }
+
+        Ok(())
+    }
+
+    /// `FullScreenExclusive::AppControlled` is not the active full-screen exclusivity mode,
+    /// then this function will always return false. If true is returned the swapchain
+    /// is in `FullScreenExclusive::AppControlled` full-screen exclusivity mode and exclusivity
+    /// is currently acquired.
+    pub fn is_full_screen_exclusive(&self) -> bool {
+        if self.full_screen_exclusive != FullScreenExclusive::ApplicationControlled {
+            false
+        } else {
+            self.full_screen_exclusive_held.load(Ordering::SeqCst)
+        }
+    }
+
+    // This method is necessary to allow `SwapchainImage`s to signal when they have been
+    // transitioned out of their initial `undefined` image layout.
+    //
+    // See the `ImageAccess::layout_initialized` method documentation for more details.
+    pub(crate) fn image_layout_initialized(&self, image_offset: usize) {
+        let image_entry = self.images.get(image_offset);
+        if let Some(ref image_entry) = image_entry {
+            image_entry.undefined_layout.store(false, Ordering::SeqCst);
+        }
+    }
+
+    pub(crate) fn is_image_layout_initialized(&self, image_offset: usize) -> bool {
+        let image_entry = self.images.get(image_offset);
+        if let Some(ref image_entry) = image_entry {
+            !image_entry.undefined_layout.load(Ordering::SeqCst)
+        } else {
+            false
+        }
+    }
+}
+
+impl<W> Drop for Swapchain<W> {
+    #[inline]
+    fn drop(&mut self) {
+        unsafe {
+            let fns = self.device.fns();
+            fns.khr_swapchain.destroy_swapchain_khr(
+                self.device.internal_object(),
+                self.handle,
+                ptr::null(),
+            );
+            self.surface.flag().store(false, Ordering::Release);
+        }
+    }
+}
+
+unsafe impl<W> VulkanObject for Swapchain<W> {
+    type Object = ash::vk::SwapchainKHR;
+
+    #[inline]
+    fn internal_object(&self) -> ash::vk::SwapchainKHR {
+        self.handle
+    }
+}
+
+unsafe impl<W> DeviceOwned for Swapchain<W> {
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
+
+impl<W> PartialEq for Swapchain<W> {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.handle == other.handle && self.device() == other.device()
+    }
+}
+
+impl<W> Eq for Swapchain<W> {}
+
+impl<W> Hash for Swapchain<W> {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.handle.hash(state);
+        self.device().hash(state);
+    }
+}
+
+/// Parameters to create a new `Swapchain`.
+///
+/// Many of the values here must be supported by the physical device.
+/// [`PhysicalDevice`](crate::device::physical::PhysicalDevice) has several
+/// methods to query what is supported.
+#[derive(Clone, Debug)]
+pub struct SwapchainCreateInfo {
+    /// The minimum number of images that will be created.
+    ///
+    /// The implementation is allowed to create more than this number, but never less.
+    ///
+    /// The default value is `2`.
+    pub min_image_count: u32,
+
+    /// The format of the created images.
+    ///
+    /// If set to `None`, [`Format::R8G8B8A8_UNORM`] or [`Format::B8G8R8A8_UNORM`] will be selected,
+    /// based on which is supported by the surface.
+    ///
+    /// The default value is `None`.
+    pub image_format: Option<Format>,
+
+    /// The color space of the created images.
+    ///
+    /// The default value is [`ColorSpace::SrgbNonLinear`].
+    pub image_color_space: ColorSpace,
+
+    /// The extent of the created images.
+    ///
+    /// If set to `None`, the value of
+    /// [`SurfaceCapabilities::current_extent`](crate::swapchain::SurfaceCapabilities) will be used.
+    ///
+    /// The default value is `None`.
+    pub image_extent: [u32; 2],
+
+    /// The number of array layers of the created images.
+    ///
+    /// The default value is `1`.
+    pub image_array_layers: u32,
+
+    /// How the created images will be used.
+    ///
+    /// The default value is [`ImageUsage::none()`], which must be overridden.
+    pub image_usage: ImageUsage,
+
+    /// Whether the created images can be shared across multiple queues, or are limited to a single
+    /// queue.
+    ///
+    /// The default value is [`Sharing::Exclusive`].
+    pub image_sharing: Sharing<SmallVec<[u32; 4]>>,
+
+    /// The transform that should be applied to an image before it is presented.
+    ///
+    /// The default value is [`SurfaceTransform::Identity`].
+    pub pre_transform: SurfaceTransform,
+
+    /// How alpha values of the pixels in the image are to be treated.
+    ///
+    /// The default value is [`CompositeAlpha::Opaque`].
+    pub composite_alpha: CompositeAlpha,
+
+    /// How the swapchain should behave when multiple images are waiting in the queue to be
+    /// presented.
+    ///
+    /// The default is [`PresentMode::Fifo`].
+    pub present_mode: PresentMode,
+
+    /// Whether the implementation is allowed to discard rendering operations that affect regions of
+    /// the surface which aren't visible. This is important to take into account if your fragment
+    /// shader has side-effects or if you want to read back the content of the image afterwards.
+    ///
+    /// The default value is `true`.
+    pub clipped: bool,
+
+    /// How full-screen exclusivity is to be handled.
+    ///
+    /// If set to anything other than [`FullScreenExclusive::Default`], then the
+    /// [`ext_full_screen_exclusive`](crate::device::DeviceExtensions::ext_full_screen_exclusive)
+    /// extension must be enabled on the device.
+    ///
+    /// The default value is [`FullScreenExclusive::Default`].
+    pub full_screen_exclusive: FullScreenExclusive,
+
+    /// For Win32 surfaces, if `full_screen_exclusive` is
+    /// [`FullScreenExclusive::ApplicationControlled`], this specifies the monitor on which
+    /// full-screen exclusivity should be used.
+    ///
+    /// For this case, the value must be `Some`, and for all others it must be `None`.
+    ///
+    /// The default value is `None`.
+    pub win32_monitor: Option<Win32Monitor>,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for SwapchainCreateInfo {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            min_image_count: 2,
+            image_format: None,
+            image_color_space: ColorSpace::SrgbNonLinear,
+            image_extent: [0, 0],
+            image_array_layers: 1,
+            image_usage: ImageUsage::none(),
+            image_sharing: Sharing::Exclusive,
+            pre_transform: SurfaceTransform::Identity,
+            composite_alpha: CompositeAlpha::Opaque,
+            present_mode: PresentMode::Fifo,
+            clipped: true,
+            full_screen_exclusive: FullScreenExclusive::Default,
+            win32_monitor: None,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+/// Error that can happen when creating a `Swapchain`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SwapchainCreationError {
+    /// Not enough memory.
+    OomError(OomError),
+
+    /// The device was lost.
+    DeviceLost,
+
+    /// The surface was lost.
+    SurfaceLost,
+
+    /// The surface is already used by another swapchain.
+    SurfaceInUse,
+
+    /// The window is already in use by another API.
+    NativeWindowInUse,
+
+    ExtensionNotEnabled {
+        extension: &'static str,
+        reason: &'static str,
+    },
+
+    /// The provided `composite_alpha` is not supported by the surface for this device.
+    CompositeAlphaNotSupported {
+        provided: CompositeAlpha,
+        supported: SupportedCompositeAlpha,
+    },
+
+    /// The provided `format` and `color_space` are not supported by the surface for this device.
+    FormatColorSpaceNotSupported,
+
+    /// The provided `image_array_layers` is greater than what is supported by the surface for this
+    /// device.
+    ImageArrayLayersNotSupported { provided: u32, max_supported: u32 },
+
+    /// The provided `image_extent` is not within the range supported by the surface for this
+    /// device.
+    ImageExtentNotSupported {
+        provided: [u32; 2],
+        min_supported: [u32; 2],
+        max_supported: [u32; 2],
+    },
+
+    /// The provided image parameters are not supported as queried from `image_format_properties`.
+    ImageFormatPropertiesNotSupported,
+
+    /// The provided `image_sharing` was set to `Concurrent`, but one of the specified queue family
+    /// ids was not valid.
+    ImageSharingInvalidQueueFamilyId { id: u32 },
+
+    /// The provided `image_usage` has fields set that are not supported by the surface for this
+    /// device.
+    ImageUsageNotSupported {
+        provided: ImageUsage,
+        supported: ImageUsage,
+    },
+
+    /// The provided `min_image_count` is not within the range supported by the surface for this
+    /// device.
+    MinImageCountNotSupported {
+        provided: u32,
+        min_supported: u32,
+        max_supported: Option<u32>,
+    },
+
+    /// The provided `present_mode` is not supported by the surface for this device.
+    PresentModeNotSupported,
+
+    /// The provided `pre_transform` is not supported by the surface for this device.
+    PreTransformNotSupported {
+        provided: SurfaceTransform,
+        supported: SupportedSurfaceTransforms,
+    },
+
+    /// The swapchain has already been used to create a new one.
+    SwapchainAlreadyRetired,
+
+    /// The `win32_monitor` value was `Some` when it must be `None` or vice-versa.
+    Win32MonitorInvalid,
+}
+
+impl error::Error for SwapchainCreationError {
+    #[inline]
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match *self {
+            Self::OomError(ref err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for SwapchainCreationError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match *self {
+            Self::OomError(_) => write!(fmt, "not enough memory available",),
+            Self::DeviceLost => write!(fmt, "the device was lost",),
+            Self::SurfaceLost => write!(fmt, "the surface was lost",),
+            Self::SurfaceInUse => {
+                write!(fmt, "the surface is already used by another swapchain",)
+            }
+            Self::NativeWindowInUse => {
+                write!(fmt, "the window is already in use by another API")
+            }
+
+            Self::ExtensionNotEnabled { extension, reason } => write!(
+                fmt,
+                "the extension {} must be enabled: {}",
+                extension, reason
+            ),
+
+            Self::CompositeAlphaNotSupported { .. } => write!(
+                fmt,
+                "the provided `composite_alpha` is not supported by the surface for this device",
+            ),
+            Self::FormatColorSpaceNotSupported => write!(
+                fmt,
+                "the provided `format` and `color_space` are not supported by the surface for this device",
+            ),
+            Self::ImageArrayLayersNotSupported { provided, max_supported } => write!(
+                fmt,
+                "the provided `image_array_layers` ({}) is greater than what is supported ({}) by the surface for this device",
+                provided, max_supported,
+            ),
+            Self::ImageExtentNotSupported { provided, min_supported, max_supported } => write!(
+                fmt,
+                "the provided `min_image_count` ({:?}) is not within the range (min: {:?}, max: {:?}) supported by the surface for this device",
+                provided, min_supported, max_supported,
+            ),
+            Self::ImageFormatPropertiesNotSupported => write!(
+                fmt,
+                "the provided image parameters are not supported as queried from `image_format_properties`",
+            ),
+            Self::ImageSharingInvalidQueueFamilyId { id } => write!(
+                fmt,
+                "the provided `image_sharing` was set to `Concurrent`, but one of the specified queue family ids ({}) was not valid",
+                id,
+            ),
+            Self::ImageUsageNotSupported { .. } => write!(
+                fmt,
+                "the provided `image_usage` has fields set that are not supported by the surface for this device",
+            ),
+            Self::MinImageCountNotSupported { provided, min_supported, max_supported } => write!(
+                fmt,
+                "the provided `min_image_count` ({}) is not within the range (min: {}, max: {:?}) supported by the surface for this device",
+                provided, min_supported, max_supported,
+            ),
+            Self::PresentModeNotSupported => write!(
+                fmt,
+                "the provided `present_mode` is not supported by the surface for this device",
+            ),
+            Self::PreTransformNotSupported { .. } => write!(
+                fmt,
+                "the provided `pre_transform` is not supported by the surface for this device",
+            ),
+            Self::SwapchainAlreadyRetired => write!(
+                fmt,
+                "the swapchain has already been used to create a new one",
+            ),
+            Self::Win32MonitorInvalid => write!(
+                fmt,
+                "the `win32_monitor` value was `Some` when it must be `None` or vice-versa",
+            ),
+        }
+    }
+}
+
+impl From<Error> for SwapchainCreationError {
+    #[inline]
+    fn from(err: Error) -> SwapchainCreationError {
+        match err {
+            err @ Error::OutOfHostMemory => Self::OomError(OomError::from(err)),
+            err @ Error::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
+            Error::DeviceLost => Self::DeviceLost,
+            Error::SurfaceLost => Self::SurfaceLost,
+            Error::NativeWindowInUse => Self::NativeWindowInUse,
+            _ => panic!("unexpected error: {:?}", err),
+        }
+    }
+}
+
+impl From<OomError> for SwapchainCreationError {
+    #[inline]
+    fn from(err: OomError) -> SwapchainCreationError {
+        Self::OomError(err)
+    }
+}
+
+impl From<SurfacePropertiesError> for SwapchainCreationError {
+    #[inline]
+    fn from(err: SurfacePropertiesError) -> SwapchainCreationError {
+        match err {
+            SurfacePropertiesError::OomError(err) => Self::OomError(err),
+            SurfacePropertiesError::SurfaceLost => Self::SurfaceLost,
+            SurfacePropertiesError::NotSupported => unreachable!(),
+        }
+    }
+}
+
+/// The way full-screen exclusivity is handled.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(i32)]
-pub enum FullscreenExclusive {
+#[non_exhaustive]
+pub enum FullScreenExclusive {
     /// Indicates that the driver should determine the appropriate full-screen method
     /// by whatever means it deems appropriate.
     Default = ash::vk::FullScreenExclusiveEXT::DEFAULT.as_raw(),
+
     /// Indicates that the driver may use full-screen exclusive mechanisms when available.
     /// Such mechanisms may result in better performance and/or the availability of
     /// different presentation capabilities, but may require a more disruptive transition
     // during swapchain initialization, first presentation and/or destruction.
     Allowed = ash::vk::FullScreenExclusiveEXT::ALLOWED.as_raw(),
+
     /// Indicates that the driver should avoid using full-screen mechanisms which rely
     /// on disruptive transitions.
     Disallowed = ash::vk::FullScreenExclusiveEXT::DISALLOWED.as_raw(),
-    /// Indicates the application will manage full-screen exclusive mode by using
-    /// `Swapchain::acquire_fullscreen_exclusive()` and
-    /// `Swapchain::release_fullscreen_exclusive()` functions.
-    AppControlled = ash::vk::FullScreenExclusiveEXT::APPLICATION_CONTROLLED.as_raw(),
+
+    /// Indicates the application will manage full-screen exclusive mode by using the
+    /// [`Swapchain::acquire_full_screen_exclusive()`] and
+    /// [`Swapchain::release_full_screen_exclusive()`] functions.
+    ApplicationControlled = ash::vk::FullScreenExclusiveEXT::APPLICATION_CONTROLLED.as_raw(),
 }
 
-impl From<FullscreenExclusive> for ash::vk::FullScreenExclusiveEXT {
+impl From<FullScreenExclusive> for ash::vk::FullScreenExclusiveEXT {
     #[inline]
-    fn from(val: FullscreenExclusive) -> Self {
+    fn from(val: FullScreenExclusive) -> Self {
         Self::from_raw(val as i32)
+    }
+}
+
+/// A wrapper around a Win32 monitor handle.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Win32Monitor(pub(crate) ash::vk::HMONITOR);
+
+impl Win32Monitor {
+    /// Wraps a Win32 monitor handle.
+    ///
+    /// # Safety
+    ///
+    /// - `hmonitor` must be a valid handle as returned by the Win32 API.
+    #[inline]
+    pub unsafe fn new<T>(hmonitor: *const T) -> Self {
+        Self(hmonitor as _)
+    }
+}
+
+// Winit's `MonitorHandle` is Send on Win32, so this seems safe.
+unsafe impl Send for Win32Monitor {}
+unsafe impl Sync for Win32Monitor {}
+
+/// Error that can happen when calling `Swapchain::acquire_full_screen_exclusive` or
+/// `Swapchain::release_full_screen_exclusive`.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum FullScreenExclusiveError {
+    /// Not enough memory.
+    OomError(OomError),
+
+    /// Operation could not be completed for driver specific reasons.
+    InitializationFailed,
+
+    /// The surface is no longer accessible and must be recreated.
+    SurfaceLost,
+
+    /// Full-screen exclusivity is already acquired.
+    DoubleAcquire,
+
+    /// Full-screen exclusivity is not currently acquired.
+    DoubleRelease,
+
+    /// The swapchain is not in full-screen exclusive application controlled mode.
+    NotApplicationControlled,
+}
+
+impl error::Error for FullScreenExclusiveError {
+    #[inline]
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match *self {
+            FullScreenExclusiveError::OomError(ref err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for FullScreenExclusiveError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                FullScreenExclusiveError::OomError(_) => "not enough memory",
+                FullScreenExclusiveError::SurfaceLost => {
+                    "the surface of this swapchain is no longer valid"
+                }
+                FullScreenExclusiveError::InitializationFailed => {
+                    "operation could not be completed for driver specific reasons"
+                }
+                FullScreenExclusiveError::DoubleAcquire =>
+                    "full-screen exclusivity is already acquired",
+                FullScreenExclusiveError::DoubleRelease =>
+                    "full-screen exclusivity is not acquired",
+                FullScreenExclusiveError::NotApplicationControlled => {
+                    "the swapchain is not in full-screen exclusive application controlled mode"
+                }
+            }
+        )
+    }
+}
+
+impl From<Error> for FullScreenExclusiveError {
+    #[inline]
+    fn from(err: Error) -> FullScreenExclusiveError {
+        match err {
+            err @ Error::OutOfHostMemory => FullScreenExclusiveError::OomError(OomError::from(err)),
+            err @ Error::OutOfDeviceMemory => {
+                FullScreenExclusiveError::OomError(OomError::from(err))
+            }
+            Error::SurfaceLost => FullScreenExclusiveError::SurfaceLost,
+            Error::InitializationFailed => FullScreenExclusiveError::InitializationFailed,
+            _ => panic!("unexpected error: {:?}", err),
+        }
+    }
+}
+
+impl From<OomError> for FullScreenExclusiveError {
+    #[inline]
+    fn from(err: OomError) -> FullScreenExclusiveError {
+        FullScreenExclusiveError::OomError(err)
     }
 }
 
@@ -112,17 +1391,17 @@ pub fn acquire_next_image<W>(
         // Check that this is not an old swapchain. From specs:
         // > swapchain must not have been replaced by being passed as the
         // > VkSwapchainCreateInfoKHR::oldSwapchain value to vkCreateSwapchainKHR
-        let stale = swapchain.stale.lock().unwrap();
-        if *stale {
+        let retired = swapchain.retired.lock().unwrap();
+        if *retired {
             return Err(AcquireError::OutOfDate);
         }
 
         let acquire_result =
             unsafe { acquire_next_image_raw(&swapchain, timeout, Some(&semaphore), Some(&fence)) };
 
-        if let &Err(AcquireError::FullscreenExclusiveLost) = &acquire_result {
+        if let &Err(AcquireError::FullScreenExclusiveLost) = &acquire_result {
             swapchain
-                .fullscreen_exclusive_held
+                .full_screen_exclusive_held
                 .store(false, Ordering::SeqCst);
         }
 
@@ -211,933 +1490,6 @@ where
         present_region: Some(present_region),
         flushed: AtomicBool::new(false),
         finished: AtomicBool::new(false),
-    }
-}
-
-/// Contains the swapping system and the images that can be shown on a surface.
-pub struct Swapchain<W> {
-    // The Vulkan device this swapchain was created with.
-    device: Arc<Device>,
-    // The surface, which we need to keep alive.
-    surface: Arc<Surface<W>>,
-    // The swapchain object.
-    swapchain: ash::vk::SwapchainKHR,
-
-    // The images of this swapchain.
-    images: Vec<ImageEntry>,
-
-    // If true, that means we have tried to use this swapchain to recreate a new swapchain. The current
-    // swapchain can no longer be used for anything except presenting already-acquired images.
-    //
-    // We use a `Mutex` instead of an `AtomicBool` because we want to keep that locked while
-    // we acquire the image.
-    stale: Mutex<bool>,
-
-    // Parameters passed to the constructor.
-    num_images: u32,
-    format: Format,
-    color_space: ColorSpace,
-    dimensions: [u32; 2],
-    layers: u32,
-    usage: ImageUsage,
-    sharing_mode: SharingMode,
-    transform: SurfaceTransform,
-    composite_alpha: CompositeAlpha,
-    present_mode: PresentMode,
-    fullscreen_exclusive: FullscreenExclusive,
-    fullscreen_exclusive_held: AtomicBool,
-    clipped: bool,
-}
-
-struct ImageEntry {
-    // The actual image.
-    image: UnsafeImage,
-    // If true, then the image is still in the undefined layout and must be transitioned.
-    undefined_layout: AtomicBool,
-}
-
-impl<W> Swapchain<W> {
-    /// Starts the process of building a new swapchain, using default values for the parameters.
-    #[inline]
-    pub fn start(device: Arc<Device>, surface: Arc<Surface<W>>) -> SwapchainBuilder<W> {
-        SwapchainBuilder {
-            device,
-            surface,
-
-            num_images: 2,
-            format: None,
-            color_space: ColorSpace::SrgbNonLinear,
-            dimensions: None,
-            layers: 1,
-            usage: ImageUsage::none(),
-            sharing_mode: SharingMode::Exclusive,
-            transform: Default::default(),
-            composite_alpha: CompositeAlpha::Opaque,
-            present_mode: PresentMode::Fifo,
-            fullscreen_exclusive: FullscreenExclusive::Default,
-            clipped: true,
-
-            old_swapchain: None,
-        }
-    }
-
-    /// Starts building a new swapchain from an existing swapchain.
-    ///
-    /// Use this when a swapchain has become invalidated, such as due to window resizes.
-    /// The builder is pre-filled with the parameters of the old one, except for `dimensions`,
-    /// which is set to `None`.
-    #[inline]
-    pub fn recreate(self: &Arc<Self>) -> SwapchainBuilder<W> {
-        SwapchainBuilder {
-            device: self.device().clone(),
-            surface: self.surface().clone(),
-
-            num_images: self.images.len() as u32,
-            format: Some(self.format),
-            color_space: self.color_space,
-            dimensions: None,
-            layers: self.layers,
-            usage: self.usage,
-            sharing_mode: self.sharing_mode.clone(),
-            transform: self.transform,
-            composite_alpha: self.composite_alpha,
-            present_mode: self.present_mode,
-            fullscreen_exclusive: self.fullscreen_exclusive,
-            clipped: self.clipped,
-
-            old_swapchain: Some(self.clone()),
-        }
-    }
-
-    /// Returns the saved Surface, from the Swapchain creation.
-    #[inline]
-    pub fn surface(&self) -> &Arc<Surface<W>> {
-        &self.surface
-    }
-
-    /// Returns of the images that belong to this swapchain.
-    #[inline]
-    pub fn raw_image(&self, offset: usize) -> Option<ImageInner> {
-        self.images.get(offset).map(|i| ImageInner {
-            image: &i.image,
-            first_layer: 0,
-            num_layers: self.layers as usize,
-            first_mipmap_level: 0,
-            num_mipmap_levels: 1,
-        })
-    }
-
-    /// Returns the number of images of the swapchain.
-    #[inline]
-    pub fn num_images(&self) -> u32 {
-        self.images.len() as u32
-    }
-
-    /// Returns the format of the images of the swapchain.
-    #[inline]
-    pub fn format(&self) -> Format {
-        self.format
-    }
-
-    /// Returns the dimensions of the images of the swapchain.
-    #[inline]
-    pub fn dimensions(&self) -> [u32; 2] {
-        self.dimensions
-    }
-
-    /// Returns the number of layers of the images of the swapchain.
-    #[inline]
-    pub fn layers(&self) -> u32 {
-        self.layers
-    }
-
-    /// Returns the transform that was passed when creating the swapchain.
-    #[inline]
-    pub fn transform(&self) -> SurfaceTransform {
-        self.transform
-    }
-
-    /// Returns the alpha mode that was passed when creating the swapchain.
-    #[inline]
-    pub fn composite_alpha(&self) -> CompositeAlpha {
-        self.composite_alpha
-    }
-
-    /// Returns the present mode that was passed when creating the swapchain.
-    #[inline]
-    pub fn present_mode(&self) -> PresentMode {
-        self.present_mode
-    }
-
-    /// Returns the value of `clipped` that was passed when creating the swapchain.
-    #[inline]
-    pub fn clipped(&self) -> bool {
-        self.clipped
-    }
-
-    /// Returns the value of 'fullscreen_exclusive` that was passed when creating the swapchain.
-    #[inline]
-    pub fn fullscreen_exclusive(&self) -> FullscreenExclusive {
-        self.fullscreen_exclusive
-    }
-
-    /// `FullscreenExclusive::AppControlled` must be the active fullscreen exclusivity mode.
-    /// Acquire fullscreen exclusivity until either the `release_fullscreen_exclusive` is
-    /// called, or if any of the the other `Swapchain` functions return `FullscreenExclusiveLost`.
-    /// Requires: `FullscreenExclusive::AppControlled`
-    pub fn acquire_fullscreen_exclusive(&self) -> Result<(), FullscreenExclusiveError> {
-        if self.fullscreen_exclusive != FullscreenExclusive::AppControlled {
-            return Err(FullscreenExclusiveError::NotAppControlled);
-        }
-
-        if self.fullscreen_exclusive_held.swap(true, Ordering::SeqCst) {
-            return Err(FullscreenExclusiveError::DoubleAcquire);
-        }
-
-        unsafe {
-            check_errors(
-                self.device
-                    .fns()
-                    .ext_full_screen_exclusive
-                    .acquire_full_screen_exclusive_mode_ext(
-                        self.device.internal_object(),
-                        self.swapchain,
-                    ),
-            )?;
-        }
-
-        Ok(())
-    }
-
-    /// `FullscreenExclusive::AppControlled` must be the active fullscreen exclusivity mode.
-    /// Release fullscreen exclusivity.
-    pub fn release_fullscreen_exclusive(&self) -> Result<(), FullscreenExclusiveError> {
-        if self.fullscreen_exclusive != FullscreenExclusive::AppControlled {
-            return Err(FullscreenExclusiveError::NotAppControlled);
-        }
-
-        if !self.fullscreen_exclusive_held.swap(false, Ordering::SeqCst) {
-            return Err(FullscreenExclusiveError::DoubleRelease);
-        }
-
-        unsafe {
-            check_errors(
-                self.device
-                    .fns()
-                    .ext_full_screen_exclusive
-                    .release_full_screen_exclusive_mode_ext(
-                        self.device.internal_object(),
-                        self.swapchain,
-                    ),
-            )?;
-        }
-
-        Ok(())
-    }
-
-    /// `FullscreenExclusive::AppControlled` is not the active fullscreen exclusivity mode,
-    /// then this function will always return false. If true is returned the swapchain
-    /// is in `FullscreenExclusive::AppControlled` fullscreen exclusivity mode and exclusivity
-    /// is currently acquired.
-    pub fn is_fullscreen_exclusive(&self) -> bool {
-        if self.fullscreen_exclusive != FullscreenExclusive::AppControlled {
-            false
-        } else {
-            self.fullscreen_exclusive_held.load(Ordering::SeqCst)
-        }
-    }
-
-    // This method is necessary to allow `SwapchainImage`s to signal when they have been
-    // transitioned out of their initial `undefined` image layout.
-    //
-    // See the `ImageAccess::layout_initialized` method documentation for more details.
-    pub(crate) fn image_layout_initialized(&self, image_offset: usize) {
-        let image_entry = self.images.get(image_offset);
-        if let Some(ref image_entry) = image_entry {
-            image_entry.undefined_layout.store(false, Ordering::SeqCst);
-        }
-    }
-
-    pub(crate) fn is_image_layout_initialized(&self, image_offset: usize) -> bool {
-        let image_entry = self.images.get(image_offset);
-        if let Some(ref image_entry) = image_entry {
-            !image_entry.undefined_layout.load(Ordering::SeqCst)
-        } else {
-            false
-        }
-    }
-}
-
-unsafe impl<W> VulkanObject for Swapchain<W> {
-    type Object = ash::vk::SwapchainKHR;
-
-    #[inline]
-    fn internal_object(&self) -> ash::vk::SwapchainKHR {
-        self.swapchain
-    }
-}
-
-unsafe impl<W> DeviceOwned for Swapchain<W> {
-    fn device(&self) -> &Arc<Device> {
-        &self.device
-    }
-}
-
-impl<W> fmt::Debug for Swapchain<W> {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "<Vulkan swapchain {:?}>", self.swapchain)
-    }
-}
-
-impl<W> Drop for Swapchain<W> {
-    #[inline]
-    fn drop(&mut self) {
-        unsafe {
-            let fns = self.device.fns();
-            fns.khr_swapchain.destroy_swapchain_khr(
-                self.device.internal_object(),
-                self.swapchain,
-                ptr::null(),
-            );
-            self.surface.flag().store(false, Ordering::Release);
-        }
-    }
-}
-
-/// Builder for a [`Swapchain`].
-#[derive(Debug)]
-pub struct SwapchainBuilder<W> {
-    device: Arc<Device>,
-    surface: Arc<Surface<W>>,
-    old_swapchain: Option<Arc<Swapchain<W>>>,
-
-    num_images: u32,
-    format: Option<Format>, // None = use a default
-    color_space: ColorSpace,
-    dimensions: Option<[u32; 2]>,
-    layers: u32,
-    usage: ImageUsage,
-    sharing_mode: SharingMode,
-    transform: SurfaceTransform,
-    composite_alpha: CompositeAlpha,
-    present_mode: PresentMode,
-    fullscreen_exclusive: FullscreenExclusive,
-    clipped: bool,
-}
-
-impl<W> SwapchainBuilder<W> {
-    /// Builds a new swapchain. Allocates images who content can be made visible on a surface.
-    ///
-    /// See also the `Surface::get_capabilities` function which returns the values that are
-    /// supported by the implementation. All the parameters that you pass to the builder
-    /// must be supported.
-    ///
-    /// This function returns the swapchain plus a list of the images that belong to the
-    /// swapchain. The order in which the images are returned is important for the
-    /// `acquire_next_image` and `present` functions.
-    ///
-    /// # Panic
-    ///
-    /// - Panics if the device and the surface don't belong to the same instance.
-    /// - Panics if `usage` is empty.
-    ///
-    // TODO: isn't it unsafe to take the surface through an Arc when it comes to vulkano-win?
-    pub fn build(
-        self,
-    ) -> Result<(Arc<Swapchain<W>>, Vec<Arc<SwapchainImage<W>>>), SwapchainCreationError> {
-        let SwapchainBuilder {
-            device,
-            surface,
-            old_swapchain,
-
-            num_images,
-            format,
-            color_space,
-            dimensions,
-            layers,
-            usage,
-            sharing_mode,
-            transform,
-            composite_alpha,
-            present_mode,
-            fullscreen_exclusive,
-            clipped,
-        } = self;
-
-        assert_eq!(
-            device.instance().internal_object(),
-            surface.instance().internal_object()
-        );
-
-        // Checking that the requested parameters match the capabilities.
-        let capabilities = surface.capabilities(device.physical_device())?;
-        if num_images < capabilities.min_image_count {
-            return Err(SwapchainCreationError::UnsupportedMinImagesCount);
-        }
-        if let Some(c) = capabilities.max_image_count {
-            if num_images > c {
-                return Err(SwapchainCreationError::UnsupportedMaxImagesCount);
-            }
-        }
-
-        let format = {
-            if let Some(format) = format {
-                if !capabilities
-                    .supported_formats
-                    .iter()
-                    .any(|&(f, c)| f == format && c == color_space)
-                {
-                    return Err(SwapchainCreationError::UnsupportedFormat);
-                }
-                format
-            } else {
-                if let Some(format) = [Format::R8G8B8A8_UNORM, Format::B8G8R8A8_UNORM]
-                    .iter()
-                    .copied()
-                    .find(|&format| {
-                        capabilities
-                            .supported_formats
-                            .iter()
-                            .any(|&(f, c)| f == format && c == color_space)
-                    })
-                {
-                    format
-                } else {
-                    return Err(SwapchainCreationError::UnsupportedFormat);
-                }
-            }
-        };
-
-        let dimensions = if let Some(dimensions) = dimensions {
-            if dimensions[0] < capabilities.min_image_extent[0] {
-                return Err(SwapchainCreationError::UnsupportedDimensions);
-            }
-            if dimensions[1] < capabilities.min_image_extent[1] {
-                return Err(SwapchainCreationError::UnsupportedDimensions);
-            }
-            if dimensions[0] > capabilities.max_image_extent[0] {
-                return Err(SwapchainCreationError::UnsupportedDimensions);
-            }
-            if dimensions[1] > capabilities.max_image_extent[1] {
-                return Err(SwapchainCreationError::UnsupportedDimensions);
-            }
-            dimensions
-        } else {
-            capabilities.current_extent.unwrap()
-        };
-        if layers < 1 || layers > capabilities.max_image_array_layers {
-            return Err(SwapchainCreationError::UnsupportedArrayLayers);
-        }
-        if (ash::vk::ImageUsageFlags::from(usage)
-            & ash::vk::ImageUsageFlags::from(capabilities.supported_usage_flags))
-            != ash::vk::ImageUsageFlags::from(usage)
-        {
-            return Err(SwapchainCreationError::UnsupportedUsageFlags);
-        }
-        if !capabilities.supported_transforms.supports(transform) {
-            return Err(SwapchainCreationError::UnsupportedSurfaceTransform);
-        }
-        if !capabilities
-            .supported_composite_alpha
-            .supports(composite_alpha)
-        {
-            return Err(SwapchainCreationError::UnsupportedCompositeAlpha);
-        }
-        if !capabilities.present_modes.supports(present_mode) {
-            return Err(SwapchainCreationError::UnsupportedPresentMode);
-        }
-
-        let flags = ImageCreateFlags::none();
-
-        // check that the physical device supports the swapchain image configuration
-        if device
-            .physical_device()
-            .image_format_properties(
-                format,
-                ImageType::Dim2d,
-                ImageTiling::Optimal,
-                usage,
-                flags,
-                None,
-                None,
-            )?
-            .is_none()
-        {
-            return Err(SwapchainCreationError::UnsupportedImageConfiguration);
-        }
-
-        // If we recreate a swapchain, make sure that the surface is the same.
-        if let Some(ref sc) = old_swapchain {
-            if surface.internal_object() != sc.surface.internal_object() {
-                return Err(SwapchainCreationError::OldSwapchainSurfaceMismatch);
-            }
-        } else {
-            // Checking that the surface doesn't already have a swapchain.
-            let has_already = surface.flag().swap(true, Ordering::AcqRel);
-            if has_already {
-                return Err(SwapchainCreationError::SurfaceInUse);
-            }
-        }
-
-        if !device.enabled_extensions().khr_swapchain {
-            return Err(SwapchainCreationError::MissingExtensionKHRSwapchain);
-        }
-
-        let mut surface_full_screen_exclusive_info = None;
-
-        // TODO: VK_EXT_FULL_SCREEN_EXCLUSIVE requires these extensions, so they should always
-        // be enabled if it is. A separate check here is unnecessary; this should be checked at
-        // device creation.
-        if device.enabled_extensions().ext_full_screen_exclusive
-            && surface
-                .instance()
-                .enabled_extensions()
-                .khr_get_physical_device_properties2
-            && surface
-                .instance()
-                .enabled_extensions()
-                .khr_get_surface_capabilities2
-        {
-            surface_full_screen_exclusive_info = Some(ash::vk::SurfaceFullScreenExclusiveInfoEXT {
-                full_screen_exclusive: fullscreen_exclusive.into(),
-                ..Default::default()
-            });
-        }
-
-        let p_next = match surface_full_screen_exclusive_info.as_ref() {
-            Some(some) => unsafe { mem::transmute(some as *const _) },
-            None => ptr::null(),
-        };
-
-        // Required by the specs.
-        assert_ne!(usage, ImageUsage::none());
-
-        if let Some(ref old_swapchain) = old_swapchain {
-            let mut stale = old_swapchain.stale.lock().unwrap();
-
-            // The swapchain has already been used to create a new one.
-            if *stale {
-                return Err(SwapchainCreationError::OldSwapchainAlreadyUsed);
-            } else {
-                // According to the documentation of VkSwapchainCreateInfoKHR:
-                //
-                // > Upon calling vkCreateSwapchainKHR with a oldSwapchain that is not VK_NULL_HANDLE,
-                // > any images not acquired by the application may be freed by the implementation,
-                // > which may occur even if creation of the new swapchain fails.
-                //
-                // Therefore, we set stale to true and keep it to true even if the call to `vkCreateSwapchainKHR` below fails.
-                *stale = true;
-            }
-        }
-
-        let fns = device.fns();
-
-        let swapchain = unsafe {
-            let (sh_mode, sh_count, sh_indices) = match sharing_mode {
-                SharingMode::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, 0, ptr::null()),
-                SharingMode::Concurrent(ref ids) => (
-                    ash::vk::SharingMode::CONCURRENT,
-                    ids.len() as u32,
-                    ids.as_ptr(),
-                ),
-            };
-
-            let infos = ash::vk::SwapchainCreateInfoKHR {
-                p_next,
-                flags: ash::vk::SwapchainCreateFlagsKHR::empty(),
-                surface: surface.internal_object(),
-                min_image_count: num_images,
-                image_format: format.into(),
-                image_color_space: color_space.into(),
-                image_extent: ash::vk::Extent2D {
-                    width: dimensions[0],
-                    height: dimensions[1],
-                },
-                image_array_layers: layers,
-                image_usage: usage.into(),
-                image_sharing_mode: sh_mode,
-                queue_family_index_count: sh_count,
-                p_queue_family_indices: sh_indices,
-                pre_transform: transform.into(),
-                composite_alpha: composite_alpha.into(),
-                present_mode: present_mode.into(),
-                clipped: if clipped {
-                    ash::vk::TRUE
-                } else {
-                    ash::vk::FALSE
-                },
-                old_swapchain: if let Some(ref old_swapchain) = old_swapchain {
-                    old_swapchain.swapchain
-                } else {
-                    ash::vk::SwapchainKHR::null()
-                },
-                ..Default::default()
-            };
-
-            let mut output = MaybeUninit::uninit();
-            check_errors(fns.khr_swapchain.create_swapchain_khr(
-                device.internal_object(),
-                &infos,
-                ptr::null(),
-                output.as_mut_ptr(),
-            ))?;
-            output.assume_init()
-        };
-
-        let image_handles = unsafe {
-            let mut num = 0;
-            check_errors(fns.khr_swapchain.get_swapchain_images_khr(
-                device.internal_object(),
-                swapchain,
-                &mut num,
-                ptr::null_mut(),
-            ))?;
-
-            let mut images = Vec::with_capacity(num as usize);
-            check_errors(fns.khr_swapchain.get_swapchain_images_khr(
-                device.internal_object(),
-                swapchain,
-                &mut num,
-                images.as_mut_ptr(),
-            ))?;
-            images.set_len(num as usize);
-            images
-        };
-
-        let images = image_handles
-            .into_iter()
-            .map(|image| unsafe {
-                let dims = ImageDimensions::Dim2d {
-                    width: dimensions[0],
-                    height: dimensions[1],
-                    array_layers: layers,
-                };
-
-                let img = UnsafeImage::from_raw(
-                    device.clone(),
-                    image,
-                    usage,
-                    format,
-                    flags,
-                    dims,
-                    SampleCount::Sample1,
-                    1,
-                );
-
-                ImageEntry {
-                    image: img,
-                    undefined_layout: AtomicBool::new(true),
-                }
-            })
-            .collect::<Vec<_>>();
-
-        let fullscreen_exclusive_held = old_swapchain
-            .as_ref()
-            .map(|old_swapchain| {
-                if old_swapchain.fullscreen_exclusive != FullscreenExclusive::AppControlled {
-                    false
-                } else {
-                    old_swapchain
-                        .fullscreen_exclusive_held
-                        .load(Ordering::SeqCst)
-                }
-            })
-            .unwrap_or(false);
-
-        let swapchain = Arc::new(Swapchain {
-            device: device.clone(),
-            surface: surface.clone(),
-            swapchain,
-            images,
-            stale: Mutex::new(false),
-            num_images,
-            format,
-            color_space,
-            dimensions,
-            layers,
-            usage: usage.clone(),
-            sharing_mode,
-            transform,
-            composite_alpha,
-            present_mode,
-            fullscreen_exclusive,
-            fullscreen_exclusive_held: AtomicBool::new(fullscreen_exclusive_held),
-            clipped,
-        });
-
-        let swapchain_images = unsafe {
-            let mut swapchain_images = Vec::with_capacity(swapchain.images.len());
-            for n in 0..swapchain.images.len() {
-                swapchain_images.push(SwapchainImage::from_raw(swapchain.clone(), n)?);
-            }
-            swapchain_images
-        };
-
-        Ok((swapchain, swapchain_images))
-    }
-
-    /// Sets the number of images that will be created.
-    ///
-    /// The default is 2.
-    #[inline]
-    pub fn num_images(mut self, num_images: u32) -> Self {
-        self.num_images = num_images;
-        self
-    }
-
-    /// Sets the pixel format that will be used for the images.
-    ///
-    /// The default is either `R8G8B8A8Unorm` or `B8G8R8A8Unorm`, whichever is supported.
-    #[inline]
-    pub fn format(mut self, format: Format) -> Self {
-        self.format = Some(format);
-        self
-    }
-
-    /// Sets the color space that will be used for the images.
-    ///
-    /// The default is `SrgbNonLinear`.
-    #[inline]
-    pub fn color_space(mut self, color_space: ColorSpace) -> Self {
-        self.color_space = color_space;
-        self
-    }
-
-    /// Sets the dimensions of the images.
-    ///
-    /// The default is `None`, which means the value of
-    /// [`Capabilities::current_extent`](crate::swapchain::Capabilities::current_extent) will be
-    /// used. Setting this will override it with a custom `Some` value.
-    #[inline]
-    pub fn dimensions(mut self, dimensions: [u32; 2]) -> Self {
-        self.dimensions = Some(dimensions);
-        self
-    }
-
-    /// Sets the number of layers for each image.
-    ///
-    /// The default is 1.
-    #[inline]
-    pub fn layers(mut self, layers: u32) -> Self {
-        self.layers = layers;
-        self
-    }
-
-    /// Sets how the images will be used.
-    ///
-    /// The default is `ImageUsage::none()`.
-    #[inline]
-    pub fn usage(mut self, usage: ImageUsage) -> Self {
-        self.usage = usage;
-        self
-    }
-
-    /// Sets the sharing mode of the images.
-    ///
-    /// The default is `Exclusive`.
-    #[inline]
-    pub fn sharing_mode<S>(mut self, sharing_mode: S) -> Self
-    where
-        S: Into<SharingMode>,
-    {
-        self.sharing_mode = sharing_mode.into();
-        self
-    }
-
-    /// Sets the transform that is to be applied to the surface.
-    ///
-    /// The default is `Identity`.
-    #[inline]
-    pub fn transform(mut self, transform: SurfaceTransform) -> Self {
-        self.transform = transform;
-        self
-    }
-
-    /// Sets how alpha values of the pixels in the image are to be treated.
-    ///
-    /// The default is `Opaque`.
-    #[inline]
-    pub fn composite_alpha(mut self, composite_alpha: CompositeAlpha) -> Self {
-        self.composite_alpha = composite_alpha;
-        self
-    }
-
-    /// Sets the present mode for the swapchain.
-    ///
-    /// The default is `Fifo`.
-    #[inline]
-    pub fn present_mode(mut self, present_mode: PresentMode) -> Self {
-        self.present_mode = present_mode;
-        self
-    }
-
-    /// Sets how fullscreen exclusivity is to be handled.
-    ///
-    /// The default is `Default`.
-    #[inline]
-    pub fn fullscreen_exclusive(mut self, fullscreen_exclusive: FullscreenExclusive) -> Self {
-        self.fullscreen_exclusive = fullscreen_exclusive;
-        self
-    }
-
-    /// Sets whether the implementation is allowed to discard rendering operations that affect
-    /// regions of the surface which aren't visible. This is important to take into account if
-    /// your fragment shader has side-effects or if you want to read back the content of the image
-    /// afterwards.
-    ///
-    /// The default is `true`.
-    #[inline]
-    pub fn clipped(mut self, clipped: bool) -> Self {
-        self.clipped = clipped;
-        self
-    }
-}
-
-/// Error that can happen when creation a swapchain.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum SwapchainCreationError {
-    /// Not enough memory.
-    OomError(OomError),
-    /// The device was lost.
-    DeviceLost,
-    /// The surface was lost.
-    SurfaceLost,
-    /// The surface is already used by another swapchain.
-    SurfaceInUse,
-    /// The window is already in use by another API.
-    NativeWindowInUse,
-    /// The `VK_KHR_swapchain` extension was not enabled.
-    MissingExtensionKHRSwapchain,
-    /// The `VK_EXT_full_screen_exclusive` extension was not enabled.
-    MissingExtensionExtFullScreenExclusive,
-    /// Surface mismatch between old and new swapchain.
-    OldSwapchainSurfaceMismatch,
-    /// The old swapchain has already been used to recreate another one.
-    OldSwapchainAlreadyUsed,
-    /// The requested number of swapchain images is not supported by the surface.
-    UnsupportedMinImagesCount,
-    /// The requested number of swapchain images is not supported by the surface.
-    UnsupportedMaxImagesCount,
-    /// The requested image format is not supported by the surface.
-    UnsupportedFormat,
-    /// The requested dimensions are not supported by the surface.
-    UnsupportedDimensions,
-    /// The requested array layers count is not supported by the surface.
-    UnsupportedArrayLayers,
-    /// The requested image usage is not supported by the surface.
-    UnsupportedUsageFlags,
-    /// The requested surface transform is not supported by the surface.
-    UnsupportedSurfaceTransform,
-    /// The requested composite alpha is not supported by the surface.
-    UnsupportedCompositeAlpha,
-    /// The requested present mode is not supported by the surface.
-    UnsupportedPresentMode,
-    /// The image configuration is not supported by the physical device.
-    UnsupportedImageConfiguration,
-}
-
-impl error::Error for SwapchainCreationError {
-    #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match *self {
-            SwapchainCreationError::OomError(ref err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl fmt::Display for SwapchainCreationError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                SwapchainCreationError::OomError(_) => "not enough memory available",
-                SwapchainCreationError::DeviceLost => "the device was lost",
-                SwapchainCreationError::SurfaceLost => "the surface was lost",
-                SwapchainCreationError::SurfaceInUse => {
-                    "the surface is already used by another swapchain"
-                }
-                SwapchainCreationError::NativeWindowInUse => {
-                    "the window is already in use by another API"
-                }
-                SwapchainCreationError::MissingExtensionKHRSwapchain => {
-                    "the `VK_KHR_swapchain` extension was not enabled"
-                }
-                SwapchainCreationError::MissingExtensionExtFullScreenExclusive => {
-                    "the `VK_EXT_full_screen_exclusive` extension was not enabled"
-                }
-                SwapchainCreationError::OldSwapchainSurfaceMismatch => {
-                    "surface mismatch between old and new swapchain"
-                }
-                SwapchainCreationError::OldSwapchainAlreadyUsed => {
-                    "old swapchain has already been used to recreate a new one"
-                }
-                SwapchainCreationError::UnsupportedMinImagesCount => {
-                    "the requested number of swapchain images is not supported by the surface"
-                }
-                SwapchainCreationError::UnsupportedMaxImagesCount => {
-                    "the requested number of swapchain images is not supported by the surface"
-                }
-                SwapchainCreationError::UnsupportedFormat => {
-                    "the requested image format is not supported by the surface"
-                }
-                SwapchainCreationError::UnsupportedDimensions => {
-                    "the requested dimensions are not supported by the surface"
-                }
-                SwapchainCreationError::UnsupportedArrayLayers => {
-                    "the requested array layers count is not supported by the surface"
-                }
-                SwapchainCreationError::UnsupportedUsageFlags => {
-                    "the requested image usage is not supported by the surface"
-                }
-                SwapchainCreationError::UnsupportedSurfaceTransform => {
-                    "the requested surface transform is not supported by the surface"
-                }
-                SwapchainCreationError::UnsupportedCompositeAlpha => {
-                    "the requested composite alpha is not supported by the surface"
-                }
-                SwapchainCreationError::UnsupportedPresentMode => {
-                    "the requested present mode is not supported by the surface"
-                }
-                SwapchainCreationError::UnsupportedImageConfiguration => {
-                    "the requested image configuration is not supported by the physical device"
-                }
-            }
-        )
-    }
-}
-
-impl From<Error> for SwapchainCreationError {
-    #[inline]
-    fn from(err: Error) -> SwapchainCreationError {
-        match err {
-            err @ Error::OutOfHostMemory => SwapchainCreationError::OomError(OomError::from(err)),
-            err @ Error::OutOfDeviceMemory => SwapchainCreationError::OomError(OomError::from(err)),
-            Error::DeviceLost => SwapchainCreationError::DeviceLost,
-            Error::SurfaceLost => SwapchainCreationError::SurfaceLost,
-            Error::NativeWindowInUse => SwapchainCreationError::NativeWindowInUse,
-            _ => panic!("unexpected error: {:?}", err),
-        }
-    }
-}
-
-impl From<OomError> for SwapchainCreationError {
-    #[inline]
-    fn from(err: OomError) -> SwapchainCreationError {
-        SwapchainCreationError::OomError(err)
-    }
-}
-
-impl From<CapabilitiesError> for SwapchainCreationError {
-    #[inline]
-    fn from(err: CapabilitiesError) -> SwapchainCreationError {
-        match err {
-            CapabilitiesError::OomError(err) => SwapchainCreationError::OomError(err),
-            CapabilitiesError::SurfaceLost => SwapchainCreationError::SurfaceLost,
-        }
     }
 }
 
@@ -1250,13 +1602,6 @@ unsafe impl<W> GpuFuture for SwapchainAcquireFuture<W> {
     }
 }
 
-unsafe impl<W> DeviceOwned for SwapchainAcquireFuture<W> {
-    #[inline]
-    fn device(&self) -> &Arc<Device> {
-        &self.swapchain.device
-    }
-}
-
 impl<W> Drop for SwapchainAcquireFuture<W> {
     fn drop(&mut self) {
         if let Some(ref fence) = self.fence {
@@ -1269,83 +1614,10 @@ impl<W> Drop for SwapchainAcquireFuture<W> {
     }
 }
 
-/// Error that can happen when calling `Swapchain::acquire_fullscreen_exclusive` or `Swapchain::release_fullscreen_exclusive`
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[repr(u32)]
-pub enum FullscreenExclusiveError {
-    /// Not enough memory.
-    OomError(OomError),
-
-    /// Operation could not be completed for driver specific reasons.
-    InitializationFailed,
-
-    /// The surface is no longer accessible and must be recreated.
-    SurfaceLost,
-
-    /// Fullscreen exclusivity is already acquired.
-    DoubleAcquire,
-
-    /// Fullscreen exclusivity is not current acquired.
-    DoubleRelease,
-
-    /// Swapchain is not in fullscreen exclusive app controlled mode
-    NotAppControlled,
-}
-
-impl From<Error> for FullscreenExclusiveError {
+unsafe impl<W> DeviceOwned for SwapchainAcquireFuture<W> {
     #[inline]
-    fn from(err: Error) -> FullscreenExclusiveError {
-        match err {
-            err @ Error::OutOfHostMemory => FullscreenExclusiveError::OomError(OomError::from(err)),
-            err @ Error::OutOfDeviceMemory => {
-                FullscreenExclusiveError::OomError(OomError::from(err))
-            }
-            Error::SurfaceLost => FullscreenExclusiveError::SurfaceLost,
-            Error::InitializationFailed => FullscreenExclusiveError::InitializationFailed,
-            _ => panic!("unexpected error: {:?}", err),
-        }
-    }
-}
-
-impl From<OomError> for FullscreenExclusiveError {
-    #[inline]
-    fn from(err: OomError) -> FullscreenExclusiveError {
-        FullscreenExclusiveError::OomError(err)
-    }
-}
-
-impl error::Error for FullscreenExclusiveError {
-    #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match *self {
-            FullscreenExclusiveError::OomError(ref err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl fmt::Display for FullscreenExclusiveError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                FullscreenExclusiveError::OomError(_) => "not enough memory",
-                FullscreenExclusiveError::SurfaceLost => {
-                    "the surface of this swapchain is no longer valid"
-                }
-                FullscreenExclusiveError::InitializationFailed => {
-                    "operation could not be completed for driver specific reasons"
-                }
-                FullscreenExclusiveError::DoubleAcquire =>
-                    "fullscreen exclusivity is already acquired",
-                FullscreenExclusiveError::DoubleRelease => "fullscreen exclusivity is not acquired",
-                FullscreenExclusiveError::NotAppControlled => {
-                    "swapchain is not in fullscreen exclusive app controlled mode"
-                }
-            }
-        )
+    fn device(&self) -> &Arc<Device> {
+        &self.swapchain.device
     }
 }
 
@@ -1365,9 +1637,9 @@ pub enum AcquireError {
     /// The surface is no longer accessible and must be recreated.
     SurfaceLost,
 
-    /// The swapchain has lost or doesn't have fullscreen exclusivity possibly for
+    /// The swapchain has lost or doesn't have full-screen exclusivity possibly for
     /// implementation-specific reasons outside of the application’s control.
-    FullscreenExclusiveLost,
+    FullScreenExclusiveLost,
 
     /// The surface has changed in a way that makes the swapchain unusable. You must query the
     /// surface's new properties and recreate a new swapchain if you want to continue drawing.
@@ -1399,8 +1671,8 @@ impl fmt::Display for AcquireError {
                 AcquireError::Timeout => "no image is available for acquiring yet",
                 AcquireError::SurfaceLost => "the surface of this swapchain is no longer valid",
                 AcquireError::OutOfDate => "the swapchain needs to be recreated",
-                AcquireError::FullscreenExclusiveLost => {
-                    "the swapchain no longer has fullscreen exclusivity"
+                AcquireError::FullScreenExclusiveLost => {
+                    "the swapchain no longer has full-screen exclusivity"
                 }
                 AcquireError::SemaphoreError(_) => "error creating semaphore",
             }
@@ -1430,7 +1702,7 @@ impl From<Error> for AcquireError {
             Error::DeviceLost => AcquireError::DeviceLost,
             Error::SurfaceLost => AcquireError::SurfaceLost,
             Error::OutOfDate => AcquireError::OutOfDate,
-            Error::FullscreenExclusiveLost => AcquireError::FullscreenExclusiveLost,
+            Error::FullScreenExclusiveLost => AcquireError::FullScreenExclusiveLost,
             _ => panic!("unexpected error: {:?}", err),
         }
     }
@@ -1554,9 +1826,9 @@ where
 
             let build_submission_result = self.build_submission();
 
-            if let &Err(FlushError::FullscreenExclusiveLost) = &build_submission_result {
+            if let &Err(FlushError::FullScreenExclusiveLost) = &build_submission_result {
                 self.swapchain
-                    .fullscreen_exclusive_held
+                    .full_screen_exclusive_held
                     .store(false, Ordering::SeqCst);
             }
 
@@ -1565,9 +1837,9 @@ where
                 SubmitAnyBuilder::QueuePresent(present) => {
                     let present_result = present.submit(&self.queue);
 
-                    if let &Err(SubmitPresentError::FullscreenExclusiveLost) = &present_result {
+                    if let &Err(SubmitPresentError::FullScreenExclusiveLost) = &present_result {
                         self.swapchain
-                            .fullscreen_exclusive_held
+                            .full_screen_exclusive_held
                             .store(false, Ordering::SeqCst);
                     }
 
@@ -1701,7 +1973,7 @@ pub unsafe fn acquire_next_image_raw<W>(
     let r = check_errors(
         fns.khr_swapchain.acquire_next_image_khr(
             swapchain.device.internal_object(),
-            swapchain.swapchain,
+            swapchain.handle,
             timeout_ns,
             semaphore
                 .map(|s| s.internal_object())

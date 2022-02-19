@@ -24,7 +24,8 @@ use vulkano::{
         Instance, InstanceCreateInfo, InstanceExtensions,
     },
     swapchain::{
-        ColorSpace, FullscreenExclusive, PresentMode, Surface, SurfaceTransform, Swapchain,
+        ColorSpace, FullScreenExclusive, PresentMode, Surface, SurfaceTransform, Swapchain,
+        SwapchainCreateInfo,
     },
     Version,
 };
@@ -165,36 +166,48 @@ impl VulkanoContext {
     }
 
     /// Creates swapchain and swapchain images
-    pub(crate) fn create_swap_chain(
+    pub(crate) fn create_swapchain(
         &self,
         surface: Arc<Surface<Window>>,
-        queue: Arc<Queue>,
         present_mode: PresentMode,
     ) -> (Arc<Swapchain<Window>>, Vec<FinalImageView>) {
-        let caps = surface.capabilities(self.device.physical_device()).unwrap();
-        let alpha = caps.supported_composite_alpha.iter().next().unwrap();
-        let format = caps.supported_formats[0].0;
-        let dimensions: [u32; 2] = surface.window().inner_size().into();
-        let (swap_chain, images) = Swapchain::start(self.device.clone(), surface)
-            .num_images(caps.min_image_count)
-            .format(format)
-            .dimensions(dimensions)
-            .usage(ImageUsage::color_attachment())
-            .sharing_mode(&queue)
-            .composite_alpha(alpha)
-            .transform(SurfaceTransform::Identity)
-            .present_mode(present_mode)
-            .fullscreen_exclusive(FullscreenExclusive::Default)
-            .clipped(true)
-            .color_space(ColorSpace::SrgbNonLinear)
-            .layers(1)
-            .build()
+        let surface_capabilities = self
+            .device
+            .physical_device()
+            .surface_capabilities(&surface, Default::default())
             .unwrap();
+        let image_format = Some(
+            self.device
+                .physical_device()
+                .surface_formats(&surface, Default::default())
+                .unwrap()[0]
+                .0,
+        );
+        let image_extent = surface.window().inner_size().into();
+
+        let (swapchain, images) = Swapchain::new(
+            self.device.clone(),
+            surface,
+            SwapchainCreateInfo {
+                min_image_count: surface_capabilities.min_image_count,
+                image_format,
+                image_extent,
+                image_usage: ImageUsage::color_attachment(),
+                composite_alpha: surface_capabilities
+                    .supported_composite_alpha
+                    .iter()
+                    .next()
+                    .unwrap(),
+                present_mode,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let images = images
             .into_iter()
             .map(|image| ImageView::new(image).unwrap())
             .collect::<Vec<_>>();
-        (swap_chain, images)
+        (swapchain, images)
     }
 
     pub fn device_name(&self) -> &str {

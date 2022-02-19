@@ -13,11 +13,16 @@ use crate::image::view::ImageViewType;
 use crate::image::{ImageCreateFlags, ImageTiling, ImageType, ImageUsage, SampleCounts};
 use crate::instance::{Instance, InstanceCreationError};
 use crate::memory::ExternalMemoryHandleType;
+use crate::swapchain::{
+    ColorSpace, FullScreenExclusive, PresentMode, SupportedSurfaceTransforms, Surface, SurfaceApi,
+    SurfaceCapabilities, Win32Monitor,
+};
 use crate::sync::PipelineStage;
 use crate::Version;
 use crate::VulkanObject;
 use crate::{check_errors, OomError};
 use crate::{DeviceSize, Error};
+use std::error;
 use std::ffi::CStr;
 use std::fmt;
 use std::hash::Hash;
@@ -706,6 +711,420 @@ impl<'a> PhysicalDevice<'a> {
             None
         }
     }
+
+    /// Returns the capabilities that are supported by the physical device for the given surface.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the physical device and the surface don't belong to the same instance.
+    pub fn surface_capabilities<W>(
+        &self,
+        surface: &Surface<W>,
+        surface_info: SurfaceInfo,
+    ) -> Result<SurfaceCapabilities, SurfacePropertiesError> {
+        assert_eq!(
+            self.instance.internal_object(),
+            surface.instance().internal_object(),
+        );
+
+        /* Input */
+
+        let SurfaceInfo {
+            full_screen_exclusive,
+            win32_monitor,
+            _ne: _,
+        } = surface_info;
+
+        let mut surface_full_screen_exclusive_info =
+            if self.supported_extensions().ext_full_screen_exclusive {
+                Some(ash::vk::SurfaceFullScreenExclusiveInfoEXT {
+                    full_screen_exclusive: full_screen_exclusive.into(),
+                    ..Default::default()
+                })
+            } else {
+                if full_screen_exclusive != FullScreenExclusive::Default {
+                    return Err(SurfacePropertiesError::NotSupported);
+                }
+
+                None
+            };
+
+        let mut surface_full_screen_exclusive_win32_info = if surface.api() == SurfaceApi::Win32
+            && full_screen_exclusive == FullScreenExclusive::ApplicationControlled
+        {
+            if let Some(win32_monitor) = win32_monitor {
+                Some(ash::vk::SurfaceFullScreenExclusiveWin32InfoEXT {
+                    hmonitor: win32_monitor.0,
+                    ..Default::default()
+                })
+            } else {
+                return Err(SurfacePropertiesError::NotSupported);
+            }
+        } else {
+            if win32_monitor.is_some() {
+                return Err(SurfacePropertiesError::NotSupported);
+            } else {
+                None
+            }
+        };
+
+        let mut surface_info2 = ash::vk::PhysicalDeviceSurfaceInfo2KHR {
+            surface: surface.internal_object(),
+            ..Default::default()
+        };
+
+        if let Some(surface_full_screen_exclusive_info) =
+            surface_full_screen_exclusive_info.as_mut()
+        {
+            surface_full_screen_exclusive_info.p_next = surface_info2.p_next as *mut _;
+            surface_info2.p_next = surface_full_screen_exclusive_info as *const _ as *const _;
+        }
+
+        if let Some(surface_full_screen_exclusive_win32_info) =
+            surface_full_screen_exclusive_win32_info.as_mut()
+        {
+            surface_full_screen_exclusive_win32_info.p_next = surface_info2.p_next as *mut _;
+            surface_info2.p_next = surface_full_screen_exclusive_win32_info as *const _ as *const _;
+        }
+
+        /* Output */
+
+        let mut surface_capabilities2 = ash::vk::SurfaceCapabilities2KHR::default();
+
+        let mut surface_capabilities_full_screen_exclusive =
+            if surface_full_screen_exclusive_info.is_some() {
+                Some(ash::vk::SurfaceCapabilitiesFullScreenExclusiveEXT::default())
+            } else {
+                None
+            };
+
+        if let Some(surface_capabilities_full_screen_exclusive) =
+            surface_capabilities_full_screen_exclusive.as_mut()
+        {
+            surface_capabilities_full_screen_exclusive.p_next =
+                surface_capabilities2.p_next as *mut _;
+            surface_capabilities2.p_next =
+                surface_capabilities_full_screen_exclusive as *mut _ as *mut _;
+        }
+
+        unsafe {
+            let fns = self.instance.fns();
+
+            if self
+                .instance
+                .enabled_extensions()
+                .khr_get_surface_capabilities2
+            {
+                check_errors(
+                    fns.khr_get_surface_capabilities2
+                        .get_physical_device_surface_capabilities2_khr(
+                            self.internal_object(),
+                            &surface_info2,
+                            &mut surface_capabilities2,
+                        ),
+                )?;
+            } else {
+                check_errors(
+                    fns.khr_surface
+                        .get_physical_device_surface_capabilities_khr(
+                            self.internal_object(),
+                            surface_info2.surface,
+                            &mut surface_capabilities2.surface_capabilities,
+                        ),
+                )?;
+            };
+        }
+
+        Ok(SurfaceCapabilities {
+            min_image_count: surface_capabilities2.surface_capabilities.min_image_count,
+            max_image_count: if surface_capabilities2.surface_capabilities.max_image_count == 0 {
+                None
+            } else {
+                Some(surface_capabilities2.surface_capabilities.max_image_count)
+            },
+            current_extent: if surface_capabilities2
+                .surface_capabilities
+                .current_extent
+                .width
+                == 0xffffffff
+                && surface_capabilities2
+                    .surface_capabilities
+                    .current_extent
+                    .height
+                    == 0xffffffff
+            {
+                None
+            } else {
+                Some([
+                    surface_capabilities2
+                        .surface_capabilities
+                        .current_extent
+                        .width,
+                    surface_capabilities2
+                        .surface_capabilities
+                        .current_extent
+                        .height,
+                ])
+            },
+            min_image_extent: [
+                surface_capabilities2
+                    .surface_capabilities
+                    .min_image_extent
+                    .width,
+                surface_capabilities2
+                    .surface_capabilities
+                    .min_image_extent
+                    .height,
+            ],
+            max_image_extent: [
+                surface_capabilities2
+                    .surface_capabilities
+                    .max_image_extent
+                    .width,
+                surface_capabilities2
+                    .surface_capabilities
+                    .max_image_extent
+                    .height,
+            ],
+            max_image_array_layers: surface_capabilities2
+                .surface_capabilities
+                .max_image_array_layers,
+            supported_transforms: surface_capabilities2
+                .surface_capabilities
+                .supported_transforms
+                .into(),
+
+            current_transform: SupportedSurfaceTransforms::from(
+                surface_capabilities2.surface_capabilities.current_transform,
+            )
+            .iter()
+            .next()
+            .unwrap(), // TODO:
+            supported_composite_alpha: surface_capabilities2
+                .surface_capabilities
+                .supported_composite_alpha
+                .into(),
+            supported_usage_flags: {
+                let usage = ImageUsage::from(
+                    surface_capabilities2
+                        .surface_capabilities
+                        .supported_usage_flags,
+                );
+                debug_assert!(usage.color_attachment); // specs say that this must be true
+                usage
+            },
+
+            full_screen_exclusive_supported: surface_capabilities_full_screen_exclusive
+                .map_or(false, |c| c.full_screen_exclusive_supported != 0),
+        })
+    }
+
+    /// Returns the combinations of format and color space that are supported by the physical device
+    /// for the given surface.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the physical device and the surface don't belong to the same instance.
+    pub fn surface_formats<W>(
+        &self,
+        surface: &Surface<W>,
+        surface_info: SurfaceInfo,
+    ) -> Result<Vec<(Format, ColorSpace)>, SurfacePropertiesError> {
+        assert_eq!(
+            self.instance.internal_object(),
+            surface.instance().internal_object(),
+        );
+
+        if self
+            .instance
+            .enabled_extensions()
+            .khr_get_surface_capabilities2
+        {
+            let SurfaceInfo {
+                full_screen_exclusive,
+                win32_monitor,
+                _ne: _,
+            } = surface_info;
+
+            let mut surface_full_screen_exclusive_info =
+                if full_screen_exclusive != FullScreenExclusive::Default {
+                    if !self.supported_extensions().ext_full_screen_exclusive {
+                        return Err(SurfacePropertiesError::NotSupported);
+                    }
+
+                    Some(ash::vk::SurfaceFullScreenExclusiveInfoEXT {
+                        full_screen_exclusive: full_screen_exclusive.into(),
+                        ..Default::default()
+                    })
+                } else {
+                    None
+                };
+
+            let mut surface_full_screen_exclusive_win32_info = if surface.api() == SurfaceApi::Win32
+                && full_screen_exclusive == FullScreenExclusive::ApplicationControlled
+            {
+                if let Some(win32_monitor) = win32_monitor {
+                    Some(ash::vk::SurfaceFullScreenExclusiveWin32InfoEXT {
+                        hmonitor: win32_monitor.0,
+                        ..Default::default()
+                    })
+                } else {
+                    return Err(SurfacePropertiesError::NotSupported);
+                }
+            } else {
+                if win32_monitor.is_some() {
+                    return Err(SurfacePropertiesError::NotSupported);
+                } else {
+                    None
+                }
+            };
+
+            let mut surface_info2 = ash::vk::PhysicalDeviceSurfaceInfo2KHR {
+                surface: surface.internal_object(),
+                ..Default::default()
+            };
+
+            if let Some(surface_full_screen_exclusive_info) =
+                surface_full_screen_exclusive_info.as_mut()
+            {
+                surface_full_screen_exclusive_info.p_next = surface_info2.p_next as *mut _;
+                surface_info2.p_next = surface_full_screen_exclusive_info as *const _ as *const _;
+            }
+
+            if let Some(surface_full_screen_exclusive_win32_info) =
+                surface_full_screen_exclusive_win32_info.as_mut()
+            {
+                surface_full_screen_exclusive_win32_info.p_next = surface_info2.p_next as *mut _;
+                surface_info2.p_next =
+                    surface_full_screen_exclusive_win32_info as *const _ as *const _;
+            }
+
+            let mut surface_format2s;
+
+            unsafe {
+                let fns = self.instance.fns();
+
+                let mut num = 0;
+                check_errors(
+                    fns.khr_get_surface_capabilities2
+                        .get_physical_device_surface_formats2_khr(
+                            self.internal_object(),
+                            &surface_info2,
+                            &mut num,
+                            ptr::null_mut(),
+                        ),
+                )?;
+
+                surface_format2s = Vec::with_capacity(num as usize);
+                check_errors(
+                    fns.khr_get_surface_capabilities2
+                        .get_physical_device_surface_formats2_khr(
+                            self.internal_object(),
+                            &surface_info2,
+                            &mut num,
+                            surface_format2s.as_mut_ptr(),
+                        ),
+                )?;
+                surface_format2s.set_len(num as usize);
+            }
+
+            Ok(surface_format2s
+                .into_iter()
+                .filter_map(|surface_format2| {
+                    (surface_format2.surface_format.format.try_into().ok())
+                        .zip(surface_format2.surface_format.color_space.try_into().ok())
+                })
+                .collect())
+        } else {
+            if surface_info != SurfaceInfo::default() {
+                return Ok(Vec::new());
+            }
+
+            let mut surface_formats;
+
+            unsafe {
+                let fns = self.instance.fns();
+
+                let mut num = 0;
+                check_errors(fns.khr_surface.get_physical_device_surface_formats_khr(
+                    self.internal_object(),
+                    surface.internal_object(),
+                    &mut num,
+                    ptr::null_mut(),
+                ))?;
+
+                surface_formats = Vec::with_capacity(num as usize);
+                check_errors(fns.khr_surface.get_physical_device_surface_formats_khr(
+                    self.internal_object(),
+                    surface.internal_object(),
+                    &mut num,
+                    surface_formats.as_mut_ptr(),
+                ))?;
+                surface_formats.set_len(num as usize);
+            }
+
+            Ok(surface_formats
+                .into_iter()
+                .filter_map(|surface_format| {
+                    (surface_format.format.try_into().ok())
+                        .zip(surface_format.color_space.try_into().ok())
+                })
+                .collect())
+        }
+    }
+
+    /// Returns the present modes that are supported by the physical device for the given surface.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the physical device and the surface don't belong to the same instance.
+    pub fn surface_present_modes<W>(
+        &self,
+        surface: &Surface<W>,
+    ) -> Result<impl Iterator<Item = PresentMode>, SurfacePropertiesError> {
+        assert_eq!(
+            self.instance.internal_object(),
+            surface.instance().internal_object(),
+        );
+
+        let modes = unsafe {
+            let fns = self.instance.fns();
+
+            let mut num = 0;
+            check_errors(
+                fns.khr_surface
+                    .get_physical_device_surface_present_modes_khr(
+                        self.internal_object(),
+                        surface.internal_object(),
+                        &mut num,
+                        ptr::null_mut(),
+                    ),
+            )?;
+
+            let mut modes = Vec::with_capacity(num as usize);
+            check_errors(
+                fns.khr_surface
+                    .get_physical_device_surface_present_modes_khr(
+                        self.internal_object(),
+                        surface.internal_object(),
+                        &mut num,
+                        modes.as_mut_ptr(),
+                    ),
+            )?;
+            modes.set_len(num as usize);
+            modes
+        };
+
+        debug_assert!(modes.len() > 0);
+        debug_assert!(modes
+            .iter()
+            .find(|&&m| m == ash::vk::PresentModeKHR::FIFO)
+            .is_some());
+
+        Ok(modes
+            .into_iter()
+            .filter_map(|mode_vk| mode_vk.try_into().ok()))
+    }
 }
 
 unsafe impl<'a> VulkanObject for PhysicalDevice<'a> {
@@ -964,6 +1383,25 @@ impl<'a> QueueFamily<'a> {
         self.properties
             .queue_flags
             .contains(stage.required_queue_flags())
+    }
+
+    /// Returns whether queues of this family can draw on the given surface.
+    pub fn supports_surface<W>(
+        &self,
+        surface: &Surface<W>,
+    ) -> Result<bool, SurfacePropertiesError> {
+        unsafe {
+            let fns = self.physical_device.instance.fns();
+
+            let mut output = MaybeUninit::uninit();
+            check_errors(fns.khr_surface.get_physical_device_surface_support_khr(
+                self.physical_device.internal_object(),
+                self.id,
+                surface.internal_object(),
+                output.as_mut_ptr(),
+            ))?;
+            Ok(output.assume_init() != 0)
+        }
     }
 }
 
@@ -1473,6 +1911,84 @@ impl From<ash::vk::ImageFormatProperties> for ImageFormatProperties {
             filter_cubic_minmax: false,
 
             _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+/// Parameters for [`PhysicalDevice::surface_capabilities`] and
+/// [`PhysicalDevice::surface_formats`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SurfaceInfo {
+    pub full_screen_exclusive: FullScreenExclusive,
+    pub win32_monitor: Option<Win32Monitor>,
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for SurfaceInfo {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            full_screen_exclusive: FullScreenExclusive::Default,
+            win32_monitor: None,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+/// Error that can happen when retrieving properties of a surface.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(u32)]
+pub enum SurfacePropertiesError {
+    /// Not enough memory.
+    OomError(OomError),
+
+    /// The surface is no longer accessible and must be recreated.
+    SurfaceLost,
+
+    // The given `SurfaceInfo` values are not supported for the surface by the physical device.
+    NotSupported,
+}
+
+impl error::Error for SurfacePropertiesError {
+    #[inline]
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match *self {
+            Self::OomError(ref err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for SurfacePropertiesError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                Self::OomError(_) => "not enough memory",
+                Self::SurfaceLost => "the surface is no longer valid",
+                Self::NotSupported => "the given `SurfaceInfo` values are not supported for the surface by the physical device",
+            }
+        )
+    }
+}
+
+impl From<OomError> for SurfacePropertiesError {
+    #[inline]
+    fn from(err: OomError) -> SurfacePropertiesError {
+        Self::OomError(err)
+    }
+}
+
+impl From<Error> for SurfacePropertiesError {
+    #[inline]
+    fn from(err: Error) -> SurfacePropertiesError {
+        match err {
+            err @ Error::OutOfHostMemory => Self::OomError(OomError::from(err)),
+            err @ Error::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
+            Error::SurfaceLost => Self::SurfaceLost,
+            _ => panic!("unexpected error: {:?}", err),
         }
     }
 }

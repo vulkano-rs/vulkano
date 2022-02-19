@@ -18,7 +18,9 @@ use vulkano::instance::{Instance, InstanceCreateInfo};
 use vulkano::pipeline::graphics::viewport::ViewportState;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
-use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
+use vulkano::swapchain::{
+    self, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+};
 use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano_win::VkSurfaceBuild;
 use winit::event::{Event, WindowEvent};
@@ -49,7 +51,7 @@ fn main() {
         .filter(|&p| p.supported_extensions().is_superset_of(&device_extensions))
         .filter_map(|p| {
             p.queue_families()
-                .find(|&q| q.supports_graphics() && surface.is_supported(q).unwrap_or(false))
+                .find(|&q| q.supports_graphics() && q.supports_surface(&surface).unwrap_or(false))
                 .map(|q| (p, q))
         })
         .min_by_key(|(p, _)| match p.properties().device_type {
@@ -81,20 +83,33 @@ fn main() {
     let queue = queues.next().unwrap();
 
     let (mut swapchain, images) = {
-        let caps = surface.capabilities(physical_device).unwrap();
-        let composite_alpha = caps.supported_composite_alpha.iter().next().unwrap();
-        let format = caps.supported_formats[0].0;
-        let dimensions: [u32; 2] = surface.window().inner_size().into();
+        let surface_capabilities = physical_device
+            .surface_capabilities(&surface, Default::default())
+            .unwrap();
+        let image_format = Some(
+            physical_device
+                .surface_formats(&surface, Default::default())
+                .unwrap()[0]
+                .0,
+        );
 
-        Swapchain::start(device.clone(), surface.clone())
-            .num_images(caps.min_image_count)
-            .format(format)
-            .dimensions(dimensions)
-            .usage(ImageUsage::color_attachment())
-            .sharing_mode(&queue)
-            .composite_alpha(composite_alpha)
-            .build()
-            .unwrap()
+        Swapchain::new(
+            device.clone(),
+            surface.clone(),
+            SwapchainCreateInfo {
+                min_image_count: surface_capabilities.min_image_count,
+                image_format,
+                image_extent: surface.window().inner_size().into(),
+                image_usage: ImageUsage::color_attachment(),
+                composite_alpha: surface_capabilities
+                    .supported_composite_alpha
+                    .iter()
+                    .next()
+                    .unwrap(),
+                ..Default::default()
+            },
+        )
+        .unwrap()
     };
 
     mod vs {
@@ -133,7 +148,7 @@ fn main() {
             color: {
                 load: Clear,
                 store: Store,
-                format: swapchain.format(),
+                format: swapchain.image_format(),
                 samples: 1,
             }
         },
@@ -153,8 +168,8 @@ fn main() {
         .build(device.clone())
         .unwrap();
 
-    let mut width = swapchain.dimensions()[0];
-    let mut height = swapchain.dimensions()[1];
+    let mut width = swapchain.image_extent()[0];
+    let mut height = swapchain.image_extent()[1];
     let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone());
 
     let mut recreate_swapchain = false;
@@ -177,17 +192,18 @@ fn main() {
             previous_frame_end.as_mut().unwrap().cleanup_finished();
 
             if recreate_swapchain {
-                let dimensions: [u32; 2] = surface.window().inner_size().into();
-                width = dimensions[0];
-                height = dimensions[1];
-                let (new_swapchain, new_images) =
-                    match swapchain.recreate().dimensions(dimensions).build() {
-                        Ok(r) => r,
-                        Err(SwapchainCreationError::UnsupportedDimensions) => return,
-                        Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
-                    };
+                let (new_swapchain, new_images) = match swapchain.recreate(SwapchainCreateInfo {
+                    image_extent: surface.window().inner_size().into(),
+                    ..swapchain.create_info()
+                }) {
+                    Ok(r) => r,
+                    Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
+                    Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
+                };
 
                 swapchain = new_swapchain;
+                width = swapchain.image_extent()[0];
+                height = swapchain.image_extent()[1];
                 framebuffers = window_size_dependent_setup(&new_images, render_pass.clone());
                 recreate_swapchain = false;
             }

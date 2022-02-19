@@ -8,22 +8,11 @@ use vulkano::instance::Instance;
 use vulkano::instance::InstanceExtensions;
 use vulkano::swapchain::Surface;
 use vulkano::swapchain::SurfaceCreationError;
-use winit::error::OsError as WindowCreationError;
-use winit::event_loop::EventLoopWindowTarget;
-use winit::window::Window;
-use winit::window::WindowBuilder;
-
-#[cfg(target_os = "macos")]
-use cocoa::appkit::{NSView, NSWindow};
-#[cfg(target_os = "macos")]
-use cocoa::base::id as cocoa_id;
-#[cfg(target_os = "macos")]
-use metal::CoreAnimationLayer;
-#[cfg(target_os = "macos")]
-use objc::runtime::YES;
-
-#[cfg(target_os = "macos")]
-use std::mem;
+use winit::{
+    error::OsError as WindowCreationError,
+    event_loop::EventLoopWindowTarget,
+    window::{Window, WindowBuilder},
+};
 
 pub fn required_extensions() -> InstanceExtensions {
     let ideal = InstanceExtensions {
@@ -46,9 +35,10 @@ pub fn required_extensions() -> InstanceExtensions {
     }
 }
 
-/// Create a surface from the window type `W`. The surface borrows the window
-/// to prevent it from being dropped before the surface.
-pub fn create_vk_surface<W>(
+/// Create a surface from a Winit window or a reference to it. The surface takes `W` to prevent it
+/// from being dropped before the surface.
+#[inline]
+pub fn create_surface_from_winit<W>(
     window: W,
     instance: Arc<Instance>,
 ) -> Result<Arc<Surface<W>>, SurfaceCreationError>
@@ -67,13 +57,14 @@ pub trait VkSurfaceBuild<E> {
 }
 
 impl<E> VkSurfaceBuild<E> for WindowBuilder {
+    #[inline]
     fn build_vk_surface(
         self,
         event_loop: &EventLoopWindowTarget<E>,
         instance: Arc<Instance>,
     ) -> Result<Arc<Surface<Window>>, CreationError> {
         let window = self.build(event_loop)?;
-        Ok(create_vk_surface(window, instance)?)
+        Ok(create_surface_from_winit(window, instance)?)
     }
 }
 
@@ -125,13 +116,14 @@ impl From<WindowCreationError> for CreationError {
 }
 
 #[cfg(target_os = "android")]
+#[inline]
 unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
     instance: Arc<Instance>,
     win: W,
 ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
     use winit::platform::android::WindowExtAndroid;
 
-    Surface::from_anativewindow(instance, win.borrow().native_window(), win)
+    Surface::from_android(instance, win.borrow().native_window(), win)
 }
 
 #[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))]
@@ -168,15 +160,17 @@ unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
     }
 }
 
-#[cfg(target_os = "windows")]
-unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
-    instance: Arc<Instance>,
-    win: W,
-) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
-    use winit::platform::windows::WindowExtWindows;
-
-    Surface::from_hwnd(instance, win.borrow().hinstance(), win.borrow().hwnd(), win)
-}
+#[cfg(target_os = "macos")]
+use cocoa::{
+    appkit::{NSView, NSWindow},
+    base::id as cocoa_id,
+};
+#[cfg(target_os = "macos")]
+use metal::CoreAnimationLayer;
+#[cfg(target_os = "macos")]
+use objc::runtime::YES;
+#[cfg(target_os = "macos")]
+use std::mem;
 
 #[cfg(target_os = "macos")]
 unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
@@ -198,7 +192,30 @@ unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
     view.setLayer(mem::transmute(layer.as_ref())); // Bombs here with out of memory
     view.setWantsLayer(YES);
 
-    Surface::from_macos_moltenvk(instance, win.borrow().ns_view() as *const (), win)
+    Surface::from_mac_os(instance, win.borrow().ns_view() as *const (), win)
+}
+
+#[cfg(target_os = "windows")]
+#[inline]
+unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
+    instance: Arc<Instance>,
+    win: W,
+) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
+    use winit::platform::windows::WindowExtWindows;
+
+    Surface::from_win32(instance, win.borrow().hinstance(), win.borrow().hwnd(), win)
+}
+
+#[cfg(target_os = "windows")]
+use vulkano::swapchain::Win32Monitor;
+#[cfg(target_os = "windows")]
+use winit::{monitor::MonitorHandle, platform::windows::MonitorHandleExtWindows};
+
+#[cfg(target_os = "windows")]
+/// Creates a `Win32Monitor` from a Winit monitor handle.
+#[inline]
+pub fn create_win32_monitor_from_winit(monitor_handle: &MonitorHandle) -> Win32Monitor {
+    unsafe { Win32Monitor::new(monitor_handle.hmonitor()) }
 }
 
 /// An alternative to `Borrow<T>` with the requirement that all calls to

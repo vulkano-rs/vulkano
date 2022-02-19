@@ -40,7 +40,7 @@
 //! - `VK_KHR_win32_surface`
 //!
 //! For example if you want to create a surface from an Android surface, you will have to enable
-//! the `VK_KHR_android_surface` extension and use `Surface::from_anativewindow`.
+//! the `VK_KHR_android_surface` extension and use `Surface::from_android`.
 //! See the documentation of `Surface` for all the possible constructors.
 //!
 //! Trying to use one of these functions without enabling the proper extension will result in an
@@ -85,7 +85,7 @@
 //! let window = build_window();        // Third-party function, not provided by vulkano
 //! let _surface = unsafe {
 //!     let hinstance: *const () = ptr::null();     // Windows-specific object
-//!     Surface::from_hwnd(instance.clone(), hinstance, window.hwnd(), Arc::clone(&window)).unwrap()
+//!     Surface::from_win32(instance.clone(), hinstance, window.hwnd(), Arc::clone(&window)).unwrap()
 //! };
 //! ```
 //!
@@ -114,8 +114,7 @@
 //!  - How the alpha of the final output will be interpreted.
 //!  - How to perform the cycling between images in regard to vsync.
 //!
-//! You can query the supported values of all these properties with
-//! [`Surface::capabilities`](crate::swapchain::Surface::capabilities).
+//! You can query the supported values of all these properties from the physical device.
 //!
 //! ## Creating a swapchain
 //!
@@ -131,7 +130,9 @@
 //! ```
 //!
 //! Then, query the capabilities of the surface with
-//! [`Surface::capabilities`](crate::swapchain::Surface::capabilities)
+//! [`PhysicalDevice::surface_capabilities`](crate::device::physical::PhysicalDevice::surface_capabilities)
+//! and
+//! [`PhysicalDevice::surface_formats`](crate::device::physical::PhysicalDevice::surface_formats)
 //! and choose which values you are going to use.
 //!
 //! ```no_run
@@ -140,27 +141,31 @@
 //! # use vulkano::swapchain::Surface;
 //! # use std::cmp::{max, min};
 //! # fn choose_caps(device: Arc<Device>, surface: Arc<Surface<()>>) -> Result<(), Box<dyn std::error::Error>> {
-//! let caps = surface.capabilities(device.physical_device())?;
+//! let surface_capabilities = device
+//!     .physical_device()
+//!     .surface_capabilities(&surface, Default::default())?;
 //!
 //! // Use the current window size or some fixed resolution.
-//! let dimensions = caps.current_extent.unwrap_or([640, 480]);
+//! let image_extent = surface_capabilities.current_extent.unwrap_or([640, 480]);
 //!
 //! // Try to use double-buffering.
-//! let buffers_count = match caps.max_image_count {
-//!     None => max(2, caps.min_image_count),
-//!     Some(limit) => min(max(2, caps.min_image_count), limit)
+//! let min_image_count = match surface_capabilities.max_image_count {
+//!     None => max(2, surface_capabilities.min_image_count),
+//!     Some(limit) => min(max(2, surface_capabilities.min_image_count), limit)
 //! };
 //!
 //! // Preserve the current surface transform.
-//! let transform = caps.current_transform;
+//! let pre_transform = surface_capabilities.current_transform;
 //!
 //! // Use the first available format.
-//! let (format, color_space) = caps.supported_formats[0];
+//! let (image_format, color_space) = device
+//!     .physical_device()
+//!     .surface_formats(&surface, Default::default())?[0];
 //! # Ok(())
 //! # }
 //! ```
 //!
-//! Then, call [`Swapchain::start`](crate::swapchain::Swapchain::start).
+//! Then, call [`Swapchain::new`](crate::swapchain::Swapchain::new).
 //!
 //! ```no_run
 //! # use std::sync::Arc;
@@ -168,43 +173,46 @@
 //! # use vulkano::image::ImageUsage;
 //! # use vulkano::sync::SharingMode;
 //! # use vulkano::format::Format;
-//! # use vulkano::swapchain::{Surface, Swapchain, SurfaceTransform, PresentMode, CompositeAlpha, ColorSpace, FullscreenExclusive};
+//! # use vulkano::swapchain::{Surface, Swapchain, SurfaceTransform, PresentMode, CompositeAlpha, ColorSpace, FullScreenExclusive, SwapchainCreateInfo};
 //! # fn create_swapchain(
-//! #     device: Arc<Device>, surface: Arc<Surface<()>>, present_queue: Arc<Queue>,
-//! #     buffers_count: u32, format: Format, dimensions: [u32; 2],
-//! #     surface_transform: SurfaceTransform, composite_alpha: CompositeAlpha,
-//! #     present_mode: PresentMode, fullscreen_exclusive: FullscreenExclusive
+//! #     device: Arc<Device>, surface: Arc<Surface<()>>,
+//! #     min_image_count: u32, image_format: Format, image_extent: [u32; 2],
+//! #     pre_transform: SurfaceTransform, composite_alpha: CompositeAlpha,
+//! #     present_mode: PresentMode, full_screen_exclusive: FullScreenExclusive
 //! # ) -> Result<(), Box<dyn std::error::Error>> {
 //! // The created swapchain will be used as a color attachment for rendering.
-//! let usage = ImageUsage {
+//! let image_usage = ImageUsage {
 //!     color_attachment: true,
 //!     .. ImageUsage::none()
 //! };
 //!
-//! // Create the swapchain and its buffers.
-//! let (swapchain, buffers) = Swapchain::start(
+//! // Create the swapchain and its images.
+//! let (swapchain, images) = Swapchain::new(
 //!         // Create the swapchain in this `device`'s memory.
 //!         device,
 //!         // The surface where the images will be presented.
 //!         surface,
-//!     )
-//!     // How many buffers to use in the swapchain.
-//!     .num_images(buffers_count)
-//!     // The format of the images.
-//!     .format(format)
-//!     // The size of each image.
-//!     .dimensions(dimensions)
-//!     // What the images are going to be used for.
-//!     .usage(usage)
-//!     // What transformation to use with the surface.
-//!     .transform(surface_transform)
-//!     // How to handle the alpha channel.
-//!     .composite_alpha(composite_alpha)
-//!     // How to present images.
-//!     .present_mode(present_mode)
-//!     // How to handle fullscreen exclusivity
-//!     .fullscreen_exclusive(fullscreen_exclusive)
-//!     .build()?;
+//!         // The creation parameters.
+//!         SwapchainCreateInfo {
+//!             // How many images to use in the swapchain.
+//!             min_image_count,
+//!             // The format of the images.
+//!             image_format: Some(image_format),
+//!             // The size of each image.
+//!             image_extent,
+//!             // What the images are going to be used for.
+//!             image_usage,
+//!             // What transformation to use with the surface.
+//!             pre_transform,
+//!             // How to handle the alpha channel.
+//!             composite_alpha,
+//!             // How to present images.
+//!             present_mode,
+//!             // How to handle full-screen exclusivity
+//!             full_screen_exclusive,
+//!             ..Default::default()
+//!         }
+//!     )?;
 //!
 //! # Ok(())
 //! # }
@@ -262,21 +270,26 @@
 //!
 //! ```
 //! use vulkano::swapchain;
-//! use vulkano::swapchain::AcquireError;
+//! use vulkano::swapchain::{AcquireError, SwapchainCreateInfo};
 //! use vulkano::sync::GpuFuture;
 //!
-//! // let mut swapchain = Swapchain::new(...);
-//! # let mut swapchain: (::std::sync::Arc<::vulkano::swapchain::Swapchain<()>>, _) = return;
+//! // let (swapchain, images) = Swapchain::new(...);
+//! # let mut swapchain: ::std::sync::Arc<::vulkano::swapchain::Swapchain<()>> = return;
+//! # let mut images: Vec<::std::sync::Arc<::vulkano::image::SwapchainImage<()>>> = return;
 //! # let queue: ::std::sync::Arc<::vulkano::device::Queue> = return;
 //! let mut recreate_swapchain = false;
 //!
 //! loop {
 //!     if recreate_swapchain {
-//!         swapchain = swapchain.0.recreate().dimensions([1024, 768]).build().unwrap();
+//!         let (new_swapchain, new_images) = swapchain.recreate(SwapchainCreateInfo {
+//!             image_extent: [1024, 768],
+//!             ..swapchain.create_info()
+//!         })
+//!         .unwrap();
+//!         swapchain = new_swapchain;
+//!         images = new_images;
 //!         recreate_swapchain = false;
 //!     }
-//!
-//!     let (ref swapchain, ref _images) = swapchain;
 //!
 //!     let (index, suboptimal, acq_future) = match swapchain::acquire_next_image(swapchain.clone(), None) {
 //!         Ok(r) => r,
@@ -298,35 +311,34 @@
 //! ```
 //!
 
-pub use self::capabilities::Capabilities;
-pub use self::capabilities::ColorSpace;
-pub use self::capabilities::CompositeAlpha;
-pub use self::capabilities::PresentMode;
-pub use self::capabilities::SupportedCompositeAlpha;
-pub use self::capabilities::SupportedPresentModes;
-pub use self::capabilities::SupportedSurfaceTransforms;
-pub use self::capabilities::SurfaceTransform;
 pub use self::present_region::PresentRegion;
 pub use self::present_region::RectangleLayer;
-pub use self::surface::CapabilitiesError;
+pub use self::surface::ColorSpace;
+pub use self::surface::CompositeAlpha;
+pub use self::surface::PresentMode;
+pub use self::surface::SupportedCompositeAlpha;
+pub use self::surface::SupportedSurfaceTransforms;
 pub use self::surface::Surface;
+pub use self::surface::SurfaceApi;
+pub use self::surface::SurfaceCapabilities;
 pub use self::surface::SurfaceCreationError;
+pub use self::surface::SurfaceTransform;
 pub use self::swapchain::acquire_next_image;
 pub use self::swapchain::acquire_next_image_raw;
 pub use self::swapchain::present;
 pub use self::swapchain::present_incremental;
 pub use self::swapchain::AcquireError;
 pub use self::swapchain::AcquiredImage;
-pub use self::swapchain::FullscreenExclusive;
-pub use self::swapchain::FullscreenExclusiveError;
+pub use self::swapchain::FullScreenExclusive;
+pub use self::swapchain::FullScreenExclusiveError;
 pub use self::swapchain::PresentFuture;
 pub use self::swapchain::Swapchain;
 pub use self::swapchain::SwapchainAcquireFuture;
-pub use self::swapchain::SwapchainBuilder;
+pub use self::swapchain::SwapchainCreateInfo;
 pub use self::swapchain::SwapchainCreationError;
+pub use self::swapchain::Win32Monitor;
 use std::sync::atomic::AtomicBool;
 
-mod capabilities;
 pub mod display;
 mod present_region;
 mod surface;

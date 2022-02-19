@@ -74,7 +74,7 @@ Usage:
     Space: Toggle between Mandelbrot and Julia
     Enter: Randomize color palette
     Equals/Minus: Increase/Decrease max iterations
-    F: Toggle fullscreen
+    F: Toggle full-screen
     Right mouse: Stop movement in Julia (mouse position determines c)
     Esc: Quit\
         "
@@ -175,9 +175,9 @@ Usage:
         if self.input_state.randomize_palette {
             self.fractal_pipeline.randomize_palette();
         }
-        // Toggle fullscreen
-        if self.input_state.toggle_fullscreen {
-            renderer.toggle_fullscreen()
+        // Toggle full-screen
+        if self.input_state.toggle_full_screen {
+            renderer.toggle_full_screen()
         }
     }
 
@@ -211,7 +211,7 @@ struct InputState {
     pub increase_iterations: bool,
     pub decrease_iterations: bool,
     pub randomize_palette: bool,
-    pub toggle_fullscreen: bool,
+    pub toggle_full_screen: bool,
     pub toggle_julia: bool,
     pub toggle_c: bool,
     pub should_quit: bool,
@@ -230,7 +230,7 @@ impl InputState {
             increase_iterations: false,
             decrease_iterations: false,
             randomize_palette: false,
-            toggle_fullscreen: false,
+            toggle_full_screen: false,
             toggle_julia: false,
             toggle_c: false,
             should_quit: false,
@@ -250,7 +250,7 @@ impl InputState {
     fn reset(&mut self) {
         *self = InputState {
             scroll_delta: 0.0,
-            toggle_fullscreen: false,
+            toggle_full_screen: false,
             toggle_julia: false,
             toggle_c: false,
             randomize_palette: false,
@@ -284,7 +284,7 @@ impl InputState {
                 VirtualKeyCode::A => self.pan_left = state_is_pressed(input.state),
                 VirtualKeyCode::S => self.pan_down = state_is_pressed(input.state),
                 VirtualKeyCode::D => self.pan_right = state_is_pressed(input.state),
-                VirtualKeyCode::F => self.toggle_fullscreen = state_is_pressed(input.state),
+                VirtualKeyCode::F => self.toggle_full_screen = state_is_pressed(input.state),
                 VirtualKeyCode::Return => self.randomize_palette = state_is_pressed(input.state),
                 VirtualKeyCode::Equals => self.increase_iterations = state_is_pressed(input.state),
                 VirtualKeyCode::Minus => self.decrease_iterations = state_is_pressed(input.state),
