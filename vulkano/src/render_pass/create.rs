@@ -25,8 +25,7 @@ impl RenderPass {
     pub(super) fn validate(
         device: &Device,
         create_info: &mut RenderPassCreateInfo,
-        views_used: &mut u32,
-    ) -> Result<(), RenderPassCreationError> {
+    ) -> Result<u32, RenderPassCreationError> {
         let RenderPassCreateInfo {
             attachments,
             subpasses,
@@ -34,6 +33,8 @@ impl RenderPass {
             correlated_view_masks,
             _ne: _,
         } = create_info;
+
+        let mut views_used = 0;
 
         /*
             Attachments
@@ -153,7 +154,7 @@ impl RenderPass {
                 });
             }
 
-            *views_used = (*views_used).max(32 - view_mask.leading_zeros());
+            views_used = views_used.max(32 - view_mask.leading_zeros());
 
             // VUID-VkSubpassDescription2-colorAttachmentCount-03063
             if color_attachments.len() as u32
@@ -866,10 +867,10 @@ impl RenderPass {
             })?;
         }
 
-        Ok(())
+        Ok(views_used)
     }
 
-    pub(super) fn create_v2(
+    pub(super) unsafe fn create_v2(
         device: &Device,
         create_info: &RenderPassCreateInfo,
     ) -> Result<ash::vk::RenderPass, RenderPassCreationError> {
@@ -925,7 +926,7 @@ impl RenderPass {
             })
             .collect::<SmallVec<[_; 8]>>();
 
-        let subpasses_vk = unsafe {
+        let subpasses_vk = {
             // `ref_index` is increased during the loop and points to the next element to use
             // in `attachment_references_vk`.
             let mut ref_index = 0usize;
@@ -1045,7 +1046,7 @@ impl RenderPass {
             ..Default::default()
         };
 
-        Ok(unsafe {
+        Ok({
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
 
@@ -1069,7 +1070,7 @@ impl RenderPass {
         })
     }
 
-    pub(super) fn create_v1(
+    pub(super) unsafe fn create_v1(
         device: &Device,
         create_info: &RenderPassCreateInfo,
     ) -> Result<ash::vk::RenderPass, RenderPassCreationError> {
@@ -1122,7 +1123,7 @@ impl RenderPass {
             })
             .collect::<SmallVec<[_; 8]>>();
 
-        let subpasses_vk = unsafe {
+        let subpasses_vk = {
             // `ref_index` is increased during the loop and points to the next element to use
             // in `attachment_references_vk`.
             let mut ref_index = 0usize;
@@ -1313,7 +1314,7 @@ impl RenderPass {
             create_info.p_next = multiview_create_info as *const _ as *const _;
         }
 
-        Ok(unsafe {
+        Ok({
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
             check_errors(fns.v1_0.create_render_pass(

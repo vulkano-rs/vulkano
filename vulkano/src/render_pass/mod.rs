@@ -127,15 +127,16 @@ impl RenderPass {
         device: Arc<Device>,
         mut create_info: RenderPassCreateInfo,
     ) -> Result<Arc<RenderPass>, RenderPassCreationError> {
-        let mut views_used = 0;
-        Self::validate(&device, &mut create_info, &mut views_used)?;
+        let views_used = Self::validate(&device, &mut create_info)?;
 
-        let handle = if device.api_version() >= Version::V1_2
-            || device.enabled_extensions().khr_create_renderpass2
-        {
-            Self::create_v2(&device, &create_info)?
-        } else {
-            Self::create_v1(&device, &create_info)?
+        let handle = unsafe {
+            if device.api_version() >= Version::V1_2
+                || device.enabled_extensions().khr_create_renderpass2
+            {
+                Self::create_v2(&device, &create_info)?
+            } else {
+                Self::create_v1(&device, &create_info)?
+            }
         };
 
         let RenderPassCreateInfo {
