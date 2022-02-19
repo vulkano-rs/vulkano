@@ -561,15 +561,10 @@ impl SamplerBuilder {
         }
 
         let mut sampler_reduction_mode_create_info =
-            if device.enabled_features().sampler_filter_minmax
-                || device.enabled_extensions().ext_sampler_filter_minmax
-            {
-                Some(ash::vk::SamplerReductionModeCreateInfo {
-                    reduction_mode: reduction_mode.into(),
-                    ..Default::default()
-                })
-            } else {
-                if reduction_mode != SamplerReductionMode::WeightedAverage {
+            if reduction_mode != SamplerReductionMode::WeightedAverage {
+                if !(device.enabled_features().sampler_filter_minmax
+                    || device.enabled_extensions().ext_sampler_filter_minmax)
+                {
                     if device
                         .physical_device()
                         .supported_features()
@@ -587,6 +582,11 @@ impl SamplerBuilder {
                     }
                 }
 
+                Some(ash::vk::SamplerReductionModeCreateInfo {
+                    reduction_mode: reduction_mode.into(),
+                    ..Default::default()
+                })
+            } else {
                 None
             };
 
