@@ -106,12 +106,7 @@ impl PixelsDrawPipeline {
         &self,
         image: Arc<dyn ImageViewAbstract>,
     ) -> Arc<PersistentDescriptorSet> {
-        let layout = self
-            .pipeline
-            .layout()
-            .descriptor_set_layouts()
-            .get(0)
-            .unwrap();
+        let layout = self.pipeline.layout().set_layouts().get(0).unwrap();
         let sampler = Sampler::start(self.gfx_queue.device().clone())
             .filter(Filter::Linear)
             .address_mode(SamplerAddressMode::Repeat)

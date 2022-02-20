@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! A pipeline layout describes the layout of descriptor sets and push constants used by a pipeline.
+//! The layout of descriptor sets and push constants used by a pipeline.
 //!
 //! # Overview
 //!
@@ -32,7 +32,7 @@
 //! # Layout compatibility
 //!
 //! When binding descriptor sets or setting push constants, you must provide a pipeline layout.
-//! This pipeline is used to decide where in memory Vulkan should write the new data. The
+//! This layout is used to decide where in memory Vulkan should write the new data. The
 //! descriptor sets and push constants can later be read by dispatch or draw calls, but only if
 //! the bound pipeline being used for the command has a layout that is *compatible* with the layout
 //! that was used to bind the resources.
@@ -62,85 +62,59 @@
 //!
 //! A pipeline layout is a Vulkan object type, represented in Vulkano with the `PipelineLayout`
 //! type. Each pipeline that you create holds a pipeline layout object.
-//!
-//! By default, creating a pipeline automatically builds a new pipeline layout object describing the
-//! union of all the descriptors and push constants of all the shaders used by the pipeline.
-//! However, it is also possible to create a pipeline layout separately, and provide that to the
-//! pipeline constructor. This can in some cases be more efficient than using the auto-generated
-//! pipeline layouts.
 
-use crate::check_errors;
-use crate::descriptor_set::layout::DescriptorRequirementsNotMet;
-use crate::descriptor_set::layout::DescriptorSetLayout;
-use crate::descriptor_set::layout::DescriptorSetLayoutError;
-use crate::descriptor_set::layout::DescriptorType;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::device::Properties;
-use crate::shader::DescriptorRequirements;
-use crate::shader::ShaderStages;
-use crate::Error;
-use crate::OomError;
-use crate::VulkanObject;
+use crate::{
+    check_errors,
+    descriptor_set::layout::{DescriptorRequirementsNotMet, DescriptorSetLayout, DescriptorType},
+    device::{Device, DeviceOwned},
+    shader::{DescriptorRequirements, ShaderStages},
+    Error, OomError, VulkanObject,
+};
 use smallvec::SmallVec;
-use std::error;
-use std::fmt;
-use std::mem::MaybeUninit;
-use std::ptr;
-use std::sync::Arc;
+use std::{
+    error, fmt,
+    hash::{Hash, Hasher},
+    mem::MaybeUninit,
+    ptr,
+    sync::Arc,
+};
 
 /// Describes the layout of descriptor sets and push constants that are made available to shaders.
+#[derive(Debug)]
 pub struct PipelineLayout {
     handle: ash::vk::PipelineLayout,
     device: Arc<Device>,
-    descriptor_set_layouts: SmallVec<[Arc<DescriptorSetLayout>; 4]>,
-    push_constant_ranges: SmallVec<[PipelineLayoutPcRange; 5]>,
-    push_constant_ranges_disjoint: SmallVec<[PipelineLayoutPcRange; 5]>,
+
+    set_layouts: Vec<Arc<DescriptorSetLayout>>,
+    push_constant_ranges: Vec<PushConstantRange>,
+
+    push_constant_ranges_disjoint: Vec<PushConstantRange>,
 }
 
 impl PipelineLayout {
     /// Creates a new `PipelineLayout`.
-    #[inline]
-    pub fn new<D, P>(
+    ///
+    /// # Panics
+    ///
+    /// - Panics if an element of `create_info.push_constant_ranges` has an empty `stages` value.
+    /// - Panics if an element of `create_info.push_constant_ranges` has an `offset` or `size`
+    ///   that's not divisible by 4.
+    /// - Panics if an element of `create_info.push_constant_ranges` has an `size` of zero.
+    pub fn new(
         device: Arc<Device>,
-        descriptor_set_layouts: D,
-        push_constant_ranges: P,
-    ) -> Result<Arc<PipelineLayout>, PipelineLayoutCreationError>
-    where
-        D: IntoIterator<Item = Arc<DescriptorSetLayout>>,
-        P: IntoIterator<Item = PipelineLayoutPcRange>,
-    {
-        let fns = device.fns();
-        let descriptor_set_layouts: SmallVec<[Arc<DescriptorSetLayout>; 4]> =
-            descriptor_set_layouts.into_iter().collect();
+        mut create_info: PipelineLayoutCreateInfo,
+    ) -> Result<Arc<PipelineLayout>, PipelineLayoutCreationError> {
+        Self::validate(&device, &mut create_info)?;
+        let handle = unsafe { Self::create(&device, &create_info)? };
 
-        if descriptor_set_layouts
-            .iter()
-            .filter(|layout| layout.desc().is_push_descriptor())
-            .count()
-            > 1
-        {
-            return Err(PipelineLayoutCreationError::MultiplePushDescriptor);
-        }
-
-        let mut push_constant_ranges: SmallVec<[PipelineLayoutPcRange; 5]> =
-            push_constant_ranges.into_iter().collect();
-
-        // Check for overlapping stages
-        for (a_id, a) in push_constant_ranges.iter().enumerate() {
-            for b in push_constant_ranges.iter().skip(a_id + 1) {
-                if a.stages.intersects(&b.stages) {
-                    return Err(PipelineLayoutCreationError::PushConstantsConflict {
-                        first_range: *a,
-                        second_range: *b,
-                    });
-                }
-            }
-        }
+        let PipelineLayoutCreateInfo {
+            set_layouts,
+            mut push_constant_ranges,
+            _ne: _,
+        } = create_info;
 
         // Sort the ranges for the purpose of comparing for equality.
-        // The stage mask is guaranteed to be unique by the above check, so it's a suitable
-        // sorting key.
+        // The stage mask is guaranteed to be unique, so it's a suitable sorting key.
         push_constant_ranges.sort_unstable_by_key(|range| {
             (
                 range.offset,
@@ -149,8 +123,9 @@ impl PipelineLayout {
             )
         });
 
-        let mut push_constant_ranges_disjoint: SmallVec<[PipelineLayoutPcRange; 5]> =
-            SmallVec::new();
+        // Create a list of disjoint ranges.
+        let mut push_constant_ranges_disjoint: Vec<PushConstantRange> =
+            Vec::with_capacity(push_constant_ranges.len());
 
         if !push_constant_ranges.is_empty() {
             let mut min_offset = push_constant_ranges[0].offset;
@@ -158,7 +133,7 @@ impl PipelineLayout {
                 let mut max_offset = u32::MAX;
                 let mut stages = ShaderStages::none();
 
-                for range in &push_constant_ranges {
+                for range in push_constant_ranges.iter() {
                     // new start (begin next time from it)
                     if range.offset > min_offset {
                         max_offset = max_offset.min(range.offset);
@@ -175,106 +150,369 @@ impl PipelineLayout {
                     break;
                 }
 
-                push_constant_ranges_disjoint.push(PipelineLayoutPcRange {
+                push_constant_ranges_disjoint.push(PushConstantRange {
+                    stages,
                     offset: min_offset,
                     size: max_offset - min_offset,
-                    stages,
                 });
                 // prepare for next range
                 min_offset = max_offset;
             }
         }
 
-        // Check against device limits
-        check_desc_against_limits(
-            device.physical_device().properties(),
-            &descriptor_set_layouts,
-            &push_constant_ranges,
-        )?;
+        Ok(Arc::new(PipelineLayout {
+            handle,
+            device,
+            set_layouts,
+            push_constant_ranges,
+            push_constant_ranges_disjoint,
+        }))
+    }
 
-        // Grab the list of `vkDescriptorSetLayout` objects from `layouts`.
-        let layouts_ids = descriptor_set_layouts
-            .iter()
-            .map(|l| l.internal_object())
-            .collect::<SmallVec<[_; 4]>>();
+    fn validate(
+        device: &Device,
+        create_info: &mut PipelineLayoutCreateInfo,
+    ) -> Result<(), PipelineLayoutCreationError> {
+        let &mut PipelineLayoutCreateInfo {
+            ref set_layouts,
+            ref push_constant_ranges,
+            _ne: _,
+        } = create_info;
 
-        // Builds a list of `vkPushConstantRange` that describe the push constants.
-        let push_constants = {
-            let mut out: SmallVec<[_; 4]> = SmallVec::new();
+        let properties = device.physical_device().properties();
 
-            for &PipelineLayoutPcRange {
-                offset,
-                size,
-                stages,
-            } in &push_constant_ranges
-            {
-                if stages == ShaderStages::none() || size == 0 || (size % 4) != 0 {
-                    return Err(PipelineLayoutCreationError::InvalidPushConstant);
+        /* Check descriptor set layouts */
+
+        // VUID-VkPipelineLayoutCreateInfo-setLayoutCount-00286
+        if set_layouts.len() > properties.max_bound_descriptor_sets as usize {
+            return Err(
+                PipelineLayoutCreationError::MaxBoundDescriptorSetsExceeded {
+                    provided: set_layouts.len() as u32,
+                    max_supported: properties.max_bound_descriptor_sets,
+                },
+            );
+        }
+
+        {
+            let mut num_resources = Counter::default();
+            let mut num_samplers = Counter::default();
+            let mut num_uniform_buffers = Counter::default();
+            let mut num_uniform_buffers_dynamic = 0;
+            let mut num_storage_buffers = Counter::default();
+            let mut num_storage_buffers_dynamic = 0;
+            let mut num_sampled_images = Counter::default();
+            let mut num_storage_images = Counter::default();
+            let mut num_input_attachments = Counter::default();
+            let mut push_descriptor_set = None;
+
+            for (set_num, set_layout) in set_layouts.iter().enumerate() {
+                let set_num = set_num as u32;
+
+                if set_layout.push_descriptor() {
+                    // VUID-VkPipelineLayoutCreateInfo-pSetLayouts-00293
+                    if let Some(num) = push_descriptor_set {
+                        return Err(PipelineLayoutCreationError::SetLayoutsPushDescriptorMultiple);
+                    } else {
+                        push_descriptor_set = Some(set_num);
+                    }
                 }
 
-                out.push(ash::vk::PushConstantRange {
-                    stage_flags: stages.into(),
-                    offset,
-                    size,
+                for layout_binding in set_layout.bindings().values() {
+                    num_resources
+                        .increment(layout_binding.descriptor_count, &layout_binding.stages);
+
+                    match layout_binding.descriptor_type {
+                        DescriptorType::Sampler => {
+                            num_samplers
+                                .increment(layout_binding.descriptor_count, &layout_binding.stages);
+                        }
+                        DescriptorType::CombinedImageSampler => {
+                            num_samplers
+                                .increment(layout_binding.descriptor_count, &layout_binding.stages);
+                            num_sampled_images
+                                .increment(layout_binding.descriptor_count, &layout_binding.stages);
+                        }
+                        DescriptorType::SampledImage | DescriptorType::UniformTexelBuffer => {
+                            num_sampled_images
+                                .increment(layout_binding.descriptor_count, &layout_binding.stages);
+                        }
+                        DescriptorType::StorageImage | DescriptorType::StorageTexelBuffer => {
+                            num_storage_images
+                                .increment(layout_binding.descriptor_count, &layout_binding.stages);
+                        }
+                        DescriptorType::UniformBuffer => {
+                            num_uniform_buffers
+                                .increment(layout_binding.descriptor_count, &layout_binding.stages);
+                        }
+                        DescriptorType::UniformBufferDynamic => {
+                            num_uniform_buffers
+                                .increment(layout_binding.descriptor_count, &layout_binding.stages);
+                            num_uniform_buffers_dynamic += 1;
+                        }
+                        DescriptorType::StorageBuffer => {
+                            num_storage_buffers
+                                .increment(layout_binding.descriptor_count, &layout_binding.stages);
+                        }
+                        DescriptorType::StorageBufferDynamic => {
+                            num_storage_buffers
+                                .increment(layout_binding.descriptor_count, &layout_binding.stages);
+                            num_storage_buffers_dynamic += 1;
+                        }
+                        DescriptorType::InputAttachment => {
+                            num_input_attachments
+                                .increment(layout_binding.descriptor_count, &layout_binding.stages);
+                        }
+                    }
+                }
+            }
+
+            if num_resources.max_per_stage() > properties.max_per_stage_resources {
+                return Err(PipelineLayoutCreationError::MaxPerStageResourcesExceeded {
+                    provided: num_resources.max_per_stage(),
+                    max_supported: properties.max_per_stage_resources,
                 });
             }
 
-            out
+            // VUID-VkPipelineLayoutCreateInfo-descriptorType-03016
+            if num_samplers.max_per_stage() > properties.max_per_stage_descriptor_samplers {
+                return Err(
+                    PipelineLayoutCreationError::MaxPerStageDescriptorSamplersExceeded {
+                        provided: num_samplers.max_per_stage(),
+                        max_supported: properties.max_per_stage_descriptor_samplers,
+                    },
+                );
+            }
+
+            // VUID-VkPipelineLayoutCreateInfo-descriptorType-03017
+            if num_uniform_buffers.max_per_stage()
+                > properties.max_per_stage_descriptor_uniform_buffers
+            {
+                return Err(
+                    PipelineLayoutCreationError::MaxPerStageDescriptorUniformBuffersExceeded {
+                        provided: num_uniform_buffers.max_per_stage(),
+                        max_supported: properties.max_per_stage_descriptor_uniform_buffers,
+                    },
+                );
+            }
+
+            // VUID-VkPipelineLayoutCreateInfo-descriptorType-03018
+            if num_storage_buffers.max_per_stage()
+                > properties.max_per_stage_descriptor_storage_buffers
+            {
+                return Err(
+                    PipelineLayoutCreationError::MaxPerStageDescriptorStorageBuffersExceeded {
+                        provided: num_storage_buffers.max_per_stage(),
+                        max_supported: properties.max_per_stage_descriptor_storage_buffers,
+                    },
+                );
+            }
+
+            // VUID-VkPipelineLayoutCreateInfo-descriptorType-03019
+            if num_sampled_images.max_per_stage()
+                > properties.max_per_stage_descriptor_sampled_images
+            {
+                return Err(
+                    PipelineLayoutCreationError::MaxPerStageDescriptorSampledImagesExceeded {
+                        provided: num_sampled_images.max_per_stage(),
+                        max_supported: properties.max_per_stage_descriptor_sampled_images,
+                    },
+                );
+            }
+
+            // VUID-VkPipelineLayoutCreateInfo-descriptorType-03020
+            if num_storage_images.max_per_stage()
+                > properties.max_per_stage_descriptor_storage_images
+            {
+                return Err(
+                    PipelineLayoutCreationError::MaxPerStageDescriptorStorageImagesExceeded {
+                        provided: num_storage_images.max_per_stage(),
+                        max_supported: properties.max_per_stage_descriptor_storage_images,
+                    },
+                );
+            }
+
+            // VUID-VkPipelineLayoutCreateInfo-descriptorType-03021
+            if num_input_attachments.max_per_stage()
+                > properties.max_per_stage_descriptor_input_attachments
+            {
+                return Err(
+                    PipelineLayoutCreationError::MaxPerStageDescriptorInputAttachmentsExceeded {
+                        provided: num_input_attachments.max_per_stage(),
+                        max_supported: properties.max_per_stage_descriptor_input_attachments,
+                    },
+                );
+            }
+
+            // VUID-VkPipelineLayoutCreateInfo-descriptorType-03028
+            if num_samplers.total > properties.max_descriptor_set_samplers {
+                return Err(
+                    PipelineLayoutCreationError::MaxDescriptorSetSamplersExceeded {
+                        provided: num_samplers.total,
+                        max_supported: properties.max_descriptor_set_samplers,
+                    },
+                );
+            }
+
+            // VUID-VkPipelineLayoutCreateInfo-descriptorType-03029
+            if num_uniform_buffers.total > properties.max_descriptor_set_uniform_buffers {
+                return Err(
+                    PipelineLayoutCreationError::MaxDescriptorSetUniformBuffersExceeded {
+                        provided: num_uniform_buffers.total,
+                        max_supported: properties.max_descriptor_set_uniform_buffers,
+                    },
+                );
+            }
+
+            // VUID-VkPipelineLayoutCreateInfo-descriptorType-03030
+            if num_uniform_buffers_dynamic > properties.max_descriptor_set_uniform_buffers_dynamic {
+                return Err(
+                    PipelineLayoutCreationError::MaxDescriptorSetUniformBuffersDynamicExceeded {
+                        provided: num_uniform_buffers_dynamic,
+                        max_supported: properties.max_descriptor_set_uniform_buffers_dynamic,
+                    },
+                );
+            }
+
+            // VUID-VkPipelineLayoutCreateInfo-descriptorType-03031
+            if num_storage_buffers.total > properties.max_descriptor_set_storage_buffers {
+                return Err(
+                    PipelineLayoutCreationError::MaxDescriptorSetStorageBuffersExceeded {
+                        provided: num_storage_buffers.total,
+                        max_supported: properties.max_descriptor_set_storage_buffers,
+                    },
+                );
+            }
+
+            // VUID-VkPipelineLayoutCreateInfo-descriptorType-03032
+            if num_storage_buffers_dynamic > properties.max_descriptor_set_storage_buffers_dynamic {
+                return Err(
+                    PipelineLayoutCreationError::MaxDescriptorSetStorageBuffersDynamicExceeded {
+                        provided: num_storage_buffers_dynamic,
+                        max_supported: properties.max_descriptor_set_storage_buffers_dynamic,
+                    },
+                );
+            }
+
+            // VUID-VkPipelineLayoutCreateInfo-descriptorType-03033
+            if num_sampled_images.total > properties.max_descriptor_set_sampled_images {
+                return Err(
+                    PipelineLayoutCreationError::MaxDescriptorSetSampledImagesExceeded {
+                        provided: num_sampled_images.total,
+                        max_supported: properties.max_descriptor_set_sampled_images,
+                    },
+                );
+            }
+
+            // VUID-VkPipelineLayoutCreateInfo-descriptorType-03034
+            if num_storage_images.total > properties.max_descriptor_set_storage_images {
+                return Err(
+                    PipelineLayoutCreationError::MaxDescriptorSetStorageImagesExceeded {
+                        provided: num_storage_images.total,
+                        max_supported: properties.max_descriptor_set_storage_images,
+                    },
+                );
+            }
+
+            // VUID-VkPipelineLayoutCreateInfo-descriptorType-03035
+            if num_input_attachments.total > properties.max_descriptor_set_input_attachments {
+                return Err(
+                    PipelineLayoutCreationError::MaxDescriptorSetInputAttachmentsExceeded {
+                        provided: num_input_attachments.total,
+                        max_supported: properties.max_descriptor_set_input_attachments,
+                    },
+                );
+            }
+        }
+
+        /* Check push constant ranges */
+
+        push_constant_ranges.iter().try_fold(
+            ash::vk::ShaderStageFlags::empty(),
+            |total, range| {
+                let stages = ash::vk::ShaderStageFlags::from(range.stages);
+
+                // VUID-VkPushConstantRange-offset-00295
+                // VUID-VkPushConstantRange-size-00296
+                // VUID-VkPushConstantRange-size-00297
+                // VUID-VkPushConstantRange-stageFlags-requiredbitmask
+                assert!(
+                    !stages.is_empty()
+                        && (range.size % 4) == 0
+                        && range.size != 0
+                        && (range.size % 4) == 0
+                );
+
+                // VUID-VkPushConstantRange-offset-00294
+                // VUID-VkPushConstantRange-size-00298
+                if range.offset + range.size > properties.max_push_constants_size {
+                    return Err(PipelineLayoutCreationError::MaxPushConstantsSizeExceeded {
+                        provided: range.offset + range.size,
+                        max_supported: properties.max_push_constants_size,
+                    });
+                }
+
+                // VUID-VkPipelineLayoutCreateInfo-pPushConstantRanges-00292
+                if !(total & stages).is_empty() {
+                    return Err(PipelineLayoutCreationError::PushConstantRangesStageMultiple);
+                }
+
+                Ok(total | stages)
+            },
+        )?;
+
+        Ok(())
+    }
+
+    unsafe fn create(
+        device: &Device,
+        create_info: &PipelineLayoutCreateInfo,
+    ) -> Result<ash::vk::PipelineLayout, PipelineLayoutCreationError> {
+        let PipelineLayoutCreateInfo {
+            set_layouts,
+            push_constant_ranges,
+            _ne: _,
+        } = create_info;
+
+        let set_layouts: SmallVec<[_; 4]> =
+            set_layouts.iter().map(|l| l.internal_object()).collect();
+
+        let push_constant_ranges: SmallVec<[_; 4]> = push_constant_ranges
+            .iter()
+            .map(|range| ash::vk::PushConstantRange {
+                stage_flags: range.stages.into(),
+                offset: range.offset,
+                size: range.size,
+            })
+            .collect();
+
+        let create_info = ash::vk::PipelineLayoutCreateInfo {
+            flags: ash::vk::PipelineLayoutCreateFlags::empty(),
+            set_layout_count: set_layouts.len() as u32,
+            p_set_layouts: set_layouts.as_ptr(),
+            push_constant_range_count: push_constant_ranges.len() as u32,
+            p_push_constant_ranges: push_constant_ranges.as_ptr(),
+            ..Default::default()
         };
 
-        // Each bit of `stageFlags` must only be present in a single push constants range.
-        // We check that with a debug_assert because it's supposed to be enforced by the
-        // `PipelineLayoutDesc`.
-        debug_assert!({
-            let mut stages = ash::vk::ShaderStageFlags::empty();
-            let mut outcome = true;
-            for pc in push_constants.iter() {
-                if !(stages & pc.stage_flags).is_empty() {
-                    outcome = false;
-                    break;
-                }
-                stages &= pc.stage_flags;
-            }
-            outcome
-        });
-
-        // FIXME: it is not legal to pass eg. the TESSELLATION_SHADER bit when the device doesn't
-        //        have tess shaders enabled
-
-        // Build the final object.
-        let handle = unsafe {
-            let infos = ash::vk::PipelineLayoutCreateInfo {
-                flags: ash::vk::PipelineLayoutCreateFlags::empty(),
-                set_layout_count: layouts_ids.len() as u32,
-                p_set_layouts: layouts_ids.as_ptr(),
-                push_constant_range_count: push_constants.len() as u32,
-                p_push_constant_ranges: push_constants.as_ptr(),
-                ..Default::default()
-            };
-
+        let handle = {
+            let fns = device.fns();
             let mut output = MaybeUninit::uninit();
             check_errors(fns.v1_0.create_pipeline_layout(
                 device.internal_object(),
-                &infos,
+                &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
             ))?;
             output.assume_init()
         };
 
-        Ok(Arc::new(PipelineLayout {
-            handle,
-            device: device.clone(),
-            descriptor_set_layouts,
-            push_constant_ranges,
-            push_constant_ranges_disjoint,
-        }))
+        Ok(handle)
     }
 
     /// Returns the descriptor set layouts this pipeline layout was created from.
     #[inline]
-    pub fn descriptor_set_layouts(&self) -> &[Arc<DescriptorSetLayout>] {
-        &self.descriptor_set_layouts
+    pub fn set_layouts(&self) -> &[Arc<DescriptorSetLayout>] {
+        &self.set_layouts
     }
 
     /// Returns a slice containing the push constant ranges this pipeline layout was created from.
@@ -282,7 +520,7 @@ impl PipelineLayout {
     /// The ranges are guaranteed to be sorted deterministically by offset, size, then stages.
     /// This means that two slices containing the same elements will always have the same order.
     #[inline]
-    pub fn push_constant_ranges(&self) -> &[PipelineLayoutPcRange] {
+    pub fn push_constant_ranges(&self) -> &[PushConstantRange] {
         &self.push_constant_ranges
     }
 
@@ -299,16 +537,16 @@ impl PipelineLayout {
     /// The ranges are guaranteed to be sorted deterministically by offset, and
     /// guaranteed to be disjoint, meaning that there is no overlap between the ranges.
     #[inline]
-    pub(crate) fn push_constant_ranges_disjoint(&self) -> &[PipelineLayoutPcRange] {
+    pub(crate) fn push_constant_ranges_disjoint(&self) -> &[PushConstantRange] {
         &self.push_constant_ranges_disjoint
     }
 
     /// Returns whether `self` is compatible with `other` for the given number of sets.
     pub fn is_compatible_with(&self, other: &PipelineLayout, num_sets: u32) -> bool {
         let num_sets = num_sets as usize;
-        assert!(num_sets >= self.descriptor_set_layouts.len());
+        assert!(num_sets >= self.set_layouts.len());
 
-        if self.handle == other.handle {
+        if self == other {
             return true;
         }
 
@@ -316,16 +554,17 @@ impl PipelineLayout {
             return false;
         }
 
-        let other_sets = match other.descriptor_set_layouts.get(0..num_sets) {
+        let other_sets = match other.set_layouts.get(0..num_sets) {
             Some(x) => x,
             None => return false,
         };
 
-        self.descriptor_set_layouts.iter().zip(other_sets).all(
-            |(self_set_layout, other_set_layout)| {
+        self.set_layouts
+            .iter()
+            .zip(other_sets)
+            .all(|(self_set_layout, other_set_layout)| {
                 self_set_layout.is_compatible_with(other_set_layout)
-            },
-        )
+            })
     }
 
     /// Makes sure that `self` is a superset of the provided descriptor set layouts and push
@@ -333,15 +572,15 @@ impl PipelineLayout {
     pub fn ensure_compatible_with_shader<'a>(
         &self,
         descriptor_requirements: impl IntoIterator<Item = ((u32, u32), &'a DescriptorRequirements)>,
-        push_constant_range: Option<&PipelineLayoutPcRange>,
+        push_constant_range: Option<&PushConstantRange>,
     ) -> Result<(), PipelineLayoutSupersetError> {
         for ((set_num, binding_num), reqs) in descriptor_requirements.into_iter() {
-            let descriptor_desc = self
-                .descriptor_set_layouts
+            let layout_binding = self
+                .set_layouts
                 .get(set_num as usize)
-                .and_then(|set_desc| set_desc.descriptor(binding_num));
+                .and_then(|set_layout| set_layout.bindings().get(&binding_num));
 
-            let descriptor_desc = match descriptor_desc {
+            let layout_binding = match layout_binding {
                 Some(x) => x,
                 None => {
                     return Err(PipelineLayoutSupersetError::DescriptorMissing {
@@ -351,7 +590,7 @@ impl PipelineLayout {
                 }
             };
 
-            if let Err(error) = descriptor_desc.ensure_compatible_with_shader(reqs) {
+            if let Err(error) = layout_binding.ensure_compatible_with_shader(reqs) {
                 return Err(PipelineLayoutSupersetError::DescriptorRequirementsNotMet {
                     set_num,
                     binding_num,
@@ -362,7 +601,7 @@ impl PipelineLayout {
 
         // FIXME: check push constants
         if let Some(range) = push_constant_range {
-            for own_range in self.push_constant_ranges.as_ref().into_iter() {
+            for own_range in self.push_constant_ranges.iter() {
                 if range.stages.intersects(&own_range.stages) &&       // check if it shares any stages
                     (range.offset < own_range.offset || // our range must start before and end after the given range
                         own_range.offset + own_range.size < range.offset + range.size)
@@ -376,32 +615,6 @@ impl PipelineLayout {
         }
 
         Ok(())
-    }
-}
-
-unsafe impl DeviceOwned for PipelineLayout {
-    #[inline]
-    fn device(&self) -> &Arc<Device> {
-        &self.device
-    }
-}
-
-unsafe impl VulkanObject for PipelineLayout {
-    type Object = ash::vk::PipelineLayout;
-
-    fn internal_object(&self) -> Self::Object {
-        self.handle
-    }
-}
-
-impl fmt::Debug for PipelineLayout {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        fmt.debug_struct("PipelineLayout")
-            .field("raw", &self.handle)
-            .field("device", &self.device)
-            .field("descriptor_set_layouts", &self.descriptor_set_layouts)
-            .field("push_constant_ranges", &self.push_constant_ranges)
-            .finish()
     }
 }
 
@@ -419,25 +632,143 @@ impl Drop for PipelineLayout {
     }
 }
 
+unsafe impl VulkanObject for PipelineLayout {
+    type Object = ash::vk::PipelineLayout;
+
+    fn internal_object(&self) -> Self::Object {
+        self.handle
+    }
+}
+
+unsafe impl DeviceOwned for PipelineLayout {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
+
+impl PartialEq for PipelineLayout {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.handle == other.handle && self.device() == other.device()
+    }
+}
+
+impl Eq for PipelineLayout {}
+
+impl Hash for PipelineLayout {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.handle.hash(state);
+        self.device().hash(state);
+    }
+}
+
 /// Error that can happen when creating a pipeline layout.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PipelineLayoutCreationError {
     /// Not enough memory.
     OomError(OomError),
-    /// The pipeline layout description doesn't fulfill the limit requirements.
-    LimitsError(PipelineLayoutLimitsError),
-    /// One of the push constants range didn't obey the rules. The list of stages must not be
-    /// empty, the size must not be 0, and the size must be a multiple or 4.
-    InvalidPushConstant,
-    /// More than one descriptor set layout was set for push descriptors.
-    MultiplePushDescriptor,
-    /// Conflict between different push constants ranges.
-    PushConstantsConflict {
-        first_range: PipelineLayoutPcRange,
-        second_range: PipelineLayoutPcRange,
-    },
-    /// One of the set layouts has an error.
-    SetLayoutError(DescriptorSetLayoutError),
+
+    /// The number of elements in `set_layouts` is greater than the
+    /// [`max_bound_descriptor_sets`](crate::device::Properties::max_bound_descriptor_sets) limit.
+    MaxBoundDescriptorSetsExceeded { provided: u32, max_supported: u32 },
+
+    /// The `set_layouts` contain more [`DescriptorType::Sampler`],
+    /// [`DescriptorType::CombinedImageSampler`] and [`DescriptorType::UniformTexelBuffer`]
+    /// descriptors than the
+    /// [`max_descriptor_set_samplers`](crate::device::Properties::max_descriptor_set_samplers)
+    /// limit.
+    MaxDescriptorSetSamplersExceeded { provided: u32, max_supported: u32 },
+
+    /// The `set_layouts` contain more [`DescriptorType::UniformBuffer`] descriptors than the
+    /// [`max_descriptor_set_uniform_buffers`](crate::device::Properties::max_descriptor_set_uniform_buffers)
+    /// limit.
+    MaxDescriptorSetUniformBuffersExceeded { provided: u32, max_supported: u32 },
+
+    /// The `set_layouts` contain more [`DescriptorType::UniformBufferDynamic`] descriptors than the
+    /// [`max_descriptor_set_uniform_buffers_dynamic`](crate::device::Properties::max_descriptor_set_uniform_buffers_dynamic)
+    /// limit.
+    MaxDescriptorSetUniformBuffersDynamicExceeded { provided: u32, max_supported: u32 },
+
+    /// The `set_layouts` contain more [`DescriptorType::StorageBuffer`] descriptors than the
+    /// [`max_descriptor_set_storage_buffers`](crate::device::Properties::max_descriptor_set_storage_buffers)
+    /// limit.
+    MaxDescriptorSetStorageBuffersExceeded { provided: u32, max_supported: u32 },
+
+    /// The `set_layouts` contain more [`DescriptorType::StorageBufferDynamic`] descriptors than the
+    /// [`max_descriptor_set_storage_buffers_dynamic`](crate::device::Properties::max_descriptor_set_storage_buffers_dynamic)
+    /// limit.
+    MaxDescriptorSetStorageBuffersDynamicExceeded { provided: u32, max_supported: u32 },
+
+    /// The `set_layouts` contain more [`DescriptorType::SampledImage`] and
+    /// [`DescriptorType::CombinedImageSampler`] descriptors than the
+    /// [`max_descriptor_set_sampled_images`](crate::device::Properties::max_descriptor_set_sampled_images)
+    /// limit.
+    MaxDescriptorSetSampledImagesExceeded { provided: u32, max_supported: u32 },
+
+    /// The `set_layouts` contain more [`DescriptorType::StorageImage`] and
+    /// [`DescriptorType::StorageTexelBuffer`] descriptors than the
+    /// [`max_descriptor_set_storage_images`](crate::device::Properties::max_descriptor_set_storage_images)
+    /// limit.
+    MaxDescriptorSetStorageImagesExceeded { provided: u32, max_supported: u32 },
+
+    /// The `set_layouts` contain more [`DescriptorType::InputAttachment`] descriptors than the
+    /// [`max_descriptor_set_input_attachments`](crate::device::Properties::max_descriptor_set_input_attachments)
+    /// limit.
+    MaxDescriptorSetInputAttachmentsExceeded { provided: u32, max_supported: u32 },
+
+    /// The `set_layouts` contain more bound resources in a single stage than the
+    /// [`max_per_stage_resources`](crate::device::Properties::max_per_stage_resources)
+    /// limit.
+    MaxPerStageResourcesExceeded { provided: u32, max_supported: u32 },
+
+    /// The `set_layouts` contain more [`DescriptorType::Sampler`] and
+    /// [`DescriptorType::CombinedImageSampler`] descriptors in a single stage than the
+    /// [`max_per_stage_descriptor_samplers`](crate::device::Properties::max_per_stage_descriptor_samplers)
+    /// limit.
+    MaxPerStageDescriptorSamplersExceeded { provided: u32, max_supported: u32 },
+
+    /// The `set_layouts` contain more [`DescriptorType::UniformBuffer`] and
+    /// [`DescriptorType::UniformBufferDynamic`] descriptors in a single stage than the
+    /// [`max_per_stage_descriptor_uniform_buffers`](crate::device::Properties::max_per_stage_descriptor_uniform_buffers)
+    /// limit.
+    MaxPerStageDescriptorUniformBuffersExceeded { provided: u32, max_supported: u32 },
+
+    /// The `set_layouts` contain more [`DescriptorType::StorageBuffer`] and
+    /// [`DescriptorType::StorageBufferDynamic`] descriptors in a single stage than the
+    /// [`max_per_stage_descriptor_storage_buffers`](crate::device::Properties::max_per_stage_descriptor_storage_buffers)
+    /// limit.
+    MaxPerStageDescriptorStorageBuffersExceeded { provided: u32, max_supported: u32 },
+
+    /// The `set_layouts` contain more [`DescriptorType::SampledImage`],
+    /// [`DescriptorType::CombinedImageSampler`] and [`DescriptorType::UniformTexelBuffer`]
+    /// descriptors in a single stage than the
+    /// [`max_per_stage_descriptor_sampled_images`](crate::device::Properties::max_per_stage_descriptor_sampled_images)
+    /// limit.
+    MaxPerStageDescriptorSampledImagesExceeded { provided: u32, max_supported: u32 },
+
+    /// The `set_layouts` contain more [`DescriptorType::StorageImage`] and
+    /// [`DescriptorType::StorageTexelBuffer`] descriptors in a single stage than the
+    /// [`max_per_stage_descriptor_storage_images`](crate::device::Properties::max_per_stage_descriptor_storage_images)
+    /// limit.
+    MaxPerStageDescriptorStorageImagesExceeded { provided: u32, max_supported: u32 },
+
+    /// The `set_layouts` contain more [`DescriptorType::InputAttachment`] descriptors in a single
+    /// stage than the
+    /// [`max_per_stage_descriptor_input_attachments`](crate::device::Properties::max_per_stage_descriptor_input_attachments)
+    /// limit.
+    MaxPerStageDescriptorInputAttachmentsExceeded { provided: u32, max_supported: u32 },
+
+    /// An element in `push_constant_ranges` has an `offset + size` greater than the
+    /// [`max_push_constants_size`](crate::device::Properties::max_push_constants_size) limit.
+    MaxPushConstantsSizeExceeded { provided: u32, max_supported: u32 },
+
+    /// A shader stage appears in multiple elements of `push_constant_ranges`.
+    PushConstantRangesStageMultiple,
+
+    /// Multiple elements of `set_layouts` have `push_descriptor` enabled.
+    SetLayoutsPushDescriptorMultiple,
 }
 
 impl error::Error for PipelineLayoutCreationError {
@@ -445,8 +776,6 @@ impl error::Error for PipelineLayoutCreationError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             Self::OomError(ref err) => Some(err),
-            Self::LimitsError(ref err) => Some(err),
-            Self::SetLayoutError(ref err) => Some(err),
             _ => None,
         }
     }
@@ -457,25 +786,99 @@ impl fmt::Display for PipelineLayoutCreationError {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match *self {
             Self::OomError(_) => write!(fmt, "not enough memory available"),
-            Self::LimitsError(_) => {
-                write!(
-                    fmt,
-                    "the pipeline layout description doesn't fulfill the limit requirements"
-                )
-            }
-            Self::InvalidPushConstant => {
-                write!(fmt, "one of the push constants range didn't obey the rules")
-            }
-            Self::MultiplePushDescriptor => {
-                write!(
-                    fmt,
-                    "more than one descriptor set layout was set for push descriptors"
-                )
-            }
-            Self::PushConstantsConflict { .. } => {
-                write!(fmt, "conflict between different push constants ranges")
-            }
-            Self::SetLayoutError(_) => write!(fmt, "one of the sets has an error"),
+            Self::MaxBoundDescriptorSetsExceeded { provided, max_supported } => write!(
+                fmt,
+                "the number of elements in `set_layouts` ({}) is greater than the `max_bound_descriptor_sets` limit ({})",
+                provided, max_supported,
+            ),
+            Self::MaxDescriptorSetSamplersExceeded { provided, max_supported } => write!(
+                fmt,
+                "the `set_layouts` contain more `DescriptorType::Sampler` and `DescriptorType::CombinedImageSampler` descriptors ({}) than the `max_descriptor_set_samplers` limit ({})",
+                provided, max_supported,
+            ),
+            Self::MaxDescriptorSetUniformBuffersExceeded { provided, max_supported } => write!(
+                fmt,
+                "the `set_layouts` contain more `DescriptorType::UniformBuffer` descriptors ({}) than the `max_descriptor_set_uniform_buffers` limit ({})",
+                provided, max_supported,
+            ),
+            Self::MaxDescriptorSetUniformBuffersDynamicExceeded { provided, max_supported } => write!(
+                fmt,
+                "the `set_layouts` contain more `DescriptorType::UniformBufferDynamic` descriptors ({}) than the `max_descriptor_set_uniform_buffers_dynamic` limit ({})",
+                provided, max_supported,
+            ),
+            Self::MaxDescriptorSetStorageBuffersExceeded { provided, max_supported } => write!(
+                fmt,
+                "the `set_layouts` contain more `DescriptorType::StorageBuffer` descriptors ({}) than the `max_descriptor_set_storage_buffers` limit ({})",
+                provided, max_supported,
+            ),
+            Self::MaxDescriptorSetStorageBuffersDynamicExceeded { provided, max_supported } => write!(
+                fmt,
+                "the `set_layouts` contain more `DescriptorType::StorageBufferDynamic` descriptors ({}) than the `max_descriptor_set_storage_buffers_dynamic` limit ({})",
+                provided, max_supported,
+            ),
+            Self::MaxDescriptorSetSampledImagesExceeded { provided, max_supported } => write!(
+                fmt,
+                "the `set_layouts` contain more `DescriptorType::SampledImage`, `DescriptorType::CombinedImageSampler` and `DescriptorType::UniformTexelBuffer` descriptors ({}) than the `max_descriptor_set_sampled_images` limit ({})",
+                provided, max_supported,
+            ),
+            Self::MaxDescriptorSetStorageImagesExceeded { provided, max_supported } => write!(
+                fmt,
+                "the `set_layouts` contain more `DescriptorType::StorageImage` and `DescriptorType::StorageTexelBuffer` descriptors ({}) than the `max_descriptor_set_storage_images` limit ({})",
+                provided, max_supported,
+            ),
+            Self::MaxDescriptorSetInputAttachmentsExceeded { provided, max_supported } => write!(
+                fmt,
+                "the `set_layouts` contain more `DescriptorType::InputAttachment` descriptors ({}) than the `max_descriptor_set_input_attachments` limit ({})",
+                provided, max_supported,
+            ),
+            Self::MaxPerStageResourcesExceeded { provided, max_supported } => write!(
+                fmt,
+                "the `set_layouts` contain more bound resources ({}) in a single stage than the `max_per_stage_resources` limit ({})",
+                provided, max_supported,
+            ),
+            Self::MaxPerStageDescriptorSamplersExceeded { provided, max_supported } => write!(
+                fmt,
+                "the `set_layouts` contain more `DescriptorType::Sampler` and `DescriptorType::CombinedImageSampler` descriptors ({}) in a single stage than the `max_per_stage_descriptor_set_samplers` limit ({})",
+                provided, max_supported,
+            ),
+            Self::MaxPerStageDescriptorUniformBuffersExceeded { provided, max_supported } => write!(
+                fmt,
+                "the `set_layouts` contain more `DescriptorType::UniformBuffer` and `DescriptorType::UniformBufferDynamic` descriptors ({}) in a single stage than the `max_per_stage_descriptor_set_uniform_buffers` limit ({})",
+                provided, max_supported,
+            ),
+            Self::MaxPerStageDescriptorStorageBuffersExceeded { provided, max_supported } => write!(
+                fmt,
+                "the `set_layouts` contain more `DescriptorType::StorageBuffer` and `DescriptorType::StorageBufferDynamic` descriptors ({}) in a single stage than the `max_per_stage_descriptor_set_storage_buffers` limit ({})",
+                provided, max_supported,
+            ),
+            Self::MaxPerStageDescriptorSampledImagesExceeded { provided, max_supported } => write!(
+                fmt,
+                "the `set_layouts` contain more `DescriptorType::SampledImage`, `DescriptorType::CombinedImageSampler` and `DescriptorType::UniformTexelBuffer` descriptors ({}) in a single stage than the `max_per_stage_descriptor_set_sampled_images` limit ({})",
+                provided, max_supported,
+            ),
+            Self::MaxPerStageDescriptorStorageImagesExceeded { provided, max_supported } => write!(
+                fmt,
+                "the `set_layouts` contain more `DescriptorType::StorageImage` and `DescriptorType::StorageTexelBuffer` descriptors ({}) in a single stage than the `max_per_stage_descriptor_set_storage_images` limit ({})",
+                provided, max_supported,
+            ),
+            Self::MaxPerStageDescriptorInputAttachmentsExceeded { provided, max_supported } => write!(
+                fmt,
+                "the `set_layouts` contain more `DescriptorType::InputAttachment` descriptors ({}) in a single stage than the `max_per_stage_descriptor_set_input_attachments` limit ({})",
+                provided, max_supported,
+            ),
+            Self::MaxPushConstantsSizeExceeded { provided, max_supported } => write!(
+                fmt,
+                "an element in `push_constant_ranges` has an `offset + size` ({}) greater than the `max_push_constants_size` limit ({})",
+                provided, max_supported,
+            ),
+            Self::PushConstantRangesStageMultiple => write!(
+                fmt,
+                "a shader stage appears in multiple elements of `push_constant_ranges`",
+            ),
+            Self::SetLayoutsPushDescriptorMultiple => write!(
+                fmt,
+                "multiple elements of `set_layouts` have `push_descriptor` enabled"
+            ),
         }
     }
 }
@@ -484,20 +887,6 @@ impl From<OomError> for PipelineLayoutCreationError {
     #[inline]
     fn from(err: OomError) -> PipelineLayoutCreationError {
         PipelineLayoutCreationError::OomError(err)
-    }
-}
-
-impl From<PipelineLayoutLimitsError> for PipelineLayoutCreationError {
-    #[inline]
-    fn from(err: PipelineLayoutLimitsError) -> PipelineLayoutCreationError {
-        PipelineLayoutCreationError::LimitsError(err)
-    }
-}
-
-impl From<DescriptorSetLayoutError> for PipelineLayoutCreationError {
-    #[inline]
-    fn from(err: DescriptorSetLayoutError) -> PipelineLayoutCreationError {
-        PipelineLayoutCreationError::SetLayoutError(err)
     }
 }
 
@@ -529,8 +918,8 @@ pub enum PipelineLayoutSupersetError {
         error: DescriptorRequirementsNotMet,
     },
     PushConstantRange {
-        first_range: PipelineLayoutPcRange,
-        second_range: PipelineLayoutPcRange,
+        first_range: PushConstantRange,
+        second_range: PushConstantRange,
     },
 }
 
@@ -590,432 +979,69 @@ impl fmt::Display for PipelineLayoutSupersetError {
     }
 }
 
-/// Description of a range of the push constants of a pipeline layout.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct PipelineLayoutPcRange {
-    /// Offset in bytes from the start of the push constants to this range.
-    pub offset: u32,
-    /// Size in bytes of the range.
-    pub size: u32,
-    /// The stages which can access this range.
-    /// A stage can access at most one push constant range.
-    pub stages: ShaderStages,
+/// Parameters to create a new `PipelineLayout`.
+#[derive(Clone, Debug)]
+pub struct PipelineLayoutCreateInfo {
+    /// The descriptor set layouts that should be part of the pipeline layout.
+    ///
+    /// They are provided in order of set number.
+    ///
+    /// The default value is empty.
+    pub set_layouts: Vec<Arc<DescriptorSetLayout>>,
+
+    /// The ranges of push constants that the pipeline will access.
+    ///
+    /// A shader stage can only appear in one element of the list, but it is possible to combine
+    /// ranges for multiple shader stages if they are the same.
+    ///
+    /// The default value is empty.
+    pub push_constant_ranges: Vec<PushConstantRange>,
+
+    pub _ne: crate::NonExhaustive,
 }
 
-/// Checks whether the pipeline layout description fulfills the device limits requirements.
-fn check_desc_against_limits(
-    properties: &Properties,
-    descriptor_set_layouts: &[Arc<DescriptorSetLayout>],
-    push_constants_ranges: &[PipelineLayoutPcRange],
-) -> Result<(), PipelineLayoutLimitsError> {
-    let mut num_resources = Counter::default();
-    let mut num_samplers = Counter::default();
-    let mut num_uniform_buffers = Counter::default();
-    let mut num_uniform_buffers_dynamic = 0;
-    let mut num_storage_buffers = Counter::default();
-    let mut num_storage_buffers_dynamic = 0;
-    let mut num_sampled_images = Counter::default();
-    let mut num_storage_images = Counter::default();
-    let mut num_input_attachments = Counter::default();
-
-    for set in descriptor_set_layouts {
-        for descriptor in (0..set.num_bindings()).filter_map(|i| set.descriptor(i).map(|d| d)) {
-            num_resources.increment(descriptor.descriptor_count, &descriptor.stages);
-
-            match descriptor.ty {
-                // TODO:
-                DescriptorType::Sampler => {
-                    num_samplers.increment(descriptor.descriptor_count, &descriptor.stages);
-                }
-                DescriptorType::CombinedImageSampler => {
-                    num_samplers.increment(descriptor.descriptor_count, &descriptor.stages);
-                    num_sampled_images.increment(descriptor.descriptor_count, &descriptor.stages);
-                }
-                DescriptorType::SampledImage | DescriptorType::UniformTexelBuffer => {
-                    num_sampled_images.increment(descriptor.descriptor_count, &descriptor.stages);
-                }
-                DescriptorType::StorageImage | DescriptorType::StorageTexelBuffer => {
-                    num_storage_images.increment(descriptor.descriptor_count, &descriptor.stages);
-                }
-                DescriptorType::UniformBuffer => {
-                    num_uniform_buffers.increment(descriptor.descriptor_count, &descriptor.stages);
-                }
-                DescriptorType::UniformBufferDynamic => {
-                    num_uniform_buffers.increment(descriptor.descriptor_count, &descriptor.stages);
-                    num_uniform_buffers_dynamic += 1;
-                }
-                DescriptorType::StorageBuffer => {
-                    num_storage_buffers.increment(descriptor.descriptor_count, &descriptor.stages);
-                }
-                DescriptorType::StorageBufferDynamic => {
-                    num_storage_buffers.increment(descriptor.descriptor_count, &descriptor.stages);
-                    num_storage_buffers_dynamic += 1;
-                }
-                DescriptorType::InputAttachment => {
-                    num_input_attachments
-                        .increment(descriptor.descriptor_count, &descriptor.stages);
-                }
-            }
-        }
-    }
-
-    if descriptor_set_layouts.len() > properties.max_bound_descriptor_sets as usize {
-        return Err(PipelineLayoutLimitsError::MaxDescriptorSetsLimitExceeded {
-            limit: properties.max_bound_descriptor_sets as usize,
-            requested: descriptor_set_layouts.len(),
-        });
-    }
-
-    if num_resources.max_per_stage() > properties.max_per_stage_resources {
-        return Err(
-            PipelineLayoutLimitsError::MaxPerStageResourcesLimitExceeded {
-                limit: properties.max_per_stage_resources,
-                requested: num_resources.max_per_stage(),
-            },
-        );
-    }
-
-    if num_samplers.max_per_stage() > properties.max_per_stage_descriptor_samplers {
-        return Err(
-            PipelineLayoutLimitsError::MaxPerStageDescriptorSamplersLimitExceeded {
-                limit: properties.max_per_stage_descriptor_samplers,
-                requested: num_samplers.max_per_stage(),
-            },
-        );
-    }
-    if num_uniform_buffers.max_per_stage() > properties.max_per_stage_descriptor_uniform_buffers {
-        return Err(
-            PipelineLayoutLimitsError::MaxPerStageDescriptorUniformBuffersLimitExceeded {
-                limit: properties.max_per_stage_descriptor_uniform_buffers,
-                requested: num_uniform_buffers.max_per_stage(),
-            },
-        );
-    }
-    if num_storage_buffers.max_per_stage() > properties.max_per_stage_descriptor_storage_buffers {
-        return Err(
-            PipelineLayoutLimitsError::MaxPerStageDescriptorStorageBuffersLimitExceeded {
-                limit: properties.max_per_stage_descriptor_storage_buffers,
-                requested: num_storage_buffers.max_per_stage(),
-            },
-        );
-    }
-    if num_sampled_images.max_per_stage() > properties.max_per_stage_descriptor_sampled_images {
-        return Err(
-            PipelineLayoutLimitsError::MaxPerStageDescriptorSampledImagesLimitExceeded {
-                limit: properties.max_per_stage_descriptor_sampled_images,
-                requested: num_sampled_images.max_per_stage(),
-            },
-        );
-    }
-    if num_storage_images.max_per_stage() > properties.max_per_stage_descriptor_storage_images {
-        return Err(
-            PipelineLayoutLimitsError::MaxPerStageDescriptorStorageImagesLimitExceeded {
-                limit: properties.max_per_stage_descriptor_storage_images,
-                requested: num_storage_images.max_per_stage(),
-            },
-        );
-    }
-    if num_input_attachments.max_per_stage() > properties.max_per_stage_descriptor_input_attachments
-    {
-        return Err(
-            PipelineLayoutLimitsError::MaxPerStageDescriptorInputAttachmentsLimitExceeded {
-                limit: properties.max_per_stage_descriptor_input_attachments,
-                requested: num_input_attachments.max_per_stage(),
-            },
-        );
-    }
-
-    if num_samplers.total > properties.max_descriptor_set_samplers {
-        return Err(
-            PipelineLayoutLimitsError::MaxDescriptorSetSamplersLimitExceeded {
-                limit: properties.max_descriptor_set_samplers,
-                requested: num_samplers.total,
-            },
-        );
-    }
-    if num_uniform_buffers.total > properties.max_descriptor_set_uniform_buffers {
-        return Err(
-            PipelineLayoutLimitsError::MaxDescriptorSetUniformBuffersLimitExceeded {
-                limit: properties.max_descriptor_set_uniform_buffers,
-                requested: num_uniform_buffers.total,
-            },
-        );
-    }
-    if num_uniform_buffers_dynamic > properties.max_descriptor_set_uniform_buffers_dynamic {
-        return Err(
-            PipelineLayoutLimitsError::MaxDescriptorSetUniformBuffersDynamicLimitExceeded {
-                limit: properties.max_descriptor_set_uniform_buffers_dynamic,
-                requested: num_uniform_buffers_dynamic,
-            },
-        );
-    }
-    if num_storage_buffers.total > properties.max_descriptor_set_storage_buffers {
-        return Err(
-            PipelineLayoutLimitsError::MaxDescriptorSetStorageBuffersLimitExceeded {
-                limit: properties.max_descriptor_set_storage_buffers,
-                requested: num_storage_buffers.total,
-            },
-        );
-    }
-    if num_storage_buffers_dynamic > properties.max_descriptor_set_storage_buffers_dynamic {
-        return Err(
-            PipelineLayoutLimitsError::MaxDescriptorSetStorageBuffersDynamicLimitExceeded {
-                limit: properties.max_descriptor_set_storage_buffers_dynamic,
-                requested: num_storage_buffers_dynamic,
-            },
-        );
-    }
-    if num_sampled_images.total > properties.max_descriptor_set_sampled_images {
-        return Err(
-            PipelineLayoutLimitsError::MaxDescriptorSetSampledImagesLimitExceeded {
-                limit: properties.max_descriptor_set_sampled_images,
-                requested: num_sampled_images.total,
-            },
-        );
-    }
-    if num_storage_images.total > properties.max_descriptor_set_storage_images {
-        return Err(
-            PipelineLayoutLimitsError::MaxDescriptorSetStorageImagesLimitExceeded {
-                limit: properties.max_descriptor_set_storage_images,
-                requested: num_storage_images.total,
-            },
-        );
-    }
-    if num_input_attachments.total > properties.max_descriptor_set_input_attachments {
-        return Err(
-            PipelineLayoutLimitsError::MaxDescriptorSetInputAttachmentsLimitExceeded {
-                limit: properties.max_descriptor_set_input_attachments,
-                requested: num_input_attachments.total,
-            },
-        );
-    }
-
-    for &PipelineLayoutPcRange { offset, size, .. } in push_constants_ranges {
-        if offset + size > properties.max_push_constants_size {
-            return Err(PipelineLayoutLimitsError::MaxPushConstantsSizeExceeded {
-                limit: properties.max_push_constants_size,
-                requested: offset + size,
-            });
-        }
-    }
-
-    Ok(())
-}
-
-/// The pipeline layout description isn't compatible with the hardware limits.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum PipelineLayoutLimitsError {
-    /// The maximum number of descriptor sets has been exceeded.
-    MaxDescriptorSetsLimitExceeded {
-        /// The limit that must be fulfilled.
-        limit: usize,
-        /// What was requested.
-        requested: usize,
-    },
-
-    /// The maximum size of push constants has been exceeded.
-    MaxPushConstantsSizeExceeded {
-        /// The limit that must be fulfilled.
-        limit: u32,
-        /// What was requested.
-        requested: u32,
-    },
-
-    /// The `max_per_stage_resources()` limit has been exceeded.
-    MaxPerStageResourcesLimitExceeded {
-        /// The limit that must be fulfilled.
-        limit: u32,
-        /// What was requested.
-        requested: u32,
-    },
-
-    /// The `max_per_stage_descriptor_samplers()` limit has been exceeded.
-    MaxPerStageDescriptorSamplersLimitExceeded {
-        /// The limit that must be fulfilled.
-        limit: u32,
-        /// What was requested.
-        requested: u32,
-    },
-
-    /// The `max_per_stage_descriptor_uniform_buffers()` limit has been exceeded.
-    MaxPerStageDescriptorUniformBuffersLimitExceeded {
-        /// The limit that must be fulfilled.
-        limit: u32,
-        /// What was requested.
-        requested: u32,
-    },
-
-    /// The `max_per_stage_descriptor_storage_buffers()` limit has been exceeded.
-    MaxPerStageDescriptorStorageBuffersLimitExceeded {
-        /// The limit that must be fulfilled.
-        limit: u32,
-        /// What was requested.
-        requested: u32,
-    },
-
-    /// The `max_per_stage_descriptor_sampled_images()` limit has been exceeded.
-    MaxPerStageDescriptorSampledImagesLimitExceeded {
-        /// The limit that must be fulfilled.
-        limit: u32,
-        /// What was requested.
-        requested: u32,
-    },
-
-    /// The `max_per_stage_descriptor_storage_images()` limit has been exceeded.
-    MaxPerStageDescriptorStorageImagesLimitExceeded {
-        /// The limit that must be fulfilled.
-        limit: u32,
-        /// What was requested.
-        requested: u32,
-    },
-
-    /// The `max_per_stage_descriptor_input_attachments()` limit has been exceeded.
-    MaxPerStageDescriptorInputAttachmentsLimitExceeded {
-        /// The limit that must be fulfilled.
-        limit: u32,
-        /// What was requested.
-        requested: u32,
-    },
-
-    /// The `max_descriptor_set_samplers()` limit has been exceeded.
-    MaxDescriptorSetSamplersLimitExceeded {
-        /// The limit that must be fulfilled.
-        limit: u32,
-        /// What was requested.
-        requested: u32,
-    },
-
-    /// The `max_descriptor_set_uniform_buffers()` limit has been exceeded.
-    MaxDescriptorSetUniformBuffersLimitExceeded {
-        /// The limit that must be fulfilled.
-        limit: u32,
-        /// What was requested.
-        requested: u32,
-    },
-
-    /// The `max_descriptor_set_uniform_buffers_dynamic()` limit has been exceeded.
-    MaxDescriptorSetUniformBuffersDynamicLimitExceeded {
-        /// The limit that must be fulfilled.
-        limit: u32,
-        /// What was requested.
-        requested: u32,
-    },
-
-    /// The `max_descriptor_set_storage_buffers()` limit has been exceeded.
-    MaxDescriptorSetStorageBuffersLimitExceeded {
-        /// The limit that must be fulfilled.
-        limit: u32,
-        /// What was requested.
-        requested: u32,
-    },
-
-    /// The `max_descriptor_set_storage_buffers_dynamic()` limit has been exceeded.
-    MaxDescriptorSetStorageBuffersDynamicLimitExceeded {
-        /// The limit that must be fulfilled.
-        limit: u32,
-        /// What was requested.
-        requested: u32,
-    },
-
-    /// The `max_descriptor_set_sampled_images()` limit has been exceeded.
-    MaxDescriptorSetSampledImagesLimitExceeded {
-        /// The limit that must be fulfilled.
-        limit: u32,
-        /// What was requested.
-        requested: u32,
-    },
-
-    /// The `max_descriptor_set_storage_images()` limit has been exceeded.
-    MaxDescriptorSetStorageImagesLimitExceeded {
-        /// The limit that must be fulfilled.
-        limit: u32,
-        /// What was requested.
-        requested: u32,
-    },
-
-    /// The `max_descriptor_set_input_attachments()` limit has been exceeded.
-    MaxDescriptorSetInputAttachmentsLimitExceeded {
-        /// The limit that must be fulfilled.
-        limit: u32,
-        /// What was requested.
-        requested: u32,
-    },
-}
-
-impl error::Error for PipelineLayoutLimitsError {}
-
-impl fmt::Display for PipelineLayoutLimitsError {
+impl Default for PipelineLayoutCreateInfo {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                PipelineLayoutLimitsError::MaxDescriptorSetsLimitExceeded { .. } => {
-                    "the maximum number of descriptor sets has been exceeded"
-                }
-                PipelineLayoutLimitsError::MaxPushConstantsSizeExceeded { .. } => {
-                    "the maximum size of push constants has been exceeded"
-                }
-                PipelineLayoutLimitsError::MaxPerStageResourcesLimitExceeded { .. } => {
-                    "the `max_per_stage_resources()` limit has been exceeded"
-                }
-                PipelineLayoutLimitsError::MaxPerStageDescriptorSamplersLimitExceeded {
-                    ..
-                } => {
-                    "the `max_per_stage_descriptor_samplers()` limit has been exceeded"
-                }
-                PipelineLayoutLimitsError::MaxPerStageDescriptorUniformBuffersLimitExceeded {
-                    ..
-                } => "the `max_per_stage_descriptor_uniform_buffers()` limit has been exceeded",
-                PipelineLayoutLimitsError::MaxPerStageDescriptorStorageBuffersLimitExceeded {
-                    ..
-                } => "the `max_per_stage_descriptor_storage_buffers()` limit has been exceeded",
-                PipelineLayoutLimitsError::MaxPerStageDescriptorSampledImagesLimitExceeded {
-                    ..
-                } => "the `max_per_stage_descriptor_sampled_images()` limit has been exceeded",
-                PipelineLayoutLimitsError::MaxPerStageDescriptorStorageImagesLimitExceeded {
-                    ..
-                } => "the `max_per_stage_descriptor_storage_images()` limit has been exceeded",
-                PipelineLayoutLimitsError::MaxPerStageDescriptorInputAttachmentsLimitExceeded {
-                    ..
-                } => "the `max_per_stage_descriptor_input_attachments()` limit has been exceeded",
-                PipelineLayoutLimitsError::MaxDescriptorSetSamplersLimitExceeded { .. } => {
-                    "the `max_descriptor_set_samplers()` limit has been exceeded"
-                }
-                PipelineLayoutLimitsError::MaxDescriptorSetUniformBuffersLimitExceeded {
-                    ..
-                } => {
-                    "the `max_descriptor_set_uniform_buffers()` limit has been exceeded"
-                }
-                PipelineLayoutLimitsError::MaxDescriptorSetUniformBuffersDynamicLimitExceeded {
-                    ..
-                } => "the `max_descriptor_set_uniform_buffers_dynamic()` limit has been exceeded",
-                PipelineLayoutLimitsError::MaxDescriptorSetStorageBuffersLimitExceeded {
-                    ..
-                } => {
-                    "the `max_descriptor_set_storage_buffers()` limit has been exceeded"
-                }
-                PipelineLayoutLimitsError::MaxDescriptorSetStorageBuffersDynamicLimitExceeded {
-                    ..
-                } => "the `max_descriptor_set_storage_buffers_dynamic()` limit has been exceeded",
-                PipelineLayoutLimitsError::MaxDescriptorSetSampledImagesLimitExceeded {
-                    ..
-                } => {
-                    "the `max_descriptor_set_sampled_images()` limit has been exceeded"
-                }
-                PipelineLayoutLimitsError::MaxDescriptorSetStorageImagesLimitExceeded {
-                    ..
-                } => {
-                    "the `max_descriptor_set_storage_images()` limit has been exceeded"
-                }
-                PipelineLayoutLimitsError::MaxDescriptorSetInputAttachmentsLimitExceeded {
-                    ..
-                } => {
-                    "the `max_descriptor_set_input_attachments()` limit has been exceeded"
-                }
-            }
-        )
+    fn default() -> Self {
+        Self {
+            set_layouts: Vec::new(),
+            push_constant_ranges: Vec::new(),
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+/// Description of a range of the push constants of a pipeline layout.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PushConstantRange {
+    /// The stages which can access this range. A stage can access at most one push constant range.
+    ///
+    /// The default value is [`ShaderStages::none()`], which must be overridden.
+    pub stages: ShaderStages,
+
+    /// Offset in bytes from the start of the push constants to this range.
+    ///
+    /// The value must be a multiple of 4.
+    ///
+    /// The default value is `0`.
+    pub offset: u32,
+
+    /// Size in bytes of the range.
+    ///
+    /// The value must be a multiple of 4, and not 0.
+    ///
+    /// The default value is `0`, which must be overridden.
+    pub size: u32,
+}
+
+impl Default for PushConstantRange {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            stages: ShaderStages::none(),
+            offset: 0,
+            size: 0,
+        }
     }
 }
 
@@ -1055,33 +1081,27 @@ impl Counter {
     }
 
     fn max_per_stage(&self) -> u32 {
-        let mut max = 0;
-        if self.compute > max {
-            max = self.compute;
-        }
-        if self.vertex > max {
-            max = self.vertex;
-        }
-        if self.geometry > max {
-            max = self.geometry;
-        }
-        if self.tess_ctl > max {
-            max = self.tess_ctl;
-        }
-        if self.tess_eval > max {
-            max = self.tess_eval;
-        }
-        if self.frag > max {
-            max = self.frag;
-        }
-        max
+        [
+            self.compute,
+            self.vertex,
+            self.tess_ctl,
+            self.tess_eval,
+            self.geometry,
+            self.frag,
+        ]
+        .into_iter()
+        .max()
+        .unwrap_or(0)
     }
 }
 
 #[cfg(test)]
 mod tests {
 
-    use crate::{pipeline::layout::PipelineLayoutPcRange, shader::ShaderStages};
+    use crate::{
+        pipeline::layout::{PipelineLayoutCreateInfo, PushConstantRange},
+        shader::ShaderStages,
+    };
 
     use super::PipelineLayout;
 
@@ -1097,40 +1117,40 @@ mod tests {
             // - `12..40`, stage=vertex
             (
                 &[
-                    PipelineLayoutPcRange {
-                        offset: 0,
-                        size: 12,
+                    PushConstantRange {
                         stages: ShaderStages {
                             fragment: true,
                             ..Default::default()
                         },
-                    },
-                    PipelineLayoutPcRange {
                         offset: 0,
-                        size: 40,
+                        size: 12,
+                    },
+                    PushConstantRange {
                         stages: ShaderStages {
                             vertex: true,
                             ..Default::default()
                         },
+                        offset: 0,
+                        size: 40,
                     },
                 ][..],
                 &[
-                    PipelineLayoutPcRange {
-                        offset: 0,
-                        size: 12,
+                    PushConstantRange {
                         stages: ShaderStages {
                             vertex: true,
                             fragment: true,
                             ..Default::default()
                         },
+                        offset: 0,
+                        size: 12,
                     },
-                    PipelineLayoutPcRange {
-                        offset: 12,
-                        size: 28,
+                    PushConstantRange {
                         stages: ShaderStages {
                             vertex: true,
                             ..Default::default()
                         },
+                        offset: 12,
+                        size: 28,
                     },
                 ][..],
             ),
@@ -1144,48 +1164,48 @@ mod tests {
             // - `12..40`, stage=vertex
             (
                 &[
-                    PipelineLayoutPcRange {
-                        offset: 0,
-                        size: 12,
+                    PushConstantRange {
                         stages: ShaderStages {
                             fragment: true,
                             ..Default::default()
                         },
+                        offset: 0,
+                        size: 12,
                     },
-                    PipelineLayoutPcRange {
-                        offset: 4,
-                        size: 36,
+                    PushConstantRange {
                         stages: ShaderStages {
                             vertex: true,
                             ..Default::default()
                         },
+                        offset: 4,
+                        size: 36,
                     },
                 ][..],
                 &[
-                    PipelineLayoutPcRange {
+                    PushConstantRange {
+                        stages: ShaderStages {
+                            fragment: true,
+                            ..Default::default()
+                        },
                         offset: 0,
                         size: 4,
+                    },
+                    PushConstantRange {
                         stages: ShaderStages {
                             fragment: true,
+                            vertex: true,
                             ..Default::default()
                         },
-                    },
-                    PipelineLayoutPcRange {
                         offset: 4,
                         size: 8,
+                    },
+                    PushConstantRange {
                         stages: ShaderStages {
-                            fragment: true,
                             vertex: true,
                             ..Default::default()
                         },
-                    },
-                    PipelineLayoutPcRange {
                         offset: 12,
                         size: 28,
-                        stages: ShaderStages {
-                            vertex: true,
-                            ..Default::default()
-                        },
                     },
                 ][..],
             ),
@@ -1203,94 +1223,94 @@ mod tests {
             // - `20..32` stage=tess_ctl
             (
                 &[
-                    PipelineLayoutPcRange {
-                        offset: 0,
-                        size: 12,
+                    PushConstantRange {
                         stages: ShaderStages {
                             fragment: true,
                             ..Default::default()
                         },
-                    },
-                    PipelineLayoutPcRange {
-                        offset: 8,
+                        offset: 0,
                         size: 12,
+                    },
+                    PushConstantRange {
                         stages: ShaderStages {
                             compute: true,
                             ..Default::default()
                         },
-                    },
-                    PipelineLayoutPcRange {
-                        offset: 4,
+                        offset: 8,
                         size: 12,
+                    },
+                    PushConstantRange {
                         stages: ShaderStages {
                             vertex: true,
                             ..Default::default()
                         },
+                        offset: 4,
+                        size: 12,
                     },
-                    PipelineLayoutPcRange {
-                        offset: 8,
-                        size: 24,
+                    PushConstantRange {
                         stages: ShaderStages {
                             tessellation_control: true,
                             ..Default::default()
                         },
+                        offset: 8,
+                        size: 24,
                     },
                 ][..],
                 &[
-                    PipelineLayoutPcRange {
+                    PushConstantRange {
+                        stages: ShaderStages {
+                            fragment: true,
+                            ..Default::default()
+                        },
                         offset: 0,
                         size: 4,
+                    },
+                    PushConstantRange {
                         stages: ShaderStages {
                             fragment: true,
+                            vertex: true,
                             ..Default::default()
                         },
-                    },
-                    PipelineLayoutPcRange {
                         offset: 4,
                         size: 4,
+                    },
+                    PushConstantRange {
                         stages: ShaderStages {
-                            fragment: true,
                             vertex: true,
+                            fragment: true,
+                            compute: true,
+                            tessellation_control: true,
                             ..Default::default()
                         },
-                    },
-                    PipelineLayoutPcRange {
                         offset: 8,
                         size: 4,
+                    },
+                    PushConstantRange {
                         stages: ShaderStages {
                             vertex: true,
-                            fragment: true,
                             compute: true,
                             tessellation_control: true,
                             ..Default::default()
                         },
-                    },
-                    PipelineLayoutPcRange {
                         offset: 12,
                         size: 4,
+                    },
+                    PushConstantRange {
                         stages: ShaderStages {
-                            vertex: true,
                             compute: true,
                             tessellation_control: true,
                             ..Default::default()
                         },
-                    },
-                    PipelineLayoutPcRange {
                         offset: 16,
                         size: 4,
+                    },
+                    PushConstantRange {
                         stages: ShaderStages {
-                            compute: true,
                             tessellation_control: true,
                             ..Default::default()
                         },
-                    },
-                    PipelineLayoutPcRange {
                         offset: 20,
                         size: 12,
-                        stages: ShaderStages {
-                            tessellation_control: true,
-                            ..Default::default()
-                        },
                     },
                 ][..],
             ),
@@ -1299,7 +1319,14 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         for (input, expected) in test_cases {
-            let layout = PipelineLayout::new(device.clone(), [], input.iter().cloned()).unwrap();
+            let layout = PipelineLayout::new(
+                device.clone(),
+                PipelineLayoutCreateInfo {
+                    push_constant_ranges: input.into(),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
 
             assert_eq!(layout.push_constant_ranges_disjoint.as_slice(), expected);
         }

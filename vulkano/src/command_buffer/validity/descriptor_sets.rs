@@ -50,15 +50,13 @@ pub(in super::super) fn check_descriptor_sets_validity<'a, P: Pipeline>(
     }
 
     for ((set_num, binding_num), reqs) in descriptor_requirements {
-        let layout_binding = pipeline.layout().descriptor_set_layouts()[set_num as usize]
-            .desc()
-            .descriptor(binding_num)
-            .unwrap();
+        let layout_binding =
+            &pipeline.layout().set_layouts()[set_num as usize].bindings()[&binding_num];
 
         let check_buffer = |index: u32, buffer: &Arc<dyn BufferAccess>| Ok(());
 
         let check_buffer_view = |index: u32, buffer_view: &Arc<dyn BufferViewAbstract>| {
-            if layout_binding.ty == DescriptorType::StorageTexelBuffer {
+            if layout_binding.descriptor_type == DescriptorType::StorageTexelBuffer {
                 // VUID-vkCmdDispatch-OpTypeImage-06423
                 if reqs.image_format.is_none()
                     && reqs.storage_write.contains(&index)
@@ -87,7 +85,7 @@ pub(in super::super) fn check_descriptor_sets_validity<'a, P: Pipeline>(
                 return Err(InvalidDescriptorResource::StorageImageAtomicNotSupported);
             }
 
-            if layout_binding.ty == DescriptorType::StorageImage {
+            if layout_binding.descriptor_type == DescriptorType::StorageImage {
                 // VUID-vkCmdDispatch-OpTypeImage-06423
                 if reqs.image_format.is_none()
                     && reqs.storage_write.contains(&index)

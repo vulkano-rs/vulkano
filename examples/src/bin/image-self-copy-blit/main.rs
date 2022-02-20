@@ -92,7 +92,9 @@ fn main() {
     let queue = queues.next().unwrap();
 
     let (mut swapchain, images) = {
-        let surface_capabilities = physical_device.surface_capabilities(&surface, Default::default()).unwrap();
+        let surface_capabilities = physical_device
+            .surface_capabilities(&surface, Default::default())
+            .unwrap();
         let image_format = Some(
             physical_device
                 .surface_formats(&surface, Default::default())
@@ -279,7 +281,7 @@ fn main() {
         .build(device.clone())
         .unwrap();
 
-    let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
+    let layout = pipeline.layout().set_layouts().get(0).unwrap();
     let set = PersistentDescriptorSet::new(
         layout.clone(),
         [WriteDescriptorSet::image_view_sampler(

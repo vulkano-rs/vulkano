@@ -12,7 +12,7 @@
 #![allow(deprecated)]
 
 use crate::check_errors;
-use crate::descriptor_set::layout::{DescriptorSetDesc, DescriptorSetLayout};
+use crate::descriptor_set::layout::{DescriptorSetLayout, DescriptorSetLayoutCreateInfo};
 use crate::device::Device;
 use crate::format::NumericType;
 use crate::pipeline::cache::PipelineCache;
@@ -32,7 +32,7 @@ use crate::pipeline::graphics::vertex_input::{
 };
 use crate::pipeline::graphics::viewport::{Scissor, Viewport, ViewportState};
 use crate::pipeline::graphics::{GraphicsPipeline, GraphicsPipelineCreationError};
-use crate::pipeline::layout::{PipelineLayout, PipelineLayoutCreationError, PipelineLayoutPcRange};
+use crate::pipeline::layout::{PipelineLayout, PipelineLayoutCreateInfo, PushConstantRange};
 use crate::pipeline::{DynamicState, PartialStateMode, StateMode};
 use crate::render_pass::Subpass;
 use crate::shader::{
@@ -144,9 +144,9 @@ where
         func: F,
     ) -> Result<Arc<GraphicsPipeline>, GraphicsPipelineCreationError>
     where
-        F: FnOnce(&mut [DescriptorSetDesc]),
+        F: FnOnce(&mut [DescriptorSetLayoutCreateInfo]),
     {
-        let (descriptor_set_layout_descs, push_constant_ranges) = {
+        let (set_layout_create_infos, push_constant_ranges) = {
             let stages: SmallVec<[&EntryPoint; 5]> = [
                 self.vertex_shader.as_ref().map(|s| &s.0),
                 self.tessellation_shaders.as_ref().map(|s| &s.control.0),
@@ -186,12 +186,12 @@ where
 
             // Build a description of a descriptor set layout from the shader requirements, then
             // feed it to the user-provided closure to allow tweaking.
-            let mut descriptor_set_layout_descs = DescriptorSetDesc::from_requirements(
+            let mut set_layout_create_infos = DescriptorSetLayoutCreateInfo::from_requirements(
                 descriptor_requirements
                     .iter()
                     .map(|(&loc, reqs)| (loc, reqs)),
             );
-            func(&mut descriptor_set_layout_descs);
+            func(&mut set_layout_create_infos);
 
             // We want to union each push constant range into a set of ranges that do not have intersecting stage flags.
             // e.g. The range [0, 16) is either made available to Vertex | Fragment or we only make [0, 16) available to
@@ -211,23 +211,29 @@ where
             }
             let push_constant_ranges: Vec<_> = range_map
                 .iter()
-                .map(|((offset, size), stages)| PipelineLayoutPcRange {
+                .map(|((offset, size), stages)| PushConstantRange {
+                    stages: *stages,
                     offset: *offset,
                     size: *size,
-                    stages: *stages,
                 })
                 .collect();
 
-            (descriptor_set_layout_descs, push_constant_ranges)
+            (set_layout_create_infos, push_constant_ranges)
         };
 
-        let descriptor_set_layouts = descriptor_set_layout_descs
+        let set_layouts = set_layout_create_infos
             .into_iter()
-            .map(|desc| Ok(DescriptorSetLayout::new(device.clone(), desc)?))
-            .collect::<Result<Vec<_>, PipelineLayoutCreationError>>()?;
-        let pipeline_layout =
-            PipelineLayout::new(device.clone(), descriptor_set_layouts, push_constant_ranges)
-                .unwrap();
+            .map(|desc| DescriptorSetLayout::new(device.clone(), desc))
+            .collect::<Result<Vec<_>, _>>()?;
+        let pipeline_layout = PipelineLayout::new(
+            device.clone(),
+            PipelineLayoutCreateInfo {
+                set_layouts,
+                push_constant_ranges,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         self.with_pipeline_layout(device, pipeline_layout)
     }
 

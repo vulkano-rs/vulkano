@@ -87,7 +87,7 @@ impl PersistentDescriptorSet {
         P: ?Sized + DescriptorPool,
     {
         assert!(
-            !layout.desc().is_push_descriptor(),
+            !layout.push_descriptor(),
             "the provided descriptor set layout is for push descriptors, and cannot be used to build a descriptor set object"
         );
 

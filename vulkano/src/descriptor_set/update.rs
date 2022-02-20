@@ -9,7 +9,7 @@
 
 use crate::buffer::view::BufferViewAbstract;
 use crate::buffer::{BufferAccess, BufferInner};
-use crate::descriptor_set::layout::{DescriptorDesc, DescriptorType};
+use crate::descriptor_set::layout::{DescriptorSetLayoutBinding, DescriptorType};
 use crate::descriptor_set::DescriptorSetLayout;
 use crate::device::DeviceOwned;
 use crate::image::view::{ImageViewAbstract, ImageViewType};
@@ -400,8 +400,8 @@ pub(crate) fn check_descriptor_write<'a>(
     write: &WriteDescriptorSet,
     layout: &'a DescriptorSetLayout,
     variable_descriptor_count: u32,
-) -> Result<&'a DescriptorDesc, DescriptorSetUpdateError> {
-    let layout_binding = match layout.desc().descriptor(write.binding()) {
+) -> Result<&'a DescriptorSetLayoutBinding, DescriptorSetUpdateError> {
+    let layout_binding = match layout.bindings().get(&write.binding()) {
         Some(binding) => binding,
         None => {
             return Err(DescriptorSetUpdateError::InvalidBinding {
@@ -410,7 +410,7 @@ pub(crate) fn check_descriptor_write<'a>(
         }
     };
 
-    let max_descriptor_count = if layout_binding.variable_count {
+    let max_descriptor_count = if layout_binding.variable_descriptor_count {
         variable_descriptor_count
     } else {
         layout_binding.descriptor_count
@@ -432,10 +432,9 @@ pub(crate) fn check_descriptor_write<'a>(
     }
 
     match elements {
-        WriteDescriptorSetElements::None(num_elements) => match layout_binding.ty {
+        WriteDescriptorSetElements::None(num_elements) => match layout_binding.descriptor_type {
             DescriptorType::Sampler
-                if layout.desc().is_push_descriptor()
-                    && !layout_binding.immutable_samplers.is_empty() => {}
+                if layout.push_descriptor() && !layout_binding.immutable_samplers.is_empty() => {}
             _ => {
                 return Err(DescriptorSetUpdateError::IncompatibleDescriptorType {
                     binding: write.binding(),
@@ -443,7 +442,7 @@ pub(crate) fn check_descriptor_write<'a>(
             }
         },
         WriteDescriptorSetElements::Buffer(elements) => {
-            match layout_binding.ty {
+            match layout_binding.descriptor_type {
                 DescriptorType::StorageBuffer | DescriptorType::StorageBufferDynamic => {
                     for (index, buffer) in elements.iter().enumerate() {
                         assert_eq!(
@@ -495,7 +494,7 @@ pub(crate) fn check_descriptor_write<'a>(
             assert!(layout.device().enabled_features().robust_buffer_access);
         }
         WriteDescriptorSetElements::BufferView(elements) => {
-            match layout_binding.ty {
+            match layout_binding.descriptor_type {
                 DescriptorType::StorageTexelBuffer => {
                     for (index, buffer_view) in elements.iter().enumerate() {
                         assert_eq!(
@@ -548,7 +547,7 @@ pub(crate) fn check_descriptor_write<'a>(
                 }
             }
         }
-        WriteDescriptorSetElements::ImageView(elements) => match layout_binding.ty {
+        WriteDescriptorSetElements::ImageView(elements) => match layout_binding.descriptor_type {
             DescriptorType::CombinedImageSampler
                 if !layout_binding.immutable_samplers.is_empty() =>
             {
@@ -776,7 +775,9 @@ pub(crate) fn check_descriptor_write<'a>(
                 })
             }
         },
-        WriteDescriptorSetElements::ImageViewSampler(elements) => match layout_binding.ty {
+        WriteDescriptorSetElements::ImageViewSampler(elements) => match layout_binding
+            .descriptor_type
+        {
             DescriptorType::CombinedImageSampler => {
                 if !layout_binding.immutable_samplers.is_empty() {
                     return Err(DescriptorSetUpdateError::SamplerIsImmutable {
@@ -855,7 +856,7 @@ pub(crate) fn check_descriptor_write<'a>(
                 })
             }
         },
-        WriteDescriptorSetElements::Sampler(elements) => match layout_binding.ty {
+        WriteDescriptorSetElements::Sampler(elements) => match layout_binding.descriptor_type {
             DescriptorType::Sampler => {
                 if !layout_binding.immutable_samplers.is_empty() {
                     return Err(DescriptorSetUpdateError::SamplerIsImmutable {

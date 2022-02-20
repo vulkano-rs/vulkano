@@ -73,7 +73,7 @@ unsafe impl DescriptorPool for Arc<StdDescriptorPool> {
         variable_descriptor_count: u32,
     ) -> Result<StdDescriptorPoolAlloc, OomError> {
         assert!(
-            !layout.desc().is_push_descriptor(),
+            !layout.push_descriptor(),
             "the provided descriptor set layout is for push descriptors, and cannot be used to build a descriptor set object",
         );
 
@@ -204,14 +204,13 @@ impl Drop for StdDescriptorPoolAlloc {
 
 #[cfg(test)]
 mod tests {
-    use crate::descriptor_set::layout::DescriptorDesc;
-    use crate::descriptor_set::layout::DescriptorSetDesc;
     use crate::descriptor_set::layout::DescriptorSetLayout;
+    use crate::descriptor_set::layout::DescriptorSetLayoutBinding;
+    use crate::descriptor_set::layout::DescriptorSetLayoutCreateInfo;
     use crate::descriptor_set::layout::DescriptorType;
     use crate::descriptor_set::pool::DescriptorPool;
     use crate::descriptor_set::pool::StdDescriptorPool;
     use crate::shader::ShaderStages;
-    use std::iter;
     use std::sync::Arc;
 
     #[test]
@@ -219,16 +218,19 @@ mod tests {
         // Test that the `StdDescriptorPool` is kept alive by its allocations.
         let (device, _) = gfx_dev_and_queue!();
 
-        let desc = DescriptorDesc {
-            ty: DescriptorType::Sampler,
-            descriptor_count: 1,
-            variable_count: false,
-            stages: ShaderStages::all(),
-            immutable_samplers: Vec::new(),
-        };
         let layout = DescriptorSetLayout::new(
             device.clone(),
-            DescriptorSetDesc::new(iter::once(Some(desc))),
+            DescriptorSetLayoutCreateInfo {
+                bindings: [(
+                    0,
+                    DescriptorSetLayoutBinding {
+                        stages: ShaderStages::all(),
+                        ..DescriptorSetLayoutBinding::descriptor_type(DescriptorType::Sampler)
+                    },
+                )]
+                .into(),
+                ..Default::default()
+            },
         )
         .unwrap();
 
