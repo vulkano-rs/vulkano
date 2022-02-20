@@ -1162,6 +1162,15 @@ pub struct FormatProperties {
     pub _ne: crate::NonExhaustive,
 }
 
+impl FormatProperties {
+    /// Returns the potential format features, following the definition of
+    /// <https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap43.html#potential-format-features>.
+    #[inline]
+    pub fn potential_format_features(&self) -> FormatFeatures {
+        &self.linear_tiling_features | &self.optimal_tiling_features
+    }
+}
+
 /// The features supported by a device for an image or buffer with a particular format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[allow(missing_docs)]

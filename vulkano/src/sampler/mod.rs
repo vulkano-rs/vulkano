@@ -596,11 +596,10 @@ impl SamplerBuilder {
             if let Some(sampler_ycbcr_conversion) = &sampler_ycbcr_conversion {
                 assert_eq!(&device, sampler_ycbcr_conversion.device());
 
-                let format_properties = device
+                let potential_format_features = device
                     .physical_device()
-                    .format_properties(sampler_ycbcr_conversion.format().unwrap());
-                let potential_format_features = &format_properties.linear_tiling_features
-                    | &format_properties.optimal_tiling_features;
+                    .format_properties(sampler_ycbcr_conversion.format().unwrap())
+                    .potential_format_features();
 
                 // VUID-VkSamplerCreateInfo-minFilter-01645
                 if !potential_format_features
