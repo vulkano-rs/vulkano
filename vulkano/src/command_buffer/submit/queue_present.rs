@@ -94,7 +94,7 @@ impl<'a> SubmitPresentBuilder<'a> {
         image_num: u32,
         present_region: Option<&'a PresentRegion>,
     ) {
-        debug_assert!(image_num < swapchain.num_images());
+        debug_assert!(image_num < swapchain.image_count());
 
         if swapchain
             .device()
@@ -211,9 +211,9 @@ pub enum SubmitPresentError {
     /// The surface is no longer accessible and must be recreated.
     SurfaceLost,
 
-    /// The swapchain has lost or doesn't have fullscreen exclusivity possibly for
+    /// The swapchain has lost or doesn't have full-screen exclusivity possibly for
     /// implementation-specific reasons outside of the application’s control.
-    FullscreenExclusiveLost,
+    FullScreenExclusiveLost,
 
     /// The surface has changed in a way that makes the swapchain unusable. You must query the
     /// surface's new properties and recreate a new swapchain if you want to continue drawing.
@@ -242,8 +242,8 @@ impl fmt::Display for SubmitPresentError {
                 SubmitPresentError::SurfaceLost =>
                     "the surface of this swapchain is no longer valid",
                 SubmitPresentError::OutOfDate => "the swapchain needs to be recreated",
-                SubmitPresentError::FullscreenExclusiveLost => {
-                    "the swapchain no longer has fullscreen exclusivity"
+                SubmitPresentError::FullScreenExclusiveLost => {
+                    "the swapchain no longer has full-screen exclusivity"
                 }
             }
         )
@@ -259,7 +259,7 @@ impl From<Error> for SubmitPresentError {
             Error::DeviceLost => SubmitPresentError::DeviceLost,
             Error::SurfaceLost => SubmitPresentError::SurfaceLost,
             Error::OutOfDate => SubmitPresentError::OutOfDate,
-            Error::FullscreenExclusiveLost => SubmitPresentError::FullscreenExclusiveLost,
+            Error::FullScreenExclusiveLost => SubmitPresentError::FullScreenExclusiveLost,
             _ => panic!("unexpected error: {:?}", err),
         }
     }

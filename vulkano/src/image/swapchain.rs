@@ -115,7 +115,7 @@ where
 
     #[inline]
     fn try_gpu_lock(&self, _: bool, _: bool, _: ImageLayout) -> Result<(), AccessError> {
-        if self.swapchain.is_fullscreen_exclusive() {
+        if self.swapchain.is_full_screen_exclusive() {
             Ok(())
         } else {
             // Swapchain image are only accessible after being acquired.
@@ -158,7 +158,7 @@ where
 {
     #[inline]
     fn decode(&self, value: ClearValue) -> Option<ClearValue> {
-        Some(self.swapchain.format().decode_clear_value(value))
+        Some(self.swapchain.image_format().decode_clear_value(value))
     }
 }
 

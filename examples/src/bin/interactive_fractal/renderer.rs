@@ -25,8 +25,7 @@ use vulkano::image::{
 use vulkano::instance::InstanceExtensions;
 use vulkano::instance::{Instance, InstanceCreateInfo};
 use vulkano::swapchain::{
-    AcquireError, ColorSpace, FullscreenExclusive, PresentMode, Surface, SurfaceTransform,
-    Swapchain, SwapchainCreationError,
+    AcquireError, PresentMode, Surface, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
 };
 use vulkano::sync::{FlushError, GpuFuture};
 use vulkano::{swapchain, sync};
@@ -67,7 +66,7 @@ pub struct Renderer {
     device: Arc<Device>,
     surface: Arc<Surface<Window>>,
     queue: Arc<Queue>,
-    swap_chain: Arc<Swapchain<Window>>,
+    swapchain: Arc<Swapchain<Window>>,
     image_index: usize,
     final_views: Vec<FinalImageView>,
     /// Image view that is to be rendered with our pipeline.
@@ -76,7 +75,7 @@ pub struct Renderer {
     recreate_swapchain: bool,
     previous_frame_end: Option<Box<dyn GpuFuture>>,
     render_passes: RenderPasses,
-    is_fullscreen: bool,
+    is_full_screen: bool,
 }
 
 impl Renderer {
@@ -120,11 +119,10 @@ impl Renderer {
         // Create device
         let (device, queue) = Self::create_device(physical_device, surface.clone());
         // Create swap chain & frame(s) to which we'll render
-        let (swap_chain, final_images) = Self::create_swap_chain(
+        let (swapchain, final_images) = Self::create_swapchain(
             surface.clone(),
             physical_device,
             device.clone(),
-            queue.clone(),
             if opts.v_sync {
                 PresentMode::Fifo
             } else {
@@ -132,7 +130,7 @@ impl Renderer {
             },
         );
         let previous_frame_end = Some(sync::now(device.clone()).boxed());
-        let is_fullscreen = swap_chain.surface().window().fullscreen().is_some();
+        let is_full_screen = swapchain.surface().window().fullscreen().is_some();
         let image_format = final_images.first().unwrap().format();
         let render_passes = RenderPasses {
             place_over_frame: RenderPassPlaceOverFrame::new(queue.clone(), image_format),
@@ -143,14 +141,14 @@ impl Renderer {
             device,
             surface,
             queue,
-            swap_chain,
+            swapchain,
             image_index: 0,
             final_views: final_images,
             interim_image_views: HashMap::new(),
             previous_frame_end,
             recreate_swapchain: false,
             render_passes,
-            is_fullscreen,
+            is_full_screen,
         }
     }
 
@@ -161,7 +159,7 @@ impl Renderer {
     ) -> (Arc<Device>, Arc<Queue>) {
         let queue_family = physical_device
             .queue_families()
-            .find(|&q| q.supports_graphics() && surface.is_supported(q).unwrap_or(false))
+            .find(|&q| q.supports_graphics() && q.supports_surface(&surface).unwrap_or(false))
             .unwrap();
 
         // Add device extensions based on needs,
@@ -191,37 +189,46 @@ impl Renderer {
     }
 
     /// Creates swapchain and swapchain images
-    fn create_swap_chain(
+    fn create_swapchain(
         surface: Arc<Surface<Window>>,
         physical: PhysicalDevice,
         device: Arc<Device>,
-        queue: Arc<Queue>,
         present_mode: PresentMode,
     ) -> (Arc<Swapchain<Window>>, Vec<FinalImageView>) {
-        let caps = surface.capabilities(physical).unwrap();
-        let alpha = caps.supported_composite_alpha.iter().next().unwrap();
-        let format = caps.supported_formats[0].0;
-        let dimensions: [u32; 2] = surface.window().inner_size().into();
-        let (swap_chain, images) = Swapchain::start(device, surface)
-            .num_images(caps.min_image_count)
-            .format(format)
-            .dimensions(dimensions)
-            .usage(ImageUsage::color_attachment())
-            .sharing_mode(&queue)
-            .composite_alpha(alpha)
-            .transform(SurfaceTransform::Identity)
-            .present_mode(present_mode)
-            .fullscreen_exclusive(FullscreenExclusive::Default)
-            .clipped(true)
-            .color_space(ColorSpace::SrgbNonLinear)
-            .layers(1)
-            .build()
+        let surface_capabilities = physical
+            .surface_capabilities(&surface, Default::default())
             .unwrap();
+        let image_format = Some(
+            physical
+                .surface_formats(&surface, Default::default())
+                .unwrap()[0]
+                .0,
+        );
+        let image_extent = surface.window().inner_size().into();
+
+        let (swapchain, images) = Swapchain::new(
+            device,
+            surface,
+            SwapchainCreateInfo {
+                min_image_count: surface_capabilities.min_image_count,
+                image_format,
+                image_extent,
+                image_usage: ImageUsage::color_attachment(),
+                composite_alpha: surface_capabilities
+                    .supported_composite_alpha
+                    .iter()
+                    .next()
+                    .unwrap(),
+                present_mode,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let images = images
             .into_iter()
             .map(|image| ImageView::new(image).unwrap())
             .collect::<Vec<_>>();
-        (swap_chain, images)
+        (swapchain, images)
     }
 
     /// Return default image format for images (swapchain format may differ)
@@ -334,10 +341,10 @@ impl Renderer {
         self.interim_image_views.remove(&key);
     }
 
-    /// Toggles fullscreen view
-    pub fn toggle_fullscreen(&mut self) {
-        self.is_fullscreen = !self.is_fullscreen;
-        self.window().set_fullscreen(if self.is_fullscreen {
+    /// Toggles full-screen view
+    pub fn toggle_full_screen(&mut self) {
+        self.is_full_screen = !self.is_full_screen;
+        self.window().set_fullscreen(if self.is_full_screen {
             Some(Fullscreen::Borderless(self.window().current_monitor()))
         } else {
             None
@@ -367,7 +374,7 @@ impl Renderer {
 
         // Acquire next image in the swapchain
         let (image_num, suboptimal, acquire_future) =
-            match swapchain::acquire_next_image(self.swap_chain.clone(), None) {
+            match swapchain::acquire_next_image(self.swapchain.clone(), None) {
                 Ok(r) => r,
                 Err(AcquireError::OutOfDate) => {
                     self.recreate_swapchain = true;
@@ -388,11 +395,7 @@ impl Renderer {
     /// Finishes render by presenting the swapchain
     pub(crate) fn finish_frame(&mut self, after_future: Box<dyn GpuFuture>) {
         let future = after_future
-            .then_swapchain_present(
-                self.queue.clone(),
-                self.swap_chain.clone(),
-                self.image_index,
-            )
+            .then_swapchain_present(self.queue.clone(), self.swapchain.clone(), self.image_index)
             .then_signal_fence_and_flush();
         match future {
             Ok(future) => {
@@ -418,21 +421,19 @@ impl Renderer {
     /// Swapchain is recreated when resized. Interim image views that should follow swapchain
     /// are also recreated
     fn recreate_swapchain_and_views(&mut self) {
-        let dimensions: [u32; 2] = self.window().inner_size().into();
-        let (new_swapchain, new_images) =
-            match self.swap_chain.recreate().dimensions(dimensions).build() {
-                Ok(r) => r,
-                Err(SwapchainCreationError::UnsupportedDimensions) => {
-                    println!(
-                        "{}",
-                        SwapchainCreationError::UnsupportedDimensions.to_string()
-                    );
-                    return;
-                }
-                Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
-            };
+        let (new_swapchain, new_images) = match self.swapchain.recreate(SwapchainCreateInfo {
+            image_extent: self.window().inner_size().into(),
+            ..self.swapchain.create_info()
+        }) {
+            Ok(r) => r,
+            Err(e @ SwapchainCreationError::ImageExtentNotSupported { .. }) => {
+                println!("{}", e);
+                return;
+            }
+            Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
+        };
 
-        self.swap_chain = new_swapchain;
+        self.swapchain = new_swapchain;
         let new_images = new_images
             .into_iter()
             .map(|image| ImageView::new(image).unwrap())

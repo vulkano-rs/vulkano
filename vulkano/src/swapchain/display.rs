@@ -22,7 +22,7 @@
 //!   rate. You can enumerate the modes available on a display with `Display::display_modes`, or
 //!   attempt to create your own mode with `TODO`.
 //! - Choose a `DisplayPlane`. A display can show multiple planes in a stacking fashion.
-//! - Create a `Surface` object with `Surface::from_display_mode` and pass the chosen `DisplayMode`
+//! - Create a `Surface` object with `Surface::from_display_plane` and pass the chosen `DisplayMode`
 //!   and `DisplayPlane`.
 
 #![allow(dead_code)] // TODO: this module isn't finished

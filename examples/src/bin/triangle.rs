@@ -29,7 +29,9 @@ use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass};
-use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
+use vulkano::swapchain::{
+    self, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+};
 use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano_win::VkSurfaceBuild;
 use winit::event::{Event, WindowEvent};
@@ -103,7 +105,7 @@ fn main() {
                     // We select a queue family that supports graphics operations. When drawing to
                     // a window surface, as we do in this example, we also need to check that queues
                     // in this queue family are capable of presenting images to the surface.
-                    q.supports_graphics() && surface.is_supported(q).unwrap_or(false)
+                    q.supports_graphics() && q.supports_surface(&surface).unwrap_or(false)
                 })
                 // The code here searches for the first queue family that is suitable. If none is
                 // found, `None` is returned to `filter_map`, which disqualifies this physical
@@ -175,37 +177,56 @@ fn main() {
     let (mut swapchain, images) = {
         // Querying the capabilities of the surface. When we create the swapchain we can only
         // pass values that are allowed by the capabilities.
-        let caps = surface.capabilities(physical_device).unwrap();
-
-        // The alpha mode indicates how the alpha value of the final image will behave. For example,
-        // you can choose whether the window will be opaque or transparent.
-        let composite_alpha = caps.supported_composite_alpha.iter().next().unwrap();
+        let surface_capabilities = physical_device
+            .surface_capabilities(&surface, Default::default())
+            .unwrap();
 
         // Choosing the internal format that the images will have.
-        let format = caps.supported_formats[0].0;
-
-        // The dimensions of the window, only used to initially setup the swapchain.
-        // NOTE:
-        // On some drivers the swapchain dimensions are specified by `caps.current_extent` and the
-        // swapchain size must use these dimensions.
-        // These dimensions are always the same as the window dimensions.
-        //
-        // However, other drivers don't specify a value, i.e. `caps.current_extent` is `None`
-        // These drivers will allow anything, but the only sensible value is the window dimensions.
-        //
-        // Both of these cases need the swapchain to use the window dimensions, so we just use that.
-        let dimensions: [u32; 2] = surface.window().inner_size().into();
+        let image_format = Some(
+            physical_device
+                .surface_formats(&surface, Default::default())
+                .unwrap()[0]
+                .0,
+        );
 
         // Please take a look at the docs for the meaning of the parameters we didn't mention.
-        Swapchain::start(device.clone(), surface.clone())
-            .num_images(caps.min_image_count)
-            .format(format)
-            .dimensions(dimensions)
-            .usage(ImageUsage::color_attachment())
-            .sharing_mode(&queue)
-            .composite_alpha(composite_alpha)
-            .build()
-            .unwrap()
+        Swapchain::new(
+            device.clone(),
+            surface.clone(),
+            SwapchainCreateInfo {
+                min_image_count: surface_capabilities.min_image_count,
+
+                image_format,
+                // The dimensions of the window, only used to initially setup the swapchain.
+                // NOTE:
+                // On some drivers the swapchain dimensions are specified by
+                // `surface_capabilities.current_extent` and the swapchain size must use these
+                // dimensions.
+                // These dimensions are always the same as the window dimensions.
+                //
+                // However, other drivers don't specify a value, i.e.
+                // `surface_capabilities.current_extent` is `None`. These drivers will allow
+                // anything, but the only sensible value is the window
+                // dimensions.
+                //
+                // Both of these cases need the swapchain to use the window dimensions, so we just
+                // use that.
+                image_extent: surface.window().inner_size().into(),
+
+                image_usage: ImageUsage::color_attachment(),
+
+                // The alpha mode indicates how the alpha value of the final image will behave. For
+                // example, you can choose whether the window will be opaque or transparent.
+                composite_alpha: surface_capabilities
+                    .supported_composite_alpha
+                    .iter()
+                    .next()
+                    .unwrap(),
+
+                ..Default::default()
+            },
+        )
+        .unwrap()
     };
 
     // We now create a buffer that will store the shape of our triangle.
@@ -301,7 +322,7 @@ fn main() {
                 // be one of the types of the `vulkano::format` module (or alternatively one
                 // of your structs that implements the `FormatDesc` trait). Here we use the
                 // same format as the swapchain.
-                format: swapchain.format(),
+                format: swapchain.image_format(),
                 // TODO:
                 samples: 1,
             }
@@ -397,13 +418,16 @@ fn main() {
                 // In this example that includes the swapchain, the framebuffers and the dynamic state viewport.
                 if recreate_swapchain {
                     // Get the new dimensions of the window.
-                    let dimensions: [u32; 2] = surface.window().inner_size().into();
+
                     let (new_swapchain, new_images) =
-                        match swapchain.recreate().dimensions(dimensions).build() {
+                        match swapchain.recreate(SwapchainCreateInfo {
+                            image_extent: surface.window().inner_size().into(),
+                            ..swapchain.create_info()
+                        }) {
                             Ok(r) => r,
                             // This error tends to happen when the user is manually resizing the window.
                             // Simply restarting the loop is the easiest way to fix this issue.
-                            Err(SwapchainCreationError::UnsupportedDimensions) => return,
+                            Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
                             Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
                         };
 
