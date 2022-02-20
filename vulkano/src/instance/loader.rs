@@ -22,7 +22,7 @@
 //! a Vulkan implementation from the system.
 
 use crate::check_errors;
-use crate::fns::EntryFunctions;
+pub use crate::fns::EntryFunctions;
 use crate::OomError;
 use crate::SafeDeref;
 use crate::Version;

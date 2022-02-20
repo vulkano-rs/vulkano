@@ -572,7 +572,7 @@ fn window_size_dependent_setup(
     render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
 ) -> Vec<Arc<Framebuffer>> {
-    use vulkano::image::ImageAccess;
+    use vulkano::{image::ImageAccess, render_pass::FramebufferCreateInfo};
     let dimensions = images[0].dimensions().width_height();
     viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
 
@@ -581,11 +581,14 @@ fn window_size_dependent_setup(
         .map(|image| -> Arc<Framebuffer> {
             let view = ImageView::new(image.clone()).unwrap();
 
-            Framebuffer::start(render_pass.clone())
-                .add(view)
-                .unwrap()
-                .build()
-                .unwrap()
+            Framebuffer::new(
+                render_pass.clone(),
+                FramebufferCreateInfo {
+                    attachments: vec![view],
+                    ..Default::default()
+                },
+            )
+            .unwrap()
         })
         .collect::<Vec<_>>()
 }

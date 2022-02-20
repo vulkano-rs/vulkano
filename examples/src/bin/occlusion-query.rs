@@ -26,7 +26,7 @@ use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::query::{QueryControlFlags, QueryPool, QueryResultFlags, QueryType};
-use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
+use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass};
 use vulkano::swapchain::{
     self, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
 };
@@ -483,13 +483,14 @@ fn window_size_dependent_setup(
         .iter()
         .map(|image| {
             let view = ImageView::new(image.clone()).unwrap();
-            Framebuffer::start(render_pass.clone())
-                .add(view)
-                .unwrap()
-                .add(depth_attachment.clone())
-                .unwrap()
-                .build()
-                .unwrap()
+            Framebuffer::new(
+                render_pass.clone(),
+                FramebufferCreateInfo {
+                    attachments: vec![view, depth_attachment.clone()],
+                    ..Default::default()
+                },
+            )
+            .unwrap()
         })
         .collect::<Vec<_>>()
 }

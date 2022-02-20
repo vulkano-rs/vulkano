@@ -108,7 +108,7 @@ use crate::device::physical::QueueFamily;
 pub use crate::extensions::{
     ExtensionRestriction, ExtensionRestrictionError, SupportedExtensionsError,
 };
-use crate::fns::DeviceFunctions;
+pub use crate::fns::DeviceFunctions;
 use crate::instance::Instance;
 use crate::memory::pool::StdMemoryPool;
 use crate::Error;

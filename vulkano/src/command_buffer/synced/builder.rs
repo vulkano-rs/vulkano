@@ -251,7 +251,7 @@ impl SyncCommandBufferBuilder {
             if let Some((memory, start_layout, end_layout, image_uninitialized_safe)) = resource {
                 // Anti-dumbness checks.
                 debug_assert!(memory.exclusive || start_layout == end_layout);
-                debug_assert!(memory.access.is_compatible_with(&memory.stages));
+                debug_assert!(memory.stages.supported_access().contains(&memory.access));
                 debug_assert!(
                     !matches!(resource_ty, KeyTy::Image { .. })
                         || end_layout != ImageLayout::Undefined

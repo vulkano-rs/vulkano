@@ -83,7 +83,7 @@ use vulkano::instance::{Instance, InstanceCreateInfo};
 use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::GraphicsPipeline;
-use vulkano::render_pass::{Framebuffer, Subpass};
+use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, Subpass};
 use vulkano::sync::GpuFuture;
 
 fn main() {
@@ -200,13 +200,14 @@ fn main() {
     .unwrap();
 
     // Creating the framebuffer, the calls to `add` match the list of attachments in order.
-    let framebuffer = Framebuffer::start(render_pass.clone())
-        .add(intermediary.clone())
-        .unwrap()
-        .add(view.clone())
-        .unwrap()
-        .build()
-        .unwrap();
+    let framebuffer = Framebuffer::new(
+        render_pass.clone(),
+        FramebufferCreateInfo {
+            attachments: vec![intermediary.clone(), view.clone()],
+            ..Default::default()
+        },
+    )
+    .unwrap();
 
     // Here is the "end" of the multisampling example, as starting from here everything is the same
     // as in any other example.

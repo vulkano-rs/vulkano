@@ -87,13 +87,7 @@ pub(in super::super) fn check_vertex_buffers(
             }
         }
 
-        if pipeline
-            .subpass()
-            .render_pass()
-            .desc()
-            .multiview()
-            .is_some()
-        {
+        if pipeline.subpass().render_pass().views_used() != 0 {
             let max_instance_index = pipeline
                 .device()
                 .physical_device()

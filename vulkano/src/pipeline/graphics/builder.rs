@@ -335,17 +335,15 @@ where
                 _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
             }
 
-            if let Some(multiview) = subpass.render_pass().desc().multiview().as_ref() {
-                if multiview.used_layer_count() > 0
-                    && !device.enabled_features().multiview_tessellation_shader
-                {
-                    return Err(
+            if subpass.render_pass().views_used() != 0
+                && !device.enabled_features().multiview_tessellation_shader
+            {
+                return Err(
                         GraphicsPipelineCreationError::FeatureNotEnabled {
                             feature: "multiview_tessellation_shader",
                             reason: "a tessellation shader was provided, and the render pass has multiview enabled with more than zero layers used",
                         },
                     );
-                }
             }
         }
 
@@ -368,17 +366,15 @@ where
                 }
             }
 
-            if let Some(multiview) = subpass.render_pass().desc().multiview().as_ref() {
-                if multiview.used_layer_count() > 0
-                    && !device.enabled_features().multiview_geometry_shader
-                {
-                    return Err(
-                        GraphicsPipelineCreationError::FeatureNotEnabled {
-                            feature: "multiview_geometry_shader",
-                            reason: "a geometry shader was provided, and the render pass has multiview enabled with more than zero layers used",
-                        },
-                    );
-                }
+            if subpass.render_pass().views_used() != 0
+                && !device.enabled_features().multiview_geometry_shader
+            {
+                return Err(
+                    GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "multiview_geometry_shader",
+                        reason: "a geometry shader was provided, and the render pass has multiview enabled with more than zero layers used",
+                    },
+                );
             }
 
             // TODO: VUID-VkGraphicsPipelineCreateInfo-pStages-00739
@@ -671,7 +667,7 @@ where
 
         // Depth/stencil state
         let depth_stencil_state = if has_fragment_shader_state
-            && subpass.subpass_desc().depth_stencil.is_some()
+            && subpass.subpass_desc().depth_stencil_attachment.is_some()
         {
             Some(
                 self.depth_stencil_state

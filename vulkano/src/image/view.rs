@@ -26,6 +26,7 @@ use crate::VulkanObject;
 use crate::{check_errors, Error};
 use std::error;
 use std::fmt;
+use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
 use std::mem::MaybeUninit;
 use std::ops::Range;
@@ -1005,7 +1006,7 @@ impl From<ImageViewType> for ash::vk::ImageViewType {
 
 /// Trait for types that represent the GPU can access an image view.
 pub unsafe trait ImageViewAbstract:
-    VulkanObject<Object = ash::vk::ImageView> + DeviceOwned + Send + Sync
+    VulkanObject<Object = ash::vk::ImageView> + DeviceOwned + Debug + Send + Sync
 {
     /// Returns the wrapped image that this image view was created from.
     fn image(&self) -> Arc<dyn ImageAccess>;

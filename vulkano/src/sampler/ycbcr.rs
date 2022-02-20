@@ -223,9 +223,10 @@ impl SamplerYcbcrConversionBuilder {
             return Err(SamplerYcbcrConversionCreationError::FormatNotUnorm);
         }
 
-        let format_properties = device.physical_device().format_properties(format);
-        let potential_format_features =
-            &format_properties.linear_tiling_features | &format_properties.optimal_tiling_features;
+        let potential_format_features = device
+            .physical_device()
+            .format_properties(format)
+            .potential_format_features();
 
         // VUID-VkSamplerYcbcrConversionCreateInfo-format-01650
         if !(potential_format_features.midpoint_chroma_samples

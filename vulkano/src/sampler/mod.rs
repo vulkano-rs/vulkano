@@ -561,15 +561,10 @@ impl SamplerBuilder {
         }
 
         let mut sampler_reduction_mode_create_info =
-            if device.enabled_features().sampler_filter_minmax
-                || device.enabled_extensions().ext_sampler_filter_minmax
-            {
-                Some(ash::vk::SamplerReductionModeCreateInfo {
-                    reduction_mode: reduction_mode.into(),
-                    ..Default::default()
-                })
-            } else {
-                if reduction_mode != SamplerReductionMode::WeightedAverage {
+            if reduction_mode != SamplerReductionMode::WeightedAverage {
+                if !(device.enabled_features().sampler_filter_minmax
+                    || device.enabled_extensions().ext_sampler_filter_minmax)
+                {
                     if device
                         .physical_device()
                         .supported_features()
@@ -587,6 +582,11 @@ impl SamplerBuilder {
                     }
                 }
 
+                Some(ash::vk::SamplerReductionModeCreateInfo {
+                    reduction_mode: reduction_mode.into(),
+                    ..Default::default()
+                })
+            } else {
                 None
             };
 
@@ -596,11 +596,10 @@ impl SamplerBuilder {
             if let Some(sampler_ycbcr_conversion) = &sampler_ycbcr_conversion {
                 assert_eq!(&device, sampler_ycbcr_conversion.device());
 
-                let format_properties = device
+                let potential_format_features = device
                     .physical_device()
-                    .format_properties(sampler_ycbcr_conversion.format().unwrap());
-                let potential_format_features = &format_properties.linear_tiling_features
-                    | &format_properties.optimal_tiling_features;
+                    .format_properties(sampler_ycbcr_conversion.format().unwrap())
+                    .potential_format_features();
 
                 // VUID-VkSamplerCreateInfo-minFilter-01645
                 if !potential_format_features
