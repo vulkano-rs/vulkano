@@ -15,14 +15,20 @@ use quote::{format_ident, quote};
 use vk_parse::{Extension, ExtensionChild, InterfaceItem};
 
 pub fn write(vk_data: &VkRegistryData) {
-    let entry_fns_output = fns_output(&[], "Entry");
+    let entry_fns_output = fns_output(
+        &[],
+        "Entry",
+        "Raw Vulkan global entry point-level functions.\n\nTo use these, you need to include the Ash crate, using the same version Vulkano uses.",
+    );
     let instance_fns_output = fns_output(
         &extension_fns_members("instance", &vk_data.extensions),
         "Instance",
+        "Raw Vulkan instance-level functions.\n\nTo use these, you need to include the Ash crate, using the same version Vulkano uses.",
     );
     let device_fns_output = fns_output(
         &extension_fns_members("device", &vk_data.extensions),
         "Device",
+        "Raw Vulkan device-level functions.\n\nTo use these, you need to include the Ash crate, using the same version Vulkano uses.",
     );
     write_file(
         "fns.rs",
@@ -41,7 +47,7 @@ struct FnsMember {
     fn_struct: Ident,
 }
 
-fn fns_output(extension_members: &[FnsMember], fns_level: &str) -> TokenStream {
+fn fns_output(extension_members: &[FnsMember], fns_level: &str, doc: &str) -> TokenStream {
     let struct_name = format_ident!("{}Functions", fns_level);
     let members = ["1_0", "1_1", "1_2"]
         .into_iter()
@@ -61,13 +67,15 @@ fn fns_output(extension_members: &[FnsMember], fns_level: &str) -> TokenStream {
     });
 
     quote! {
+        #[doc = #doc]
+        #[allow(missing_docs)]
         pub struct #struct_name {
             #(#struct_items)*
             pub _ne: crate::NonExhaustive,
         }
 
         impl #struct_name {
-            pub fn load<F>(mut load_fn: F) -> #struct_name
+            pub(crate) fn load<F>(mut load_fn: F) -> #struct_name
                 where F: FnMut(&CStr) -> *const c_void
             {
                 #struct_name {
