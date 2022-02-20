@@ -756,6 +756,7 @@ impl fmt::Display for DescriptorRequirementsNotMet {
 /// Describes what kind of resource may later be bound to a descriptor.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(i32)]
+#[non_exhaustive]
 pub enum DescriptorType {
     /// Describes how a `SampledImage` descriptor should be read.
     Sampler = ash::vk::DescriptorType::SAMPLER.as_raw(),
