@@ -16,6 +16,9 @@
 - **Breaking** Constructing a buffer of zero size now results in a panic (except for `CpuBufferPool` chunks).
 - **Breaking** `BufferView` creation parameters are given using `BufferViewCreateInfo`.
 - **Breaking** The following types are now considered non-exhaustive and must be constructed using a method call and struct update syntax: `BufferUsage`, `SparseLevel`.
+- **Breaking** `RenderPass` creation parameters are given using `RenderPassCreateInfo`. `RenderPassDesc` is removed.
+- **Breaking** `Framebuffer` creation parameters are given using `FramebufferCreateInfo`.
+- **Breaking** The `dimensions`, `width` and `height` methods of `Framebuffer` are replaced with `extent` and `layers`.
 - Fixed sync bug in `copy_image` and `blit_image` where the `src` and `dest` images are the same but with different mip level and/or array layer.
 - Fixed bug in `begin_render_pass` causing a panic when clearing a depth-only attachment.
 - Fixed bug in the `QueueFamily::supports_` methods causing a panic when querying support for a stage that needs no queue flags.
@@ -25,6 +28,7 @@
 - Refactored `VertexBuffersCollection` to allow `Arc<dyn BufferAccess>`.
 - Added a `Format::texels_per_block` method.\
 - Fixed bug on certain drivers where samplers would behave oddly when minmax samplers are enabled.
+- Added support for the `khr_create_renderpass2` extension.
 
 # Version 0.28.0 (2022-02-02)
 
