@@ -19,6 +19,24 @@
 - **Breaking** `RenderPass` creation parameters are given using `RenderPassCreateInfo`. `RenderPassDesc` is removed.
 - **Breaking** `Framebuffer` creation parameters are given using `FramebufferCreateInfo`.
 - **Breaking** The `dimensions`, `width` and `height` methods of `Framebuffer` are replaced with `extent` and `layers`.
+- **Breaking** Changes to `Surface`:
+    - The constructors are renamed to match their Vulkan equivalents:
+        - `from_display_mode` > `from_display_plane`
+        - `from_anativewindow` > `from_android`
+        - `from_ios_moltenvk` > `from_ios`
+        - `from_macos_moltenvk` > `from_mac_os`
+        - `from_vi_surface` > `from_vi`
+        - `from_hwnd` > `from_win32`
+    - `from_raw` now requires a `SurfaceApi` value.
+    - `Surface::capabilities` has been moved to `PhysicalDevice` and split into three functions: `surface_capabilities`, `surface_formats` and `surface_present_modes`.
+    - `Capabilities` has been renamed to `SurfaceCapabilities`.
+    - The `is_supported` method has been moved to `QueueFamily` and renamed to `supports_surface`.
+- **Breaking** Changes to `Swapchain`:
+  - Creation parameters are given using `SwapchainCreateInfo`. Methods of `Swapchain` are renamed to match.
+  - All names with `Fullscreen` and `fullscreen` have been renamed to `FullScreen` and `full_screen`, to match Vulkan word breaking.
+  - `FullScreenExclusive::AppControlled` has been renamed to `FullScreenExclusive::ApplicationControlled` to match Vulkan.
+  - Using `FullScreenExclusive::ApplicationControlled` on Windows now requires a `Win32Monitor`.
+- **Breaking** Vulkano-win: `create_vk_surface` and `create_vk_surface_from_handle` have been renamed to `create_surface_from_winit` and `create_surface_from_handle` respectively.
 - Fixed sync bug in `copy_image` and `blit_image` where the `src` and `dest` images are the same but with different mip level and/or array layer.
 - Fixed bug in `begin_render_pass` causing a panic when clearing a depth-only attachment.
 - Fixed bug in the `QueueFamily::supports_` methods causing a panic when querying support for a stage that needs no queue flags.
@@ -29,6 +47,10 @@
 - Added a `Format::texels_per_block` method.\
 - Fixed bug on certain drivers where samplers would behave oddly when minmax samplers are enabled.
 - Added support for the `khr_create_renderpass2` extension.
+- Added an `api` method to `Surface` to return the windowing API that it was created from.
+- Added a `create_info` method to `Swapchain` to return a `SwapchainCreateInfo` that contains all the parameters copied from the existing swapchain. This can be used for easy recreation of outdated swapchains.
+- Added support for the `khr_get_surface_capabilities2` extension.
+- Vulkano-win: Added `create_win32_monitor_from_winit` function.
 
 # Version 0.28.0 (2022-02-02)
 
