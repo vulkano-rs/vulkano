@@ -430,7 +430,9 @@ impl<'a> PhysicalDevice<'a> {
     /// Retrieves the properties of a format when used by this physical device.
     pub fn format_properties(&self, format: Format) -> FormatProperties {
         let mut format_properties2 = ash::vk::FormatProperties2::default();
-        let mut format_properties3 = if self.supported_extensions().khr_format_feature_flags2 {
+        let mut format_properties3 = if self.api_version() >= Version::V1_3
+            || self.supported_extensions().khr_format_feature_flags2
+        {
             Some(ash::vk::FormatProperties3KHR::default())
         } else {
             None
@@ -1783,8 +1785,8 @@ impl From<ash::vk::FormatFeatureFlags> for FormatFeatures {
             sampled_image: val.intersects(ash::vk::FormatFeatureFlags::SAMPLED_IMAGE),
             storage_image: val.intersects(ash::vk::FormatFeatureFlags::STORAGE_IMAGE),
             storage_image_atomic: val.intersects(ash::vk::FormatFeatureFlags::STORAGE_IMAGE_ATOMIC),
-            storage_read_without_format: false, // FormatFeatureFlags2KHR only
-            storage_write_without_format: false, // FormatFeatureFlags2KHR only
+            storage_read_without_format: false, // FormatFeatureFlags2 only
+            storage_write_without_format: false, // FormatFeatureFlags2 only
             color_attachment: val.intersects(ash::vk::FormatFeatureFlags::COLOR_ATTACHMENT),
             color_attachment_blend: val.intersects(ash::vk::FormatFeatureFlags::COLOR_ATTACHMENT_BLEND),
             depth_stencil_attachment: val.intersects(ash::vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT),
@@ -1804,7 +1806,7 @@ impl From<ash::vk::FormatFeatureFlags> for FormatFeatures {
             sampled_image_ycbcr_conversion_separate_reconstruction_filter: val.intersects(ash::vk::FormatFeatureFlags::SAMPLED_IMAGE_YCBCR_CONVERSION_SEPARATE_RECONSTRUCTION_FILTER),
             sampled_image_ycbcr_conversion_chroma_reconstruction_explicit: val.intersects(ash::vk::FormatFeatureFlags::SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT),
             sampled_image_ycbcr_conversion_chroma_reconstruction_explicit_forceable: val.intersects(ash::vk::FormatFeatureFlags::SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT_FORCEABLE),
-            sampled_image_depth_comparison: false, // FormatFeatureFlags2KHR only
+            sampled_image_depth_comparison: false, // FormatFeatureFlags2 only
 
             video_decode_output: val.intersects(ash::vk::FormatFeatureFlags::VIDEO_DECODE_OUTPUT_KHR),
             video_decode_dpb: val.intersects(ash::vk::FormatFeatureFlags::VIDEO_DECODE_DPB_KHR),
@@ -1824,49 +1826,49 @@ impl From<ash::vk::FormatFeatureFlags> for FormatFeatures {
     }
 }
 
-impl From<ash::vk::FormatFeatureFlags2KHR> for FormatFeatures {
+impl From<ash::vk::FormatFeatureFlags2> for FormatFeatures {
     #[inline]
     #[rustfmt::skip]
-    fn from(val: ash::vk::FormatFeatureFlags2KHR) -> FormatFeatures {
+    fn from(val: ash::vk::FormatFeatureFlags2) -> FormatFeatures {
         FormatFeatures {
-            sampled_image: val.intersects(ash::vk::FormatFeatureFlags2KHR::SAMPLED_IMAGE),
-            storage_image: val.intersects(ash::vk::FormatFeatureFlags2KHR::STORAGE_IMAGE),
-            storage_image_atomic: val.intersects(ash::vk::FormatFeatureFlags2KHR::STORAGE_IMAGE_ATOMIC),
-            storage_read_without_format: val.intersects(ash::vk::FormatFeatureFlags2KHR::STORAGE_READ_WITHOUT_FORMAT),
-            storage_write_without_format: val.intersects(ash::vk::FormatFeatureFlags2KHR::STORAGE_WRITE_WITHOUT_FORMAT),
-            color_attachment: val.intersects(ash::vk::FormatFeatureFlags2KHR::COLOR_ATTACHMENT),
-            color_attachment_blend: val.intersects(ash::vk::FormatFeatureFlags2KHR::COLOR_ATTACHMENT_BLEND),
-            depth_stencil_attachment: val.intersects(ash::vk::FormatFeatureFlags2KHR::DEPTH_STENCIL_ATTACHMENT),
-            fragment_density_map: val.intersects(ash::vk::FormatFeatureFlags2KHR::FRAGMENT_DENSITY_MAP_EXT),
-            fragment_shading_rate_attachment: val.intersects(ash::vk::FormatFeatureFlags2KHR::FRAGMENT_SHADING_RATE_ATTACHMENT),
-            transfer_src: val.intersects(ash::vk::FormatFeatureFlags2KHR::TRANSFER_SRC),
-            transfer_dst: val.intersects(ash::vk::FormatFeatureFlags2KHR::TRANSFER_DST),
-            blit_src: val.intersects(ash::vk::FormatFeatureFlags2KHR::BLIT_SRC),
-            blit_dst: val.intersects(ash::vk::FormatFeatureFlags2KHR::BLIT_DST),
+            sampled_image: val.intersects(ash::vk::FormatFeatureFlags2::SAMPLED_IMAGE),
+            storage_image: val.intersects(ash::vk::FormatFeatureFlags2::STORAGE_IMAGE),
+            storage_image_atomic: val.intersects(ash::vk::FormatFeatureFlags2::STORAGE_IMAGE_ATOMIC),
+            storage_read_without_format: val.intersects(ash::vk::FormatFeatureFlags2::STORAGE_READ_WITHOUT_FORMAT),
+            storage_write_without_format: val.intersects(ash::vk::FormatFeatureFlags2::STORAGE_WRITE_WITHOUT_FORMAT),
+            color_attachment: val.intersects(ash::vk::FormatFeatureFlags2::COLOR_ATTACHMENT),
+            color_attachment_blend: val.intersects(ash::vk::FormatFeatureFlags2::COLOR_ATTACHMENT_BLEND),
+            depth_stencil_attachment: val.intersects(ash::vk::FormatFeatureFlags2::DEPTH_STENCIL_ATTACHMENT),
+            fragment_density_map: val.intersects(ash::vk::FormatFeatureFlags2::FRAGMENT_DENSITY_MAP_EXT),
+            fragment_shading_rate_attachment: val.intersects(ash::vk::FormatFeatureFlags2::FRAGMENT_SHADING_RATE_ATTACHMENT_KHR),
+            transfer_src: val.intersects(ash::vk::FormatFeatureFlags2::TRANSFER_SRC),
+            transfer_dst: val.intersects(ash::vk::FormatFeatureFlags2::TRANSFER_DST),
+            blit_src: val.intersects(ash::vk::FormatFeatureFlags2::BLIT_SRC),
+            blit_dst: val.intersects(ash::vk::FormatFeatureFlags2::BLIT_DST),
 
-            sampled_image_filter_linear: val.intersects(ash::vk::FormatFeatureFlags2KHR::SAMPLED_IMAGE_FILTER_LINEAR),
-            sampled_image_filter_cubic: val.intersects(ash::vk::FormatFeatureFlags2KHR::SAMPLED_IMAGE_FILTER_CUBIC_EXT),
-            sampled_image_filter_minmax: val.intersects(ash::vk::FormatFeatureFlags2KHR::SAMPLED_IMAGE_FILTER_MINMAX),
-            midpoint_chroma_samples: val.intersects(ash::vk::FormatFeatureFlags2KHR::MIDPOINT_CHROMA_SAMPLES),
-            cosited_chroma_samples: val.intersects(ash::vk::FormatFeatureFlags2KHR::COSITED_CHROMA_SAMPLES),
-            sampled_image_ycbcr_conversion_linear_filter: val.intersects(ash::vk::FormatFeatureFlags2KHR::SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER),
-            sampled_image_ycbcr_conversion_separate_reconstruction_filter: val.intersects(ash::vk::FormatFeatureFlags2KHR::SAMPLED_IMAGE_YCBCR_CONVERSION_SEPARATE_RECONSTRUCTION_FILTER),
-            sampled_image_ycbcr_conversion_chroma_reconstruction_explicit: val.intersects(ash::vk::FormatFeatureFlags2KHR::SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT),
-            sampled_image_ycbcr_conversion_chroma_reconstruction_explicit_forceable: val.intersects(ash::vk::FormatFeatureFlags2KHR::SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT_FORCEABLE),
-            sampled_image_depth_comparison: val.intersects(ash::vk::FormatFeatureFlags2KHR::SAMPLED_IMAGE_DEPTH_COMPARISON),
+            sampled_image_filter_linear: val.intersects(ash::vk::FormatFeatureFlags2::SAMPLED_IMAGE_FILTER_LINEAR),
+            sampled_image_filter_cubic: val.intersects(ash::vk::FormatFeatureFlags2::SAMPLED_IMAGE_FILTER_CUBIC_EXT),
+            sampled_image_filter_minmax: val.intersects(ash::vk::FormatFeatureFlags2::SAMPLED_IMAGE_FILTER_MINMAX),
+            midpoint_chroma_samples: val.intersects(ash::vk::FormatFeatureFlags2::MIDPOINT_CHROMA_SAMPLES),
+            cosited_chroma_samples: val.intersects(ash::vk::FormatFeatureFlags2::COSITED_CHROMA_SAMPLES),
+            sampled_image_ycbcr_conversion_linear_filter: val.intersects(ash::vk::FormatFeatureFlags2::SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER),
+            sampled_image_ycbcr_conversion_separate_reconstruction_filter: val.intersects(ash::vk::FormatFeatureFlags2::SAMPLED_IMAGE_YCBCR_CONVERSION_SEPARATE_RECONSTRUCTION_FILTER),
+            sampled_image_ycbcr_conversion_chroma_reconstruction_explicit: val.intersects(ash::vk::FormatFeatureFlags2::SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT),
+            sampled_image_ycbcr_conversion_chroma_reconstruction_explicit_forceable: val.intersects(ash::vk::FormatFeatureFlags2::SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT_FORCEABLE),
+            sampled_image_depth_comparison: val.intersects(ash::vk::FormatFeatureFlags2::SAMPLED_IMAGE_DEPTH_COMPARISON),
 
-            video_decode_output: val.intersects(ash::vk::FormatFeatureFlags2KHR::VIDEO_DECODE_OUTPUT),
-            video_decode_dpb: val.intersects(ash::vk::FormatFeatureFlags2KHR::VIDEO_DECODE_DPB),
-            video_encode_input: val.intersects(ash::vk::FormatFeatureFlags2KHR::VIDEO_ENCODE_INPUT),
-            video_encode_dpb: val.intersects(ash::vk::FormatFeatureFlags2KHR::VIDEO_ENCODE_DPB),
+            video_decode_output: val.intersects(ash::vk::FormatFeatureFlags2::VIDEO_DECODE_OUTPUT_KHR),
+            video_decode_dpb: val.intersects(ash::vk::FormatFeatureFlags2::VIDEO_DECODE_DPB_KHR),
+            video_encode_input: val.intersects(ash::vk::FormatFeatureFlags2::VIDEO_ENCODE_INPUT_KHR),
+            video_encode_dpb: val.intersects(ash::vk::FormatFeatureFlags2::VIDEO_ENCODE_DPB_KHR),
 
-            disjoint: val.intersects(ash::vk::FormatFeatureFlags2KHR::DISJOINT),
+            disjoint: val.intersects(ash::vk::FormatFeatureFlags2::DISJOINT),
 
-            uniform_texel_buffer: val.intersects(ash::vk::FormatFeatureFlags2KHR::UNIFORM_TEXEL_BUFFER),
-            storage_texel_buffer: val.intersects(ash::vk::FormatFeatureFlags2KHR::STORAGE_TEXEL_BUFFER),
-            storage_texel_buffer_atomic: val.intersects(ash::vk::FormatFeatureFlags2KHR::STORAGE_TEXEL_BUFFER_ATOMIC),
-            vertex_buffer: val.intersects(ash::vk::FormatFeatureFlags2KHR::VERTEX_BUFFER),
-            acceleration_structure_vertex_buffer: val.intersects(ash::vk::FormatFeatureFlags2KHR::ACCELERATION_STRUCTURE_VERTEX_BUFFER),
+            uniform_texel_buffer: val.intersects(ash::vk::FormatFeatureFlags2::UNIFORM_TEXEL_BUFFER),
+            storage_texel_buffer: val.intersects(ash::vk::FormatFeatureFlags2::STORAGE_TEXEL_BUFFER),
+            storage_texel_buffer_atomic: val.intersects(ash::vk::FormatFeatureFlags2::STORAGE_TEXEL_BUFFER_ATOMIC),
+            vertex_buffer: val.intersects(ash::vk::FormatFeatureFlags2::VERTEX_BUFFER),
+            acceleration_structure_vertex_buffer: val.intersects(ash::vk::FormatFeatureFlags2::ACCELERATION_STRUCTURE_VERTEX_BUFFER_KHR),
 
             _ne: crate::NonExhaustive(()),
         }

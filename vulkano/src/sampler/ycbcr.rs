@@ -462,7 +462,7 @@ impl SamplerYcbcrConversionBuilder {
 
     /// Forces explicit reconstruction if the implementation does not use it by default. The format
     /// must support it. See
-    /// [the spec](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/chap16.html#textures-chroma-reconstruction)
+    /// [the spec](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap16.html#textures-chroma-reconstruction)
     /// for more information.
     ///
     /// The default value is `false`.

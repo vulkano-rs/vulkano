@@ -70,7 +70,10 @@ enum ExtensionStatus {
 fn write_device_extensions(vk_data: &VkRegistryData) {
     write_file(
         "device_extensions.rs",
-        format!("vk.xml header version {}", vk_data.header_version),
+        format!(
+            "vk.xml header version {}.{}.{}",
+            vk_data.header_version.0, vk_data.header_version.1, vk_data.header_version.2
+        ),
         device_extensions_output(&extensions_members("device", &vk_data.extensions)),
     );
 }
@@ -78,7 +81,10 @@ fn write_device_extensions(vk_data: &VkRegistryData) {
 fn write_instance_extensions(vk_data: &VkRegistryData) {
     write_file(
         "instance_extensions.rs",
-        format!("vk.xml header version {}", vk_data.header_version),
+        format!(
+            "vk.xml header version {}.{}.{}",
+            vk_data.header_version.0, vk_data.header_version.1, vk_data.header_version.2
+        ),
         instance_extensions_output(&extensions_members("instance", &vk_data.extensions)),
     );
 }
@@ -574,7 +580,7 @@ fn extensions_members(ty: &str, extensions: &IndexMap<&str, &Extension>) -> Vec<
 
 fn make_doc(ext: &mut ExtensionsMember) {
     let writer = &mut ext.doc;
-    write!(writer, "- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/{}.html)", ext.raw).unwrap();
+    write!(writer, "- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/{}.html)", ext.raw).unwrap();
 
     if ext.required_if_supported {
         write!(

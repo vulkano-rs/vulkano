@@ -764,11 +764,11 @@ impl UnsafeImageBuilder {
         /*
             Some device limits can be exceeded, but only for particular image configurations, which
             must be queried with `image_format_properties`. See:
-            https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/chap44.html#capabilities-image
+            https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap44.html#capabilities-image
             First, we check if this is the case, then query the device if so.
         */
 
-        // https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/chap44.html#features-extentperimagetype
+        // https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap44.html#features-extentperimagetype
         let extent_must_query = || match image_type {
             ImageType::Dim1d => {
                 let limit = device.physical_device().properties().max_image_dimension1_d;
@@ -790,7 +790,7 @@ impl UnsafeImageBuilder {
                 extent[0] > limit || extent[1] > limit || extent[2] > limit
             }
         };
-        // https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkImageFormatProperties.html
+        // https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkImageFormatProperties.html
         let mip_levels_must_query = || {
             if mip_levels > 1 {
                 // TODO: for external memory, the spec says:
@@ -801,7 +801,7 @@ impl UnsafeImageBuilder {
                 false
             }
         };
-        // https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkImageFormatProperties.html
+        // https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkImageFormatProperties.html
         let array_layers_must_query = || {
             if array_layers > device.physical_device().properties().max_image_array_layers {
                 true
@@ -811,7 +811,7 @@ impl UnsafeImageBuilder {
                 false
             }
         };
-        // https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/chap44.html#features-supported-sample-counts
+        // https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap44.html#features-supported-sample-counts
         let samples_must_query = || {
             if samples == SampleCount::Sample1 {
                 return false;
@@ -904,7 +904,7 @@ impl UnsafeImageBuilder {
 
             false
         };
-        // https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkImageCreateInfo.html#_description
+        // https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkImageCreateInfo.html#_description
         let linear_must_query = || {
             if tiling == ImageTiling::Linear {
                 !(image_type == ImageType::Dim2d

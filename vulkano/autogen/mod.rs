@@ -22,7 +22,7 @@ use std::{
 };
 use vk_parse::{
     Extension, ExtensionChild, Feature, Format, InterfaceItem, Registry, RegistryChild,
-    SpirvExtOrCap, Type, TypeCodeMarkup, TypeSpec, TypesChild,
+    SpirvExtOrCap, Type, TypeSpec, TypesChild,
 };
 
 mod extensions;
@@ -33,6 +33,7 @@ mod properties;
 mod spirv_grammar;
 mod spirv_parse;
 mod spirv_reqs;
+mod version;
 
 pub fn autogen() {
     let registry = get_vk_registry("vk.xml");
@@ -46,6 +47,7 @@ pub fn autogen() {
     properties::write(&vk_data);
     spirv_parse::write(&spirv_grammar);
     spirv_reqs::write(&vk_data, &spirv_grammar);
+    version::write(&vk_data);
 }
 
 fn write_file(file: impl AsRef<Path>, source: impl AsRef<str>, content: impl Display) {
@@ -82,7 +84,7 @@ fn get_vk_registry<P: AsRef<Path> + ?Sized>(path: &P) -> Registry {
 }
 
 pub struct VkRegistryData<'r> {
-    pub header_version: u16,
+    pub header_version: (u16, u16, u16),
     pub extensions: IndexMap<&'r str, &'r Extension>,
     pub features: IndexMap<&'r str, &'r Feature>,
     pub formats: Vec<&'r Format>,
@@ -113,24 +115,38 @@ impl<'r> VkRegistryData<'r> {
         }
     }
 
-    fn get_header_version(registry: &Registry) -> u16 {
-        registry.0.iter()
-            .find_map(|child| -> Option<u16> {
-                if let RegistryChild::Types(types) = child {
-                    return types.children.iter().find_map(|ty| -> Option<u16> {
-                        if let TypesChild::Type(ty) = ty {
-                            if let TypeSpec::Code(code) = &ty.spec {
-                                if code.markup.iter().any(|mkup| matches!(mkup, TypeCodeMarkup::Name(name) if name == "VK_HEADER_VERSION")) {
-                                    return Some(code.code.rsplit_once(' ').unwrap().1.parse().unwrap());
-                                }
+    fn get_header_version(registry: &Registry) -> (u16, u16, u16) {
+        lazy_static! {
+            static ref VK_HEADER_VERSION: Regex =
+                Regex::new(r"#define\s+VK_HEADER_VERSION\s+(\d+)\s*$").unwrap();
+            static ref VK_HEADER_VERSION_COMPLETE: Regex =
+                Regex::new(r"#define\s+VK_HEADER_VERSION_COMPLETE\s+VK_MAKE_API_VERSION\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*VK_HEADER_VERSION\s*\)").unwrap();
+        }
+
+        let mut major = None;
+        let mut minor = None;
+        let mut patch = None;
+
+        for child in registry.0.iter() {
+            if let RegistryChild::Types(types) = child {
+                for ty in types.children.iter() {
+                    if let TypesChild::Type(ty) = ty {
+                        if let TypeSpec::Code(code) = &ty.spec {
+                            if let Some(captures) = VK_HEADER_VERSION.captures(&code.code) {
+                                patch = Some(captures.get(1).unwrap().as_str().parse().unwrap());
+                            } else if let Some(captures) =
+                                VK_HEADER_VERSION_COMPLETE.captures(&code.code)
+                            {
+                                major = Some(captures.get(2).unwrap().as_str().parse().unwrap());
+                                minor = Some(captures.get(3).unwrap().as_str().parse().unwrap());
                             }
                         }
-                        None
-                    });
+                    }
                 }
-                None
-            })
-            .unwrap()
+            }
+        }
+
+        (major.unwrap(), minor.unwrap(), patch.unwrap())
     }
 
     fn get_aliases(registry: &Registry) -> HashMap<&str, &str> {
@@ -350,11 +366,11 @@ pub fn get_spirv_grammar<P: AsRef<Path> + ?Sized>(path: &P) -> SpirvGrammar {
     grammar
 }
 
-lazy_static! {
-    static ref VENDOR_SUFFIXES: Regex = Regex::new(r"(?:AMD|GOOGLE|INTEL|NV)$").unwrap();
-}
-
 fn suffix_key(name: &str) -> u32 {
+    lazy_static! {
+        static ref VENDOR_SUFFIXES: Regex = Regex::new(r"(?:AMD|GOOGLE|INTEL|NV)$").unwrap();
+    }
+
     if VENDOR_SUFFIXES.is_match(name) {
         3
     } else if name.ends_with("EXT") {
