@@ -22,7 +22,7 @@ use crate::image::{
     ImageUsage, MipmapsCount, SampleCount, SampleCounts,
 };
 use crate::memory::{
-    DeviceMemory, DeviceMemoryAllocError, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
+    DeviceMemory, DeviceMemoryAllocationError, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
     MemoryRequirements,
 };
 use crate::sync::Sharing;
@@ -1262,7 +1262,7 @@ impl UnsafeImageBuilder {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ImageCreationError {
     /// Allocating memory failed.
-    AllocError(DeviceMemoryAllocError),
+    AllocError(DeviceMemoryAllocationError),
 
     ExtensionNotEnabled {
         extension: &'static str,
@@ -1494,13 +1494,13 @@ impl fmt::Display for ImageCreationError {
 impl From<OomError> for ImageCreationError {
     #[inline]
     fn from(err: OomError) -> ImageCreationError {
-        ImageCreationError::AllocError(DeviceMemoryAllocError::OomError(err))
+        ImageCreationError::AllocError(DeviceMemoryAllocationError::OomError(err))
     }
 }
 
-impl From<DeviceMemoryAllocError> for ImageCreationError {
+impl From<DeviceMemoryAllocationError> for ImageCreationError {
     #[inline]
-    fn from(err: DeviceMemoryAllocError) -> ImageCreationError {
+    fn from(err: DeviceMemoryAllocationError) -> ImageCreationError {
         ImageCreationError::AllocError(err)
     }
 }

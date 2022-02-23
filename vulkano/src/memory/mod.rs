@@ -60,20 +60,27 @@
 //!
 //! # Allocating memory and memory pools
 //!
-//! Allocating memory can be done by calling `DeviceMemory::alloc()`.
+//! Allocating memory can be done by calling `DeviceMemory::allocate()`.
 //!
 //! Here is an example:
 //!
 //! ```
-//! use vulkano::memory::DeviceMemory;
+//! use vulkano::memory::{DeviceMemory, MemoryAllocateInfo};
 //!
 //! # let device: std::sync::Arc<vulkano::device::Device> = return;
 //! // Taking the first memory type for the sake of this example.
-//! let ty = device.physical_device().memory_types().next().unwrap();
+//! let memory_type = device.physical_device().memory_types().next().unwrap();
 //!
-//! let alloc = DeviceMemory::alloc(device.clone(), ty, 1024).expect("Failed to allocate memory");
+//! let memory = DeviceMemory::allocate(
+//!     device.clone(),
+//!     MemoryAllocateInfo {
+//!         allocation_size: 1024,
+//!         memory_type_index: memory_type.id(),
+//!         ..Default::default()
+//!     },
+//! ).expect("Failed to allocate memory");
 //!
-//! // The memory is automatically free'd when `alloc` is destroyed.
+//! // The memory is automatically freed when `memory` is destroyed.
 //! ```
 //!
 //! However allocating and freeing memory is very slow (up to several hundred milliseconds
@@ -85,22 +92,21 @@
 //! get memory from that pool. By default if you don't specify any pool when creating a buffer or
 //! an image, an instance of `StdMemoryPool` that is shared by the `Device` object is used.
 
+pub use self::device_memory::CpuAccess;
+pub use self::device_memory::DeviceMemory;
+pub use self::device_memory::DeviceMemoryAllocationError;
+pub use self::device_memory::DeviceMemoryMapping;
+pub use self::device_memory::MappedDeviceMemory;
+pub use self::device_memory::MemoryAllocateInfo;
+pub use self::device_memory::MemoryImportInfo;
+pub use self::external_memory_handle_type::{ExternalMemoryHandleType, ExternalMemoryHandleTypes};
+pub use self::pool::MemoryPool;
+use crate::buffer::sys::UnsafeBuffer;
+use crate::image::sys::UnsafeImage;
+use crate::DeviceSize;
 use std::mem;
 use std::os::raw::c_void;
 use std::slice;
-
-use crate::buffer::sys::UnsafeBuffer;
-use crate::image::sys::UnsafeImage;
-
-pub use self::device_memory::CpuAccess;
-pub use self::device_memory::DeviceMemory;
-pub use self::device_memory::DeviceMemoryAllocError;
-pub use self::device_memory::DeviceMemoryBuilder;
-pub use self::device_memory::DeviceMemoryMapping;
-pub use self::device_memory::MappedDeviceMemory;
-pub use self::external_memory_handle_type::{ExternalMemoryHandleType, ExternalMemoryHandleTypes};
-pub use self::pool::MemoryPool;
-use crate::DeviceSize;
 
 mod device_memory;
 mod external_memory_handle_type;
@@ -121,9 +127,10 @@ pub struct MemoryRequirements {
     /// type whose index is the same as the position of the bit can be used.
     pub memory_type_bits: u32,
 
-    /// True if the implementation prefers to use dedicated allocations (in other words, allocate
-    /// a whole block of memory dedicated to this resource alone). If the
-    /// `khr_get_memory_requirements2` extension isn't enabled, then this will be false.
+    /// Whether implementation prefers to use dedicated allocations (in other words, allocate
+    /// a whole block of memory dedicated to this resource alone). This will be `false` if the
+    /// [`khr_get_memory_requirements2`](crate::device::DeviceExtensions::khr_get_memory_requirements2)
+    /// extension is not enabled on the device.
     ///
     /// > **Note**: As its name says, using a dedicated allocation is an optimization and not a
     /// > requirement.
@@ -142,21 +149,64 @@ impl From<ash::vk::MemoryRequirements> for MemoryRequirements {
     }
 }
 
-/// Indicates whether we want to allocate memory for a specific resource, or in a generic way.
+/// Indicates a specific resource to allocate memory for.
 ///
 /// Using dedicated allocations can yield better performance, but requires the
-/// `VK_KHR_dedicated_allocation` extension to be enabled on the device.
+/// [`khr_dedicated_allocation`](crate::device::DeviceExtensions::khr_dedicated_allocation)
+/// extension to be enabled on the device.
 ///
-/// If a dedicated allocation is performed, it must only be bound to any resource other than the
+/// If a dedicated allocation is performed, it must not be bound to any resource other than the
 /// one that was passed with the enumeration.
 #[derive(Debug, Copy, Clone)]
-pub enum DedicatedAlloc<'a> {
-    /// Generic allocation.
-    None,
+pub enum DedicatedAllocation<'a> {
     /// Allocation dedicated to a buffer.
     Buffer(&'a UnsafeBuffer),
     /// Allocation dedicated to an image.
     Image(&'a UnsafeImage),
+}
+
+/// The properties for exporting or importing external memory, when a buffer or image is created
+/// with a specific configuration.
+#[derive(Clone, Debug, Default)]
+#[non_exhaustive]
+pub struct ExternalMemoryProperties {
+    /// Whether a dedicated memory allocation is required for the queried external handle type.
+    pub dedicated_only: bool,
+
+    /// Whether memory can be exported to an external source with the queried
+    /// external handle type.
+    pub exportable: bool,
+
+    /// Whether memory can be imported from an external source with the queried
+    /// external handle type.
+    pub importable: bool,
+
+    /// Which external handle types can be re-exported after the queried external handle type has
+    /// been imported.
+    pub export_from_imported_handle_types: ExternalMemoryHandleTypes,
+
+    /// Which external handle types can be enabled along with the queried external handle type
+    /// when creating the buffer or image.
+    pub compatible_handle_types: ExternalMemoryHandleTypes,
+}
+
+impl From<ash::vk::ExternalMemoryProperties> for ExternalMemoryProperties {
+    #[inline]
+    fn from(val: ash::vk::ExternalMemoryProperties) -> Self {
+        Self {
+            dedicated_only: val
+                .external_memory_features
+                .intersects(ash::vk::ExternalMemoryFeatureFlags::DEDICATED_ONLY),
+            exportable: val
+                .external_memory_features
+                .intersects(ash::vk::ExternalMemoryFeatureFlags::EXPORTABLE),
+            importable: val
+                .external_memory_features
+                .intersects(ash::vk::ExternalMemoryFeatureFlags::IMPORTABLE),
+            export_from_imported_handle_types: val.export_from_imported_handle_types.into(),
+            compatible_handle_types: val.compatible_handle_types.into(),
+        }
+    }
 }
 
 /// Trait for types of data that can be mapped.

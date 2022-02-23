@@ -95,47 +95,40 @@
 //!
 //! TODO: write
 
-pub(crate) use self::features::FeaturesFfi;
-pub use self::features::{FeatureRestriction, FeatureRestrictionError, Features};
-pub use self::properties::Properties;
-pub(crate) use self::properties::PropertiesFfi;
-use crate::check_errors;
-use crate::command_buffer::pool::StandardCommandPool;
-use crate::descriptor_set::pool::StdDescriptorPool;
-pub use crate::device::extensions::DeviceExtensions;
-use crate::device::physical::PhysicalDevice;
-use crate::device::physical::QueueFamily;
-pub use crate::extensions::{
-    ExtensionRestriction, ExtensionRestrictionError, SupportedExtensionsError,
+use self::physical::{PhysicalDevice, QueueFamily};
+pub(crate) use self::{features::FeaturesFfi, properties::PropertiesFfi};
+pub use self::{
+    features::{FeatureRestriction, FeatureRestrictionError, Features},
+    properties::Properties,
 };
-pub use crate::fns::DeviceFunctions;
-use crate::instance::Instance;
-use crate::memory::pool::StdMemoryPool;
-use crate::Error;
-use crate::OomError;
-use crate::SynchronizedVulkanObject;
-use crate::Version;
-use crate::VulkanObject;
+use crate::{
+    check_errors,
+    command_buffer::pool::StandardCommandPool,
+    descriptor_set::pool::StdDescriptorPool,
+    instance::Instance,
+    memory::{pool::StdMemoryPool, ExternalMemoryHandleType},
+    Error, OomError, SynchronizedVulkanObject, Version, VulkanObject,
+};
+pub use crate::{
+    device::extensions::DeviceExtensions,
+    extensions::{ExtensionRestriction, ExtensionRestrictionError, SupportedExtensionsError},
+    fns::DeviceFunctions,
+};
 use ash::vk::Handle;
 use fnv::FnvHasher;
 use smallvec::SmallVec;
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
-use std::error;
-use std::ffi::CStr;
-use std::ffi::CString;
-use std::fmt;
-use std::hash::BuildHasherDefault;
-use std::hash::Hash;
-use std::hash::Hasher;
-use std::mem;
-use std::mem::MaybeUninit;
-use std::ops::Deref;
-use std::ptr;
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::MutexGuard;
-use std::sync::Weak;
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    error,
+    ffi::{CStr, CString},
+    fmt,
+    fs::File,
+    hash::{BuildHasherDefault, Hash, Hasher},
+    mem::{self, MaybeUninit},
+    ops::Deref,
+    ptr,
+    sync::{Arc, Mutex, MutexGuard, Weak},
+};
 
 pub(crate) mod extensions;
 pub(crate) mod features;
@@ -590,6 +583,53 @@ impl Device {
         &self.event_pool
     }
 
+    /// Retrieves the properties of an external file descriptor when imported as a given external
+    /// handle type.
+    ///
+    /// An error will be returned if the
+    /// [`khr_external_memory_fd`](DeviceExtensions::khr_external_memory_fd) extension was not
+    /// enabled on the device, or if `handle_type` is [`ExternalMemoryHandleType::OpaqueFd`].
+    ///
+    /// # Safety
+    ///
+    /// - `file` must be a handle to external memory that was created outside the Vulkan API.
+    pub unsafe fn memory_fd_properties(
+        &self,
+        handle_type: ExternalMemoryHandleType,
+        file: File,
+    ) -> Result<MemoryFdProperties, MemoryFdPropertiesError> {
+        if !self.enabled_extensions().khr_external_memory_fd {
+            return Err(MemoryFdPropertiesError::NotSupported);
+        }
+
+        #[cfg(not(unix))]
+        unreachable!("`khr_external_memory_fd` was somehow enabled on a non-Unix system");
+
+        // VUID-vkGetMemoryFdPropertiesKHR-handleType-00674
+        if handle_type == ExternalMemoryHandleType::OpaqueFd {
+            return Err(MemoryFdPropertiesError::InvalidExternalHandleType);
+        }
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::io::IntoRawFd;
+
+            let mut memory_fd_properties = ash::vk::MemoryFdPropertiesKHR::default();
+
+            let fns = self.fns();
+            check_errors(fns.khr_external_memory_fd.get_memory_fd_properties_khr(
+                self.handle,
+                handle_type.into(),
+                file.into_raw_fd(),
+                &mut memory_fd_properties,
+            ))?;
+
+            Ok(MemoryFdProperties {
+                memory_type_bits: memory_fd_properties.memory_type_bits,
+            })
+        }
+    }
+
     /// Assigns a human-readable name to `object` for debugging purposes.
     ///
     /// # Panics
@@ -681,6 +721,108 @@ impl Hash for Device {
     }
 }
 
+/// Error that can be returned when creating a device.
+#[derive(Copy, Clone, Debug)]
+pub enum DeviceCreationError {
+    /// Failed to create the device for an implementation-specific reason.
+    InitializationFailed,
+    /// You have reached the limit to the number of devices that can be created from the same
+    /// physical device.
+    TooManyObjects,
+    /// Failed to connect to the device.
+    DeviceLost,
+    /// Some of the requested features are unsupported by the physical device.
+    FeatureNotPresent,
+    /// Some of the requested device extensions are not supported by the physical device.
+    ExtensionNotPresent,
+    /// Tried to create too many queues for a given family.
+    TooManyQueuesForFamily,
+    /// The priority of one of the queues is out of the [0.0; 1.0] range.
+    PriorityOutOfRange,
+    /// There is no memory available on the host (ie. the CPU, RAM, etc.).
+    OutOfHostMemory,
+    /// There is no memory available on the device (ie. video memory).
+    OutOfDeviceMemory,
+    /// A restriction for an extension was not met.
+    ExtensionRestrictionNotMet(ExtensionRestrictionError),
+    /// A restriction for a feature was not met.
+    FeatureRestrictionNotMet(FeatureRestrictionError),
+}
+
+impl error::Error for DeviceCreationError {}
+
+impl fmt::Display for DeviceCreationError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match *self {
+            Self::InitializationFailed => {
+                write!(
+                    fmt,
+                    "failed to create the device for an implementation-specific reason"
+                )
+            }
+            Self::OutOfHostMemory => write!(fmt, "no memory available on the host"),
+            Self::OutOfDeviceMemory => {
+                write!(fmt, "no memory available on the graphical device")
+            }
+            Self::DeviceLost => write!(fmt, "failed to connect to the device"),
+            Self::TooManyQueuesForFamily => {
+                write!(fmt, "tried to create too many queues for a given family")
+            }
+            Self::FeatureNotPresent => {
+                write!(
+                    fmt,
+                    "some of the requested features are unsupported by the physical device"
+                )
+            }
+            Self::PriorityOutOfRange => {
+                write!(
+                    fmt,
+                    "the priority of one of the queues is out of the [0.0; 1.0] range"
+                )
+            }
+            Self::ExtensionNotPresent => {
+                write!(fmt,"some of the requested device extensions are not supported by the physical device")
+            }
+            Self::TooManyObjects => {
+                write!(fmt,"you have reached the limit to the number of devices that can be created from the same physical device")
+            }
+            Self::ExtensionRestrictionNotMet(err) => err.fmt(fmt),
+            Self::FeatureRestrictionNotMet(err) => err.fmt(fmt),
+        }
+    }
+}
+
+impl From<Error> for DeviceCreationError {
+    #[inline]
+    fn from(err: Error) -> Self {
+        match err {
+            Error::InitializationFailed => Self::InitializationFailed,
+            Error::OutOfHostMemory => Self::OutOfHostMemory,
+            Error::OutOfDeviceMemory => Self::OutOfDeviceMemory,
+            Error::DeviceLost => Self::DeviceLost,
+            Error::ExtensionNotPresent => Self::ExtensionNotPresent,
+            Error::FeatureNotPresent => Self::FeatureNotPresent,
+            Error::TooManyObjects => Self::TooManyObjects,
+            _ => panic!("Unexpected error value: {}", err as i32),
+        }
+    }
+}
+
+impl From<ExtensionRestrictionError> for DeviceCreationError {
+    #[inline]
+    fn from(err: ExtensionRestrictionError) -> Self {
+        Self::ExtensionRestrictionNotMet(err)
+    }
+}
+
+impl From<FeatureRestrictionError> for DeviceCreationError {
+    #[inline]
+    fn from(err: FeatureRestrictionError) -> Self {
+        Self::FeatureRestrictionNotMet(err)
+    }
+}
+
 /// Parameters to create a new `Device`.
 #[derive(Clone, Debug)]
 pub struct DeviceCreateInfo<'qf> {
@@ -767,105 +909,59 @@ where
     }
 }
 
-/// Error that can be returned when creating a device.
-#[derive(Copy, Clone, Debug)]
-pub enum DeviceCreationError {
-    /// Failed to create the device for an implementation-specific reason.
-    InitializationFailed,
-    /// You have reached the limit to the number of devices that can be created from the same
-    /// physical device.
-    TooManyObjects,
-    /// Failed to connect to the device.
-    DeviceLost,
-    /// Some of the requested features are unsupported by the physical device.
-    FeatureNotPresent,
-    /// Some of the requested device extensions are not supported by the physical device.
-    ExtensionNotPresent,
-    /// Tried to create too many queues for a given family.
-    TooManyQueuesForFamily,
-    /// The priority of one of the queues is out of the [0.0; 1.0] range.
-    PriorityOutOfRange,
-    /// There is no memory available on the host (ie. the CPU, RAM, etc.).
-    OutOfHostMemory,
-    /// There is no memory available on the device (ie. video memory).
-    OutOfDeviceMemory,
-    /// A restriction for an extension was not met.
-    ExtensionRestrictionNotMet(ExtensionRestrictionError),
-    /// A restriction for a feature was not met.
-    FeatureRestrictionNotMet(FeatureRestrictionError),
+/// The properties of a Unix file descriptor when it is imported.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct MemoryFdProperties {
+    /// A bitmask of the indices of memory types that can be used with the file.
+    pub memory_type_bits: u32,
 }
 
-impl error::Error for DeviceCreationError {}
+/// Error that can happen when calling `memory_fd_properties`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MemoryFdPropertiesError {
+    /// No memory available on the host.
+    OutOfHostMemory,
 
-impl fmt::Display for DeviceCreationError {
+    /// The provided external handle was not valid.
+    InvalidExternalHandle,
+
+    /// The provided external handle type was not valid.
+    InvalidExternalHandleType,
+
+    /// The `khr_external_memory_fd` extension was not enabled on the device.
+    NotSupported,
+}
+
+impl error::Error for MemoryFdPropertiesError {}
+
+impl fmt::Display for MemoryFdPropertiesError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match *self {
-            DeviceCreationError::InitializationFailed => {
-                write!(
-                    fmt,
-                    "failed to create the device for an implementation-specific reason"
-                )
+            Self::OutOfHostMemory => write!(fmt, "no memory available on the host"),
+            Self::InvalidExternalHandle => {
+                write!(fmt, "the provided external handle was not valid")
             }
-            DeviceCreationError::OutOfHostMemory => write!(fmt, "no memory available on the host"),
-            DeviceCreationError::OutOfDeviceMemory => {
-                write!(fmt, "no memory available on the graphical device")
+            Self::InvalidExternalHandleType => {
+                write!(fmt, "the provided external handle type was not valid")
             }
-            DeviceCreationError::DeviceLost => write!(fmt, "failed to connect to the device"),
-            DeviceCreationError::TooManyQueuesForFamily => {
-                write!(fmt, "tried to create too many queues for a given family")
-            }
-            DeviceCreationError::FeatureNotPresent => {
-                write!(
-                    fmt,
-                    "some of the requested features are unsupported by the physical device"
-                )
-            }
-            DeviceCreationError::PriorityOutOfRange => {
-                write!(
-                    fmt,
-                    "the priority of one of the queues is out of the [0.0; 1.0] range"
-                )
-            }
-            DeviceCreationError::ExtensionNotPresent => {
-                write!(fmt,"some of the requested device extensions are not supported by the physical device")
-            }
-            DeviceCreationError::TooManyObjects => {
-                write!(fmt,"you have reached the limit to the number of devices that can be created from the same physical device")
-            }
-            DeviceCreationError::ExtensionRestrictionNotMet(err) => err.fmt(fmt),
-            DeviceCreationError::FeatureRestrictionNotMet(err) => err.fmt(fmt),
+            Self::NotSupported => write!(
+                fmt,
+                "the `khr_external_memory_fd` extension was not enabled on the device",
+            ),
         }
     }
 }
 
-impl From<Error> for DeviceCreationError {
+impl From<Error> for MemoryFdPropertiesError {
     #[inline]
-    fn from(err: Error) -> DeviceCreationError {
+    fn from(err: Error) -> Self {
         match err {
-            Error::InitializationFailed => DeviceCreationError::InitializationFailed,
-            Error::OutOfHostMemory => DeviceCreationError::OutOfHostMemory,
-            Error::OutOfDeviceMemory => DeviceCreationError::OutOfDeviceMemory,
-            Error::DeviceLost => DeviceCreationError::DeviceLost,
-            Error::ExtensionNotPresent => DeviceCreationError::ExtensionNotPresent,
-            Error::FeatureNotPresent => DeviceCreationError::FeatureNotPresent,
-            Error::TooManyObjects => DeviceCreationError::TooManyObjects,
+            Error::OutOfHostMemory => Self::OutOfHostMemory,
+            Error::InvalidExternalHandle => Self::InvalidExternalHandle,
             _ => panic!("Unexpected error value: {}", err as i32),
         }
-    }
-}
-
-impl From<ExtensionRestrictionError> for DeviceCreationError {
-    #[inline]
-    fn from(err: ExtensionRestrictionError) -> Self {
-        Self::ExtensionRestrictionNotMet(err)
-    }
-}
-
-impl From<FeatureRestrictionError> for DeviceCreationError {
-    #[inline]
-    fn from(err: FeatureRestrictionError) -> Self {
-        Self::FeatureRestrictionNotMet(err)
     }
 }
 

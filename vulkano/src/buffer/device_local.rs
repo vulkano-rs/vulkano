@@ -25,13 +25,6 @@ use crate::device::physical::QueueFamily;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
-#[cfg(any(
-    target_os = "linux",
-    target_os = "dragonflybsd",
-    target_os = "freebsd",
-    target_os = "netbsd",
-    target_os = "openbsd"
-))]
 use crate::memory::pool::alloc_dedicated_with_exportable_fd;
 use crate::memory::pool::AllocFromRequirementsFilter;
 use crate::memory::pool::AllocLayout;
@@ -40,26 +33,20 @@ use crate::memory::pool::MemoryPool;
 use crate::memory::pool::MemoryPoolAlloc;
 use crate::memory::pool::PotentialDedicatedAllocation;
 use crate::memory::pool::StdMemoryPoolAlloc;
-use crate::memory::DeviceMemoryAllocError;
-use crate::memory::{DedicatedAlloc, MemoryRequirements};
+use crate::memory::DeviceMemoryAllocationError;
+use crate::memory::ExternalMemoryHandleType;
+use crate::memory::{DedicatedAllocation, MemoryRequirements};
 use crate::sync::AccessError;
 use crate::sync::Sharing;
 use crate::DeviceSize;
 use smallvec::SmallVec;
+use std::fs::File;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::marker::PhantomData;
 use std::mem;
 use std::sync::Arc;
 use std::sync::Mutex;
-#[cfg(any(
-    target_os = "linux",
-    target_os = "dragonflybsd",
-    target_os = "freebsd",
-    target_os = "netbsd",
-    target_os = "openbsd"
-))]
-use {crate::memory::ExternalMemoryHandleTypes, std::fs::File};
 
 /// Buffer whose content is in device-local memory.
 ///
@@ -105,7 +92,7 @@ impl<T> DeviceLocalBuffer<T> {
         device: Arc<Device>,
         usage: BufferUsage,
         queue_families: I,
-    ) -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryAllocError>
+    ) -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryAllocationError>
     where
         I: IntoIterator<Item = QueueFamily<'a>>,
     {
@@ -133,7 +120,7 @@ impl<T> DeviceLocalBuffer<[T]> {
         len: DeviceSize,
         usage: BufferUsage,
         queue_families: I,
-    ) -> Result<Arc<DeviceLocalBuffer<[T]>>, DeviceMemoryAllocError>
+    ) -> Result<Arc<DeviceLocalBuffer<[T]>>, DeviceMemoryAllocationError>
     where
         I: IntoIterator<Item = QueueFamily<'a>>,
     {
@@ -163,7 +150,7 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
         size: DeviceSize,
         usage: BufferUsage,
         queue_families: I,
-    ) -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryAllocError>
+    ) -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryAllocationError>
     where
         I: IntoIterator<Item = QueueFamily<'a>>,
     {
@@ -179,7 +166,7 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
             &mem_reqs,
             AllocLayout::Linear,
             MappingRequirement::DoNotMap,
-            DedicatedAlloc::Buffer(&buffer),
+            Some(DedicatedAllocation::Buffer(&buffer)),
             |t| {
                 if t.is_device_local() {
                     AllocFromRequirementsFilter::Preferred
@@ -205,19 +192,12 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
     /// # Panics
     ///
     /// - Panics if `size` is zero.
-    #[cfg(any(
-        target_os = "linux",
-        target_os = "dragonflybsd",
-        target_os = "freebsd",
-        target_os = "netbsd",
-        target_os = "openbsd"
-    ))]
     pub unsafe fn raw_with_exportable_fd<'a, I>(
         device: Arc<Device>,
         size: DeviceSize,
         usage: BufferUsage,
         queue_families: I,
-    ) -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryAllocError>
+    ) -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryAllocationError>
     where
         I: IntoIterator<Item = QueueFamily<'a>>,
     {
@@ -236,7 +216,7 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
             &mem_reqs,
             AllocLayout::Linear,
             MappingRequirement::DoNotMap,
-            DedicatedAlloc::Buffer(&buffer),
+            DedicatedAllocation::Buffer(&buffer),
             |t| {
                 if t.is_device_local() {
                     AllocFromRequirementsFilter::Preferred
@@ -263,7 +243,7 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
         size: DeviceSize,
         usage: BufferUsage,
         queue_families: &SmallVec<[u32; 4]>,
-    ) -> Result<(UnsafeBuffer, MemoryRequirements), DeviceMemoryAllocError> {
+    ) -> Result<(UnsafeBuffer, MemoryRequirements), DeviceMemoryAllocationError> {
         let buffer = {
             match UnsafeBuffer::new(
                 device.clone(),
@@ -291,17 +271,10 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
     /// Exports posix file descriptor for the allocated memory
     /// requires `khr_external_memory_fd` and `khr_external_memory` extensions to be loaded.
     /// Only works on Linux/BSD.
-    #[cfg(any(
-        target_os = "linux",
-        target_os = "dragonflybsd",
-        target_os = "freebsd",
-        target_os = "netbsd",
-        target_os = "openbsd"
-    ))]
-    pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryAllocError> {
+    pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryAllocationError> {
         self.memory
             .memory()
-            .export_fd(ExternalMemoryHandleTypes::posix())
+            .export_fd(ExternalMemoryHandleType::OpaqueFd)
     }
 }
 

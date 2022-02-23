@@ -89,12 +89,15 @@ pub use self::device_local::DeviceLocalBuffer;
 pub use self::immutable::ImmutableBuffer;
 pub use self::slice::BufferSlice;
 pub use self::sys::BufferCreationError;
+use self::sys::SparseLevel;
 pub use self::traits::BufferAccess;
 pub use self::traits::BufferAccessObject;
 pub use self::traits::BufferDeviceAddressError;
 pub use self::traits::BufferInner;
 pub use self::traits::TypedBufferAccess;
 pub use self::usage::BufferUsage;
+use crate::memory::ExternalMemoryHandleType;
+use crate::memory::ExternalMemoryProperties;
 
 pub mod cpu_access;
 pub mod cpu_pool;
@@ -106,3 +109,40 @@ pub mod view;
 mod slice;
 mod traits;
 mod usage;
+
+/// The buffer configuration to query in
+/// [`PhysicalDevice::external_buffer_properties`](crate::device::physical::PhysicalDevice::external_buffer_properties).
+#[derive(Clone, Debug)]
+pub struct ExternalBufferInfo {
+    /// The external handle type that will be used with the buffer.
+    pub handle_type: ExternalMemoryHandleType,
+
+    /// The usage that the buffer will have.
+    pub usage: BufferUsage,
+
+    /// The sparse binding parameters that will be used.
+    pub sparse: Option<SparseLevel>,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl ExternalBufferInfo {
+    /// Returns an `ExternalBufferInfo` with the specified `handle_type`.
+    #[inline]
+    pub fn handle_type(handle_type: ExternalMemoryHandleType) -> Self {
+        Self {
+            handle_type,
+            usage: BufferUsage::none(),
+            sparse: None,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+/// The external memory properties supported for buffers with a given configuration.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct ExternalBufferProperties {
+    /// The properties for external memory.
+    pub external_memory_properties: ExternalMemoryProperties,
+}

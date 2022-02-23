@@ -15,13 +15,6 @@ use crate::image::sys::UnsafeImage;
 use crate::image::traits::ImageAccess;
 use crate::image::traits::ImageClearValue;
 use crate::image::traits::ImageContent;
-#[cfg(any(
-    target_os = "linux",
-    target_os = "dragonflybsd",
-    target_os = "freebsd",
-    target_os = "netbsd",
-    target_os = "openbsd"
-))]
 use crate::image::ImageCreateFlags;
 use crate::image::ImageDescriptorLayouts;
 use crate::image::ImageDimensions;
@@ -29,13 +22,6 @@ use crate::image::ImageInner;
 use crate::image::ImageLayout;
 use crate::image::ImageUsage;
 use crate::image::SampleCount;
-#[cfg(any(
-    target_os = "linux",
-    target_os = "dragonflybsd",
-    target_os = "freebsd",
-    target_os = "netbsd",
-    target_os = "openbsd"
-))]
 use crate::memory::pool::alloc_dedicated_with_exportable_fd;
 use crate::memory::pool::AllocFromRequirementsFilter;
 use crate::memory::pool::AllocLayout;
@@ -44,31 +30,11 @@ use crate::memory::pool::MemoryPool;
 use crate::memory::pool::MemoryPoolAlloc;
 use crate::memory::pool::PotentialDedicatedAllocation;
 use crate::memory::pool::StdMemoryPoolAlloc;
-use crate::memory::DedicatedAlloc;
-#[cfg(any(
-    target_os = "linux",
-    target_os = "dragonflybsd",
-    target_os = "freebsd",
-    target_os = "netbsd",
-    target_os = "openbsd"
-))]
-use crate::memory::{DeviceMemoryAllocError, ExternalMemoryHandleTypes};
+use crate::memory::DedicatedAllocation;
+use crate::memory::ExternalMemoryHandleType;
+use crate::memory::{DeviceMemoryAllocationError, ExternalMemoryHandleTypes};
 use crate::sync::AccessError;
-#[cfg(any(
-    target_os = "linux",
-    target_os = "dragonflybsd",
-    target_os = "freebsd",
-    target_os = "netbsd",
-    target_os = "openbsd"
-))]
 use crate::DeviceSize;
-#[cfg(any(
-    target_os = "linux",
-    target_os = "dragonflybsd",
-    target_os = "freebsd",
-    target_os = "netbsd",
-    target_os = "openbsd"
-))]
 use std::fs::File;
 use std::hash::Hash;
 use std::hash::Hasher;
@@ -474,7 +440,7 @@ impl AttachmentImage {
             &mem_reqs,
             AllocLayout::Optimal,
             MappingRequirement::DoNotMap,
-            DedicatedAlloc::Image(&image),
+            Some(DedicatedAllocation::Image(&image)),
             |t| {
                 if t.is_device_local() {
                     AllocFromRequirementsFilter::Preferred
@@ -502,13 +468,6 @@ impl AttachmentImage {
         }))
     }
 
-    #[cfg(any(
-        target_os = "linux",
-        target_os = "dragonflybsd",
-        target_os = "freebsd",
-        target_os = "netbsd",
-        target_os = "openbsd"
-    ))]
     pub fn new_with_exportable_fd(
         device: Arc<Device>,
         dimensions: [u32; 2],
@@ -551,7 +510,7 @@ impl AttachmentImage {
             &mem_reqs,
             AllocLayout::Optimal,
             MappingRequirement::DoNotMap,
-            DedicatedAlloc::Image(&image),
+            DedicatedAllocation::Image(&image),
             |t| {
                 if t.is_device_local() {
                     AllocFromRequirementsFilter::Preferred
@@ -582,28 +541,13 @@ impl AttachmentImage {
 
     /// Exports posix file descriptor for the allocated memory
     /// requires `khr_external_memory_fd` and `khr_external_memory` extensions to be loaded.
-    /// Only works on Linux.
-    #[cfg(any(
-        target_os = "linux",
-        target_os = "dragonflybsd",
-        target_os = "freebsd",
-        target_os = "netbsd",
-        target_os = "openbsd"
-    ))]
-    pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryAllocError> {
+    pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryAllocationError> {
         self.memory
             .memory()
-            .export_fd(ExternalMemoryHandleTypes::posix())
+            .export_fd(ExternalMemoryHandleType::OpaqueFd)
     }
 
     /// Return the size of the allocated memory (used for e.g. with cuda)
-    #[cfg(any(
-        target_os = "linux",
-        target_os = "dragonflybsd",
-        target_os = "freebsd",
-        target_os = "netbsd",
-        target_os = "openbsd"
-    ))]
     pub fn mem_size(&self) -> DeviceSize {
         self.memory.memory().size()
     }

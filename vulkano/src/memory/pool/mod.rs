@@ -15,9 +15,11 @@ pub use self::pool::StdMemoryPool;
 pub use self::pool::StdMemoryPoolAlloc;
 use crate::device::physical::MemoryType;
 use crate::device::{Device, DeviceOwned};
-use crate::memory::DedicatedAlloc;
+use crate::memory::device_memory::MemoryAllocateInfo;
+use crate::memory::DedicatedAllocation;
 use crate::memory::DeviceMemory;
-use crate::memory::DeviceMemoryAllocError;
+use crate::memory::DeviceMemoryAllocationError;
+use crate::memory::ExternalMemoryHandleTypes;
 use crate::memory::MappedDeviceMemory;
 use crate::memory::MemoryRequirements;
 use crate::DeviceSize;
@@ -68,45 +70,50 @@ where
 
 /// Allocate dedicated memory with exportable fd.
 /// Memory pool memory always exports the same fd, thus dedicated is preferred.
-#[cfg(any(
-    target_os = "linux",
-    target_os = "dragonflybsd",
-    target_os = "freebsd",
-    target_os = "netbsd",
-    target_os = "openbsd"
-))]
 pub(crate) fn alloc_dedicated_with_exportable_fd<F>(
     device: Arc<Device>,
     requirements: &MemoryRequirements,
     layout: AllocLayout,
     map: MappingRequirement,
-    dedicated: DedicatedAlloc,
+    dedicated_allocation: DedicatedAllocation,
     filter: F,
-) -> Result<PotentialDedicatedAllocation<StdMemoryPoolAlloc>, DeviceMemoryAllocError>
+) -> Result<PotentialDedicatedAllocation<StdMemoryPoolAlloc>, DeviceMemoryAllocationError>
 where
     F: FnMut(MemoryType) -> AllocFromRequirementsFilter,
 {
     assert!(device.enabled_extensions().khr_external_memory_fd);
     assert!(device.enabled_extensions().khr_external_memory);
 
-    let mem_ty = choose_allocation_memory_type(&device, requirements, filter, map);
+    let memory_type = choose_allocation_memory_type(&device, requirements, filter, map);
 
     match map {
         MappingRequirement::Map => {
-            let mem = DeviceMemory::dedicated_alloc_and_map_with_exportable_fd(
+            let mem = DeviceMemory::allocate_and_map(
                 device.clone(),
-                mem_ty,
-                requirements.size,
-                dedicated,
+                MemoryAllocateInfo {
+                    allocation_size: requirements.size,
+                    memory_type_index: memory_type.id(),
+                    export_handle_types: ExternalMemoryHandleTypes {
+                        opaque_fd: true,
+                        ..ExternalMemoryHandleTypes::none()
+                    },
+                    ..MemoryAllocateInfo::dedicated_allocation(dedicated_allocation)
+                },
             )?;
             Ok(PotentialDedicatedAllocation::DedicatedMapped(mem))
         }
         MappingRequirement::DoNotMap => {
-            let mem = DeviceMemory::dedicated_alloc_with_exportable_fd(
+            let mem = DeviceMemory::allocate(
                 device.clone(),
-                mem_ty,
-                requirements.size,
-                dedicated,
+                MemoryAllocateInfo {
+                    allocation_size: requirements.size,
+                    memory_type_index: memory_type.id(),
+                    export_handle_types: ExternalMemoryHandleTypes {
+                        opaque_fd: true,
+                        ..ExternalMemoryHandleTypes::none()
+                    },
+                    ..MemoryAllocateInfo::dedicated_allocation(dedicated_allocation)
+                },
             )?;
             Ok(PotentialDedicatedAllocation::Dedicated(mem))
         }
@@ -146,7 +153,7 @@ pub unsafe trait MemoryPool: DeviceOwned {
         alignment: DeviceSize,
         layout: AllocLayout,
         map: MappingRequirement,
-    ) -> Result<Self::Alloc, DeviceMemoryAllocError>;
+    ) -> Result<Self::Alloc, DeviceMemoryAllocationError>;
 
     /// Chooses a memory type and allocates memory from it.
     ///
@@ -182,19 +189,19 @@ pub unsafe trait MemoryPool: DeviceOwned {
         requirements: &MemoryRequirements,
         layout: AllocLayout,
         map: MappingRequirement,
-        dedicated: DedicatedAlloc,
+        dedicated_allocation: Option<DedicatedAllocation>,
         filter: F,
-    ) -> Result<PotentialDedicatedAllocation<Self::Alloc>, DeviceMemoryAllocError>
+    ) -> Result<PotentialDedicatedAllocation<Self::Alloc>, DeviceMemoryAllocationError>
     where
         F: FnMut(MemoryType) -> AllocFromRequirementsFilter,
     {
         // Choose a suitable memory type.
-        let mem_ty = choose_allocation_memory_type(self.device(), requirements, filter, map);
+        let memory_type = choose_allocation_memory_type(self.device(), requirements, filter, map);
 
         // Redirect to `self.alloc_generic` if we don't perform a dedicated allocation.
         if !requirements.prefer_dedicated && requirements.size <= MAX_POOL_ALLOC {
             let alloc = self.alloc_generic(
-                mem_ty,
+                memory_type,
                 requirements.size,
                 requirements.alignment,
                 layout,
@@ -202,9 +209,9 @@ pub unsafe trait MemoryPool: DeviceOwned {
             )?;
             return Ok(alloc.into());
         }
-        if let DedicatedAlloc::None = dedicated {
+        if dedicated_allocation.is_none() {
             let alloc = self.alloc_generic(
-                mem_ty,
+                memory_type,
                 requirements.size,
                 requirements.alignment,
                 layout,
@@ -216,20 +223,26 @@ pub unsafe trait MemoryPool: DeviceOwned {
         // If we reach here, then we perform a dedicated alloc.
         match map {
             MappingRequirement::Map => {
-                let mem = DeviceMemory::dedicated_alloc_and_map(
+                let mem = DeviceMemory::allocate_and_map(
                     self.device().clone(),
-                    mem_ty,
-                    requirements.size,
-                    dedicated,
+                    MemoryAllocateInfo {
+                        allocation_size: requirements.size,
+                        memory_type_index: memory_type.id(),
+                        dedicated_allocation,
+                        ..Default::default()
+                    },
                 )?;
                 Ok(PotentialDedicatedAllocation::DedicatedMapped(mem))
             }
             MappingRequirement::DoNotMap => {
-                let mem = DeviceMemory::dedicated_alloc(
+                let mem = DeviceMemory::allocate(
                     self.device().clone(),
-                    mem_ty,
-                    requirements.size,
-                    dedicated,
+                    MemoryAllocateInfo {
+                        allocation_size: requirements.size,
+                        memory_type_index: memory_type.id(),
+                        dedicated_allocation,
+                        ..Default::default()
+                    },
                 )?;
                 Ok(PotentialDedicatedAllocation::Dedicated(mem))
             }
