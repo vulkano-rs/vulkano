@@ -297,31 +297,34 @@ impl DeviceMemory {
                         "`khr_external_memory_fd` was somehow enabled on a non-Unix system"
                     );
 
-                    // VUID-VkImportMemoryFdInfoKHR-handleType-00669
-                    match handle_type {
-                        ExternalMemoryHandleType::OpaqueFd => {
-                            // VUID-VkMemoryAllocateInfo-allocationSize-01742
-                            // Can't validate, must be ensured by user
+                    #[cfg(unix)]
+                    {
+                        // VUID-VkImportMemoryFdInfoKHR-handleType-00669
+                        match handle_type {
+                            ExternalMemoryHandleType::OpaqueFd => {
+                                // VUID-VkMemoryAllocateInfo-allocationSize-01742
+                                // Can't validate, must be ensured by user
 
-                            // VUID-VkMemoryDedicatedAllocateInfo-buffer-01879
-                            // Can't validate, must be ensured by user
+                                // VUID-VkMemoryDedicatedAllocateInfo-buffer-01879
+                                // Can't validate, must be ensured by user
 
-                            // VUID-VkMemoryDedicatedAllocateInfo-image-01878
-                            // Can't validate, must be ensured by user
-                        }
-                        ExternalMemoryHandleType::DmaBuf => {
-                            if !device.enabled_extensions().ext_external_memory_dma_buf {
-                                return Err(DeviceMemoryAllocationError::ExtensionNotEnabled {
+                                // VUID-VkMemoryDedicatedAllocateInfo-image-01878
+                                // Can't validate, must be ensured by user
+                            }
+                            ExternalMemoryHandleType::DmaBuf => {
+                                if !device.enabled_extensions().ext_external_memory_dma_buf {
+                                    return Err(DeviceMemoryAllocationError::ExtensionNotEnabled {
                                     extension: "ext_external_memory_dma_buf",
                                     reason: "`import_info` was `MemoryImportInfo::Fd` and `handle_type` was `ExternalMemoryHandleType::DmaBuf`"
                                 });
+                                }
                             }
+                            _ => todo!(),
                         }
-                        _ => todo!(),
-                    }
 
-                    // VUID-VkMemoryAllocateInfo-memoryTypeIndex-00648
-                    // Can't validate, must be ensured by user
+                        // VUID-VkMemoryAllocateInfo-memoryTypeIndex-00648
+                        // Can't validate, must be ensured by user
+                    }
                 }
             }
         }

@@ -605,14 +605,14 @@ impl Device {
         #[cfg(not(unix))]
         unreachable!("`khr_external_memory_fd` was somehow enabled on a non-Unix system");
 
-        // VUID-vkGetMemoryFdPropertiesKHR-handleType-00674
-        if handle_type == ExternalMemoryHandleType::OpaqueFd {
-            return Err(MemoryFdPropertiesError::InvalidExternalHandleType);
-        }
-
         #[cfg(unix)]
         {
             use std::os::unix::io::IntoRawFd;
+
+            // VUID-vkGetMemoryFdPropertiesKHR-handleType-00674
+            if handle_type == ExternalMemoryHandleType::OpaqueFd {
+                return Err(MemoryFdPropertiesError::InvalidExternalHandleType);
+            }
 
             let mut memory_fd_properties = ash::vk::MemoryFdPropertiesKHR::default();
 
