@@ -64,35 +64,26 @@
 //! queue. If not possible, the queue will be entirely flushed and the command added to a fresh new
 //! queue with a fresh new barrier prototype.
 
-pub use self::builder::CommandBufferState;
-pub use self::builder::SetOrPush;
-pub use self::builder::StencilOpStateDynamic;
-pub use self::builder::StencilStateDynamic;
-pub use self::builder::SyncCommandBufferBuilder;
-pub use self::builder::SyncCommandBufferBuilderBindDescriptorSets;
-pub use self::builder::SyncCommandBufferBuilderBindVertexBuffer;
-pub use self::builder::SyncCommandBufferBuilderError;
-pub use self::builder::SyncCommandBufferBuilderExecuteCommands;
-use crate::buffer::BufferAccess;
-use crate::command_buffer::sys::UnsafeCommandBuffer;
-use crate::command_buffer::sys::UnsafeCommandBufferBuilder;
-use crate::command_buffer::CommandBufferExecError;
-use crate::command_buffer::ImageUninitializedSafe;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::device::Queue;
-use crate::image::ImageAccess;
-use crate::image::ImageLayout;
-use crate::sync::AccessCheckError;
-use crate::sync::AccessError;
-use crate::sync::AccessFlags;
-use crate::sync::GpuFuture;
-use crate::sync::PipelineMemoryAccess;
-use crate::sync::PipelineStages;
+pub use self::builder::{
+    CommandBufferState, SetOrPush, StencilOpStateDynamic, StencilStateDynamic,
+    SyncCommandBufferBuilder, SyncCommandBufferBuilderBindDescriptorSets,
+    SyncCommandBufferBuilderBindVertexBuffer, SyncCommandBufferBuilderError,
+    SyncCommandBufferBuilderExecuteCommands,
+};
+use super::{
+    sys::{UnsafeCommandBuffer, UnsafeCommandBufferBuilder},
+    CommandBufferExecError, ImageUninitializedSafe,
+};
+use crate::{
+    buffer::BufferAccess,
+    device::{Device, DeviceOwned, Queue},
+    image::{ImageAccess, ImageLayout},
+    sync::{
+        AccessCheckError, AccessError, AccessFlags, GpuFuture, PipelineMemoryAccess, PipelineStages,
+    },
+};
 use fnv::FnvHashMap;
-use std::borrow::Cow;
-use std::ops::Range;
-use std::sync::Arc;
+use std::{borrow::Cow, ops::Range, sync::Arc};
 
 mod builder;
 
@@ -485,6 +476,7 @@ mod tests {
     use crate::buffer::ImmutableBuffer;
     use crate::command_buffer::pool::CommandPool;
     use crate::command_buffer::pool::CommandPoolBuilderAlloc;
+    use crate::command_buffer::sys::CommandBufferBeginInfo;
     use crate::command_buffer::AutoCommandBufferBuilder;
     use crate::command_buffer::CommandBufferLevel;
     use crate::command_buffer::CommandBufferUsage;
@@ -506,13 +498,19 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
             let pool = Device::standard_command_pool(&device, queue.family());
-            let pool_builder_alloc = pool.alloc(false, 1).unwrap().next().unwrap();
+            let pool_builder_alloc = pool
+                .allocate(CommandBufferLevel::Primary, 1)
+                .unwrap()
+                .next()
+                .unwrap();
 
             assert!(matches!(
                 SyncCommandBufferBuilder::new(
                     &pool_builder_alloc.inner(),
-                    CommandBufferLevel::primary(),
-                    CommandBufferUsage::MultipleSubmit,
+                    CommandBufferBeginInfo {
+                        usage: CommandBufferUsage::MultipleSubmit,
+                        ..Default::default()
+                    },
                 ),
                 Ok(_)
             ));
@@ -552,13 +550,18 @@ mod tests {
                 .collect::<Vec<_>>();
 
             let pool = Device::standard_command_pool(&device, queue.family());
-            let allocs = pool.alloc(false, 2).unwrap().collect::<Vec<_>>();
+            let allocs = pool
+                .allocate(CommandBufferLevel::Primary, 2)
+                .unwrap()
+                .collect::<Vec<_>>();
 
             {
                 let mut builder = SyncCommandBufferBuilder::new(
                     allocs[0].inner(),
-                    CommandBufferLevel::primary(),
-                    CommandBufferUsage::SimultaneousUse,
+                    CommandBufferBeginInfo {
+                        usage: CommandBufferUsage::SimultaneousUse,
+                        ..Default::default()
+                    },
                 )
                 .unwrap();
 
@@ -584,8 +587,10 @@ mod tests {
             {
                 let mut builder = SyncCommandBufferBuilder::new(
                     allocs[1].inner(),
-                    CommandBufferLevel::primary(),
-                    CommandBufferUsage::SimultaneousUse,
+                    CommandBufferBeginInfo {
+                        usage: CommandBufferUsage::SimultaneousUse,
+                        ..Default::default()
+                    },
                 )
                 .unwrap();
 
@@ -613,11 +618,17 @@ mod tests {
             let (device, queue) = gfx_dev_and_queue!();
 
             let pool = Device::standard_command_pool(&device, queue.family());
-            let pool_builder_alloc = pool.alloc(false, 1).unwrap().next().unwrap();
+            let pool_builder_alloc = pool
+                .allocate(CommandBufferLevel::Primary, 1)
+                .unwrap()
+                .next()
+                .unwrap();
             let mut sync = SyncCommandBufferBuilder::new(
                 &pool_builder_alloc.inner(),
-                CommandBufferLevel::primary(),
-                CommandBufferUsage::MultipleSubmit,
+                CommandBufferBeginInfo {
+                    usage: CommandBufferUsage::MultipleSubmit,
+                    ..Default::default()
+                },
             )
             .unwrap();
             let buf =
@@ -638,11 +649,17 @@ mod tests {
             let (device, queue) = gfx_dev_and_queue!();
 
             let pool = Device::standard_command_pool(&device, queue.family());
-            let pool_builder_alloc = pool.alloc(false, 1).unwrap().next().unwrap();
+            let pool_builder_alloc = pool
+                .allocate(CommandBufferLevel::Primary, 1)
+                .unwrap()
+                .next()
+                .unwrap();
             let mut sync = SyncCommandBufferBuilder::new(
                 &pool_builder_alloc.inner(),
-                CommandBufferLevel::primary(),
-                CommandBufferUsage::MultipleSubmit,
+                CommandBufferBeginInfo {
+                    usage: CommandBufferUsage::MultipleSubmit,
+                    ..Default::default()
+                },
             )
             .unwrap();
             let set_layout = DescriptorSetLayout::new(

@@ -11,7 +11,7 @@ use crate::buffer::BufferAccess;
 use crate::command_buffer::submit::SubmitAnyBuilder;
 use crate::command_buffer::submit::SubmitCommandBufferBuilder;
 use crate::command_buffer::sys::UnsafeCommandBuffer;
-use crate::command_buffer::CommandBufferInheritance;
+use crate::command_buffer::CommandBufferInheritanceInfo;
 use crate::command_buffer::ImageUninitializedSafe;
 use crate::device::Device;
 use crate::device::DeviceOwned;
@@ -221,7 +221,7 @@ pub unsafe trait SecondaryCommandBuffer: DeviceOwned + Send + Sync {
 
     /// Returns a `CommandBufferInheritance` value describing the properties that the command
     /// buffer inherits from its parent primary command buffer.
-    fn inheritance(&self) -> &CommandBufferInheritance;
+    fn inheritance(&self) -> &CommandBufferInheritanceInfo;
 
     /// Returns the number of buffers accessed by this command buffer.
     fn num_buffers(&self) -> usize;
@@ -270,7 +270,7 @@ where
     }
 
     #[inline]
-    fn inheritance(&self) -> &CommandBufferInheritance {
+    fn inheritance(&self) -> &CommandBufferInheritanceInfo {
         (**self).inheritance()
     }
 

@@ -16,13 +16,15 @@
 //! trait. By default vulkano will use the `StandardCommandPool` struct, but you can implement
 //! this trait yourself by wrapping around the `UnsafeCommandPool` type.
 
-pub use self::standard::StandardCommandPool;
-pub use self::sys::CommandPoolTrimError;
-pub use self::sys::UnsafeCommandPool;
-pub use self::sys::UnsafeCommandPoolAlloc;
-use crate::device::physical::QueueFamily;
-use crate::device::DeviceOwned;
-use crate::OomError;
+pub use self::{
+    standard::StandardCommandPool,
+    sys::{CommandPoolTrimError, UnsafeCommandPool, UnsafeCommandPoolAlloc},
+};
+use super::CommandBufferLevel;
+use crate::{
+    device::{physical::QueueFamily, DeviceOwned},
+    OomError,
+};
 
 pub mod standard;
 mod sys;
@@ -59,7 +61,11 @@ pub unsafe trait CommandPool: DeviceOwned {
     /// Allocates command buffers from this pool.
     ///
     /// Returns an iterator that contains an bunch of allocated command buffers.
-    fn alloc(&self, secondary: bool, count: u32) -> Result<Self::Iter, OomError>;
+    fn allocate(
+        &self,
+        level: CommandBufferLevel,
+        command_buffer_count: u32,
+    ) -> Result<Self::Iter, OomError>;
 
     /// Returns the queue family that this pool targets.
     fn queue_family(&self) -> QueueFamily;
