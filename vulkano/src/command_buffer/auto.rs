@@ -106,7 +106,7 @@ pub struct AutoCommandBufferBuilder<L, P = StandardCommandPoolBuilder> {
 
     // The inheritance for secondary command buffers.
     // Must be `None` in a primary command buffer and `Some` in a secondary command buffer.
-    inheritance: Option<CommandBufferInheritanceInfo>,
+    inheritance_info: Option<CommandBufferInheritanceInfo>,
 
     // Usage flags passed when creating the command buffer.
     usage: CommandBufferUsage,
@@ -181,7 +181,7 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
                 CommandBufferLevel::Secondary,
                 CommandBufferBeginInfo {
                     usage,
-                    inheritance: Some(CommandBufferInheritanceInfo::default()),
+                    inheritance_info: Some(CommandBufferInheritanceInfo::default()),
                     ..Default::default()
                 },
             )?)
@@ -217,7 +217,7 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
                 CommandBufferLevel::Secondary,
                 CommandBufferBeginInfo {
                     usage,
-                    inheritance: Some(CommandBufferInheritanceInfo {
+                    inheritance_info: Some(CommandBufferInheritanceInfo {
                         occlusion_query,
                         query_statistics_flags,
                         ..Default::default()
@@ -246,7 +246,7 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
                 CommandBufferLevel::Secondary,
                 CommandBufferBeginInfo {
                     usage,
-                    inheritance: Some(CommandBufferInheritanceInfo {
+                    inheritance_info: Some(CommandBufferInheritanceInfo {
                         render_pass: Some(CommandBufferInheritanceRenderPassInfo {
                             subpass,
                             framebuffer: None,
@@ -289,7 +289,7 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
                 CommandBufferLevel::Secondary,
                 CommandBufferBeginInfo {
                     usage,
-                    inheritance: Some(CommandBufferInheritanceInfo {
+                    inheritance_info: Some(CommandBufferInheritanceInfo {
                         render_pass: Some(CommandBufferInheritanceRenderPassInfo {
                             subpass,
                             framebuffer: None,
@@ -316,11 +316,11 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
         begin_info: CommandBufferBeginInfo,
     ) -> Result<AutoCommandBufferBuilder<L, StandardCommandPoolBuilder>, OomError> {
         let usage = begin_info.usage;
-        let inheritance = begin_info.inheritance.clone();
+        let inheritance_info = begin_info.inheritance_info.clone();
         let render_pass_state = begin_info
-            .inheritance
+            .inheritance_info
             .as_ref()
-            .and_then(|inheritance| inheritance.render_pass.as_ref())
+            .and_then(|inheritance_info| inheritance_info.render_pass.as_ref())
             .map(
                 |CommandBufferInheritanceRenderPassInfo {
                      subpass,
@@ -350,7 +350,7 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
             queue_family_id: queue_family.id(),
             render_pass_state,
             query_state: FnvHashMap::default(),
-            inheritance,
+            inheritance_info,
             usage,
             _data: PhantomData,
         })
@@ -462,7 +462,7 @@ where
         Ok(SecondaryAutoCommandBuffer {
             inner: self.inner.build()?,
             pool_alloc: self.pool_builder_alloc.into_alloc(),
-            inheritance: self.inheritance.unwrap(),
+            inheritance_info: self.inheritance_info.unwrap(),
             submit_state,
         })
     }
@@ -3454,7 +3454,7 @@ where
     where
         C: SecondaryCommandBuffer + 'static,
     {
-        if let Some(render_pass) = &command_buffer.inheritance().render_pass {
+        if let Some(render_pass) = &command_buffer.inheritance_info().render_pass {
             self.ensure_inside_render_pass_secondary(render_pass)?;
         } else {
             self.ensure_outside_render_pass()?;
@@ -3462,7 +3462,7 @@ where
 
         for state in self.query_state.values() {
             match state.ty {
-                QueryType::Occlusion => match command_buffer.inheritance().occlusion_query {
+                QueryType::Occlusion => match command_buffer.inheritance_info().occlusion_query {
                     Some(inherited_flags) => {
                         let inherited_flags = ash::vk::QueryControlFlags::from(inherited_flags);
                         let state_flags = ash::vk::QueryControlFlags::from(state.flags);
@@ -3474,7 +3474,7 @@ where
                     None => return Err(AutoCommandBufferBuilderContextError::QueryNotInherited),
                 },
                 QueryType::PipelineStatistics(state_flags) => {
-                    let inherited_flags = command_buffer.inheritance().query_statistics_flags;
+                    let inherited_flags = command_buffer.inheritance_info().query_statistics_flags;
                     let inherited_flags =
                         ash::vk::QueryPipelineStatisticFlags::from(inherited_flags);
                     let state_flags = ash::vk::QueryPipelineStatisticFlags::from(state_flags);
@@ -3692,7 +3692,7 @@ where
 pub struct SecondaryAutoCommandBuffer<P = StandardCommandPoolAlloc> {
     inner: SyncCommandBuffer,
     pool_alloc: P, // Safety: must be dropped after `inner`
-    inheritance: CommandBufferInheritanceInfo,
+    inheritance_info: CommandBufferInheritanceInfo,
 
     // Tracks usage of the command buffer on the GPU.
     submit_state: SubmitState,
@@ -3754,8 +3754,8 @@ where
     }
 
     #[inline]
-    fn inheritance(&self) -> &CommandBufferInheritanceInfo {
-        &self.inheritance
+    fn inheritance_info(&self) -> &CommandBufferInheritanceInfo {
+        &self.inheritance_info
     }
 
     #[inline]

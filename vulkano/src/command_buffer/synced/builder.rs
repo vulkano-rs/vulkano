@@ -127,7 +127,7 @@ impl SyncCommandBufferBuilder {
         let is_secondary = pool_alloc.level() == CommandBufferLevel::Secondary;
         let inside_render_pass = is_secondary
             && begin_info
-                .inheritance
+                .inheritance_info
                 .as_ref()
                 .unwrap()
                 .render_pass

@@ -221,7 +221,7 @@ pub unsafe trait SecondaryCommandBuffer: DeviceOwned + Send + Sync {
 
     /// Returns a `CommandBufferInheritance` value describing the properties that the command
     /// buffer inherits from its parent primary command buffer.
-    fn inheritance(&self) -> &CommandBufferInheritanceInfo;
+    fn inheritance_info(&self) -> &CommandBufferInheritanceInfo;
 
     /// Returns the number of buffers accessed by this command buffer.
     fn num_buffers(&self) -> usize;
@@ -270,8 +270,8 @@ where
     }
 
     #[inline]
-    fn inheritance(&self) -> &CommandBufferInheritanceInfo {
-        (**self).inheritance()
+    fn inheritance_info(&self) -> &CommandBufferInheritanceInfo {
+        (**self).inheritance_info()
     }
 
     #[inline]

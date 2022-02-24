@@ -81,7 +81,7 @@ impl UnsafeCommandBufferBuilder {
     ) -> Result<UnsafeCommandBufferBuilder, OomError> {
         let CommandBufferBeginInfo {
             usage,
-            inheritance,
+            inheritance_info,
             _ne: _,
         } = begin_info;
 
@@ -96,7 +96,7 @@ impl UnsafeCommandBufferBuilder {
         // VUID-vkBeginCommandBuffer-commandBuffer-00051
         debug_assert_eq!(
             pool_alloc.level() == CommandBufferLevel::Secondary,
-            inheritance.is_some()
+            inheritance_info.is_some()
         );
 
         {
@@ -104,9 +104,9 @@ impl UnsafeCommandBufferBuilder {
             // Guaranteed by use of enum
             let mut flags = ash::vk::CommandBufferUsageFlags::from(usage);
 
-            let inheritance_info = if let Some(inheritance) = &inheritance {
+            let inheritance_info = if let Some(inheritance_info) = &inheritance_info {
                 let (render_pass, subpass, framebuffer) =
-                    if let Some(render_pass) = &inheritance.render_pass {
+                    if let Some(render_pass) = &inheritance_info.render_pass {
                         flags |= ash::vk::CommandBufferUsageFlags::RENDER_PASS_CONTINUE;
 
                         // VUID-VkCommandBufferInheritanceInfo-commonparent
@@ -134,7 +134,7 @@ impl UnsafeCommandBufferBuilder {
                     };
 
                 let (occlusion_query_enable, query_flags) =
-                    if let Some(flags) = inheritance.occlusion_query {
+                    if let Some(flags) = inheritance_info.occlusion_query {
                         // VUID-VkCommandBufferInheritanceInfo-occlusionQueryEnable-00056
                         debug_assert!(device.enabled_features().inherited_queries);
 
@@ -157,7 +157,7 @@ impl UnsafeCommandBufferBuilder {
                 // VUID-VkCommandBufferInheritanceInfo-pipelineStatistics-02789
                 // VUID-VkCommandBufferInheritanceInfo-pipelineStatistics-00058
                 debug_assert!(
-                    inheritance.query_statistics_flags == QueryPipelineStatisticFlags::none()
+                    inheritance_info.query_statistics_flags == QueryPipelineStatisticFlags::none()
                         || device.enabled_features().pipeline_statistics_query
                 );
 
@@ -167,7 +167,7 @@ impl UnsafeCommandBufferBuilder {
                     framebuffer,
                     occlusion_query_enable,
                     query_flags,
-                    pipeline_statistics: inheritance.query_statistics_flags.into(),
+                    pipeline_statistics: inheritance_info.query_statistics_flags.into(),
                     ..Default::default()
                 })
             } else {
@@ -2192,7 +2192,7 @@ pub struct CommandBufferBeginInfo {
     /// `None`.
     ///
     /// The default value is `None`.
-    pub inheritance: Option<CommandBufferInheritanceInfo>,
+    pub inheritance_info: Option<CommandBufferInheritanceInfo>,
 
     pub _ne: crate::NonExhaustive,
 }
@@ -2202,7 +2202,7 @@ impl Default for CommandBufferBeginInfo {
     fn default() -> Self {
         Self {
             usage: CommandBufferUsage::MultipleSubmit,
-            inheritance: None,
+            inheritance_info: None,
             _ne: crate::NonExhaustive(()),
         }
     }
