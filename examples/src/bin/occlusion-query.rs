@@ -25,7 +25,9 @@ use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
 use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::GraphicsPipeline;
-use vulkano::query::{QueryControlFlags, QueryPool, QueryResultFlags, QueryType};
+use vulkano::query::{
+    QueryControlFlags, QueryPool, QueryPoolCreateInfo, QueryResultFlags, QueryType,
+};
 use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass};
 use vulkano::swapchain::{
     self, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
@@ -187,7 +189,14 @@ fn main() {
     let triangle3 = vertex_buffer.slice(6..9).unwrap();
 
     // Create a query pool for occlusion queries, with 3 slots.
-    let query_pool = QueryPool::new(device.clone(), QueryType::Occlusion, 3).unwrap();
+    let query_pool = QueryPool::new(
+        device.clone(),
+        QueryPoolCreateInfo {
+            query_count: 3,
+            ..QueryPoolCreateInfo::query_type(QueryType::Occlusion)
+        },
+    )
+    .unwrap();
 
     // Create a buffer on the CPU to hold the results of the three queries.
     // Query results are always represented as either `u32` or `u64`.

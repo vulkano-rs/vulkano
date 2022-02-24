@@ -43,7 +43,7 @@ pub fn check_begin_query(
         .query(query)
         .ok_or(CheckBeginQueryError::OutOfRange)?;
 
-    match query_pool.ty() {
+    match query_pool.query_type() {
         QueryType::Occlusion => {
             if flags.precise && !device.enabled_features().occlusion_query_precise {
                 return Err(CheckBeginQueryError::OcclusionQueryPreciseFeatureNotEnabled);
@@ -162,7 +162,7 @@ pub fn check_write_timestamp(
         query_pool.device().internal_object(),
     );
 
-    if !matches!(query_pool.ty(), QueryType::Timestamp) {
+    if !matches!(query_pool.query_type(), QueryType::Timestamp) {
         return Err(CheckWriteTimestampError::NotPermitted);
     }
 

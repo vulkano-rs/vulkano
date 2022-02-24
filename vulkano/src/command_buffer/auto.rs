@@ -3011,7 +3011,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ) -> Result<&mut Self, BeginQueryError> {
         check_begin_query(self.device(), &query_pool, query, flags)?;
 
-        match query_pool.ty() {
+        match query_pool.query_type() {
             QueryType::Occlusion => {
                 if !self.queue_family().supports_graphics() {
                     return Err(
@@ -3031,7 +3031,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             QueryType::Timestamp => unreachable!(),
         }
 
-        let ty = query_pool.ty();
+        let ty = query_pool.query_type();
         let raw_ty = ty.into();
         let raw_query_pool = query_pool.internal_object();
         if self.query_state.contains_key(&raw_ty) {
@@ -3063,7 +3063,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         unsafe {
             check_end_query(self.device(), &query_pool, query)?;
 
-            let raw_ty = query_pool.ty().into();
+            let raw_ty = query_pool.query_type().into();
             let raw_query_pool = query_pool.internal_object();
             if !self.query_state.get(&raw_ty).map_or(false, |state| {
                 state.query_pool == raw_query_pool && state.query == query
