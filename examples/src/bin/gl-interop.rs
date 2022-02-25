@@ -36,7 +36,10 @@ use vulkano::{
     render_pass::{Framebuffer, RenderPass, Subpass},
     sampler::{Filter, Sampler, SamplerAddressMode},
     swapchain::{AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError},
-    sync::{now, FlushError, GpuFuture, PipelineStages, Semaphore},
+    sync::{
+        now, ExternalSemaphoreHandleTypes, FlushError, GpuFuture, PipelineStages, Semaphore,
+        SemaphoreCreateInfo,
+    },
 };
 #[cfg(target_os = "linux")]
 use vulkano_win::VkSurfaceBuild;
@@ -109,11 +112,29 @@ fn main() {
     let barrier = Arc::new(Barrier::new(2));
     let barrier_2 = Arc::new(Barrier::new(2));
 
-    let acquire_sem = Arc::new(Semaphore::alloc_with_exportable_fd(device.clone()).unwrap());
-    let release_sem = Arc::new(Semaphore::alloc_with_exportable_fd(device.clone()).unwrap());
+    let acquire_sem = Arc::new(
+        Semaphore::new(
+            device.clone(),
+            SemaphoreCreateInfo {
+                export_handle_types: ExternalSemaphoreHandleTypes::posix(),
+                ..Default::default()
+            },
+        )
+        .unwrap(),
+    );
+    let release_sem = Arc::new(
+        Semaphore::new(
+            device.clone(),
+            SemaphoreCreateInfo {
+                export_handle_types: ExternalSemaphoreHandleTypes::posix(),
+                ..Default::default()
+            },
+        )
+        .unwrap(),
+    );
 
-    let acquire_fd = acquire_sem.export_opaque_fd().unwrap();
-    let release_fd = release_sem.export_opaque_fd().unwrap();
+    let acquire_fd = unsafe { acquire_sem.export_opaque_fd().unwrap() };
+    let release_fd = unsafe { release_sem.export_opaque_fd().unwrap() };
 
     let barrier_clone = barrier.clone();
     let barrier_2_clone = barrier_2.clone();

@@ -886,14 +886,6 @@ impl Queue {
         &self.device
     }
 
-    /// Returns true if this is the same queue as another one.
-    #[inline]
-    pub fn is_same(&self, other: &Queue) -> bool {
-        self.id == other.id
-            && self.family == other.family
-            && self.device.internal_object() == other.device.internal_object()
-    }
-
     /// Returns the family this queue belongs to.
     #[inline]
     pub fn family(&self) -> QueueFamily {
@@ -923,20 +915,6 @@ impl Queue {
     }
 }
 
-impl PartialEq for Queue {
-    fn eq(&self, other: &Self) -> bool {
-        self.is_same(other)
-    }
-}
-
-impl Eq for Queue {}
-
-unsafe impl DeviceOwned for Queue {
-    fn device(&self) -> &Arc<Device> {
-        &self.device
-    }
-}
-
 unsafe impl SynchronizedVulkanObject for Queue {
     type Object = ash::vk::Queue;
 
@@ -945,6 +923,32 @@ unsafe impl SynchronizedVulkanObject for Queue {
         self.handle.lock().unwrap()
     }
 }
+
+unsafe impl DeviceOwned for Queue {
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
+
+impl PartialEq for Queue {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id && self.family == other.family && self.device == other.device
+    }
+}
+
+impl Eq for Queue {}
+
+impl Hash for Queue {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+        self.family.hash(state);
+        self.device.hash(state);
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SubmitInfo {}
 
 #[cfg(test)]
 mod tests {

@@ -17,7 +17,7 @@ use crate::swapchain::{
     ColorSpace, FullScreenExclusive, PresentMode, SupportedSurfaceTransforms, Surface, SurfaceApi,
     SurfaceCapabilities, Win32Monitor,
 };
-use crate::sync::PipelineStage;
+use crate::sync::{ExternalSemaphoreInfo, ExternalSemaphoreProperties, PipelineStage};
 use crate::Version;
 use crate::VulkanObject;
 use crate::{check_errors, OomError};
@@ -490,6 +490,76 @@ impl<'a> PhysicalDevice<'a> {
                 _ne: crate::NonExhaustive(()),
             },
         }
+    }
+
+    /// Retrieves the external handle properties supported for semaphores with a given
+    /// configuration.
+    ///
+    /// Returns `None` if the instance API version is less than 1.1 and the
+    /// [`khr_external_semaphore_capabilities`](crate::instance::InstanceExtensions::khr_external_semaphore_capabilities)
+    /// extension is not enabled on the instance.
+    pub fn external_semaphore_properties(
+        &self,
+        info: ExternalSemaphoreInfo,
+    ) -> Option<ExternalSemaphoreProperties> {
+        if !(self.instance.api_version() >= Version::V1_1
+            || self
+                .instance
+                .enabled_extensions()
+                .khr_external_semaphore_capabilities)
+        {
+            return None;
+        }
+
+        /* Input */
+
+        let ExternalSemaphoreInfo {
+            handle_type,
+            _ne: _,
+        } = info;
+
+        let external_semaphore_info = ash::vk::PhysicalDeviceExternalSemaphoreInfo {
+            handle_type: handle_type.into(),
+            ..Default::default()
+        };
+
+        /* Output */
+
+        let mut external_semaphore_properties = ash::vk::ExternalSemaphoreProperties::default();
+
+        /* Call */
+
+        unsafe {
+            let fns = self.instance.fns();
+
+            if self.instance.api_version() >= Version::V1_1 {
+                fns.v1_1.get_physical_device_external_semaphore_properties(
+                    self.info.handle,
+                    &external_semaphore_info,
+                    &mut external_semaphore_properties,
+                )
+            } else {
+                fns.khr_external_semaphore_capabilities
+                    .get_physical_device_external_semaphore_properties_khr(
+                        self.info.handle,
+                        &external_semaphore_info,
+                        &mut external_semaphore_properties,
+                    );
+            }
+        }
+
+        Some(ExternalSemaphoreProperties {
+            exportable: external_semaphore_properties
+                .external_semaphore_features
+                .intersects(ash::vk::ExternalSemaphoreFeatureFlags::EXPORTABLE),
+            importable: external_semaphore_properties
+                .external_semaphore_features
+                .intersects(ash::vk::ExternalSemaphoreFeatureFlags::IMPORTABLE),
+            export_from_imported_handle_types: external_semaphore_properties
+                .export_from_imported_handle_types
+                .into(),
+            compatible_handle_types: external_semaphore_properties.compatible_handle_types.into(),
+        })
     }
 
     /// Returns the properties supported for images with a given image configuration.

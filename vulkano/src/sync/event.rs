@@ -7,15 +7,17 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::check_errors;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::OomError;
-use crate::Success;
-use crate::VulkanObject;
-use std::mem::MaybeUninit;
-use std::ptr;
-use std::sync::Arc;
+use crate::{
+    check_errors,
+    device::{Device, DeviceOwned},
+    OomError, Success, VulkanObject,
+};
+use std::{
+    hash::{Hash, Hasher},
+    mem::MaybeUninit,
+    ptr,
+    sync::Arc,
+};
 
 /// Used to block the GPU execution until an event on the CPU occurs.
 ///
@@ -25,60 +27,25 @@ use std::sync::Arc;
 /// device loss.
 #[derive(Debug)]
 pub struct Event {
-    // The event.
-    event: ash::vk::Event,
-    // The device.
+    handle: ash::vk::Event,
     device: Arc<Device>,
     must_put_in_pool: bool,
 }
 
 impl Event {
-    /// Takes an event from the vulkano-provided event pool.
-    /// If the pool is empty, a new event will be allocated.
-    /// Upon `drop`, the event is put back into the pool.
-    ///
-    /// For most applications, using the event pool should be preferred,
-    /// in order to avoid creating new events every frame.
-    pub fn from_pool(device: Arc<Device>) -> Result<Event, OomError> {
-        let maybe_raw_event = device.event_pool().lock().unwrap().pop();
-        match maybe_raw_event {
-            Some(raw_event) => {
-                unsafe {
-                    // Make sure the event isn't signaled
-                    let fns = device.fns();
-                    check_errors(fns.v1_0.reset_event(device.internal_object(), raw_event))?;
-                }
-                Ok(Event {
-                    event: raw_event,
-                    device: device,
-                    must_put_in_pool: true,
-                })
-            }
-            None => {
-                // Pool is empty, alloc new event
-                Event::alloc_impl(device, true)
-            }
-        }
-    }
+    /// Creates a new `Event`.
+    pub fn new(device: Arc<Device>, create_info: EventCreateInfo) -> Result<Event, OomError> {
+        let create_info = ash::vk::EventCreateInfo {
+            flags: ash::vk::EventCreateFlags::empty(),
+            ..Default::default()
+        };
 
-    /// Builds a new event.
-    #[inline]
-    pub fn alloc(device: Arc<Device>) -> Result<Event, OomError> {
-        Event::alloc_impl(device, false)
-    }
-
-    fn alloc_impl(device: Arc<Device>, must_put_in_pool: bool) -> Result<Event, OomError> {
-        let event = unsafe {
-            let infos = ash::vk::EventCreateInfo {
-                flags: ash::vk::EventCreateFlags::empty(),
-                ..Default::default()
-            };
-
+        let handle = unsafe {
             let mut output = MaybeUninit::uninit();
             let fns = device.fns();
             check_errors(fns.v1_0.create_event(
                 device.internal_object(),
-                &infos,
+                &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
             ))?;
@@ -86,10 +53,42 @@ impl Event {
         };
 
         Ok(Event {
-            device: device,
-            event: event,
-            must_put_in_pool: must_put_in_pool,
+            device,
+            handle,
+            must_put_in_pool: false,
         })
+    }
+
+    /// Takes an event from the vulkano-provided event pool.
+    /// If the pool is empty, a new event will be allocated.
+    /// Upon `drop`, the event is put back into the pool.
+    ///
+    /// For most applications, using the event pool should be preferred,
+    /// in order to avoid creating new events every frame.
+    pub fn from_pool(device: Arc<Device>) -> Result<Event, OomError> {
+        let handle = device.event_pool().lock().unwrap().pop();
+        let event = match handle {
+            Some(handle) => {
+                unsafe {
+                    // Make sure the event isn't signaled
+                    let fns = device.fns();
+                    check_errors(fns.v1_0.reset_event(device.internal_object(), handle))?;
+                }
+                Event {
+                    handle,
+                    device,
+                    must_put_in_pool: true,
+                }
+            }
+            None => {
+                // Pool is empty, alloc new event
+                let mut event = Event::new(device, Default::default())?;
+                event.must_put_in_pool = true;
+                event
+            }
+        };
+
+        Ok(event)
     }
 
     /// Returns true if the event is signaled.
@@ -99,7 +98,7 @@ impl Event {
             let fns = self.device.fns();
             let result = check_errors(
                 fns.v1_0
-                    .get_event_status(self.device.internal_object(), self.event),
+                    .get_event_status(self.device.internal_object(), self.handle),
             )?;
             match result {
                 Success::EventSet => Ok(true),
@@ -116,7 +115,7 @@ impl Event {
             let fns = self.device.fns();
             check_errors(
                 fns.v1_0
-                    .set_event(self.device.internal_object(), self.event),
+                    .set_event(self.device.internal_object(), self.handle),
             )?;
             Ok(())
         }
@@ -142,7 +141,7 @@ impl Event {
             let fns = self.device.fns();
             check_errors(
                 fns.v1_0
-                    .reset_event(self.device.internal_object(), self.event),
+                    .reset_event(self.device.internal_object(), self.handle),
             )?;
             Ok(())
         }
@@ -160,10 +159,19 @@ impl Event {
     }
 }
 
-unsafe impl DeviceOwned for Event {
+impl Drop for Event {
     #[inline]
-    fn device(&self) -> &Arc<Device> {
-        &self.device
+    fn drop(&mut self) {
+        unsafe {
+            if self.must_put_in_pool {
+                let raw_event = self.handle;
+                self.device.event_pool().lock().unwrap().push(raw_event);
+            } else {
+                let fns = self.device.fns();
+                fns.v1_0
+                    .destroy_event(self.device.internal_object(), self.handle, ptr::null());
+            }
+        }
     }
 }
 
@@ -172,22 +180,44 @@ unsafe impl VulkanObject for Event {
 
     #[inline]
     fn internal_object(&self) -> ash::vk::Event {
-        self.event
+        self.handle
     }
 }
 
-impl Drop for Event {
+unsafe impl DeviceOwned for Event {
     #[inline]
-    fn drop(&mut self) {
-        unsafe {
-            if self.must_put_in_pool {
-                let raw_event = self.event;
-                self.device.event_pool().lock().unwrap().push(raw_event);
-            } else {
-                let fns = self.device.fns();
-                fns.v1_0
-                    .destroy_event(self.device.internal_object(), self.event, ptr::null());
-            }
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
+
+impl PartialEq for Event {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.handle == other.handle && self.device() == other.device()
+    }
+}
+
+impl Eq for Event {}
+
+impl Hash for Event {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.handle.hash(state);
+        self.device().hash(state);
+    }
+}
+
+/// Parameters to create a new `Event`.
+#[derive(Clone, Debug)]
+pub struct EventCreateInfo {
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for EventCreateInfo {
+    fn default() -> Self {
+        Self {
+            _ne: crate::NonExhaustive(()),
         }
     }
 }
@@ -200,14 +230,14 @@ mod tests {
     #[test]
     fn event_create() {
         let (device, _) = gfx_dev_and_queue!();
-        let event = Event::alloc(device).unwrap();
+        let event = Event::new(device, Default::default()).unwrap();
         assert!(!event.signaled().unwrap());
     }
 
     #[test]
     fn event_set() {
         let (device, _) = gfx_dev_and_queue!();
-        let mut event = Event::alloc(device).unwrap();
+        let mut event = Event::new(device, Default::default()).unwrap();
         assert!(!event.signaled().unwrap());
 
         event.set();
@@ -218,7 +248,7 @@ mod tests {
     fn event_reset() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let mut event = Event::alloc(device).unwrap();
+        let mut event = Event::new(device, Default::default()).unwrap();
         event.set();
         assert!(event.signaled().unwrap());
 
