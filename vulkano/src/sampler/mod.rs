@@ -46,22 +46,23 @@
 
 pub mod ycbcr;
 
-use crate::check_errors;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::image::view::{ImageViewAbstract, ImageViewType};
-use crate::pipeline::graphics::depth_stencil::CompareOp;
-use crate::sampler::ycbcr::SamplerYcbcrConversion;
-use crate::shader::ShaderScalarType;
-use crate::Error;
-use crate::OomError;
-use crate::VulkanObject;
-use std::error;
-use std::fmt;
-use std::mem::MaybeUninit;
-use std::ops::RangeInclusive;
-use std::ptr;
-use std::sync::Arc;
+use self::ycbcr::SamplerYcbcrConversion;
+use crate::{
+    check_errors,
+    device::{Device, DeviceOwned},
+    image::{view::ImageViewType, ImageViewAbstract},
+    pipeline::graphics::depth_stencil::CompareOp,
+    shader::ShaderScalarType,
+    Error, OomError, VulkanObject,
+};
+use std::{
+    error, fmt,
+    hash::{Hash, Hasher},
+    mem::MaybeUninit,
+    ops::RangeInclusive,
+    ptr,
+    sync::Arc,
+};
 
 /// Describes how to retrieve data from a sampled image within a shader.
 ///
@@ -70,34 +71,41 @@ use std::sync::Arc;
 /// A simple sampler for most usages:
 ///
 /// ```
-/// use vulkano::sampler::Sampler;
+/// use vulkano::sampler::{Sampler, SamplerCreateInfo};
 ///
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
-/// let _sampler = Sampler::simple_repeat_linear_no_mipmap(device.clone());
+/// let _sampler = Sampler::new(device.clone(), SamplerCreateInfo::simple_repeat_linear_no_mipmap());
 /// ```
 ///
 /// More detailed sampler creation:
 ///
 /// ```
-/// use vulkano::sampler::{Filter, Sampler, SamplerAddressMode};
+/// use vulkano::sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo};
 ///
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
-/// let _sampler = Sampler::start(device.clone())
-///     .filter(Filter::Linear)
-///     .address_mode(SamplerAddressMode::Repeat)
-///     .mip_lod_bias(1.0)
-///     .lod(0.0..=100.0)
-///     .build()
-///     .unwrap();
+/// let _sampler = Sampler::new(device.clone(), SamplerCreateInfo {
+///     mag_filter: Filter::Linear,
+///     min_filter: Filter::Linear,
+///     address_mode: [SamplerAddressMode::Repeat; 3],
+///     mip_lod_bias: 1.0,
+///     lod: 0.0..=100.0,
+///     ..Default::default()
+/// })
+/// .unwrap();
 /// ```
+#[derive(Debug)]
 pub struct Sampler {
     handle: ash::vk::Sampler,
     device: Arc<Device>,
 
+    address_mode: [SamplerAddressMode; 3],
+    anisotropy: Option<f32>,
     border_color: Option<BorderColor>,
     compare: Option<CompareOp>,
+    lod: RangeInclusive<f32>,
     mag_filter: Filter,
     min_filter: Filter,
+    mip_lod_bias: f32,
     mipmap_mode: SamplerMipmapMode,
     reduction_mode: SamplerReductionMode,
     sampler_ycbcr_conversion: Option<Arc<SamplerYcbcrConversion>>,
@@ -105,55 +113,315 @@ pub struct Sampler {
 }
 
 impl Sampler {
-    /// Starts constructing a new `Sampler`.
-    pub fn start(device: Arc<Device>) -> SamplerBuilder {
-        SamplerBuilder {
+    /// Creates a new `Sampler`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `create_info.anisotropy` is `Some` and contains a value less than 1.0.
+    /// - Panics if `create_info.lod` is empty.
+    pub fn new(
+        device: Arc<Device>,
+        create_info: SamplerCreateInfo,
+    ) -> Result<Arc<Sampler>, SamplerCreationError> {
+        let SamplerCreateInfo {
+            mag_filter,
+            min_filter,
+            mipmap_mode,
+            address_mode,
+            mip_lod_bias,
+            anisotropy,
+            compare,
+            lod,
+            border_color,
+            unnormalized_coordinates,
+            reduction_mode,
+            sampler_ycbcr_conversion,
+            _ne: _,
+        } = create_info;
+
+        if address_mode
+            .into_iter()
+            .any(|mode| mode == SamplerAddressMode::MirrorClampToEdge)
+        {
+            if !device.enabled_features().sampler_mirror_clamp_to_edge
+                && !device.enabled_extensions().khr_sampler_mirror_clamp_to_edge
+            {
+                if device
+                    .physical_device()
+                    .supported_features()
+                    .sampler_mirror_clamp_to_edge
+                {
+                    return Err(SamplerCreationError::FeatureNotEnabled {
+                        feature: "sampler_mirror_clamp_to_edge",
+                        reason: "one or more address modes were MirrorClampToEdge",
+                    });
+                } else {
+                    return Err(SamplerCreationError::ExtensionNotEnabled {
+                        extension: "khr_sampler_mirror_clamp_to_edge",
+                        reason: "one or more address modes were MirrorClampToEdge",
+                    });
+                }
+            }
+        }
+
+        {
+            assert!(!lod.is_empty());
+            let limit = device.physical_device().properties().max_sampler_lod_bias;
+            if mip_lod_bias.abs() > limit {
+                return Err(SamplerCreationError::MaxSamplerLodBiasExceeded {
+                    requested: mip_lod_bias,
+                    maximum: limit,
+                });
+            }
+        }
+
+        let (anisotropy_enable, max_anisotropy) = if let Some(max_anisotropy) = anisotropy {
+            assert!(max_anisotropy >= 1.0);
+
+            if !device.enabled_features().sampler_anisotropy {
+                return Err(SamplerCreationError::FeatureNotEnabled {
+                    feature: "sampler_anisotropy",
+                    reason: "anisotropy was set to `Some`",
+                });
+            }
+
+            let limit = device.physical_device().properties().max_sampler_anisotropy;
+            if max_anisotropy > limit {
+                return Err(SamplerCreationError::MaxSamplerAnisotropyExceeded {
+                    requested: max_anisotropy,
+                    maximum: limit,
+                });
+            }
+
+            if [mag_filter, min_filter]
+                .into_iter()
+                .any(|filter| filter == Filter::Cubic)
+            {
+                return Err(SamplerCreationError::AnisotropyInvalidFilter {
+                    mag_filter: mag_filter,
+                    min_filter: min_filter,
+                });
+            }
+
+            (ash::vk::TRUE, max_anisotropy)
+        } else {
+            (ash::vk::FALSE, 1.0)
+        };
+
+        let (compare_enable, compare_op) = if let Some(compare_op) = compare {
+            if reduction_mode != SamplerReductionMode::WeightedAverage {
+                return Err(SamplerCreationError::CompareInvalidReductionMode { reduction_mode });
+            }
+
+            (ash::vk::TRUE, compare_op)
+        } else {
+            (ash::vk::FALSE, CompareOp::Never)
+        };
+
+        if unnormalized_coordinates {
+            if min_filter != mag_filter {
+                return Err(
+                    SamplerCreationError::UnnormalizedCoordinatesFiltersNotEqual {
+                        mag_filter,
+                        min_filter,
+                    },
+                );
+            }
+
+            if mipmap_mode != SamplerMipmapMode::Nearest {
+                return Err(
+                    SamplerCreationError::UnnormalizedCoordinatesInvalidMipmapMode { mipmap_mode },
+                );
+            }
+
+            if lod != (0.0..=0.0) {
+                return Err(SamplerCreationError::UnnormalizedCoordinatesNonzeroLod {
+                    lod: lod.clone(),
+                });
+            }
+
+            if address_mode[0..2].into_iter().any(|mode| {
+                !matches!(
+                    mode,
+                    SamplerAddressMode::ClampToEdge | SamplerAddressMode::ClampToBorder
+                )
+            }) {
+                return Err(
+                    SamplerCreationError::UnnormalizedCoordinatesInvalidAddressMode {
+                        address_mode: [address_mode[0], address_mode[1]],
+                    },
+                );
+            }
+
+            if anisotropy.is_some() {
+                return Err(SamplerCreationError::UnnormalizedCoordinatesAnisotropyEnabled);
+            }
+
+            if compare.is_some() {
+                return Err(SamplerCreationError::UnnormalizedCoordinatesCompareEnabled);
+            }
+        }
+
+        let mut sampler_reduction_mode_create_info =
+            if reduction_mode != SamplerReductionMode::WeightedAverage {
+                if !(device.enabled_features().sampler_filter_minmax
+                    || device.enabled_extensions().ext_sampler_filter_minmax)
+                {
+                    if device
+                        .physical_device()
+                        .supported_features()
+                        .sampler_filter_minmax
+                    {
+                        return Err(SamplerCreationError::FeatureNotEnabled {
+                            feature: "sampler_filter_minmax",
+                            reason: "reduction_mode was not WeightedAverage",
+                        });
+                    } else {
+                        return Err(SamplerCreationError::ExtensionNotEnabled {
+                            extension: "ext_sampler_filter_minmax",
+                            reason: "reduction_mode was not WeightedAverage",
+                        });
+                    }
+                }
+
+                Some(ash::vk::SamplerReductionModeCreateInfo {
+                    reduction_mode: reduction_mode.into(),
+                    ..Default::default()
+                })
+            } else {
+                None
+            };
+
+        // Don't need to check features because you can't create a conversion object without the
+        // feature anyway.
+        let mut sampler_ycbcr_conversion_info = if let Some(sampler_ycbcr_conversion) =
+            &sampler_ycbcr_conversion
+        {
+            assert_eq!(&device, sampler_ycbcr_conversion.device());
+
+            let potential_format_features = device
+                .physical_device()
+                .format_properties(sampler_ycbcr_conversion.format().unwrap())
+                .potential_format_features();
+
+            // VUID-VkSamplerCreateInfo-minFilter-01645
+            if !potential_format_features
+                .sampled_image_ycbcr_conversion_separate_reconstruction_filter
+                && !(mag_filter == sampler_ycbcr_conversion.chroma_filter()
+                    && min_filter == sampler_ycbcr_conversion.chroma_filter())
+            {
+                return Err(
+                    SamplerCreationError::SamplerYcbcrConversionChromaFilterMismatch {
+                        chroma_filter: sampler_ycbcr_conversion.chroma_filter(),
+                        mag_filter,
+                        min_filter,
+                    },
+                );
+            }
+
+            // VUID-VkSamplerCreateInfo-addressModeU-01646
+            if address_mode
+                .into_iter()
+                .any(|mode| !matches!(mode, SamplerAddressMode::ClampToEdge))
+            {
+                return Err(
+                    SamplerCreationError::SamplerYcbcrConversionInvalidAddressMode { address_mode },
+                );
+            }
+
+            // VUID-VkSamplerCreateInfo-addressModeU-01646
+            if anisotropy.is_some() {
+                return Err(SamplerCreationError::SamplerYcbcrConversionAnisotropyEnabled);
+            }
+
+            // VUID-VkSamplerCreateInfo-addressModeU-01646
+            if unnormalized_coordinates {
+                return Err(
+                    SamplerCreationError::SamplerYcbcrConversionUnnormalizedCoordinatesEnabled,
+                );
+            }
+
+            // VUID-VkSamplerCreateInfo-None-01647
+            if reduction_mode != SamplerReductionMode::WeightedAverage {
+                return Err(
+                    SamplerCreationError::SamplerYcbcrConversionInvalidReductionMode {
+                        reduction_mode,
+                    },
+                );
+            }
+
+            Some(ash::vk::SamplerYcbcrConversionInfo {
+                conversion: sampler_ycbcr_conversion.internal_object(),
+                ..Default::default()
+            })
+        } else {
+            None
+        };
+
+        let mut create_info = ash::vk::SamplerCreateInfo {
+            flags: ash::vk::SamplerCreateFlags::empty(),
+            mag_filter: mag_filter.into(),
+            min_filter: min_filter.into(),
+            mipmap_mode: mipmap_mode.into(),
+            address_mode_u: address_mode[0].into(),
+            address_mode_v: address_mode[1].into(),
+            address_mode_w: address_mode[2].into(),
+            mip_lod_bias: mip_lod_bias,
+            anisotropy_enable,
+            max_anisotropy,
+            compare_enable,
+            compare_op: compare_op.into(),
+            min_lod: *lod.start(),
+            max_lod: *lod.end(),
+            border_color: border_color.into(),
+            unnormalized_coordinates: unnormalized_coordinates as ash::vk::Bool32,
+            ..Default::default()
+        };
+
+        if let Some(sampler_reduction_mode_create_info) =
+            sampler_reduction_mode_create_info.as_mut()
+        {
+            sampler_reduction_mode_create_info.p_next = create_info.p_next;
+            create_info.p_next = sampler_reduction_mode_create_info as *const _ as *const _;
+        }
+
+        if let Some(sampler_ycbcr_conversion_info) = sampler_ycbcr_conversion_info.as_mut() {
+            sampler_ycbcr_conversion_info.p_next = create_info.p_next;
+            create_info.p_next = sampler_ycbcr_conversion_info as *const _ as *const _;
+        }
+
+        let handle = unsafe {
+            let fns = device.fns();
+            let mut output = MaybeUninit::uninit();
+            check_errors(fns.v1_0.create_sampler(
+                device.internal_object(),
+                &create_info,
+                ptr::null(),
+                output.as_mut_ptr(),
+            ))?;
+            output.assume_init()
+        };
+
+        Ok(Arc::new(Sampler {
+            handle,
             device,
 
-            mag_filter: Filter::Nearest,
-            min_filter: Filter::Nearest,
-            mipmap_mode: SamplerMipmapMode::Nearest,
-            address_mode_u: SamplerAddressMode::ClampToEdge,
-            address_mode_v: SamplerAddressMode::ClampToEdge,
-            address_mode_w: SamplerAddressMode::ClampToEdge,
-            mip_lod_bias: 0.0,
-            anisotropy: None,
-            compare: None,
-            lod: 0.0..=0.0,
-            border_color: BorderColor::FloatTransparentBlack,
-            unnormalized_coordinates: false,
-            reduction_mode: SamplerReductionMode::WeightedAverage,
-            sampler_ycbcr_conversion: None,
-        }
-    }
-
-    /// Shortcut for creating a sampler with linear sampling, linear mipmaps, and with the repeat
-    /// mode for borders.
-    ///
-    /// Useful for prototyping, but can also be used in real projects.
-    #[inline]
-    pub fn simple_repeat_linear(device: Arc<Device>) -> Result<Arc<Sampler>, SamplerCreationError> {
-        Sampler::start(device.clone())
-            .filter(Filter::Linear)
-            .mipmap_mode(SamplerMipmapMode::Linear)
-            .address_mode(SamplerAddressMode::Repeat)
-            .min_lod(0.0)
-            .build()
-    }
-
-    /// Shortcut for creating a sampler with linear sampling, that only uses the main level of
-    /// images, and with the repeat mode for borders.
-    ///
-    /// Useful for prototyping, but can also be used in real projects.
-    #[inline]
-    pub fn simple_repeat_linear_no_mipmap(
-        device: Arc<Device>,
-    ) -> Result<Arc<Sampler>, SamplerCreationError> {
-        Sampler::start(device.clone())
-            .filter(Filter::Linear)
-            .address_mode(SamplerAddressMode::Repeat)
-            .lod(0.0..=1.0)
-            .build()
+            address_mode,
+            anisotropy,
+            border_color: address_mode
+                .into_iter()
+                .any(|mode| mode == SamplerAddressMode::ClampToBorder)
+                .then(|| border_color),
+            compare,
+            lod,
+            mag_filter,
+            min_filter,
+            mip_lod_bias,
+            mipmap_mode,
+            reduction_mode,
+            sampler_ycbcr_conversion,
+            unnormalized_coordinates,
+        }))
     }
 
     /// Checks whether this sampler is compatible with `image_view`.
@@ -305,6 +573,18 @@ impl Sampler {
         Ok(())
     }
 
+    /// Returns the address modes for the u, v and w coordinates.
+    #[inline]
+    pub fn address_mode(&self) -> [SamplerAddressMode; 3] {
+        self.address_mode
+    }
+
+    /// Returns the anisotropy mode.
+    #[inline]
+    pub fn anisotropy(&self) -> Option<f32> {
+        self.anisotropy
+    }
+
     /// Returns the border color if one is used by this sampler.
     #[inline]
     pub fn border_color(&self) -> Option<BorderColor> {
@@ -317,6 +597,12 @@ impl Sampler {
         self.compare
     }
 
+    /// Returns the LOD range.
+    #[inline]
+    pub fn lod(&self) -> RangeInclusive<f32> {
+        self.lod.clone()
+    }
+
     /// Returns the magnification filter.
     #[inline]
     pub fn mag_filter(&self) -> Filter {
@@ -327,6 +613,12 @@ impl Sampler {
     #[inline]
     pub fn min_filter(&self) -> Filter {
         self.min_filter
+    }
+
+    /// Returns the mip LOD bias.
+    #[inline]
+    pub fn mip_lod_bias(&self) -> f32 {
+        self.mip_lod_bias
     }
 
     /// Returns the mipmap mode.
@@ -354,10 +646,14 @@ impl Sampler {
     }
 }
 
-unsafe impl DeviceOwned for Sampler {
+impl Drop for Sampler {
     #[inline]
-    fn device(&self) -> &Arc<Device> {
-        &self.device
+    fn drop(&mut self) {
+        unsafe {
+            let fns = self.device.fns();
+            fns.v1_0
+                .destroy_sampler(self.device.internal_object(), self.handle, ptr::null());
+        }
     }
 }
 
@@ -370,595 +666,27 @@ unsafe impl VulkanObject for Sampler {
     }
 }
 
-impl fmt::Debug for Sampler {
+unsafe impl DeviceOwned for Sampler {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "<Vulkan sampler {:?}>", self.handle)
+    fn device(&self) -> &Arc<Device> {
+        &self.device
     }
 }
 
 impl PartialEq for Sampler {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.handle == other.handle
+        self.handle == other.handle && self.device() == other.device()
     }
 }
 
 impl Eq for Sampler {}
 
-impl Drop for Sampler {
+impl Hash for Sampler {
     #[inline]
-    fn drop(&mut self) {
-        unsafe {
-            let fns = self.device.fns();
-            fns.v1_0
-                .destroy_sampler(self.device.internal_object(), self.handle, ptr::null());
-        }
-    }
-}
-
-/// Used to construct a new `Sampler`.
-#[derive(Clone, Debug)]
-pub struct SamplerBuilder {
-    device: Arc<Device>,
-
-    mag_filter: Filter,
-    min_filter: Filter,
-    mipmap_mode: SamplerMipmapMode,
-    address_mode_u: SamplerAddressMode,
-    address_mode_v: SamplerAddressMode,
-    address_mode_w: SamplerAddressMode,
-    mip_lod_bias: f32,
-    anisotropy: Option<f32>,
-    compare: Option<CompareOp>,
-    lod: RangeInclusive<f32>,
-    border_color: BorderColor,
-    unnormalized_coordinates: bool,
-    reduction_mode: SamplerReductionMode,
-    sampler_ycbcr_conversion: Option<Arc<SamplerYcbcrConversion>>,
-}
-
-impl SamplerBuilder {
-    /// Creates the `Sampler`.
-    pub fn build(self) -> Result<Arc<Sampler>, SamplerCreationError> {
-        let Self {
-            device,
-            mag_filter,
-            min_filter,
-            mipmap_mode,
-            address_mode_u,
-            address_mode_v,
-            address_mode_w,
-            mip_lod_bias,
-            anisotropy,
-            compare,
-            lod,
-            border_color,
-            unnormalized_coordinates,
-            reduction_mode,
-            sampler_ycbcr_conversion,
-        } = self;
-
-        if [address_mode_u, address_mode_v, address_mode_w]
-            .into_iter()
-            .any(|mode| mode == SamplerAddressMode::MirrorClampToEdge)
-        {
-            if !device.enabled_features().sampler_mirror_clamp_to_edge
-                && !device.enabled_extensions().khr_sampler_mirror_clamp_to_edge
-            {
-                if device
-                    .physical_device()
-                    .supported_features()
-                    .sampler_mirror_clamp_to_edge
-                {
-                    return Err(SamplerCreationError::FeatureNotEnabled {
-                        feature: "sampler_mirror_clamp_to_edge",
-                        reason: "one or more address modes were MirrorClampToEdge",
-                    });
-                } else {
-                    return Err(SamplerCreationError::ExtensionNotEnabled {
-                        extension: "khr_sampler_mirror_clamp_to_edge",
-                        reason: "one or more address modes were MirrorClampToEdge",
-                    });
-                }
-            }
-        }
-
-        {
-            let limit = device.physical_device().properties().max_sampler_lod_bias;
-            if mip_lod_bias.abs() > limit {
-                return Err(SamplerCreationError::MaxSamplerLodBiasExceeded {
-                    requested: mip_lod_bias,
-                    maximum: limit,
-                });
-            }
-        }
-
-        let (anisotropy_enable, max_anisotropy) = if let Some(max_anisotropy) = anisotropy {
-            if !device.enabled_features().sampler_anisotropy {
-                return Err(SamplerCreationError::FeatureNotEnabled {
-                    feature: "sampler_anisotropy",
-                    reason: "anisotropy was set to `Some`",
-                });
-            }
-
-            let limit = device.physical_device().properties().max_sampler_anisotropy;
-            if max_anisotropy > limit {
-                return Err(SamplerCreationError::MaxSamplerAnisotropyExceeded {
-                    requested: max_anisotropy,
-                    maximum: limit,
-                });
-            }
-
-            if [mag_filter, min_filter]
-                .into_iter()
-                .any(|filter| filter == Filter::Cubic)
-            {
-                return Err(SamplerCreationError::AnisotropyInvalidFilter {
-                    mag_filter: mag_filter,
-                    min_filter: min_filter,
-                });
-            }
-
-            (ash::vk::TRUE, max_anisotropy)
-        } else {
-            (ash::vk::FALSE, 1.0)
-        };
-
-        let (compare_enable, compare_op) = if let Some(compare_op) = compare {
-            if reduction_mode != SamplerReductionMode::WeightedAverage {
-                return Err(SamplerCreationError::CompareInvalidReductionMode { reduction_mode });
-            }
-
-            (ash::vk::TRUE, compare_op)
-        } else {
-            (ash::vk::FALSE, CompareOp::Never)
-        };
-
-        if unnormalized_coordinates {
-            if min_filter != mag_filter {
-                return Err(
-                    SamplerCreationError::UnnormalizedCoordinatesFiltersNotEqual {
-                        mag_filter,
-                        min_filter,
-                    },
-                );
-            }
-
-            if mipmap_mode != SamplerMipmapMode::Nearest {
-                return Err(
-                    SamplerCreationError::UnnormalizedCoordinatesInvalidMipmapMode { mipmap_mode },
-                );
-            }
-
-            if lod != (0.0..=0.0) {
-                return Err(SamplerCreationError::UnnormalizedCoordinatesNonzeroLod {
-                    lod: lod.clone(),
-                });
-            }
-
-            if [address_mode_u, address_mode_v].into_iter().any(|mode| {
-                !matches!(
-                    mode,
-                    SamplerAddressMode::ClampToEdge | SamplerAddressMode::ClampToBorder
-                )
-            }) {
-                return Err(
-                    SamplerCreationError::UnnormalizedCoordinatesInvalidAddressMode {
-                        address_mode_u,
-                        address_mode_v,
-                    },
-                );
-            }
-
-            if anisotropy.is_some() {
-                return Err(SamplerCreationError::UnnormalizedCoordinatesAnisotropyEnabled);
-            }
-
-            if compare.is_some() {
-                return Err(SamplerCreationError::UnnormalizedCoordinatesCompareEnabled);
-            }
-        }
-
-        let mut sampler_reduction_mode_create_info =
-            if reduction_mode != SamplerReductionMode::WeightedAverage {
-                if !(device.enabled_features().sampler_filter_minmax
-                    || device.enabled_extensions().ext_sampler_filter_minmax)
-                {
-                    if device
-                        .physical_device()
-                        .supported_features()
-                        .sampler_filter_minmax
-                    {
-                        return Err(SamplerCreationError::FeatureNotEnabled {
-                            feature: "sampler_filter_minmax",
-                            reason: "reduction_mode was not WeightedAverage",
-                        });
-                    } else {
-                        return Err(SamplerCreationError::ExtensionNotEnabled {
-                            extension: "ext_sampler_filter_minmax",
-                            reason: "reduction_mode was not WeightedAverage",
-                        });
-                    }
-                }
-
-                Some(ash::vk::SamplerReductionModeCreateInfo {
-                    reduction_mode: reduction_mode.into(),
-                    ..Default::default()
-                })
-            } else {
-                None
-            };
-
-        // Don't need to check features because you can't create a conversion object without the
-        // feature anyway.
-        let mut sampler_ycbcr_conversion_info =
-            if let Some(sampler_ycbcr_conversion) = &sampler_ycbcr_conversion {
-                assert_eq!(&device, sampler_ycbcr_conversion.device());
-
-                let potential_format_features = device
-                    .physical_device()
-                    .format_properties(sampler_ycbcr_conversion.format().unwrap())
-                    .potential_format_features();
-
-                // VUID-VkSamplerCreateInfo-minFilter-01645
-                if !potential_format_features
-                    .sampled_image_ycbcr_conversion_separate_reconstruction_filter
-                    && !(self.mag_filter == sampler_ycbcr_conversion.chroma_filter()
-                        && self.min_filter == sampler_ycbcr_conversion.chroma_filter())
-                {
-                    return Err(
-                        SamplerCreationError::SamplerYcbcrConversionChromaFilterMismatch {
-                            chroma_filter: sampler_ycbcr_conversion.chroma_filter(),
-                            mag_filter: self.mag_filter,
-                            min_filter: self.min_filter,
-                        },
-                    );
-                }
-
-                // VUID-VkSamplerCreateInfo-addressModeU-01646
-                if [
-                    self.address_mode_u,
-                    self.address_mode_v,
-                    self.address_mode_w,
-                ]
-                .into_iter()
-                .any(|mode| !matches!(mode, SamplerAddressMode::ClampToEdge))
-                {
-                    return Err(
-                        SamplerCreationError::SamplerYcbcrConversionInvalidAddressMode {
-                            address_mode_u: self.address_mode_u,
-                            address_mode_v: self.address_mode_v,
-                            address_mode_w: self.address_mode_w,
-                        },
-                    );
-                }
-
-                // VUID-VkSamplerCreateInfo-addressModeU-01646
-                if self.anisotropy.is_some() {
-                    return Err(SamplerCreationError::SamplerYcbcrConversionAnisotropyEnabled);
-                }
-
-                // VUID-VkSamplerCreateInfo-addressModeU-01646
-                if self.unnormalized_coordinates {
-                    return Err(
-                        SamplerCreationError::SamplerYcbcrConversionUnnormalizedCoordinatesEnabled,
-                    );
-                }
-
-                // VUID-VkSamplerCreateInfo-None-01647
-                if self.reduction_mode != SamplerReductionMode::WeightedAverage {
-                    return Err(
-                        SamplerCreationError::SamplerYcbcrConversionInvalidReductionMode {
-                            reduction_mode: self.reduction_mode,
-                        },
-                    );
-                }
-
-                Some(ash::vk::SamplerYcbcrConversionInfo {
-                    conversion: sampler_ycbcr_conversion.internal_object(),
-                    ..Default::default()
-                })
-            } else {
-                None
-            };
-
-        let mut create_info = ash::vk::SamplerCreateInfo {
-            flags: ash::vk::SamplerCreateFlags::empty(),
-            mag_filter: mag_filter.into(),
-            min_filter: min_filter.into(),
-            mipmap_mode: mipmap_mode.into(),
-            address_mode_u: address_mode_u.into(),
-            address_mode_v: address_mode_v.into(),
-            address_mode_w: address_mode_w.into(),
-            mip_lod_bias: mip_lod_bias,
-            anisotropy_enable,
-            max_anisotropy,
-            compare_enable,
-            compare_op: compare_op.into(),
-            min_lod: *lod.start(),
-            max_lod: *lod.end(),
-            border_color: border_color.into(),
-            unnormalized_coordinates: unnormalized_coordinates as ash::vk::Bool32,
-            ..Default::default()
-        };
-
-        if let Some(sampler_reduction_mode_create_info) =
-            sampler_reduction_mode_create_info.as_mut()
-        {
-            sampler_reduction_mode_create_info.p_next = create_info.p_next;
-            create_info.p_next = sampler_reduction_mode_create_info as *const _ as *const _;
-        }
-
-        if let Some(sampler_ycbcr_conversion_info) = sampler_ycbcr_conversion_info.as_mut() {
-            sampler_ycbcr_conversion_info.p_next = create_info.p_next;
-            create_info.p_next = sampler_ycbcr_conversion_info as *const _ as *const _;
-        }
-
-        let handle = unsafe {
-            let fns = device.fns();
-            let mut output = MaybeUninit::uninit();
-            check_errors(fns.v1_0.create_sampler(
-                device.internal_object(),
-                &create_info,
-                ptr::null(),
-                output.as_mut_ptr(),
-            ))?;
-            output.assume_init()
-        };
-
-        Ok(Arc::new(Sampler {
-            handle,
-            device,
-
-            border_color: [address_mode_u, address_mode_v, address_mode_w]
-                .into_iter()
-                .any(|mode| mode == SamplerAddressMode::ClampToBorder)
-                .then(|| border_color),
-            compare,
-            mag_filter,
-            min_filter,
-            mipmap_mode,
-            reduction_mode,
-            sampler_ycbcr_conversion,
-            unnormalized_coordinates,
-        }))
-    }
-
-    /// How the sampled value of a single mipmap should be calculated,
-    /// for both magnification and minification.
-    ///
-    /// The default value is [`Nearest`](Filter::Nearest).
-    #[inline]
-    pub fn filter(mut self, filter: Filter) -> Self {
-        self.mag_filter = filter;
-        self.min_filter = filter;
-        self
-    }
-
-    /// How the sampled value of a single mipmap should be calculated,
-    /// when magnification is applied (LOD <= 0.0).
-    ///
-    /// The default value is [`Nearest`](Filter::Nearest).
-    #[inline]
-    pub fn mag_filter(mut self, filter: Filter) -> Self {
-        self.mag_filter = filter;
-        self
-    }
-
-    /// How the sampled value of a single mipmap should be calculated,
-    /// when minification is applied (LOD > 0.0).
-    ///
-    /// The default value is [`Nearest`](Filter::Nearest).
-    #[inline]
-    pub fn min_filter(mut self, filter: Filter) -> Self {
-        self.min_filter = filter;
-        self
-    }
-
-    /// How the final sampled value should be calculated from the samples of individual
-    /// mipmaps.
-    ///
-    /// The default value is [`Nearest`](SamplerMipmapMode::Nearest).
-    #[inline]
-    pub fn mipmap_mode(mut self, mode: SamplerMipmapMode) -> Self {
-        self.mipmap_mode = mode;
-        self
-    }
-
-    /// How out-of-range texture coordinates should be treated, for all texture coordinate indices.
-    ///
-    /// The default value is [`ClampToEdge`](SamplerAddressMode::ClampToEdge).
-    #[inline]
-    pub fn address_mode(mut self, mode: SamplerAddressMode) -> Self {
-        self.address_mode_u = mode;
-        self.address_mode_v = mode;
-        self.address_mode_w = mode;
-        self
-    }
-
-    /// How out-of-range texture coordinates should be treated, for the u coordinate.
-    ///
-    /// The default value is [`ClampToEdge`](SamplerAddressMode::ClampToEdge).
-    #[inline]
-    pub fn address_mode_u(mut self, mode: SamplerAddressMode) -> Self {
-        self.address_mode_u = mode;
-        self
-    }
-
-    /// How out-of-range texture coordinates should be treated, for the v coordinate.
-    ///
-    /// The default value is [`ClampToEdge`](SamplerAddressMode::ClampToEdge).
-    #[inline]
-    pub fn address_mode_v(mut self, mode: SamplerAddressMode) -> Self {
-        self.address_mode_v = mode;
-        self
-    }
-
-    /// How out-of-range texture coordinates should be treated, for the w coordinate.
-    ///
-    /// The default value is [`ClampToEdge`](SamplerAddressMode::ClampToEdge).
-    #[inline]
-    pub fn address_mode_w(mut self, mode: SamplerAddressMode) -> Self {
-        self.address_mode_w = mode;
-        self
-    }
-
-    /// The bias value to be added to the base LOD before clamping.
-    ///
-    /// The absolute value of the provided value must not exceed the
-    /// [`max_sampler_lod_bias`](crate::device::Properties::max_sampler_lod_bias) limit of the
-    /// device.
-    ///
-    /// The default value is `0.0`.
-    #[inline]
-    pub fn mip_lod_bias(mut self, bias: f32) -> Self {
-        self.mip_lod_bias = bias;
-        self
-    }
-
-    /// Sets whether anisotropic texel filtering is enabled (`Some`) and provides the maximum
-    /// anisotropy value if it is enabled.
-    ///
-    /// Anisotropic filtering is a special filtering mode that takes into account the differences in
-    /// scaling between the horizontal and vertical framebuffer axes.
-    ///
-    /// If set to `Some`, the [`sampler_anisotropy`](crate::device::Features::sampler_anisotropy)
-    /// feature must be enabled on the device, the provided maximum value must not exceed the
-    /// [`max_sampler_anisotropy`](crate::device::Properties::max_sampler_anisotropy) limit, and
-    /// the [`Cubic`](Filter::Cubic) filter must not be used.
-    ///
-    /// The default value is `None`.
-    ///
-    /// # Panics
-    /// - Panics if `anisotropy` is `Some` and contains a value less than 1.0.
-    #[inline]
-    pub fn anisotropy(mut self, anisotropy: Option<f32>) -> Self {
-        if let Some(max_anisotropy) = anisotropy {
-            assert!(max_anisotropy >= 1.0);
-        }
-
-        self.anisotropy = anisotropy;
-        self
-    }
-
-    /// Sets whether depth comparison is enabled (`Some`) and provides a comparison operator if it
-    /// is enabled.
-    ///
-    /// Depth comparison is an alternative mode for samplers that can be used in combination with
-    /// image views specifying the depth aspect. Instead of returning a value that is sampled from
-    /// the image directly, a comparison operation is applied between the sampled value and a
-    /// reference value that is specified as part of the operation. The result is binary: 1.0 if the
-    /// operation returns `true`, 0.0 if it returns `false`.
-    ///
-    /// If set to `Some`, the `reduction_mode` must be set to
-    /// [`WeightedAverage`](SamplerReductionMode::WeightedAverage).
-    ///
-    /// The default value is `None`.
-    #[inline]
-    pub fn compare(mut self, compare: Option<CompareOp>) -> Self {
-        self.compare = compare;
-        self
-    }
-
-    /// The range that LOD values must be clamped to.
-    ///
-    /// The default value is `0.0..`.
-    ///
-    /// # Panics
-    /// - Panics if `range` is empty.
-    #[inline]
-    pub fn lod(mut self, range: RangeInclusive<f32>) -> Self {
-        assert!(!range.is_empty());
-        self.lod = range;
-        self
-    }
-
-    /// The minimum value that LOD values must be clamped to. The maximum LOD is left unbounded.
-    ///
-    /// The default value is `0.0..`.
-    ///
-    /// # Panics
-    /// - Panics if `min` is greater than 1000.0.
-    #[inline]
-    pub fn min_lod(mut self, min: f32) -> Self {
-        assert!(min <= ash::vk::LOD_CLAMP_NONE);
-        self.lod = min..=ash::vk::LOD_CLAMP_NONE;
-        self
-    }
-
-    /// The border color to use if `address_mode` is set to
-    /// [`ClampToBorder`](SamplerAddressMode::ClampToBorder).
-    ///
-    /// The default value is [`FloatTransparentBlack`](BorderColor::FloatTransparentBlack).
-    #[inline]
-    pub fn border_color(mut self, border_color: BorderColor) -> Self {
-        self.border_color = border_color;
-        self
-    }
-
-    /// Sets whether unnormalized texture coordinates are enabled.
-    ///
-    /// When a sampler is set to use unnormalized coordinates as input, the texture coordinates are
-    /// not scaled by the size of the image, and therefore range up to the size of the image rather
-    /// than 1.0. Enabling this comes with several restrictions:
-    /// - `min_filter` and `mag_filter` must be equal.
-    /// - `mipmap_mode` must be [`Nearest`](SamplerMipmapMode::Nearest).
-    /// - The `lod` range must be `0.0..=0.0`.
-    /// - `address_mode` for u and v must be either
-    ///   [`ClampToEdge`](`SamplerAddressMode::ClampToEdge`) or
-    ///   [`ClampToBorder`](`SamplerAddressMode::ClampToBorder`).
-    /// - Anisotropy and depth comparison must be disabled.
-    ///
-    /// Some restrictions also apply to the image view being sampled:
-    /// - The view type must be [`Dim1d`](crate::image::view::ImageViewType::Dim1d) or
-    ///   [`Dim2d`](crate::image::view::ImageViewType::Dim2d). Arrayed types are not allowed.
-    /// - It must have a single mipmap level.
-    ///
-    /// Finally, restrictions apply to the sampling operations that can be used in a shader:
-    /// - Only explicit LOD operations are allowed, implicit LOD operations are not.
-    /// - Sampling with projection is not allowed.
-    /// - Sampling with an LOD bias is not allowed.
-    /// - Sampling with an offset is not allowed.
-    ///
-    /// The default value is `false`.
-    #[inline]
-    pub fn unnormalized_coordinates(mut self, enable: bool) -> Self {
-        self.unnormalized_coordinates = enable;
-        self
-    }
-
-    /// Sets how the value sampled from a mipmap should be calculated from the selected
-    /// pixels, for the `Linear` and `Cubic` filters.
-    ///
-    /// The default value is [`WeightedAverage`](SamplerReductionMode::WeightedAverage).
-    #[inline]
-    pub fn reduction_mode(mut self, mode: SamplerReductionMode) -> Self {
-        self.reduction_mode = mode;
-        self
-    }
-
-    /// Adds a sampler YCbCr conversion to the sampler.
-    ///
-    /// If set to `Some`, several restrictions apply:
-    /// - If the `format` of `conversion` does not support
-    ///   `sampled_image_ycbcr_conversion_separate_reconstruction_filter`, then `mag_filter` and
-    ///   `min_filter` must be equal to the `chroma_filter` of `conversion`.
-    /// - `address_mode` for u, v and w must be [`ClampToEdge`](`SamplerAddressMode::ClampToEdge`).
-    /// - Anisotropy and unnormalized coordinates must be disabled.
-    /// - The `reduction_mode` must be [`WeightedAverage`](SamplerReductionMode::WeightedAverage).
-    ///
-    /// In addition, the sampler must only be used as an immutable sampler within a descriptor set
-    /// layout, and only in a combined image sampler descriptor.
-    ///
-    /// The default value is `None`.
-    #[inline]
-    pub fn sampler_ycbcr_conversion(
-        mut self,
-        conversion: Option<Arc<SamplerYcbcrConversion>>,
-    ) -> Self {
-        self.sampler_ycbcr_conversion = conversion;
-        self
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.handle.hash(state);
+        self.device().hash(state);
     }
 }
 
@@ -1020,12 +748,10 @@ pub enum SamplerCreationError {
         min_filter: Filter,
     },
 
-    /// Sampler YCbCr conversion was enabled, but the address mode for u, v or w was something other
-    /// than `ClampToEdge`.
+    /// Sampler YCbCr conversion was enabled, but the address mode for `u`, `v` or `w` was
+    /// something other than `ClampToEdge`.
     SamplerYcbcrConversionInvalidAddressMode {
-        address_mode_u: SamplerAddressMode,
-        address_mode_v: SamplerAddressMode,
-        address_mode_w: SamplerAddressMode,
+        address_mode: [SamplerAddressMode; 3],
     },
 
     /// Sampler YCbCr conversion was enabled, but the reduction mode was something other than
@@ -1049,11 +775,10 @@ pub enum SamplerCreationError {
         min_filter: Filter,
     },
 
-    /// Unnormalized coordinates were enabled, but the address mode for u or v was something other
-    /// than `ClampToEdge` or `ClampToBorder`.
+    /// Unnormalized coordinates were enabled, but the address mode for `u` or `v` was something
+    /// other than `ClampToEdge` or `ClampToBorder`.
     UnnormalizedCoordinatesInvalidAddressMode {
-        address_mode_u: SamplerAddressMode,
-        address_mode_v: SamplerAddressMode,
+        address_mode: [SamplerAddressMode; 2],
     },
 
     /// Unnormalized coordinates were enabled, but the mipmap mode was not `Nearest`.
@@ -1134,22 +859,204 @@ impl fmt::Display for SamplerCreationError {
 
 impl From<OomError> for SamplerCreationError {
     #[inline]
-    fn from(err: OomError) -> SamplerCreationError {
-        SamplerCreationError::OomError(err)
+    fn from(err: OomError) -> Self {
+        Self::OomError(err)
     }
 }
 
 impl From<Error> for SamplerCreationError {
     #[inline]
-    fn from(err: Error) -> SamplerCreationError {
+    fn from(err: Error) -> Self {
         match err {
-            err @ Error::OutOfHostMemory => SamplerCreationError::OomError(OomError::from(err)),
-            err @ Error::OutOfDeviceMemory => SamplerCreationError::OomError(OomError::from(err)),
-            Error::TooManyObjects => SamplerCreationError::TooManyObjects,
+            err @ Error::OutOfHostMemory => Self::OomError(OomError::from(err)),
+            err @ Error::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
+            Error::TooManyObjects => Self::TooManyObjects,
             _ => panic!("unexpected error: {:?}", err),
         }
     }
 }
+
+/// Parameters to create a new `Sampler`.
+#[derive(Clone, Debug)]
+pub struct SamplerCreateInfo {
+    /// How the sampled value of a single mipmap should be calculated,
+    /// when magnification is applied (LOD <= 0.0).
+    ///
+    /// The default value is [`Nearest`](Filter::Nearest).
+    pub mag_filter: Filter,
+
+    /// How the sampled value of a single mipmap should be calculated,
+    /// when minification is applied (LOD > 0.0).
+    ///
+    /// The default value is [`Nearest`](Filter::Nearest).
+    pub min_filter: Filter,
+
+    /// How the final sampled value should be calculated from the samples of individual
+    /// mipmaps.
+    ///
+    /// The default value is [`Nearest`](SamplerMipmapMode::Nearest).
+    pub mipmap_mode: SamplerMipmapMode,
+
+    /// How out-of-range texture coordinates should be treated, for the `u`, `v` and `w` texture
+    /// coordinate indices respectively.
+    ///
+    /// The default value is [`ClampToEdge`](SamplerAddressMode::ClampToEdge).
+    pub address_mode: [SamplerAddressMode; 3],
+
+    /// The bias value to be added to the base LOD before clamping.
+    ///
+    /// The absolute value of the provided value must not exceed the
+    /// [`max_sampler_lod_bias`](crate::device::Properties::max_sampler_lod_bias) limit of the
+    /// device.
+    ///
+    /// The default value is `0.0`.
+    pub mip_lod_bias: f32,
+
+    /// Whether anisotropic texel filtering is enabled (`Some`), and the maximum anisotropy value
+    /// to use if it is enabled.
+    ///
+    /// Anisotropic filtering is a special filtering mode that takes into account the differences in
+    /// scaling between the horizontal and vertical framebuffer axes.
+    ///
+    /// If set to `Some`, the [`sampler_anisotropy`](crate::device::Features::sampler_anisotropy)
+    /// feature must be enabled on the device, the provided maximum value must not exceed the
+    /// [`max_sampler_anisotropy`](crate::device::Properties::max_sampler_anisotropy) limit, and
+    /// the [`Cubic`](Filter::Cubic) filter must not be used.
+    ///
+    /// The default value is `None`.
+    pub anisotropy: Option<f32>,
+
+    /// Whether depth comparison is enabled (`Some`), and the comparison operator to use if it is
+    /// enabled.
+    ///
+    /// Depth comparison is an alternative mode for samplers that can be used in combination with
+    /// image views specifying the depth aspect. Instead of returning a value that is sampled from
+    /// the image directly, a comparison operation is applied between the sampled value and a
+    /// reference value that is specified as part of the operation. The result is binary: 1.0 if the
+    /// operation returns `true`, 0.0 if it returns `false`.
+    ///
+    /// If set to `Some`, the `reduction_mode` must be set to
+    /// [`WeightedAverage`](SamplerReductionMode::WeightedAverage).
+    ///
+    /// The default value is `None`.
+    pub compare: Option<CompareOp>,
+
+    /// The range that LOD values must be clamped to.
+    ///
+    /// If the end of the range is set to [`LOD_CLAMP_NONE`], it is unbounded.
+    ///
+    /// The default value is `0.0..=0.0`.
+    pub lod: RangeInclusive<f32>,
+
+    /// The border color to use if `address_mode` is set to
+    /// [`ClampToBorder`](SamplerAddressMode::ClampToBorder).
+    ///
+    /// The default value is [`FloatTransparentBlack`](BorderColor::FloatTransparentBlack).
+    pub border_color: BorderColor,
+
+    /// Whether unnormalized texture coordinates are enabled.
+    ///
+    /// When a sampler is set to use unnormalized coordinates as input, the texture coordinates are
+    /// not scaled by the size of the image, and therefore range up to the size of the image rather
+    /// than 1.0. Enabling this comes with several restrictions:
+    /// - `min_filter` and `mag_filter` must be equal.
+    /// - `mipmap_mode` must be [`Nearest`](SamplerMipmapMode::Nearest).
+    /// - The `lod` range must be `0.0..=0.0`.
+    /// - `address_mode` for u and v must be either
+    ///   [`ClampToEdge`](`SamplerAddressMode::ClampToEdge`) or
+    ///   [`ClampToBorder`](`SamplerAddressMode::ClampToBorder`).
+    /// - Anisotropy and depth comparison must be disabled.
+    ///
+    /// Some restrictions also apply to the image view being sampled:
+    /// - The view type must be [`Dim1d`](crate::image::view::ImageViewType::Dim1d) or
+    ///   [`Dim2d`](crate::image::view::ImageViewType::Dim2d). Arrayed types are not allowed.
+    /// - It must have a single mipmap level.
+    ///
+    /// Finally, restrictions apply to the sampling operations that can be used in a shader:
+    /// - Only explicit LOD operations are allowed, implicit LOD operations are not.
+    /// - Sampling with projection is not allowed.
+    /// - Sampling with an LOD bias is not allowed.
+    /// - Sampling with an offset is not allowed.
+    ///
+    /// The default value is `false`.
+    pub unnormalized_coordinates: bool,
+
+    /// How the value sampled from a mipmap should be calculated from the selected
+    /// pixels, for the `Linear` and `Cubic` filters.
+    ///
+    /// The default value is [`WeightedAverage`](SamplerReductionMode::WeightedAverage).
+    pub reduction_mode: SamplerReductionMode,
+
+    /// Adds a sampler YCbCr conversion to the sampler.
+    ///
+    /// If set to `Some`, several restrictions apply:
+    /// - If the `format` of `conversion` does not support
+    ///   `sampled_image_ycbcr_conversion_separate_reconstruction_filter`, then `mag_filter` and
+    ///   `min_filter` must be equal to the `chroma_filter` of `conversion`.
+    /// - `address_mode` for u, v and w must be [`ClampToEdge`](`SamplerAddressMode::ClampToEdge`).
+    /// - Anisotropy and unnormalized coordinates must be disabled.
+    /// - The `reduction_mode` must be [`WeightedAverage`](SamplerReductionMode::WeightedAverage).
+    ///
+    /// In addition, the sampler must only be used as an immutable sampler within a descriptor set
+    /// layout, and only in a combined image sampler descriptor.
+    ///
+    /// The default value is `None`.
+    pub sampler_ycbcr_conversion: Option<Arc<SamplerYcbcrConversion>>,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for SamplerCreateInfo {
+    fn default() -> Self {
+        Self {
+            mag_filter: Filter::Nearest,
+            min_filter: Filter::Nearest,
+            mipmap_mode: SamplerMipmapMode::Nearest,
+            address_mode: [SamplerAddressMode::ClampToEdge; 3],
+            mip_lod_bias: 0.0,
+            anisotropy: None,
+            compare: None,
+            lod: 0.0..=0.0,
+            border_color: BorderColor::FloatTransparentBlack,
+            unnormalized_coordinates: false,
+            reduction_mode: SamplerReductionMode::WeightedAverage,
+            sampler_ycbcr_conversion: None,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+impl SamplerCreateInfo {
+    /// Shortcut for creating a sampler with linear sampling, linear mipmaps, and with the repeat
+    /// mode for borders.
+    #[inline]
+    pub fn simple_repeat_linear() -> Self {
+        Self {
+            mag_filter: Filter::Linear,
+            min_filter: Filter::Linear,
+            mipmap_mode: SamplerMipmapMode::Linear,
+            address_mode: [SamplerAddressMode::Repeat; 3],
+            lod: 0.0..=LOD_CLAMP_NONE,
+            ..Default::default()
+        }
+    }
+
+    /// Shortcut for creating a sampler with linear sampling, that only uses the main level of
+    /// images, and with the repeat mode for borders.
+    #[inline]
+    pub fn simple_repeat_linear_no_mipmap() -> Self {
+        Self {
+            mag_filter: Filter::Linear,
+            min_filter: Filter::Linear,
+            address_mode: [SamplerAddressMode::Repeat; 3],
+            lod: 0.0..=1.0,
+            ..Default::default()
+        }
+    }
+}
+
+/// A special value to indicate that the maximum LOD should not be clamped.
+pub const LOD_CLAMP_NONE: f32 = ash::vk::LOD_CLAMP_NONE;
 
 /// A mapping between components of a source format and components read by a shader.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
@@ -1523,7 +1430,8 @@ mod tests {
     use crate::{
         pipeline::graphics::depth_stencil::CompareOp,
         sampler::{
-            Filter, Sampler, SamplerAddressMode, SamplerCreationError, SamplerReductionMode,
+            Filter, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerCreationError,
+            SamplerReductionMode,
         },
     };
 
@@ -1531,13 +1439,18 @@ mod tests {
     fn create_regular() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let s = Sampler::start(device)
-            .filter(Filter::Linear)
-            .address_mode(SamplerAddressMode::Repeat)
-            .mip_lod_bias(1.0)
-            .lod(0.0..=2.0)
-            .build()
-            .unwrap();
+        let s = Sampler::new(
+            device,
+            SamplerCreateInfo {
+                mag_filter: Filter::Linear,
+                min_filter: Filter::Linear,
+                address_mode: [SamplerAddressMode::Repeat; 3],
+                mip_lod_bias: 1.0,
+                lod: 0.0..=2.0,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         assert!(!s.compare().is_some());
         assert!(!s.unnormalized_coordinates());
     }
@@ -1546,14 +1459,19 @@ mod tests {
     fn create_compare() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let s = Sampler::start(device)
-            .filter(Filter::Linear)
-            .address_mode(SamplerAddressMode::Repeat)
-            .mip_lod_bias(1.0)
-            .compare(Some(CompareOp::Less))
-            .lod(0.0..=2.0)
-            .build()
-            .unwrap();
+        let s = Sampler::new(
+            device,
+            SamplerCreateInfo {
+                mag_filter: Filter::Linear,
+                min_filter: Filter::Linear,
+                address_mode: [SamplerAddressMode::Repeat; 3],
+                mip_lod_bias: 1.0,
+                compare: Some(CompareOp::Less),
+                lod: 0.0..=2.0,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         assert!(s.compare().is_some());
         assert!(!s.unnormalized_coordinates());
     }
@@ -1562,11 +1480,16 @@ mod tests {
     fn create_unnormalized() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let s = Sampler::start(device)
-            .filter(Filter::Linear)
-            .unnormalized_coordinates(true)
-            .build()
-            .unwrap();
+        let s = Sampler::new(
+            device,
+            SamplerCreateInfo {
+                mag_filter: Filter::Linear,
+                min_filter: Filter::Linear,
+                unnormalized_coordinates: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         assert!(!s.compare().is_some());
         assert!(s.unnormalized_coordinates());
     }
@@ -1574,13 +1497,13 @@ mod tests {
     #[test]
     fn simple_repeat_linear() {
         let (device, queue) = gfx_dev_and_queue!();
-        let _ = Sampler::simple_repeat_linear(device);
+        let _ = Sampler::new(device, SamplerCreateInfo::simple_repeat_linear());
     }
 
     #[test]
     fn simple_repeat_linear_no_mipmap() {
         let (device, queue) = gfx_dev_and_queue!();
-        let _ = Sampler::simple_repeat_linear_no_mipmap(device);
+        let _ = Sampler::new(device, SamplerCreateInfo::simple_repeat_linear_no_mipmap());
     }
 
     #[test]
@@ -1588,12 +1511,17 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
 
         assert_should_panic!({
-            let _ = Sampler::start(device)
-                .filter(Filter::Linear)
-                .address_mode(SamplerAddressMode::Repeat)
-                .mip_lod_bias(1.0)
-                .lod(5.0..=2.0)
-                .build();
+            let _ = Sampler::new(
+                device,
+                SamplerCreateInfo {
+                    mag_filter: Filter::Linear,
+                    min_filter: Filter::Linear,
+                    address_mode: [SamplerAddressMode::Repeat; 3],
+                    mip_lod_bias: 1.0,
+                    lod: 5.0..=2.0,
+                    ..Default::default()
+                },
+            );
         });
     }
 
@@ -1602,13 +1530,18 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
 
         assert_should_panic!({
-            let _ = Sampler::start(device)
-                .filter(Filter::Linear)
-                .address_mode(SamplerAddressMode::Repeat)
-                .mip_lod_bias(1.0)
-                .anisotropy(Some(0.5))
-                .lod(0.0..=2.0)
-                .build();
+            let _ = Sampler::new(
+                device,
+                SamplerCreateInfo {
+                    mag_filter: Filter::Linear,
+                    min_filter: Filter::Linear,
+                    address_mode: [SamplerAddressMode::Repeat; 3],
+                    mip_lod_bias: 1.0,
+                    anisotropy: Some(0.5),
+                    lod: 0.0..=2.0,
+                    ..Default::default()
+                },
+            );
         });
     }
 
@@ -1616,13 +1549,18 @@ mod tests {
     fn anisotropy_feature() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let r = Sampler::start(device)
-            .filter(Filter::Linear)
-            .address_mode(SamplerAddressMode::Repeat)
-            .mip_lod_bias(1.0)
-            .anisotropy(Some(2.0))
-            .lod(0.0..=2.0)
-            .build();
+        let r = Sampler::new(
+            device,
+            SamplerCreateInfo {
+                mag_filter: Filter::Linear,
+                min_filter: Filter::Linear,
+                address_mode: [SamplerAddressMode::Repeat; 3],
+                mip_lod_bias: 1.0,
+                anisotropy: Some(2.0),
+                lod: 0.0..=2.0,
+                ..Default::default()
+            },
+        );
 
         match r {
             Err(SamplerCreationError::FeatureNotEnabled {
@@ -1637,13 +1575,18 @@ mod tests {
     fn anisotropy_limit() {
         let (device, queue) = gfx_dev_and_queue!(sampler_anisotropy);
 
-        let r = Sampler::start(device)
-            .filter(Filter::Linear)
-            .address_mode(SamplerAddressMode::Repeat)
-            .mip_lod_bias(1.0)
-            .anisotropy(Some(100000000.0))
-            .lod(0.0..=2.0)
-            .build();
+        let r = Sampler::new(
+            device,
+            SamplerCreateInfo {
+                mag_filter: Filter::Linear,
+                min_filter: Filter::Linear,
+                address_mode: [SamplerAddressMode::Repeat; 3],
+                mip_lod_bias: 1.0,
+                anisotropy: Some(100000000.0),
+                lod: 0.0..=2.0,
+                ..Default::default()
+            },
+        );
 
         match r {
             Err(SamplerCreationError::MaxSamplerAnisotropyExceeded { .. }) => (),
@@ -1655,12 +1598,17 @@ mod tests {
     fn mip_lod_bias_limit() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let r = Sampler::start(device)
-            .filter(Filter::Linear)
-            .address_mode(SamplerAddressMode::Repeat)
-            .mip_lod_bias(100000000.0)
-            .lod(0.0..=2.0)
-            .build();
+        let r = Sampler::new(
+            device,
+            SamplerCreateInfo {
+                mag_filter: Filter::Linear,
+                min_filter: Filter::Linear,
+                address_mode: [SamplerAddressMode::Repeat; 3],
+                mip_lod_bias: 100000000.0,
+                lod: 0.0..=2.0,
+                ..Default::default()
+            },
+        );
 
         match r {
             Err(SamplerCreationError::MaxSamplerLodBiasExceeded { .. }) => (),
@@ -1672,12 +1620,17 @@ mod tests {
     fn sampler_mirror_clamp_to_edge_extension() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let r = Sampler::start(device)
-            .filter(Filter::Linear)
-            .address_mode(SamplerAddressMode::MirrorClampToEdge)
-            .mip_lod_bias(1.0)
-            .lod(0.0..=2.0)
-            .build();
+        let r = Sampler::new(
+            device,
+            SamplerCreateInfo {
+                mag_filter: Filter::Linear,
+                min_filter: Filter::Linear,
+                address_mode: [SamplerAddressMode::MirrorClampToEdge; 3],
+                mip_lod_bias: 1.0,
+                lod: 0.0..=2.0,
+                ..Default::default()
+            },
+        );
 
         match r {
             Err(
@@ -1698,10 +1651,15 @@ mod tests {
     fn sampler_filter_minmax_extension() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let r = Sampler::start(device)
-            .filter(Filter::Linear)
-            .reduction_mode(SamplerReductionMode::Min)
-            .build();
+        let r = Sampler::new(
+            device,
+            SamplerCreateInfo {
+                mag_filter: Filter::Linear,
+                min_filter: Filter::Linear,
+                reduction_mode: SamplerReductionMode::Min,
+                ..Default::default()
+            },
+        );
 
         match r {
             Err(

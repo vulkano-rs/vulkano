@@ -30,7 +30,7 @@ use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::layout::PipelineLayout;
 use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass};
-use vulkano::sampler::{Filter, Sampler, SamplerAddressMode};
+use vulkano::sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo};
 use vulkano::swapchain::{
     self, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
 };
@@ -287,11 +287,16 @@ fn main() {
         ImageView::new(image).unwrap()
     };
 
-    let sampler = Sampler::start(device.clone())
-        .filter(Filter::Linear)
-        .address_mode(SamplerAddressMode::Repeat)
-        .build()
-        .unwrap();
+    let sampler = Sampler::new(
+        device.clone(),
+        SamplerCreateInfo {
+            mag_filter: Filter::Linear,
+            min_filter: Filter::Linear,
+            address_mode: [SamplerAddressMode::Repeat; 3],
+            ..Default::default()
+        },
+    )
+    .unwrap();
 
     let pipeline_layout = {
         let mut descriptor_set_descs: Vec<_> = DescriptorSetDesc::from_requirements(
