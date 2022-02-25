@@ -589,6 +589,7 @@ impl Parse for MacroInput {
                         "1.3" => SpirvVersion::V1_3,
                         "1.4" => SpirvVersion::V1_4,
                         "1.5" => SpirvVersion::V1_5,
+                        "1.6" => SpirvVersion::V1_6,
                         _ => panic!("Unknown SPIR-V version: {}", version.value()),
                     });
                 }

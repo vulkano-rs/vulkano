@@ -1688,8 +1688,8 @@ impl SyncCommandBufferBuilder {
             set_num,
             1,
         );
-        let layout = state.pipeline_layout.descriptor_set_layouts()[set_num as usize].as_ref();
-        debug_assert!(layout.desc().is_push_descriptor());
+        let layout = state.pipeline_layout.set_layouts()[set_num as usize].as_ref();
+        debug_assert!(layout.push_descriptor());
 
         let set_resources = match state
             .descriptor_sets
@@ -2689,10 +2689,9 @@ impl SyncCommandBufferBuilder {
 
         for ((set, binding), reqs) in descriptor_requirements {
             // TODO: Can things be refactored so that the pipeline layout isn't needed at all?
-            let descriptor_type = state.pipeline_layout.descriptor_set_layouts()[set as usize]
-                .descriptor(binding)
-                .unwrap()
-                .ty;
+            let descriptor_type = state.pipeline_layout.set_layouts()[set as usize].bindings()
+                [&binding]
+                .descriptor_type;
 
             // TODO: Maybe include this on DescriptorRequirements?
             let access = PipelineMemoryAccess {

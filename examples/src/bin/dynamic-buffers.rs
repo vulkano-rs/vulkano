@@ -17,6 +17,7 @@
 use std::mem;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
+use vulkano::descriptor_set::layout::DescriptorType;
 use vulkano::descriptor_set::{DescriptorSet, PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
@@ -102,8 +103,9 @@ fn main() {
         shader.entry_point("main").unwrap(),
         &(),
         None,
-        |set_descs| {
-            set_descs[0].set_buffer_dynamic(0);
+        |layout_create_infos| {
+            let binding = layout_create_infos[0].bindings.get_mut(&0).unwrap();
+            binding.descriptor_type = DescriptorType::UniformBufferDynamic;
         },
     )
     .unwrap();
@@ -155,7 +157,7 @@ fn main() {
     )
     .unwrap();
 
-    let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
+    let layout = pipeline.layout().set_layouts().get(0).unwrap();
     let set = PersistentDescriptorSet::new(
         layout.clone(),
         [

@@ -167,7 +167,7 @@ impl Sampler {
         /*
             Note: Most of these checks come from the Instruction/Sampler/Image View Validation
             section, and are not strictly VUIDs.
-            https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/chap16.html#textures-input-validation
+            https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap16.html#textures-input-validation
         */
 
         if self.compare.is_some() {
@@ -283,7 +283,7 @@ impl Sampler {
 
         // The sampler unnormalizedCoordinates is VK_TRUE and any of the limitations of
         // unnormalized coordinates are violated.
-        // https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/chap13.html#samplers-unnormalizedCoordinates
+        // https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap13.html#samplers-unnormalizedCoordinates
         if self.unnormalized_coordinates {
             // The viewType must be either VK_IMAGE_VIEW_TYPE_1D or
             // VK_IMAGE_VIEW_TYPE_2D.

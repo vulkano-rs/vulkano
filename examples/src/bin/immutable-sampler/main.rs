@@ -218,14 +218,15 @@ fn main() {
         .fragment_shader(fs.entry_point("main").unwrap(), ())
         .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()).blend_alpha())
         .render_pass(subpass)
-        .with_auto_layout(device.clone(), |set_descs| {
+        .with_auto_layout(device.clone(), |layout_create_infos| {
             // Modify the auto-generated layout by setting an immutable sampler to
             // set 0 binding 0.
-            set_descs[0].set_immutable_samplers(0, [sampler]);
+            let binding = layout_create_infos[0].bindings.get_mut(&0).unwrap();
+            binding.immutable_samplers = vec![sampler];
         })
         .unwrap();
 
-    let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
+    let layout = pipeline.layout().set_layouts().get(0).unwrap();
 
     // Use `image_view` instead of `image_view_sampler`, since the sampler is already in the layout.
     let set = PersistentDescriptorSet::new(

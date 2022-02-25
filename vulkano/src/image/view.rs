@@ -241,7 +241,7 @@ where
                 *image_inner.format_features()
             };
 
-            // Per https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/chap12.html#resources-image-view-format-features
+            // Per https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap12.html#resources-image-view-format-features
             if image_inner
                 .device()
                 .enabled_extensions()
@@ -284,7 +284,7 @@ where
 
         // Get usage
         // Can be different from image usage, see
-        // https://khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkImageViewCreateInfo.html#_description
+        // https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkImageViewCreateInfo.html#_description
         let usage = *image_inner.usage();
 
         // Check for compatibility with the image

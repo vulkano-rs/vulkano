@@ -14,7 +14,7 @@ use crate::image::view::ImageViewType;
 use crate::shader::ShaderScalarType;
 use crate::DeviceSize;
 use crate::{
-    pipeline::layout::PipelineLayoutPcRange,
+    pipeline::layout::PushConstantRange,
     shader::{
         spirv::{
             Capability, Decoration, Dim, ExecutionMode, ExecutionModel, Id, Instruction, Spirv,
@@ -909,8 +909,8 @@ fn descriptor_requirements_of(spirv: &Spirv, variable_id: Id) -> DescriptorVaria
     }
 }
 
-/// Extracts the `PipelineLayoutPcRange` from `spirv`.
-fn push_constant_requirements(spirv: &Spirv, stage: ShaderStage) -> Option<PipelineLayoutPcRange> {
+/// Extracts the `PushConstantRange` from `spirv`.
+fn push_constant_requirements(spirv: &Spirv, stage: ShaderStage) -> Option<PushConstantRange> {
     spirv
         .iter_global()
         .find_map(|instruction| match instruction {
@@ -927,10 +927,10 @@ fn push_constant_requirements(spirv: &Spirv, stage: ShaderStage) -> Option<Pipel
                 let start = offset_of_struct(spirv, ty);
                 let end =
                     size_of_type(spirv, ty).expect("Found runtime-sized push constants") as u32;
-                Some(PipelineLayoutPcRange {
+                Some(PushConstantRange {
+                    stages: stage.into(),
                     offset: start,
                     size: end - start,
-                    stages: stage.into(),
                 })
             }
             _ => None,

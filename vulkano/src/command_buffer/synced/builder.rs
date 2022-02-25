@@ -785,8 +785,8 @@ impl CurrentState {
                     // isn't compatible with the corresponding set in the new pipeline layout.
                     // If an incompatible set was found, all bound sets from that slot onwards will
                     // be disturbed.
-                    let current_layouts = state.pipeline_layout.descriptor_set_layouts();
-                    let new_layouts = pipeline_layout.descriptor_set_layouts();
+                    let current_layouts = state.pipeline_layout.set_layouts();
+                    let new_layouts = pipeline_layout.set_layouts();
                     let max = (current_layouts.len() as u32).min(first_set + num_descriptor_sets);
                     (0..max).find(|&num| {
                         let num = num as usize;
@@ -801,7 +801,7 @@ impl CurrentState {
                         .retain(|&num, _| num < invalidate_from);
                     state.pipeline_layout = pipeline_layout;
                 } else if (first_set + num_descriptor_sets) as usize
-                    >= state.pipeline_layout.descriptor_set_layouts().len()
+                    >= state.pipeline_layout.set_layouts().len()
                 {
                     // New layout is a superset of the old one.
                     state.pipeline_layout = pipeline_layout;

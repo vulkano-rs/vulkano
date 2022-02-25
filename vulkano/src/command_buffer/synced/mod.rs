@@ -480,13 +480,15 @@ mod tests {
     use crate::command_buffer::AutoCommandBufferBuilder;
     use crate::command_buffer::CommandBufferLevel;
     use crate::command_buffer::CommandBufferUsage;
-    use crate::descriptor_set::layout::DescriptorDesc;
     use crate::descriptor_set::layout::DescriptorSetLayout;
+    use crate::descriptor_set::layout::DescriptorSetLayoutBinding;
+    use crate::descriptor_set::layout::DescriptorSetLayoutCreateInfo;
     use crate::descriptor_set::layout::DescriptorType;
     use crate::descriptor_set::PersistentDescriptorSet;
     use crate::descriptor_set::WriteDescriptorSet;
     use crate::device::Device;
     use crate::pipeline::layout::PipelineLayout;
+    use crate::pipeline::layout::PipelineLayoutCreateInfo;
     use crate::pipeline::PipelineBindPoint;
     use crate::sampler::Sampler;
     use crate::shader::ShaderStages;
@@ -664,18 +666,27 @@ mod tests {
             .unwrap();
             let set_layout = DescriptorSetLayout::new(
                 device.clone(),
-                [Some(DescriptorDesc {
-                    ty: DescriptorType::Sampler,
-                    descriptor_count: 1,
-                    variable_count: false,
-                    stages: ShaderStages::all(),
-                    immutable_samplers: Vec::new(),
-                })],
+                DescriptorSetLayoutCreateInfo {
+                    bindings: [(
+                        0,
+                        DescriptorSetLayoutBinding {
+                            stages: ShaderStages::all(),
+                            ..DescriptorSetLayoutBinding::descriptor_type(DescriptorType::Sampler)
+                        },
+                    )]
+                    .into(),
+                    ..Default::default()
+                },
             )
             .unwrap();
-            let pipeline_layout =
-                PipelineLayout::new(device.clone(), [set_layout.clone(), set_layout.clone()], [])
-                    .unwrap();
+            let pipeline_layout = PipelineLayout::new(
+                device.clone(),
+                PipelineLayoutCreateInfo {
+                    set_layouts: [set_layout.clone(), set_layout.clone()].into(),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
 
             let set = PersistentDescriptorSet::new(
                 set_layout.clone(),
@@ -722,11 +733,14 @@ mod tests {
 
             let pipeline_layout = PipelineLayout::new(
                 device.clone(),
-                [
-                    DescriptorSetLayout::new(device.clone(), []).unwrap(),
-                    set_layout.clone(),
-                ],
-                [],
+                PipelineLayoutCreateInfo {
+                    set_layouts: [
+                        DescriptorSetLayout::new(device.clone(), Default::default()).unwrap(),
+                        set_layout.clone(),
+                    ]
+                    .into(),
+                    ..Default::default()
+                },
             )
             .unwrap();
 

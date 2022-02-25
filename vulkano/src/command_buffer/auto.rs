@@ -75,7 +75,7 @@ use crate::{
         AccessCheckError, AccessFlags, GpuFuture, PipelineMemoryAccess, PipelineStage,
         PipelineStages,
     },
-    DeviceSize, OomError, SafeDeref, VulkanObject,
+    DeviceSize, OomError, SafeDeref, Version, VulkanObject,
 };
 use fnv::FnvHashMap;
 use smallvec::SmallVec;
@@ -557,7 +557,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
         assert!(
             first_set as usize + descriptor_sets.len()
-                <= pipeline_layout.descriptor_set_layouts().len(),
+                <= pipeline_layout.set_layouts().len(),
             "the highest descriptor set slot being bound must be less than the number of sets in pipeline_layout"
         );
 
@@ -567,7 +567,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 self.device().internal_object()
             );
 
-            let pipeline_set = &pipeline_layout.descriptor_set_layouts()[first_set as usize + num];
+            let pipeline_set = &pipeline_layout.set_layouts()[first_set as usize + num];
             assert!(
                 pipeline_set.is_compatible_with(set.as_ref().0.layout()),
                 "the element of descriptor_sets being bound to slot {} is not compatible with the corresponding slot in pipeline_layout",
@@ -1935,12 +1935,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the khr_push_descriptor extension must be enabled on the device"
         );
         assert!(
-            set_num as usize <= pipeline_layout.descriptor_set_layouts().len(),
+            set_num as usize <= pipeline_layout.set_layouts().len(),
             "the descriptor set slot being bound must be less than the number of sets in pipeline_layout"
         );
 
         let descriptor_writes: SmallVec<[_; 8]> = descriptor_writes.into_iter().collect();
-        let descriptor_set_layout = &pipeline_layout.descriptor_set_layouts()[set_num as usize];
+        let descriptor_set_layout = &pipeline_layout.set_layouts()[set_num as usize];
 
         for write in &descriptor_writes {
             check_descriptor_write(write, descriptor_set_layout, 0).unwrap();
@@ -2044,8 +2044,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state)
-    ///   feature is not enabled on the device.
+    /// - Panics if the device API version is less than 1.3 and the
+    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
+    ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     #[inline]
     pub fn set_cull_mode(&mut self, cull_mode: CullMode) -> &mut Self {
@@ -2054,7 +2055,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the queue family of the command buffer must support graphics operations"
         );
         assert!(
-            self.device().enabled_features().extended_dynamic_state,
+            self.device().api_version() >= Version::V1_3
+                || self.device().enabled_features().extended_dynamic_state,
             "the extended_dynamic_state feature must be enabled on the device"
         );
         assert!(
@@ -2110,8 +2112,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the [`extended_dynamic_state2`](crate::device::Features::extended_dynamic_state2)
-    ///   feature is not enabled on the device.
+    /// - Panics if the device API version is less than 1.3 and the
+    ///   [`extended_dynamic_state2`](crate::device::Features::extended_dynamic_state2) feature is
+    ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     #[inline]
     pub fn set_depth_bias_enable(&mut self, enable: bool) -> &mut Self {
@@ -2120,7 +2123,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the queue family of the command buffer must support graphics operations"
         );
         assert!(
-            self.device().enabled_features().extended_dynamic_state2,
+            self.device().api_version() >= Version::V1_3
+                || self.device().enabled_features().extended_dynamic_state2,
             "the extended_dynamic_state2 feature must be enabled on the device"
         );
         assert!(
@@ -2177,8 +2181,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state)
-    ///   feature is not enabled on the device.
+    /// - Panics if the device API version is less than 1.3 and the
+    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
+    ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     #[inline]
     pub fn set_depth_bounds_test_enable(&mut self, enable: bool) -> &mut Self {
@@ -2187,7 +2192,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the queue family of the command buffer must support graphics operations"
         );
         assert!(
-            self.device().enabled_features().extended_dynamic_state,
+            self.device().api_version() >= Version::V1_3
+                || self.device().enabled_features().extended_dynamic_state,
             "the extended_dynamic_state feature must be enabled on the device"
         );
         assert!(
@@ -2207,8 +2213,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state)
-    ///   feature is not enabled on the device.
+    /// - Panics if the device API version is less than 1.3 and the
+    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
+    ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     #[inline]
     pub fn set_depth_compare_op(&mut self, compare_op: CompareOp) -> &mut Self {
@@ -2217,7 +2224,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the queue family of the command buffer must support graphics operations"
         );
         assert!(
-            self.device().enabled_features().extended_dynamic_state,
+            self.device().api_version() >= Version::V1_3
+                || self.device().enabled_features().extended_dynamic_state,
             "the extended_dynamic_state feature must be enabled on the device"
         );
         assert!(
@@ -2237,8 +2245,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state)
-    ///   feature is not enabled on the device.
+    /// - Panics if the device API version is less than 1.3 and the
+    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
+    ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     #[inline]
     pub fn set_depth_test_enable(&mut self, enable: bool) -> &mut Self {
@@ -2247,7 +2256,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the queue family of the command buffer must support graphics operations"
         );
         assert!(
-            self.device().enabled_features().extended_dynamic_state,
+            self.device().api_version() >= Version::V1_3
+                || self.device().enabled_features().extended_dynamic_state,
             "the extended_dynamic_state feature must be enabled on the device"
         );
         assert!(
@@ -2267,8 +2277,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state)
-    ///   feature is not enabled on the device.
+    /// - Panics if the device API version is less than 1.3 and the
+    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
+    ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     #[inline]
     pub fn set_depth_write_enable(&mut self, enable: bool) -> &mut Self {
@@ -2277,7 +2288,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the queue family of the command buffer must support graphics operations"
         );
         assert!(
-            self.device().enabled_features().extended_dynamic_state,
+            self.device().api_version() >= Version::V1_3
+                || self.device().enabled_features().extended_dynamic_state,
             "the extended_dynamic_state feature must be enabled on the device"
         );
         assert!(
@@ -2346,8 +2358,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state)
-    ///   feature is not enabled on the device.
+    /// - Panics if the device API version is less than 1.3 and the
+    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
+    ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     #[inline]
     pub fn set_front_face(&mut self, face: FrontFace) -> &mut Self {
@@ -2356,7 +2369,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the queue family of the command buffer must support graphics operations"
         );
         assert!(
-            self.device().enabled_features().extended_dynamic_state,
+            self.device().api_version() >= Version::V1_3
+                || self.device().enabled_features().extended_dynamic_state,
             "the extended_dynamic_state feature must be enabled on the device"
         );
         assert!(
@@ -2520,8 +2534,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the [`extended_dynamic_state2`](crate::device::Features::extended_dynamic_state2)
-    ///   feature is not enabled on the device.
+    /// - Panics if the device API version is less than 1.3 and the
+    ///   [`extended_dynamic_state2`](crate::device::Features::extended_dynamic_state2) feature is
+    ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     #[inline]
     pub fn set_primitive_restart_enable(&mut self, enable: bool) -> &mut Self {
@@ -2530,7 +2545,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the queue family of the command buffer must support graphics operations"
         );
         assert!(
-            self.device().enabled_features().extended_dynamic_state2,
+            self.device().api_version() >= Version::V1_3
+                || self.device().enabled_features().extended_dynamic_state2,
             "the extended_dynamic_state2 feature must be enabled on the device"
         );
         assert!(
@@ -2550,9 +2566,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the
-    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state)
-    ///   feature is not enabled on the device.
+    /// - Panics if the device API version is less than 1.3 and the
+    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
+    ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     /// - If the [`geometry_shader`](crate::device::Features::geometry_shader) feature is not
     ///   enabled, panics if `topology` is a `WithAdjacency` topology.
@@ -2565,7 +2581,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the queue family of the command buffer must support graphics operations"
         );
         assert!(
-            self.device().enabled_features().extended_dynamic_state,
+            self.device().api_version() >= Version::V1_3
+                || self.device().enabled_features().extended_dynamic_state,
             "the extended_dynamic_state feature must be enabled on the device"
         );
         assert!(
@@ -2599,8 +2616,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the [`extended_dynamic_state2`](crate::device::Features::extended_dynamic_state2)
-    ///   feature is not enabled on the device.
+    /// - Panics if the device API version is less than 1.3 and the
+    ///   [`extended_dynamic_state2`](crate::device::Features::extended_dynamic_state2) feature is
+    ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     #[inline]
     pub fn set_rasterizer_discard_enable(&mut self, enable: bool) -> &mut Self {
@@ -2609,7 +2627,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the queue family of the command buffer must support graphics operations"
         );
         assert!(
-            self.device().enabled_features().extended_dynamic_state2,
+            self.device().api_version() >= Version::V1_3
+                || self.device().enabled_features().extended_dynamic_state2,
             "the extended_dynamic_state2 feature must be enabled on the device"
         );
         assert!(
@@ -2683,9 +2702,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the
-    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state)
-    ///   feature is not enabled on the device.
+    /// - Panics if the device API version is less than 1.3 and the
+    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
+    ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     /// - Panics if the highest scissor slot being set is greater than the
     ///   [`max_viewports`](crate::device::Properties::max_viewports) device property.
@@ -2701,7 +2720,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the queue family of the command buffer must support graphics operations"
         );
         assert!(
-            self.device().enabled_features().extended_dynamic_state,
+            self.device().api_version() >= Version::V1_3
+                || self.device().enabled_features().extended_dynamic_state,
             "the extended_dynamic_state feature must be enabled on the device"
         );
         assert!(
@@ -2766,9 +2786,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the
-    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state)
-    ///   feature is not enabled on the device.
+    /// - Panics if the device API version is less than 1.3 and the
+    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
+    ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     #[inline]
     pub fn set_stencil_op(
@@ -2784,7 +2804,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the queue family of the command buffer must support graphics operations"
         );
         assert!(
-            self.device().enabled_features().extended_dynamic_state,
+            self.device().api_version() >= Version::V1_3
+                || self.device().enabled_features().extended_dynamic_state,
             "the extended_dynamic_state feature must be enabled on the device"
         );
         assert!(
@@ -2828,8 +2849,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state)
-    ///   feature is not enabled on the device.
+    /// - Panics if the device API version is less than 1.3 and the
+    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
+    ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     #[inline]
     pub fn set_stencil_test_enable(&mut self, enable: bool) -> &mut Self {
@@ -2838,7 +2860,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the queue family of the command buffer must support graphics operations"
         );
         assert!(
-            self.device().enabled_features().extended_dynamic_state,
+            self.device().api_version() >= Version::V1_3
+                || self.device().enabled_features().extended_dynamic_state,
             "the extended_dynamic_state feature must be enabled on the device"
         );
         assert!(
@@ -2934,9 +2957,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the
-    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state)
-    ///   feature is not enabled on the device.
+    /// - Panics if the device API version is less than 1.3 and the
+    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
+    ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     /// - Panics if the highest viewport slot being set is greater than the
     ///   [`max_viewports`](crate::device::Properties::max_viewports) device property.
@@ -2952,7 +2975,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the queue family of the command buffer must support graphics operations"
         );
         assert!(
-            self.device().enabled_features().extended_dynamic_state,
+            self.device().api_version() >= Version::V1_3
+                || self.device().enabled_features().extended_dynamic_state,
             "the extended_dynamic_state feature must be enabled on the device"
         );
         assert!(

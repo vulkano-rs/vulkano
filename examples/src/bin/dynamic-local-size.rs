@@ -194,7 +194,7 @@ fn main() {
     .unwrap();
     let view = ImageView::new(image.clone()).unwrap();
 
-    let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
+    let layout = pipeline.layout().set_layouts().get(0).unwrap();
     let set = PersistentDescriptorSet::new(
         layout.clone(),
         [WriteDescriptorSet::image_view(0, view.clone())],
