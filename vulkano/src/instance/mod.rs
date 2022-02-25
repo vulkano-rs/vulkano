@@ -268,7 +268,7 @@ impl Instance {
             } else if api_version < Version::V1_1 {
                 api_version
             } else {
-                Version::V1_2 // TODO: Can this be extracted from vk.xml somehow?
+                Version::HEADER_VERSION
             };
 
             (std::cmp::min(max_api_version, api_version), max_api_version)
@@ -475,7 +475,7 @@ pub struct InstanceCreateInfo {
     ///
     /// Usually, you will want to leave this at the default.
     ///
-    /// The default value is the highest version currently supported by Vulkano, but if the
+    /// The default value is [`Version::HEADER_VERSION`], but if the
     /// supported instance version is 1.0, then it will be 1.0.
     pub max_api_version: Option<Version>,
 

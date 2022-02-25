@@ -12,6 +12,7 @@
 use crate::device::Device;
 use crate::pipeline::graphics::GraphicsPipelineCreationError;
 use crate::pipeline::{DynamicState, StateMode};
+use crate::Version;
 use fnv::FnvHashMap;
 
 /// The state in a graphics pipeline describing how the rasterization stage should behave.
@@ -28,7 +29,7 @@ pub struct RasterizationState {
     /// is usually used when your vertex shader has some side effects and you don't need to run the
     /// fragment shader.
     ///
-    /// If set to `Dynamic`, the
+    /// If set to `Dynamic`, the device API version must be at least 1.3, or the
     /// [`extended_dynamic_state2`](crate::device::Features::extended_dynamic_state2) feature must
     /// be enabled on the device.
     pub rasterizer_discard_enable: StateMode<bool>,
@@ -43,14 +44,14 @@ pub struct RasterizationState {
 
     /// Specifies whether front faces or back faces should be discarded, or none, or both.
     ///
-    /// If set to `Dynamic`, the
+    /// If set to `Dynamic`, the device API version must be at least 1.3, or the
     /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
     /// enabled on the device.
     pub cull_mode: StateMode<CullMode>,
 
     /// Specifies which triangle orientation is considered to be the front of the triangle.
     ///
-    /// If set to `Dynamic`, the
+    /// If set to `Dynamic`, the device API version must be at least 1.3, or the
     /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
     /// enabled on the device.
     pub front_face: StateMode<FrontFace>,
@@ -289,7 +290,9 @@ impl RasterizationState {
                 rasterizer_discard_enable as ash::vk::Bool32
             }
             StateMode::Dynamic => {
-                if !device.enabled_features().extended_dynamic_state2 {
+                if !(device.api_version() >= Version::V1_3
+                    || device.enabled_features().extended_dynamic_state2)
+                {
                     return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
                         feature: "extended_dynamic_state2",
                         reason: "RasterizationState::rasterizer_discard_enable was set to Dynamic",
@@ -314,7 +317,9 @@ impl RasterizationState {
                 cull_mode.into()
             }
             StateMode::Dynamic => {
-                if !device.enabled_features().extended_dynamic_state {
+                if !(device.api_version() >= Version::V1_3
+                    || device.enabled_features().extended_dynamic_state)
+                {
                     return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
                         feature: "extended_dynamic_state",
                         reason: "RasterizationState::cull_mode was set to Dynamic",
@@ -331,7 +336,9 @@ impl RasterizationState {
                 front_face.into()
             }
             StateMode::Dynamic => {
-                if !device.enabled_features().extended_dynamic_state {
+                if !(device.api_version() >= Version::V1_3
+                    || device.enabled_features().extended_dynamic_state)
+                {
                     return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
                         feature: "extended_dynamic_state",
                         reason: "RasterizationState::front_face was set to Dynamic",

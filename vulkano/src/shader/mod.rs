@@ -966,7 +966,7 @@ pub enum ShaderScalarType {
     Uint,
 }
 
-// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/chap43.html#formats-numericformat
+// https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap43.html#formats-numericformat
 impl From<NumericType> for ShaderScalarType {
     fn from(val: NumericType) -> Self {
         match val {
@@ -1454,6 +1454,13 @@ fn check_spirv_version(device: &Device, mut version: Version) -> Result<(), Shad
             if !(device.api_version() >= Version::V1_2) {
                 return Err(ShaderSupportError::RequirementsNotMet(&[
                     "Vulkan API version 1.2",
+                ]));
+            }
+        }
+        Version::V1_6 => {
+            if !(device.api_version() >= Version::V1_3) {
+                return Err(ShaderSupportError::RequirementsNotMet(&[
+                    "Vulkan API version 1.3",
                 ]));
             }
         }

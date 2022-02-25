@@ -32,7 +32,10 @@ pub fn write(vk_data: &VkRegistryData) {
     );
     write_file(
         "fns.rs",
-        format!("vk.xml header version {}", vk_data.header_version),
+        format!(
+            "vk.xml header version {}.{}.{}",
+            vk_data.header_version.0, vk_data.header_version.1, vk_data.header_version.2
+        ),
         quote! {
             #entry_fns_output
             #instance_fns_output
@@ -49,7 +52,7 @@ struct FnsMember {
 
 fn fns_output(extension_members: &[FnsMember], fns_level: &str, doc: &str) -> TokenStream {
     let struct_name = format_ident!("{}Functions", fns_level);
-    let members = ["1_0", "1_1", "1_2"]
+    let members = ["1_0", "1_1", "1_2", "1_3"]
         .into_iter()
         .map(|version| FnsMember {
             name: format_ident!("v{}", version),
