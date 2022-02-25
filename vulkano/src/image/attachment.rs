@@ -32,7 +32,7 @@ use crate::memory::pool::PotentialDedicatedAllocation;
 use crate::memory::pool::StdMemoryPoolAlloc;
 use crate::memory::DedicatedAllocation;
 use crate::memory::ExternalMemoryHandleType;
-use crate::memory::{DeviceMemoryAllocationError, ExternalMemoryHandleTypes};
+use crate::memory::{DeviceMemoryExportError, ExternalMemoryHandleTypes};
 use crate::sync::AccessError;
 use crate::DeviceSize;
 use std::fs::File;
@@ -541,7 +541,7 @@ impl AttachmentImage {
 
     /// Exports posix file descriptor for the allocated memory
     /// requires `khr_external_memory_fd` and `khr_external_memory` extensions to be loaded.
-    pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryAllocationError> {
+    pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryExportError> {
         self.memory
             .memory()
             .export_fd(ExternalMemoryHandleType::OpaqueFd)

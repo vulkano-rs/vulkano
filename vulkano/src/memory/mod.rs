@@ -92,24 +92,18 @@
 //! get memory from that pool. By default if you don't specify any pool when creating a buffer or
 //! an image, an instance of `StdMemoryPool` that is shared by the `Device` object is used.
 
-pub use self::device_memory::CpuAccess;
-pub use self::device_memory::DeviceMemory;
-pub use self::device_memory::DeviceMemoryAllocationError;
-pub use self::device_memory::DeviceMemoryMapping;
-pub use self::device_memory::MappedDeviceMemory;
-pub use self::device_memory::MemoryAllocateInfo;
-pub use self::device_memory::MemoryImportInfo;
-pub use self::external_memory_handle_type::{ExternalMemoryHandleType, ExternalMemoryHandleTypes};
-pub use self::pool::MemoryPool;
-use crate::buffer::sys::UnsafeBuffer;
-use crate::image::sys::UnsafeImage;
-use crate::DeviceSize;
-use std::mem;
-use std::os::raw::c_void;
-use std::slice;
+pub use self::{
+    device_memory::{
+        CpuAccess, DeviceMemory, DeviceMemoryAllocationError, DeviceMemoryExportError,
+        DeviceMemoryMapping, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
+        MappedDeviceMemory, MemoryAllocateInfo, MemoryImportInfo,
+    },
+    pool::MemoryPool,
+};
+use crate::{buffer::sys::UnsafeBuffer, image::sys::UnsafeImage, DeviceSize};
+use std::{mem, os::raw::c_void, slice};
 
 mod device_memory;
-mod external_memory_handle_type;
 pub mod pool;
 
 /// Represents requirements expressed by the Vulkan implementation when it comes to binding memory

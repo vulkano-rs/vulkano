@@ -34,6 +34,7 @@ use crate::memory::pool::MemoryPoolAlloc;
 use crate::memory::pool::PotentialDedicatedAllocation;
 use crate::memory::pool::StdMemoryPoolAlloc;
 use crate::memory::DeviceMemoryAllocationError;
+use crate::memory::DeviceMemoryExportError;
 use crate::memory::ExternalMemoryHandleType;
 use crate::memory::{DedicatedAllocation, MemoryRequirements};
 use crate::sync::AccessError;
@@ -271,7 +272,7 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
     /// Exports posix file descriptor for the allocated memory
     /// requires `khr_external_memory_fd` and `khr_external_memory` extensions to be loaded.
     /// Only works on Linux/BSD.
-    pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryAllocationError> {
+    pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryExportError> {
         self.memory
             .memory()
             .export_fd(ExternalMemoryHandleType::OpaqueFd)
