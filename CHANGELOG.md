@@ -55,6 +55,8 @@
 - Added a `create_info` method to `Swapchain` to return a `SwapchainCreateInfo` that contains all the parameters copied from the existing swapchain. This can be used for easy recreation of outdated swapchains.
 - Added support for the `khr_get_surface_capabilities2` extension.
 - Vulkano-win: Added `create_win32_monitor_from_winit` function.
+- Added support for Vulkan 1.3.
+- Added `Version::HEADER_VERSION`, a constant that contains the Vulkan spec version that Vulkano currently uses.
 
 # Version 0.28.0 (2022-02-02)
 
