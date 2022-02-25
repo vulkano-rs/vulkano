@@ -337,9 +337,7 @@ impl UnsafeCommandBufferBuilder {
         let dynamic_offsets: SmallVec<[u32; 32]> = dynamic_offsets.into_iter().collect();
 
         let num_bindings = sets.len() as u32;
-        debug_assert!(
-            first_set + num_bindings <= pipeline_layout.descriptor_set_layouts().len() as u32
-        );
+        debug_assert!(first_set + num_bindings <= pipeline_layout.set_layouts().len() as u32);
 
         fns.v1_0.cmd_bind_descriptor_sets(
             cmd,
@@ -1393,13 +1391,12 @@ impl UnsafeCommandBufferBuilder {
         let (infos, mut writes): (SmallVec<[_; 8]>, SmallVec<[_; 8]>) = descriptor_writes
             .into_iter()
             .map(|write| {
-                let descriptor = pipeline_layout.descriptor_set_layouts()[set_num as usize]
-                    .descriptor(write.binding())
-                    .unwrap();
+                let binding =
+                    &pipeline_layout.set_layouts()[set_num as usize].bindings()[&write.binding()];
 
                 (
-                    write.to_vulkan_info(descriptor.ty),
-                    write.to_vulkan(ash::vk::DescriptorSet::null(), descriptor.ty),
+                    write.to_vulkan_info(binding.descriptor_type),
+                    write.to_vulkan(ash::vk::DescriptorSet::null(), binding.descriptor_type),
                 )
             })
             .unzip();

@@ -159,7 +159,7 @@ impl DescriptorSetInner {
         descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
     ) -> Result<Self, DescriptorSetUpdateError> {
         assert!(
-            !layout.desc().is_push_descriptor(),
+            !layout.push_descriptor(),
             "the provided descriptor set layout is for push descriptors, and cannot be used to build a descriptor set object"
         );
 
@@ -184,8 +184,8 @@ impl DescriptorSetInner {
                 check_descriptor_write(&write, &layout, variable_descriptor_count)?;
 
             resources.update(&write);
-            descriptor_write_info.push(write.to_vulkan_info(layout_binding.ty));
-            write_descriptor_set.push(write.to_vulkan(handle, layout_binding.ty));
+            descriptor_write_info.push(write.to_vulkan_info(layout_binding.descriptor_type));
+            write_descriptor_set.push(write.to_vulkan(handle, layout_binding.descriptor_type));
         }
 
         if !write_descriptor_set.is_empty() {
@@ -256,19 +256,16 @@ impl DescriptorSetResources {
         assert!(variable_descriptor_count <= layout.variable_descriptor_count());
 
         let binding_resources = layout
-            .desc()
             .bindings()
             .iter()
-            .enumerate()
-            .filter_map(|(b, d)| d.as_ref().map(|d| (b as u32, d)))
-            .map(|(binding_num, binding_desc)| {
-                let count = if binding_desc.variable_count {
+            .map(|(&binding_num, binding)| {
+                let count = if binding.variable_descriptor_count {
                     variable_descriptor_count
                 } else {
-                    binding_desc.descriptor_count
+                    binding.descriptor_count
                 } as usize;
 
-                let binding_resources = match binding_desc.ty {
+                let binding_resources = match binding.descriptor_type {
                     DescriptorType::UniformBuffer
                     | DescriptorType::StorageBuffer
                     | DescriptorType::UniformBufferDynamic
@@ -284,16 +281,16 @@ impl DescriptorSetResources {
                         DescriptorBindingResources::ImageView(smallvec![None; count])
                     }
                     DescriptorType::CombinedImageSampler => {
-                        if binding_desc.immutable_samplers.is_empty() {
+                        if binding.immutable_samplers.is_empty() {
                             DescriptorBindingResources::ImageViewSampler(smallvec![None; count])
                         } else {
                             DescriptorBindingResources::ImageView(smallvec![None; count])
                         }
                     }
                     DescriptorType::Sampler => {
-                        if binding_desc.immutable_samplers.is_empty() {
+                        if binding.immutable_samplers.is_empty() {
                             DescriptorBindingResources::Sampler(smallvec![None; count])
-                        } else if layout.desc().is_push_descriptor() {
+                        } else if layout.push_descriptor() {
                             // For push descriptors, no resource is written by default, this needs
                             // to be done explicitly via a dummy write.
                             DescriptorBindingResources::None(smallvec![None; count])
@@ -429,8 +426,8 @@ impl DescriptorSetWithOffsets {
         // Ensure that the number of dynamic_offsets is correct and that each
         // dynamic offset is a multiple of the minimum offset alignment specified
         // by the physical device.
-        for desc in layout.desc().bindings() {
-            match desc.as_ref().unwrap().ty {
+        for binding in layout.bindings().values() {
+            match binding.descriptor_type {
                 DescriptorType::StorageBufferDynamic => {
                     // Don't check alignment if there are not enough offsets anyway
                     if dynamic_offsets.len() > dynamic_offset_index {

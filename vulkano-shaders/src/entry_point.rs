@@ -9,7 +9,7 @@
 
 use fnv::FnvHashMap;
 use proc_macro2::TokenStream;
-use vulkano::pipeline::layout::PipelineLayoutPcRange;
+use vulkano::pipeline::layout::PushConstantRange;
 use vulkano::shader::spirv::ExecutionModel;
 use vulkano::shader::{
     DescriptorIdentifier, DescriptorRequirements, ShaderExecution, ShaderInterfaceEntry,
@@ -219,10 +219,10 @@ fn write_descriptor_requirements(
 }
 
 fn write_push_constant_requirements(
-    push_constant_requirements: &Option<PipelineLayoutPcRange>,
+    push_constant_requirements: &Option<PushConstantRange>,
 ) -> TokenStream {
     match push_constant_requirements {
-        Some(PipelineLayoutPcRange {
+        Some(PushConstantRange {
             offset,
             size,
             stages,
@@ -262,10 +262,10 @@ fn write_push_constant_requirements(
             };
 
             quote! {
-                Some(::vulkano::pipeline::layout::PipelineLayoutPcRange {
+                Some(::vulkano::pipeline::layout::PushConstantRange {
+                    stages: #stages,
                     offset: #offset,
                     size: #size,
-                    stages: #stages,
                 })
             }
         }

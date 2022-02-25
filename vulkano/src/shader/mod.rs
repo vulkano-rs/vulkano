@@ -23,7 +23,7 @@ use crate::device::Device;
 use crate::format::{Format, NumericType};
 use crate::image::view::ImageViewType;
 use crate::pipeline::graphics::input_assembly::PrimitiveTopology;
-use crate::pipeline::layout::PipelineLayoutPcRange;
+use crate::pipeline::layout::PushConstantRange;
 use crate::shader::spirv::{Capability, Spirv, SpirvError};
 use crate::sync::PipelineStages;
 use crate::DeviceSize;
@@ -369,7 +369,7 @@ impl Display for ShaderSupportError {
 pub struct EntryPointInfo {
     pub execution: ShaderExecution,
     pub descriptor_requirements: FnvHashMap<(u32, u32), DescriptorRequirements>,
-    pub push_constant_requirements: Option<PipelineLayoutPcRange>,
+    pub push_constant_requirements: Option<PushConstantRange>,
     pub specialization_constant_requirements: FnvHashMap<u32, SpecializationConstantRequirements>,
     pub input_interface: ShaderInterface,
     pub output_interface: ShaderInterface,
@@ -417,7 +417,7 @@ impl<'a> EntryPoint<'a> {
 
     /// Returns the push constant requirements.
     #[inline]
-    pub fn push_constant_requirements(&self) -> Option<&PipelineLayoutPcRange> {
+    pub fn push_constant_requirements(&self) -> Option<&PushConstantRange> {
         self.info.push_constant_requirements.as_ref()
     }
 

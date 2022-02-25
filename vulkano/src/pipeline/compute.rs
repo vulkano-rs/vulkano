@@ -22,8 +22,11 @@
 //! any descriptor sets and/or push constants that the pipeline needs, and then issuing a `dispatch`
 //! command on the command buffer.
 
+use super::layout::PipelineLayoutCreateInfo;
 use crate::check_errors;
-use crate::descriptor_set::layout::{DescriptorSetDesc, DescriptorSetLayout};
+use crate::descriptor_set::layout::{
+    DescriptorSetLayout, DescriptorSetLayoutCreateInfo, DescriptorSetLayoutCreationError,
+};
 use crate::device::{Device, DeviceOwned};
 use crate::pipeline::cache::PipelineCache;
 use crate::pipeline::layout::{
@@ -74,20 +77,27 @@ impl ComputePipeline {
     ) -> Result<Arc<ComputePipeline>, ComputePipelineCreationError>
     where
         Css: SpecializationConstants,
-        F: FnOnce(&mut [DescriptorSetDesc]),
+        F: FnOnce(&mut [DescriptorSetLayoutCreateInfo]),
     {
-        let mut descriptor_set_layout_descs =
-            DescriptorSetDesc::from_requirements(shader.descriptor_requirements());
-        func(&mut descriptor_set_layout_descs);
-        let descriptor_set_layouts = descriptor_set_layout_descs
+        let mut set_layout_create_infos =
+            DescriptorSetLayoutCreateInfo::from_requirements(shader.descriptor_requirements());
+        func(&mut set_layout_create_infos);
+        let set_layouts = set_layout_create_infos
             .iter()
-            .map(|desc| Ok(DescriptorSetLayout::new(device.clone(), desc.clone())?))
-            .collect::<Result<Vec<_>, PipelineLayoutCreationError>>()?;
+            .map(|desc| DescriptorSetLayout::new(device.clone(), desc.clone()))
+            .collect::<Result<Vec<_>, _>>()?;
 
         let layout = PipelineLayout::new(
             device.clone(),
-            descriptor_set_layouts,
-            shader.push_constant_requirements().cloned(),
+            PipelineLayoutCreateInfo {
+                set_layouts,
+                push_constant_ranges: shader
+                    .push_constant_requirements()
+                    .cloned()
+                    .into_iter()
+                    .collect(),
+                ..Default::default()
+            },
         )?;
 
         unsafe {
@@ -308,6 +318,8 @@ impl Drop for ComputePipeline {
 pub enum ComputePipelineCreationError {
     /// Not enough memory.
     OomError(OomError),
+    /// Error while creating a descriptor set layout object.
+    DescriptorSetLayoutCreationError(DescriptorSetLayoutCreationError),
     /// Error while creating the pipeline layout object.
     PipelineLayoutCreationError(PipelineLayoutCreationError),
     /// The pipeline layout is not compatible with what the shader expects.
@@ -320,10 +332,11 @@ impl error::Error for ComputePipelineCreationError {
     #[inline]
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
-            ComputePipelineCreationError::OomError(ref err) => Some(err),
-            ComputePipelineCreationError::PipelineLayoutCreationError(ref err) => Some(err),
-            ComputePipelineCreationError::IncompatiblePipelineLayout(ref err) => Some(err),
-            ComputePipelineCreationError::IncompatibleSpecializationConstants => None,
+            Self::OomError(ref err) => Some(err),
+            Self::DescriptorSetLayoutCreationError(ref err) => Some(err),
+            Self::PipelineLayoutCreationError(ref err) => Some(err),
+            Self::IncompatiblePipelineLayout(ref err) => Some(err),
+            Self::IncompatibleSpecializationConstants => None,
         }
     }
 }
@@ -336,6 +349,9 @@ impl fmt::Display for ComputePipelineCreationError {
             "{}",
             match *self {
                 ComputePipelineCreationError::OomError(_) => "not enough memory available",
+                ComputePipelineCreationError::DescriptorSetLayoutCreationError(_) => {
+                    "error while creating a descriptor set layout object"
+                }
                 ComputePipelineCreationError::PipelineLayoutCreationError(_) => {
                     "error while creating the pipeline layout object"
                 }
@@ -353,21 +369,28 @@ impl fmt::Display for ComputePipelineCreationError {
 impl From<OomError> for ComputePipelineCreationError {
     #[inline]
     fn from(err: OomError) -> ComputePipelineCreationError {
-        ComputePipelineCreationError::OomError(err)
+        Self::OomError(err)
+    }
+}
+
+impl From<DescriptorSetLayoutCreationError> for ComputePipelineCreationError {
+    #[inline]
+    fn from(err: DescriptorSetLayoutCreationError) -> Self {
+        Self::DescriptorSetLayoutCreationError(err)
     }
 }
 
 impl From<PipelineLayoutCreationError> for ComputePipelineCreationError {
     #[inline]
-    fn from(err: PipelineLayoutCreationError) -> ComputePipelineCreationError {
-        ComputePipelineCreationError::PipelineLayoutCreationError(err)
+    fn from(err: PipelineLayoutCreationError) -> Self {
+        Self::PipelineLayoutCreationError(err)
     }
 }
 
 impl From<PipelineLayoutSupersetError> for ComputePipelineCreationError {
     #[inline]
-    fn from(err: PipelineLayoutSupersetError) -> ComputePipelineCreationError {
-        ComputePipelineCreationError::IncompatiblePipelineLayout(err)
+    fn from(err: PipelineLayoutSupersetError) -> Self {
+        Self::IncompatiblePipelineLayout(err)
     }
 }
 
@@ -375,12 +398,8 @@ impl From<Error> for ComputePipelineCreationError {
     #[inline]
     fn from(err: Error) -> ComputePipelineCreationError {
         match err {
-            err @ Error::OutOfHostMemory => {
-                ComputePipelineCreationError::OomError(OomError::from(err))
-            }
-            err @ Error::OutOfDeviceMemory => {
-                ComputePipelineCreationError::OomError(OomError::from(err))
-            }
+            err @ Error::OutOfHostMemory => Self::OomError(OomError::from(err)),
+            err @ Error::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
             _ => panic!("unexpected error: {:?}", err),
         }
     }
@@ -484,12 +503,7 @@ mod tests {
             CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), false, 0).unwrap();
 
         let set = PersistentDescriptorSet::new(
-            pipeline
-                .layout()
-                .descriptor_set_layouts()
-                .get(0)
-                .unwrap()
-                .clone(),
+            pipeline.layout().set_layouts().get(0).unwrap().clone(),
             [WriteDescriptorSet::buffer(0, data_buffer.clone())],
         )
         .unwrap();

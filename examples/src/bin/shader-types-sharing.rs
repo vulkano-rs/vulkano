@@ -172,7 +172,7 @@ fn main() {
         data_buffer: Arc<CpuAccessibleBuffer<[u32]>>,
         parameters: shaders::ty::Parameters,
     ) {
-        let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
+        let layout = pipeline.layout().set_layouts().get(0).unwrap();
         let set = PersistentDescriptorSet::new(
             layout.clone(),
             [WriteDescriptorSet::buffer(0, data_buffer.clone())],

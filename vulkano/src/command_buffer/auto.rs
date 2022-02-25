@@ -538,7 +538,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
         assert!(
             first_set as usize + descriptor_sets.len()
-                <= pipeline_layout.descriptor_set_layouts().len(),
+                <= pipeline_layout.set_layouts().len(),
             "the highest descriptor set slot being bound must be less than the number of sets in pipeline_layout"
         );
 
@@ -548,7 +548,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 self.device().internal_object()
             );
 
-            let pipeline_set = &pipeline_layout.descriptor_set_layouts()[first_set as usize + num];
+            let pipeline_set = &pipeline_layout.set_layouts()[first_set as usize + num];
             assert!(
                 pipeline_set.is_compatible_with(set.as_ref().0.layout()),
                 "the element of descriptor_sets being bound to slot {} is not compatible with the corresponding slot in pipeline_layout",
@@ -1916,12 +1916,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the khr_push_descriptor extension must be enabled on the device"
         );
         assert!(
-            set_num as usize <= pipeline_layout.descriptor_set_layouts().len(),
+            set_num as usize <= pipeline_layout.set_layouts().len(),
             "the descriptor set slot being bound must be less than the number of sets in pipeline_layout"
         );
 
         let descriptor_writes: SmallVec<[_; 8]> = descriptor_writes.into_iter().collect();
-        let descriptor_set_layout = &pipeline_layout.descriptor_set_layouts()[set_num as usize];
+        let descriptor_set_layout = &pipeline_layout.set_layouts()[set_num as usize];
 
         for write in &descriptor_writes {
             check_descriptor_write(write, descriptor_set_layout, 0).unwrap();

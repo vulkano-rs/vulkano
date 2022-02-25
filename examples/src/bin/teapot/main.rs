@@ -244,7 +244,7 @@ fn main() {
                     uniform_buffer.next(uniform_data).unwrap()
                 };
 
-                let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
+                let layout = pipeline.layout().set_layouts().get(0).unwrap();
                 let set = PersistentDescriptorSet::new(
                     layout.clone(),
                     [WriteDescriptorSet::buffer(0, uniform_buffer_subbuffer)],

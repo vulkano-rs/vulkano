@@ -13,7 +13,7 @@ use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
 use vulkano::descriptor_set::layout::{
-    DescriptorSetDesc, DescriptorSetLayout, DescriptorSetLayoutError,
+    DescriptorSetLayout, DescriptorSetLayoutCreateInfo, DescriptorSetLayoutCreationError,
 };
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
@@ -27,7 +27,7 @@ use vulkano::instance::{Instance, InstanceCreateInfo};
 use vulkano::pipeline::graphics::color_blend::ColorBlendState;
 use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
-use vulkano::pipeline::layout::PipelineLayout;
+use vulkano::pipeline::layout::{PipelineLayout, PipelineLayoutCreateInfo};
 use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass};
 use vulkano::sampler::{Filter, Sampler, SamplerAddressMode};
@@ -294,26 +294,34 @@ fn main() {
         .unwrap();
 
     let pipeline_layout = {
-        let mut descriptor_set_descs: Vec<_> = DescriptorSetDesc::from_requirements(
+        let mut layout_create_infos: Vec<_> = DescriptorSetLayoutCreateInfo::from_requirements(
             fs.entry_point("main").unwrap().descriptor_requirements(),
         );
 
         // Set 0, Binding 0
-        descriptor_set_descs[0].set_variable_descriptor_count(0, 2);
+        let binding = layout_create_infos[0].bindings.get_mut(&0).unwrap();
+        binding.variable_descriptor_count = true;
+        binding.descriptor_count = 2;
 
-        let descriptor_set_layouts = descriptor_set_descs
+        let set_layouts = layout_create_infos
             .into_iter()
             .map(|desc| Ok(DescriptorSetLayout::new(device.clone(), desc.clone())?))
-            .collect::<Result<Vec<_>, DescriptorSetLayoutError>>()
+            .collect::<Result<Vec<_>, DescriptorSetLayoutCreationError>>()
             .unwrap();
 
         PipelineLayout::new(
             device.clone(),
-            descriptor_set_layouts,
-            fs.entry_point("main")
-                .unwrap()
-                .push_constant_requirements()
-                .cloned(),
+            PipelineLayoutCreateInfo {
+                set_layouts,
+                push_constant_ranges: fs
+                    .entry_point("main")
+                    .unwrap()
+                    .push_constant_requirements()
+                    .cloned()
+                    .into_iter()
+                    .collect(),
+                ..Default::default()
+            },
         )
         .unwrap()
     };
@@ -329,7 +337,7 @@ fn main() {
         .with_pipeline_layout(device.clone(), pipeline_layout)
         .unwrap();
 
-    let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
+    let layout = pipeline.layout().set_layouts().get(0).unwrap();
     let set = PersistentDescriptorSet::new_variable(
         layout.clone(),
         2,
