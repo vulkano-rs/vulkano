@@ -37,6 +37,10 @@
   - `FullScreenExclusive::AppControlled` has been renamed to `FullScreenExclusive::ApplicationControlled` to match Vulkan.
   - Using `FullScreenExclusive::ApplicationControlled` on Windows now requires a `Win32Monitor`.
 - **Breaking** Vulkano-win: `create_vk_surface` and `create_vk_surface_from_handle` have been renamed to `create_surface_from_winit` and `create_surface_from_handle` respectively.
+- **Breaking** `DescriptorSetLayout` creation parameters are given using `DescriptorSetLayoutCreateInfo`. The getter methods on `DescriptorSetLayout` have been changed to match.
+- **Breaking** `DescriptorDesc` has been renamed to `DescriptorSetLayoutBinding` and must now be constructed with struct update syntax. The `ty` member has been renamed to `descriptor_type`, and `variable_count` has been renamed to `variable_descriptor_count`.
+- **Breaking** `PipelineLayout` creation parameters are given using `PipelineLayoutCreateInfo`. The getter methods on `PipelineLayout` have been changed to match.
+- **Breaking** `PipelineLayoutPcRange` has been renamed to `PushConstantRange`.
 - Fixed sync bug in `copy_image` and `blit_image` where the `src` and `dest` images are the same but with different mip level and/or array layer.
 - Fixed bug in `begin_render_pass` causing a panic when clearing a depth-only attachment.
 - Fixed bug in the `QueueFamily::supports_` methods causing a panic when querying support for a stage that needs no queue flags.
