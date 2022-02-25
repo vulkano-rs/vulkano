@@ -947,9 +947,6 @@ impl Hash for Queue {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct SubmitInfo {}
-
 #[cfg(test)]
 mod tests {
     use crate::device::physical::PhysicalDevice;
