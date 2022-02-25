@@ -53,6 +53,8 @@
 - **Breaking** `CommandBufferLevel` is now a plain enum, `CommandBufferLevel::Secondary` has no associated value anymore. Its constructors have been removed.
 - **Breaking** `CommandBufferInheritance` and `CommandBufferRenderPassInheritance` have been renamed to `CommandBufferInheritanceInfo` and `CommandBufferRenderPassInheritanceInfo` respectively.
 - **Breaking** The `inheritance` method on the `SecondaryCommandBuffer` trait has been renamed to `inheritance_info`.
+- **Breaking** `QueryPool` creation parameters are given using `QueryPoolCreateInfo`.
+- **Breaking** The `ty` and `num_slots` methods of `QueryPool` have been renamed to `query_type` and `query_count`.
 - Fixed sync bug in `copy_image` and `blit_image` where the `src` and `dest` images are the same but with different mip level and/or array layer.
 - Fixed bug in `begin_render_pass` causing a panic when clearing a depth-only attachment.
 - Fixed bug in the `QueueFamily::supports_` methods causing a panic when querying support for a stage that needs no queue flags.
