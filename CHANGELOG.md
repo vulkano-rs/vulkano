@@ -45,6 +45,14 @@
 - **Breaking** Importing memory is now `unsafe`, because the safety of the file descriptor can't be guaranteed.
 - **Breaking** `DedicatedAlloc` is renamed to `DedicatedAllocation`, and its `None` variant is now represented by being wrapped in an `Option`.
 - **Breaking** `DeviceMemoryAllocError` is renamed to `DeviceMemoryAllocationError`.
+- **Breaking** `UnsafeCommandPool` creation parameters are given using `UnsafeCommandPoolCreateInfo`.
+- **Breaking** `UnsafeCommandPool::allocate_command_buffers` now takes `CommandBufferAllocateInfo`.
+- **Breaking** The `alloc` method on the `CommandPool` trait has been renamed to `allocate`, and it takes `CommandBufferLevel` instead of a boolean.
+- **Breaking** The `new` constructors of  `UnsafeCommandBufferBuilder` and `SyncCommandBufferBuilder` now take `CommandBufferBeginInfo`.
+- **Breaking** The `begin_render_pass` methods of `UnsafeCommandBufferBuilder` and `SyncCommandBufferBuilder` now take `RenderPassBeginInfo`.
+- **Breaking** `CommandBufferLevel` is now a plain enum, `CommandBufferLevel::Secondary` has no associated value anymore. Its constructors have been removed.
+- **Breaking** `CommandBufferInheritance` and `CommandBufferRenderPassInheritance` have been renamed to `CommandBufferInheritanceInfo` and `CommandBufferRenderPassInheritanceInfo` respectively.
+- **Breaking** The `inheritance` method on the `SecondaryCommandBuffer` trait has been renamed to `inheritance_info`.
 - Fixed sync bug in `copy_image` and `blit_image` where the `src` and `dest` images are the same but with different mip level and/or array layer.
 - Fixed bug in `begin_render_pass` causing a panic when clearing a depth-only attachment.
 - Fixed bug in the `QueueFamily::supports_` methods causing a panic when querying support for a stage that needs no queue flags.
