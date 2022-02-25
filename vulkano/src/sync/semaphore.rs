@@ -548,7 +548,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]
     fn semaphore_export() {
         use crate::device::physical::PhysicalDevice;
         use crate::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
