@@ -7,66 +7,57 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::*;
-use crate::buffer::BufferAccess;
-use crate::buffer::TypedBufferAccess;
-use crate::command_buffer::synced::builder::KeyTy;
-use crate::command_buffer::synced::builder::SyncCommandBufferBuilder;
-use crate::command_buffer::synced::builder::SyncCommandBufferBuilderError;
-use crate::command_buffer::sys::UnsafeCommandBufferBuilder;
-use crate::command_buffer::sys::UnsafeCommandBufferBuilderBindVertexBuffer;
-use crate::command_buffer::sys::UnsafeCommandBufferBuilderBufferImageCopy;
-use crate::command_buffer::sys::UnsafeCommandBufferBuilderColorImageClear;
-use crate::command_buffer::sys::UnsafeCommandBufferBuilderDepthStencilImageClear;
-use crate::command_buffer::sys::UnsafeCommandBufferBuilderExecuteCommands;
-use crate::command_buffer::sys::UnsafeCommandBufferBuilderImageBlit;
-use crate::command_buffer::sys::UnsafeCommandBufferBuilderImageCopy;
-use crate::command_buffer::CommandBufferExecError;
-use crate::command_buffer::ImageUninitializedSafe;
-use crate::command_buffer::SecondaryCommandBuffer;
-use crate::command_buffer::SubpassContents;
-use crate::descriptor_set::layout::DescriptorType;
-use crate::descriptor_set::DescriptorBindingResources;
-use crate::descriptor_set::DescriptorSetWithOffsets;
-use crate::descriptor_set::WriteDescriptorSet;
-use crate::format::ClearValue;
-use crate::image::attachment::ClearAttachment;
-use crate::image::attachment::ClearRect;
-use crate::image::ImageAccess;
-use crate::image::ImageLayout;
-use crate::pipeline::graphics::depth_stencil::StencilFaces;
-use crate::pipeline::graphics::input_assembly::IndexType;
-use crate::pipeline::graphics::vertex_input::VertexInputState;
-use crate::pipeline::graphics::viewport::Scissor;
-use crate::pipeline::graphics::viewport::Viewport;
-use crate::pipeline::layout::PipelineLayout;
-use crate::pipeline::ComputePipeline;
-use crate::pipeline::GraphicsPipeline;
-use crate::pipeline::PipelineBindPoint;
-use crate::query::QueryControlFlags;
-use crate::query::QueryPool;
-use crate::query::QueryResultElement;
-use crate::query::QueryResultFlags;
-use crate::render_pass::Framebuffer;
-use crate::render_pass::LoadOp;
-use crate::sampler::Filter;
-use crate::shader::DescriptorRequirements;
-use crate::shader::ShaderStages;
-use crate::sync::AccessFlags;
-use crate::sync::Event;
-use crate::sync::PipelineMemoryAccess;
-use crate::sync::PipelineStage;
-use crate::sync::PipelineStages;
-use crate::DeviceSize;
-use crate::SafeDeref;
-use crate::VulkanObject;
+use super::{SyncCommandBufferBuilder, SyncCommandBufferBuilderError};
+use crate::{
+    buffer::{BufferAccess, TypedBufferAccess},
+    command_buffer::{
+        synced::{Command, KeyTy, ResourceKey, SetOrPush},
+        sys::{
+            RenderPassBeginInfo, UnsafeCommandBufferBuilder,
+            UnsafeCommandBufferBuilderBindVertexBuffer, UnsafeCommandBufferBuilderBufferImageCopy,
+            UnsafeCommandBufferBuilderColorImageClear,
+            UnsafeCommandBufferBuilderDepthStencilImageClear,
+            UnsafeCommandBufferBuilderExecuteCommands, UnsafeCommandBufferBuilderImageBlit,
+            UnsafeCommandBufferBuilderImageCopy,
+        },
+        CommandBufferExecError, ImageUninitializedSafe, SecondaryCommandBuffer, SubpassContents,
+    },
+    descriptor_set::{
+        layout::DescriptorType, DescriptorBindingResources, DescriptorSetResources,
+        DescriptorSetWithOffsets, WriteDescriptorSet,
+    },
+    format::ClearValue,
+    image::{
+        attachment::{ClearAttachment, ClearRect},
+        ImageAccess, ImageLayout,
+    },
+    pipeline::{
+        graphics::{
+            color_blend::LogicOp,
+            depth_stencil::{CompareOp, StencilFaces, StencilOp, StencilOps},
+            input_assembly::{IndexType, PrimitiveTopology},
+            rasterization::{CullMode, DepthBias, FrontFace, LineStipple},
+            vertex_input::VertexInputState,
+            viewport::{Scissor, Viewport},
+        },
+        ComputePipeline, GraphicsPipeline, PipelineBindPoint, PipelineLayout,
+    },
+    query::{QueryControlFlags, QueryPool, QueryResultElement, QueryResultFlags},
+    render_pass::LoadOp,
+    sampler::Filter,
+    shader::{DescriptorRequirements, ShaderStages},
+    sync::{AccessFlags, Event, PipelineMemoryAccess, PipelineStage, PipelineStages},
+    DeviceSize, SafeDeref, VulkanObject,
+};
 use smallvec::SmallVec;
-use std::borrow::Cow;
-use std::ffi::CStr;
-use std::mem;
-use std::ops::Range;
-use std::ptr;
-use std::sync::{Arc, Mutex};
+use std::{
+    borrow::Cow,
+    ffi::CStr,
+    mem,
+    ops::Range,
+    ptr,
+    sync::{Arc, Mutex},
+};
 
 impl SyncCommandBufferBuilder {
     /// Calls `vkCmdBeginQuery` on the builder.
@@ -109,46 +100,47 @@ impl SyncCommandBufferBuilder {
     // TODO: after begin_render_pass has been called, flushing should be forbidden and an error
     //       returned if conflict
     #[inline]
-    pub unsafe fn begin_render_pass<I>(
+    pub unsafe fn begin_render_pass(
         &mut self,
-        framebuffer: Arc<Framebuffer>,
+        render_pass_begin_info: RenderPassBeginInfo,
         subpass_contents: SubpassContents,
-        clear_values: I,
-    ) -> Result<(), SyncCommandBufferBuilderError>
-    where
-        I: IntoIterator<Item = ClearValue> + Send + Sync + 'static,
-    {
-        struct Cmd<I> {
-            framebuffer: Arc<Framebuffer>,
+    ) -> Result<(), SyncCommandBufferBuilderError> {
+        struct Cmd {
+            render_pass_begin_info: Mutex<RenderPassBeginInfo>,
             subpass_contents: SubpassContents,
-            clear_values: Mutex<Option<I>>,
         }
 
-        impl<I> Command for Cmd<I>
-        where
-            I: IntoIterator<Item = ClearValue> + Send + Sync,
-        {
+        impl Command for Cmd {
             fn name(&self) -> &'static str {
                 "vkCmdBeginRenderPass"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
+                let mut render_pass_begin_info = self.render_pass_begin_info.lock().unwrap();
+                let clear_values = std::mem::take(&mut render_pass_begin_info.clear_values);
+
                 out.begin_render_pass(
-                    self.framebuffer.as_ref(),
+                    RenderPassBeginInfo {
+                        framebuffer: render_pass_begin_info.framebuffer.clone(),
+                        render_area_offset: render_pass_begin_info.render_area_offset,
+                        render_area_extent: render_pass_begin_info.render_area_extent,
+                        clear_values,
+                        _ne: crate::NonExhaustive(()),
+                    },
                     self.subpass_contents,
-                    self.clear_values.lock().unwrap().take().unwrap(),
                 );
             }
         }
 
-        let resources = framebuffer
+        let resources = render_pass_begin_info
+            .framebuffer
             .render_pass()
             .attachments()
             .iter()
             .enumerate()
             .map(|(num, desc)| {
                 (
-                    KeyTy::Image(framebuffer.attachments()[num].image()),
+                    KeyTy::Image(render_pass_begin_info.framebuffer.attachments()[num].image()),
                     format!("attachment {}", num).into(),
                     Some((
                         PipelineMemoryAccess {
@@ -181,9 +173,8 @@ impl SyncCommandBufferBuilder {
 
         self.append_command(
             Cmd {
-                framebuffer: framebuffer,
+                render_pass_begin_info: Mutex::new(render_pass_begin_info),
                 subpass_contents,
-                clear_values: Mutex::new(Some(clear_values)),
             },
             resources,
         )?;

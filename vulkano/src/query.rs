@@ -480,7 +480,7 @@ impl From<QueryControlFlags> for ash::vk::QueryControlFlags {
 }
 
 /// For pipeline statistics queries, the statistics that should be gathered.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct QueryPipelineStatisticFlags {
     /// Count the number of vertices processed by the input assembly.
     pub input_assembly_vertices: bool,

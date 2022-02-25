@@ -181,26 +181,36 @@ impl From<SubpassContents> for ash::vk::SubpassContents {
 }
 
 /// Determines the kind of command buffer to create.
-#[derive(Clone)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[repr(i32)]
 pub enum CommandBufferLevel {
     /// Primary command buffers can be executed on a queue, and can call secondary command buffers.
     /// Render passes must begin and end within the same primary command buffer.
-    Primary,
+    Primary = ash::vk::CommandBufferLevel::PRIMARY.as_raw(),
 
     /// Secondary command buffers cannot be executed on a queue, but can be executed by a primary
     /// command buffer. If created for a render pass, they must fit within a single render subpass.
-    Secondary(CommandBufferInheritance),
+    Secondary = ash::vk::CommandBufferLevel::SECONDARY.as_raw(),
+}
+
+impl From<CommandBufferLevel> for ash::vk::CommandBufferLevel {
+    #[inline]
+    fn from(val: CommandBufferLevel) -> Self {
+        Self::from_raw(val as i32)
+    }
 }
 
 /// The context that a secondary command buffer can inherit from the primary command
 /// buffer it's executed in.
-#[derive(Clone, Default)]
-pub struct CommandBufferInheritance {
+#[derive(Clone, Debug)]
+pub struct CommandBufferInheritanceInfo {
     /// If `Some`, the secondary command buffer is required to be executed within a specific
     /// render subpass, and can only call draw operations.
     /// If `None`, it must be executed outside a render pass, and can execute dispatch and transfer
     /// operations, but not drawing operations.
-    render_pass: Option<CommandBufferInheritanceRenderPass>,
+    ///
+    /// The default value is `None`.
+    pub render_pass: Option<CommandBufferInheritanceRenderPassInfo>,
 
     /// If `Some`, the secondary command buffer is allowed to be executed within a primary that has
     /// an occlusion query active. The inner `QueryControlFlags` specifies which flags the
@@ -209,54 +219,43 @@ pub struct CommandBufferInheritance {
     /// secondary command buffer is executed.
     ///
     /// The `inherited_queries` feature must be enabled if this is `Some`.
-    occlusion_query: Option<QueryControlFlags>,
+    ///
+    /// The default value is `None`.
+    pub occlusion_query: Option<QueryControlFlags>,
 
     /// Which pipeline statistics queries are allowed to be active on the primary command buffer
     /// when this secondary command buffer is executed.
     ///
     /// The `pipeline_statistics_query` feature must be enabled if any of the flags of this value
     /// are set.
-    query_statistics_flags: QueryPipelineStatisticFlags,
+    ///
+    /// The default value is [`QueryPipelineStatisticFlags::none()`].
+    pub query_statistics_flags: QueryPipelineStatisticFlags,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for CommandBufferInheritanceInfo {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            render_pass: None,
+            occlusion_query: None,
+            query_statistics_flags: QueryPipelineStatisticFlags::none(),
+            _ne: crate::NonExhaustive(()),
+        }
+    }
 }
 
 /// The render pass context that a secondary command buffer is created for.
-#[derive(Clone)]
-pub struct CommandBufferInheritanceRenderPass {
+#[derive(Clone, Debug)]
+pub struct CommandBufferInheritanceRenderPassInfo {
     /// The render subpass that this secondary command buffer must be executed within.
     pub subpass: Subpass,
 
     /// The framebuffer object that will be used when calling the command buffer.
     /// This parameter is optional and is an optimization hint for the implementation.
     pub framebuffer: Option<Arc<Framebuffer>>,
-}
-
-impl CommandBufferLevel {
-    /// Equivalent to `Kind::Primary`.
-    ///
-    /// > **Note**: If you use `let kind = Kind::Primary;` in your code, you will probably get a
-    /// > compilation error because the Rust compiler couldn't determine the template parameters
-    /// > of `Kind`. To solve that problem in an easy way you can use this function instead.
-    #[inline]
-    pub fn primary() -> CommandBufferLevel {
-        CommandBufferLevel::Primary
-    }
-
-    /// Equivalent to `Kind::Secondary`.
-    ///
-    /// > **Note**: If you use `let kind = Kind::Secondary;` in your code, you will probably get a
-    /// > compilation error because the Rust compiler couldn't determine the template parameters
-    /// > of `Kind`. To solve that problem in an easy way you can use this function instead.
-    #[inline]
-    pub fn secondary(
-        occlusion_query: Option<QueryControlFlags>,
-        query_statistics_flags: QueryPipelineStatisticFlags,
-    ) -> CommandBufferLevel {
-        CommandBufferLevel::Secondary(CommandBufferInheritance {
-            render_pass: None,
-            occlusion_query,
-            query_statistics_flags,
-        })
-    }
 }
 
 /// Usage flags to pass when creating a command buffer.

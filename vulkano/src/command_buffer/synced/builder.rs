@@ -7,54 +7,42 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-pub use self::commands::SyncCommandBufferBuilderBindDescriptorSets;
-pub use self::commands::SyncCommandBufferBuilderBindVertexBuffer;
-pub use self::commands::SyncCommandBufferBuilderExecuteCommands;
-use super::{Command, KeyTy, ResourceFinalState, ResourceKey, ResourceUse, SyncCommandBuffer};
-use crate::buffer::BufferAccess;
-use crate::command_buffer::pool::UnsafeCommandPoolAlloc;
-use crate::command_buffer::sys::UnsafeCommandBufferBuilder;
-use crate::command_buffer::sys::UnsafeCommandBufferBuilderPipelineBarrier;
-use crate::command_buffer::CommandBufferExecError;
-use crate::command_buffer::CommandBufferLevel;
-use crate::command_buffer::CommandBufferUsage;
-use crate::command_buffer::ImageUninitializedSafe;
-use crate::descriptor_set::DescriptorSetResources;
-use crate::descriptor_set::DescriptorSetWithOffsets;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::image::ImageAccess;
-use crate::image::ImageLayout;
-use crate::pipeline::graphics::color_blend::LogicOp;
-use crate::pipeline::graphics::depth_stencil::CompareOp;
-use crate::pipeline::graphics::depth_stencil::StencilOp;
-use crate::pipeline::graphics::depth_stencil::StencilOps;
-use crate::pipeline::graphics::input_assembly::IndexType;
-use crate::pipeline::graphics::input_assembly::PrimitiveTopology;
-use crate::pipeline::graphics::rasterization::CullMode;
-use crate::pipeline::graphics::rasterization::DepthBias;
-use crate::pipeline::graphics::rasterization::FrontFace;
-use crate::pipeline::graphics::rasterization::LineStipple;
-use crate::pipeline::graphics::viewport::Scissor;
-use crate::pipeline::graphics::viewport::Viewport;
-use crate::pipeline::layout::PipelineLayout;
-use crate::pipeline::ComputePipeline;
-use crate::pipeline::DynamicState;
-use crate::pipeline::GraphicsPipeline;
-use crate::pipeline::PipelineBindPoint;
-use crate::range_set::RangeSet;
-use crate::sync::AccessFlags;
-use crate::sync::PipelineMemoryAccess;
-use crate::sync::PipelineStages;
-use crate::OomError;
-use crate::VulkanObject;
+pub use self::commands::{
+    SyncCommandBufferBuilderBindDescriptorSets, SyncCommandBufferBuilderBindVertexBuffer,
+    SyncCommandBufferBuilderExecuteCommands,
+};
+use super::{Command, KeyTy, ResourceKey, SyncCommandBuffer};
+use crate::{
+    buffer::BufferAccess,
+    command_buffer::{
+        pool::UnsafeCommandPoolAlloc,
+        synced::{ResourceFinalState, ResourceUse},
+        sys::{
+            CommandBufferBeginInfo, UnsafeCommandBufferBuilder,
+            UnsafeCommandBufferBuilderPipelineBarrier,
+        },
+        CommandBufferExecError, CommandBufferLevel, ImageUninitializedSafe,
+    },
+    descriptor_set::{DescriptorSetResources, DescriptorSetWithOffsets},
+    device::{Device, DeviceOwned},
+    image::{ImageAccess, ImageLayout},
+    pipeline::{
+        graphics::{
+            color_blend::LogicOp,
+            depth_stencil::{CompareOp, StencilOps},
+            input_assembly::{IndexType, PrimitiveTopology},
+            rasterization::{CullMode, DepthBias, FrontFace, LineStipple},
+            viewport::{Scissor, Viewport},
+        },
+        ComputePipeline, DynamicState, GraphicsPipeline, PipelineBindPoint, PipelineLayout,
+    },
+    range_set::RangeSet,
+    sync::{AccessFlags, PipelineMemoryAccess, PipelineStages},
+    OomError, VulkanObject,
+};
 use fnv::FnvHashMap;
 use smallvec::SmallVec;
-use std::borrow::Cow;
-use std::collections::hash_map::Entry;
-use std::error;
-use std::fmt;
-use std::sync::Arc;
+use std::{borrow::Cow, collections::hash_map::Entry, error, fmt, sync::Arc};
 
 #[path = "commands.rs"]
 mod commands;
@@ -134,17 +122,18 @@ impl SyncCommandBufferBuilder {
     /// See `UnsafeCommandBufferBuilder::new()`.
     pub unsafe fn new(
         pool_alloc: &UnsafeCommandPoolAlloc,
-        level: CommandBufferLevel,
-        usage: CommandBufferUsage,
+        begin_info: CommandBufferBeginInfo,
     ) -> Result<SyncCommandBufferBuilder, OomError> {
-        let (is_secondary, inside_render_pass) = match level {
-            CommandBufferLevel::Primary => (false, false),
-            CommandBufferLevel::Secondary(ref inheritance) => {
-                (true, inheritance.render_pass.is_some())
-            }
-        };
+        let is_secondary = pool_alloc.level() == CommandBufferLevel::Secondary;
+        let inside_render_pass = is_secondary
+            && begin_info
+                .inheritance_info
+                .as_ref()
+                .unwrap()
+                .render_pass
+                .is_some();
 
-        let cmd = UnsafeCommandBufferBuilder::new(pool_alloc, level, usage)?;
+        let cmd = UnsafeCommandBufferBuilder::new(pool_alloc, begin_info)?;
         Ok(SyncCommandBufferBuilder::from_unsafe_cmd(
             cmd,
             is_secondary,

@@ -7,66 +7,42 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::buffer::BufferAccess;
-use crate::buffer::BufferInner;
-use crate::buffer::TypedBufferAccess;
-use crate::check_errors;
-use crate::command_buffer::pool::UnsafeCommandPoolAlloc;
-use crate::command_buffer::CommandBufferInheritance;
-use crate::command_buffer::CommandBufferLevel;
-use crate::command_buffer::CommandBufferUsage;
-use crate::command_buffer::SecondaryCommandBuffer;
-use crate::command_buffer::SubpassContents;
-use crate::descriptor_set::sys::UnsafeDescriptorSet;
-use crate::descriptor_set::{DescriptorWriteInfo, WriteDescriptorSet};
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::format::ClearValue;
-use crate::format::NumericType;
-use crate::image::attachment::ClearAttachment;
-use crate::image::attachment::ClearRect;
-use crate::image::ImageAccess;
-use crate::image::ImageAspect;
-use crate::image::ImageAspects;
-use crate::image::ImageLayout;
-use crate::image::SampleCount;
-use crate::pipeline::graphics::color_blend::LogicOp;
-use crate::pipeline::graphics::depth_stencil::CompareOp;
-use crate::pipeline::graphics::depth_stencil::StencilFaces;
-use crate::pipeline::graphics::depth_stencil::StencilOp;
-use crate::pipeline::graphics::input_assembly::IndexType;
-use crate::pipeline::graphics::input_assembly::PrimitiveTopology;
-use crate::pipeline::graphics::rasterization::CullMode;
-use crate::pipeline::graphics::rasterization::FrontFace;
-use crate::pipeline::graphics::viewport::Scissor;
-use crate::pipeline::graphics::viewport::Viewport;
-use crate::pipeline::layout::PipelineLayout;
-use crate::pipeline::ComputePipeline;
-use crate::pipeline::GraphicsPipeline;
-use crate::pipeline::PipelineBindPoint;
-use crate::query::QueriesRange;
-use crate::query::Query;
-use crate::query::QueryControlFlags;
-use crate::query::QueryResultElement;
-use crate::query::QueryResultFlags;
-use crate::render_pass::Framebuffer;
-use crate::sampler::Filter;
-use crate::shader::ShaderStages;
-use crate::sync::AccessFlags;
-use crate::sync::Event;
-use crate::sync::PipelineStage;
-use crate::sync::PipelineStages;
-use crate::DeviceSize;
-use crate::OomError;
-use crate::Version;
-use crate::VulkanObject;
-use ash::vk::Handle;
+use super::{
+    pool::UnsafeCommandPoolAlloc, CommandBufferInheritanceInfo, CommandBufferLevel,
+    CommandBufferUsage, SecondaryCommandBuffer, SubpassContents,
+};
+use crate::{
+    buffer::{BufferAccess, BufferInner, TypedBufferAccess},
+    check_errors,
+    descriptor_set::{sys::UnsafeDescriptorSet, DescriptorWriteInfo, WriteDescriptorSet},
+    device::{Device, DeviceOwned},
+    format::{ClearValue, NumericType},
+    image::{
+        attachment::{ClearAttachment, ClearRect},
+        ImageAccess, ImageAspect, ImageAspects, ImageLayout, SampleCount,
+    },
+    pipeline::{
+        graphics::{
+            color_blend::LogicOp,
+            depth_stencil::{CompareOp, StencilFaces, StencilOp},
+            input_assembly::{IndexType, PrimitiveTopology},
+            rasterization::{CullMode, FrontFace},
+            viewport::{Scissor, Viewport},
+        },
+        ComputePipeline, GraphicsPipeline, PipelineBindPoint, PipelineLayout,
+    },
+    query::{
+        QueriesRange, Query, QueryControlFlags, QueryPipelineStatisticFlags, QueryResultElement,
+        QueryResultFlags,
+    },
+    render_pass::Framebuffer,
+    sampler::Filter,
+    shader::ShaderStages,
+    sync::{AccessFlags, Event, PipelineStage, PipelineStages},
+    DeviceSize, OomError, Version, VulkanObject,
+};
 use smallvec::SmallVec;
-use std::ffi::CStr;
-use std::fmt;
-use std::mem;
-use std::ops::Range;
-use std::sync::Arc;
+use std::{ffi::CStr, mem, ops::Range, ptr, sync::Arc};
 
 /// Command buffer being built.
 ///
@@ -76,21 +52,20 @@ use std::sync::Arc;
 ///
 /// When you are finished adding commands, you can use the `CommandBufferBuild` trait to turn this
 /// builder into an `UnsafeCommandBuffer`.
+///
+/// # Safety
+///
+/// - All submitted commands must be valid and follow the requirements of the Vulkan specification.
+/// - Any resources used by submitted commands must outlive the returned builder and its created
+///   command buffer. They must be protected against data races through manual synchronization.
+///
+/// > **Note**: Some checks are still made with `debug_assert!`. Do not expect to be able to
+/// > submit invalid commands.
+#[derive(Debug)]
 pub struct UnsafeCommandBufferBuilder {
     command_buffer: ash::vk::CommandBuffer,
     device: Arc<Device>,
     usage: CommandBufferUsage,
-}
-
-impl fmt::Debug for UnsafeCommandBufferBuilder {
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "<Vulkan command buffer builder #{}>",
-            self.command_buffer.as_raw()
-        )
-    }
 }
 
 impl UnsafeCommandBufferBuilder {
@@ -100,110 +75,122 @@ impl UnsafeCommandBufferBuilder {
     ///
     /// - `pool_alloc` must outlive the returned builder and its created command buffer.
     /// - `kind` must match how `pool_alloc` was created.
-    /// - All submitted commands must be valid and follow the requirements of the Vulkan specification.
-    /// - Any resources used by submitted commands must outlive the returned builder and its created command buffer. They must be protected against data races through manual synchronization.
-    ///
-    /// > **Note**: Some checks are still made with `debug_assert!`. Do not expect to be able to
-    /// > submit invalid commands.
     pub unsafe fn new(
         pool_alloc: &UnsafeCommandPoolAlloc,
-        level: CommandBufferLevel,
-        usage: CommandBufferUsage,
+        begin_info: CommandBufferBeginInfo,
     ) -> Result<UnsafeCommandBufferBuilder, OomError> {
-        let secondary = match level {
-            CommandBufferLevel::Primary => false,
-            CommandBufferLevel::Secondary(..) => true,
-        };
+        let CommandBufferBeginInfo {
+            usage,
+            inheritance_info,
+            _ne: _,
+        } = begin_info;
+
+        // VUID-vkBeginCommandBuffer-commandBuffer-00049
+        // Can't validate
+
+        // VUID-vkBeginCommandBuffer-commandBuffer-00050
+        // Can't validate
 
         let device = pool_alloc.device().clone();
-        let fns = device.fns();
 
-        let vk_flags = {
-            let a = ash::vk::CommandBufferUsageFlags::from(usage);
-            let b = match level {
-                CommandBufferLevel::Secondary(ref inheritance)
-                    if inheritance.render_pass.is_some() =>
-                {
-                    ash::vk::CommandBufferUsageFlags::RENDER_PASS_CONTINUE
-                }
-                _ => ash::vk::CommandBufferUsageFlags::empty(),
-            };
+        // VUID-vkBeginCommandBuffer-commandBuffer-00051
+        debug_assert_eq!(
+            pool_alloc.level() == CommandBufferLevel::Secondary,
+            inheritance_info.is_some()
+        );
 
-            a | b
-        };
+        {
+            // VUID-vkBeginCommandBuffer-commandBuffer-02840
+            // Guaranteed by use of enum
+            let mut flags = ash::vk::CommandBufferUsageFlags::from(usage);
 
-        let (rp, sp, fb) = match level {
-            CommandBufferLevel::Secondary(CommandBufferInheritance {
-                render_pass: Some(ref render_pass),
-                ..
-            }) => {
-                let rp = render_pass.subpass.render_pass().internal_object();
-                let sp = render_pass.subpass.index();
-                let fb = match render_pass.framebuffer {
-                    Some(ref fb) => {
-                        // TODO: debug assert that the framebuffer is compatible with
-                        //       the render pass?
-                        fb.internal_object()
-                    }
-                    None => ash::vk::Framebuffer::null(),
-                };
-                (rp, sp, fb)
-            }
-            _ => (ash::vk::RenderPass::null(), 0, ash::vk::Framebuffer::null()),
-        };
+            let inheritance_info = if let Some(inheritance_info) = &inheritance_info {
+                let (render_pass, subpass, framebuffer) =
+                    if let Some(render_pass) = &inheritance_info.render_pass {
+                        flags |= ash::vk::CommandBufferUsageFlags::RENDER_PASS_CONTINUE;
 
-        let (oqe, qf, ps) = match level {
-            CommandBufferLevel::Secondary(CommandBufferInheritance {
-                occlusion_query,
-                query_statistics_flags,
-                ..
-            }) => {
-                let ps: ash::vk::QueryPipelineStatisticFlags = query_statistics_flags.into();
-                let (oqe, qf) = match occlusion_query {
-                    Some(flags) => {
-                        let qf = if flags.precise {
+                        // VUID-VkCommandBufferInheritanceInfo-commonparent
+                        debug_assert_eq!(render_pass.subpass.render_pass().device(), &device);
+                        debug_assert!(render_pass
+                            .framebuffer
+                            .as_ref()
+                            .map_or(true, |fb| fb.device() == &device));
+
+                        (
+                            // VUID-VkCommandBufferBeginInfo-flags-00055
+                            // VUID-VkCommandBufferBeginInfo-flags-06000
+                            render_pass.subpass.render_pass().internal_object(),
+                            // VUID-VkCommandBufferBeginInfo-flags-06001
+                            // Guaranteed by subpass invariants
+                            render_pass.subpass.index(),
+                            render_pass
+                                .framebuffer
+                                .as_ref()
+                                .map(|fb| fb.internal_object())
+                                .unwrap_or_default(),
+                        )
+                    } else {
+                        Default::default()
+                    };
+
+                let (occlusion_query_enable, query_flags) =
+                    if let Some(flags) = inheritance_info.occlusion_query {
+                        // VUID-VkCommandBufferInheritanceInfo-occlusionQueryEnable-00056
+                        debug_assert!(device.enabled_features().inherited_queries);
+
+                        // VUID-VkCommandBufferInheritanceInfo-queryFlags-00057
+                        let query_flags = if flags.precise {
+                            // VUID-vkBeginCommandBuffer-commandBuffer-00052
+                            debug_assert!(device.enabled_features().occlusion_query_precise);
+
                             ash::vk::QueryControlFlags::PRECISE
                         } else {
                             ash::vk::QueryControlFlags::empty()
                         };
-                        (ash::vk::TRUE, qf)
-                    }
-                    None => (0, ash::vk::QueryControlFlags::empty()),
-                };
+                        (ash::vk::TRUE, query_flags)
+                    } else {
+                        // VUID-VkCommandBufferInheritanceInfo-queryFlags-02788
+                        // VUID-vkBeginCommandBuffer-commandBuffer-00052
+                        (ash::vk::FALSE, ash::vk::QueryControlFlags::empty())
+                    };
 
-                (oqe, qf, ps)
-            }
-            _ => (
-                0,
-                ash::vk::QueryControlFlags::empty(),
-                ash::vk::QueryPipelineStatisticFlags::empty(),
-            ),
-        };
+                // VUID-VkCommandBufferInheritanceInfo-pipelineStatistics-02789
+                // VUID-VkCommandBufferInheritanceInfo-pipelineStatistics-00058
+                debug_assert!(
+                    inheritance_info.query_statistics_flags == QueryPipelineStatisticFlags::none()
+                        || device.enabled_features().pipeline_statistics_query
+                );
 
-        let inheritance = ash::vk::CommandBufferInheritanceInfo {
-            render_pass: rp,
-            subpass: sp,
-            framebuffer: fb,
-            occlusion_query_enable: oqe,
-            query_flags: qf,
-            pipeline_statistics: ps,
-            ..Default::default()
-        };
+                Some(ash::vk::CommandBufferInheritanceInfo {
+                    render_pass,
+                    subpass,
+                    framebuffer,
+                    occlusion_query_enable,
+                    query_flags,
+                    pipeline_statistics: inheritance_info.query_statistics_flags.into(),
+                    ..Default::default()
+                })
+            } else {
+                None
+            };
 
-        let infos = ash::vk::CommandBufferBeginInfo {
-            flags: vk_flags,
-            p_inheritance_info: &inheritance,
-            ..Default::default()
-        };
+            let begin_info = ash::vk::CommandBufferBeginInfo {
+                flags,
+                p_inheritance_info: inheritance_info.as_ref().map_or(ptr::null(), |info| info),
+                ..Default::default()
+            };
 
-        check_errors(
-            fns.v1_0
-                .begin_command_buffer(pool_alloc.internal_object(), &infos),
-        )?;
+            let fns = device.fns();
+
+            check_errors(
+                fns.v1_0
+                    .begin_command_buffer(pool_alloc.internal_object(), &begin_info),
+            )?;
+        }
 
         Ok(UnsafeCommandBufferBuilder {
             command_buffer: pool_alloc.internal_object(),
-            device: device.clone(),
+            device,
             usage,
         })
     }
@@ -239,22 +226,25 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdBeginRenderPass` on the builder.
     #[inline]
-    pub unsafe fn begin_render_pass<I>(
+    pub unsafe fn begin_render_pass(
         &mut self,
-        framebuffer: &Framebuffer,
+        render_pass_begin_info: RenderPassBeginInfo,
         subpass_contents: SubpassContents,
-        clear_values: I,
-    ) where
-        I: IntoIterator<Item = ClearValue>,
-    {
-        let fns = self.device().fns();
-        let cmd = self.internal_object();
+    ) {
+        let RenderPassBeginInfo {
+            framebuffer,
+            render_area_offset,
+            render_area_extent,
+            clear_values,
+            _ne: _,
+        } = render_pass_begin_info;
 
-        // TODO: allow passing a different render pass
-        let raw_render_pass = framebuffer.render_pass().internal_object();
-        let raw_framebuffer = framebuffer.internal_object();
+        debug_assert!(
+            render_area_offset[0] + render_area_extent[0] <= framebuffer.extent()[0]
+                && render_area_offset[1] + render_area_extent[1] <= framebuffer.extent()[1]
+        );
 
-        let raw_clear_values: SmallVec<[_; 12]> = clear_values
+        let clear_values_vk: SmallVec<[_; 4]> = clear_values
             .into_iter()
             .map(|clear_value| match clear_value {
                 ClearValue::None => ash::vk::ClearValue {
@@ -287,29 +277,54 @@ impl UnsafeCommandBufferBuilder {
             })
             .collect();
 
-        // TODO: allow customizing
-        let rect = framebuffer.extent().map(|x| 0..x);
-
-        let begin = ash::vk::RenderPassBeginInfo {
-            render_pass: raw_render_pass,
-            framebuffer: raw_framebuffer,
+        let render_pass_begin_info = ash::vk::RenderPassBeginInfo {
+            render_pass: framebuffer.render_pass().internal_object(),
+            framebuffer: framebuffer.internal_object(),
             render_area: ash::vk::Rect2D {
                 offset: ash::vk::Offset2D {
-                    x: rect[0].start as i32,
-                    y: rect[1].start as i32,
+                    x: render_area_offset[0] as i32,
+                    y: render_area_offset[1] as i32,
                 },
                 extent: ash::vk::Extent2D {
-                    width: rect[0].end - rect[0].start,
-                    height: rect[1].end - rect[1].start,
+                    width: render_area_extent[0],
+                    height: render_area_extent[1],
                 },
             },
-            clear_value_count: raw_clear_values.len() as u32,
-            p_clear_values: raw_clear_values.as_ptr(),
+            clear_value_count: clear_values_vk.len() as u32,
+            p_clear_values: clear_values_vk.as_ptr(),
             ..Default::default()
         };
 
-        fns.v1_0
-            .cmd_begin_render_pass(cmd, &begin, subpass_contents.into());
+        let subpass_begin_info = ash::vk::SubpassBeginInfo {
+            contents: subpass_contents.into(),
+            ..Default::default()
+        };
+
+        let fns = self.device().fns();
+        let cmd = self.internal_object();
+
+        if self.device.api_version() >= Version::V1_2
+            || self.device.enabled_extensions().khr_create_renderpass2
+        {
+            if self.device.api_version() >= Version::V1_2 {
+                fns.v1_2
+                    .cmd_begin_render_pass2(cmd, &render_pass_begin_info, &subpass_begin_info);
+            } else {
+                fns.khr_create_renderpass2.cmd_begin_render_pass2_khr(
+                    cmd,
+                    &render_pass_begin_info,
+                    &subpass_begin_info,
+                );
+            }
+        } else {
+            debug_assert!(subpass_begin_info.p_next.is_null());
+
+            fns.v1_0.cmd_begin_render_pass(
+                cmd,
+                &render_pass_begin_info,
+                subpass_begin_info.contents,
+            );
+        }
     }
 
     /// Calls `vkCmdBindDescriptorSets` on the builder.
@@ -1262,7 +1277,23 @@ impl UnsafeCommandBufferBuilder {
     pub unsafe fn end_render_pass(&mut self) {
         let fns = self.device().fns();
         let cmd = self.internal_object();
-        fns.v1_0.cmd_end_render_pass(cmd);
+
+        let subpass_end_info = ash::vk::SubpassEndInfo::default();
+
+        if self.device.api_version() >= Version::V1_2
+            || self.device.enabled_extensions().khr_create_renderpass2
+        {
+            if self.device.api_version() >= Version::V1_2 {
+                fns.v1_2.cmd_end_render_pass2(cmd, &subpass_end_info);
+            } else {
+                fns.khr_create_renderpass2
+                    .cmd_end_render_pass2_khr(cmd, &subpass_end_info);
+            }
+        } else {
+            debug_assert!(subpass_end_info.p_next.is_null());
+
+            fns.v1_0.cmd_end_render_pass(cmd);
+        }
     }
 
     /// Calls `vkCmdExecuteCommands` on the builder.
@@ -1311,7 +1342,34 @@ impl UnsafeCommandBufferBuilder {
     pub unsafe fn next_subpass(&mut self, subpass_contents: SubpassContents) {
         let fns = self.device().fns();
         let cmd = self.internal_object();
-        fns.v1_0.cmd_next_subpass(cmd, subpass_contents.into());
+
+        let subpass_begin_info = ash::vk::SubpassBeginInfo {
+            contents: subpass_contents.into(),
+            ..Default::default()
+        };
+
+        let subpass_end_info = ash::vk::SubpassEndInfo::default();
+
+        if self.device.api_version() >= Version::V1_2
+            || self.device.enabled_extensions().khr_create_renderpass2
+        {
+            if self.device.api_version() >= Version::V1_2 {
+                fns.v1_2
+                    .cmd_next_subpass2(cmd, &subpass_begin_info, &subpass_end_info);
+            } else {
+                fns.khr_create_renderpass2.cmd_next_subpass2_khr(
+                    cmd,
+                    &subpass_begin_info,
+                    &subpass_end_info,
+                );
+            }
+        } else {
+            debug_assert!(subpass_begin_info.p_next.is_null());
+            debug_assert!(subpass_end_info.p_next.is_null());
+
+            fns.v1_0
+                .cmd_next_subpass(cmd, subpass_begin_info.contents.into());
+        }
     }
 
     #[inline]
@@ -2183,6 +2241,15 @@ impl UnsafeCommandBufferBuilder {
     }
 }
 
+unsafe impl VulkanObject for UnsafeCommandBufferBuilder {
+    type Object = ash::vk::CommandBuffer;
+
+    #[inline]
+    fn internal_object(&self) -> ash::vk::CommandBuffer {
+        self.command_buffer
+    }
+}
+
 unsafe impl DeviceOwned for UnsafeCommandBufferBuilder {
     #[inline]
     fn device(&self) -> &Arc<Device> {
@@ -2190,12 +2257,79 @@ unsafe impl DeviceOwned for UnsafeCommandBufferBuilder {
     }
 }
 
-unsafe impl VulkanObject for UnsafeCommandBufferBuilder {
-    type Object = ash::vk::CommandBuffer;
+/// Parameters to begin recording a command buffer.
+#[derive(Clone, Debug)]
+pub struct CommandBufferBeginInfo {
+    /// How the command buffer will be used.
+    ///
+    /// The default value is [`CommandBufferUsage::MultipleSubmit`].
+    pub usage: CommandBufferUsage,
 
+    /// For a secondary command buffer, this must be `Some`, containing the context that will be
+    /// inherited from the primary command buffer. For a primary command buffer, this must be
+    /// `None`.
+    ///
+    /// The default value is `None`.
+    pub inheritance_info: Option<CommandBufferInheritanceInfo>,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for CommandBufferBeginInfo {
     #[inline]
-    fn internal_object(&self) -> ash::vk::CommandBuffer {
-        self.command_buffer
+    fn default() -> Self {
+        Self {
+            usage: CommandBufferUsage::MultipleSubmit,
+            inheritance_info: None,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+/// Parameters to begin a new render pass.
+#[derive(Clone, Debug)]
+pub struct RenderPassBeginInfo {
+    /// The framebuffer to use for rendering.
+    ///
+    /// There is no default value.
+    // TODO: allow passing a different render pass
+    pub framebuffer: Arc<Framebuffer>,
+
+    /// The offset from the top left corner of the framebuffer that will be rendered to.
+    ///
+    /// The default value is `[0, 0]`.
+    pub render_area_offset: [u32; 2],
+
+    /// The size of the area that will be rendered to.
+    ///
+    /// `render_area_offset + render_area_extent` must not be greater than [`framebuffer.extent()`].
+    ///
+    /// The default value is [`framebuffer.extent()`].
+    pub render_area_extent: [u32; 2],
+
+    /// The clear values that should be used for the attachments in the framebuffer.
+    ///
+    /// There must be exactly [`framebuffer.attachments().len()`] elements provided, and each one
+    /// must match the attachment format.
+    ///
+    /// The default value is empty, which must be overridden if the framebuffer has attachments.
+    pub clear_values: Vec<ClearValue>,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl RenderPassBeginInfo {
+    #[inline]
+    pub fn framebuffer(framebuffer: Arc<Framebuffer>) -> Self {
+        let render_area_extent = framebuffer.extent();
+
+        Self {
+            framebuffer,
+            render_area_offset: [0, 0],
+            render_area_extent,
+            clear_values: Vec::new(),
+            _ne: crate::NonExhaustive(()),
+        }
     }
 }
 

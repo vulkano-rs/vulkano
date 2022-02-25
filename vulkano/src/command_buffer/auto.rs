@@ -7,102 +7,91 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::buffer::BufferAccess;
-use crate::buffer::TypedBufferAccess;
-use crate::command_buffer::pool::standard::StandardCommandPoolAlloc;
-use crate::command_buffer::pool::standard::StandardCommandPoolBuilder;
-use crate::command_buffer::pool::CommandPool;
-use crate::command_buffer::pool::CommandPoolAlloc;
-use crate::command_buffer::pool::CommandPoolBuilderAlloc;
-use crate::command_buffer::synced::CommandBufferState;
-use crate::command_buffer::synced::SyncCommandBuffer;
-use crate::command_buffer::synced::SyncCommandBufferBuilder;
-use crate::command_buffer::synced::SyncCommandBufferBuilderError;
-use crate::command_buffer::sys::UnsafeCommandBuffer;
-use crate::command_buffer::sys::UnsafeCommandBufferBuilderBufferImageCopy;
-use crate::command_buffer::sys::UnsafeCommandBufferBuilderColorImageClear;
-use crate::command_buffer::sys::UnsafeCommandBufferBuilderDepthStencilImageClear;
-use crate::command_buffer::sys::UnsafeCommandBufferBuilderImageBlit;
-use crate::command_buffer::sys::UnsafeCommandBufferBuilderImageCopy;
-use crate::command_buffer::validity::*;
-use crate::command_buffer::CommandBufferExecError;
-use crate::command_buffer::CommandBufferInheritance;
-use crate::command_buffer::CommandBufferInheritanceRenderPass;
-use crate::command_buffer::CommandBufferLevel;
-use crate::command_buffer::CommandBufferUsage;
-use crate::command_buffer::DispatchIndirectCommand;
-use crate::command_buffer::DrawIndexedIndirectCommand;
-use crate::command_buffer::DrawIndirectCommand;
-use crate::command_buffer::ImageUninitializedSafe;
-use crate::command_buffer::PrimaryCommandBuffer;
-use crate::command_buffer::SecondaryCommandBuffer;
-use crate::command_buffer::SubpassContents;
-use crate::descriptor_set::{check_descriptor_write, DescriptorSetsCollection, WriteDescriptorSet};
-use crate::device::physical::QueueFamily;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::device::Queue;
-use crate::format::ClearValue;
-use crate::format::NumericType;
-use crate::format::Pixel;
-use crate::image::attachment::ClearAttachment;
-use crate::image::attachment::ClearRect;
-use crate::image::ImageAccess;
-use crate::image::ImageAspect;
-use crate::image::ImageAspects;
-use crate::image::ImageLayout;
-use crate::pipeline::graphics::color_blend::LogicOp;
-use crate::pipeline::graphics::depth_stencil::CompareOp;
-use crate::pipeline::graphics::depth_stencil::StencilFaces;
-use crate::pipeline::graphics::depth_stencil::StencilOp;
-use crate::pipeline::graphics::input_assembly::Index;
-use crate::pipeline::graphics::input_assembly::IndexType;
-use crate::pipeline::graphics::input_assembly::PrimitiveTopology;
-use crate::pipeline::graphics::rasterization::CullMode;
-use crate::pipeline::graphics::rasterization::FrontFace;
-use crate::pipeline::graphics::vertex_input::VertexBuffersCollection;
-use crate::pipeline::graphics::viewport::Scissor;
-use crate::pipeline::graphics::viewport::Viewport;
-use crate::pipeline::layout::PipelineLayout;
-use crate::pipeline::ComputePipeline;
-use crate::pipeline::DynamicState;
-use crate::pipeline::GraphicsPipeline;
-use crate::pipeline::Pipeline;
-use crate::pipeline::PipelineBindPoint;
-use crate::query::QueryControlFlags;
-use crate::query::QueryPipelineStatisticFlags;
-use crate::query::QueryPool;
-use crate::query::QueryResultElement;
-use crate::query::QueryResultFlags;
-use crate::query::QueryType;
-use crate::render_pass::Framebuffer;
-use crate::render_pass::LoadOp;
-use crate::render_pass::Subpass;
-use crate::sampler::Filter;
-use crate::sync::AccessCheckError;
-use crate::sync::AccessFlags;
-use crate::sync::GpuFuture;
-use crate::sync::PipelineMemoryAccess;
-use crate::sync::PipelineStage;
-use crate::sync::PipelineStages;
-use crate::DeviceSize;
-use crate::Version;
-use crate::VulkanObject;
-use crate::{OomError, SafeDeref};
+use super::{
+    pool::{
+        standard::{StandardCommandPoolAlloc, StandardCommandPoolBuilder},
+        CommandPool, CommandPoolAlloc, CommandPoolBuilderAlloc,
+    },
+    synced::{
+        CommandBufferState, SyncCommandBuffer, SyncCommandBufferBuilder,
+        SyncCommandBufferBuilderError,
+    },
+    sys::{
+        CommandBufferBeginInfo, RenderPassBeginInfo, UnsafeCommandBuffer,
+        UnsafeCommandBufferBuilderBufferImageCopy, UnsafeCommandBufferBuilderColorImageClear,
+        UnsafeCommandBufferBuilderDepthStencilImageClear, UnsafeCommandBufferBuilderImageBlit,
+        UnsafeCommandBufferBuilderImageCopy,
+    },
+    validity::{
+        check_begin_query, check_blit_image, check_clear_color_image,
+        check_clear_depth_stencil_image, check_copy_buffer, check_copy_buffer_image,
+        check_copy_image, check_copy_query_pool_results, check_debug_marker_color,
+        check_descriptor_sets_validity, check_dispatch, check_dynamic_state_validity,
+        check_end_query, check_fill_buffer, check_index_buffer, check_indirect_buffer,
+        check_pipeline_compute, check_pipeline_graphics, check_push_constants_validity,
+        check_reset_query_pool, check_update_buffer, check_vertex_buffers, check_write_timestamp,
+        CheckBeginQueryError, CheckBlitImageError, CheckClearColorImageError,
+        CheckClearDepthStencilImageError, CheckColorError, CheckCopyBufferError,
+        CheckCopyBufferImageError, CheckCopyBufferImageTy, CheckCopyImageError,
+        CheckCopyQueryPoolResultsError, CheckDescriptorSetsValidityError, CheckDispatchError,
+        CheckDynamicStateValidityError, CheckEndQueryError, CheckFillBufferError,
+        CheckIndexBufferError, CheckIndirectBufferError, CheckPipelineError,
+        CheckPushConstantsValidityError, CheckResetQueryPoolError, CheckUpdateBufferError,
+        CheckVertexBufferError, CheckWriteTimestampError,
+    },
+    CommandBufferExecError, CommandBufferInheritanceInfo, CommandBufferInheritanceRenderPassInfo,
+    CommandBufferLevel, CommandBufferUsage, DispatchIndirectCommand, DrawIndexedIndirectCommand,
+    DrawIndirectCommand, ImageUninitializedSafe, PrimaryCommandBuffer, SecondaryCommandBuffer,
+    SubpassContents,
+};
+use crate::{
+    buffer::{BufferAccess, TypedBufferAccess},
+    descriptor_set::{check_descriptor_write, DescriptorSetsCollection, WriteDescriptorSet},
+    device::{physical::QueueFamily, Device, DeviceOwned, Queue},
+    format::{ClearValue, NumericType, Pixel},
+    image::{
+        attachment::{ClearAttachment, ClearRect},
+        ImageAccess, ImageAspect, ImageAspects, ImageLayout,
+    },
+    pipeline::{
+        graphics::{
+            color_blend::LogicOp,
+            depth_stencil::{CompareOp, StencilFaces, StencilOp},
+            input_assembly::{Index, IndexType, PrimitiveTopology},
+            rasterization::{CullMode, FrontFace},
+            vertex_input::VertexBuffersCollection,
+            viewport::{Scissor, Viewport},
+        },
+        ComputePipeline, DynamicState, GraphicsPipeline, Pipeline, PipelineBindPoint,
+        PipelineLayout,
+    },
+    query::{
+        QueryControlFlags, QueryPipelineStatisticFlags, QueryPool, QueryResultElement,
+        QueryResultFlags, QueryType,
+    },
+    render_pass::{Framebuffer, LoadOp, Subpass},
+    sampler::Filter,
+    sync::{
+        AccessCheckError, AccessFlags, GpuFuture, PipelineMemoryAccess, PipelineStage,
+        PipelineStages,
+    },
+    DeviceSize, OomError, SafeDeref, Version, VulkanObject,
+};
 use fnv::FnvHashMap;
 use smallvec::SmallVec;
-use std::cmp;
-use std::error;
-use std::ffi::CStr;
-use std::fmt;
-use std::iter;
-use std::marker::PhantomData;
-use std::mem;
-use std::ops::Range;
-use std::slice;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
+use std::{
+    cmp, error,
+    ffi::CStr,
+    fmt, iter,
+    marker::PhantomData,
+    mem,
+    ops::Range,
+    slice,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+};
 
 /// Note that command buffers allocated from the default command pool (`Arc<StandardCommandPool>`)
 /// don't implement the `Send` and `Sync` traits. If you use this pool, then the
@@ -117,7 +106,7 @@ pub struct AutoCommandBufferBuilder<L, P = StandardCommandPoolBuilder> {
 
     // The inheritance for secondary command buffers.
     // Must be `None` in a primary command buffer and `Some` in a secondary command buffer.
-    inheritance: Option<CommandBufferInheritance>,
+    inheritance_info: Option<CommandBufferInheritanceInfo>,
 
     // Usage flags passed when creating the command buffer.
     usage: CommandBufferUsage,
@@ -160,12 +149,17 @@ impl AutoCommandBufferBuilder<PrimaryAutoCommandBuffer, StandardCommandPoolBuild
         AutoCommandBufferBuilder<PrimaryAutoCommandBuffer, StandardCommandPoolBuilder>,
         OomError,
     > {
-        AutoCommandBufferBuilder::with_level(
-            device,
-            queue_family,
-            usage,
-            CommandBufferLevel::primary(),
-        )
+        unsafe {
+            AutoCommandBufferBuilder::with_level(
+                device,
+                queue_family,
+                CommandBufferLevel::Primary,
+                CommandBufferBeginInfo {
+                    usage,
+                    ..Default::default()
+                },
+            )
+        }
     }
 }
 
@@ -180,8 +174,18 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
         AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
         OomError,
     > {
-        let level = CommandBufferLevel::secondary(None, QueryPipelineStatisticFlags::none());
-        AutoCommandBufferBuilder::with_level(device, queue_family, usage, level)
+        unsafe {
+            Ok(AutoCommandBufferBuilder::with_level(
+                device,
+                queue_family,
+                CommandBufferLevel::Secondary,
+                CommandBufferBeginInfo {
+                    usage,
+                    inheritance_info: Some(CommandBufferInheritanceInfo::default()),
+                    ..Default::default()
+                },
+            )?)
+        }
     }
 
     /// Same as `secondary_compute`, but allows specifying how queries are being inherited.
@@ -206,13 +210,22 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
             return Err(BeginError::PipelineStatisticsQueryFeatureNotEnabled);
         }
 
-        let level = CommandBufferLevel::secondary(occlusion_query, query_statistics_flags);
-        Ok(AutoCommandBufferBuilder::with_level(
-            device,
-            queue_family,
-            usage,
-            level,
-        )?)
+        unsafe {
+            Ok(AutoCommandBufferBuilder::with_level(
+                device,
+                queue_family,
+                CommandBufferLevel::Secondary,
+                CommandBufferBeginInfo {
+                    usage,
+                    inheritance_info: Some(CommandBufferInheritanceInfo {
+                        occlusion_query,
+                        query_statistics_flags,
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            )?)
+        }
     }
 
     /// Starts building a secondary graphics command buffer.
@@ -226,16 +239,24 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
         AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
         OomError,
     > {
-        let level = CommandBufferLevel::Secondary(CommandBufferInheritance {
-            render_pass: Some(CommandBufferInheritanceRenderPass {
-                subpass,
-                framebuffer: None,
-            }),
-            occlusion_query: None,
-            query_statistics_flags: QueryPipelineStatisticFlags::none(),
-        });
-
-        AutoCommandBufferBuilder::with_level(device, queue_family, usage, level)
+        unsafe {
+            Ok(AutoCommandBufferBuilder::with_level(
+                device,
+                queue_family,
+                CommandBufferLevel::Secondary,
+                CommandBufferBeginInfo {
+                    usage,
+                    inheritance_info: Some(CommandBufferInheritanceInfo {
+                        render_pass: Some(CommandBufferInheritanceRenderPassInfo {
+                            subpass,
+                            framebuffer: None,
+                        }),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            )?)
+        }
     }
 
     /// Same as `secondary_graphics`, but allows specifying how queries are being inherited.
@@ -261,81 +282,78 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
             return Err(BeginError::PipelineStatisticsQueryFeatureNotEnabled);
         }
 
-        let level = CommandBufferLevel::Secondary(CommandBufferInheritance {
-            render_pass: Some(CommandBufferInheritanceRenderPass {
-                subpass,
-                framebuffer: None,
-            }),
-            occlusion_query,
-            query_statistics_flags,
-        });
-
-        Ok(AutoCommandBufferBuilder::with_level(
-            device,
-            queue_family,
-            usage,
-            level,
-        )?)
+        unsafe {
+            Ok(AutoCommandBufferBuilder::with_level(
+                device,
+                queue_family,
+                CommandBufferLevel::Secondary,
+                CommandBufferBeginInfo {
+                    usage,
+                    inheritance_info: Some(CommandBufferInheritanceInfo {
+                        render_pass: Some(CommandBufferInheritanceRenderPassInfo {
+                            subpass,
+                            framebuffer: None,
+                        }),
+                        occlusion_query,
+                        query_statistics_flags,
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            )?)
+        }
     }
 }
 
 impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
     // Actual constructor. Private.
-    fn with_level(
+    //
+    // `begin_info.inheritance_info` must match `level`.
+    unsafe fn with_level(
         device: Arc<Device>,
         queue_family: QueueFamily,
-        usage: CommandBufferUsage,
         level: CommandBufferLevel,
+        begin_info: CommandBufferBeginInfo,
     ) -> Result<AutoCommandBufferBuilder<L, StandardCommandPoolBuilder>, OomError> {
-        let (inheritance, render_pass_state) = match &level {
-            CommandBufferLevel::Primary => (None, None),
-            CommandBufferLevel::Secondary(inheritance) => {
-                let render_pass_state = inheritance.render_pass.as_ref().map(
-                    |CommandBufferInheritanceRenderPass {
-                         subpass,
-                         framebuffer,
-                     }| RenderPassState {
-                        subpass: subpass.clone(),
-                        contents: SubpassContents::Inline,
-                        extent: framebuffer.as_ref().map(|f| f.extent()).unwrap_or_default(),
-                        attached_layers_ranges: framebuffer
-                            .as_ref()
-                            .map(|f| f.attached_layers_ranges())
-                            .unwrap_or_default(),
-                        framebuffer: ash::vk::Framebuffer::null(), // Only needed for primary command buffers
-                    },
-                );
+        let usage = begin_info.usage;
+        let inheritance_info = begin_info.inheritance_info.clone();
+        let render_pass_state = begin_info
+            .inheritance_info
+            .as_ref()
+            .and_then(|inheritance_info| inheritance_info.render_pass.as_ref())
+            .map(
+                |CommandBufferInheritanceRenderPassInfo {
+                     subpass,
+                     framebuffer,
+                 }| RenderPassState {
+                    subpass: subpass.clone(),
+                    contents: SubpassContents::Inline,
+                    extent: framebuffer.as_ref().map(|f| f.extent()).unwrap_or_default(),
+                    attached_layers_ranges: framebuffer
+                        .as_ref()
+                        .map(|f| f.attached_layers_ranges())
+                        .unwrap_or_default(),
+                    framebuffer: ash::vk::Framebuffer::null(), // Only needed for primary command buffers
+                },
+            );
 
-                (
-                    Some(CommandBufferInheritance {
-                        render_pass: inheritance.render_pass.clone(),
-                        occlusion_query: inheritance.occlusion_query,
-                        query_statistics_flags: inheritance.query_statistics_flags,
-                    }),
-                    render_pass_state,
-                )
-            }
-        };
+        let pool = Device::standard_command_pool(&device, queue_family);
+        let pool_builder_alloc = pool
+            .allocate(level, 1)?
+            .next()
+            .expect("Requested one command buffer from the command pool, but got zero.");
+        let inner = SyncCommandBufferBuilder::new(pool_builder_alloc.inner(), begin_info)?;
 
-        unsafe {
-            let pool = Device::standard_command_pool(&device, queue_family);
-            let pool_builder_alloc = pool
-                .alloc(!matches!(level, CommandBufferLevel::Primary), 1)?
-                .next()
-                .expect("Requested one command buffer from the command pool, but got zero.");
-            let inner = SyncCommandBufferBuilder::new(pool_builder_alloc.inner(), level, usage)?;
-
-            Ok(AutoCommandBufferBuilder {
-                inner,
-                pool_builder_alloc,
-                queue_family_id: queue_family.id(),
-                render_pass_state,
-                query_state: FnvHashMap::default(),
-                inheritance,
-                usage,
-                _data: PhantomData,
-            })
-        }
+        Ok(AutoCommandBufferBuilder {
+            inner,
+            pool_builder_alloc,
+            queue_family_id: queue_family.id(),
+            render_pass_state,
+            query_state: FnvHashMap::default(),
+            inheritance_info,
+            usage,
+            _data: PhantomData,
+        })
     }
 }
 
@@ -444,7 +462,7 @@ where
         Ok(SecondaryAutoCommandBuffer {
             inner: self.inner.build()?,
             pool_alloc: self.pool_builder_alloc.into_alloc(),
-            inheritance: self.inheritance.unwrap(),
+            inheritance_info: self.inheritance_info.unwrap(),
             submit_state,
         })
     }
@@ -3233,9 +3251,11 @@ where
 
             self.ensure_outside_render_pass()?;
 
-            let clear_values = framebuffer.render_pass().convert_clear_values(clear_values);
-            let clear_values = clear_values.collect::<Vec<_>>().into_iter(); // TODO: necessary for Send + Sync ; needs an API rework of convert_clear_values
-            let mut clear_values_copy = clear_values.clone().enumerate(); // TODO: Proper errors for clear value errors instead of panics
+            let clear_values: Vec<_> = framebuffer
+                .render_pass()
+                .convert_clear_values(clear_values)
+                .collect();
+            let mut clear_values_copy = clear_values.iter().enumerate(); // TODO: Proper errors for clear value errors instead of panics
 
             for (atch_i, atch_desc) in framebuffer
                 .render_pass()
@@ -3333,16 +3353,23 @@ where
                 panic!("Too many clear values")
             }
 
-            let framebuffer_object = framebuffer.internal_object();
-            self.inner
-                .begin_render_pass(framebuffer.clone(), contents, clear_values)?;
-            self.render_pass_state = Some(RenderPassState {
+            let render_pass_state = RenderPassState {
                 subpass: framebuffer.render_pass().clone().first_subpass(),
                 extent: framebuffer.extent(),
                 attached_layers_ranges: framebuffer.attached_layers_ranges(),
                 contents,
-                framebuffer: framebuffer_object,
-            });
+                framebuffer: framebuffer.internal_object(),
+            };
+
+            self.inner.begin_render_pass(
+                RenderPassBeginInfo {
+                    clear_values,
+                    ..RenderPassBeginInfo::framebuffer(framebuffer)
+                },
+                contents,
+            )?;
+
+            self.render_pass_state = Some(render_pass_state);
             Ok(self)
         }
     }
@@ -3451,7 +3478,7 @@ where
     where
         C: SecondaryCommandBuffer + 'static,
     {
-        if let Some(render_pass) = &command_buffer.inheritance().render_pass {
+        if let Some(render_pass) = &command_buffer.inheritance_info().render_pass {
             self.ensure_inside_render_pass_secondary(render_pass)?;
         } else {
             self.ensure_outside_render_pass()?;
@@ -3459,7 +3486,7 @@ where
 
         for state in self.query_state.values() {
             match state.ty {
-                QueryType::Occlusion => match command_buffer.inheritance().occlusion_query {
+                QueryType::Occlusion => match command_buffer.inheritance_info().occlusion_query {
                     Some(inherited_flags) => {
                         let inherited_flags = ash::vk::QueryControlFlags::from(inherited_flags);
                         let state_flags = ash::vk::QueryControlFlags::from(state.flags);
@@ -3471,7 +3498,7 @@ where
                     None => return Err(AutoCommandBufferBuilderContextError::QueryNotInherited),
                 },
                 QueryType::PipelineStatistics(state_flags) => {
-                    let inherited_flags = command_buffer.inheritance().query_statistics_flags;
+                    let inherited_flags = command_buffer.inheritance_info().query_statistics_flags;
                     let inherited_flags =
                         ash::vk::QueryPipelineStatisticFlags::from(inherited_flags);
                     let state_flags = ash::vk::QueryPipelineStatisticFlags::from(state_flags);
@@ -3490,7 +3517,7 @@ where
     #[inline]
     fn ensure_inside_render_pass_secondary(
         &self,
-        render_pass: &CommandBufferInheritanceRenderPass,
+        render_pass: &CommandBufferInheritanceRenderPassInfo,
     ) -> Result<(), AutoCommandBufferBuilderContextError> {
         let render_pass_state = self
             .render_pass_state
@@ -3689,7 +3716,7 @@ where
 pub struct SecondaryAutoCommandBuffer<P = StandardCommandPoolAlloc> {
     inner: SyncCommandBuffer,
     pool_alloc: P, // Safety: must be dropped after `inner`
-    inheritance: CommandBufferInheritance,
+    inheritance_info: CommandBufferInheritanceInfo,
 
     // Tracks usage of the command buffer on the GPU.
     submit_state: SubmitState,
@@ -3751,8 +3778,8 @@ where
     }
 
     #[inline]
-    fn inheritance(&self) -> &CommandBufferInheritance {
-        &self.inheritance
+    fn inheritance_info(&self) -> &CommandBufferInheritanceInfo {
+        &self.inheritance_info
     }
 
     #[inline]
