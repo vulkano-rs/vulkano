@@ -491,6 +491,7 @@ mod tests {
     use crate::pipeline::layout::PipelineLayoutCreateInfo;
     use crate::pipeline::PipelineBindPoint;
     use crate::sampler::Sampler;
+    use crate::sampler::SamplerCreateInfo;
     use crate::shader::ShaderStages;
     use crate::sync::GpuFuture;
     use std::sync::Arc;
@@ -692,7 +693,8 @@ mod tests {
                 set_layout.clone(),
                 [WriteDescriptorSet::sampler(
                     0,
-                    Sampler::simple_repeat_linear(device.clone()).unwrap(),
+                    Sampler::new(device.clone(), SamplerCreateInfo::simple_repeat_linear())
+                        .unwrap(),
                 )],
             )
             .unwrap();
@@ -748,7 +750,7 @@ mod tests {
                 set_layout.clone(),
                 [WriteDescriptorSet::sampler(
                     0,
-                    Sampler::simple_repeat_linear(device.clone()).unwrap(),
+                    Sampler::new(device, SamplerCreateInfo::simple_repeat_linear()).unwrap(),
                 )],
             )
             .unwrap();

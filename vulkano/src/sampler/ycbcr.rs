@@ -31,18 +31,22 @@
 //! use vulkano::format::Format;
 //! use vulkano::image::{ImmutableImage, ImageCreateFlags, ImageDimensions, ImageUsage, MipmapsCount};
 //! use vulkano::image::view::ImageView;
-//! use vulkano::sampler::Sampler;
-//! use vulkano::sampler::ycbcr::{SamplerYcbcrConversion, SamplerYcbcrModelConversion};
+//! use vulkano::sampler::{Sampler, SamplerCreateInfo};
+//! use vulkano::sampler::ycbcr::{SamplerYcbcrConversion, SamplerYcbcrConversionCreateInfo, SamplerYcbcrModelConversion};
 //! use vulkano::shader::ShaderStage;
 //!
-//! let conversion = SamplerYcbcrConversion::start()
-//!     .format(Some(Format::G8_B8_R8_3PLANE_420_UNORM))
-//!     .ycbcr_model(SamplerYcbcrModelConversion::YcbcrIdentity)
-//!     .build(device.clone()).unwrap();
+//! let conversion = SamplerYcbcrConversion::new(device.clone(), SamplerYcbcrConversionCreateInfo {
+//!     format: Some(Format::G8_B8_R8_3PLANE_420_UNORM),
+//!     ycbcr_model: SamplerYcbcrModelConversion::YcbcrIdentity,
+//!     ..Default::default()
+//! })
+//! .unwrap();
 //!
-//! let sampler = Sampler::start(device.clone())
-//!     .sampler_ycbcr_conversion(Some(conversion.clone()))
-//!     .build().unwrap();
+//! let sampler = Sampler::new(device.clone(), SamplerCreateInfo {
+//!     sampler_ycbcr_conversion: Some(conversion.clone()),
+//!     ..Default::default()
+//! })
+//! .unwrap();
 //!
 //! let descriptor_set_layout = DescriptorSetLayout::new(
 //!     device.clone(),
@@ -85,99 +89,20 @@ use crate::{
     sampler::{ComponentMapping, ComponentSwizzle, Filter},
     Error, OomError, Version, VulkanObject,
 };
-use std::{error, fmt, mem::MaybeUninit, ptr, sync::Arc};
+use std::{
+    error, fmt,
+    hash::{Hash, Hasher},
+    mem::MaybeUninit,
+    ptr,
+    sync::Arc,
+};
 
 /// Describes how sampled image data should converted from a YCbCr representation to an RGB one.
 #[derive(Debug)]
 pub struct SamplerYcbcrConversion {
     handle: ash::vk::SamplerYcbcrConversion,
     device: Arc<Device>,
-    create_info: SamplerYcbcrConversionBuilder,
-}
 
-impl SamplerYcbcrConversion {
-    /// Starts constructing a new `SamplerYcbcrConversion`.
-    #[inline]
-    pub fn start() -> SamplerYcbcrConversionBuilder {
-        SamplerYcbcrConversionBuilder {
-            format: None,
-            ycbcr_model: SamplerYcbcrModelConversion::RgbIdentity,
-            ycbcr_range: SamplerYcbcrRange::ItuFull,
-            component_mapping: ComponentMapping::identity(),
-            chroma_offset: [ChromaLocation::CositedEven; 2],
-            chroma_filter: Filter::Nearest,
-            force_explicit_reconstruction: false,
-        }
-    }
-
-    /// Returns the chroma filter used by this conversion.
-    #[inline]
-    pub fn chroma_filter(&self) -> Filter {
-        self.create_info.chroma_filter
-    }
-
-    /// Returns the format that this conversion was created for.
-    #[inline]
-    pub fn format(&self) -> Option<Format> {
-        self.create_info.format
-    }
-
-    /// Returns whether `self` is equal or identically defined to `other`.
-    #[inline]
-    pub fn is_identical(&self, other: &SamplerYcbcrConversion) -> bool {
-        self.handle == other.handle || self.create_info == other.create_info
-    }
-}
-
-unsafe impl DeviceOwned for SamplerYcbcrConversion {
-    #[inline]
-    fn device(&self) -> &Arc<Device> {
-        &self.device
-    }
-}
-
-unsafe impl VulkanObject for SamplerYcbcrConversion {
-    type Object = ash::vk::SamplerYcbcrConversion;
-
-    #[inline]
-    fn internal_object(&self) -> ash::vk::SamplerYcbcrConversion {
-        self.handle
-    }
-}
-
-impl PartialEq for SamplerYcbcrConversion {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.handle == other.handle
-    }
-}
-
-impl Eq for SamplerYcbcrConversion {}
-
-impl Drop for SamplerYcbcrConversion {
-    #[inline]
-    fn drop(&mut self) {
-        unsafe {
-            let fns = self.device.fns();
-            let destroy_sampler_ycbcr_conversion = if self.device.api_version() >= Version::V1_1 {
-                fns.v1_1.destroy_sampler_ycbcr_conversion
-            } else {
-                fns.khr_sampler_ycbcr_conversion
-                    .destroy_sampler_ycbcr_conversion_khr
-            };
-
-            destroy_sampler_ycbcr_conversion(
-                self.device.internal_object(),
-                self.handle,
-                ptr::null(),
-            );
-        }
-    }
-}
-
-/// Used to construct a new `SamplerYcbcrConversion`.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SamplerYcbcrConversionBuilder {
     format: Option<Format>,
     ycbcr_model: SamplerYcbcrModelConversion,
     ycbcr_range: SamplerYcbcrRange,
@@ -187,16 +112,16 @@ pub struct SamplerYcbcrConversionBuilder {
     force_explicit_reconstruction: bool,
 }
 
-impl SamplerYcbcrConversionBuilder {
-    /// Builds the `SamplerYcbcrConversion`.
+impl SamplerYcbcrConversion {
+    /// Creates a new `SamplerYcbcrConversion`.
     ///
     /// The [`sampler_ycbcr_conversion`](crate::device::Features::sampler_ycbcr_conversion)
     /// feature must be enabled on the device.
-    pub fn build(
-        self,
+    pub fn new(
         device: Arc<Device>,
+        create_info: SamplerYcbcrConversionCreateInfo,
     ) -> Result<Arc<SamplerYcbcrConversion>, SamplerYcbcrConversionCreationError> {
-        let Self {
+        let SamplerYcbcrConversionCreateInfo {
             format,
             ycbcr_model,
             ycbcr_range,
@@ -204,7 +129,8 @@ impl SamplerYcbcrConversionBuilder {
             chroma_offset,
             chroma_filter,
             force_explicit_reconstruction,
-        } = self;
+            _ne: _,
+        } = create_info;
 
         if !device.enabled_features().sampler_ycbcr_conversion {
             return Err(SamplerYcbcrConversionCreationError::FeatureNotEnabled {
@@ -378,103 +304,136 @@ impl SamplerYcbcrConversionBuilder {
         Ok(Arc::new(SamplerYcbcrConversion {
             handle,
             device,
-            create_info: self,
+            format: Some(format),
+            ycbcr_model,
+            ycbcr_range,
+            component_mapping,
+            chroma_offset,
+            chroma_filter,
+            force_explicit_reconstruction,
         }))
     }
 
-    /// The image view format that this conversion will read data from. The conversion cannot be
-    /// used with image views of any other format.
-    ///
-    /// The format must support YCbCr conversions, meaning that its `FormatFeatures` must support
-    /// at least one of `cosited_chroma_samples` or `midpoint_chroma_samples`.
-    ///
-    /// If this is set to a format that has chroma subsampling (contains `422` or `420` in the name)
-    /// then `component_mapping` is restricted as follows:
-    /// - `g` must be identity swizzled.
-    /// - `a` must be identity swizzled or `Zero` or `One`.
-    /// - `r` and `b` must be identity swizzled or mapped to each other.
-    ///
-    /// Compatibility notice: currently, this value must be `Some`, but future additions may allow
-    /// `None` as a valid value as well.
-    ///
-    /// The default value is `None`.
+    /// Returns the chroma filter used by the conversion.
     #[inline]
-    pub fn format(mut self, format: Option<Format>) -> Self {
-        self.format = format;
-        self
+    pub fn chroma_filter(&self) -> Filter {
+        self.chroma_filter
     }
 
-    /// The conversion between the input color model and the output RGB color model.
-    ///
-    /// If this is not set to `RgbIdentity`, then the `r`, `g` and `b` components of
-    /// `component_mapping` must not be `Zero` or `One`, and the component being read must exist in
-    /// `format` (must be represented as a nonzero number of bits).
-    ///
-    /// The default value is [`RgbIdentity`](SamplerYcbcrModelConversion::RgbIdentity).
+    /// Returns the chroma offsets used by the conversion.
     #[inline]
-    pub fn ycbcr_model(mut self, model: SamplerYcbcrModelConversion) -> Self {
-        self.ycbcr_model = model;
-        self
+    pub fn chroma_offset(&self) -> [ChromaLocation; 2] {
+        self.chroma_offset
     }
 
-    /// If `ycbcr_model` is not `RgbIdentity`, specifies the range expansion of the input values
-    /// that should be used.
-    ///
-    /// If this is set to `ItuNarrow`, then the `r`, `g` and `b` components of `component_mapping`
-    /// must each map to a component of `format` that is represented with at least 8 bits.
-    ///
-    /// The default value is [`ItuFull`](SamplerYcbcrRange::ItuFull).
+    /// Returns the component mapping of the conversion.
     #[inline]
-    pub fn ycbcr_range(mut self, range: SamplerYcbcrRange) -> Self {
-        self.ycbcr_range = range;
-        self
+    pub fn component_mapping(&self) -> ComponentMapping {
+        self.component_mapping
     }
 
-    /// The mapping to apply to the components of the input format, before color model conversion
-    /// and range expansion.
-    ///
-    /// The default value is [`ComponentMapping::identity()`].
+    /// Returns whether the conversion has forced explicit reconstruction to be enabled.
     #[inline]
-    pub fn component_mapping(mut self, component_mapping: ComponentMapping) -> Self {
-        self.component_mapping = component_mapping;
-        self
+    pub fn force_explicit_reconstruction(&self) -> bool {
+        self.force_explicit_reconstruction
     }
 
-    /// For formats with chroma subsampling and a `Linear` filter, specifies the sampled location
-    /// for the subsampled components, in the x and y direction.
-    ///
-    /// The value is ignored if the filter is `Nearest` or the corresponding axis is not chroma
-    /// subsampled. If the value is not ignored, the format must support the chosen mode.
-    ///
-    /// The default value is [`CositedEven`](ChromaLocation::CositedEven) for both axes.
+    /// Returns the format that the conversion was created for.
     #[inline]
-    pub fn chroma_offset(mut self, offsets: [ChromaLocation; 2]) -> Self {
-        self.chroma_offset = offsets;
-        self
+    pub fn format(&self) -> Option<Format> {
+        self.format
     }
 
-    /// For formats with chroma subsampling, specifies the filter used for reconstructing the chroma
-    /// components to full resolution.
-    ///
-    /// The `Cubic` filter is not supported. If `Linear` is used, the format must support it.
-    ///
-    /// The default value is [`Nearest`](Filter::Nearest).
+    /// Returns the YCbCr model of the conversion.
     #[inline]
-    pub fn chroma_filter(mut self, filter: Filter) -> Self {
-        self.chroma_filter = filter;
-        self
+    pub fn ycbcr_model(&self) -> SamplerYcbcrModelConversion {
+        self.ycbcr_model
     }
 
-    /// Forces explicit reconstruction if the implementation does not use it by default. The format
-    /// must support it. See
-    /// [the spec](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap16.html#textures-chroma-reconstruction)
-    /// for more information.
-    ///
-    /// The default value is `false`.
+    /// Returns the YCbCr range of the conversion.
     #[inline]
-    pub fn force_explicit_reconstruction(mut self, enable: bool) -> Self {
-        self.force_explicit_reconstruction = enable;
-        self
+    pub fn ycbcr_range(&self) -> SamplerYcbcrRange {
+        self.ycbcr_range
+    }
+
+    /// Returns whether `self` is equal or identically defined to `other`.
+    #[inline]
+    pub fn is_identical(&self, other: &SamplerYcbcrConversion) -> bool {
+        self.handle == other.handle || {
+            let &Self {
+                handle: _,
+                device: _,
+                format,
+                ycbcr_model,
+                ycbcr_range,
+                component_mapping,
+                chroma_offset,
+                chroma_filter,
+                force_explicit_reconstruction,
+            } = self;
+
+            format == other.format
+                && ycbcr_model == other.ycbcr_model
+                && ycbcr_range == other.ycbcr_range
+                && component_mapping == other.component_mapping
+                && chroma_offset == other.chroma_offset
+                && chroma_filter == other.chroma_filter
+                && force_explicit_reconstruction == other.force_explicit_reconstruction
+        }
+    }
+}
+
+impl Drop for SamplerYcbcrConversion {
+    #[inline]
+    fn drop(&mut self) {
+        unsafe {
+            let fns = self.device.fns();
+            let destroy_sampler_ycbcr_conversion = if self.device.api_version() >= Version::V1_1 {
+                fns.v1_1.destroy_sampler_ycbcr_conversion
+            } else {
+                fns.khr_sampler_ycbcr_conversion
+                    .destroy_sampler_ycbcr_conversion_khr
+            };
+
+            destroy_sampler_ycbcr_conversion(
+                self.device.internal_object(),
+                self.handle,
+                ptr::null(),
+            );
+        }
+    }
+}
+
+unsafe impl VulkanObject for SamplerYcbcrConversion {
+    type Object = ash::vk::SamplerYcbcrConversion;
+
+    #[inline]
+    fn internal_object(&self) -> ash::vk::SamplerYcbcrConversion {
+        self.handle
+    }
+}
+
+unsafe impl DeviceOwned for SamplerYcbcrConversion {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
+
+impl PartialEq for SamplerYcbcrConversion {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.handle == other.handle && self.device() == other.device()
+    }
+}
+
+impl Eq for SamplerYcbcrConversion {}
+
+impl Hash for SamplerYcbcrConversion {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.handle.hash(state);
+        self.device().hash(state);
     }
 }
 
@@ -604,6 +563,95 @@ impl From<Error> for SamplerYcbcrConversionCreationError {
     }
 }
 
+/// Parameters to create a new `SamplerYcbcrConversion`.
+#[derive(Clone, Debug)]
+pub struct SamplerYcbcrConversionCreateInfo {
+    /// The image view format that this conversion will read data from. The conversion cannot be
+    /// used with image views of any other format.
+    ///
+    /// The format must support YCbCr conversions, meaning that its `FormatFeatures` must support
+    /// at least one of `cosited_chroma_samples` or `midpoint_chroma_samples`.
+    ///
+    /// If this is set to a format that has chroma subsampling (contains `422` or `420` in the name)
+    /// then `component_mapping` is restricted as follows:
+    /// - `g` must be identity swizzled.
+    /// - `a` must be identity swizzled or `Zero` or `One`.
+    /// - `r` and `b` must be identity swizzled or mapped to each other.
+    ///
+    /// Compatibility notice: currently, this value must be `Some`, but future additions may allow
+    /// `None` as a valid value as well.
+    ///
+    /// The default value is `None`.
+    pub format: Option<Format>,
+
+    /// The conversion between the input color model and the output RGB color model.
+    ///
+    /// If this is not set to `RgbIdentity`, then the `r`, `g` and `b` components of
+    /// `component_mapping` must not be `Zero` or `One`, and the component being read must exist in
+    /// `format` (must be represented as a nonzero number of bits).
+    ///
+    /// The default value is [`RgbIdentity`](SamplerYcbcrModelConversion::RgbIdentity).
+    pub ycbcr_model: SamplerYcbcrModelConversion,
+
+    /// If `ycbcr_model` is not `RgbIdentity`, specifies the range expansion of the input values
+    /// that should be used.
+    ///
+    /// If this is set to `ItuNarrow`, then the `r`, `g` and `b` components of `component_mapping`
+    /// must each map to a component of `format` that is represented with at least 8 bits.
+    ///
+    /// The default value is [`ItuFull`](SamplerYcbcrRange::ItuFull).
+    pub ycbcr_range: SamplerYcbcrRange,
+
+    /// The mapping to apply to the components of the input format, before color model conversion
+    /// and range expansion.
+    ///
+    /// The default value is [`ComponentMapping::identity()`].
+    pub component_mapping: ComponentMapping,
+
+    /// For formats with chroma subsampling and a `Linear` filter, specifies the sampled location
+    /// for the subsampled components, in the x and y direction.
+    ///
+    /// The value is ignored if the filter is `Nearest` or the corresponding axis is not chroma
+    /// subsampled. If the value is not ignored, the format must support the chosen mode.
+    ///
+    /// The default value is [`CositedEven`](ChromaLocation::CositedEven) for both axes.
+    pub chroma_offset: [ChromaLocation; 2],
+
+    /// For formats with chroma subsampling, specifies the filter used for reconstructing the chroma
+    /// components to full resolution.
+    ///
+    /// The `Cubic` filter is not supported. If `Linear` is used, the format must support it.
+    ///
+    /// The default value is [`Nearest`](Filter::Nearest).
+    pub chroma_filter: Filter,
+
+    /// Forces explicit reconstruction if the implementation does not use it by default. The format
+    /// must support it. See
+    /// [the spec](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/chap16.html#textures-chroma-reconstruction)
+    /// for more information.
+    ///
+    /// The default value is `false`.
+    pub force_explicit_reconstruction: bool,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for SamplerYcbcrConversionCreateInfo {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            format: None,
+            ycbcr_model: SamplerYcbcrModelConversion::RgbIdentity,
+            ycbcr_range: SamplerYcbcrRange::ItuFull,
+            component_mapping: ComponentMapping::identity(),
+            chroma_offset: [ChromaLocation::CositedEven; 2],
+            chroma_filter: Filter::Nearest,
+            force_explicit_reconstruction: false,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
 /// The conversion between the color model of the source image and the color model of the shader.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(i32)]
@@ -682,7 +730,7 @@ mod tests {
     fn feature_not_enabled() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let r = SamplerYcbcrConversion::start().build(device);
+        let r = SamplerYcbcrConversion::new(device, Default::default());
 
         match r {
             Err(SamplerYcbcrConversionCreationError::FeatureNotEnabled {

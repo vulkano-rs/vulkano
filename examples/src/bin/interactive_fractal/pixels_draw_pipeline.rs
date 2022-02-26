@@ -20,7 +20,7 @@ use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::render_pass::Subpass;
-use vulkano::sampler::{Filter, Sampler, SamplerAddressMode, SamplerMipmapMode};
+use vulkano::sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerMipmapMode};
 
 /// Vertex for textured quads
 #[repr(C)]
@@ -107,12 +107,17 @@ impl PixelsDrawPipeline {
         image: Arc<dyn ImageViewAbstract>,
     ) -> Arc<PersistentDescriptorSet> {
         let layout = self.pipeline.layout().set_layouts().get(0).unwrap();
-        let sampler = Sampler::start(self.gfx_queue.device().clone())
-            .filter(Filter::Linear)
-            .address_mode(SamplerAddressMode::Repeat)
-            .mipmap_mode(SamplerMipmapMode::Linear)
-            .build()
-            .unwrap();
+        let sampler = Sampler::new(
+            self.gfx_queue.device().clone(),
+            SamplerCreateInfo {
+                mag_filter: Filter::Linear,
+                min_filter: Filter::Linear,
+                address_mode: [SamplerAddressMode::Repeat; 3],
+                mipmap_mode: SamplerMipmapMode::Linear,
+                ..Default::default()
+            },
+        )
+        .unwrap();
 
         PersistentDescriptorSet::new(
             layout.clone(),
