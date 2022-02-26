@@ -55,6 +55,11 @@
 - **Breaking** The `inheritance` method on the `SecondaryCommandBuffer` trait has been renamed to `inheritance_info`.
 - **Breaking** `QueryPool` creation parameters are given using `QueryPoolCreateInfo`.
 - **Breaking** The `ty` and `num_slots` methods of `QueryPool` have been renamed to `query_type` and `query_count`.
+- **Breaking** `Fence` and `Semaphore` no longer have a type parameter.
+- **Breaking** `Event` creation parameters are given using `EventCreateInfo`.
+- **Breaking** `Fence` creation parameters are given using `FenceCreateInfo`.
+- **Breaking** `Semaphore` creation parameters are given using `SemaphoreCreateInfo`.
+- **Breaking** `Semaphore::export_opaque_fd` is now `unsafe`.
 - Fixed sync bug in `copy_image` and `blit_image` where the `src` and `dest` images are the same but with different mip level and/or array layer.
 - Fixed bug in `begin_render_pass` causing a panic when clearing a depth-only attachment.
 - Fixed bug in the `QueueFamily::supports_` methods causing a panic when querying support for a stage that needs no queue flags.
@@ -74,6 +79,7 @@
 - Added `PhysicalDevice::external_buffer_properties`.
 - `PhysicalDevice::image_format_properties` now includes external memory properties in the returned structure.
 - Added `Device::memory_fd_properties`.
+- Added `PhysicalDevice::external_semaphore_properties`.
 
 # Version 0.28.0 (2022-02-02)
 
