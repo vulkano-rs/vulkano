@@ -100,7 +100,7 @@ impl PersistentDescriptorSet {
             max_count,
         );
 
-        let alloc = pool.alloc(&layout, variable_descriptor_count)?;
+        let alloc = pool.allocate(&layout, variable_descriptor_count)?;
         let inner = DescriptorSetInner::new(
             alloc.inner().internal_object(),
             layout,

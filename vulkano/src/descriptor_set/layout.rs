@@ -11,7 +11,6 @@
 //!
 //! When creating a new descriptor set, you must provide a *layout* object to create it from.
 
-use super::pool::DescriptorsCount;
 use crate::{
     check_errors,
     device::{Device, DeviceOwned},
@@ -19,6 +18,7 @@ use crate::{
     shader::{DescriptorRequirements, ShaderStages},
     OomError, Version, VulkanObject,
 };
+use fnv::FnvHashMap;
 use std::{
     collections::BTreeMap,
     error, fmt,
@@ -37,7 +37,7 @@ pub struct DescriptorSetLayout {
     bindings: BTreeMap<u32, DescriptorSetLayoutBinding>,
     push_descriptor: bool,
 
-    descriptors_count: DescriptorsCount,
+    descriptor_counts: FnvHashMap<DescriptorType, u32>,
 }
 
 impl DescriptorSetLayout {
@@ -46,7 +46,7 @@ impl DescriptorSetLayout {
         device: Arc<Device>,
         mut create_info: DescriptorSetLayoutCreateInfo,
     ) -> Result<Arc<DescriptorSetLayout>, DescriptorSetLayoutCreationError> {
-        let descriptors_count = Self::validate(&device, &mut create_info)?;
+        let descriptor_counts = Self::validate(&device, &mut create_info)?;
         let handle = unsafe { Self::create(&device, &create_info)? };
 
         let DescriptorSetLayoutCreateInfo {
@@ -62,21 +62,21 @@ impl DescriptorSetLayout {
             bindings,
             push_descriptor,
 
-            descriptors_count,
+            descriptor_counts,
         }))
     }
 
     fn validate(
         device: &Device,
         create_info: &mut DescriptorSetLayoutCreateInfo,
-    ) -> Result<DescriptorsCount, DescriptorSetLayoutCreationError> {
+    ) -> Result<FnvHashMap<DescriptorType, u32>, DescriptorSetLayoutCreationError> {
         let &mut DescriptorSetLayoutCreateInfo {
             ref bindings,
             push_descriptor,
             _ne: _,
         } = create_info;
 
-        let mut descriptors_count = DescriptorsCount::zero();
+        let mut descriptor_counts = FnvHashMap::default();
 
         if push_descriptor {
             if !device.enabled_extensions().khr_push_descriptor {
@@ -90,7 +90,11 @@ impl DescriptorSetLayout {
         let highest_binding_num = bindings.keys().copied().next_back();
 
         for (&binding_num, binding) in bindings.iter() {
-            descriptors_count.add_num(binding.descriptor_type, binding.descriptor_count);
+            if binding.descriptor_count != 0 {
+                *descriptor_counts
+                    .entry(binding.descriptor_type)
+                    .or_default() += binding.descriptor_count;
+            }
 
             if push_descriptor {
                 // VUID-VkDescriptorSetLayoutCreateInfo-flags-00280
@@ -197,7 +201,7 @@ impl DescriptorSetLayout {
 
         // VUID-VkDescriptorSetLayoutCreateInfo-flags-00281
         if push_descriptor
-            && descriptors_count.total()
+            && descriptor_counts.values().copied().sum::<u32>()
                 > device
                     .physical_device()
                     .properties()
@@ -206,7 +210,7 @@ impl DescriptorSetLayout {
         {
             return Err(
                 DescriptorSetLayoutCreationError::MaxPushDescriptorsExceeded {
-                    provided: descriptors_count.total(),
+                    provided: descriptor_counts.values().copied().sum(),
                     max_supported: device
                         .physical_device()
                         .properties()
@@ -216,7 +220,7 @@ impl DescriptorSetLayout {
             );
         }
 
-        Ok(descriptors_count)
+        Ok(descriptor_counts)
     }
 
     unsafe fn create(
@@ -327,9 +331,11 @@ impl DescriptorSetLayout {
     }
 
     /// Returns the number of descriptors of each type.
+    ///
+    /// The map is guaranteed to not contain any elements with a count of `0`.
     #[inline]
-    pub fn descriptors_count(&self) -> &DescriptorsCount {
-        &self.descriptors_count
+    pub fn descriptor_counts(&self) -> &FnvHashMap<DescriptorType, u32> {
+        &self.descriptor_counts
     }
 
     /// If the highest-numbered binding has a variable count, returns its `descriptor_count`.
@@ -754,7 +760,7 @@ impl fmt::Display for DescriptorRequirementsNotMet {
 }
 
 /// Describes what kind of resource may later be bound to a descriptor.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[repr(i32)]
 #[non_exhaustive]
 pub enum DescriptorType {
@@ -812,8 +818,8 @@ mod tests {
     use crate::descriptor_set::layout::DescriptorSetLayoutBinding;
     use crate::descriptor_set::layout::DescriptorSetLayoutCreateInfo;
     use crate::descriptor_set::layout::DescriptorType;
-    use crate::descriptor_set::pool::DescriptorsCount;
     use crate::shader::ShaderStages;
+    use fnv::FnvHashMap;
 
     #[test]
     fn empty() {
@@ -842,11 +848,10 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            sl.descriptors_count(),
-            &DescriptorsCount {
-                uniform_buffer: 1,
-                ..DescriptorsCount::zero()
-            }
+            sl.descriptor_counts(),
+            &[(DescriptorType::UniformBuffer, 1)]
+                .into_iter()
+                .collect::<FnvHashMap<_, _>>(),
         );
     }
 }

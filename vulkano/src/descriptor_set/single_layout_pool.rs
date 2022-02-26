@@ -7,21 +7,25 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::descriptor_set::layout::DescriptorSetLayout;
-use crate::descriptor_set::pool::{
-    DescriptorPoolAlloc, DescriptorPoolAllocError, DescriptorSetAllocateInfo, UnsafeDescriptorPool,
-};
-use crate::descriptor_set::update::WriteDescriptorSet;
-use crate::descriptor_set::{
+use super::{
+    layout::DescriptorSetLayout,
+    pool::{
+        DescriptorPoolAlloc, DescriptorPoolAllocError, DescriptorSetAllocateInfo,
+        UnsafeDescriptorPool, UnsafeDescriptorPoolCreateInfo,
+    },
+    sys::UnsafeDescriptorSet,
     DescriptorSet, DescriptorSetCreationError, DescriptorSetInner, DescriptorSetResources,
-    UnsafeDescriptorSet,
+    WriteDescriptorSet,
 };
-use crate::device::{Device, DeviceOwned};
-use crate::OomError;
-use crate::VulkanObject;
+use crate::{
+    device::{Device, DeviceOwned},
+    OomError, VulkanObject,
+};
 use crossbeam_queue::SegQueue;
-use std::hash::{Hash, Hasher};
-use std::sync::Arc;
+use std::{
+    hash::{Hash, Hasher},
+    sync::Arc,
+};
 
 /// `SingleLayoutDescSetPool` is a convenience wrapper provided by Vulkano not to be confused with
 /// `VkDescriptorPool`. Its function is to provide access to pool(s) to allocate `DescriptorSet`'s
@@ -102,18 +106,26 @@ impl SingleLayoutDescSetPool {
                 self.set_count *= 2;
             }
 
-            let count = *self.layout.descriptors_count() * self.set_count as u32;
             let mut unsafe_pool = UnsafeDescriptorPool::new(
                 self.device.clone(),
-                &count,
-                self.set_count as u32,
-                false,
+                UnsafeDescriptorPoolCreateInfo {
+                    max_sets: self.set_count as u32,
+                    pool_sizes: self
+                        .layout
+                        .descriptor_counts()
+                        .iter()
+                        .map(|(&ty, &count)| (ty, count * self.set_count as u32))
+                        .collect(),
+                    ..Default::default()
+                },
             )?;
 
             let reserve = unsafe {
-                match unsafe_pool.alloc((0..self.set_count).map(|_| DescriptorSetAllocateInfo {
-                    layout: self.layout.as_ref(),
-                    variable_descriptor_count: 0,
+                match unsafe_pool.allocate_descriptor_sets((0..self.set_count).map(|_| {
+                    DescriptorSetAllocateInfo {
+                        layout: self.layout.as_ref(),
+                        variable_descriptor_count: 0,
+                    }
                 })) {
                     Ok(alloc_iter) => {
                         let reserve = SegQueue::new();
