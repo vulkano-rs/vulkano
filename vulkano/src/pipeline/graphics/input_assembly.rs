@@ -12,7 +12,7 @@
 use crate::device::Device;
 use crate::pipeline::graphics::GraphicsPipelineCreationError;
 use crate::pipeline::{DynamicState, PartialStateMode, StateMode};
-use crate::DeviceSize;
+use crate::{DeviceSize, Version};
 use fnv::FnvHashMap;
 
 /// The state in a graphics pipeline describing how the input assembly stage should behave.
@@ -22,7 +22,7 @@ pub struct InputAssemblyState {
     ///
     /// Note that some topologies require a feature to be enabled on the device.
     ///
-    /// If set to `Dynamic`, the
+    /// If set to `Dynamic`, the device API version must be at least 1.3, or the
     /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
     /// enabled on the device.
     pub topology: PartialStateMode<PrimitiveTopology, PrimitiveTopologyClass>,
@@ -35,9 +35,9 @@ pub struct InputAssemblyState {
     /// topologies require a feature to be enabled on the device when combined with primitive
     /// restart.
     ///
-    /// If set to `Dynamic`, the
-    /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
-    /// enabled on the device.
+    /// If set to `Dynamic`, the device API version must be at least 1.3, or the
+    /// [`extended_dynamic_state2`](crate::device::Features::extended_dynamic_state2) feature must
+    /// be enabled on the device.
     pub primitive_restart_enable: StateMode<bool>,
 }
 
@@ -113,7 +113,9 @@ impl InputAssemblyState {
                 topology.into()
             }
             PartialStateMode::Dynamic(topology_class) => {
-                if !device.enabled_features().extended_dynamic_state {
+                if !(device.api_version() >= Version::V1_3
+                    || device.enabled_features().extended_dynamic_state)
+                {
                     return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
                         feature: "extended_dynamic_state",
                         reason: "InputAssemblyState::topology was set to Dynamic",
@@ -160,7 +162,9 @@ impl InputAssemblyState {
                 primitive_restart_enable as ash::vk::Bool32
             }
             StateMode::Dynamic => {
-                if !device.enabled_features().extended_dynamic_state2 {
+                if !(device.api_version() >= Version::V1_3
+                    || device.enabled_features().extended_dynamic_state2)
+                {
                     return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
                         feature: "extended_dynamic_state2",
                         reason: "InputAssemblyState::primitive_restart_enable was set to Dynamic",

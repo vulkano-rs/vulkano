@@ -68,7 +68,10 @@ pub fn write(vk_data: &VkRegistryData) {
         features_ffi_output(&features_ffi_members(&vk_data.types, &vk_data.extensions));
     write_file(
         "features.rs",
-        format!("vk.xml header version {}", vk_data.header_version),
+        format!(
+            "vk.xml header version {}.{}.{}",
+            vk_data.header_version.0, vk_data.header_version.1, vk_data.header_version.2
+        ),
         quote! {
             #features_output
             #features_ffi_output
@@ -444,7 +447,7 @@ fn features_members(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<FeaturesMe
 
 fn make_doc(feat: &mut FeaturesMember, vulkan_ty_name: &str) {
     let writer = &mut feat.doc;
-    write!(writer, "- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/{}.html#features-{})", vulkan_ty_name, feat.name).unwrap();
+    write!(writer, "- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/{}.html#features-{})", vulkan_ty_name, feat.name).unwrap();
 
     if !feat.requires_features.is_empty() {
         let links: Vec<_> = feat

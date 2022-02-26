@@ -215,9 +215,11 @@ fn main() {
         .fragment_shader(fs.entry_point("main").unwrap(), ())
         .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()).blend_alpha())
         .render_pass(subpass)
-        .with_auto_layout(device.clone(), |set_descs| {
-            set_descs[0].set_push_descriptor(true);
-            set_descs[0].set_immutable_samplers(0, [sampler]);
+        .with_auto_layout(device.clone(), |layout_create_infos| {
+            let create_info = &mut layout_create_infos[0];
+            let binding = create_info.bindings.get_mut(&0).unwrap();
+            create_info.push_descriptor = true;
+            binding.immutable_samplers = vec![sampler];
         })
         .unwrap();
 

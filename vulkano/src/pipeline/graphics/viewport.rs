@@ -48,9 +48,9 @@
 //! In all cases the number of viewports and scissor boxes must be the same.
 //!
 
-use crate::device::Device;
 use crate::pipeline::graphics::GraphicsPipelineCreationError;
 use crate::pipeline::DynamicState;
+use crate::{device::Device, Version};
 use fnv::FnvHashMap;
 use smallvec::SmallVec;
 use std::{ops::Range, ptr};
@@ -74,7 +74,7 @@ pub enum ViewportState {
 
         /// Sets whether the scissor count is also dynamic, or only the scissors themselves.
         ///
-        /// If set to `true`, the
+        /// If set to `true`, the device API version must be at least 1.3, or the
         /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must
         /// be enabled on the device.
         scissor_count_dynamic: bool,
@@ -88,7 +88,7 @@ pub enum ViewportState {
 
         /// Sets whether the viewport count is also dynamic, or only the viewports themselves.
         ///
-        /// If set to `true`, the
+        /// If set to `true`, the device API version must be at least 1.3, or the
         /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must
         /// be enabled on the device.
         viewport_count_dynamic: bool,
@@ -103,14 +103,14 @@ pub enum ViewportState {
 
         /// Sets whether the viewport count is also dynamic, or only the viewports themselves.
         ///
-        /// If set to `true`, the
+        /// If set to `true`, the device API version must be at least 1.3, or the
         /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must
         /// be enabled on the device.
         viewport_count_dynamic: bool,
 
         /// Sets whether the scissor count is also dynamic, or only the scissors themselves.
         ///
-        /// If set to `true`, the
+        /// If set to `true`, the device API version must be at least 1.3, or the
         /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must
         /// be enabled on the device.
         scissor_count_dynamic: bool,
@@ -240,7 +240,9 @@ impl ViewportState {
                 dynamic_state_modes.insert(DynamicState::ViewportWithCount, false);
 
                 let scissor_count = if *scissor_count_dynamic {
-                    if !device.enabled_features().extended_dynamic_state {
+                    if !(device.api_version() >= Version::V1_3
+                        || device.enabled_features().extended_dynamic_state)
+                    {
                         return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
                             feature: "extended_dynamic_state",
                             reason: "ViewportState::FixedViewport::scissor_count_dynamic was set to true",
@@ -271,7 +273,9 @@ impl ViewportState {
                 dynamic_state_modes.insert(DynamicState::ScissorWithCount, false);
 
                 let viewport_count = if *viewport_count_dynamic {
-                    if !device.enabled_features().extended_dynamic_state {
+                    if !(device.api_version() >= Version::V1_3
+                        || device.enabled_features().extended_dynamic_state)
+                    {
                         return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
                             feature: "extended_dynamic_state",
                             reason: "ViewportState::FixedScissor::viewport_count_dynamic was set to true",
@@ -298,7 +302,9 @@ impl ViewportState {
                 }
 
                 let viewport_count = if *viewport_count_dynamic {
-                    if !device.enabled_features().extended_dynamic_state {
+                    if !(device.api_version() >= Version::V1_3
+                        || device.enabled_features().extended_dynamic_state)
+                    {
                         return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
                             feature: "extended_dynamic_state",
                             reason:
@@ -315,7 +321,9 @@ impl ViewportState {
                 };
 
                 let scissor_count = if *scissor_count_dynamic {
-                    if !device.enabled_features().extended_dynamic_state {
+                    if !(device.api_version() >= Version::V1_3
+                        || device.enabled_features().extended_dynamic_state)
+                    {
                         return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
                             feature: "extended_dynamic_state",
                             reason: "ViewportState::Dynamic::scissor_count_dynamic was set to true",

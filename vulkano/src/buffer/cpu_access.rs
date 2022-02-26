@@ -37,8 +37,8 @@ use crate::memory::pool::PotentialDedicatedAllocation;
 use crate::memory::pool::StdMemoryPoolAlloc;
 use crate::memory::Content;
 use crate::memory::CpuAccess as MemCpuAccess;
-use crate::memory::DedicatedAlloc;
-use crate::memory::DeviceMemoryAllocError;
+use crate::memory::DedicatedAllocation;
+use crate::memory::DeviceMemoryAllocationError;
 use crate::sync::AccessError;
 use crate::sync::Sharing;
 use crate::DeviceSize;
@@ -110,7 +110,7 @@ impl<T> CpuAccessibleBuffer<T> {
         usage: BufferUsage,
         host_cached: bool,
         data: T,
-    ) -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocError>
+    ) -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocationError>
     where
         T: Content + Copy + 'static,
     {
@@ -146,7 +146,7 @@ impl<T> CpuAccessibleBuffer<T> {
         device: Arc<Device>,
         usage: BufferUsage,
         host_cached: bool,
-    ) -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocError> {
+    ) -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocationError> {
         CpuAccessibleBuffer::raw(
             device,
             mem::size_of::<T>() as DeviceSize,
@@ -170,7 +170,7 @@ impl<T> CpuAccessibleBuffer<[T]> {
         usage: BufferUsage,
         host_cached: bool,
         data: I,
-    ) -> Result<Arc<CpuAccessibleBuffer<[T]>>, DeviceMemoryAllocError>
+    ) -> Result<Arc<CpuAccessibleBuffer<[T]>>, DeviceMemoryAllocationError>
     where
         I: IntoIterator<Item = T>,
         I::IntoIter: ExactSizeIterator,
@@ -214,7 +214,7 @@ impl<T> CpuAccessibleBuffer<[T]> {
         len: DeviceSize,
         usage: BufferUsage,
         host_cached: bool,
-    ) -> Result<Arc<CpuAccessibleBuffer<[T]>>, DeviceMemoryAllocError> {
+    ) -> Result<Arc<CpuAccessibleBuffer<[T]>>, DeviceMemoryAllocationError> {
         CpuAccessibleBuffer::raw(
             device,
             len * mem::size_of::<T>() as DeviceSize,
@@ -241,7 +241,7 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
         usage: BufferUsage,
         host_cached: bool,
         queue_families: I,
-    ) -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocError>
+    ) -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocationError>
     where
         I: IntoIterator<Item = QueueFamily<'a>>,
     {
@@ -277,7 +277,7 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
             &mem_reqs,
             AllocLayout::Linear,
             MappingRequirement::Map,
-            DedicatedAlloc::Buffer(&buffer),
+            Some(DedicatedAllocation::Buffer(&buffer)),
             |m| {
                 if m.is_host_cached() {
                     if host_cached {

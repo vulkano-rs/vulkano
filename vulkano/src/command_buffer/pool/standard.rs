@@ -1,3 +1,24 @@
+use super::{
+    sys::{CommandBufferAllocateInfo, UnsafeCommandPoolCreateInfo, UnsafeCommandPoolCreationError},
+    CommandPool, CommandPoolAlloc, CommandPoolBuilderAlloc, UnsafeCommandPool,
+    UnsafeCommandPoolAlloc,
+};
+use crate::{
+    command_buffer::CommandBufferLevel,
+    device::{physical::QueueFamily, Device, DeviceOwned},
+    OomError, VulkanObject,
+};
+use crossbeam_queue::SegQueue;
+use fnv::FnvHashMap;
+use std::{
+    marker::PhantomData,
+    mem::ManuallyDrop,
+    ptr,
+    sync::{Arc, Mutex, Weak},
+    thread,
+    vec::IntoIter as VecIntoIter,
+};
+
 // Copyright (c) 2016 The vulkano developers
 // Licensed under the Apache License, Version 2.0
 // <LICENSE-APACHE or
@@ -6,29 +27,6 @@
 // at your option. All files in the project carrying such
 // notice may not be copied, modified, or distributed except
 // according to those terms.
-
-use crossbeam_queue::SegQueue;
-use fnv::FnvHashMap;
-use std::marker::PhantomData;
-use std::mem::ManuallyDrop;
-use std::ptr;
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::Weak;
-use std::thread;
-use std::vec::IntoIter as VecIntoIter;
-
-use crate::command_buffer::pool::CommandPool;
-use crate::command_buffer::pool::CommandPoolAlloc;
-use crate::command_buffer::pool::CommandPoolBuilderAlloc;
-use crate::command_buffer::pool::UnsafeCommandPool;
-use crate::command_buffer::pool::UnsafeCommandPoolAlloc;
-use crate::device::physical::QueueFamily;
-
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::OomError;
-use crate::VulkanObject;
 
 /// Standard implementation of a command pool.
 ///
@@ -89,7 +87,11 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
     type Builder = StandardCommandPoolBuilder;
     type Alloc = StandardCommandPoolAlloc;
 
-    fn alloc(&self, secondary: bool, count: u32) -> Result<Self::Iter, OomError> {
+    fn allocate(
+        &self,
+        level: CommandBufferLevel,
+        mut command_buffer_count: u32,
+    ) -> Result<Self::Iter, OomError> {
         // Find the correct `StandardCommandPoolPerThread` structure.
         let mut hashmap = self.per_thread.lock().unwrap();
         // TODO: meh for iterating everything every time
@@ -101,8 +103,18 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
         let per_thread = if let Some(entry) = hashmap.get(&this_thread).and_then(Weak::upgrade) {
             entry
         } else {
-            let new_pool =
-                UnsafeCommandPool::new(self.device.clone(), self.queue_family(), false, true)?;
+            let new_pool = UnsafeCommandPool::new(
+                self.device.clone(),
+                UnsafeCommandPoolCreateInfo {
+                    queue_family_index: self.queue_family().id(),
+                    reset_command_buffer: true,
+                    ..Default::default()
+                },
+            )
+            .map_err(|err| match err {
+                UnsafeCommandPoolCreationError::OomError(err) => err,
+                _ => panic!("Unexpected error: {}", err),
+            })?;
             let pt = Arc::new(StandardCommandPoolPerThread {
                 pool: Mutex::new(new_pool),
                 available_primary_command_buffers: SegQueue::new(),
@@ -114,24 +126,23 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
         };
 
         // The final output.
-        let mut output = Vec::with_capacity(count as usize);
+        let mut output = Vec::with_capacity(command_buffer_count as usize);
 
         // First, pick from already-existing command buffers.
         {
-            let existing = if secondary {
-                &per_thread.available_secondary_command_buffers
-            } else {
-                &per_thread.available_primary_command_buffers
+            let existing = match level {
+                CommandBufferLevel::Primary => &per_thread.available_primary_command_buffers,
+                CommandBufferLevel::Secondary => &per_thread.available_secondary_command_buffers,
             };
 
-            for _ in 0..count as usize {
+            for _ in 0..command_buffer_count as usize {
                 if let Some(cmd) = existing.pop() {
                     output.push(StandardCommandPoolBuilder {
                         inner: StandardCommandPoolAlloc {
                             cmd: ManuallyDrop::new(cmd),
                             pool: per_thread.clone(),
                             pool_parent: self.clone(),
-                            secondary: secondary,
+                            level,
                             device: self.device.clone(),
                         },
                         dummy_avoid_send_sync: PhantomData,
@@ -143,17 +154,21 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
         };
 
         // Then allocate the rest.
-        if output.len() < count as usize {
+        if output.len() < command_buffer_count as usize {
             let pool_lock = per_thread.pool.lock().unwrap();
-            let num_new = count as usize - output.len();
+            command_buffer_count -= output.len() as u32;
 
-            for cmd in pool_lock.alloc_command_buffers(secondary, num_new as u32)? {
+            for cmd in pool_lock.allocate_command_buffers(CommandBufferAllocateInfo {
+                level,
+                command_buffer_count,
+                ..Default::default()
+            })? {
                 output.push(StandardCommandPoolBuilder {
                     inner: StandardCommandPoolAlloc {
                         cmd: ManuallyDrop::new(cmd),
                         pool: per_thread.clone(),
                         pool_parent: self.clone(),
-                        secondary: secondary,
+                        level,
                         device: self.device.clone(),
                     },
                     dummy_avoid_send_sync: PhantomData,
@@ -224,8 +239,8 @@ pub struct StandardCommandPoolAlloc {
     pool: Arc<StandardCommandPoolPerThread>,
     // Keep alive the `StandardCommandPool`, otherwise it would be destroyed.
     pool_parent: Arc<StandardCommandPool>,
-    // True if secondary command buffer.
-    secondary: bool,
+    // Command buffer level.
+    level: CommandBufferLevel,
     // The device we belong to. Necessary because of the `DeviceOwned` trait implementation.
     device: Arc<Device>,
 }
@@ -264,10 +279,11 @@ impl Drop for StandardCommandPoolAlloc {
         // Safe because `self.cmd` is wrapped in a `ManuallyDrop`.
         let cmd: UnsafeCommandPoolAlloc = unsafe { ptr::read(&*self.cmd) };
 
-        if self.secondary {
-            self.pool.available_secondary_command_buffers.push(cmd);
-        } else {
-            self.pool.available_primary_command_buffers.push(cmd);
+        match self.level {
+            CommandBufferLevel::Primary => self.pool.available_primary_command_buffers.push(cmd),
+            CommandBufferLevel::Secondary => {
+                self.pool.available_secondary_command_buffers.push(cmd)
+            }
         }
     }
 }
@@ -277,6 +293,7 @@ mod tests {
     use crate::command_buffer::pool::CommandPool;
     use crate::command_buffer::pool::CommandPoolBuilderAlloc;
     use crate::command_buffer::pool::StandardCommandPool;
+    use crate::command_buffer::CommandBufferLevel;
     use crate::device::Device;
     use crate::VulkanObject;
     use std::sync::Arc;
@@ -288,13 +305,25 @@ mod tests {
 
         let pool = Device::standard_command_pool(&device, queue_family);
         // Avoid the weak reference to StandardCommandPoolPerThread expiring.
-        let cb_hold_weakref = pool.alloc(false, 1).unwrap().next().unwrap();
+        let cb_hold_weakref = pool
+            .allocate(CommandBufferLevel::Primary, 1)
+            .unwrap()
+            .next()
+            .unwrap();
 
-        let cb = pool.alloc(false, 1).unwrap().next().unwrap();
+        let cb = pool
+            .allocate(CommandBufferLevel::Primary, 1)
+            .unwrap()
+            .next()
+            .unwrap();
         let raw = cb.inner().internal_object();
         drop(cb);
 
-        let cb2 = pool.alloc(false, 1).unwrap().next().unwrap();
+        let cb2 = pool
+            .allocate(CommandBufferLevel::Primary, 1)
+            .unwrap()
+            .next()
+            .unwrap();
         assert_eq!(raw, cb2.inner().internal_object());
     }
 
@@ -305,7 +334,11 @@ mod tests {
         let pool = Arc::new(StandardCommandPool::new(device, queue.family()));
         let pool_weak = Arc::downgrade(&pool);
 
-        let cb = pool.alloc(false, 1).unwrap().next().unwrap();
+        let cb = pool
+            .allocate(CommandBufferLevel::Primary, 1)
+            .unwrap()
+            .next()
+            .unwrap();
         drop(pool);
         assert!(pool_weak.upgrade().is_some());
 

@@ -19,7 +19,7 @@
 //! you can query a device beforehand for its support by calling `format_properties` on the physical
 //! device. You can use this to select a usable format from one or more suitable alternatives.
 //! Some formats are required to be always supported for a particular usage. These are listed in the
-//! [tables in the Vulkan specification](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/chap43.html#features-required-format-support).
+//! [tables in the Vulkan specification](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap43.html#features-required-format-support).
 //!
 //! # Special format types
 //!
@@ -207,7 +207,7 @@ impl From<Format> for ash::vk::Format {
     }
 }
 
-// https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/chap46.html#spirvenv-image-formats
+// https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap46.html#spirvenv-image-formats
 impl From<ImageFormat> for Option<Format> {
     fn from(val: ImageFormat) -> Self {
         match val {

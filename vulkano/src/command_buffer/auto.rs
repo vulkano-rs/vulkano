@@ -7,101 +7,91 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::buffer::BufferAccess;
-use crate::buffer::TypedBufferAccess;
-use crate::command_buffer::pool::standard::StandardCommandPoolAlloc;
-use crate::command_buffer::pool::standard::StandardCommandPoolBuilder;
-use crate::command_buffer::pool::CommandPool;
-use crate::command_buffer::pool::CommandPoolAlloc;
-use crate::command_buffer::pool::CommandPoolBuilderAlloc;
-use crate::command_buffer::synced::CommandBufferState;
-use crate::command_buffer::synced::SyncCommandBuffer;
-use crate::command_buffer::synced::SyncCommandBufferBuilder;
-use crate::command_buffer::synced::SyncCommandBufferBuilderError;
-use crate::command_buffer::sys::UnsafeCommandBuffer;
-use crate::command_buffer::sys::UnsafeCommandBufferBuilderBufferImageCopy;
-use crate::command_buffer::sys::UnsafeCommandBufferBuilderColorImageClear;
-use crate::command_buffer::sys::UnsafeCommandBufferBuilderDepthStencilImageClear;
-use crate::command_buffer::sys::UnsafeCommandBufferBuilderImageBlit;
-use crate::command_buffer::sys::UnsafeCommandBufferBuilderImageCopy;
-use crate::command_buffer::validity::*;
-use crate::command_buffer::CommandBufferExecError;
-use crate::command_buffer::CommandBufferInheritance;
-use crate::command_buffer::CommandBufferInheritanceRenderPass;
-use crate::command_buffer::CommandBufferLevel;
-use crate::command_buffer::CommandBufferUsage;
-use crate::command_buffer::DispatchIndirectCommand;
-use crate::command_buffer::DrawIndexedIndirectCommand;
-use crate::command_buffer::DrawIndirectCommand;
-use crate::command_buffer::ImageUninitializedSafe;
-use crate::command_buffer::PrimaryCommandBuffer;
-use crate::command_buffer::SecondaryCommandBuffer;
-use crate::command_buffer::SubpassContents;
-use crate::descriptor_set::{check_descriptor_write, DescriptorSetsCollection, WriteDescriptorSet};
-use crate::device::physical::QueueFamily;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::device::Queue;
-use crate::format::ClearValue;
-use crate::format::NumericType;
-use crate::format::Pixel;
-use crate::image::attachment::ClearAttachment;
-use crate::image::attachment::ClearRect;
-use crate::image::ImageAccess;
-use crate::image::ImageAspect;
-use crate::image::ImageAspects;
-use crate::image::ImageLayout;
-use crate::pipeline::graphics::color_blend::LogicOp;
-use crate::pipeline::graphics::depth_stencil::CompareOp;
-use crate::pipeline::graphics::depth_stencil::StencilFaces;
-use crate::pipeline::graphics::depth_stencil::StencilOp;
-use crate::pipeline::graphics::input_assembly::Index;
-use crate::pipeline::graphics::input_assembly::IndexType;
-use crate::pipeline::graphics::input_assembly::PrimitiveTopology;
-use crate::pipeline::graphics::rasterization::CullMode;
-use crate::pipeline::graphics::rasterization::FrontFace;
-use crate::pipeline::graphics::vertex_input::VertexBuffersCollection;
-use crate::pipeline::graphics::viewport::Scissor;
-use crate::pipeline::graphics::viewport::Viewport;
-use crate::pipeline::layout::PipelineLayout;
-use crate::pipeline::ComputePipeline;
-use crate::pipeline::DynamicState;
-use crate::pipeline::GraphicsPipeline;
-use crate::pipeline::Pipeline;
-use crate::pipeline::PipelineBindPoint;
-use crate::query::QueryControlFlags;
-use crate::query::QueryPipelineStatisticFlags;
-use crate::query::QueryPool;
-use crate::query::QueryResultElement;
-use crate::query::QueryResultFlags;
-use crate::query::QueryType;
-use crate::render_pass::Framebuffer;
-use crate::render_pass::LoadOp;
-use crate::render_pass::Subpass;
-use crate::sampler::Filter;
-use crate::sync::AccessCheckError;
-use crate::sync::AccessFlags;
-use crate::sync::GpuFuture;
-use crate::sync::PipelineMemoryAccess;
-use crate::sync::PipelineStage;
-use crate::sync::PipelineStages;
-use crate::DeviceSize;
-use crate::VulkanObject;
-use crate::{OomError, SafeDeref};
+use super::{
+    pool::{
+        standard::{StandardCommandPoolAlloc, StandardCommandPoolBuilder},
+        CommandPool, CommandPoolAlloc, CommandPoolBuilderAlloc,
+    },
+    synced::{
+        CommandBufferState, SyncCommandBuffer, SyncCommandBufferBuilder,
+        SyncCommandBufferBuilderError,
+    },
+    sys::{
+        CommandBufferBeginInfo, RenderPassBeginInfo, UnsafeCommandBuffer,
+        UnsafeCommandBufferBuilderBufferImageCopy, UnsafeCommandBufferBuilderColorImageClear,
+        UnsafeCommandBufferBuilderDepthStencilImageClear, UnsafeCommandBufferBuilderImageBlit,
+        UnsafeCommandBufferBuilderImageCopy,
+    },
+    validity::{
+        check_begin_query, check_blit_image, check_clear_color_image,
+        check_clear_depth_stencil_image, check_copy_buffer, check_copy_buffer_image,
+        check_copy_image, check_copy_query_pool_results, check_debug_marker_color,
+        check_descriptor_sets_validity, check_dispatch, check_dynamic_state_validity,
+        check_end_query, check_fill_buffer, check_index_buffer, check_indirect_buffer,
+        check_pipeline_compute, check_pipeline_graphics, check_push_constants_validity,
+        check_reset_query_pool, check_update_buffer, check_vertex_buffers, check_write_timestamp,
+        CheckBeginQueryError, CheckBlitImageError, CheckClearColorImageError,
+        CheckClearDepthStencilImageError, CheckColorError, CheckCopyBufferError,
+        CheckCopyBufferImageError, CheckCopyBufferImageTy, CheckCopyImageError,
+        CheckCopyQueryPoolResultsError, CheckDescriptorSetsValidityError, CheckDispatchError,
+        CheckDynamicStateValidityError, CheckEndQueryError, CheckFillBufferError,
+        CheckIndexBufferError, CheckIndirectBufferError, CheckPipelineError,
+        CheckPushConstantsValidityError, CheckResetQueryPoolError, CheckUpdateBufferError,
+        CheckVertexBufferError, CheckWriteTimestampError,
+    },
+    CommandBufferExecError, CommandBufferInheritanceInfo, CommandBufferInheritanceRenderPassInfo,
+    CommandBufferLevel, CommandBufferUsage, DispatchIndirectCommand, DrawIndexedIndirectCommand,
+    DrawIndirectCommand, ImageUninitializedSafe, PrimaryCommandBuffer, SecondaryCommandBuffer,
+    SubpassContents,
+};
+use crate::{
+    buffer::{BufferAccess, TypedBufferAccess},
+    descriptor_set::{check_descriptor_write, DescriptorSetsCollection, WriteDescriptorSet},
+    device::{physical::QueueFamily, Device, DeviceOwned, Queue},
+    format::{ClearValue, NumericType, Pixel},
+    image::{
+        attachment::{ClearAttachment, ClearRect},
+        ImageAccess, ImageAspect, ImageAspects, ImageLayout,
+    },
+    pipeline::{
+        graphics::{
+            color_blend::LogicOp,
+            depth_stencil::{CompareOp, StencilFaces, StencilOp},
+            input_assembly::{Index, IndexType, PrimitiveTopology},
+            rasterization::{CullMode, FrontFace},
+            vertex_input::VertexBuffersCollection,
+            viewport::{Scissor, Viewport},
+        },
+        ComputePipeline, DynamicState, GraphicsPipeline, Pipeline, PipelineBindPoint,
+        PipelineLayout,
+    },
+    query::{
+        QueryControlFlags, QueryPipelineStatisticFlags, QueryPool, QueryResultElement,
+        QueryResultFlags, QueryType,
+    },
+    render_pass::{Framebuffer, LoadOp, Subpass},
+    sampler::Filter,
+    sync::{
+        AccessCheckError, AccessFlags, GpuFuture, PipelineMemoryAccess, PipelineStage,
+        PipelineStages,
+    },
+    DeviceSize, OomError, SafeDeref, Version, VulkanObject,
+};
 use fnv::FnvHashMap;
 use smallvec::SmallVec;
-use std::cmp;
-use std::error;
-use std::ffi::CStr;
-use std::fmt;
-use std::iter;
-use std::marker::PhantomData;
-use std::mem;
-use std::ops::Range;
-use std::slice;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
+use std::{
+    cmp, error,
+    ffi::CStr,
+    fmt, iter,
+    marker::PhantomData,
+    mem,
+    ops::Range,
+    slice,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+};
 
 /// Note that command buffers allocated from the default command pool (`Arc<StandardCommandPool>`)
 /// don't implement the `Send` and `Sync` traits. If you use this pool, then the
@@ -116,7 +106,7 @@ pub struct AutoCommandBufferBuilder<L, P = StandardCommandPoolBuilder> {
 
     // The inheritance for secondary command buffers.
     // Must be `None` in a primary command buffer and `Some` in a secondary command buffer.
-    inheritance: Option<CommandBufferInheritance>,
+    inheritance_info: Option<CommandBufferInheritanceInfo>,
 
     // Usage flags passed when creating the command buffer.
     usage: CommandBufferUsage,
@@ -159,12 +149,17 @@ impl AutoCommandBufferBuilder<PrimaryAutoCommandBuffer, StandardCommandPoolBuild
         AutoCommandBufferBuilder<PrimaryAutoCommandBuffer, StandardCommandPoolBuilder>,
         OomError,
     > {
-        AutoCommandBufferBuilder::with_level(
-            device,
-            queue_family,
-            usage,
-            CommandBufferLevel::primary(),
-        )
+        unsafe {
+            AutoCommandBufferBuilder::with_level(
+                device,
+                queue_family,
+                CommandBufferLevel::Primary,
+                CommandBufferBeginInfo {
+                    usage,
+                    ..Default::default()
+                },
+            )
+        }
     }
 }
 
@@ -179,8 +174,18 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
         AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
         OomError,
     > {
-        let level = CommandBufferLevel::secondary(None, QueryPipelineStatisticFlags::none());
-        AutoCommandBufferBuilder::with_level(device, queue_family, usage, level)
+        unsafe {
+            Ok(AutoCommandBufferBuilder::with_level(
+                device,
+                queue_family,
+                CommandBufferLevel::Secondary,
+                CommandBufferBeginInfo {
+                    usage,
+                    inheritance_info: Some(CommandBufferInheritanceInfo::default()),
+                    ..Default::default()
+                },
+            )?)
+        }
     }
 
     /// Same as `secondary_compute`, but allows specifying how queries are being inherited.
@@ -205,13 +210,22 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
             return Err(BeginError::PipelineStatisticsQueryFeatureNotEnabled);
         }
 
-        let level = CommandBufferLevel::secondary(occlusion_query, query_statistics_flags);
-        Ok(AutoCommandBufferBuilder::with_level(
-            device,
-            queue_family,
-            usage,
-            level,
-        )?)
+        unsafe {
+            Ok(AutoCommandBufferBuilder::with_level(
+                device,
+                queue_family,
+                CommandBufferLevel::Secondary,
+                CommandBufferBeginInfo {
+                    usage,
+                    inheritance_info: Some(CommandBufferInheritanceInfo {
+                        occlusion_query,
+                        query_statistics_flags,
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            )?)
+        }
     }
 
     /// Starts building a secondary graphics command buffer.
@@ -225,16 +239,24 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
         AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
         OomError,
     > {
-        let level = CommandBufferLevel::Secondary(CommandBufferInheritance {
-            render_pass: Some(CommandBufferInheritanceRenderPass {
-                subpass,
-                framebuffer: None,
-            }),
-            occlusion_query: None,
-            query_statistics_flags: QueryPipelineStatisticFlags::none(),
-        });
-
-        AutoCommandBufferBuilder::with_level(device, queue_family, usage, level)
+        unsafe {
+            Ok(AutoCommandBufferBuilder::with_level(
+                device,
+                queue_family,
+                CommandBufferLevel::Secondary,
+                CommandBufferBeginInfo {
+                    usage,
+                    inheritance_info: Some(CommandBufferInheritanceInfo {
+                        render_pass: Some(CommandBufferInheritanceRenderPassInfo {
+                            subpass,
+                            framebuffer: None,
+                        }),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            )?)
+        }
     }
 
     /// Same as `secondary_graphics`, but allows specifying how queries are being inherited.
@@ -260,81 +282,78 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
             return Err(BeginError::PipelineStatisticsQueryFeatureNotEnabled);
         }
 
-        let level = CommandBufferLevel::Secondary(CommandBufferInheritance {
-            render_pass: Some(CommandBufferInheritanceRenderPass {
-                subpass,
-                framebuffer: None,
-            }),
-            occlusion_query,
-            query_statistics_flags,
-        });
-
-        Ok(AutoCommandBufferBuilder::with_level(
-            device,
-            queue_family,
-            usage,
-            level,
-        )?)
+        unsafe {
+            Ok(AutoCommandBufferBuilder::with_level(
+                device,
+                queue_family,
+                CommandBufferLevel::Secondary,
+                CommandBufferBeginInfo {
+                    usage,
+                    inheritance_info: Some(CommandBufferInheritanceInfo {
+                        render_pass: Some(CommandBufferInheritanceRenderPassInfo {
+                            subpass,
+                            framebuffer: None,
+                        }),
+                        occlusion_query,
+                        query_statistics_flags,
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            )?)
+        }
     }
 }
 
 impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
     // Actual constructor. Private.
-    fn with_level(
+    //
+    // `begin_info.inheritance_info` must match `level`.
+    unsafe fn with_level(
         device: Arc<Device>,
         queue_family: QueueFamily,
-        usage: CommandBufferUsage,
         level: CommandBufferLevel,
+        begin_info: CommandBufferBeginInfo,
     ) -> Result<AutoCommandBufferBuilder<L, StandardCommandPoolBuilder>, OomError> {
-        let (inheritance, render_pass_state) = match &level {
-            CommandBufferLevel::Primary => (None, None),
-            CommandBufferLevel::Secondary(inheritance) => {
-                let render_pass_state = inheritance.render_pass.as_ref().map(
-                    |CommandBufferInheritanceRenderPass {
-                         subpass,
-                         framebuffer,
-                     }| RenderPassState {
-                        subpass: subpass.clone(),
-                        contents: SubpassContents::Inline,
-                        extent: framebuffer.as_ref().map(|f| f.extent()).unwrap_or_default(),
-                        attached_layers_ranges: framebuffer
-                            .as_ref()
-                            .map(|f| f.attached_layers_ranges())
-                            .unwrap_or_default(),
-                        framebuffer: ash::vk::Framebuffer::null(), // Only needed for primary command buffers
-                    },
-                );
+        let usage = begin_info.usage;
+        let inheritance_info = begin_info.inheritance_info.clone();
+        let render_pass_state = begin_info
+            .inheritance_info
+            .as_ref()
+            .and_then(|inheritance_info| inheritance_info.render_pass.as_ref())
+            .map(
+                |CommandBufferInheritanceRenderPassInfo {
+                     subpass,
+                     framebuffer,
+                 }| RenderPassState {
+                    subpass: subpass.clone(),
+                    contents: SubpassContents::Inline,
+                    extent: framebuffer.as_ref().map(|f| f.extent()).unwrap_or_default(),
+                    attached_layers_ranges: framebuffer
+                        .as_ref()
+                        .map(|f| f.attached_layers_ranges())
+                        .unwrap_or_default(),
+                    framebuffer: ash::vk::Framebuffer::null(), // Only needed for primary command buffers
+                },
+            );
 
-                (
-                    Some(CommandBufferInheritance {
-                        render_pass: inheritance.render_pass.clone(),
-                        occlusion_query: inheritance.occlusion_query,
-                        query_statistics_flags: inheritance.query_statistics_flags,
-                    }),
-                    render_pass_state,
-                )
-            }
-        };
+        let pool = Device::standard_command_pool(&device, queue_family);
+        let pool_builder_alloc = pool
+            .allocate(level, 1)?
+            .next()
+            .expect("Requested one command buffer from the command pool, but got zero.");
+        let inner = SyncCommandBufferBuilder::new(pool_builder_alloc.inner(), begin_info)?;
 
-        unsafe {
-            let pool = Device::standard_command_pool(&device, queue_family);
-            let pool_builder_alloc = pool
-                .alloc(!matches!(level, CommandBufferLevel::Primary), 1)?
-                .next()
-                .expect("Requested one command buffer from the command pool, but got zero.");
-            let inner = SyncCommandBufferBuilder::new(pool_builder_alloc.inner(), level, usage)?;
-
-            Ok(AutoCommandBufferBuilder {
-                inner,
-                pool_builder_alloc,
-                queue_family_id: queue_family.id(),
-                render_pass_state,
-                query_state: FnvHashMap::default(),
-                inheritance,
-                usage,
-                _data: PhantomData,
-            })
-        }
+        Ok(AutoCommandBufferBuilder {
+            inner,
+            pool_builder_alloc,
+            queue_family_id: queue_family.id(),
+            render_pass_state,
+            query_state: FnvHashMap::default(),
+            inheritance_info,
+            usage,
+            _data: PhantomData,
+        })
     }
 }
 
@@ -443,7 +462,7 @@ where
         Ok(SecondaryAutoCommandBuffer {
             inner: self.inner.build()?,
             pool_alloc: self.pool_builder_alloc.into_alloc(),
-            inheritance: self.inheritance.unwrap(),
+            inheritance_info: self.inheritance_info.unwrap(),
             submit_state,
         })
     }
@@ -538,7 +557,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
         assert!(
             first_set as usize + descriptor_sets.len()
-                <= pipeline_layout.descriptor_set_layouts().len(),
+                <= pipeline_layout.set_layouts().len(),
             "the highest descriptor set slot being bound must be less than the number of sets in pipeline_layout"
         );
 
@@ -548,7 +567,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 self.device().internal_object()
             );
 
-            let pipeline_set = &pipeline_layout.descriptor_set_layouts()[first_set as usize + num];
+            let pipeline_set = &pipeline_layout.set_layouts()[first_set as usize + num];
             assert!(
                 pipeline_set.is_compatible_with(set.as_ref().0.layout()),
                 "the element of descriptor_sets being bound to slot {} is not compatible with the corresponding slot in pipeline_layout",
@@ -1916,12 +1935,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the khr_push_descriptor extension must be enabled on the device"
         );
         assert!(
-            set_num as usize <= pipeline_layout.descriptor_set_layouts().len(),
+            set_num as usize <= pipeline_layout.set_layouts().len(),
             "the descriptor set slot being bound must be less than the number of sets in pipeline_layout"
         );
 
         let descriptor_writes: SmallVec<[_; 8]> = descriptor_writes.into_iter().collect();
-        let descriptor_set_layout = &pipeline_layout.descriptor_set_layouts()[set_num as usize];
+        let descriptor_set_layout = &pipeline_layout.set_layouts()[set_num as usize];
 
         for write in &descriptor_writes {
             check_descriptor_write(write, descriptor_set_layout, 0).unwrap();
@@ -2025,8 +2044,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state)
-    ///   feature is not enabled on the device.
+    /// - Panics if the device API version is less than 1.3 and the
+    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
+    ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     #[inline]
     pub fn set_cull_mode(&mut self, cull_mode: CullMode) -> &mut Self {
@@ -2035,7 +2055,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the queue family of the command buffer must support graphics operations"
         );
         assert!(
-            self.device().enabled_features().extended_dynamic_state,
+            self.device().api_version() >= Version::V1_3
+                || self.device().enabled_features().extended_dynamic_state,
             "the extended_dynamic_state feature must be enabled on the device"
         );
         assert!(
@@ -2091,8 +2112,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the [`extended_dynamic_state2`](crate::device::Features::extended_dynamic_state2)
-    ///   feature is not enabled on the device.
+    /// - Panics if the device API version is less than 1.3 and the
+    ///   [`extended_dynamic_state2`](crate::device::Features::extended_dynamic_state2) feature is
+    ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     #[inline]
     pub fn set_depth_bias_enable(&mut self, enable: bool) -> &mut Self {
@@ -2101,7 +2123,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the queue family of the command buffer must support graphics operations"
         );
         assert!(
-            self.device().enabled_features().extended_dynamic_state2,
+            self.device().api_version() >= Version::V1_3
+                || self.device().enabled_features().extended_dynamic_state2,
             "the extended_dynamic_state2 feature must be enabled on the device"
         );
         assert!(
@@ -2158,8 +2181,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state)
-    ///   feature is not enabled on the device.
+    /// - Panics if the device API version is less than 1.3 and the
+    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
+    ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     #[inline]
     pub fn set_depth_bounds_test_enable(&mut self, enable: bool) -> &mut Self {
@@ -2168,7 +2192,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the queue family of the command buffer must support graphics operations"
         );
         assert!(
-            self.device().enabled_features().extended_dynamic_state,
+            self.device().api_version() >= Version::V1_3
+                || self.device().enabled_features().extended_dynamic_state,
             "the extended_dynamic_state feature must be enabled on the device"
         );
         assert!(
@@ -2188,8 +2213,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state)
-    ///   feature is not enabled on the device.
+    /// - Panics if the device API version is less than 1.3 and the
+    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
+    ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     #[inline]
     pub fn set_depth_compare_op(&mut self, compare_op: CompareOp) -> &mut Self {
@@ -2198,7 +2224,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the queue family of the command buffer must support graphics operations"
         );
         assert!(
-            self.device().enabled_features().extended_dynamic_state,
+            self.device().api_version() >= Version::V1_3
+                || self.device().enabled_features().extended_dynamic_state,
             "the extended_dynamic_state feature must be enabled on the device"
         );
         assert!(
@@ -2218,8 +2245,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state)
-    ///   feature is not enabled on the device.
+    /// - Panics if the device API version is less than 1.3 and the
+    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
+    ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     #[inline]
     pub fn set_depth_test_enable(&mut self, enable: bool) -> &mut Self {
@@ -2228,7 +2256,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the queue family of the command buffer must support graphics operations"
         );
         assert!(
-            self.device().enabled_features().extended_dynamic_state,
+            self.device().api_version() >= Version::V1_3
+                || self.device().enabled_features().extended_dynamic_state,
             "the extended_dynamic_state feature must be enabled on the device"
         );
         assert!(
@@ -2248,8 +2277,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state)
-    ///   feature is not enabled on the device.
+    /// - Panics if the device API version is less than 1.3 and the
+    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
+    ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     #[inline]
     pub fn set_depth_write_enable(&mut self, enable: bool) -> &mut Self {
@@ -2258,7 +2288,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the queue family of the command buffer must support graphics operations"
         );
         assert!(
-            self.device().enabled_features().extended_dynamic_state,
+            self.device().api_version() >= Version::V1_3
+                || self.device().enabled_features().extended_dynamic_state,
             "the extended_dynamic_state feature must be enabled on the device"
         );
         assert!(
@@ -2327,8 +2358,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state)
-    ///   feature is not enabled on the device.
+    /// - Panics if the device API version is less than 1.3 and the
+    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
+    ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     #[inline]
     pub fn set_front_face(&mut self, face: FrontFace) -> &mut Self {
@@ -2337,7 +2369,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the queue family of the command buffer must support graphics operations"
         );
         assert!(
-            self.device().enabled_features().extended_dynamic_state,
+            self.device().api_version() >= Version::V1_3
+                || self.device().enabled_features().extended_dynamic_state,
             "the extended_dynamic_state feature must be enabled on the device"
         );
         assert!(
@@ -2501,8 +2534,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the [`extended_dynamic_state2`](crate::device::Features::extended_dynamic_state2)
-    ///   feature is not enabled on the device.
+    /// - Panics if the device API version is less than 1.3 and the
+    ///   [`extended_dynamic_state2`](crate::device::Features::extended_dynamic_state2) feature is
+    ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     #[inline]
     pub fn set_primitive_restart_enable(&mut self, enable: bool) -> &mut Self {
@@ -2511,7 +2545,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the queue family of the command buffer must support graphics operations"
         );
         assert!(
-            self.device().enabled_features().extended_dynamic_state2,
+            self.device().api_version() >= Version::V1_3
+                || self.device().enabled_features().extended_dynamic_state2,
             "the extended_dynamic_state2 feature must be enabled on the device"
         );
         assert!(
@@ -2531,9 +2566,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the
-    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state)
-    ///   feature is not enabled on the device.
+    /// - Panics if the device API version is less than 1.3 and the
+    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
+    ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     /// - If the [`geometry_shader`](crate::device::Features::geometry_shader) feature is not
     ///   enabled, panics if `topology` is a `WithAdjacency` topology.
@@ -2546,7 +2581,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the queue family of the command buffer must support graphics operations"
         );
         assert!(
-            self.device().enabled_features().extended_dynamic_state,
+            self.device().api_version() >= Version::V1_3
+                || self.device().enabled_features().extended_dynamic_state,
             "the extended_dynamic_state feature must be enabled on the device"
         );
         assert!(
@@ -2580,8 +2616,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the [`extended_dynamic_state2`](crate::device::Features::extended_dynamic_state2)
-    ///   feature is not enabled on the device.
+    /// - Panics if the device API version is less than 1.3 and the
+    ///   [`extended_dynamic_state2`](crate::device::Features::extended_dynamic_state2) feature is
+    ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     #[inline]
     pub fn set_rasterizer_discard_enable(&mut self, enable: bool) -> &mut Self {
@@ -2590,7 +2627,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the queue family of the command buffer must support graphics operations"
         );
         assert!(
-            self.device().enabled_features().extended_dynamic_state2,
+            self.device().api_version() >= Version::V1_3
+                || self.device().enabled_features().extended_dynamic_state2,
             "the extended_dynamic_state2 feature must be enabled on the device"
         );
         assert!(
@@ -2664,9 +2702,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the
-    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state)
-    ///   feature is not enabled on the device.
+    /// - Panics if the device API version is less than 1.3 and the
+    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
+    ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     /// - Panics if the highest scissor slot being set is greater than the
     ///   [`max_viewports`](crate::device::Properties::max_viewports) device property.
@@ -2682,7 +2720,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the queue family of the command buffer must support graphics operations"
         );
         assert!(
-            self.device().enabled_features().extended_dynamic_state,
+            self.device().api_version() >= Version::V1_3
+                || self.device().enabled_features().extended_dynamic_state,
             "the extended_dynamic_state feature must be enabled on the device"
         );
         assert!(
@@ -2747,9 +2786,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the
-    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state)
-    ///   feature is not enabled on the device.
+    /// - Panics if the device API version is less than 1.3 and the
+    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
+    ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     #[inline]
     pub fn set_stencil_op(
@@ -2765,7 +2804,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the queue family of the command buffer must support graphics operations"
         );
         assert!(
-            self.device().enabled_features().extended_dynamic_state,
+            self.device().api_version() >= Version::V1_3
+                || self.device().enabled_features().extended_dynamic_state,
             "the extended_dynamic_state feature must be enabled on the device"
         );
         assert!(
@@ -2809,8 +2849,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state)
-    ///   feature is not enabled on the device.
+    /// - Panics if the device API version is less than 1.3 and the
+    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
+    ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     #[inline]
     pub fn set_stencil_test_enable(&mut self, enable: bool) -> &mut Self {
@@ -2819,7 +2860,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the queue family of the command buffer must support graphics operations"
         );
         assert!(
-            self.device().enabled_features().extended_dynamic_state,
+            self.device().api_version() >= Version::V1_3
+                || self.device().enabled_features().extended_dynamic_state,
             "the extended_dynamic_state feature must be enabled on the device"
         );
         assert!(
@@ -2915,9 +2957,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panics
     ///
     /// - Panics if the queue family of the command buffer does not support graphics operations.
-    /// - Panics if the
-    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state)
-    ///   feature is not enabled on the device.
+    /// - Panics if the device API version is less than 1.3 and the
+    ///   [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature is
+    ///   not enabled on the device.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     /// - Panics if the highest viewport slot being set is greater than the
     ///   [`max_viewports`](crate::device::Properties::max_viewports) device property.
@@ -2933,7 +2975,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             "the queue family of the command buffer must support graphics operations"
         );
         assert!(
-            self.device().enabled_features().extended_dynamic_state,
+            self.device().api_version() >= Version::V1_3
+                || self.device().enabled_features().extended_dynamic_state,
             "the extended_dynamic_state feature must be enabled on the device"
         );
         assert!(
@@ -3011,7 +3054,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ) -> Result<&mut Self, BeginQueryError> {
         check_begin_query(self.device(), &query_pool, query, flags)?;
 
-        match query_pool.ty() {
+        match query_pool.query_type() {
             QueryType::Occlusion => {
                 if !self.queue_family().supports_graphics() {
                     return Err(
@@ -3031,7 +3074,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             QueryType::Timestamp => unreachable!(),
         }
 
-        let ty = query_pool.ty();
+        let ty = query_pool.query_type();
         let raw_ty = ty.into();
         let raw_query_pool = query_pool.internal_object();
         if self.query_state.contains_key(&raw_ty) {
@@ -3063,7 +3106,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         unsafe {
             check_end_query(self.device(), &query_pool, query)?;
 
-            let raw_ty = query_pool.ty().into();
+            let raw_ty = query_pool.query_type().into();
             let raw_query_pool = query_pool.internal_object();
             if !self.query_state.get(&raw_ty).map_or(false, |state| {
                 state.query_pool == raw_query_pool && state.query == query
@@ -3208,9 +3251,11 @@ where
 
             self.ensure_outside_render_pass()?;
 
-            let clear_values = framebuffer.render_pass().convert_clear_values(clear_values);
-            let clear_values = clear_values.collect::<Vec<_>>().into_iter(); // TODO: necessary for Send + Sync ; needs an API rework of convert_clear_values
-            let mut clear_values_copy = clear_values.clone().enumerate(); // TODO: Proper errors for clear value errors instead of panics
+            let clear_values: Vec<_> = framebuffer
+                .render_pass()
+                .convert_clear_values(clear_values)
+                .collect();
+            let mut clear_values_copy = clear_values.iter().enumerate(); // TODO: Proper errors for clear value errors instead of panics
 
             for (atch_i, atch_desc) in framebuffer
                 .render_pass()
@@ -3308,16 +3353,23 @@ where
                 panic!("Too many clear values")
             }
 
-            let framebuffer_object = framebuffer.internal_object();
-            self.inner
-                .begin_render_pass(framebuffer.clone(), contents, clear_values)?;
-            self.render_pass_state = Some(RenderPassState {
+            let render_pass_state = RenderPassState {
                 subpass: framebuffer.render_pass().clone().first_subpass(),
                 extent: framebuffer.extent(),
                 attached_layers_ranges: framebuffer.attached_layers_ranges(),
                 contents,
-                framebuffer: framebuffer_object,
-            });
+                framebuffer: framebuffer.internal_object(),
+            };
+
+            self.inner.begin_render_pass(
+                RenderPassBeginInfo {
+                    clear_values,
+                    ..RenderPassBeginInfo::framebuffer(framebuffer)
+                },
+                contents,
+            )?;
+
+            self.render_pass_state = Some(render_pass_state);
             Ok(self)
         }
     }
@@ -3426,7 +3478,7 @@ where
     where
         C: SecondaryCommandBuffer + 'static,
     {
-        if let Some(render_pass) = &command_buffer.inheritance().render_pass {
+        if let Some(render_pass) = &command_buffer.inheritance_info().render_pass {
             self.ensure_inside_render_pass_secondary(render_pass)?;
         } else {
             self.ensure_outside_render_pass()?;
@@ -3434,7 +3486,7 @@ where
 
         for state in self.query_state.values() {
             match state.ty {
-                QueryType::Occlusion => match command_buffer.inheritance().occlusion_query {
+                QueryType::Occlusion => match command_buffer.inheritance_info().occlusion_query {
                     Some(inherited_flags) => {
                         let inherited_flags = ash::vk::QueryControlFlags::from(inherited_flags);
                         let state_flags = ash::vk::QueryControlFlags::from(state.flags);
@@ -3446,7 +3498,7 @@ where
                     None => return Err(AutoCommandBufferBuilderContextError::QueryNotInherited),
                 },
                 QueryType::PipelineStatistics(state_flags) => {
-                    let inherited_flags = command_buffer.inheritance().query_statistics_flags;
+                    let inherited_flags = command_buffer.inheritance_info().query_statistics_flags;
                     let inherited_flags =
                         ash::vk::QueryPipelineStatisticFlags::from(inherited_flags);
                     let state_flags = ash::vk::QueryPipelineStatisticFlags::from(state_flags);
@@ -3465,7 +3517,7 @@ where
     #[inline]
     fn ensure_inside_render_pass_secondary(
         &self,
-        render_pass: &CommandBufferInheritanceRenderPass,
+        render_pass: &CommandBufferInheritanceRenderPassInfo,
     ) -> Result<(), AutoCommandBufferBuilderContextError> {
         let render_pass_state = self
             .render_pass_state
@@ -3664,7 +3716,7 @@ where
 pub struct SecondaryAutoCommandBuffer<P = StandardCommandPoolAlloc> {
     inner: SyncCommandBuffer,
     pool_alloc: P, // Safety: must be dropped after `inner`
-    inheritance: CommandBufferInheritance,
+    inheritance_info: CommandBufferInheritanceInfo,
 
     // Tracks usage of the command buffer on the GPU.
     submit_state: SubmitState,
@@ -3726,8 +3778,8 @@ where
     }
 
     #[inline]
-    fn inheritance(&self) -> &CommandBufferInheritance {
-        &self.inheritance
+    fn inheritance_info(&self) -> &CommandBufferInheritanceInfo {
+        &self.inheritance_info
     }
 
     #[inline]

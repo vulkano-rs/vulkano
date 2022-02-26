@@ -27,7 +27,7 @@
 //! # let image_data: Vec<u8> = return;
 //! # let queue: std::sync::Arc<vulkano::device::Queue> = return;
 //! use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
-//! use vulkano::descriptor_set::layout::{DescriptorDesc, DescriptorSetLayout, DescriptorSetDesc, DescriptorType};
+//! use vulkano::descriptor_set::layout::{DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo, DescriptorType};
 //! use vulkano::format::Format;
 //! use vulkano::image::{ImmutableImage, ImageCreateFlags, ImageDimensions, ImageUsage, MipmapsCount};
 //! use vulkano::image::view::ImageView;
@@ -50,13 +50,18 @@
 //!
 //! let descriptor_set_layout = DescriptorSetLayout::new(
 //!     device.clone(),
-//!     DescriptorSetDesc::new([Some(DescriptorDesc {
-//!         ty: DescriptorType::CombinedImageSampler,
-//!         descriptor_count: 1,
-//!         variable_count: false,
-//!         stages: ShaderStage::Fragment.into(),
-//!         immutable_samplers: vec![sampler],
-//!     })]),
+//!         DescriptorSetLayoutCreateInfo {
+//!         bindings: [(
+//!             0,
+//!             DescriptorSetLayoutBinding {
+//!                 stages: ShaderStage::Fragment.into(),
+//!                 immutable_samplers: vec![sampler],
+//!                 ..DescriptorSetLayoutBinding::descriptor_type(DescriptorType::CombinedImageSampler)
+//!             },
+//!         )]
+//!         .into(),
+//!         ..Default::default()
+//!     },
 //! ).unwrap();
 //!
 //! let (image, future) = ImmutableImage::from_iter(

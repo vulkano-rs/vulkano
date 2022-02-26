@@ -19,7 +19,7 @@ use crate::memory::pool::StdHostVisibleMemoryTypePoolAlloc;
 use crate::memory::pool::StdNonHostVisibleMemoryTypePool;
 use crate::memory::pool::StdNonHostVisibleMemoryTypePoolAlloc;
 use crate::memory::DeviceMemory;
-use crate::memory::DeviceMemoryAllocError;
+use crate::memory::DeviceMemoryAllocationError;
 use crate::memory::MappedDeviceMemory;
 use crate::DeviceSize;
 use fnv::FnvHasher;
@@ -59,7 +59,7 @@ fn generic_allocation(
     alignment: DeviceSize,
     layout: AllocLayout,
     map: MappingRequirement,
-) -> Result<StdMemoryPoolAlloc, DeviceMemoryAllocError> {
+) -> Result<StdMemoryPoolAlloc, DeviceMemoryAllocationError> {
     let mut pools = mem_pool.pools.lock().unwrap();
 
     let memory_type_host_visible = memory_type.is_host_visible();
@@ -120,7 +120,7 @@ unsafe impl MemoryPool for Arc<StdMemoryPool> {
         alignment: DeviceSize,
         layout: AllocLayout,
         map: MappingRequirement,
-    ) -> Result<StdMemoryPoolAlloc, DeviceMemoryAllocError> {
+    ) -> Result<StdMemoryPoolAlloc, DeviceMemoryAllocationError> {
         generic_allocation(self.clone(), memory_type, size, alignment, layout, map)
     }
 }

@@ -162,7 +162,7 @@ impl UnsafeDescriptorPool {
                         info.layout.device().internal_object(),
                         "Tried to allocate from a pool with a set layout of a different device"
                     );
-                    debug_assert!(!info.layout.desc().is_push_descriptor());
+                    debug_assert!(!info.layout.push_descriptor());
                     debug_assert!(
                         info.variable_descriptor_count <= info.layout.variable_descriptor_count()
                     );
@@ -373,9 +373,9 @@ impl fmt::Display for DescriptorPoolAllocError {
 
 #[cfg(test)]
 mod tests {
-    use crate::descriptor_set::layout::DescriptorDesc;
-    use crate::descriptor_set::layout::DescriptorSetDesc;
     use crate::descriptor_set::layout::DescriptorSetLayout;
+    use crate::descriptor_set::layout::DescriptorSetLayoutBinding;
+    use crate::descriptor_set::layout::DescriptorSetLayoutCreateInfo;
     use crate::descriptor_set::layout::DescriptorType;
     use crate::descriptor_set::pool::sys::DescriptorSetAllocateInfo;
     use crate::descriptor_set::pool::DescriptorsCount;
@@ -420,17 +420,19 @@ mod tests {
     fn basic_alloc() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let layout = DescriptorDesc {
-            ty: DescriptorType::UniformBuffer,
-            descriptor_count: 1,
-            variable_count: false,
-            stages: ShaderStages::all_graphics(),
-            immutable_samplers: Vec::new(),
-        };
-
         let set_layout = DescriptorSetLayout::new(
             device.clone(),
-            DescriptorSetDesc::new(iter::once(Some(layout))),
+            DescriptorSetLayoutCreateInfo {
+                bindings: [(
+                    0,
+                    DescriptorSetLayoutBinding {
+                        stages: ShaderStages::all_graphics(),
+                        ..DescriptorSetLayoutBinding::descriptor_type(DescriptorType::UniformBuffer)
+                    },
+                )]
+                .into(),
+                ..Default::default()
+            },
         )
         .unwrap();
 
@@ -456,17 +458,21 @@ mod tests {
         let (device1, _) = gfx_dev_and_queue!();
         let (device2, _) = gfx_dev_and_queue!();
 
-        let layout = DescriptorDesc {
-            ty: DescriptorType::UniformBuffer,
-            descriptor_count: 1,
-            variable_count: false,
-            stages: ShaderStages::all_graphics(),
-            immutable_samplers: Vec::new(),
-        };
-
-        let set_layout =
-            DescriptorSetLayout::new(device1, DescriptorSetDesc::new(iter::once(Some(layout))))
-                .unwrap();
+        let set_layout = DescriptorSetLayout::new(
+            device1,
+            DescriptorSetLayoutCreateInfo {
+                bindings: [(
+                    0,
+                    DescriptorSetLayoutBinding {
+                        stages: ShaderStages::all_graphics(),
+                        ..DescriptorSetLayoutBinding::descriptor_type(DescriptorType::UniformBuffer)
+                    },
+                )]
+                .into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
 
         let desc = DescriptorsCount {
             uniform_buffer: 10,

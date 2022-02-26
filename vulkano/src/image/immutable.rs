@@ -38,7 +38,7 @@ use crate::memory::pool::MemoryPool;
 use crate::memory::pool::MemoryPoolAlloc;
 use crate::memory::pool::PotentialDedicatedAllocation;
 use crate::memory::pool::StdMemoryPoolAlloc;
-use crate::memory::DedicatedAlloc;
+use crate::memory::DedicatedAllocation;
 use crate::sampler::Filter;
 use crate::sync::AccessError;
 use crate::sync::NowFuture;
@@ -258,7 +258,7 @@ impl ImmutableImage {
             &mem_reqs,
             AllocLayout::Optimal,
             MappingRequirement::DoNotMap,
-            DedicatedAlloc::Image(&image),
+            Some(DedicatedAllocation::Image(&image)),
             |t| {
                 if t.is_device_local() {
                     AllocFromRequirementsFilter::Preferred

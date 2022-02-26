@@ -37,6 +37,24 @@
   - `FullScreenExclusive::AppControlled` has been renamed to `FullScreenExclusive::ApplicationControlled` to match Vulkan.
   - Using `FullScreenExclusive::ApplicationControlled` on Windows now requires a `Win32Monitor`.
 - **Breaking** Vulkano-win: `create_vk_surface` and `create_vk_surface_from_handle` have been renamed to `create_surface_from_winit` and `create_surface_from_handle` respectively.
+- **Breaking** `DescriptorSetLayout` creation parameters are given using `DescriptorSetLayoutCreateInfo`. The getter methods on `DescriptorSetLayout` have been changed to match.
+- **Breaking** `DescriptorDesc` has been renamed to `DescriptorSetLayoutBinding` and must now be constructed with struct update syntax. The `ty` member has been renamed to `descriptor_type`, and `variable_count` has been renamed to `variable_descriptor_count`.
+- **Breaking** `PipelineLayout` creation parameters are given using `PipelineLayoutCreateInfo`. The getter methods on `PipelineLayout` have been changed to match.
+- **Breaking** `PipelineLayoutPcRange` has been renamed to `PushConstantRange`.
+- **Breaking** `DeviceMemory` creation parameters are given using `MemoryAllocateInfo` and `MemoryImportInfo`. The number of constructors has been reduced.
+- **Breaking** Importing memory is now `unsafe`, because the safety of the file descriptor can't be guaranteed.
+- **Breaking** `DedicatedAlloc` is renamed to `DedicatedAllocation`, and its `None` variant is now represented by being wrapped in an `Option`.
+- **Breaking** `DeviceMemoryAllocError` is renamed to `DeviceMemoryAllocationError`.
+- **Breaking** `UnsafeCommandPool` creation parameters are given using `UnsafeCommandPoolCreateInfo`.
+- **Breaking** `UnsafeCommandPool::allocate_command_buffers` now takes `CommandBufferAllocateInfo`.
+- **Breaking** The `alloc` method on the `CommandPool` trait has been renamed to `allocate`, and it takes `CommandBufferLevel` instead of a boolean.
+- **Breaking** The `new` constructors of  `UnsafeCommandBufferBuilder` and `SyncCommandBufferBuilder` now take `CommandBufferBeginInfo`.
+- **Breaking** The `begin_render_pass` methods of `UnsafeCommandBufferBuilder` and `SyncCommandBufferBuilder` now take `RenderPassBeginInfo`.
+- **Breaking** `CommandBufferLevel` is now a plain enum, `CommandBufferLevel::Secondary` has no associated value anymore. Its constructors have been removed.
+- **Breaking** `CommandBufferInheritance` and `CommandBufferRenderPassInheritance` have been renamed to `CommandBufferInheritanceInfo` and `CommandBufferRenderPassInheritanceInfo` respectively.
+- **Breaking** The `inheritance` method on the `SecondaryCommandBuffer` trait has been renamed to `inheritance_info`.
+- **Breaking** `QueryPool` creation parameters are given using `QueryPoolCreateInfo`.
+- **Breaking** The `ty` and `num_slots` methods of `QueryPool` have been renamed to `query_type` and `query_count`.
 - Fixed sync bug in `copy_image` and `blit_image` where the `src` and `dest` images are the same but with different mip level and/or array layer.
 - Fixed bug in `begin_render_pass` causing a panic when clearing a depth-only attachment.
 - Fixed bug in the `QueueFamily::supports_` methods causing a panic when querying support for a stage that needs no queue flags.
@@ -51,6 +69,11 @@
 - Added a `create_info` method to `Swapchain` to return a `SwapchainCreateInfo` that contains all the parameters copied from the existing swapchain. This can be used for easy recreation of outdated swapchains.
 - Added support for the `khr_get_surface_capabilities2` extension.
 - Vulkano-win: Added `create_win32_monitor_from_winit` function.
+- Added support for Vulkan 1.3.
+- Added `Version::HEADER_VERSION`, a constant that contains the Vulkan spec version that Vulkano currently uses.
+- Added `PhysicalDevice::external_buffer_properties`.
+- `PhysicalDevice::image_format_properties` now includes external memory properties in the returned structure.
+- Added `Device::memory_fd_properties`.
 
 # Version 0.28.0 (2022-02-02)
 

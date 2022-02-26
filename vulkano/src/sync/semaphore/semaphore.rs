@@ -363,6 +363,10 @@ mod tests {
 
             let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
 
+            if !physical.supported_extensions().khr_external_semaphore_fd {
+                return;
+            }
+
             let queue_family = physical.queue_families().next().unwrap();
 
             let device_ext = DeviceExtensions {
