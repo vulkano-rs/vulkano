@@ -754,7 +754,7 @@ impl fmt::Display for DescriptorRequirementsNotMet {
 }
 
 /// Describes what kind of resource may later be bound to a descriptor.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[repr(i32)]
 #[non_exhaustive]
 pub enum DescriptorType {

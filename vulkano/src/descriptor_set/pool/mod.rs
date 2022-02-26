@@ -9,17 +9,17 @@
 
 //! A pool from which descriptor sets can be allocated.
 
-pub use self::standard::StdDescriptorPool;
-pub use self::sys::DescriptorPoolAllocError;
-pub use self::sys::DescriptorSetAllocateInfo;
-pub use self::sys::UnsafeDescriptorPool;
-use crate::descriptor_set::layout::DescriptorSetLayout;
-use crate::descriptor_set::layout::DescriptorType;
-use crate::descriptor_set::UnsafeDescriptorSet;
-use crate::device::DeviceOwned;
-use crate::OomError;
-use std::cmp;
-use std::ops;
+pub use self::{
+    standard::StdDescriptorPool,
+    sys::{
+        DescriptorPoolAllocError, DescriptorSetAllocateInfo, UnsafeDescriptorPool,
+        UnsafeDescriptorPoolCreateInfo,
+    },
+};
+use super::{layout::DescriptorSetLayout, sys::UnsafeDescriptorSet, DescriptorType};
+use crate::{device::DeviceOwned, OomError};
+use fnv::FnvHashMap;
+use std::{cmp, ops};
 
 pub mod standard;
 mod sys;
@@ -113,6 +113,62 @@ macro_rules! descriptors_count {
                     DescriptorType::StorageBufferDynamic => self.storage_buffer_dynamic += num,
                     DescriptorType::InputAttachment => self.input_attachment += num,
                 };
+            }
+        }
+
+        impl From<DescriptorsCount> for FnvHashMap<DescriptorType, u32> {
+            #[inline]
+            fn from(val: DescriptorsCount) -> Self {
+                let mut result = FnvHashMap::with_capacity_and_hasher(
+                    val.total() as usize,
+                    Default::default(),
+                );
+
+                if val.sampler != 0 {
+                    result.insert(DescriptorType::Sampler, val.sampler);
+                }
+
+                if val.combined_image_sampler != 0 {
+                    result.insert(DescriptorType::CombinedImageSampler, val.combined_image_sampler);
+                }
+
+                if val.sampled_image != 0 {
+                    result.insert(DescriptorType::SampledImage, val.sampled_image);
+                }
+
+                if val.storage_image != 0 {
+                    result.insert(DescriptorType::StorageImage, val.storage_image);
+                }
+
+                if val.uniform_texel_buffer != 0 {
+                    result.insert(DescriptorType::UniformTexelBuffer, val.uniform_texel_buffer);
+                }
+
+                if val.storage_texel_buffer != 0 {
+                    result.insert(DescriptorType::StorageTexelBuffer, val.storage_texel_buffer);
+                }
+
+                if val.uniform_buffer != 0 {
+                    result.insert(DescriptorType::UniformBuffer, val.uniform_buffer);
+                }
+
+                if val.storage_buffer != 0 {
+                    result.insert(DescriptorType::StorageBuffer, val.storage_buffer);
+                }
+
+                if val.uniform_buffer_dynamic != 0 {
+                    result.insert(DescriptorType::UniformBufferDynamic, val.uniform_buffer_dynamic);
+                }
+
+                if val.storage_buffer_dynamic != 0 {
+                    result.insert(DescriptorType::StorageBufferDynamic, val.storage_buffer_dynamic);
+                }
+
+                if val.input_attachment != 0 {
+                    result.insert(DescriptorType::InputAttachment, val.input_attachment);
+                }
+
+                result
             }
         }
 
