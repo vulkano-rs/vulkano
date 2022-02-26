@@ -12,10 +12,10 @@ use crate::format::ClearValue;
 use crate::format::Format;
 use crate::image::sys::ImageCreationError;
 use crate::image::sys::UnsafeImage;
+use crate::image::sys::UnsafeImageCreateInfo;
 use crate::image::traits::ImageAccess;
 use crate::image::traits::ImageClearValue;
 use crate::image::traits::ImageContent;
-use crate::image::ImageCreateFlags;
 use crate::image::ImageDescriptorLayouts;
 use crate::image::ImageDimensions;
 use crate::image::ImageInner;
@@ -419,20 +419,24 @@ impl AttachmentImage {
             panic!() // TODO: message?
         }
 
-        let image = UnsafeImage::start(device.clone())
-            .dimensions(ImageDimensions::Dim2d {
-                width: dimensions[0],
-                height: dimensions[1],
-                array_layers,
-            })
-            .format(format)
-            .samples(samples)
-            .usage(ImageUsage {
-                color_attachment: !is_depth,
-                depth_stencil_attachment: is_depth,
-                ..base_usage
-            })
-            .build()?;
+        let image = UnsafeImage::new(
+            device.clone(),
+            UnsafeImageCreateInfo {
+                dimensions: ImageDimensions::Dim2d {
+                    width: dimensions[0],
+                    height: dimensions[1],
+                    array_layers,
+                },
+                format: Some(format),
+                samples,
+                usage: ImageUsage {
+                    color_attachment: !is_depth,
+                    depth_stencil_attachment: is_depth,
+                    ..base_usage
+                },
+                ..Default::default()
+            },
+        )?;
 
         let mem_reqs = image.memory_requirements();
         let memory = MemoryPool::alloc_from_requirements(
@@ -481,28 +485,29 @@ impl AttachmentImage {
         let aspects = format.aspects();
         let is_depth = aspects.depth || aspects.stencil;
 
-        let image = UnsafeImage::start(device.clone())
-            .dimensions(ImageDimensions::Dim2d {
-                width: dimensions[0],
-                height: dimensions[1],
-                array_layers,
-            })
-            .external_memory_handle_types(ExternalMemoryHandleTypes {
-                opaque_fd: true,
-                ..ExternalMemoryHandleTypes::none()
-            })
-            .flags(ImageCreateFlags {
+        let image = UnsafeImage::new(
+            device.clone(),
+            UnsafeImageCreateInfo {
+                dimensions: ImageDimensions::Dim2d {
+                    width: dimensions[0],
+                    height: dimensions[1],
+                    array_layers,
+                },
+                format: Some(format),
+                samples,
+                usage: ImageUsage {
+                    color_attachment: !is_depth,
+                    depth_stencil_attachment: is_depth,
+                    ..base_usage
+                },
+                external_memory_handle_types: ExternalMemoryHandleTypes {
+                    opaque_fd: true,
+                    ..ExternalMemoryHandleTypes::none()
+                },
                 mutable_format: true,
-                ..ImageCreateFlags::none()
-            })
-            .format(format)
-            .samples(samples)
-            .usage(ImageUsage {
-                color_attachment: !is_depth,
-                depth_stencil_attachment: is_depth,
-                ..base_usage
-            })
-            .build()?;
+                ..Default::default()
+            },
+        )?;
 
         let mem_reqs = image.memory_requirements();
         let memory = alloc_dedicated_with_exportable_fd(

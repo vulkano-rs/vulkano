@@ -43,10 +43,10 @@
 //! ```
 
 use crate::buffer::{BufferAccess, BufferAccessObject, BufferInner};
-use crate::device::physical::FormatFeatures;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::format::Format;
+use crate::format::FormatFeatures;
 use crate::DeviceSize;
 use crate::Error;
 use crate::OomError;

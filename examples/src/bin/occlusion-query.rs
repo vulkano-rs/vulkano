@@ -473,7 +473,7 @@ fn window_size_dependent_setup(
     let dimensions = images[0].dimensions().width_height();
     viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
 
-    let depth_attachment = ImageView::new(
+    let depth_attachment = ImageView::new_default(
         AttachmentImage::with_usage(
             render_pass.device().clone(),
             dimensions,
@@ -491,7 +491,7 @@ fn window_size_dependent_setup(
     images
         .iter()
         .map(|image| {
-            let view = ImageView::new(image.clone()).unwrap();
+            let view = ImageView::new_default(image.clone()).unwrap();
             Framebuffer::new(
                 render_pass.clone(),
                 FramebufferCreateInfo {

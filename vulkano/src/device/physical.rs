@@ -9,14 +9,12 @@
 
 use crate::buffer::{BufferUsage, ExternalBufferInfo, ExternalBufferProperties};
 use crate::device::{DeviceExtensions, Features, FeaturesFfi, Properties, PropertiesFfi};
-use crate::format::Format;
-use crate::image::view::ImageViewType;
-use crate::image::{ImageCreateFlags, ImageTiling, ImageType, ImageUsage, SampleCounts};
+use crate::format::{Format, FormatProperties};
+use crate::image::{ImageCreateFlags, ImageFormatInfo, ImageFormatProperties, ImageUsage};
 use crate::instance::{Instance, InstanceCreationError};
-use crate::memory::{ExternalMemoryHandleType, ExternalMemoryProperties};
 use crate::swapchain::{
     ColorSpace, FullScreenExclusive, PresentMode, SupportedSurfaceTransforms, Surface, SurfaceApi,
-    SurfaceCapabilities, Win32Monitor,
+    SurfaceCapabilities, SurfaceInfo,
 };
 use crate::sync::{ExternalSemaphoreInfo, ExternalSemaphoreProperties, PipelineStage};
 use crate::Version;
@@ -28,7 +26,6 @@ use std::ffi::CStr;
 use std::fmt;
 use std::hash::Hash;
 use std::mem::MaybeUninit;
-use std::ops::BitOr;
 use std::ptr;
 use std::sync::Arc;
 
@@ -636,21 +633,40 @@ impl<'a> PhysicalDevice<'a> {
     /// Returns the properties supported for images with a given image configuration.
     ///
     /// `Some` is returned if the configuration is supported, `None` if it is not.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `image_format_info.format` is `None`.
     pub fn image_format_properties(
         &self,
-        format: Format,
-        ty: ImageType,
-        tiling: ImageTiling,
-        usage: ImageUsage,
-        flags: ImageCreateFlags,
-        external_memory_handle_type: Option<ExternalMemoryHandleType>,
-        image_view_type: Option<ImageViewType>,
+        image_format_info: ImageFormatInfo,
     ) -> Result<Option<ImageFormatProperties>, OomError> {
         /* Input */
+        let ImageFormatInfo {
+            format,
+            image_type,
+            tiling,
+            usage,
+            external_memory_handle_type,
+            image_view_type,
+            mutable_format,
+            cube_compatible,
+            array_2d_compatible,
+            block_texel_view_compatible,
+            _ne: _,
+        } = image_format_info;
+
+        let flags = ImageCreateFlags {
+            mutable_format,
+            cube_compatible,
+            array_2d_compatible,
+            block_texel_view_compatible,
+            ..ImageCreateFlags::none()
+        };
 
         let mut format_info2 = ash::vk::PhysicalDeviceImageFormatInfo2::builder()
-            .format(format.into())
-            .ty(ty.into())
+            .format(format.unwrap().into())
+            .ty(image_type.into())
             .tiling(tiling.into())
             .usage(usage.into())
             .flags(flags.into());
@@ -685,7 +701,7 @@ impl<'a> PhysicalDevice<'a> {
                 return Ok(None);
             }
 
-            if !image_view_type.is_compatible_with(ty) {
+            if !image_view_type.is_compatible_with(image_type) {
                 return Ok(None);
             }
 
@@ -1760,372 +1776,6 @@ impl From<ash::vk::ShaderCorePropertiesFlagsAMD> for ShaderCoreProperties {
     #[inline]
     fn from(val: ash::vk::ShaderCorePropertiesFlagsAMD) -> Self {
         Self {}
-    }
-}
-
-/// The properties of a format that are supported by a physical device.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub struct FormatProperties {
-    /// Features available for images with linear tiling.
-    pub linear_tiling_features: FormatFeatures,
-
-    /// Features available for images with optimal tiling.
-    pub optimal_tiling_features: FormatFeatures,
-
-    /// Features available for buffers.
-    pub buffer_features: FormatFeatures,
-
-    pub _ne: crate::NonExhaustive,
-}
-
-impl FormatProperties {
-    /// Returns the potential format features, following the definition of
-    /// <https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap43.html#potential-format-features>.
-    #[inline]
-    pub fn potential_format_features(&self) -> FormatFeatures {
-        &self.linear_tiling_features | &self.optimal_tiling_features
-    }
-}
-
-/// The features supported by a device for an image or buffer with a particular format.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-#[allow(missing_docs)]
-pub struct FormatFeatures {
-    // Image usage
-    /// Can be used with a sampled image descriptor.
-    pub sampled_image: bool,
-    /// Can be used with a storage image descriptor.
-    pub storage_image: bool,
-    /// Can be used with a storage image descriptor with atomic operations in a shader.
-    pub storage_image_atomic: bool,
-    /// Can be used with a storage image descriptor for reading, without specifying a format on the
-    /// image view.
-    pub storage_read_without_format: bool,
-    /// Can be used with a storage image descriptor for writing, without specifying a format on the
-    /// image view.
-    pub storage_write_without_format: bool,
-    /// Can be used with a color attachment in a framebuffer, or with an input attachment
-    /// descriptor.
-    pub color_attachment: bool,
-    /// Can be used with a color attachment in a framebuffer with blending, or with an input
-    /// attachment descriptor.
-    pub color_attachment_blend: bool,
-    /// Can be used with a depth/stencil attachment in a framebuffer, or with an input attachment
-    /// descriptor.
-    pub depth_stencil_attachment: bool,
-    /// Can be used with a fragment density map attachment in a framebuffer.
-    pub fragment_density_map: bool,
-    /// Can be used with a fragment shading rate attachment in a framebuffer.
-    pub fragment_shading_rate_attachment: bool,
-    /// Can be used with the source image in a transfer (copy) operation.
-    pub transfer_src: bool,
-    /// Can be used with the destination image in a transfer (copy) operation.
-    pub transfer_dst: bool,
-    /// Can be used with the source image in a blit operation.
-    pub blit_src: bool,
-    /// Can be used with the destination image in a blit operation.
-    pub blit_dst: bool,
-
-    // Sampling
-    /// Can be used with samplers or as a blit source, using the
-    /// [`Linear`](crate::sampler::Filter::Linear) filter.
-    pub sampled_image_filter_linear: bool,
-    /// Can be used with samplers or as a blit source, using the
-    /// [`Cubic`](crate::sampler::Filter::Cubic) filter.
-    pub sampled_image_filter_cubic: bool,
-    /// Can be used with samplers using a reduction mode of
-    /// [`Min`](crate::sampler::SamplerReductionMode::Min) or
-    /// [`Max`](crate::sampler::SamplerReductionMode::Max).
-    pub sampled_image_filter_minmax: bool,
-    /// Can be used with sampler YCbCr conversions using a chroma offset of
-    /// [`Midpoint`](crate::sampler::ycbcr::ChromaLocation::Midpoint).
-    pub midpoint_chroma_samples: bool,
-    /// Can be used with sampler YCbCr conversions using a chroma offset of
-    /// [`CositedEven`](crate::sampler::ycbcr::ChromaLocation::CositedEven).
-    pub cosited_chroma_samples: bool,
-    /// Can be used with sampler YCbCr conversions using the
-    /// [`Linear`](crate::sampler::Filter::Linear) chroma filter.
-    pub sampled_image_ycbcr_conversion_linear_filter: bool,
-    /// Can be used with sampler YCbCr conversions whose chroma filter differs from the filters of
-    /// the base sampler.
-    pub sampled_image_ycbcr_conversion_separate_reconstruction_filter: bool,
-    /// When used with a sampler YCbCr conversion, the implementation will always perform
-    /// explicit chroma reconstruction.
-    pub sampled_image_ycbcr_conversion_chroma_reconstruction_explicit: bool,
-    /// Can be used with sampler YCbCr conversions with forced explicit reconstruction.
-    pub sampled_image_ycbcr_conversion_chroma_reconstruction_explicit_forceable: bool,
-    /// Can be used with samplers using depth comparison.
-    pub sampled_image_depth_comparison: bool,
-
-    // Video
-    /// Can be used with the output image of a video decode operation.
-    pub video_decode_output: bool,
-    /// Can be used with the DPB image of a video decode operation.
-    pub video_decode_dpb: bool,
-    /// Can be used with the input image of a video encode operation.
-    pub video_encode_input: bool,
-    /// Can be used with the DPB image of a video encode operation.
-    pub video_encode_dpb: bool,
-
-    // Misc image features
-    /// For multi-planar formats, can be used with images created with the `disjoint` flag.
-    pub disjoint: bool,
-
-    // Buffer usage
-    /// Can be used with a uniform texel buffer descriptor.
-    pub uniform_texel_buffer: bool,
-    /// Can be used with a storage texel buffer descriptor.
-    pub storage_texel_buffer: bool,
-    /// Can be used with a storage texel buffer descriptor with atomic operations in a shader.
-    pub storage_texel_buffer_atomic: bool,
-    /// Can be used as the format of a vertex attribute in the vertex input state of a graphics
-    /// pipeline.
-    pub vertex_buffer: bool,
-    /// Can be used with the vertex buffer of an acceleration structure.
-    pub acceleration_structure_vertex_buffer: bool,
-
-    pub _ne: crate::NonExhaustive,
-}
-
-impl BitOr for &FormatFeatures {
-    type Output = FormatFeatures;
-
-    fn bitor(self, rhs: Self) -> Self::Output {
-        Self::Output {
-            sampled_image: self.sampled_image || rhs.sampled_image,
-            storage_image: self.storage_image || rhs.storage_image,
-            storage_image_atomic: self.storage_image_atomic || rhs.storage_image_atomic,
-            storage_read_without_format: self.storage_read_without_format
-                || rhs.storage_read_without_format,
-            storage_write_without_format: self.storage_write_without_format
-                || rhs.storage_write_without_format,
-            color_attachment: self.color_attachment || rhs.color_attachment,
-            color_attachment_blend: self.color_attachment_blend || rhs.color_attachment_blend,
-            depth_stencil_attachment: self.depth_stencil_attachment || rhs.depth_stencil_attachment,
-            fragment_density_map: self.fragment_density_map || rhs.fragment_density_map,
-            fragment_shading_rate_attachment: self.fragment_shading_rate_attachment
-                || rhs.fragment_shading_rate_attachment,
-            transfer_src: self.transfer_src || rhs.transfer_src,
-            transfer_dst: self.transfer_dst || rhs.transfer_dst,
-            blit_src: self.blit_src || rhs.blit_src,
-            blit_dst: self.blit_dst || rhs.blit_dst,
-
-            sampled_image_filter_linear: self.sampled_image_filter_linear
-                || rhs.sampled_image_filter_linear,
-            sampled_image_filter_cubic: self.sampled_image_filter_cubic
-                || rhs.sampled_image_filter_cubic,
-            sampled_image_filter_minmax: self.sampled_image_filter_minmax
-                || rhs.sampled_image_filter_minmax,
-            midpoint_chroma_samples: self.midpoint_chroma_samples || rhs.midpoint_chroma_samples,
-            cosited_chroma_samples: self.cosited_chroma_samples || rhs.cosited_chroma_samples,
-            sampled_image_ycbcr_conversion_linear_filter: self
-                .sampled_image_ycbcr_conversion_linear_filter
-                || rhs.sampled_image_ycbcr_conversion_linear_filter,
-            sampled_image_ycbcr_conversion_separate_reconstruction_filter: self
-                .sampled_image_ycbcr_conversion_separate_reconstruction_filter
-                || rhs.sampled_image_ycbcr_conversion_separate_reconstruction_filter,
-            sampled_image_ycbcr_conversion_chroma_reconstruction_explicit: self
-                .sampled_image_ycbcr_conversion_chroma_reconstruction_explicit
-                || rhs.sampled_image_ycbcr_conversion_chroma_reconstruction_explicit,
-            sampled_image_ycbcr_conversion_chroma_reconstruction_explicit_forceable: self
-                .sampled_image_ycbcr_conversion_chroma_reconstruction_explicit_forceable
-                || rhs.sampled_image_ycbcr_conversion_chroma_reconstruction_explicit_forceable,
-            sampled_image_depth_comparison: self.sampled_image_depth_comparison
-                || rhs.sampled_image_depth_comparison,
-
-            video_decode_output: self.video_decode_output || rhs.video_decode_output,
-            video_decode_dpb: self.video_decode_dpb || rhs.video_decode_dpb,
-            video_encode_input: self.video_encode_input || rhs.video_encode_input,
-            video_encode_dpb: self.video_encode_dpb || rhs.video_encode_dpb,
-
-            disjoint: self.disjoint || rhs.disjoint,
-
-            uniform_texel_buffer: self.uniform_texel_buffer || rhs.uniform_texel_buffer,
-            storage_texel_buffer: self.storage_texel_buffer || rhs.storage_texel_buffer,
-            storage_texel_buffer_atomic: self.storage_texel_buffer_atomic
-                || rhs.storage_texel_buffer_atomic,
-            vertex_buffer: self.vertex_buffer || rhs.vertex_buffer,
-            acceleration_structure_vertex_buffer: self.acceleration_structure_vertex_buffer
-                || rhs.acceleration_structure_vertex_buffer,
-
-            _ne: crate::NonExhaustive(()),
-        }
-    }
-}
-
-impl From<ash::vk::FormatFeatureFlags> for FormatFeatures {
-    #[inline]
-    #[rustfmt::skip]
-    fn from(val: ash::vk::FormatFeatureFlags) -> FormatFeatures {
-        FormatFeatures {
-            sampled_image: val.intersects(ash::vk::FormatFeatureFlags::SAMPLED_IMAGE),
-            storage_image: val.intersects(ash::vk::FormatFeatureFlags::STORAGE_IMAGE),
-            storage_image_atomic: val.intersects(ash::vk::FormatFeatureFlags::STORAGE_IMAGE_ATOMIC),
-            storage_read_without_format: false, // FormatFeatureFlags2 only
-            storage_write_without_format: false, // FormatFeatureFlags2 only
-            color_attachment: val.intersects(ash::vk::FormatFeatureFlags::COLOR_ATTACHMENT),
-            color_attachment_blend: val.intersects(ash::vk::FormatFeatureFlags::COLOR_ATTACHMENT_BLEND),
-            depth_stencil_attachment: val.intersects(ash::vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT),
-            fragment_density_map: val.intersects(ash::vk::FormatFeatureFlags::FRAGMENT_DENSITY_MAP_EXT),
-            fragment_shading_rate_attachment: val.intersects(ash::vk::FormatFeatureFlags::FRAGMENT_SHADING_RATE_ATTACHMENT_KHR),
-            transfer_src: val.intersects(ash::vk::FormatFeatureFlags::TRANSFER_SRC),
-            transfer_dst: val.intersects(ash::vk::FormatFeatureFlags::TRANSFER_DST),
-            blit_src: val.intersects(ash::vk::FormatFeatureFlags::BLIT_SRC),
-            blit_dst: val.intersects(ash::vk::FormatFeatureFlags::BLIT_DST),
-
-            sampled_image_filter_linear: val.intersects(ash::vk::FormatFeatureFlags::SAMPLED_IMAGE_FILTER_LINEAR),
-            sampled_image_filter_cubic: val.intersects(ash::vk::FormatFeatureFlags::SAMPLED_IMAGE_FILTER_CUBIC_EXT),
-            sampled_image_filter_minmax: val.intersects(ash::vk::FormatFeatureFlags::SAMPLED_IMAGE_FILTER_MINMAX),
-            midpoint_chroma_samples: val.intersects(ash::vk::FormatFeatureFlags::MIDPOINT_CHROMA_SAMPLES),
-            cosited_chroma_samples: val.intersects(ash::vk::FormatFeatureFlags::COSITED_CHROMA_SAMPLES),
-            sampled_image_ycbcr_conversion_linear_filter: val.intersects(ash::vk::FormatFeatureFlags::SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER),
-            sampled_image_ycbcr_conversion_separate_reconstruction_filter: val.intersects(ash::vk::FormatFeatureFlags::SAMPLED_IMAGE_YCBCR_CONVERSION_SEPARATE_RECONSTRUCTION_FILTER),
-            sampled_image_ycbcr_conversion_chroma_reconstruction_explicit: val.intersects(ash::vk::FormatFeatureFlags::SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT),
-            sampled_image_ycbcr_conversion_chroma_reconstruction_explicit_forceable: val.intersects(ash::vk::FormatFeatureFlags::SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT_FORCEABLE),
-            sampled_image_depth_comparison: false, // FormatFeatureFlags2 only
-
-            video_decode_output: val.intersects(ash::vk::FormatFeatureFlags::VIDEO_DECODE_OUTPUT_KHR),
-            video_decode_dpb: val.intersects(ash::vk::FormatFeatureFlags::VIDEO_DECODE_DPB_KHR),
-            video_encode_input: val.intersects(ash::vk::FormatFeatureFlags::VIDEO_ENCODE_INPUT_KHR),
-            video_encode_dpb: val.intersects(ash::vk::FormatFeatureFlags::VIDEO_ENCODE_DPB_KHR),
-
-            disjoint: val.intersects(ash::vk::FormatFeatureFlags::DISJOINT),
-
-            uniform_texel_buffer: val.intersects(ash::vk::FormatFeatureFlags::UNIFORM_TEXEL_BUFFER),
-            storage_texel_buffer: val.intersects(ash::vk::FormatFeatureFlags::STORAGE_TEXEL_BUFFER),
-            storage_texel_buffer_atomic: val.intersects(ash::vk::FormatFeatureFlags::STORAGE_TEXEL_BUFFER_ATOMIC),
-            vertex_buffer: val.intersects(ash::vk::FormatFeatureFlags::VERTEX_BUFFER),
-            acceleration_structure_vertex_buffer: val.intersects(ash::vk::FormatFeatureFlags::ACCELERATION_STRUCTURE_VERTEX_BUFFER_KHR),
-
-            _ne: crate::NonExhaustive(()),
-        }
-    }
-}
-
-impl From<ash::vk::FormatFeatureFlags2> for FormatFeatures {
-    #[inline]
-    #[rustfmt::skip]
-    fn from(val: ash::vk::FormatFeatureFlags2) -> FormatFeatures {
-        FormatFeatures {
-            sampled_image: val.intersects(ash::vk::FormatFeatureFlags2::SAMPLED_IMAGE),
-            storage_image: val.intersects(ash::vk::FormatFeatureFlags2::STORAGE_IMAGE),
-            storage_image_atomic: val.intersects(ash::vk::FormatFeatureFlags2::STORAGE_IMAGE_ATOMIC),
-            storage_read_without_format: val.intersects(ash::vk::FormatFeatureFlags2::STORAGE_READ_WITHOUT_FORMAT),
-            storage_write_without_format: val.intersects(ash::vk::FormatFeatureFlags2::STORAGE_WRITE_WITHOUT_FORMAT),
-            color_attachment: val.intersects(ash::vk::FormatFeatureFlags2::COLOR_ATTACHMENT),
-            color_attachment_blend: val.intersects(ash::vk::FormatFeatureFlags2::COLOR_ATTACHMENT_BLEND),
-            depth_stencil_attachment: val.intersects(ash::vk::FormatFeatureFlags2::DEPTH_STENCIL_ATTACHMENT),
-            fragment_density_map: val.intersects(ash::vk::FormatFeatureFlags2::FRAGMENT_DENSITY_MAP_EXT),
-            fragment_shading_rate_attachment: val.intersects(ash::vk::FormatFeatureFlags2::FRAGMENT_SHADING_RATE_ATTACHMENT_KHR),
-            transfer_src: val.intersects(ash::vk::FormatFeatureFlags2::TRANSFER_SRC),
-            transfer_dst: val.intersects(ash::vk::FormatFeatureFlags2::TRANSFER_DST),
-            blit_src: val.intersects(ash::vk::FormatFeatureFlags2::BLIT_SRC),
-            blit_dst: val.intersects(ash::vk::FormatFeatureFlags2::BLIT_DST),
-
-            sampled_image_filter_linear: val.intersects(ash::vk::FormatFeatureFlags2::SAMPLED_IMAGE_FILTER_LINEAR),
-            sampled_image_filter_cubic: val.intersects(ash::vk::FormatFeatureFlags2::SAMPLED_IMAGE_FILTER_CUBIC_EXT),
-            sampled_image_filter_minmax: val.intersects(ash::vk::FormatFeatureFlags2::SAMPLED_IMAGE_FILTER_MINMAX),
-            midpoint_chroma_samples: val.intersects(ash::vk::FormatFeatureFlags2::MIDPOINT_CHROMA_SAMPLES),
-            cosited_chroma_samples: val.intersects(ash::vk::FormatFeatureFlags2::COSITED_CHROMA_SAMPLES),
-            sampled_image_ycbcr_conversion_linear_filter: val.intersects(ash::vk::FormatFeatureFlags2::SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER),
-            sampled_image_ycbcr_conversion_separate_reconstruction_filter: val.intersects(ash::vk::FormatFeatureFlags2::SAMPLED_IMAGE_YCBCR_CONVERSION_SEPARATE_RECONSTRUCTION_FILTER),
-            sampled_image_ycbcr_conversion_chroma_reconstruction_explicit: val.intersects(ash::vk::FormatFeatureFlags2::SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT),
-            sampled_image_ycbcr_conversion_chroma_reconstruction_explicit_forceable: val.intersects(ash::vk::FormatFeatureFlags2::SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT_FORCEABLE),
-            sampled_image_depth_comparison: val.intersects(ash::vk::FormatFeatureFlags2::SAMPLED_IMAGE_DEPTH_COMPARISON),
-
-            video_decode_output: val.intersects(ash::vk::FormatFeatureFlags2::VIDEO_DECODE_OUTPUT_KHR),
-            video_decode_dpb: val.intersects(ash::vk::FormatFeatureFlags2::VIDEO_DECODE_DPB_KHR),
-            video_encode_input: val.intersects(ash::vk::FormatFeatureFlags2::VIDEO_ENCODE_INPUT_KHR),
-            video_encode_dpb: val.intersects(ash::vk::FormatFeatureFlags2::VIDEO_ENCODE_DPB_KHR),
-
-            disjoint: val.intersects(ash::vk::FormatFeatureFlags2::DISJOINT),
-
-            uniform_texel_buffer: val.intersects(ash::vk::FormatFeatureFlags2::UNIFORM_TEXEL_BUFFER),
-            storage_texel_buffer: val.intersects(ash::vk::FormatFeatureFlags2::STORAGE_TEXEL_BUFFER),
-            storage_texel_buffer_atomic: val.intersects(ash::vk::FormatFeatureFlags2::STORAGE_TEXEL_BUFFER_ATOMIC),
-            vertex_buffer: val.intersects(ash::vk::FormatFeatureFlags2::VERTEX_BUFFER),
-            acceleration_structure_vertex_buffer: val.intersects(ash::vk::FormatFeatureFlags2::ACCELERATION_STRUCTURE_VERTEX_BUFFER_KHR),
-
-            _ne: crate::NonExhaustive(()),
-        }
-    }
-}
-
-/// The properties that are supported by a physical device for images of a certain type.
-#[derive(Clone, Debug)]
-#[non_exhaustive]
-pub struct ImageFormatProperties {
-    /// The maximum dimensions.
-    pub max_extent: [u32; 3],
-
-    /// The maximum number of mipmap levels.
-    pub max_mip_levels: u32,
-
-    /// The maximum number of array layers.
-    pub max_array_layers: u32,
-
-    /// The supported sample counts.
-    pub sample_counts: SampleCounts,
-
-    /// The maximum total size of an image, in bytes. This is guaranteed to be at least
-    /// 0x80000000.
-    pub max_resource_size: DeviceSize,
-
-    /// The properties for external memory.
-    /// This will be [`ExternalMemoryProperties::default()`] if `external_handle_type` was `None`.
-    pub external_memory_properties: ExternalMemoryProperties,
-
-    /// When querying with an image view type, whether such image views support sampling with
-    /// a [`Cubic`](crate::sampler::Filter::Cubic) `mag_filter` or `min_filter`.
-    pub filter_cubic: bool,
-
-    /// When querying with an image view type, whether such image views support sampling with
-    /// a [`Cubic`](crate::sampler::Filter::Cubic) `mag_filter` or `min_filter`, and with a
-    /// [`Min`](crate::sampler::SamplerReductionMode::Min) or
-    /// [`Max`](crate::sampler::SamplerReductionMode::Max) `reduction_mode`.
-    pub filter_cubic_minmax: bool,
-
-    pub _ne: crate::NonExhaustive,
-}
-
-impl From<ash::vk::ImageFormatProperties> for ImageFormatProperties {
-    fn from(props: ash::vk::ImageFormatProperties) -> Self {
-        Self {
-            max_extent: [
-                props.max_extent.width,
-                props.max_extent.height,
-                props.max_extent.depth,
-            ],
-            max_mip_levels: props.max_mip_levels,
-            max_array_layers: props.max_array_layers,
-            sample_counts: props.sample_counts.into(),
-            max_resource_size: props.max_resource_size,
-            external_memory_properties: Default::default(),
-            filter_cubic: false,
-            filter_cubic_minmax: false,
-
-            _ne: crate::NonExhaustive(()),
-        }
-    }
-}
-
-/// Parameters for [`PhysicalDevice::surface_capabilities`] and
-/// [`PhysicalDevice::surface_formats`].
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SurfaceInfo {
-    pub full_screen_exclusive: FullScreenExclusive,
-    pub win32_monitor: Option<Win32Monitor>,
-    pub _ne: crate::NonExhaustive,
-}
-
-impl Default for SurfaceInfo {
-    #[inline]
-    fn default() -> Self {
-        Self {
-            full_screen_exclusive: FullScreenExclusive::Default,
-            win32_monitor: None,
-            _ne: crate::NonExhaustive(()),
-        }
     }
 }
 

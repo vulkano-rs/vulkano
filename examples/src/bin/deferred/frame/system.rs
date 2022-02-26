@@ -153,7 +153,7 @@ impl FrameSystem {
             input_attachment: true,
             ..ImageUsage::none()
         };
-        let diffuse_buffer = ImageView::new(
+        let diffuse_buffer = ImageView::new_default(
             AttachmentImage::with_usage(
                 gfx_queue.device().clone(),
                 [1, 1],
@@ -163,7 +163,7 @@ impl FrameSystem {
             .unwrap(),
         )
         .unwrap();
-        let normals_buffer = ImageView::new(
+        let normals_buffer = ImageView::new_default(
             AttachmentImage::with_usage(
                 gfx_queue.device().clone(),
                 [1, 1],
@@ -173,7 +173,7 @@ impl FrameSystem {
             .unwrap(),
         )
         .unwrap();
-        let depth_buffer = ImageView::new(
+        let depth_buffer = ImageView::new_default(
             AttachmentImage::with_usage(
                 gfx_queue.device().clone(),
                 [1, 1],
@@ -248,7 +248,7 @@ impl FrameSystem {
             // image is only defined when within a render pass. In other words you can draw to
             // them in a subpass then read them in another subpass, but as soon as you leave the
             // render pass their content becomes undefined.
-            self.diffuse_buffer = ImageView::new(
+            self.diffuse_buffer = ImageView::new_default(
                 AttachmentImage::with_usage(
                     self.gfx_queue.device().clone(),
                     img_dims,
@@ -258,7 +258,7 @@ impl FrameSystem {
                 .unwrap(),
             )
             .unwrap();
-            self.normals_buffer = ImageView::new(
+            self.normals_buffer = ImageView::new_default(
                 AttachmentImage::with_usage(
                     self.gfx_queue.device().clone(),
                     img_dims,
@@ -268,7 +268,7 @@ impl FrameSystem {
                 .unwrap(),
             )
             .unwrap();
-            self.depth_buffer = ImageView::new(
+            self.depth_buffer = ImageView::new_default(
                 AttachmentImage::with_usage(
                     self.gfx_queue.device().clone(),
                     img_dims,

@@ -192,7 +192,7 @@ fn main() {
             queue.clone(),
         )
         .unwrap();
-        (ImageView::new(image).unwrap(), future)
+        (ImageView::new_default(image).unwrap(), future)
     };
 
     let sampler = Sampler::new(
@@ -347,7 +347,7 @@ fn window_size_dependent_setup(
     images
         .iter()
         .map(|image| {
-            let view = ImageView::new(image.clone()).unwrap();
+            let view = ImageView::new_default(image.clone()).unwrap();
             Framebuffer::new(
                 render_pass.clone(),
                 FramebufferCreateInfo {

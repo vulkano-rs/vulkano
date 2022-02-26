@@ -110,7 +110,7 @@ pub(in super::super) fn check_descriptor_sets_validity<'a, P: Pipeline>(
 
             // The SPIR-V Image Format is not compatible with the image view’s format.
             if let Some(format) = reqs.image_format {
-                if image_view.format() != format {
+                if image_view.format() != Some(format) {
                     return Err(InvalidDescriptorResource::ImageViewFormatMismatch {
                         required: format,
                         obtained: image_view.format(),
@@ -120,10 +120,10 @@ pub(in super::super) fn check_descriptor_sets_validity<'a, P: Pipeline>(
 
             // Rules for viewType
             if let Some(image_view_type) = reqs.image_view_type {
-                if image_view.ty() != image_view_type {
+                if image_view.view_type() != image_view_type {
                     return Err(InvalidDescriptorResource::ImageViewTypeMismatch {
                         required: image_view_type,
-                        obtained: image_view.ty(),
+                        obtained: image_view.view_type(),
                     });
                 }
             }
@@ -148,11 +148,11 @@ pub(in super::super) fn check_descriptor_sets_validity<'a, P: Pipeline>(
                 let aspects = image_view.aspects();
                 let view_scalar_type = ShaderScalarType::from(
                     if aspects.color || aspects.plane0 || aspects.plane1 || aspects.plane2 {
-                        image_view.format().type_color().unwrap()
+                        image_view.format().unwrap().type_color().unwrap()
                     } else if aspects.depth {
-                        image_view.format().type_depth().unwrap()
+                        image_view.format().unwrap().type_depth().unwrap()
                     } else if aspects.stencil {
-                        image_view.format().type_stencil().unwrap()
+                        image_view.format().unwrap().type_stencil().unwrap()
                     } else {
                         // Per `ImageViewBuilder::aspects` and
                         // VUID-VkDescriptorImageInfo-imageView-01976
@@ -406,7 +406,7 @@ fn check_resources<T>(
 pub enum InvalidDescriptorResource {
     ImageViewFormatMismatch {
         required: Format,
-        obtained: Format,
+        obtained: Option<Format>,
     },
     ImageViewMultisampledMismatch {
         required: bool,

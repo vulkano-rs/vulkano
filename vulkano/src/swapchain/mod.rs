@@ -322,6 +322,7 @@ pub use self::surface::Surface;
 pub use self::surface::SurfaceApi;
 pub use self::surface::SurfaceCapabilities;
 pub use self::surface::SurfaceCreationError;
+pub use self::surface::SurfaceInfo;
 pub use self::surface::SurfaceTransform;
 pub use self::swapchain::acquire_next_image;
 pub use self::swapchain::acquire_next_image_raw;

@@ -80,7 +80,7 @@ impl VulkanoWindow {
 
     /// Return swapchain image format
     pub fn swapchain_format(&self) -> Format {
-        self.final_views[self.image_index].format()
+        self.final_views[self.image_index].format().unwrap()
     }
 
     /// Return default image format for images  
@@ -255,7 +255,7 @@ impl VulkanoWindow {
         self.swapchain = new_swapchain;
         let new_images = new_images
             .into_iter()
-            .map(|image| ImageView::new(image).unwrap())
+            .map(|image| ImageView::new_default(image).unwrap())
             .collect::<Vec<_>>();
         self.final_views = new_images;
         // Resize images that follow swapchain size
@@ -266,7 +266,7 @@ impl VulkanoWindow {
             .map(|c| *c.0)
             .collect::<Vec<usize>>();
         for i in resizable_views {
-            let format = self.get_image_target(i).format();
+            let format = self.get_image_target(i).format().unwrap();
             self.remove_image_target(i);
             self.add_image_target(i, None, format);
         }
@@ -282,7 +282,7 @@ pub fn create_device_image(queue: Arc<Queue>, size: [u32; 2], format: Format) ->
         array_layers: 1,
     };
     let flags = ImageCreateFlags::none();
-    ImageView::new(
+    ImageView::new_default(
         StorageImage::with_usage(
             queue.device().clone(),
             dims,
@@ -315,7 +315,7 @@ pub fn create_device_image_with_usage(
         array_layers: 1,
     };
     let flags = ImageCreateFlags::none();
-    ImageView::new(
+    ImageView::new_default(
         StorageImage::with_usage(
             queue.device().clone(),
             dims,

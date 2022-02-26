@@ -13,28 +13,31 @@
 //! other image types of this library, and all custom image types
 //! that you create must wrap around the types in this module.
 
-use crate::check_errors;
-use crate::device::physical::{FormatFeatures, ImageFormatProperties};
-use crate::device::{Device, DeviceOwned};
-use crate::format::{ChromaSampling, Format, NumericType};
-use crate::image::{
-    ImageAspect, ImageCreateFlags, ImageDimensions, ImageLayout, ImageTiling, ImageType,
-    ImageUsage, MipmapsCount, SampleCount, SampleCounts,
+use super::{
+    ImageAspect, ImageCreateFlags, ImageDimensions, ImageLayout, ImageTiling, ImageUsage,
+    SampleCount, SampleCounts,
 };
-use crate::memory::{
-    DeviceMemory, DeviceMemoryAllocationError, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
-    MemoryRequirements,
+use crate::{
+    check_errors,
+    device::{Device, DeviceOwned},
+    format::{ChromaSampling, Format, FormatFeatures, NumericType},
+    image::{ImageFormatInfo, ImageFormatProperties, ImageType},
+    memory::{
+        DeviceMemory, DeviceMemoryAllocationError, ExternalMemoryHandleType,
+        ExternalMemoryHandleTypes, MemoryRequirements,
+    },
+    sync::Sharing,
+    DeviceSize, Error, OomError, Version, VulkanObject,
 };
-use crate::sync::Sharing;
-use crate::{DeviceSize, Error, OomError, Version, VulkanObject};
 use ash::vk::Handle;
 use smallvec::{smallvec, SmallVec};
-use std::error;
-use std::fmt;
-use std::hash::{Hash, Hasher};
-use std::mem::MaybeUninit;
-use std::ptr;
-use std::sync::Arc;
+use std::{
+    error, fmt,
+    hash::{Hash, Hasher},
+    mem::MaybeUninit,
+    ptr,
+    sync::Arc,
+};
 
 /// A storage for pixels or arbitrary data.
 ///
@@ -48,450 +51,147 @@ use std::sync::Arc;
 /// - The queue family ownership must be manually enforced.
 /// - The usage must be manually enforced.
 /// - The image layout must be manually enforced and transitioned.
-///
+#[derive(Debug)]
 pub struct UnsafeImage {
     handle: ash::vk::Image,
     device: Arc<Device>,
 
     dimensions: ImageDimensions,
-    flags: ImageCreateFlags,
-    format: Format,
+    format: Option<Format>,
     format_features: FormatFeatures,
     initial_layout: ImageLayout,
     mip_levels: u32,
     samples: SampleCount,
     tiling: ImageTiling,
     usage: ImageUsage,
+    mutable_format: bool,
+    cube_compatible: bool,
+    array_2d_compatible: bool,
+    block_texel_view_compatible: bool,
 
     // `vkDestroyImage` is called only if `needs_destruction` is true.
     needs_destruction: bool,
 }
 
 impl UnsafeImage {
-    /// Starts constructing a new `UnsafeImage`.
-    #[inline]
-    pub fn start(device: Arc<Device>) -> UnsafeImageBuilder {
-        UnsafeImageBuilder {
-            device,
-            dimensions: None,
-            external_memory_handle_types: ExternalMemoryHandleTypes::none(),
-            flags: ImageCreateFlags::none(),
-            format: None,
-            initial_layout: ImageLayout::Undefined,
-            mip_levels: MipmapsCount::One,
-            samples: SampleCount::Sample1,
-            sharing: Sharing::Exclusive,
-            tiling: ImageTiling::Optimal,
-            usage: ImageUsage::none(),
-        }
-    }
-
-    /// Creates an image from a raw handle. The image won't be destroyed.
-    ///
-    /// This function is for example used at the swapchain's initialization.
-    pub(crate) unsafe fn from_raw(
-        device: Arc<Device>,
-        handle: ash::vk::Image,
-        usage: ImageUsage,
-        format: Format,
-        flags: ImageCreateFlags,
-        dimensions: ImageDimensions,
-        samples: SampleCount,
-        mip_levels: u32,
-    ) -> UnsafeImage {
-        let tiling = ImageTiling::Optimal;
-        let format_features = device
-            .physical_device()
-            .format_properties(format)
-            .optimal_tiling_features;
-
-        // TODO: check that usage is correct in regard to `output`?
-
-        UnsafeImage {
-            handle,
-            device: device.clone(),
-
-            dimensions,
-            flags,
-            format,
-            format_features,
-            initial_layout: ImageLayout::Undefined, // TODO: Maybe this should be passed in?
-            mip_levels,
-            samples,
-            tiling,
-            usage,
-
-            needs_destruction: false, // TODO: pass as parameter
-        }
-    }
-
-    /// Returns the memory requirements for this image.
-    pub fn memory_requirements(&self) -> MemoryRequirements {
-        let image_memory_requirements_info2 = ash::vk::ImageMemoryRequirementsInfo2 {
-            image: self.handle,
-            ..Default::default()
-        };
-        let mut memory_requirements2 = ash::vk::MemoryRequirements2::default();
-
-        let mut memory_dedicated_requirements = if self.device.api_version() >= Version::V1_1
-            || self.device.enabled_extensions().khr_dedicated_allocation
-        {
-            Some(ash::vk::MemoryDedicatedRequirements::default())
-        } else {
-            None
-        };
-
-        if let Some(next) = memory_dedicated_requirements.as_mut() {
-            next.p_next = memory_requirements2.p_next;
-            memory_requirements2.p_next = next as *mut _ as *mut _;
-        }
-
-        unsafe {
-            let fns = self.device.fns();
-
-            if self.device.api_version() >= Version::V1_1
-                || self
-                    .device
-                    .enabled_extensions()
-                    .khr_get_memory_requirements2
-            {
-                if self.device.api_version() >= Version::V1_1 {
-                    fns.v1_1.get_image_memory_requirements2(
-                        self.device.internal_object(),
-                        &image_memory_requirements_info2,
-                        &mut memory_requirements2,
-                    );
-                } else {
-                    fns.khr_get_memory_requirements2
-                        .get_image_memory_requirements2_khr(
-                            self.device.internal_object(),
-                            &image_memory_requirements_info2,
-                            &mut memory_requirements2,
-                        );
-                }
-            } else {
-                fns.v1_0.get_image_memory_requirements(
-                    self.device.internal_object(),
-                    self.handle,
-                    &mut memory_requirements2.memory_requirements,
-                );
-            }
-        }
-
-        MemoryRequirements {
-            prefer_dedicated: memory_dedicated_requirements
-                .map_or(false, |dreqs| dreqs.prefers_dedicated_allocation != 0),
-            ..MemoryRequirements::from(memory_requirements2.memory_requirements)
-        }
-    }
-
-    pub unsafe fn bind_memory(
-        &self,
-        memory: &DeviceMemory,
-        offset: DeviceSize,
-    ) -> Result<(), OomError> {
-        let fns = self.device.fns();
-
-        // We check for correctness in debug mode.
-        debug_assert!({
-            let mut mem_reqs = MaybeUninit::uninit();
-            fns.v1_0.get_image_memory_requirements(
-                self.device.internal_object(),
-                self.handle,
-                mem_reqs.as_mut_ptr(),
-            );
-
-            let mem_reqs = mem_reqs.assume_init();
-            mem_reqs.size <= memory.size() - offset
-                && offset % mem_reqs.alignment == 0
-                && mem_reqs.memory_type_bits & (1 << memory.memory_type().id()) != 0
-        });
-
-        check_errors(fns.v1_0.bind_image_memory(
-            self.device.internal_object(),
-            self.handle,
-            memory.internal_object(),
-            offset,
-        ))?;
-        Ok(())
-    }
-
-    /// Returns the dimensions of the image.
-    #[inline]
-    pub fn dimensions(&self) -> ImageDimensions {
-        self.dimensions
-    }
-
-    /// Returns the flags the image was created with.
-    #[inline]
-    pub fn flags(&self) -> ImageCreateFlags {
-        self.flags
-    }
-
-    /// Returns the image's format.
-    #[inline]
-    pub fn format(&self) -> Format {
-        self.format
-    }
-
-    /// Returns the features supported by the image's format.
-    #[inline]
-    pub fn format_features(&self) -> &FormatFeatures {
-        &self.format_features
-    }
-
-    /// Returns the number of mipmap levels in the image.
-    #[inline]
-    pub fn mip_levels(&self) -> u32 {
-        self.mip_levels
-    }
-
-    /// Returns the initial layout of the image.
-    #[inline]
-    pub fn initial_layout(&self) -> ImageLayout {
-        self.initial_layout
-    }
-
-    /// Returns the number of samples for the image.
-    #[inline]
-    pub fn samples(&self) -> SampleCount {
-        self.samples
-    }
-
-    /// Returns the tiling of the image.
-    #[inline]
-    pub fn tiling(&self) -> ImageTiling {
-        self.tiling
-    }
-
-    /// Returns the usage the image was created with.
-    #[inline]
-    pub fn usage(&self) -> &ImageUsage {
-        &self.usage
-    }
-
-    /// Returns a key unique to each `UnsafeImage`. Can be used for the `conflicts_key` method.
-    #[inline]
-    pub fn key(&self) -> u64 {
-        self.handle.as_raw()
-    }
-
-    /// Queries the layout of an image in memory. Only valid for images with linear tiling.
-    ///
-    /// This function is only valid for images with a color format. See the other similar functions
-    /// for the other aspects.
-    ///
-    /// The layout is invariant for each image. However it is not cached, as this would waste
-    /// memory in the case of non-linear-tiling images. You are encouraged to store the layout
-    /// somewhere in order to avoid calling this semi-expensive function at every single memory
-    /// access.
-    ///
-    /// Note that while Vulkan allows querying the array layers other than 0, it is redundant as
-    /// you can easily calculate the position of any layer.
-    ///
-    /// # Panic
-    ///
-    /// - Panics if the mipmap level is out of range.
-    ///
-    /// # Safety
-    ///
-    /// - The image must *not* have a depth, stencil or depth-stencil format.
-    /// - The image must have been created with linear tiling.
-    ///
-    #[inline]
-    pub unsafe fn color_linear_layout(&self, mip_level: u32) -> LinearLayout {
-        self.linear_layout_impl(mip_level, ImageAspect::Color)
-    }
-
-    /// Same as `color_linear_layout`, except that it retrieves the depth component of the image.
-    ///
-    /// # Panic
-    ///
-    /// - Panics if the mipmap level is out of range.
-    ///
-    /// # Safety
-    ///
-    /// - The image must have a depth or depth-stencil format.
-    /// - The image must have been created with linear tiling.
-    ///
-    #[inline]
-    pub unsafe fn depth_linear_layout(&self, mip_level: u32) -> LinearLayout {
-        self.linear_layout_impl(mip_level, ImageAspect::Depth)
-    }
-
-    /// Same as `color_linear_layout`, except that it retrieves the stencil component of the image.
-    ///
-    /// # Panic
-    ///
-    /// - Panics if the mipmap level is out of range.
-    ///
-    /// # Safety
-    ///
-    /// - The image must have a stencil or depth-stencil format.
-    /// - The image must have been created with linear tiling.
-    ///
-    #[inline]
-    pub unsafe fn stencil_linear_layout(&self, mip_level: u32) -> LinearLayout {
-        self.linear_layout_impl(mip_level, ImageAspect::Stencil)
-    }
-
-    /// Same as `color_linear_layout`, except that it retrieves layout for the requested YCbCr
-    /// component too if the format is a YCbCr format.
-    ///
-    /// # Panic
-    ///
-    /// - Panics if plane aspect is out of range.
-    /// - Panics if the aspect is not a color or planar aspect.
-    /// - Panics if the number of mipmaps is not 1.
-    #[inline]
-    pub unsafe fn multiplane_color_layout(&self, aspect: ImageAspect) -> LinearLayout {
-        // This function only supports color and planar aspects currently.
-        assert!(matches!(
-            aspect,
-            ImageAspect::Color | ImageAspect::Plane0 | ImageAspect::Plane1 | ImageAspect::Plane2
-        ));
-        assert!(self.mip_levels == 1);
-
-        if matches!(
-            aspect,
-            ImageAspect::Plane0 | ImageAspect::Plane1 | ImageAspect::Plane2
-        ) {
-            debug_assert!(self.format.ycbcr_chroma_sampling().is_some());
-        }
-
-        self.linear_layout_impl(0, aspect)
-    }
-
-    // Implementation of the `*_layout` functions.
-    unsafe fn linear_layout_impl(&self, mip_level: u32, aspect: ImageAspect) -> LinearLayout {
-        let fns = self.device.fns();
-
-        assert!(mip_level < self.mip_levels);
-
-        let subresource = ash::vk::ImageSubresource {
-            aspect_mask: ash::vk::ImageAspectFlags::from(aspect),
-            mip_level: mip_level,
-            array_layer: 0,
-        };
-
-        let mut out = MaybeUninit::uninit();
-        fns.v1_0.get_image_subresource_layout(
-            self.device.internal_object(),
-            self.handle,
-            &subresource,
-            out.as_mut_ptr(),
-        );
-
-        let out = out.assume_init();
-        LinearLayout {
-            offset: out.offset,
-            size: out.size,
-            row_pitch: out.row_pitch,
-            array_pitch: out.array_pitch,
-            depth_pitch: out.depth_pitch,
-        }
-    }
-}
-
-unsafe impl VulkanObject for UnsafeImage {
-    type Object = ash::vk::Image;
-
-    #[inline]
-    fn internal_object(&self) -> ash::vk::Image {
-        self.handle
-    }
-}
-
-unsafe impl DeviceOwned for UnsafeImage {
-    fn device(&self) -> &Arc<Device> {
-        &self.device
-    }
-}
-
-impl fmt::Debug for UnsafeImage {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "<Vulkan image {:?}>", self.handle)
-    }
-}
-
-impl Drop for UnsafeImage {
-    #[inline]
-    fn drop(&mut self) {
-        if !self.needs_destruction {
-            return;
-        }
-
-        unsafe {
-            let fns = self.device.fns();
-            fns.v1_0
-                .destroy_image(self.device.internal_object(), self.handle, ptr::null());
-        }
-    }
-}
-
-impl PartialEq for UnsafeImage {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.handle == other.handle && self.device == other.device
-    }
-}
-
-impl Eq for UnsafeImage {}
-
-impl Hash for UnsafeImage {
-    #[inline]
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.handle.hash(state);
-        self.device.hash(state);
-    }
-}
-
-/// Used to construct a new `UnsafeImage`.
-pub struct UnsafeImageBuilder {
-    device: Arc<Device>,
-
-    dimensions: Option<ImageDimensions>,
-    external_memory_handle_types: ExternalMemoryHandleTypes,
-    flags: ImageCreateFlags,
-    format: Option<Format>,
-    initial_layout: ImageLayout,
-    mip_levels: MipmapsCount,
-    samples: SampleCount,
-    sharing: Sharing<SmallVec<[u32; 4]>>,
-    tiling: ImageTiling,
-    usage: ImageUsage,
-}
-
-impl UnsafeImageBuilder {
-    /// Creates the `UnsafeImage`.
+    /// Creates a new `UnsafeImage`.
     ///
     /// # Panics
-    /// - Panics if no dimensions were specified.
-    /// - Panics if no format was specified.
-    /// - Panics if no usage was specified.
-    pub fn build(self) -> Result<UnsafeImage, ImageCreationError> {
-        let Self {
-            device,
+    ///
+    /// - Panics if one of the values in `create_info.dimensions` is zero.
+    /// - Panics if `create_info.format` is `None`.
+    /// - Panics if `create_info.block_texel_view_compatible` is set but not
+    ///   `create_info.mutable_format`.
+    /// - Panics if `create_info.mip_levels` is `0`.
+    /// - Panics if `create_info.sharing` is [`Sharing::Concurrent`] with less than 2 items.
+    /// - Panics if `create_info.initial)layout` is something other than
+    ///   [`ImageLayout::Undefined`] or [`ImageLayout::Preinitialized`].
+    /// - Panics if `create_info.usage` is empty.
+    /// - Panics if `create_info.usage` contains `transient_attachment`, but does not also contain
+    ///   at least one of `color_attachment`, `depth_stencil_attachment`, `input_attachment`, or
+    ///   if it contains values other than these.
+    pub fn new(
+        device: Arc<Device>,
+        mut create_info: UnsafeImageCreateInfo,
+    ) -> Result<UnsafeImage, ImageCreationError> {
+        let format_features = Self::validate(&device, &mut create_info)?;
+        let handle = unsafe { Self::create(&device, &create_info)? };
+
+        let UnsafeImageCreateInfo {
             dimensions,
-            external_memory_handle_types,
-            flags,
             format,
-            initial_layout,
             mip_levels,
             samples,
-            sharing,
             tiling,
             usage,
-        } = self;
+            sharing,
+            initial_layout,
+            external_memory_handle_types,
+            mutable_format,
+            cube_compatible,
+            array_2d_compatible,
+            block_texel_view_compatible,
+            _ne: _,
+        } = create_info;
+
+        let image = UnsafeImage {
+            device,
+            handle,
+
+            dimensions,
+            format,
+            format_features,
+            mip_levels,
+            initial_layout,
+            samples,
+            tiling,
+            usage,
+            mutable_format,
+            cube_compatible,
+            array_2d_compatible,
+            block_texel_view_compatible,
+
+            needs_destruction: true,
+        };
+
+        Ok(image)
+    }
+
+    fn validate(
+        device: &Device,
+        create_info: &mut UnsafeImageCreateInfo,
+    ) -> Result<FormatFeatures, ImageCreationError> {
+        let &mut UnsafeImageCreateInfo {
+            dimensions,
+            format,
+            mip_levels,
+            samples,
+            tiling,
+            usage,
+            ref mut sharing,
+            initial_layout,
+            external_memory_handle_types,
+            mutable_format,
+            cube_compatible,
+            array_2d_compatible,
+            block_texel_view_compatible,
+            _ne: _,
+        } = create_info;
 
         let physical_device = device.physical_device();
         let device_properties = physical_device.properties();
 
-        // No default value, must be provided
-        let dimensions = dimensions.unwrap();
         let format = format.unwrap(); // Can be None for "external formats" but Vulkano doesn't support that yet
+
+        // VUID-VkImageCreateInfo-usage-requiredbitmask
         assert!(usage != ImageUsage::none());
+
+        if usage.transient_attachment {
+            // VUID-VkImageCreateInfo-usage-00966
+            assert!(
+                usage.color_attachment || usage.depth_stencil_attachment || usage.input_attachment
+            );
+
+            // VUID-VkImageCreateInfo-usage-00963
+            assert!(
+                ImageUsage {
+                    transient_attachment: false,
+                    color_attachment: false,
+                    depth_stencil_attachment: false,
+                    input_attachment: false,
+                    ..usage.clone()
+                } == ImageUsage::none()
+            )
+        }
+
+        // VUID-VkImageCreateInfo-initialLayout-00993
+        assert!(matches!(
+            initial_layout,
+            ImageLayout::Undefined | ImageLayout::Preinitialized
+        ));
+
+        // VUID-VkImageCreateInfo-flags-01573
+        assert!(!(block_texel_view_compatible && !mutable_format));
 
         // Get format features
         let format_features = {
@@ -506,13 +206,6 @@ impl UnsafeImageBuilder {
         if format_features == FormatFeatures::default() {
             return Err(ImageCreationError::FormatNotSupported);
         }
-
-        // Compute the number of mip levels
-        let mip_levels = match mip_levels.into() {
-            MipmapsCount::Specific(num) => num,
-            MipmapsCount::Log2 => dimensions.max_mip_levels(),
-            MipmapsCount::One => 1,
-        };
 
         // Decode the dimensions
         let (image_type, extent, array_layers) = match dimensions {
@@ -532,7 +225,23 @@ impl UnsafeImageBuilder {
             } => (ImageType::Dim3d, [width, height, depth], 1),
         };
 
+        // VUID-VkImageCreateInfo-extent-00944
+        assert!(extent[0] != 0);
+
+        // VUID-VkImageCreateInfo-extent-00945
+        assert!(extent[1] != 0);
+
+        // VUID-VkImageCreateInfo-extent-00946
+        assert!(extent[2] != 0);
+
+        // VUID-VkImageCreateInfo-arrayLayers-00948
+        assert!(array_layers != 0);
+
+        // VUID-VkImageCreateInfo-mipLevels-00947
+        assert!(mip_levels != 0);
+
         // Check mip levels
+
         let max_mip_levels = dimensions.max_mip_levels();
         debug_assert!(max_mip_levels >= 1);
 
@@ -550,7 +259,7 @@ impl UnsafeImageBuilder {
                 return Err(ImageCreationError::MultisampleNot2d);
             }
 
-            if flags.cube_compatible {
+            if cube_compatible {
                 return Err(ImageCreationError::MultisampleCubeCompatible);
             }
 
@@ -682,7 +391,7 @@ impl UnsafeImageBuilder {
 
         /* Check flags requirements */
 
-        if flags.cube_compatible {
+        if cube_compatible {
             // VUID-VkImageCreateInfo-flags-00949
             if image_type != ImageType::Dim2d {
                 return Err(ImageCreationError::CubeCompatibleNot2d);
@@ -699,46 +408,42 @@ impl UnsafeImageBuilder {
             }
         }
 
-        if flags.array_2d_compatible {
+        if array_2d_compatible {
             // VUID-VkImageCreateInfo-flags-00950
             if image_type != ImageType::Dim3d {
                 return Err(ImageCreationError::Array2dCompatibleNot3d);
             }
         }
 
-        if flags.block_texel_view_compatible {
+        if block_texel_view_compatible {
             // VUID-VkImageCreateInfo-flags-01572
             if format.compression().is_none() {
                 return Err(ImageCreationError::BlockTexelViewCompatibleNotCompressed);
             }
         }
 
-        // TODO:
-        if flags.sparse_binding || flags.sparse_residency || flags.sparse_aliased {
-            todo!();
-        }
-
         /* Check sharing mode and queue families */
 
-        let (sharing_mode, queue_family_indices) = match &sharing {
-            Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, &[] as _),
+        match sharing {
+            Sharing::Exclusive => (),
             Sharing::Concurrent(ids) => {
-                debug_assert!(ids.len() >= 2);
+                // VUID-VkImageCreateInfo-sharingMode-00942
+                ids.sort_unstable();
+                ids.dedup();
+                assert!(ids.len() >= 2);
 
-                for &id in ids {
+                for &id in ids.iter() {
                     // VUID-VkImageCreateInfo-sharingMode-01420
                     if device.physical_device().queue_family_by_id(id).is_none() {
                         return Err(ImageCreationError::SharingInvalidQueueFamilyId { id });
                     }
                 }
-
-                (ash::vk::SharingMode::CONCURRENT, ids.as_slice())
             }
-        };
+        }
 
         /* External memory handles */
 
-        let mut external_memory_image_create_info = if !external_memory_handle_types.is_empty() {
+        if !external_memory_handle_types.is_empty() {
             if !(device.api_version() >= Version::V1_1
                 || device.enabled_extensions().khr_external_memory)
             {
@@ -752,14 +457,7 @@ impl UnsafeImageBuilder {
             if initial_layout != ImageLayout::Undefined {
                 return Err(ImageCreationError::ExternalMemoryInvalidInitialLayout);
             }
-
-            Some(ash::vk::ExternalMemoryImageCreateInfo {
-                handle_types: external_memory_handle_types.into(),
-                ..Default::default()
-            })
-        } else {
-            None
-        };
+        }
 
         /*
             Some device limits can be exceeded, but only for particular image configurations, which
@@ -774,7 +472,7 @@ impl UnsafeImageBuilder {
                 let limit = device.physical_device().properties().max_image_dimension1_d;
                 extent[0] > limit
             }
-            ImageType::Dim2d if flags.cube_compatible => {
+            ImageType::Dim2d if cube_compatible => {
                 let limit = device
                     .physical_device()
                     .properties()
@@ -932,7 +630,7 @@ impl UnsafeImageBuilder {
         // We determined that we must query the device in order to be sure that the image
         // configuration is supported.
         if must_query_device {
-            let handle_types: SmallVec<[Option<ExternalMemoryHandleType>; 4]> =
+            let external_memory_handle_types: SmallVec<[Option<ExternalMemoryHandleType>; 4]> =
                 if !external_memory_handle_types.is_empty() {
                     // If external memory handles are used, the properties need to be queried
                     // individually for each handle type.
@@ -944,16 +642,22 @@ impl UnsafeImageBuilder {
                     smallvec![None]
                 };
 
-            for handle_type in handle_types {
-                let image_format_properties = device.physical_device().image_format_properties(
-                    format,
-                    image_type,
-                    tiling,
-                    usage,
-                    flags,
-                    handle_type,
-                    None,
-                )?;
+            for external_memory_handle_type in external_memory_handle_types {
+                let image_format_properties =
+                    device
+                        .physical_device()
+                        .image_format_properties(ImageFormatInfo {
+                            format: Some(format),
+                            image_type,
+                            tiling,
+                            usage,
+                            mutable_format,
+                            cube_compatible,
+                            array_2d_compatible,
+                            block_texel_view_compatible,
+                            external_memory_handle_type,
+                            ..Default::default()
+                        })?;
 
                 let ImageFormatProperties {
                     max_extent,
@@ -1008,11 +712,73 @@ impl UnsafeImageBuilder {
             }
         }
 
-        // Everything now ok. Creating the image.
+        Ok(format_features)
+    }
+
+    unsafe fn create(
+        device: &Device,
+        create_info: &UnsafeImageCreateInfo,
+    ) -> Result<ash::vk::Image, ImageCreationError> {
+        let &UnsafeImageCreateInfo {
+            dimensions,
+            format,
+            mip_levels,
+            samples,
+            tiling,
+            usage,
+            ref sharing,
+            initial_layout,
+            external_memory_handle_types,
+            mutable_format,
+            cube_compatible,
+            array_2d_compatible,
+            block_texel_view_compatible,
+            _ne: _,
+        } = create_info;
+
+        let flags = ImageCreateFlags {
+            mutable_format,
+            cube_compatible,
+            array_2d_compatible,
+            block_texel_view_compatible,
+            ..ImageCreateFlags::none()
+        };
+
+        let (image_type, extent, array_layers) = match dimensions {
+            ImageDimensions::Dim1d {
+                width,
+                array_layers,
+            } => (ImageType::Dim1d, [width, 1, 1], array_layers),
+            ImageDimensions::Dim2d {
+                width,
+                height,
+                array_layers,
+            } => (ImageType::Dim2d, [width, height, 1], array_layers),
+            ImageDimensions::Dim3d {
+                width,
+                height,
+                depth,
+            } => (ImageType::Dim3d, [width, height, depth], 1),
+        };
+
+        let (sharing_mode, queue_family_indices) = match sharing {
+            Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, &[] as _),
+            Sharing::Concurrent(ids) => (ash::vk::SharingMode::CONCURRENT, ids.as_slice()),
+        };
+
+        let mut external_memory_image_create_info = if !external_memory_handle_types.is_empty() {
+            Some(ash::vk::ExternalMemoryImageCreateInfo {
+                handle_types: external_memory_handle_types.into(),
+                ..Default::default()
+            })
+        } else {
+            None
+        };
+
         let mut create_info = ash::vk::ImageCreateInfo::builder()
             .flags(flags.into())
             .image_type(image_type.into())
-            .format(format.into())
+            .format(format.map(Into::into).unwrap_or_default())
             .extent(ash::vk::Extent3D {
                 width: extent[0],
                 height: extent[1],
@@ -1031,10 +797,8 @@ impl UnsafeImageBuilder {
             create_info = create_info.push_next(next);
         }
 
-        let fns = device.fns();
-        let fns_i = device.instance().fns();
-
-        let handle = unsafe {
+        let handle = {
+            let fns = device.fns();
             let mut output = MaybeUninit::uninit();
             check_errors(fns.v1_0.create_image(
                 device.internal_object(),
@@ -1045,216 +809,507 @@ impl UnsafeImageBuilder {
             output.assume_init()
         };
 
-        let image = UnsafeImage {
-            device,
+        Ok(handle)
+    }
+
+    /// Creates an image from a raw handle. The image won't be destroyed.
+    ///
+    /// This function is for example used at the swapchain's initialization.
+    pub(crate) unsafe fn from_raw(
+        device: Arc<Device>,
+        handle: ash::vk::Image,
+        usage: ImageUsage,
+        format: Format,
+        flags: ImageCreateFlags,
+        dimensions: ImageDimensions,
+        samples: SampleCount,
+        mip_levels: u32,
+    ) -> UnsafeImage {
+        let tiling = ImageTiling::Optimal;
+        let format_features = device
+            .physical_device()
+            .format_properties(format)
+            .optimal_tiling_features;
+
+        assert!(
+            ImageCreateFlags {
+                mutable_format: false,
+                cube_compatible: false,
+                array_2d_compatible: false,
+                block_texel_view_compatible: false,
+                ..ImageCreateFlags::none()
+            } == ImageCreateFlags::none()
+        );
+
+        // TODO: check that usage is correct in regard to `output`?
+
+        UnsafeImage {
             handle,
+            device: device.clone(),
 
             dimensions,
-            flags,
-            format,
+            format: Some(format),
             format_features,
+            initial_layout: ImageLayout::Undefined, // TODO: Maybe this should be passed in?
             mip_levels,
-            initial_layout,
             samples,
             tiling,
             usage,
+            mutable_format: flags.mutable_format,
+            cube_compatible: flags.cube_compatible,
+            array_2d_compatible: flags.array_2d_compatible,
+            block_texel_view_compatible: flags.block_texel_view_compatible,
 
-            needs_destruction: true,
+            needs_destruction: false, // TODO: pass as parameter
+        }
+    }
+
+    /// Returns the memory requirements for this image.
+    pub fn memory_requirements(&self) -> MemoryRequirements {
+        let image_memory_requirements_info2 = ash::vk::ImageMemoryRequirementsInfo2 {
+            image: self.handle,
+            ..Default::default()
+        };
+        let mut memory_requirements2 = ash::vk::MemoryRequirements2::default();
+
+        let mut memory_dedicated_requirements = if self.device.api_version() >= Version::V1_1
+            || self.device.enabled_extensions().khr_dedicated_allocation
+        {
+            Some(ash::vk::MemoryDedicatedRequirements::default())
+        } else {
+            None
         };
 
-        Ok(image)
+        if let Some(next) = memory_dedicated_requirements.as_mut() {
+            next.p_next = memory_requirements2.p_next;
+            memory_requirements2.p_next = next as *mut _ as *mut _;
+        }
+
+        unsafe {
+            let fns = self.device.fns();
+
+            if self.device.api_version() >= Version::V1_1
+                || self
+                    .device
+                    .enabled_extensions()
+                    .khr_get_memory_requirements2
+            {
+                if self.device.api_version() >= Version::V1_1 {
+                    fns.v1_1.get_image_memory_requirements2(
+                        self.device.internal_object(),
+                        &image_memory_requirements_info2,
+                        &mut memory_requirements2,
+                    );
+                } else {
+                    fns.khr_get_memory_requirements2
+                        .get_image_memory_requirements2_khr(
+                            self.device.internal_object(),
+                            &image_memory_requirements_info2,
+                            &mut memory_requirements2,
+                        );
+                }
+            } else {
+                fns.v1_0.get_image_memory_requirements(
+                    self.device.internal_object(),
+                    self.handle,
+                    &mut memory_requirements2.memory_requirements,
+                );
+            }
+        }
+
+        MemoryRequirements {
+            prefer_dedicated: memory_dedicated_requirements
+                .map_or(false, |dreqs| dreqs.prefers_dedicated_allocation != 0),
+            ..MemoryRequirements::from(memory_requirements2.memory_requirements)
+        }
     }
 
+    pub unsafe fn bind_memory(
+        &self,
+        memory: &DeviceMemory,
+        offset: DeviceSize,
+    ) -> Result<(), OomError> {
+        let fns = self.device.fns();
+
+        // We check for correctness in debug mode.
+        debug_assert!({
+            let mut mem_reqs = MaybeUninit::uninit();
+            fns.v1_0.get_image_memory_requirements(
+                self.device.internal_object(),
+                self.handle,
+                mem_reqs.as_mut_ptr(),
+            );
+
+            let mem_reqs = mem_reqs.assume_init();
+            mem_reqs.size <= memory.size() - offset
+                && offset % mem_reqs.alignment == 0
+                && mem_reqs.memory_type_bits & (1 << memory.memory_type().id()) != 0
+        });
+
+        check_errors(fns.v1_0.bind_image_memory(
+            self.device.internal_object(),
+            self.handle,
+            memory.internal_object(),
+            offset,
+        ))?;
+        Ok(())
+    }
+
+    /// Returns the dimensions of the image.
+    #[inline]
+    pub fn dimensions(&self) -> ImageDimensions {
+        self.dimensions
+    }
+
+    /// Returns the image's format.
+    #[inline]
+    pub fn format(&self) -> Option<Format> {
+        self.format
+    }
+
+    /// Returns the features supported by the image's format.
+    #[inline]
+    pub fn format_features(&self) -> &FormatFeatures {
+        &self.format_features
+    }
+
+    /// Returns the number of mipmap levels in the image.
+    #[inline]
+    pub fn mip_levels(&self) -> u32 {
+        self.mip_levels
+    }
+
+    /// Returns the initial layout of the image.
+    #[inline]
+    pub fn initial_layout(&self) -> ImageLayout {
+        self.initial_layout
+    }
+
+    /// Returns the number of samples for the image.
+    #[inline]
+    pub fn samples(&self) -> SampleCount {
+        self.samples
+    }
+
+    /// Returns the tiling of the image.
+    #[inline]
+    pub fn tiling(&self) -> ImageTiling {
+        self.tiling
+    }
+
+    /// Returns the usage the image was created with.
+    #[inline]
+    pub fn usage(&self) -> &ImageUsage {
+        &self.usage
+    }
+
+    /// Returns whether `mutable_format` is enabled on the image.
+    #[inline]
+    pub fn mutable_format(&self) -> bool {
+        self.mutable_format
+    }
+
+    /// Returns whether `cube_compatible` is enabled on the image.
+    #[inline]
+    pub fn cube_compatible(&self) -> bool {
+        self.cube_compatible
+    }
+
+    /// Returns whether `array_2d_compatible` is enabled on the image.
+    #[inline]
+    pub fn array_2d_compatible(&self) -> bool {
+        self.array_2d_compatible
+    }
+
+    /// Returns whether `block_texel_view_compatible` is enabled on the image.
+    #[inline]
+    pub fn block_texel_view_compatible(&self) -> bool {
+        self.block_texel_view_compatible
+    }
+
+    /// Returns a key unique to each `UnsafeImage`. Can be used for the `conflicts_key` method.
+    #[inline]
+    pub fn key(&self) -> u64 {
+        self.handle.as_raw()
+    }
+
+    /// Queries the layout of an image in memory. Only valid for images with linear tiling.
+    ///
+    /// This function is only valid for images with a color format. See the other similar functions
+    /// for the other aspects.
+    ///
+    /// The layout is invariant for each image. However it is not cached, as this would waste
+    /// memory in the case of non-linear-tiling images. You are encouraged to store the layout
+    /// somewhere in order to avoid calling this semi-expensive function at every single memory
+    /// access.
+    ///
+    /// Note that while Vulkan allows querying the array layers other than 0, it is redundant as
+    /// you can easily calculate the position of any layer.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the mipmap level is out of range.
+    ///
+    /// # Safety
+    ///
+    /// - The image must *not* have a depth, stencil or depth-stencil format.
+    /// - The image must have been created with linear tiling.
+    ///
+    #[inline]
+    pub unsafe fn color_linear_layout(&self, mip_level: u32) -> LinearLayout {
+        self.linear_layout_impl(mip_level, ImageAspect::Color)
+    }
+
+    /// Same as `color_linear_layout`, except that it retrieves the depth component of the image.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the mipmap level is out of range.
+    ///
+    /// # Safety
+    ///
+    /// - The image must have a depth or depth-stencil format.
+    /// - The image must have been created with linear tiling.
+    ///
+    #[inline]
+    pub unsafe fn depth_linear_layout(&self, mip_level: u32) -> LinearLayout {
+        self.linear_layout_impl(mip_level, ImageAspect::Depth)
+    }
+
+    /// Same as `color_linear_layout`, except that it retrieves the stencil component of the image.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the mipmap level is out of range.
+    ///
+    /// # Safety
+    ///
+    /// - The image must have a stencil or depth-stencil format.
+    /// - The image must have been created with linear tiling.
+    ///
+    #[inline]
+    pub unsafe fn stencil_linear_layout(&self, mip_level: u32) -> LinearLayout {
+        self.linear_layout_impl(mip_level, ImageAspect::Stencil)
+    }
+
+    /// Same as `color_linear_layout`, except that it retrieves layout for the requested YCbCr
+    /// component too if the format is a YCbCr format.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if plane aspect is out of range.
+    /// - Panics if the aspect is not a color or planar aspect.
+    /// - Panics if the number of mipmaps is not 1.
+    #[inline]
+    pub unsafe fn multiplane_color_layout(&self, aspect: ImageAspect) -> LinearLayout {
+        // This function only supports color and planar aspects currently.
+        assert!(matches!(
+            aspect,
+            ImageAspect::Color | ImageAspect::Plane0 | ImageAspect::Plane1 | ImageAspect::Plane2
+        ));
+        assert!(self.mip_levels == 1);
+
+        if matches!(
+            aspect,
+            ImageAspect::Plane0 | ImageAspect::Plane1 | ImageAspect::Plane2
+        ) {
+            debug_assert!(self.format.unwrap().ycbcr_chroma_sampling().is_some());
+        }
+
+        self.linear_layout_impl(0, aspect)
+    }
+
+    // Implementation of the `*_layout` functions.
+    unsafe fn linear_layout_impl(&self, mip_level: u32, aspect: ImageAspect) -> LinearLayout {
+        let fns = self.device.fns();
+
+        assert!(mip_level < self.mip_levels);
+
+        let subresource = ash::vk::ImageSubresource {
+            aspect_mask: ash::vk::ImageAspectFlags::from(aspect),
+            mip_level: mip_level,
+            array_layer: 0,
+        };
+
+        let mut out = MaybeUninit::uninit();
+        fns.v1_0.get_image_subresource_layout(
+            self.device.internal_object(),
+            self.handle,
+            &subresource,
+            out.as_mut_ptr(),
+        );
+
+        let out = out.assume_init();
+        LinearLayout {
+            offset: out.offset,
+            size: out.size,
+            row_pitch: out.row_pitch,
+            array_pitch: out.array_pitch,
+            depth_pitch: out.depth_pitch,
+        }
+    }
+}
+
+impl Drop for UnsafeImage {
+    #[inline]
+    fn drop(&mut self) {
+        if !self.needs_destruction {
+            return;
+        }
+
+        unsafe {
+            let fns = self.device.fns();
+            fns.v1_0
+                .destroy_image(self.device.internal_object(), self.handle, ptr::null());
+        }
+    }
+}
+
+unsafe impl VulkanObject for UnsafeImage {
+    type Object = ash::vk::Image;
+
+    #[inline]
+    fn internal_object(&self) -> ash::vk::Image {
+        self.handle
+    }
+}
+
+unsafe impl DeviceOwned for UnsafeImage {
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
+
+impl PartialEq for UnsafeImage {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.handle == other.handle && self.device() == other.device()
+    }
+}
+
+impl Eq for UnsafeImage {}
+
+impl Hash for UnsafeImage {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.handle.hash(state);
+        self.device().hash(state);
+    }
+}
+
+/// Parameters to create a new `UnsafeImage`.
+#[derive(Clone, Debug)]
+pub struct UnsafeImageCreateInfo {
     /// The type, extent and number of array layers to create the image with.
     ///
-    /// There is no default value, this value must be provided.
+    /// The default value is `ImageDimensions::Dim2d { width: 0, height: 0, array_layers: 1 }`,
+    /// which must be overridden.
+    pub dimensions: ImageDimensions,
+
+    /// The format used to store the image data.
     ///
-    /// # Panics
+    /// The default value is `None`, which must be overridden.
+    pub format: Option<Format>,
+
+    /// The number of mip levels to create the image with.
     ///
-    /// - Panics if one of the dimensions is zero.
-    /// - Panics if the number of array layers is zero.
-    #[inline]
-    pub fn dimensions(mut self, dimensions: ImageDimensions) -> Self {
-        let extent = dimensions.width_height_depth();
+    /// The default value is `1`.
+    pub mip_levels: u32,
 
-        // VUID-VkImageCreateInfo-extent-00944
-        assert!(extent[0] != 0);
+    /// The number of samples per texel that the image should use.
+    ///
+    /// The default value is [`SampleCount::Sample1`].
+    pub samples: SampleCount,
 
-        // VUID-VkImageCreateInfo-extent-00945
-        assert!(extent[1] != 0);
+    /// The memory arrangement of the texel blocks.
+    ///
+    /// The default value is [`ImageTiling::Optimal`].
+    pub tiling: ImageTiling,
 
-        // VUID-VkImageCreateInfo-extent-00946
-        assert!(extent[2] != 0);
+    /// How the image is going to be used.
+    ///
+    /// The default value is [`ImageUsage::none()`], which must be overridden.
+    pub usage: ImageUsage,
 
-        // VUID-VkImageCreateInfo-arrayLayers-00948
-        assert!(dimensions.array_layers() != 0);
+    /// Whether the image can be shared across multiple queues, or is limited to a single queue.
+    ///
+    /// The default value is [`Sharing::Exclusive`].
+    pub sharing: Sharing<SmallVec<[u32; 4]>>,
 
-        self.dimensions = Some(dimensions);
-        self
-    }
+    /// The image layout that the image will have when it is created.
+    ///
+    /// The default value is [`ImageLayout::Undefined`].
+    pub initial_layout: ImageLayout,
 
     /// The external memory handle types that are going to be used with the image.
     ///
     /// If any of the fields in this value are set, the device must either support API version 1.1
     /// or the [`khr_external_memory`](crate::device::DeviceExtensions::khr_external_memory)
     /// extension must be enabled, and `initial_layout` must be set to
-    /// [`Undefined`](crate::image::ImageLayout::Undefined).
+    /// [`ImageLayout::Undefined`].
     ///
     /// The default value is [`ExternalMemoryHandleTypes::none()`].
-    #[inline]
-    pub fn external_memory_handle_types(mut self, handle_types: ExternalMemoryHandleTypes) -> Self {
-        self.external_memory_handle_types = handle_types;
-        self
-    }
+    pub external_memory_handle_types: ExternalMemoryHandleTypes,
 
-    /// Miscellaneous properties of the image.
+    /// For non-multi-planar formats, whether an image view wrapping the image can have a
+    /// different format.
     ///
-    /// The default value is [`ImageCreateFlags::none()`].
+    /// For multi-planar formats, whether an image view wrapping the image can be created from a
+    /// single plane of the image.
     ///
-    /// # Panics
-    ///
-    /// - Panics if `flags` contains `block_texel_view_compatible` but not `mutable_format`.
-    #[inline]
-    pub fn flags(mut self, flags: ImageCreateFlags) -> Self {
-        // VUID-VkImageCreateInfo-flags-01573
-        assert!(!(flags.block_texel_view_compatible && !flags.mutable_format));
+    /// The default value is `false`.
+    pub mutable_format: bool,
 
-        self.flags = flags;
-        self
-    }
+    /// For 2D images, whether an image view of type
+    /// [`ImageViewType::Cube`](crate::image::view::ImageViewType::Cube) or
+    /// [`ImageViewType::CubeArray`](crate::image::view::ImageViewType::CubeArray) can be created
+    /// from the image.
+    ///
+    /// The default value is `false`.
+    pub cube_compatible: bool,
 
-    /// The format used to store the image data.
+    /// For 3D images, whether an image view of type
+    /// [`ImageViewType::Dim2d`](crate::image::view::ImageViewType::Dim2d) or
+    /// [`ImageViewType::Dim2dArray`](crate::image::view::ImageViewType::Dim2dArray) can be created
+    /// from the image.
     ///
-    /// There is no default value, this value must be provided.
-    #[inline]
-    pub fn format(mut self, format: Format) -> Self {
-        self.format = Some(format);
-        self
-    }
+    /// The default value is `false`.
+    pub array_2d_compatible: bool,
 
-    /// The image layout that the image will have when it is created.
+    /// For images with a compressed format, whether an image view with an uncompressed
+    /// format can be created from the image, where each texel in the view will correspond to a
+    /// compressed texel block in the image.
     ///
-    /// The default value is [`Undefined`](ImageLayout::Undefined).
+    /// Requires `mutable_format`.
     ///
-    /// # Panics
-    ///
-    /// - Panics if `layout` is something other than
-    ///   [`Undefined`](ImageLayout::Undefined) or
-    ///   [`Preinitialized`](ImageLayout::Preinitialized).
-    #[inline]
-    pub fn initial_layout(mut self, layout: ImageLayout) -> Self {
-        // VUID-VkImageCreateInfo-initialLayout-00993
-        assert!(matches!(
-            layout,
-            ImageLayout::Undefined | ImageLayout::Preinitialized
-        ));
+    /// The default value is `false`.
+    pub block_texel_view_compatible: bool,
 
-        self.initial_layout = layout;
-        self
-    }
+    pub _ne: crate::NonExhaustive,
+}
 
-    /// The number of mip levels to create the image with.
-    ///
-    /// The default value is 1.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if `mip_levels` is [`Specific(0)`](MipmapsCount::Specific).
-    #[inline]
-    pub fn mip_levels<M>(mut self, mip_levels: M) -> Self
-    where
-        M: Into<MipmapsCount>,
-    {
-        let mip_levels = mip_levels.into();
-
-        // VUID-VkImageCreateInfo-mipLevels-00947
-        assert!(!matches!(mip_levels, MipmapsCount::Specific(0)));
-
-        self.mip_levels = mip_levels;
-        self
-    }
-
-    /// The number of samples per texel that the image should use.
-    ///
-    /// The default value is [`Sample1`](SampleCount::Sample1).
-    #[inline]
-    pub fn samples(mut self, samples: SampleCount) -> Self {
-        self.samples = samples;
-        self
-    }
-
-    /// Whether the image can be shared across multiple queues, or is limited to a single queue.
-    ///
-    /// The default value is [`Exclusive`](Sharing::Exclusive).
-    ///
-    /// # Panics
-    ///
-    /// - Panics if `sharing` is [`Concurrent`](Sharing::Concurrent) with less than 2 items.
-    #[inline]
-    pub fn sharing<I>(mut self, sharing: Sharing<I>) -> Self
-    where
-        I: IntoIterator<Item = u32>,
-    {
-        self.sharing = match sharing {
-            Sharing::Exclusive => Sharing::Exclusive,
-            Sharing::Concurrent(ids) => {
-                let mut ids: SmallVec<[u32; 4]> = ids.into_iter().collect();
-
-                // VUID-VkImageCreateInfo-sharingMode-00942
-                ids.sort_unstable();
-                ids.dedup();
-                assert!(ids.len() >= 2);
-
-                Sharing::Concurrent(ids)
-            }
-        };
-        self
-    }
-
-    /// The memory arrangement of the texel blocks.
-    ///
-    /// The default value is [`Optimal`](ImageTiling::Optimal).
-    #[inline]
-    pub fn tiling(mut self, tiling: ImageTiling) -> Self {
-        self.tiling = tiling;
-        self
-    }
-
-    /// How the image is going to be used.
-    ///
-    /// There is no default value, this value must be provided.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if `usage` has no bits set.
-    /// - Panics if `usage.transient_attachment` is set, and `usage` does contain at least one of
-    ///   `color_attachment`, `depth_stencil_attachment`, `input_attachment`, or contains set flags
-    ///   other than these.
-    #[inline]
-    pub fn usage(mut self, usage: ImageUsage) -> Self {
-        // VUID-VkImageCreateInfo-usage-requiredbitmask
-        assert!(usage != ImageUsage::none());
-
-        if usage.transient_attachment {
-            // VUID-VkImageCreateInfo-usage-00966
-            assert!(
-                usage.color_attachment || usage.depth_stencil_attachment || usage.input_attachment
-            );
-
-            // VUID-VkImageCreateInfo-usage-00963
-            assert!(
-                ImageUsage {
-                    transient_attachment: false,
-                    color_attachment: false,
-                    depth_stencil_attachment: false,
-                    input_attachment: false,
-                    ..usage.clone()
-                } == ImageUsage::none()
-            )
+impl Default for UnsafeImageCreateInfo {
+    fn default() -> Self {
+        Self {
+            dimensions: ImageDimensions::Dim2d {
+                width: 0,
+                height: 0,
+                array_layers: 1,
+            },
+            format: None,
+            mip_levels: 1,
+            samples: SampleCount::Sample1,
+            tiling: ImageTiling::Optimal,
+            usage: ImageUsage::none(),
+            sharing: Sharing::Exclusive,
+            initial_layout: ImageLayout::Undefined,
+            external_memory_handle_types: ExternalMemoryHandleTypes::none(),
+            mutable_format: false,
+            cube_compatible: false,
+            array_2d_compatible: false,
+            block_texel_view_compatible: false,
+            _ne: crate::NonExhaustive(()),
         }
-
-        self.usage = usage;
-        self
     }
 }
 
@@ -1493,24 +1548,24 @@ impl fmt::Display for ImageCreationError {
 
 impl From<OomError> for ImageCreationError {
     #[inline]
-    fn from(err: OomError) -> ImageCreationError {
-        ImageCreationError::AllocError(DeviceMemoryAllocationError::OomError(err))
+    fn from(err: OomError) -> Self {
+        Self::AllocError(DeviceMemoryAllocationError::OomError(err))
     }
 }
 
 impl From<DeviceMemoryAllocationError> for ImageCreationError {
     #[inline]
-    fn from(err: DeviceMemoryAllocationError) -> ImageCreationError {
-        ImageCreationError::AllocError(err)
+    fn from(err: DeviceMemoryAllocationError) -> Self {
+        Self::AllocError(err)
     }
 }
 
 impl From<Error> for ImageCreationError {
     #[inline]
-    fn from(err: Error) -> ImageCreationError {
+    fn from(err: Error) -> Self {
         match err {
-            err @ Error::OutOfHostMemory => ImageCreationError::AllocError(err.into()),
-            err @ Error::OutOfDeviceMemory => ImageCreationError::AllocError(err.into()),
+            err @ Error::OutOfHostMemory => Self::AllocError(err.into()),
+            err @ Error::OutOfDeviceMemory => Self::AllocError(err.into()),
             _ => panic!("unexpected error: {:?}", err),
         }
     }
@@ -1542,10 +1597,10 @@ pub struct LinearLayout {
 
 #[cfg(test)]
 mod tests {
-    use super::ImageCreateFlags;
     use super::ImageCreationError;
     use super::ImageUsage;
     use super::UnsafeImage;
+    use super::UnsafeImageCreateInfo;
     use crate::format::Format;
     use crate::image::ImageDimensions;
     use crate::image::SampleCount;
@@ -1554,39 +1609,47 @@ mod tests {
     fn create_sampled() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let _ = UnsafeImage::start(device)
-            .dimensions(ImageDimensions::Dim2d {
-                width: 32,
-                height: 32,
-                array_layers: 1,
-            })
-            .format(Format::R8G8B8A8_UNORM)
-            .usage(ImageUsage {
-                sampled: true,
-                ..ImageUsage::none()
-            })
-            .build()
-            .unwrap();
+        let _ = UnsafeImage::new(
+            device,
+            UnsafeImageCreateInfo {
+                dimensions: ImageDimensions::Dim2d {
+                    width: 32,
+                    height: 32,
+                    array_layers: 1,
+                },
+                format: Some(Format::R8G8B8A8_UNORM),
+                usage: ImageUsage {
+                    sampled: true,
+                    ..ImageUsage::none()
+                },
+                ..Default::default()
+            },
+        )
+        .unwrap();
     }
 
     #[test]
     fn create_transient() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let _ = UnsafeImage::start(device)
-            .dimensions(ImageDimensions::Dim2d {
-                width: 32,
-                height: 32,
-                array_layers: 1,
-            })
-            .format(Format::R8G8B8A8_UNORM)
-            .usage(ImageUsage {
-                transient_attachment: true,
-                color_attachment: true,
-                ..ImageUsage::none()
-            })
-            .build()
-            .unwrap();
+        let _ = UnsafeImage::new(
+            device,
+            UnsafeImageCreateInfo {
+                dimensions: ImageDimensions::Dim2d {
+                    width: 32,
+                    height: 32,
+                    array_layers: 1,
+                },
+                format: Some(Format::R8G8B8A8_UNORM),
+                usage: ImageUsage {
+                    transient_attachment: true,
+                    color_attachment: true,
+                    ..ImageUsage::none()
+                },
+                ..Default::default()
+            },
+        )
+        .unwrap();
     }
 
     #[test]
@@ -1594,7 +1657,23 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         assert_should_panic!({
-            let _ = UnsafeImage::start(device).mip_levels(0);
+            let _ = UnsafeImage::new(
+                device,
+                UnsafeImageCreateInfo {
+                    dimensions: ImageDimensions::Dim2d {
+                        width: 32,
+                        height: 32,
+                        array_layers: 1,
+                    },
+                    format: Some(Format::R8G8B8A8_UNORM),
+                    mip_levels: 0,
+                    usage: ImageUsage {
+                        sampled: true,
+                        ..ImageUsage::none()
+                    },
+                    ..Default::default()
+                },
+            );
         });
     }
 
@@ -1602,19 +1681,23 @@ mod tests {
     fn mipmaps_too_high() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let res = UnsafeImage::start(device)
-            .dimensions(ImageDimensions::Dim2d {
-                width: 32,
-                height: 32,
-                array_layers: 1,
-            })
-            .format(Format::R8G8B8A8_UNORM)
-            .mip_levels(u32::MAX)
-            .usage(ImageUsage {
-                sampled: true,
-                ..ImageUsage::none()
-            })
-            .build();
+        let res = UnsafeImage::new(
+            device,
+            UnsafeImageCreateInfo {
+                dimensions: ImageDimensions::Dim2d {
+                    width: 32,
+                    height: 32,
+                    array_layers: 1,
+                },
+                format: Some(Format::R8G8B8A8_UNORM),
+                mip_levels: u32::MAX.into(),
+                usage: ImageUsage {
+                    sampled: true,
+                    ..ImageUsage::none()
+                },
+                ..Default::default()
+            },
+        );
 
         match res {
             Err(ImageCreationError::MaxMipLevelsExceeded { .. }) => (),
@@ -1626,19 +1709,23 @@ mod tests {
     fn shader_storage_image_multisample() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let res = UnsafeImage::start(device)
-            .dimensions(ImageDimensions::Dim2d {
-                width: 32,
-                height: 32,
-                array_layers: 1,
-            })
-            .format(Format::R8G8B8A8_UNORM)
-            .samples(SampleCount::Sample2)
-            .usage(ImageUsage {
-                storage: true,
-                ..ImageUsage::none()
-            })
-            .build();
+        let res = UnsafeImage::new(
+            device,
+            UnsafeImageCreateInfo {
+                dimensions: ImageDimensions::Dim2d {
+                    width: 32,
+                    height: 32,
+                    array_layers: 1,
+                },
+                format: Some(Format::R8G8B8A8_UNORM),
+                samples: SampleCount::Sample2,
+                usage: ImageUsage {
+                    storage: true,
+                    ..ImageUsage::none()
+                },
+                ..Default::default()
+            },
+        );
 
         match res {
             Err(ImageCreationError::FeatureNotEnabled {
@@ -1654,18 +1741,22 @@ mod tests {
     fn compressed_not_color_attachment() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let res = UnsafeImage::start(device)
-            .dimensions(ImageDimensions::Dim2d {
-                width: 32,
-                height: 32,
-                array_layers: 1,
-            })
-            .format(Format::ASTC_5x4_UNORM_BLOCK)
-            .usage(ImageUsage {
-                color_attachment: true,
-                ..ImageUsage::none()
-            })
-            .build();
+        let res = UnsafeImage::new(
+            device,
+            UnsafeImageCreateInfo {
+                dimensions: ImageDimensions::Dim2d {
+                    width: 32,
+                    height: 32,
+                    array_layers: 1,
+                },
+                format: Some(Format::ASTC_5x4_UNORM_BLOCK),
+                usage: ImageUsage {
+                    color_attachment: true,
+                    ..ImageUsage::none()
+                },
+                ..Default::default()
+            },
+        );
 
         match res {
             Err(ImageCreationError::FormatNotSupported) => (),
@@ -1681,11 +1772,23 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         assert_should_panic!({
-            let _ = UnsafeImage::start(device).usage(ImageUsage {
-                transient_attachment: true,
-                sampled: true,
-                ..ImageUsage::none()
-            });
+            let _ = UnsafeImage::new(
+                device,
+                UnsafeImageCreateInfo {
+                    dimensions: ImageDimensions::Dim2d {
+                        width: 32,
+                        height: 32,
+                        array_layers: 1,
+                    },
+                    format: Some(Format::R8G8B8A8_UNORM),
+                    usage: ImageUsage {
+                        transient_attachment: true,
+                        sampled: true,
+                        ..ImageUsage::none()
+                    },
+                    ..Default::default()
+                },
+            );
         })
     }
 
@@ -1693,22 +1796,23 @@ mod tests {
     fn cubecompatible_dims_mismatch() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let res = UnsafeImage::start(device)
-            .dimensions(ImageDimensions::Dim2d {
-                width: 32,
-                height: 64,
-                array_layers: 1,
-            })
-            .flags(ImageCreateFlags {
+        let res = UnsafeImage::new(
+            device,
+            UnsafeImageCreateInfo {
+                dimensions: ImageDimensions::Dim2d {
+                    width: 32,
+                    height: 64,
+                    array_layers: 1,
+                },
+                format: Some(Format::R8G8B8A8_UNORM),
+                usage: ImageUsage {
+                    sampled: true,
+                    ..ImageUsage::none()
+                },
                 cube_compatible: true,
-                ..ImageCreateFlags::none()
-            })
-            .format(Format::R8G8B8A8_UNORM)
-            .usage(ImageUsage {
-                sampled: true,
-                ..ImageUsage::none()
-            })
-            .build();
+                ..Default::default()
+            },
+        );
 
         match res {
             Err(ImageCreationError::CubeCompatibleNotEnoughArrayLayers) => (),
