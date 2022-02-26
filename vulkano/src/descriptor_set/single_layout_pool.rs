@@ -106,12 +106,16 @@ impl SingleLayoutDescSetPool {
                 self.set_count *= 2;
             }
 
-            let count = *self.layout.descriptors_count() * self.set_count as u32;
             let mut unsafe_pool = UnsafeDescriptorPool::new(
                 self.device.clone(),
                 UnsafeDescriptorPoolCreateInfo {
                     max_sets: self.set_count as u32,
-                    pool_sizes: count.into(),
+                    pool_sizes: self
+                        .layout
+                        .descriptor_counts()
+                        .iter()
+                        .map(|(&ty, &count)| (ty, count * self.set_count as u32))
+                        .collect(),
                     ..Default::default()
                 },
             )?;
