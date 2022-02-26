@@ -521,7 +521,10 @@ impl From<OomError> for SemaphoreExportError {
 
 #[cfg(test)]
 mod tests {
-    use crate::sync::Semaphore;
+    use crate::device::physical::PhysicalDevice;
+    use crate::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
+    use crate::instance::{Instance, InstanceCreateInfo, InstanceExtensions};
+    use crate::sync::{ExternalSemaphoreHandleTypes, Semaphore, SemaphoreCreateInfo};
     use crate::VulkanObject;
 
     #[test]
@@ -549,57 +552,45 @@ mod tests {
 
     #[test]
     fn semaphore_export() {
-        use crate::device::physical::PhysicalDevice;
-        use crate::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
-        use crate::instance::{Instance, InstanceCreateInfo, InstanceExtensions};
-        use crate::sync::semaphore::SemaphoreCreateInfo;
-        use crate::sync::ExternalSemaphoreHandleTypes;
+        let instance = match Instance::new(InstanceCreateInfo {
+            enabled_extensions: InstanceExtensions {
+                khr_get_physical_device_properties2: true,
+                khr_external_semaphore_capabilities: true,
+                ..InstanceExtensions::none()
+            },
+            ..Default::default()
+        }) {
+            Ok(x) => x,
+            Err(_) => return,
+        };
 
-        let supported_ext = InstanceExtensions::supported_by_core().unwrap();
-        if supported_ext.khr_get_display_properties2
-            && supported_ext.khr_external_semaphore_capabilities
-        {
-            let instance = Instance::new(InstanceCreateInfo {
-                enabled_extensions: InstanceExtensions {
-                    khr_get_physical_device_properties2: true,
-                    khr_external_semaphore_capabilities: true,
-                    ..InstanceExtensions::none()
+        let physical_device = PhysicalDevice::enumerate(&instance).next().unwrap();
+        let queue_family = physical_device.queue_families().next().unwrap();
+
+        let (device, _) = match Device::new(
+            physical_device,
+            DeviceCreateInfo {
+                enabled_extensions: DeviceExtensions {
+                    khr_external_semaphore: true,
+                    khr_external_semaphore_fd: true,
+                    ..DeviceExtensions::none()
                 },
+                queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
                 ..Default::default()
-            })
-            .unwrap();
+            },
+        ) {
+            Ok(x) => x,
+            Err(_) => return,
+        };
 
-            let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
-
-            let queue_family = physical.queue_families().next().unwrap();
-
-            let device_ext = DeviceExtensions {
-                khr_external_semaphore: true,
-                khr_external_semaphore_fd: true,
-                ..DeviceExtensions::none()
-            };
-            let (device, _) = Device::new(
-                physical,
-                DeviceCreateInfo {
-                    enabled_extensions: device_ext,
-                    queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
-                    ..Default::default()
-                },
-            )
-            .unwrap();
-
-            let supported_ext = physical.supported_extensions();
-            if supported_ext.khr_external_semaphore && supported_ext.khr_external_semaphore_fd {
-                let sem = Semaphore::new(
-                    device.clone(),
-                    SemaphoreCreateInfo {
-                        export_handle_types: ExternalSemaphoreHandleTypes::posix(),
-                        ..Default::default()
-                    },
-                )
-                .unwrap();
-                let fd = unsafe { sem.export_opaque_fd().unwrap() };
-            }
-        }
+        let sem = Semaphore::new(
+            device.clone(),
+            SemaphoreCreateInfo {
+                export_handle_types: ExternalSemaphoreHandleTypes::posix(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let fd = unsafe { sem.export_opaque_fd().unwrap() };
     }
 }
