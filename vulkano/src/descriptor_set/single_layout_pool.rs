@@ -49,7 +49,7 @@ impl SingleLayoutDescSetPool {
     /// - Panics if the provided `layout` has a binding with a variable descriptor count.
     pub fn new(layout: Arc<DescriptorSetLayout>) -> Self {
         assert!(
-            !layout.desc().is_push_descriptor(),
+            !layout.push_descriptor(),
             "the provided descriptor set layout is for push descriptors, and cannot be used to build a descriptor set object"
         );
         assert!(

@@ -17,7 +17,10 @@ use vk_parse::{Format, FormatChild};
 pub fn write(vk_data: &VkRegistryData) {
     write_file(
         "formats.rs",
-        format!("vk.xml header version {}", vk_data.header_version),
+        format!(
+            "vk.xml header version {}.{}.{}",
+            vk_data.header_version.0, vk_data.header_version.1, vk_data.header_version.2
+        ),
         formats_output(&formats_members(&vk_data.formats)),
     );
 }
@@ -452,11 +455,11 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
     }
 }
 
-lazy_static! {
-    static ref BLOCK_EXTENT_REGEX: Regex = Regex::new(r"^(\d+),(\d+),(\d+)$").unwrap();
-}
-
 fn formats_members(formats: &[&Format]) -> Vec<FormatMember> {
+    lazy_static! {
+        static ref BLOCK_EXTENT_REGEX: Regex = Regex::new(r"^(\d+),(\d+),(\d+)$").unwrap();
+    }
+
     formats
         .iter()
         .map(|format| {

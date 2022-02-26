@@ -25,8 +25,8 @@ use crate::memory::pool::MemoryPool;
 use crate::memory::pool::MemoryPoolAlloc;
 use crate::memory::pool::PotentialDedicatedAllocation;
 use crate::memory::pool::StdMemoryPool;
-use crate::memory::DedicatedAlloc;
-use crate::memory::DeviceMemoryAllocError;
+use crate::memory::DedicatedAllocation;
+use crate::memory::DeviceMemoryAllocationError;
 use crate::sync::AccessError;
 use crate::DeviceSize;
 use crate::OomError;
@@ -295,7 +295,7 @@ where
     /// case.
     ///
     /// Since this can involve a memory allocation, an `OomError` can happen.
-    pub fn reserve(&self, capacity: DeviceSize) -> Result<(), DeviceMemoryAllocError> {
+    pub fn reserve(&self, capacity: DeviceSize) -> Result<(), DeviceMemoryAllocationError> {
         if capacity == 0 {
             return Ok(());
         }
@@ -324,7 +324,7 @@ where
     pub fn next(
         &self,
         data: T,
-    ) -> Result<Arc<CpuBufferPoolSubbuffer<T, A>>, DeviceMemoryAllocError> {
+    ) -> Result<Arc<CpuBufferPoolSubbuffer<T, A>>, DeviceMemoryAllocationError> {
         Ok(Arc::new(CpuBufferPoolSubbuffer {
             chunk: self.chunk_impl(iter::once(data))?,
         }))
@@ -342,7 +342,10 @@ where
     ///
     /// Panics if the length of the iterator didn't match the actual number of element.
     ///
-    pub fn chunk<I>(&self, data: I) -> Result<Arc<CpuBufferPoolChunk<T, A>>, DeviceMemoryAllocError>
+    pub fn chunk<I>(
+        &self,
+        data: I,
+    ) -> Result<Arc<CpuBufferPoolChunk<T, A>>, DeviceMemoryAllocationError>
     where
         I: IntoIterator<Item = T>,
         I::IntoIter: ExactSizeIterator,
@@ -353,7 +356,7 @@ where
     fn chunk_impl(
         &self,
         data: impl ExactSizeIterator<Item = T>,
-    ) -> Result<CpuBufferPoolChunk<T, A>, DeviceMemoryAllocError> {
+    ) -> Result<CpuBufferPoolChunk<T, A>, DeviceMemoryAllocationError> {
         let mut mutex = self.current_buffer.lock().unwrap();
 
         let data = match self.try_next_impl(&mut mutex, data) {
@@ -395,11 +398,11 @@ where
         &self,
         cur_buf_mutex: &mut MutexGuard<Option<Arc<ActualBuffer<A>>>>,
         capacity: DeviceSize,
-    ) -> Result<(), DeviceMemoryAllocError> {
+    ) -> Result<(), DeviceMemoryAllocationError> {
         let size = match (mem::size_of::<T>() as DeviceSize).checked_mul(capacity) {
             Some(s) => s,
             None => {
-                return Err(DeviceMemoryAllocError::OomError(
+                return Err(DeviceMemoryAllocationError::OomError(
                     OomError::OutOfDeviceMemory,
                 ))
             }
@@ -425,7 +428,7 @@ where
                 &mem_reqs,
                 AllocLayout::Linear,
                 MappingRequirement::Map,
-                DedicatedAlloc::Buffer(&buffer),
+                Some(DedicatedAllocation::Buffer(&buffer)),
                 |_| AllocFromRequirementsFilter::Allowed,
             )?;
             debug_assert!((mem.offset() % mem_reqs.alignment) == 0);

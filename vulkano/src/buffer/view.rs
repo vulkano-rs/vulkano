@@ -43,7 +43,6 @@
 //! ```
 
 use crate::buffer::{BufferAccess, BufferAccessObject, BufferInner};
-use crate::check_errors;
 use crate::device::physical::FormatFeatures;
 use crate::device::Device;
 use crate::device::DeviceOwned;
@@ -52,6 +51,7 @@ use crate::DeviceSize;
 use crate::Error;
 use crate::OomError;
 use crate::VulkanObject;
+use crate::{check_errors, Version};
 use std::error;
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -134,7 +134,8 @@ where
             return Err(BufferViewCreationError::MaxTexelBufferElementsExceeded);
         }
 
-        if device.enabled_features().texel_buffer_alignment {
+        if device.api_version() >= Version::V1_3 || device.enabled_features().texel_buffer_alignment
+        {
             let element_size = if block_size % 3 == 0 {
                 block_size / 3
             } else {

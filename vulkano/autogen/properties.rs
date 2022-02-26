@@ -25,7 +25,10 @@ pub fn write(vk_data: &VkRegistryData) {
         properties_ffi_output(&properties_ffi_members(&vk_data.types, &vk_data.extensions));
     write_file(
         "properties.rs",
-        format!("vk.xml header version {}", vk_data.header_version),
+        format!(
+            "vk.xml header version {}.{}.{}",
+            vk_data.header_version.0, vk_data.header_version.1, vk_data.header_version.2
+        ),
         quote! {
             #properties_output
             #properties_ffi_output
@@ -215,7 +218,7 @@ fn properties_members(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<Properti
 
 fn make_doc(prop: &mut PropertiesMember, vulkan_ty_name: &str) {
     let writer = &mut prop.doc;
-    write!(writer, "- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/{}.html#limits-{})", vulkan_ty_name, prop.name).unwrap();
+    write!(writer, "- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/{}.html#limits-{})", vulkan_ty_name, prop.name).unwrap();
 }
 
 #[derive(Clone, Debug)]

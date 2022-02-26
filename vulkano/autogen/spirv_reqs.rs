@@ -35,7 +35,10 @@ pub fn write(vk_data: &VkRegistryData, grammar: &SpirvGrammar) {
         spirv_reqs_output(&spirv_extensions_members(&vk_data.spirv_extensions), true);
     write_file(
         "spirv_reqs.rs",
-        format!("vk.xml header version {}", vk_data.header_version),
+        format!(
+            "vk.xml header version {}.{}.{}",
+            vk_data.header_version.0, vk_data.header_version.1, vk_data.header_version.2
+        ),
         quote! {
             #spirv_capabilities_output
             #spirv_extensions_output
@@ -202,19 +205,22 @@ fn spirv_extensions_members(extensions: &[&SpirvExtOrCap]) -> Vec<SpirvReqsMembe
         .collect()
 }
 
-lazy_static! {
-    static ref BIT: Regex = Regex::new(r"_BIT(?:_NV)?$").unwrap();
-}
-
 fn make_enable(enable: &vk_parse::Enable) -> Option<(Enable, String)> {
+    lazy_static! {
+        static ref VK_API_VERSION: Regex =
+            Regex::new(r"^VK_(?:API_)?VERSION_(\d+)_(\d+)$").unwrap();
+        static ref BIT: Regex = Regex::new(r"_BIT(?:_NV)?$").unwrap();
+    }
+
     if matches!(enable, vk_parse::Enable::Version(version) if version == "VK_VERSION_1_0") {
         return None;
     }
 
     Some(match enable {
         vk_parse::Enable::Version(version) => {
-            let version = version.strip_prefix("VK_VERSION_").unwrap();
-            let (major, minor) = version.split_once('_').unwrap();
+            let captures = VK_API_VERSION.captures(version).unwrap();
+            let major = captures.get(1).unwrap().as_str();
+            let minor = captures.get(1).unwrap().as_str();
 
             (
                 Enable::Core((major.parse().unwrap(), minor.parse().unwrap())),

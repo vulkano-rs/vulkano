@@ -7,12 +7,13 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::buffer::{BufferUsage, ExternalBufferInfo, ExternalBufferProperties};
 use crate::device::{DeviceExtensions, Features, FeaturesFfi, Properties, PropertiesFfi};
 use crate::format::Format;
 use crate::image::view::ImageViewType;
 use crate::image::{ImageCreateFlags, ImageTiling, ImageType, ImageUsage, SampleCounts};
 use crate::instance::{Instance, InstanceCreationError};
-use crate::memory::ExternalMemoryHandleType;
+use crate::memory::{ExternalMemoryHandleType, ExternalMemoryProperties};
 use crate::swapchain::{
     ColorSpace, FullScreenExclusive, PresentMode, SupportedSurfaceTransforms, Surface, SurfaceApi,
     SurfaceCapabilities, Win32Monitor,
@@ -427,10 +428,80 @@ impl<'a> PhysicalDevice<'a> {
         &self.info.supported_features
     }
 
+    /// Retrieves the external memory properties supported for buffers with a given configuration.
+    ///
+    /// Returns `None` if the instance API version is less than 1.1 and the
+    /// [`khr_external_memory_capabilities`](crate::instance::InstanceExtensions::khr_external_memory_capabilities)
+    /// extension is not enabled on the instance.
+    pub fn external_buffer_properties(
+        &self,
+        info: ExternalBufferInfo,
+    ) -> Option<ExternalBufferProperties> {
+        if !(self.instance.api_version() >= Version::V1_1
+            || self
+                .instance
+                .enabled_extensions()
+                .khr_external_memory_capabilities)
+        {
+            return None;
+        }
+
+        /* Input */
+
+        let ExternalBufferInfo {
+            handle_type,
+            usage,
+            sparse,
+            _ne: _,
+        } = info;
+
+        assert!(usage != BufferUsage::none());
+
+        let external_buffer_info = ash::vk::PhysicalDeviceExternalBufferInfo {
+            flags: sparse.map(Into::into).unwrap_or_default(),
+            usage: usage.into(),
+            handle_type: handle_type.into(),
+            ..Default::default()
+        };
+
+        /* Output */
+
+        let mut external_buffer_properties = ash::vk::ExternalBufferProperties::default();
+
+        /* Call */
+
+        unsafe {
+            let fns = self.instance.fns();
+
+            if self.instance.api_version() >= Version::V1_1 {
+                fns.v1_1.get_physical_device_external_buffer_properties(
+                    self.info.handle,
+                    &external_buffer_info,
+                    &mut external_buffer_properties,
+                )
+            } else {
+                fns.khr_external_memory_capabilities
+                    .get_physical_device_external_buffer_properties_khr(
+                        self.info.handle,
+                        &external_buffer_info,
+                        &mut external_buffer_properties,
+                    );
+            }
+        }
+
+        Some(ExternalBufferProperties {
+            external_memory_properties: external_buffer_properties
+                .external_memory_properties
+                .into(),
+        })
+    }
+
     /// Retrieves the properties of a format when used by this physical device.
     pub fn format_properties(&self, format: Format) -> FormatProperties {
         let mut format_properties2 = ash::vk::FormatProperties2::default();
-        let mut format_properties3 = if self.supported_extensions().khr_format_feature_flags2 {
+        let mut format_properties3 = if self.api_version() >= Version::V1_3
+            || self.supported_extensions().khr_format_feature_flags2
+        {
             Some(ash::vk::FormatProperties3KHR::default())
         } else {
             None
@@ -633,14 +704,27 @@ impl<'a> PhysicalDevice<'a> {
         /* Output */
 
         let mut image_format_properties2 = ash::vk::ImageFormatProperties2::default();
-        let mut filter_cubic_image_view_image_format_properties =
-            ash::vk::FilterCubicImageViewImageFormatPropertiesEXT::default();
 
-        if image_view_type.is_some() {
-            filter_cubic_image_view_image_format_properties.p_next =
-                image_format_properties2.p_next;
-            image_format_properties2.p_next =
-                &mut filter_cubic_image_view_image_format_properties as *mut _ as *mut _;
+        let mut external_image_format_properties = if external_memory_handle_type.is_some() {
+            Some(ash::vk::ExternalImageFormatProperties::default())
+        } else {
+            None
+        };
+
+        if let Some(next) = external_image_format_properties.as_mut() {
+            next.p_next = image_format_properties2.p_next;
+            image_format_properties2.p_next = next as *mut _ as *mut _;
+        }
+
+        let mut filter_cubic_image_view_image_format_properties = if image_view_type.is_some() {
+            Some(ash::vk::FilterCubicImageViewImageFormatPropertiesEXT::default())
+        } else {
+            None
+        };
+
+        if let Some(next) = filter_cubic_image_view_image_format_properties.as_mut() {
+            next.p_next = image_format_properties2.p_next;
+            image_format_properties2.p_next = next as *mut _ as *mut _;
         }
 
         let result = unsafe {
@@ -683,11 +767,17 @@ impl<'a> PhysicalDevice<'a> {
 
         match result {
             Ok(_) => Ok(Some(ImageFormatProperties {
-                filter_cubic: filter_cubic_image_view_image_format_properties.filter_cubic
-                    != ash::vk::FALSE,
+                external_memory_properties: external_image_format_properties
+                    .map(|properties| properties.external_memory_properties.into())
+                    .unwrap_or_default(),
+                filter_cubic: filter_cubic_image_view_image_format_properties
+                    .map_or(false, |properties| {
+                        properties.filter_cubic != ash::vk::FALSE
+                    }),
                 filter_cubic_minmax: filter_cubic_image_view_image_format_properties
-                    .filter_cubic_minmax
-                    != ash::vk::FALSE,
+                    .map_or(false, |properties| {
+                        properties.filter_cubic_minmax != ash::vk::FALSE
+                    }),
                 ..image_format_properties2.image_format_properties.into()
             })),
             Err(Error::FormatNotSupported) => Ok(None),
@@ -1278,13 +1368,17 @@ impl<'a> MemoryType<'a> {
     /// efficient for GPU accesses.
     #[inline]
     pub fn is_device_local(&self) -> bool {
-        !(self.info.property_flags & ash::vk::MemoryPropertyFlags::DEVICE_LOCAL).is_empty()
+        self.info
+            .property_flags
+            .intersects(ash::vk::MemoryPropertyFlags::DEVICE_LOCAL)
     }
 
     /// Returns true if the memory type can be accessed by the host.
     #[inline]
     pub fn is_host_visible(&self) -> bool {
-        !(self.info.property_flags & ash::vk::MemoryPropertyFlags::HOST_VISIBLE).is_empty()
+        self.info
+            .property_flags
+            .intersects(ash::vk::MemoryPropertyFlags::HOST_VISIBLE)
     }
 
     /// Returns true if modifications made by the host or the GPU on this memory type are
@@ -1293,7 +1387,9 @@ impl<'a> MemoryType<'a> {
     /// You don't need to worry about this, as this library handles that for you.
     #[inline]
     pub fn is_host_coherent(&self) -> bool {
-        !(self.info.property_flags & ash::vk::MemoryPropertyFlags::HOST_COHERENT).is_empty()
+        self.info
+            .property_flags
+            .intersects(ash::vk::MemoryPropertyFlags::HOST_COHERENT)
     }
 
     /// Returns true if memory of this memory type is cached by the host. Host memory accesses to
@@ -1301,7 +1397,9 @@ impl<'a> MemoryType<'a> {
     /// is coherent.
     #[inline]
     pub fn is_host_cached(&self) -> bool {
-        !(self.info.property_flags & ash::vk::MemoryPropertyFlags::HOST_CACHED).is_empty()
+        self.info
+            .property_flags
+            .intersects(ash::vk::MemoryPropertyFlags::HOST_CACHED)
     }
 
     /// Returns true if allocations made to this memory type is lazy.
@@ -1313,7 +1411,17 @@ impl<'a> MemoryType<'a> {
     /// type is never host-visible.
     #[inline]
     pub fn is_lazily_allocated(&self) -> bool {
-        !(self.info.property_flags & ash::vk::MemoryPropertyFlags::LAZILY_ALLOCATED).is_empty()
+        self.info
+            .property_flags
+            .intersects(ash::vk::MemoryPropertyFlags::LAZILY_ALLOCATED)
+    }
+
+    /// Returns whether the memory type is protected.
+    #[inline]
+    pub fn is_protected(&self) -> bool {
+        self.info
+            .property_flags
+            .intersects(ash::vk::MemoryPropertyFlags::PROTECTED)
     }
 }
 
@@ -1853,8 +1961,8 @@ impl From<ash::vk::FormatFeatureFlags> for FormatFeatures {
             sampled_image: val.intersects(ash::vk::FormatFeatureFlags::SAMPLED_IMAGE),
             storage_image: val.intersects(ash::vk::FormatFeatureFlags::STORAGE_IMAGE),
             storage_image_atomic: val.intersects(ash::vk::FormatFeatureFlags::STORAGE_IMAGE_ATOMIC),
-            storage_read_without_format: false, // FormatFeatureFlags2KHR only
-            storage_write_without_format: false, // FormatFeatureFlags2KHR only
+            storage_read_without_format: false, // FormatFeatureFlags2 only
+            storage_write_without_format: false, // FormatFeatureFlags2 only
             color_attachment: val.intersects(ash::vk::FormatFeatureFlags::COLOR_ATTACHMENT),
             color_attachment_blend: val.intersects(ash::vk::FormatFeatureFlags::COLOR_ATTACHMENT_BLEND),
             depth_stencil_attachment: val.intersects(ash::vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT),
@@ -1874,7 +1982,7 @@ impl From<ash::vk::FormatFeatureFlags> for FormatFeatures {
             sampled_image_ycbcr_conversion_separate_reconstruction_filter: val.intersects(ash::vk::FormatFeatureFlags::SAMPLED_IMAGE_YCBCR_CONVERSION_SEPARATE_RECONSTRUCTION_FILTER),
             sampled_image_ycbcr_conversion_chroma_reconstruction_explicit: val.intersects(ash::vk::FormatFeatureFlags::SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT),
             sampled_image_ycbcr_conversion_chroma_reconstruction_explicit_forceable: val.intersects(ash::vk::FormatFeatureFlags::SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT_FORCEABLE),
-            sampled_image_depth_comparison: false, // FormatFeatureFlags2KHR only
+            sampled_image_depth_comparison: false, // FormatFeatureFlags2 only
 
             video_decode_output: val.intersects(ash::vk::FormatFeatureFlags::VIDEO_DECODE_OUTPUT_KHR),
             video_decode_dpb: val.intersects(ash::vk::FormatFeatureFlags::VIDEO_DECODE_DPB_KHR),
@@ -1894,49 +2002,49 @@ impl From<ash::vk::FormatFeatureFlags> for FormatFeatures {
     }
 }
 
-impl From<ash::vk::FormatFeatureFlags2KHR> for FormatFeatures {
+impl From<ash::vk::FormatFeatureFlags2> for FormatFeatures {
     #[inline]
     #[rustfmt::skip]
-    fn from(val: ash::vk::FormatFeatureFlags2KHR) -> FormatFeatures {
+    fn from(val: ash::vk::FormatFeatureFlags2) -> FormatFeatures {
         FormatFeatures {
-            sampled_image: val.intersects(ash::vk::FormatFeatureFlags2KHR::SAMPLED_IMAGE),
-            storage_image: val.intersects(ash::vk::FormatFeatureFlags2KHR::STORAGE_IMAGE),
-            storage_image_atomic: val.intersects(ash::vk::FormatFeatureFlags2KHR::STORAGE_IMAGE_ATOMIC),
-            storage_read_without_format: val.intersects(ash::vk::FormatFeatureFlags2KHR::STORAGE_READ_WITHOUT_FORMAT),
-            storage_write_without_format: val.intersects(ash::vk::FormatFeatureFlags2KHR::STORAGE_WRITE_WITHOUT_FORMAT),
-            color_attachment: val.intersects(ash::vk::FormatFeatureFlags2KHR::COLOR_ATTACHMENT),
-            color_attachment_blend: val.intersects(ash::vk::FormatFeatureFlags2KHR::COLOR_ATTACHMENT_BLEND),
-            depth_stencil_attachment: val.intersects(ash::vk::FormatFeatureFlags2KHR::DEPTH_STENCIL_ATTACHMENT),
-            fragment_density_map: val.intersects(ash::vk::FormatFeatureFlags2KHR::FRAGMENT_DENSITY_MAP_EXT),
-            fragment_shading_rate_attachment: val.intersects(ash::vk::FormatFeatureFlags2KHR::FRAGMENT_SHADING_RATE_ATTACHMENT),
-            transfer_src: val.intersects(ash::vk::FormatFeatureFlags2KHR::TRANSFER_SRC),
-            transfer_dst: val.intersects(ash::vk::FormatFeatureFlags2KHR::TRANSFER_DST),
-            blit_src: val.intersects(ash::vk::FormatFeatureFlags2KHR::BLIT_SRC),
-            blit_dst: val.intersects(ash::vk::FormatFeatureFlags2KHR::BLIT_DST),
+            sampled_image: val.intersects(ash::vk::FormatFeatureFlags2::SAMPLED_IMAGE),
+            storage_image: val.intersects(ash::vk::FormatFeatureFlags2::STORAGE_IMAGE),
+            storage_image_atomic: val.intersects(ash::vk::FormatFeatureFlags2::STORAGE_IMAGE_ATOMIC),
+            storage_read_without_format: val.intersects(ash::vk::FormatFeatureFlags2::STORAGE_READ_WITHOUT_FORMAT),
+            storage_write_without_format: val.intersects(ash::vk::FormatFeatureFlags2::STORAGE_WRITE_WITHOUT_FORMAT),
+            color_attachment: val.intersects(ash::vk::FormatFeatureFlags2::COLOR_ATTACHMENT),
+            color_attachment_blend: val.intersects(ash::vk::FormatFeatureFlags2::COLOR_ATTACHMENT_BLEND),
+            depth_stencil_attachment: val.intersects(ash::vk::FormatFeatureFlags2::DEPTH_STENCIL_ATTACHMENT),
+            fragment_density_map: val.intersects(ash::vk::FormatFeatureFlags2::FRAGMENT_DENSITY_MAP_EXT),
+            fragment_shading_rate_attachment: val.intersects(ash::vk::FormatFeatureFlags2::FRAGMENT_SHADING_RATE_ATTACHMENT_KHR),
+            transfer_src: val.intersects(ash::vk::FormatFeatureFlags2::TRANSFER_SRC),
+            transfer_dst: val.intersects(ash::vk::FormatFeatureFlags2::TRANSFER_DST),
+            blit_src: val.intersects(ash::vk::FormatFeatureFlags2::BLIT_SRC),
+            blit_dst: val.intersects(ash::vk::FormatFeatureFlags2::BLIT_DST),
 
-            sampled_image_filter_linear: val.intersects(ash::vk::FormatFeatureFlags2KHR::SAMPLED_IMAGE_FILTER_LINEAR),
-            sampled_image_filter_cubic: val.intersects(ash::vk::FormatFeatureFlags2KHR::SAMPLED_IMAGE_FILTER_CUBIC_EXT),
-            sampled_image_filter_minmax: val.intersects(ash::vk::FormatFeatureFlags2KHR::SAMPLED_IMAGE_FILTER_MINMAX),
-            midpoint_chroma_samples: val.intersects(ash::vk::FormatFeatureFlags2KHR::MIDPOINT_CHROMA_SAMPLES),
-            cosited_chroma_samples: val.intersects(ash::vk::FormatFeatureFlags2KHR::COSITED_CHROMA_SAMPLES),
-            sampled_image_ycbcr_conversion_linear_filter: val.intersects(ash::vk::FormatFeatureFlags2KHR::SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER),
-            sampled_image_ycbcr_conversion_separate_reconstruction_filter: val.intersects(ash::vk::FormatFeatureFlags2KHR::SAMPLED_IMAGE_YCBCR_CONVERSION_SEPARATE_RECONSTRUCTION_FILTER),
-            sampled_image_ycbcr_conversion_chroma_reconstruction_explicit: val.intersects(ash::vk::FormatFeatureFlags2KHR::SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT),
-            sampled_image_ycbcr_conversion_chroma_reconstruction_explicit_forceable: val.intersects(ash::vk::FormatFeatureFlags2KHR::SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT_FORCEABLE),
-            sampled_image_depth_comparison: val.intersects(ash::vk::FormatFeatureFlags2KHR::SAMPLED_IMAGE_DEPTH_COMPARISON),
+            sampled_image_filter_linear: val.intersects(ash::vk::FormatFeatureFlags2::SAMPLED_IMAGE_FILTER_LINEAR),
+            sampled_image_filter_cubic: val.intersects(ash::vk::FormatFeatureFlags2::SAMPLED_IMAGE_FILTER_CUBIC_EXT),
+            sampled_image_filter_minmax: val.intersects(ash::vk::FormatFeatureFlags2::SAMPLED_IMAGE_FILTER_MINMAX),
+            midpoint_chroma_samples: val.intersects(ash::vk::FormatFeatureFlags2::MIDPOINT_CHROMA_SAMPLES),
+            cosited_chroma_samples: val.intersects(ash::vk::FormatFeatureFlags2::COSITED_CHROMA_SAMPLES),
+            sampled_image_ycbcr_conversion_linear_filter: val.intersects(ash::vk::FormatFeatureFlags2::SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER),
+            sampled_image_ycbcr_conversion_separate_reconstruction_filter: val.intersects(ash::vk::FormatFeatureFlags2::SAMPLED_IMAGE_YCBCR_CONVERSION_SEPARATE_RECONSTRUCTION_FILTER),
+            sampled_image_ycbcr_conversion_chroma_reconstruction_explicit: val.intersects(ash::vk::FormatFeatureFlags2::SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT),
+            sampled_image_ycbcr_conversion_chroma_reconstruction_explicit_forceable: val.intersects(ash::vk::FormatFeatureFlags2::SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT_FORCEABLE),
+            sampled_image_depth_comparison: val.intersects(ash::vk::FormatFeatureFlags2::SAMPLED_IMAGE_DEPTH_COMPARISON),
 
-            video_decode_output: val.intersects(ash::vk::FormatFeatureFlags2KHR::VIDEO_DECODE_OUTPUT),
-            video_decode_dpb: val.intersects(ash::vk::FormatFeatureFlags2KHR::VIDEO_DECODE_DPB),
-            video_encode_input: val.intersects(ash::vk::FormatFeatureFlags2KHR::VIDEO_ENCODE_INPUT),
-            video_encode_dpb: val.intersects(ash::vk::FormatFeatureFlags2KHR::VIDEO_ENCODE_DPB),
+            video_decode_output: val.intersects(ash::vk::FormatFeatureFlags2::VIDEO_DECODE_OUTPUT_KHR),
+            video_decode_dpb: val.intersects(ash::vk::FormatFeatureFlags2::VIDEO_DECODE_DPB_KHR),
+            video_encode_input: val.intersects(ash::vk::FormatFeatureFlags2::VIDEO_ENCODE_INPUT_KHR),
+            video_encode_dpb: val.intersects(ash::vk::FormatFeatureFlags2::VIDEO_ENCODE_DPB_KHR),
 
-            disjoint: val.intersects(ash::vk::FormatFeatureFlags2KHR::DISJOINT),
+            disjoint: val.intersects(ash::vk::FormatFeatureFlags2::DISJOINT),
 
-            uniform_texel_buffer: val.intersects(ash::vk::FormatFeatureFlags2KHR::UNIFORM_TEXEL_BUFFER),
-            storage_texel_buffer: val.intersects(ash::vk::FormatFeatureFlags2KHR::STORAGE_TEXEL_BUFFER),
-            storage_texel_buffer_atomic: val.intersects(ash::vk::FormatFeatureFlags2KHR::STORAGE_TEXEL_BUFFER_ATOMIC),
-            vertex_buffer: val.intersects(ash::vk::FormatFeatureFlags2KHR::VERTEX_BUFFER),
-            acceleration_structure_vertex_buffer: val.intersects(ash::vk::FormatFeatureFlags2KHR::ACCELERATION_STRUCTURE_VERTEX_BUFFER),
+            uniform_texel_buffer: val.intersects(ash::vk::FormatFeatureFlags2::UNIFORM_TEXEL_BUFFER),
+            storage_texel_buffer: val.intersects(ash::vk::FormatFeatureFlags2::STORAGE_TEXEL_BUFFER),
+            storage_texel_buffer_atomic: val.intersects(ash::vk::FormatFeatureFlags2::STORAGE_TEXEL_BUFFER_ATOMIC),
+            vertex_buffer: val.intersects(ash::vk::FormatFeatureFlags2::VERTEX_BUFFER),
+            acceleration_structure_vertex_buffer: val.intersects(ash::vk::FormatFeatureFlags2::ACCELERATION_STRUCTURE_VERTEX_BUFFER_KHR),
 
             _ne: crate::NonExhaustive(()),
         }
@@ -1944,7 +2052,8 @@ impl From<ash::vk::FormatFeatureFlags2KHR> for FormatFeatures {
 }
 
 /// The properties that are supported by a physical device for images of a certain type.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct ImageFormatProperties {
     /// The maximum dimensions.
     pub max_extent: [u32; 3],
@@ -1961,6 +2070,11 @@ pub struct ImageFormatProperties {
     /// The maximum total size of an image, in bytes. This is guaranteed to be at least
     /// 0x80000000.
     pub max_resource_size: DeviceSize,
+
+    /// The properties for external memory.
+    /// This will be [`ExternalMemoryProperties::default()`] if `external_handle_type` was `None`.
+    pub external_memory_properties: ExternalMemoryProperties,
+
     /// When querying with an image view type, whether such image views support sampling with
     /// a [`Cubic`](crate::sampler::Filter::Cubic) `mag_filter` or `min_filter`.
     pub filter_cubic: bool,
@@ -1986,6 +2100,7 @@ impl From<ash::vk::ImageFormatProperties> for ImageFormatProperties {
             max_array_layers: props.max_array_layers,
             sample_counts: props.sample_counts.into(),
             max_resource_size: props.max_resource_size,
+            external_memory_properties: Default::default(),
             filter_cubic: false,
             filter_cubic_minmax: false,
 

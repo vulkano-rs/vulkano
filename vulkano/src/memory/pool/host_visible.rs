@@ -10,8 +10,9 @@
 use crate::device::physical::MemoryType;
 use crate::device::Device;
 use crate::instance::Instance;
+use crate::memory::device_memory::MemoryAllocateInfo;
 use crate::memory::DeviceMemory;
-use crate::memory::DeviceMemoryAllocError;
+use crate::memory::DeviceMemoryAllocationError;
 use crate::memory::MappedDeviceMemory;
 use crate::DeviceSize;
 use std::cmp;
@@ -66,7 +67,7 @@ impl StdHostVisibleMemoryTypePool {
         me: &Arc<Self>,
         size: DeviceSize,
         alignment: DeviceSize,
-    ) -> Result<StdHostVisibleMemoryTypePoolAlloc, DeviceMemoryAllocError> {
+    ) -> Result<StdHostVisibleMemoryTypePoolAlloc, DeviceMemoryAllocationError> {
         assert!(size != 0);
         assert!(alignment != 0);
 
@@ -112,9 +113,15 @@ impl StdHostVisibleMemoryTypePool {
         // We need to allocate a new block.
         let new_block = {
             const MIN_BLOCK_SIZE: DeviceSize = 8 * 1024 * 1024; // 8 MB
-            let to_alloc = cmp::max(MIN_BLOCK_SIZE, size.next_power_of_two());
-            let new_block =
-                DeviceMemory::alloc_and_map(me.device.clone(), me.memory_type(), to_alloc)?;
+            let allocation_size = cmp::max(MIN_BLOCK_SIZE, size.next_power_of_two());
+            let new_block = DeviceMemory::allocate_and_map(
+                me.device.clone(),
+                MemoryAllocateInfo {
+                    allocation_size,
+                    memory_type_index: me.memory_type().id(),
+                    ..Default::default()
+                },
+            )?;
             Arc::new(new_block)
         };
 

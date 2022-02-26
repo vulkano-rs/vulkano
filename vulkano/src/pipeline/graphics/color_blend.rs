@@ -35,7 +35,7 @@ pub struct ColorBlendState {
     ///
     /// If set to `Some`, the [`logic_op`](crate::device::Features::logic_op) feature must be
     /// enabled on the device. If set to `Some(Dynamic)`, then the
-    /// [`extended_dynamic_state2`](crate::device::Features::extended_dynamic_state2_logic_op)
+    /// [`extended_dynamic_state2_logic_op`](crate::device::Features::extended_dynamic_state2_logic_op)
     /// feature must also be enabled on the device.
     pub logic_op: Option<StateMode<LogicOp>>,
 

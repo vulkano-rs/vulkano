@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::descriptor_set::layout::DescriptorSetLayoutCreationError;
 use crate::format::Format;
 use crate::format::NumericType;
 use crate::pipeline::graphics::vertex_input::IncompatibleVertexDefinitionError;
@@ -133,6 +134,9 @@ pub enum GraphicsPipelineCreationError {
 
     /// Not enough memory.
     OomError(OomError),
+
+    /// Error while creating a descriptor set layout object.
+    DescriptorSetLayoutCreationError(DescriptorSetLayoutCreationError),
 
     /// Error while creating the pipeline layout object.
     PipelineLayoutCreationError(PipelineLayoutCreationError),
@@ -278,6 +282,10 @@ impl fmt::Display for GraphicsPipelineCreationError {
                 fmt,
                 "not enough memory available",
             ),
+            Self::DescriptorSetLayoutCreationError(_) => write!(
+                fmt,
+                "error while creating a descriptor set layout object",
+            ),
             Self::PipelineLayoutCreationError(_) => write!(
                 fmt,
                 "error while creating the pipeline layout object",
@@ -341,30 +349,37 @@ impl From<OomError> for GraphicsPipelineCreationError {
     }
 }
 
+impl From<DescriptorSetLayoutCreationError> for GraphicsPipelineCreationError {
+    #[inline]
+    fn from(err: DescriptorSetLayoutCreationError) -> Self {
+        Self::DescriptorSetLayoutCreationError(err)
+    }
+}
+
 impl From<PipelineLayoutCreationError> for GraphicsPipelineCreationError {
     #[inline]
-    fn from(err: PipelineLayoutCreationError) -> GraphicsPipelineCreationError {
+    fn from(err: PipelineLayoutCreationError) -> Self {
         Self::PipelineLayoutCreationError(err)
     }
 }
 
 impl From<PipelineLayoutSupersetError> for GraphicsPipelineCreationError {
     #[inline]
-    fn from(err: PipelineLayoutSupersetError) -> GraphicsPipelineCreationError {
+    fn from(err: PipelineLayoutSupersetError) -> Self {
         Self::IncompatiblePipelineLayout(err)
     }
 }
 
 impl From<IncompatibleVertexDefinitionError> for GraphicsPipelineCreationError {
     #[inline]
-    fn from(err: IncompatibleVertexDefinitionError) -> GraphicsPipelineCreationError {
+    fn from(err: IncompatibleVertexDefinitionError) -> Self {
         Self::IncompatibleVertexDefinition(err)
     }
 }
 
 impl From<Error> for GraphicsPipelineCreationError {
     #[inline]
-    fn from(err: Error) -> GraphicsPipelineCreationError {
+    fn from(err: Error) -> Self {
         match err {
             err @ Error::OutOfHostMemory => Self::OomError(OomError::from(err)),
             err @ Error::OutOfDeviceMemory => Self::OomError(OomError::from(err)),

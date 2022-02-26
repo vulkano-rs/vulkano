@@ -43,8 +43,8 @@ use crate::memory::pool::MemoryPool;
 use crate::memory::pool::MemoryPoolAlloc;
 use crate::memory::pool::PotentialDedicatedAllocation;
 use crate::memory::pool::StdMemoryPoolAlloc;
-use crate::memory::DedicatedAlloc;
-use crate::memory::DeviceMemoryAllocError;
+use crate::memory::DedicatedAllocation;
+use crate::memory::DeviceMemoryAllocationError;
 use crate::sync::AccessError;
 use crate::sync::NowFuture;
 use crate::sync::Sharing;
@@ -100,7 +100,10 @@ impl<T: ?Sized> ImmutableBuffer<T> {
         data: T,
         usage: BufferUsage,
         queue: Arc<Queue>,
-    ) -> Result<(Arc<ImmutableBuffer<T>>, ImmutableBufferFromBufferFuture), DeviceMemoryAllocError>
+    ) -> Result<
+        (Arc<ImmutableBuffer<T>>, ImmutableBufferFromBufferFuture),
+        DeviceMemoryAllocationError,
+    >
     where
         T: Copy + Send + Sync + Sized + 'static,
     {
@@ -123,7 +126,10 @@ impl<T: ?Sized> ImmutableBuffer<T> {
         source: Arc<B>,
         usage: BufferUsage,
         queue: Arc<Queue>,
-    ) -> Result<(Arc<ImmutableBuffer<T>>, ImmutableBufferFromBufferFuture), DeviceMemoryAllocError>
+    ) -> Result<
+        (Arc<ImmutableBuffer<T>>, ImmutableBufferFromBufferFuture),
+        DeviceMemoryAllocationError,
+    >
     where
         B: TypedBufferAccess<Content = T> + 'static,
         T: Send + Sync + 'static,
@@ -189,7 +195,7 @@ impl<T> ImmutableBuffer<T> {
             Arc<ImmutableBuffer<T>>,
             Arc<ImmutableBufferInitialization<T>>,
         ),
-        DeviceMemoryAllocError,
+        DeviceMemoryAllocationError,
     > {
         ImmutableBuffer::raw(
             device.clone(),
@@ -209,7 +215,10 @@ impl<T> ImmutableBuffer<[T]> {
         data: D,
         usage: BufferUsage,
         queue: Arc<Queue>,
-    ) -> Result<(Arc<ImmutableBuffer<[T]>>, ImmutableBufferFromBufferFuture), DeviceMemoryAllocError>
+    ) -> Result<
+        (Arc<ImmutableBuffer<[T]>>, ImmutableBufferFromBufferFuture),
+        DeviceMemoryAllocationError,
+    >
     where
         D: IntoIterator<Item = T>,
         D::IntoIter: ExactSizeIterator,
@@ -254,7 +263,7 @@ impl<T> ImmutableBuffer<[T]> {
             Arc<ImmutableBuffer<[T]>>,
             Arc<ImmutableBufferInitialization<[T]>>,
         ),
-        DeviceMemoryAllocError,
+        DeviceMemoryAllocationError,
     > {
         ImmutableBuffer::raw(
             device.clone(),
@@ -295,7 +304,7 @@ impl<T: ?Sized> ImmutableBuffer<T> {
             Arc<ImmutableBuffer<T>>,
             Arc<ImmutableBufferInitialization<T>>,
         ),
-        DeviceMemoryAllocError,
+        DeviceMemoryAllocationError,
     >
     where
         I: IntoIterator<Item = QueueFamily<'a>>,
@@ -316,7 +325,7 @@ impl<T: ?Sized> ImmutableBuffer<T> {
             Arc<ImmutableBuffer<T>>,
             Arc<ImmutableBufferInitialization<T>>,
         ),
-        DeviceMemoryAllocError,
+        DeviceMemoryAllocationError,
     > {
         let buffer = match UnsafeBuffer::new(
             device.clone(),
@@ -343,7 +352,7 @@ impl<T: ?Sized> ImmutableBuffer<T> {
             &mem_reqs,
             AllocLayout::Linear,
             MappingRequirement::DoNotMap,
-            DedicatedAlloc::Buffer(&buffer),
+            Some(DedicatedAllocation::Buffer(&buffer)),
             |t| {
                 if t.is_device_local() {
                     AllocFromRequirementsFilter::Preferred

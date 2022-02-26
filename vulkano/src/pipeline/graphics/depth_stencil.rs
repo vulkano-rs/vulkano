@@ -24,6 +24,7 @@ use crate::device::Device;
 use crate::pipeline::graphics::GraphicsPipelineCreationError;
 use crate::pipeline::{DynamicState, StateMode};
 use crate::render_pass::Subpass;
+use crate::Version;
 use fnv::FnvHashMap;
 use std::ops::RangeInclusive;
 use std::u32;
@@ -89,7 +90,9 @@ impl DepthStencilState {
                 }
 
                 if depth_state.enable_dynamic {
-                    if !device.enabled_features().extended_dynamic_state {
+                    if !(device.api_version() >= Version::V1_3
+                        || device.enabled_features().extended_dynamic_state)
+                    {
                         return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
                             feature: "extended_dynamic_state",
                             reason: "DepthState::enable_dynamic was true",
@@ -109,7 +112,9 @@ impl DepthStencilState {
                         write_enable as ash::vk::Bool32
                     }
                     StateMode::Dynamic => {
-                        if !device.enabled_features().extended_dynamic_state {
+                        if !(device.api_version() >= Version::V1_3
+                            || device.enabled_features().extended_dynamic_state)
+                        {
                             return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
                                 feature: "extended_dynamic_state",
                                 reason: "DepthState::write_enable was set to Dynamic",
@@ -126,7 +131,9 @@ impl DepthStencilState {
                         compare_op.into()
                     }
                     StateMode::Dynamic => {
-                        if !device.enabled_features().extended_dynamic_state {
+                        if !(device.api_version() >= Version::V1_3
+                            || device.enabled_features().extended_dynamic_state)
+                        {
                             return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
                                 feature: "extended_dynamic_state",
                                 reason: "DepthState::compare_op was set to Dynamic",
@@ -155,7 +162,9 @@ impl DepthStencilState {
             }
 
             if depth_bounds_state.enable_dynamic {
-                if !device.enabled_features().extended_dynamic_state {
+                if !(device.api_version() >= Version::V1_3
+                    || device.enabled_features().extended_dynamic_state)
+                {
                     return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
                         feature: "extended_dynamic_state",
                         reason: "DepthBoundsState::enable_dynamic was true",
@@ -199,7 +208,9 @@ impl DepthStencilState {
             // TODO: if stencil buffer can potentially be written, check if it is writable
 
             if stencil_state.enable_dynamic {
-                if !device.enabled_features().extended_dynamic_state {
+                if !(device.api_version() >= Version::V1_3
+                    || device.enabled_features().extended_dynamic_state)
+                {
                     return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
                         feature: "extended_dynamic_state",
                         reason: "StencilState::enable_dynamic was true",
@@ -215,7 +226,9 @@ impl DepthStencilState {
                     dynamic_state_modes.insert(DynamicState::StencilOp, false);
                 }
                 (StateMode::Dynamic, StateMode::Dynamic) => {
-                    if !device.enabled_features().extended_dynamic_state {
+                    if !(device.api_version() >= Version::V1_3
+                        || device.enabled_features().extended_dynamic_state)
+                    {
                         return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
                             feature: "extended_dynamic_state",
                             reason: "StencilState::ops was set to Dynamic",
@@ -326,14 +339,14 @@ pub struct DepthState {
     /// Sets whether depth testing should be enabled and disabled dynamically. If set to `false`,
     /// depth testing is always enabled.
     ///
-    /// If set to `true`, the
+    /// If set to `true`, the device API version must be at least 1.3, or the
     /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
     /// enabled on the device.
     pub enable_dynamic: bool,
 
     /// Sets whether the value in the depth buffer will be updated when the depth test succeeds.
     ///
-    /// If set to `Dynamic`, the
+    /// If set to `Dynamic`, the device API version must be at least 1.3, or the
     /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
     /// enabled on the device.
     pub write_enable: StateMode<bool>,
@@ -341,7 +354,7 @@ pub struct DepthState {
     /// Comparison operation to use between the depth value of each incoming fragment and the depth
     /// value currently in the depth buffer.
     ///
-    /// If set to `Dynamic`, the
+    /// If set to `Dynamic`, the device API version must be at least 1.3, or the
     /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
     /// enabled on the device.
     pub compare_op: StateMode<CompareOp>,
@@ -367,7 +380,7 @@ pub struct DepthBoundsState {
     /// Sets whether depth bounds testing should be enabled and disabled dynamically. If set to
     /// `false`, depth bounds testing is always enabled.
     ///
-    /// If set to `true`, the
+    /// If set to `true`, the device API version must be at least 1.3, or the
     /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
     /// enabled on the device.
     pub enable_dynamic: bool,
@@ -375,7 +388,7 @@ pub struct DepthBoundsState {
     /// The minimum and maximum depth values to use for the test. Fragments with values outside this
     /// range are discarded.
     ///
-    /// If set to `Dynamic`, the
+    /// If set to `Dynamic`, the device API version must be at least 1.3, or the
     /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
     /// enabled on the device.
     pub bounds: StateMode<RangeInclusive<f32>>,
@@ -402,7 +415,7 @@ pub struct StencilState {
     /// Sets whether stencil testing should be enabled and disabled dynamically. If set to
     /// `false`, stencil testing is always enabled.
     ///
-    /// If set to `true`, the
+    /// If set to `true`, the device API version must be at least 1.3, or the
     /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
     /// enabled on the device.
     pub enable_dynamic: bool,
@@ -420,7 +433,7 @@ pub struct StencilState {
 pub struct StencilOpState {
     /// The stencil operations to perform.
     ///
-    /// If set to `Dynamic`, the
+    /// If set to `Dynamic`, the device API version must be at least 1.3, or the
     /// [`extended_dynamic_state`](crate::device::Features::extended_dynamic_state) feature must be
     /// enabled on the device.
     pub ops: StateMode<StencilOps>,

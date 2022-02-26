@@ -28,7 +28,7 @@ use crate::check_errors;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::memory::DeviceMemory;
-use crate::memory::DeviceMemoryAllocError;
+use crate::memory::DeviceMemoryAllocationError;
 use crate::memory::MemoryRequirements;
 use crate::sync::Sharing;
 use crate::DeviceSize;
@@ -419,7 +419,7 @@ impl Default for UnsafeBufferCreateInfo {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BufferCreationError {
     /// Allocating memory failed.
-    AllocError(DeviceMemoryAllocError),
+    AllocError(DeviceMemoryAllocationError),
 
     ExtensionNotEnabled {
         extension: &'static str,
@@ -484,10 +484,10 @@ impl From<Error> for BufferCreationError {
     fn from(err: Error) -> BufferCreationError {
         match err {
             err @ Error::OutOfHostMemory => {
-                BufferCreationError::AllocError(DeviceMemoryAllocError::from(err))
+                BufferCreationError::AllocError(DeviceMemoryAllocationError::from(err))
             }
             err @ Error::OutOfDeviceMemory => {
-                BufferCreationError::AllocError(DeviceMemoryAllocError::from(err))
+                BufferCreationError::AllocError(DeviceMemoryAllocationError::from(err))
             }
             _ => panic!("unexpected error: {:?}", err),
         }

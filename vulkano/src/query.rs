@@ -13,44 +13,59 @@
 //! represent a collection of queries. Whenever you use a query, you have to specify both the query
 //! pool and the slot id within that query pool.
 
-use crate::check_errors;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::DeviceSize;
-use crate::Error;
-use crate::OomError;
-use crate::Success;
-use crate::VulkanObject;
-use std::error;
-use std::ffi::c_void;
-use std::fmt;
-use std::mem::MaybeUninit;
-use std::ops::Range;
-use std::ptr;
-use std::sync::Arc;
+use crate::{
+    check_errors,
+    device::{Device, DeviceOwned},
+    DeviceSize, Error, OomError, Success, VulkanObject,
+};
+use std::{
+    error,
+    ffi::c_void,
+    fmt,
+    hash::{Hash, Hasher},
+    mem::MaybeUninit,
+    ops::Range,
+    ptr,
+    sync::Arc,
+};
 
 /// A collection of one or more queries of a particular type.
 #[derive(Debug)]
 pub struct QueryPool {
-    pool: ash::vk::QueryPool,
+    handle: ash::vk::QueryPool,
     device: Arc<Device>,
-    num_slots: u32,
-    ty: QueryType,
+
+    query_type: QueryType,
+    query_count: u32,
 }
 
 impl QueryPool {
-    /// Builds a new query pool.
+    /// Creates a new `QueryPool`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `create_info.query_count` is `0`.
     pub fn new(
         device: Arc<Device>,
-        ty: QueryType,
-        num_slots: u32,
+        create_info: QueryPoolCreateInfo,
     ) -> Result<Arc<QueryPool>, QueryPoolCreationError> {
-        let statistics = match ty {
+        let QueryPoolCreateInfo {
+            query_type,
+            query_count,
+            _ne: _,
+        } = create_info;
+
+        // VUID-VkQueryPoolCreateInfo-queryCount-02763
+        assert!(query_count != 0);
+
+        let pipeline_statistics = match query_type {
             QueryType::PipelineStatistics(flags) => {
+                // VUID-VkQueryPoolCreateInfo-queryType-00791
                 if !device.enabled_features().pipeline_statistics_query {
                     return Err(QueryPoolCreationError::PipelineStatisticsQueryFeatureNotEnabled);
                 }
 
+                // VUID-VkQueryPoolCreateInfo-queryType-00792
                 flags.into()
             }
             QueryType::Occlusion | QueryType::Timestamp => {
@@ -58,20 +73,20 @@ impl QueryPool {
             }
         };
 
-        let pool = unsafe {
-            let infos = ash::vk::QueryPoolCreateInfo {
-                flags: ash::vk::QueryPoolCreateFlags::empty(),
-                query_type: ty.into(),
-                query_count: num_slots,
-                pipeline_statistics: statistics,
-                ..Default::default()
-            };
+        let create_info = ash::vk::QueryPoolCreateInfo {
+            flags: ash::vk::QueryPoolCreateFlags::empty(),
+            query_type: query_type.into(),
+            query_count,
+            pipeline_statistics,
+            ..Default::default()
+        };
 
-            let mut output = MaybeUninit::uninit();
+        let handle = unsafe {
             let fns = device.fns();
+            let mut output = MaybeUninit::uninit();
             check_errors(fns.v1_0.create_query_pool(
                 device.internal_object(),
-                &infos,
+                &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
             ))?;
@@ -79,29 +94,30 @@ impl QueryPool {
         };
 
         Ok(Arc::new(QueryPool {
-            pool,
+            handle,
             device,
-            num_slots,
-            ty,
+
+            query_type,
+            query_count,
         }))
     }
 
-    /// Returns the [`QueryType`] that this query pool was created with.
+    /// Returns the query type of the pool.
     #[inline]
-    pub fn ty(&self) -> QueryType {
-        self.ty
+    pub fn query_type(&self) -> QueryType {
+        self.query_type
     }
 
     /// Returns the number of query slots of this query pool.
     #[inline]
-    pub fn num_slots(&self) -> u32 {
-        self.num_slots
+    pub fn query_count(&self) -> u32 {
+        self.query_count
     }
 
     /// Returns a reference to a single query slot, or `None` if the index is out of range.
     #[inline]
     pub fn query(&self, index: u32) -> Option<Query> {
-        if index < self.num_slots() {
+        if index < self.query_count {
             Some(Query { pool: self, index })
         } else {
             None
@@ -117,10 +133,21 @@ impl QueryPool {
     pub fn queries_range(&self, range: Range<u32>) -> Option<QueriesRange> {
         assert!(!range.is_empty());
 
-        if range.end <= self.num_slots() {
+        if range.end <= self.query_count {
             Some(QueriesRange { pool: self, range })
         } else {
             None
+        }
+    }
+}
+
+impl Drop for QueryPool {
+    #[inline]
+    fn drop(&mut self) {
+        unsafe {
+            let fns = self.device.fns();
+            fns.v1_0
+                .destroy_query_pool(self.device.internal_object(), self.handle, ptr::null());
         }
     }
 }
@@ -130,7 +157,7 @@ unsafe impl VulkanObject for QueryPool {
 
     #[inline]
     fn internal_object(&self) -> ash::vk::QueryPool {
-        self.pool
+        self.handle
     }
 }
 
@@ -141,13 +168,47 @@ unsafe impl DeviceOwned for QueryPool {
     }
 }
 
-impl Drop for QueryPool {
+impl PartialEq for QueryPool {
     #[inline]
-    fn drop(&mut self) {
-        unsafe {
-            let fns = self.device.fns();
-            fns.v1_0
-                .destroy_query_pool(self.device.internal_object(), self.pool, ptr::null());
+    fn eq(&self, other: &Self) -> bool {
+        self.handle == other.handle && self.device() == other.device()
+    }
+}
+
+impl Eq for QueryPool {}
+
+impl Hash for QueryPool {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.handle.hash(state);
+        self.device().hash(state);
+    }
+}
+
+/// Parameters to create a new `QueryPool`.
+#[derive(Clone, Debug)]
+pub struct QueryPoolCreateInfo {
+    /// The type of query that the pool should be for.
+    ///
+    /// There is no default value.
+    pub query_type: QueryType,
+
+    /// The number of queries to create in the pool.
+    ///
+    /// The default value is `0`, which must be overridden.
+    pub query_count: u32,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl QueryPoolCreateInfo {
+    /// Returns a `QueryPoolCreateInfo` with the specified `query_type`.
+    #[inline]
+    pub fn query_type(query_type: QueryType) -> Self {
+        Self {
+            query_type,
+            query_count: 0,
+            _ne: crate::NonExhaustive(()),
         }
     }
 }
@@ -310,7 +371,8 @@ impl<'a> QueriesRange<'a> {
         debug_assert!(buffer_start % std::mem::size_of::<T>() as DeviceSize == 0);
 
         let count = self.range.end - self.range.start;
-        let per_query_len = self.pool.ty.result_size() + flags.with_availability as DeviceSize;
+        let per_query_len =
+            self.pool.query_type.result_size() + flags.with_availability as DeviceSize;
         let required_len = per_query_len * count as DeviceSize;
 
         if buffer_len < required_len {
@@ -320,7 +382,7 @@ impl<'a> QueriesRange<'a> {
             });
         }
 
-        match self.pool.ty {
+        match self.pool.query_type {
             QueryType::Occlusion => (),
             QueryType::PipelineStatistics(_) => (),
             QueryType::Timestamp => {
@@ -480,7 +542,7 @@ impl From<QueryControlFlags> for ash::vk::QueryControlFlags {
 }
 
 /// For pipeline statistics queries, the statistics that should be gathered.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct QueryPipelineStatisticFlags {
     /// Count the number of vertices processed by the input assembly.
     pub input_assembly_vertices: bool,
@@ -670,6 +732,7 @@ impl From<QueryResultFlags> for ash::vk::QueryResultFlags {
 
 #[cfg(test)]
 mod tests {
+    use super::QueryPoolCreateInfo;
     use crate::query::QueryPipelineStatisticFlags;
     use crate::query::QueryPool;
     use crate::query::QueryPoolCreationError;
@@ -678,9 +741,14 @@ mod tests {
     #[test]
     fn pipeline_statistics_feature() {
         let (device, _) = gfx_dev_and_queue!();
-
-        let ty = QueryType::PipelineStatistics(QueryPipelineStatisticFlags::none());
-        match QueryPool::new(device, ty, 256) {
+        let query_type = QueryType::PipelineStatistics(QueryPipelineStatisticFlags::none());
+        match QueryPool::new(
+            device,
+            QueryPoolCreateInfo {
+                query_count: 256,
+                ..QueryPoolCreateInfo::query_type(query_type)
+            },
+        ) {
             Err(QueryPoolCreationError::PipelineStatisticsQueryFeatureNotEnabled) => (),
             _ => panic!(),
         };
