@@ -33,7 +33,7 @@ pub unsafe trait DescriptorPool: DeviceOwned {
     type Alloc: DescriptorPoolAlloc;
 
     /// Allocates a descriptor set.
-    fn alloc(
+    fn allocate(
         &mut self,
         layout: &DescriptorSetLayout,
         variable_descriptor_count: u32,

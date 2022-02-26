@@ -68,7 +68,7 @@ unsafe impl DescriptorPool for Arc<StdDescriptorPool> {
     type Alloc = StdDescriptorPoolAlloc;
 
     // TODO: eventually use a lock-free algorithm?
-    fn alloc(
+    fn allocate(
         &mut self,
         layout: &DescriptorSetLayout,
         variable_descriptor_count: u32,
@@ -263,7 +263,7 @@ mod tests {
 
         let mut pool = Arc::new(StdDescriptorPool::new(device));
         let pool_weak = Arc::downgrade(&pool);
-        let alloc = pool.alloc(&layout, 0);
+        let alloc = pool.allocate(&layout, 0);
         drop(pool);
         assert!(pool_weak.upgrade().is_some());
     }
