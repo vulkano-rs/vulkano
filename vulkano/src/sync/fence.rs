@@ -7,23 +7,23 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::check_errors;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::Error;
-use crate::OomError;
-use crate::SafeDeref;
-use crate::Success;
-use crate::VulkanObject;
+use crate::{
+    check_errors,
+    device::{Device, DeviceOwned},
+    Error, OomError, Success, VulkanObject,
+};
 use smallvec::SmallVec;
-use std::error;
-use std::fmt;
-use std::mem::MaybeUninit;
-use std::ptr;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
-use std::time::Duration;
+use std::{
+    error, fmt,
+    hash::{Hash, Hasher},
+    mem::MaybeUninit,
+    ptr,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
 /// A fence is used to know when a command buffer submission has finished its execution.
 ///
@@ -31,13 +31,9 @@ use std::time::Duration;
 /// the same resource simultaneously (except for concurrent reads). Therefore in order to know
 /// when the CPU can access a resource again, a fence has to be used.
 #[derive(Debug)]
-pub struct Fence<D = Arc<Device>>
-where
-    D: SafeDeref<Target = Device>,
-{
-    fence: ash::vk::Fence,
-
-    device: D,
+pub struct Fence {
+    handle: ash::vk::Fence,
+    device: Arc<Device>,
 
     // If true, we know that the `Fence` is signaled. If false, we don't know.
     // This variable exists so that we don't need to call `vkGetFenceStatus` or `vkWaitForFences`
@@ -49,70 +45,28 @@ where
     must_put_in_pool: bool,
 }
 
-impl<D> Fence<D>
-where
-    D: SafeDeref<Target = Device>,
-{
-    /// Takes a fence from the vulkano-provided fence pool.
-    /// If the pool is empty, a new fence will be allocated.
-    /// Upon `drop`, the fence is put back into the pool.
-    ///
-    /// For most applications, using the fence pool should be preferred,
-    /// in order to avoid creating new fences every frame.
-    pub fn from_pool(device: D) -> Result<Fence<D>, OomError> {
-        let maybe_raw_fence = device.fence_pool().lock().unwrap().pop();
-        match maybe_raw_fence {
-            Some(raw_fence) => {
-                unsafe {
-                    // Make sure the fence isn't signaled
-                    let fns = device.fns();
-                    check_errors(
-                        fns.v1_0
-                            .reset_fences(device.internal_object(), 1, &raw_fence),
-                    )?;
-                }
-                Ok(Fence {
-                    fence: raw_fence,
-                    device: device,
-                    signaled: AtomicBool::new(false),
-                    must_put_in_pool: true,
-                })
-            }
-            None => {
-                // Pool is empty, alloc new fence
-                Fence::alloc_impl(device, false, true)
-            }
+impl Fence {
+    /// Creates a new `Fence`.
+    pub fn new(device: Arc<Device>, create_info: FenceCreateInfo) -> Result<Fence, OomError> {
+        let FenceCreateInfo { signaled, _ne: _ } = create_info;
+
+        let mut flags = ash::vk::FenceCreateFlags::empty();
+
+        if signaled {
+            flags |= ash::vk::FenceCreateFlags::SIGNALED;
         }
-    }
 
-    /// Builds a new fence.
-    #[inline]
-    pub fn alloc(device: D) -> Result<Fence<D>, OomError> {
-        Fence::alloc_impl(device, false, false)
-    }
+        let create_info = ash::vk::FenceCreateInfo {
+            flags,
+            ..Default::default()
+        };
 
-    /// Builds a new fence in signaled state.
-    #[inline]
-    pub fn alloc_signaled(device: D) -> Result<Fence<D>, OomError> {
-        Fence::alloc_impl(device, true, false)
-    }
-
-    fn alloc_impl(device: D, signaled: bool, must_put_in_pool: bool) -> Result<Fence<D>, OomError> {
-        let fence = unsafe {
-            let infos = ash::vk::FenceCreateInfo {
-                flags: if signaled {
-                    ash::vk::FenceCreateFlags::SIGNALED
-                } else {
-                    ash::vk::FenceCreateFlags::empty()
-                },
-                ..Default::default()
-            };
-
+        let handle = unsafe {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
             check_errors(fns.v1_0.create_fence(
                 device.internal_object(),
-                &infos,
+                &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
             ))?;
@@ -120,11 +74,45 @@ where
         };
 
         Ok(Fence {
-            fence: fence,
-            device: device,
+            handle,
+            device,
             signaled: AtomicBool::new(signaled),
-            must_put_in_pool: must_put_in_pool,
+            must_put_in_pool: false,
         })
+    }
+
+    /// Takes a fence from the vulkano-provided fence pool.
+    /// If the pool is empty, a new fence will be created.
+    /// Upon `drop`, the fence is put back into the pool.
+    ///
+    /// For most applications, using the fence pool should be preferred,
+    /// in order to avoid creating new fences every frame.
+    pub fn from_pool(device: Arc<Device>) -> Result<Fence, OomError> {
+        let handle = device.fence_pool().lock().unwrap().pop();
+        let fence = match handle {
+            Some(handle) => {
+                unsafe {
+                    // Make sure the fence isn't signaled
+                    let fns = device.fns();
+                    check_errors(fns.v1_0.reset_fences(device.internal_object(), 1, &handle))?;
+                }
+
+                Fence {
+                    handle,
+                    device,
+                    signaled: AtomicBool::new(false),
+                    must_put_in_pool: true,
+                }
+            }
+            None => {
+                // Pool is empty, alloc new fence
+                let mut fence = Fence::new(device, FenceCreateInfo::default())?;
+                fence.must_put_in_pool = true;
+                fence
+            }
+        };
+
+        Ok(fence)
     }
 
     /// Returns true if the fence is signaled.
@@ -138,7 +126,7 @@ where
             let fns = self.device.fns();
             let result = check_errors(
                 fns.v1_0
-                    .get_fence_status(self.device.internal_object(), self.fence),
+                    .get_fence_status(self.device.internal_object(), self.handle),
             )?;
             match result {
                 Success::Success => {
@@ -175,7 +163,7 @@ where
             let r = check_errors(fns.v1_0.wait_for_fences(
                 self.device.internal_object(),
                 1,
-                &self.fence,
+                &self.handle,
                 ash::vk::TRUE,
                 timeout_ns,
             ))?;
@@ -198,8 +186,7 @@ where
     /// Panics if not all fences belong to the same device.
     pub fn multi_wait<'a, I>(iter: I, timeout: Option<Duration>) -> Result<(), FenceWaitError>
     where
-        I: IntoIterator<Item = &'a Fence<D>>,
-        D: 'a,
+        I: IntoIterator<Item = &'a Fence>,
     {
         let mut device: Option<&Device> = None;
 
@@ -219,7 +206,7 @@ where
                 if fence.signaled.load(Ordering::Relaxed) {
                     None
                 } else {
-                    Some(fence.fence)
+                    Some(fence.handle)
                 }
             })
             .collect();
@@ -264,7 +251,7 @@ where
             let fns = self.device.fns();
             check_errors(
                 fns.v1_0
-                    .reset_fences(self.device.internal_object(), 1, &self.fence),
+                    .reset_fences(self.device.internal_object(), 1, &self.handle),
             )?;
             self.signaled.store(false, Ordering::Relaxed);
             Ok(())
@@ -279,8 +266,7 @@ where
     ///
     pub fn multi_reset<'a, I>(iter: I) -> Result<(), OomError>
     where
-        I: IntoIterator<Item = &'a mut Fence<D>>,
-        D: 'a,
+        I: IntoIterator<Item = &'a mut Fence>,
     {
         let mut device: Option<&Device> = None;
 
@@ -298,7 +284,7 @@ where
                 };
 
                 fence.signaled.store(false, Ordering::Relaxed);
-                fence.fence
+                fence.handle
             })
             .collect();
 
@@ -316,6 +302,31 @@ where
     }
 }
 
+impl Drop for Fence {
+    #[inline]
+    fn drop(&mut self) {
+        unsafe {
+            if self.must_put_in_pool {
+                let raw_fence = self.handle;
+                self.device.fence_pool().lock().unwrap().push(raw_fence);
+            } else {
+                let fns = self.device.fns();
+                fns.v1_0
+                    .destroy_fence(self.device.internal_object(), self.handle, ptr::null());
+            }
+        }
+    }
+}
+
+unsafe impl VulkanObject for Fence {
+    type Object = ash::vk::Fence;
+
+    #[inline]
+    fn internal_object(&self) -> ash::vk::Fence {
+        self.handle
+    }
+}
+
 unsafe impl DeviceOwned for Fence {
     #[inline]
     fn device(&self) -> &Arc<Device> {
@@ -323,33 +334,40 @@ unsafe impl DeviceOwned for Fence {
     }
 }
 
-unsafe impl<D> VulkanObject for Fence<D>
-where
-    D: SafeDeref<Target = Device>,
-{
-    type Object = ash::vk::Fence;
-
+impl PartialEq for Fence {
     #[inline]
-    fn internal_object(&self) -> ash::vk::Fence {
-        self.fence
+    fn eq(&self, other: &Self) -> bool {
+        self.handle == other.handle && self.device() == other.device()
     }
 }
 
-impl<D> Drop for Fence<D>
-where
-    D: SafeDeref<Target = Device>,
-{
+impl Eq for Fence {}
+
+impl Hash for Fence {
     #[inline]
-    fn drop(&mut self) {
-        unsafe {
-            if self.must_put_in_pool {
-                let raw_fence = self.fence;
-                self.device.fence_pool().lock().unwrap().push(raw_fence);
-            } else {
-                let fns = self.device.fns();
-                fns.v1_0
-                    .destroy_fence(self.device.internal_object(), self.fence, ptr::null());
-            }
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.handle.hash(state);
+        self.device().hash(state);
+    }
+}
+
+/// Parameters to create a new `Fence`.
+#[derive(Clone, Debug)]
+pub struct FenceCreateInfo {
+    /// Whether the fence should be created in the signaled state.
+    ///
+    /// The default value is `false`.
+    pub signaled: bool,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for FenceCreateInfo {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            signaled: false,
+            _ne: crate::NonExhaustive(()),
         }
     }
 }
@@ -406,6 +424,7 @@ impl From<Error> for FenceWaitError {
 
 #[cfg(test)]
 mod tests {
+    use crate::sync::fence::FenceCreateInfo;
     use crate::sync::Fence;
     use crate::VulkanObject;
     use std::time::Duration;
@@ -414,7 +433,7 @@ mod tests {
     fn fence_create() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let fence = Fence::alloc(device.clone()).unwrap();
+        let fence = Fence::new(device.clone(), Default::default()).unwrap();
         assert!(!fence.ready().unwrap());
     }
 
@@ -422,7 +441,14 @@ mod tests {
     fn fence_create_signaled() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let fence = Fence::alloc_signaled(device.clone()).unwrap();
+        let fence = Fence::new(
+            device.clone(),
+            FenceCreateInfo {
+                signaled: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         assert!(fence.ready().unwrap());
     }
 
@@ -430,7 +456,14 @@ mod tests {
     fn fence_signaled_wait() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let fence = Fence::alloc_signaled(device.clone()).unwrap();
+        let fence = Fence::new(
+            device.clone(),
+            FenceCreateInfo {
+                signaled: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         fence.wait(Some(Duration::new(0, 10))).unwrap();
     }
 
@@ -438,7 +471,14 @@ mod tests {
     fn fence_reset() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let mut fence = Fence::alloc_signaled(device.clone()).unwrap();
+        let mut fence = Fence::new(
+            device.clone(),
+            FenceCreateInfo {
+                signaled: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         fence.reset().unwrap();
         assert!(!fence.ready().unwrap());
     }
@@ -452,8 +492,22 @@ mod tests {
             "Tried to wait for multiple fences that didn't belong \
                               to the same device",
             {
-                let fence1 = Fence::alloc_signaled(device1.clone()).unwrap();
-                let fence2 = Fence::alloc_signaled(device2.clone()).unwrap();
+                let fence1 = Fence::new(
+                    device1.clone(),
+                    FenceCreateInfo {
+                        signaled: true,
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+                let fence2 = Fence::new(
+                    device2.clone(),
+                    FenceCreateInfo {
+                        signaled: true,
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
 
                 let _ = Fence::multi_wait(
                     [&fence1, &fence2].iter().cloned(),
@@ -465,8 +519,6 @@ mod tests {
 
     #[test]
     fn multireset_different_devices() {
-        use std::iter::once;
-
         let (device1, _) = gfx_dev_and_queue!();
         let (device2, _) = gfx_dev_and_queue!();
 
@@ -474,10 +526,24 @@ mod tests {
             "Tried to reset multiple fences that didn't belong \
                               to the same device",
             {
-                let mut fence1 = Fence::alloc_signaled(device1.clone()).unwrap();
-                let mut fence2 = Fence::alloc_signaled(device2.clone()).unwrap();
+                let mut fence1 = Fence::new(
+                    device1.clone(),
+                    FenceCreateInfo {
+                        signaled: true,
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+                let mut fence2 = Fence::new(
+                    device2.clone(),
+                    FenceCreateInfo {
+                        signaled: true,
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
 
-                let _ = Fence::multi_reset(once(&mut fence1).chain(once(&mut fence2)));
+                let _ = Fence::multi_reset([&mut fence1, &mut fence2]);
             }
         );
     }

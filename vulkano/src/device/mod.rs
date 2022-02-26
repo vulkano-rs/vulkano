@@ -982,14 +982,6 @@ impl Queue {
         &self.device
     }
 
-    /// Returns true if this is the same queue as another one.
-    #[inline]
-    pub fn is_same(&self, other: &Queue) -> bool {
-        self.id == other.id
-            && self.family == other.family
-            && self.device.internal_object() == other.device.internal_object()
-    }
-
     /// Returns the family this queue belongs to.
     #[inline]
     pub fn family(&self) -> QueueFamily {
@@ -1019,13 +1011,14 @@ impl Queue {
     }
 }
 
-impl PartialEq for Queue {
-    fn eq(&self, other: &Self) -> bool {
-        self.is_same(other)
+unsafe impl SynchronizedVulkanObject for Queue {
+    type Object = ash::vk::Queue;
+
+    #[inline]
+    fn internal_object_guard(&self) -> MutexGuard<Self::Object> {
+        self.handle.lock().unwrap()
     }
 }
-
-impl Eq for Queue {}
 
 unsafe impl DeviceOwned for Queue {
     fn device(&self) -> &Arc<Device> {
@@ -1033,12 +1026,20 @@ unsafe impl DeviceOwned for Queue {
     }
 }
 
-unsafe impl SynchronizedVulkanObject for Queue {
-    type Object = ash::vk::Queue;
+impl PartialEq for Queue {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id && self.family == other.family && self.device == other.device
+    }
+}
 
+impl Eq for Queue {}
+
+impl Hash for Queue {
     #[inline]
-    fn internal_object_guard(&self) -> MutexGuard<Self::Object> {
-        self.handle.lock().unwrap()
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+        self.family.hash(state);
+        self.device.hash(state);
     }
 }
 

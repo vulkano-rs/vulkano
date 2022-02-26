@@ -40,7 +40,6 @@ use crate::swapchain::Surface;
 use crate::swapchain::SurfaceApi;
 use crate::swapchain::SurfaceSwapchainLock;
 use crate::swapchain::SurfaceTransform;
-use crate::sync::semaphore::SemaphoreError;
 use crate::sync::AccessCheckError;
 use crate::sync::AccessError;
 use crate::sync::AccessFlags;
@@ -49,6 +48,7 @@ use crate::sync::FlushError;
 use crate::sync::GpuFuture;
 use crate::sync::PipelineStages;
 use crate::sync::Semaphore;
+use crate::sync::SemaphoreCreationError;
 use crate::sync::Sharing;
 use crate::Error;
 use crate::OomError;
@@ -1646,7 +1646,7 @@ pub enum AcquireError {
     OutOfDate,
 
     /// Error during semaphore creation
-    SemaphoreError(SemaphoreError),
+    SemaphoreError(SemaphoreCreationError),
 }
 
 impl error::Error for AcquireError {
@@ -1680,8 +1680,8 @@ impl fmt::Display for AcquireError {
     }
 }
 
-impl From<SemaphoreError> for AcquireError {
-    fn from(err: SemaphoreError) -> Self {
+impl From<SemaphoreCreationError> for AcquireError {
+    fn from(err: SemaphoreCreationError) -> Self {
         AcquireError::SemaphoreError(err)
     }
 }
@@ -1869,7 +1869,7 @@ where
     fn queue(&self) -> Option<Arc<Queue>> {
         debug_assert!(match self.previous.queue() {
             None => true,
-            Some(q) => q.is_same(&self.queue),
+            Some(q) => q == self.queue,
         });
 
         Some(self.queue.clone())

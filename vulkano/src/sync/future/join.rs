@@ -38,7 +38,7 @@ where
     );
 
     if !first.queue_change_allowed() && !second.queue_change_allowed() {
-        assert!(first.queue().unwrap().is_same(&second.queue().unwrap()));
+        assert!(first.queue().unwrap() == second.queue().unwrap());
     }
 
     JoinFuture {
@@ -185,7 +185,7 @@ where
     fn queue(&self) -> Option<Arc<Queue>> {
         match (self.first.queue(), self.second.queue()) {
             (Some(q1), Some(q2)) => {
-                if q1.is_same(&q2) {
+                if q1 == q2 {
                     Some(q1)
                 } else if self.first.queue_change_allowed() {
                     Some(q2)

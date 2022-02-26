@@ -126,7 +126,7 @@ pub unsafe trait PrimaryCommandBuffer: DeviceOwned + Send + Sync {
         );
 
         if !future.queue_change_allowed() {
-            assert!(future.queue().unwrap().is_same(&queue));
+            assert!(future.queue().unwrap() == queue);
         }
 
         self.lock_submit(&future, &queue)?;
