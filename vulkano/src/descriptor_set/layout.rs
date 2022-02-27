@@ -818,7 +818,7 @@ mod tests {
     use crate::descriptor_set::layout::DescriptorSetLayoutCreateInfo;
     use crate::descriptor_set::layout::DescriptorType;
     use crate::shader::ShaderStages;
-    use fnv::HashMap;
+    use std::collections::HashMap;
 
     #[test]
     fn empty() {
