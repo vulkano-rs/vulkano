@@ -66,6 +66,12 @@
 - **Breaking** The `alloc` and `free` methods of `UnsafeDescriptorPool` are renamed to `allocate_descriptor_sets` and `free_descriptor_sets`.
 - **Breaking** The `alloc` method of the `DescriptorPool` trait is renamed to `allocate`.
 - **Breaking** `DescriptorSetLayout::descriptors_count` is renamed to `descriptor_counts`, and returns a hashmap instead of a separate type.
+- **Breaking** `UnsafeImage` creation parameters are given using `UnsafeImageCreateInfo`.
+- **Breaking** `ImageView` creation parameters are given using `ImageViewCreateInfo`.
+- **Breaking** `ImageView::new` has been renamed to `new_default`.
+- **Breaking** `ImageView::ty` has been renamed to `view_type`.
+- **Breaking** The `format` methods of `UnsafeImage` and `ImageViewAbstract` now return `Option<Format>`.
+- **Breaking** `UnsafeImage::flags` has been replaced with methods to return individual flags.
 - Fixed sync bug in `copy_image` and `blit_image` where the `src` and `dest` images are the same but with different mip level and/or array layer.
 - Fixed bug in `begin_render_pass` causing a panic when clearing a depth-only attachment.
 - Fixed bug in the `QueueFamily::supports_` methods causing a panic when querying support for a stage that needs no queue flags.
