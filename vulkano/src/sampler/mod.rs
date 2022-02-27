@@ -489,11 +489,11 @@ impl Sampler {
             let aspects = image_view.aspects();
             let view_scalar_type = ShaderScalarType::from(
                 if aspects.color || aspects.plane0 || aspects.plane1 || aspects.plane2 {
-                    image_view.format().type_color().unwrap()
+                    image_view.format().unwrap().type_color().unwrap()
                 } else if aspects.depth {
-                    image_view.format().type_depth().unwrap()
+                    image_view.format().unwrap().type_depth().unwrap()
                 } else if aspects.stencil {
-                    image_view.format().type_stencil().unwrap()
+                    image_view.format().unwrap().type_stencil().unwrap()
                 } else {
                     // Per `ImageViewBuilder::aspects` and
                     // VUID-VkDescriptorImageInfo-imageView-01976
@@ -556,7 +556,10 @@ impl Sampler {
             // The viewType must be either VK_IMAGE_VIEW_TYPE_1D or
             // VK_IMAGE_VIEW_TYPE_2D.
             // VUID-vkCmdDispatch-None-02702
-            if !matches!(image_view.ty(), ImageViewType::Dim1d | ImageViewType::Dim2d) {
+            if !matches!(
+                image_view.view_type(),
+                ImageViewType::Dim1d | ImageViewType::Dim2d
+            ) {
                 return Err(
                     SamplerImageViewIncompatibleError::UnnormalizedCoordinatesViewTypeNotCompatible,
                 );

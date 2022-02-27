@@ -131,7 +131,7 @@ impl Renderer {
         );
         let previous_frame_end = Some(sync::now(device.clone()).boxed());
         let is_full_screen = swapchain.surface().window().fullscreen().is_some();
-        let image_format = final_images.first().unwrap().format();
+        let image_format = final_images.first().unwrap().format().unwrap();
         let render_passes = RenderPasses {
             place_over_frame: RenderPassPlaceOverFrame::new(queue.clone(), image_format),
         };
@@ -226,7 +226,7 @@ impl Renderer {
         .unwrap();
         let images = images
             .into_iter()
-            .map(|image| ImageView::new(image).unwrap())
+            .map(|image| ImageView::new_default(image).unwrap())
             .collect::<Vec<_>>();
         (swapchain, images)
     }
@@ -239,7 +239,7 @@ impl Renderer {
     /// Return swapchain image format
     #[allow(unused)]
     pub fn swapchain_format(&self) -> Format {
-        self.final_views[self.image_index].format()
+        self.final_views[self.image_index].format().unwrap()
     }
 
     /// Returns the index of last swapchain image that is the next render target
@@ -305,7 +305,7 @@ impl Renderer {
         view_size: Option<[u32; 2]>,
         format: Format,
     ) {
-        let image = ImageView::new(
+        let image = ImageView::new_default(
             AttachmentImage::multisampled_with_usage(
                 self.device(),
                 if view_size.is_some() {
@@ -436,7 +436,7 @@ impl Renderer {
         self.swapchain = new_swapchain;
         let new_images = new_images
             .into_iter()
-            .map(|image| ImageView::new(image).unwrap())
+            .map(|image| ImageView::new_default(image).unwrap())
             .collect::<Vec<_>>();
         self.final_views = new_images;
         // Resize images that follow swapchain size

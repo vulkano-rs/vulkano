@@ -258,7 +258,7 @@ fn main() {
         let command_buffer = builder.build().unwrap();
 
         (
-            ImageView::new(image).unwrap(),
+            ImageView::new_default(image).unwrap(),
             command_buffer.execute(queue.clone()).unwrap(),
         )
     };
@@ -421,7 +421,7 @@ fn window_size_dependent_setup(
     images
         .iter()
         .map(|image| {
-            let view = ImageView::new(image.clone()).unwrap();
+            let view = ImageView::new_default(image.clone()).unwrap();
             Framebuffer::new(
                 render_pass.clone(),
                 FramebufferCreateInfo {

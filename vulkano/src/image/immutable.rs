@@ -22,6 +22,7 @@ use crate::format::Format;
 use crate::format::Pixel;
 use crate::image::sys::ImageCreationError;
 use crate::image::sys::UnsafeImage;
+use crate::image::sys::UnsafeImageCreateInfo;
 use crate::image::traits::ImageAccess;
 use crate::image::traits::ImageContent;
 use crate::image::ImageCreateFlags;
@@ -239,18 +240,29 @@ impl ImmutableImage {
             .map(|f| f.id())
             .collect::<SmallVec<[u32; 4]>>();
 
-        let image = UnsafeImage::start(device.clone())
-            .flags(flags)
-            .dimensions(dimensions)
-            .format(format)
-            .mip_levels(mip_levels)
-            .sharing(if queue_families.len() >= 2 {
-                Sharing::Concurrent(queue_families.iter().cloned())
-            } else {
-                Sharing::Exclusive
-            })
-            .usage(usage)
-            .build()?;
+        let image = UnsafeImage::new(
+            device.clone(),
+            UnsafeImageCreateInfo {
+                dimensions,
+                format: Some(format),
+                mip_levels: match mip_levels.into() {
+                    MipmapsCount::Specific(num) => num,
+                    MipmapsCount::Log2 => dimensions.max_mip_levels(),
+                    MipmapsCount::One => 1,
+                },
+                usage,
+                sharing: if queue_families.len() >= 2 {
+                    Sharing::Concurrent(queue_families.iter().cloned().collect())
+                } else {
+                    Sharing::Exclusive
+                },
+                mutable_format: flags.mutable_format,
+                cube_compatible: flags.cube_compatible,
+                array_2d_compatible: flags.array_2d_compatible,
+                block_texel_view_compatible: flags.block_texel_view_compatible,
+                ..Default::default()
+            },
+        )?;
 
         let mem_reqs = image.memory_requirements();
         let memory = MemoryPool::alloc_from_requirements(

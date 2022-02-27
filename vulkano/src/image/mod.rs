@@ -59,6 +59,11 @@ pub use self::traits::ImageAccess;
 pub use self::traits::ImageInner;
 pub use self::usage::ImageUsage;
 pub use self::view::ImageViewAbstract;
+use self::view::ImageViewType;
+use crate::format::Format;
+use crate::memory::ExternalMemoryHandleType;
+use crate::memory::ExternalMemoryProperties;
+use crate::DeviceSize;
 use std::cmp;
 
 mod aspect;
@@ -546,6 +551,148 @@ impl ImageDimensions {
                 }
             }
         })
+    }
+}
+
+/// The image configuration to query in
+/// [`PhysicalDevice::image_format_properties`](crate::device::physical::PhysicalDevice::image_format_properties).
+#[derive(Clone, Debug)]
+pub struct ImageFormatInfo {
+    /// The `format` that the image will have.
+    ///
+    /// The default value is `None`, which must be overridden.
+    pub format: Option<Format>,
+
+    /// The dimension type that the image will have.
+    ///
+    /// The default value is [`ImageType::Dim2d`].
+    pub image_type: ImageType,
+
+    /// The `tiling` that the image will have.
+    ///
+    /// The default value is [`ImageTiling::Optimal`].
+    pub tiling: ImageTiling,
+
+    /// The `usage` that the image will have.
+    ///
+    /// The default value is [`ImageUsage::none()`], which must be overridden.
+    pub usage: ImageUsage,
+
+    /// An external memory handle type that will be imported to or exported from the image.
+    ///
+    /// This is needed to retrieve the
+    /// [`external_memory_properties`](ImageFormatProperties::external_memory_properties) value,
+    /// and the physical device API version must be at least 1.1 or the
+    /// [`ext_filter_cubic`](crate::device::DeviceExtensions::ext_filter_cubic) extension must be
+    /// supported on the physical device.
+    ///
+    /// The default value is `None`.
+    pub external_memory_handle_type: Option<ExternalMemoryHandleType>,
+
+    /// The image view type that will be created from the image.
+    ///
+    /// This is needed to retrieve the
+    /// [`filter_cubic`](ImageFormatProperties::filter_cubic) and
+    /// [`filter_cubic_minmax`](ImageFormatProperties::filter_cubic_minmax) values, and the
+    /// [`ext_filter_cubic`](crate::device::DeviceExtensions::ext_filter_cubic) extension must be
+    /// supported on the physical device.
+    ///
+    /// The default value is `None`.
+    pub image_view_type: Option<ImageViewType>,
+
+    /// The `mutable_format` that the image will have.
+    ///
+    /// The default value is `false`.
+    pub mutable_format: bool,
+
+    /// The `cube_compatible` that the image will have.
+    ///
+    /// The default value is `false`.
+    pub cube_compatible: bool,
+
+    /// The `array_2d_compatible` that the image will have.
+    ///
+    /// The default value is `false`.
+    pub array_2d_compatible: bool,
+
+    /// The `block_texel_view_compatible` that the image will have.
+    ///
+    /// The default value is `false`.
+    pub block_texel_view_compatible: bool,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for ImageFormatInfo {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            format: None,
+            image_type: ImageType::Dim2d,
+            tiling: ImageTiling::Optimal,
+            usage: ImageUsage::none(),
+            external_memory_handle_type: None,
+            image_view_type: None,
+            mutable_format: false,
+            cube_compatible: false,
+            array_2d_compatible: false,
+            block_texel_view_compatible: false,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+/// The properties that are supported by a physical device for images of a certain type.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct ImageFormatProperties {
+    /// The maximum dimensions.
+    pub max_extent: [u32; 3],
+
+    /// The maximum number of mipmap levels.
+    pub max_mip_levels: u32,
+
+    /// The maximum number of array layers.
+    pub max_array_layers: u32,
+
+    /// The supported sample counts.
+    pub sample_counts: SampleCounts,
+
+    /// The maximum total size of an image, in bytes. This is guaranteed to be at least
+    /// 0x80000000.
+    pub max_resource_size: DeviceSize,
+
+    /// The properties for external memory.
+    /// This will be [`ExternalMemoryProperties::default()`] if `external_handle_type` was `None`.
+    pub external_memory_properties: ExternalMemoryProperties,
+
+    /// When querying with an image view type, whether such image views support sampling with
+    /// a [`Cubic`](crate::sampler::Filter::Cubic) `mag_filter` or `min_filter`.
+    pub filter_cubic: bool,
+
+    /// When querying with an image view type, whether such image views support sampling with
+    /// a [`Cubic`](crate::sampler::Filter::Cubic) `mag_filter` or `min_filter`, and with a
+    /// [`Min`](crate::sampler::SamplerReductionMode::Min) or
+    /// [`Max`](crate::sampler::SamplerReductionMode::Max) `reduction_mode`.
+    pub filter_cubic_minmax: bool,
+}
+
+impl From<ash::vk::ImageFormatProperties> for ImageFormatProperties {
+    fn from(props: ash::vk::ImageFormatProperties) -> Self {
+        Self {
+            max_extent: [
+                props.max_extent.width,
+                props.max_extent.height,
+                props.max_extent.depth,
+            ],
+            max_mip_levels: props.max_mip_levels,
+            max_array_layers: props.max_array_layers,
+            sample_counts: props.sample_counts.into(),
+            max_resource_size: props.max_resource_size,
+            external_memory_properties: Default::default(),
+            filter_cubic: false,
+            filter_cubic_minmax: false,
+        }
     }
 }
 

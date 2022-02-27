@@ -128,7 +128,7 @@ fn main() {
     )
     .unwrap();
 
-    let image_view = ImageView::new(image.clone()).unwrap();
+    let image_view = ImageView::new_default(image.clone()).unwrap();
 
     #[repr(C)]
     #[derive(Default, Debug, Clone)]

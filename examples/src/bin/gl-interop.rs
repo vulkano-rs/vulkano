@@ -107,7 +107,7 @@ fn main() {
 
     let image_fd = image.export_posix_fd().unwrap();
 
-    let image_view = ImageView::new(image.clone()).unwrap();
+    let image_view = ImageView::new_default(image.clone()).unwrap();
 
     let barrier = Arc::new(Barrier::new(2));
     let barrier_2 = Arc::new(Barrier::new(2));
@@ -605,7 +605,7 @@ fn window_size_dependent_setup(
     images
         .iter()
         .map(|image| -> Arc<Framebuffer> {
-            let view = ImageView::new(image.clone()).unwrap();
+            let view = ImageView::new_default(image.clone()).unwrap();
 
             Framebuffer::new(
                 render_pass.clone(),

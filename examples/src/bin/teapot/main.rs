@@ -331,7 +331,7 @@ fn window_size_dependent_setup(
 ) -> (Arc<GraphicsPipeline>, Vec<Arc<Framebuffer>>) {
     let dimensions = images[0].dimensions().width_height();
 
-    let depth_buffer = ImageView::new(
+    let depth_buffer = ImageView::new_default(
         AttachmentImage::transient(device.clone(), dimensions, Format::D16_UNORM).unwrap(),
     )
     .unwrap();
@@ -339,7 +339,7 @@ fn window_size_dependent_setup(
     let framebuffers = images
         .iter()
         .map(|image| {
-            let view = ImageView::new(image.clone()).unwrap();
+            let view = ImageView::new_default(image.clone()).unwrap();
             Framebuffer::new(
                 render_pass.clone(),
                 FramebufferCreateInfo {

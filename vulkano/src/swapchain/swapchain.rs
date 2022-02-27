@@ -15,7 +15,6 @@ use crate::command_buffer::submit::SubmitAnyBuilder;
 use crate::command_buffer::submit::SubmitPresentBuilder;
 use crate::command_buffer::submit::SubmitPresentError;
 use crate::command_buffer::submit::SubmitSemaphoresWaitBuilder;
-use crate::device::physical::SurfaceInfo;
 use crate::device::physical::SurfacePropertiesError;
 use crate::device::Device;
 use crate::device::DeviceOwned;
@@ -26,6 +25,7 @@ use crate::image::sys::UnsafeImage;
 use crate::image::ImageAccess;
 use crate::image::ImageCreateFlags;
 use crate::image::ImageDimensions;
+use crate::image::ImageFormatInfo;
 use crate::image::ImageInner;
 use crate::image::ImageLayout;
 use crate::image::ImageTiling;
@@ -38,6 +38,7 @@ use crate::swapchain::PresentMode;
 use crate::swapchain::PresentRegion;
 use crate::swapchain::Surface;
 use crate::swapchain::SurfaceApi;
+use crate::swapchain::SurfaceInfo;
 use crate::swapchain::SurfaceSwapchainLock;
 use crate::swapchain::SurfaceTransform;
 use crate::sync::AccessCheckError;
@@ -491,15 +492,13 @@ impl<W> Swapchain<W> {
         // VUID-VkSwapchainCreateInfoKHR-imageFormat-01778
         if device
             .physical_device()
-            .image_format_properties(
-                image_format.unwrap(),
-                ImageType::Dim2d,
-                ImageTiling::Optimal,
-                image_usage,
-                ImageCreateFlags::none(),
-                None,
-                None,
-            )?
+            .image_format_properties(ImageFormatInfo {
+                format: *image_format,
+                image_type: ImageType::Dim2d,
+                tiling: ImageTiling::Optimal,
+                usage: image_usage,
+                ..Default::default()
+            })?
             .is_none()
         {
             return Err(SwapchainCreationError::ImageFormatPropertiesNotSupported);

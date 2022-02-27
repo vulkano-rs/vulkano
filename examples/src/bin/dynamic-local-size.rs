@@ -192,7 +192,7 @@ fn main() {
         Some(queue.family()),
     )
     .unwrap();
-    let view = ImageView::new(image.clone()).unwrap();
+    let view = ImageView::new_default(image.clone()).unwrap();
 
     let layout = pipeline.layout().set_layouts().get(0).unwrap();
     let set = PersistentDescriptorSet::new(

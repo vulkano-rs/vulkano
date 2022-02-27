@@ -138,7 +138,7 @@ fn main() {
     //
     // As explained in the introduction, we pass the same dimensions and format as for the final
     // image. But we also pass the number of samples-per-pixel, which is 4 here.
-    let intermediary = ImageView::new(
+    let intermediary = ImageView::new_default(
         AttachmentImage::transient_multisampled(
             device.clone(),
             [1024, 1024],
@@ -161,7 +161,7 @@ fn main() {
         Some(queue.family()),
     )
     .unwrap();
-    let view = ImageView::new(image.clone()).unwrap();
+    let view = ImageView::new_default(image.clone()).unwrap();
 
     // In this example, we are going to perform the *resolve* (ie. turning a multisampled image
     // into a non-multisampled one) as part of the render pass. This is the preferred method of

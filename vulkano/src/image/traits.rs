@@ -7,9 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::device::physical::FormatFeatures;
 use crate::format::ClearValue;
 use crate::format::Format;
+use crate::format::FormatFeatures;
 use crate::image::sys::UnsafeImage;
 use crate::image::ImageDescriptorLayouts;
 use crate::image::ImageDimensions;
@@ -29,7 +29,7 @@ pub unsafe trait ImageAccess: Send + Sync {
     /// Returns the format of this image.
     #[inline]
     fn format(&self) -> Format {
-        self.inner().image.format()
+        self.inner().image.format().unwrap()
     }
 
     /// Returns the number of mipmap levels of this image.

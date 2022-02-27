@@ -170,10 +170,10 @@ impl Framebuffer {
                 }
 
                 // VUID-VkFramebufferCreateInfo-pAttachments-00880
-                if Some(image_view.format()) != attachment_desc.format {
+                if image_view.format() != attachment_desc.format {
                     return Err(FramebufferCreationError::AttachmentFormatMismatch {
                         attachment: attachment_num,
-                        provided: Some(image_view.format()),
+                        provided: image_view.format(),
                         required: attachment_desc.format,
                     });
                 }
@@ -244,12 +244,12 @@ impl Framebuffer {
 
                 // VUID-VkFramebufferCreateInfo-pAttachments-00891
                 if matches!(
-                    image_view.ty(),
+                    image_view.view_type(),
                     ImageViewType::Dim2d | ImageViewType::Dim2dArray
                 ) && matches!(
                     image_view.image().dimensions(),
                     ImageDimensions::Dim3d { .. }
-                ) && image_view.format().type_color().is_none()
+                ) && image_view.format().unwrap().type_color().is_none()
                 {
                     return Err(
                         FramebufferCreationError::Attachment2dArrayCompatibleDepthStencil {
@@ -259,7 +259,7 @@ impl Framebuffer {
                 }
 
                 // VUID-VkFramebufferCreateInfo-flags-04113
-                if image_view.ty() == ImageViewType::Dim3d {
+                if image_view.view_type() == ImageViewType::Dim3d {
                     return Err(FramebufferCreationError::AttachmentViewType3d {
                         attachment: attachment_num,
                     });
@@ -724,7 +724,7 @@ mod tests {
         )
         .unwrap();
 
-        let view = ImageView::new(
+        let view = ImageView::new_default(
             AttachmentImage::new(device.clone(), [1024, 768], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
@@ -791,7 +791,7 @@ mod tests {
         )
         .unwrap();
 
-        let view = ImageView::new(
+        let view = ImageView::new_default(
             AttachmentImage::new(device.clone(), [1024, 768], Format::R8_UNORM).unwrap(),
         )
         .unwrap();
@@ -830,7 +830,7 @@ mod tests {
         )
         .unwrap();
 
-        let view = ImageView::new(
+        let view = ImageView::new_default(
             AttachmentImage::new(device.clone(), [600, 600], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
@@ -867,7 +867,7 @@ mod tests {
         )
         .unwrap();
 
-        let view = ImageView::new(
+        let view = ImageView::new_default(
             AttachmentImage::new(device.clone(), [512, 700], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
@@ -912,11 +912,11 @@ mod tests {
         )
         .unwrap();
 
-        let a = ImageView::new(
+        let a = ImageView::new_default(
             AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
-        let b = ImageView::new(
+        let b = ImageView::new_default(
             AttachmentImage::new(device.clone(), [512, 128], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
@@ -962,7 +962,7 @@ mod tests {
         )
         .unwrap();
 
-        let view = ImageView::new(
+        let view = ImageView::new_default(
             AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
@@ -1004,11 +1004,11 @@ mod tests {
         )
         .unwrap();
 
-        let a = ImageView::new(
+        let a = ImageView::new_default(
             AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
-        let b = ImageView::new(
+        let b = ImageView::new_default(
             AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();

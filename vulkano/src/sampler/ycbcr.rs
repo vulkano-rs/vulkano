@@ -30,7 +30,7 @@
 //! use vulkano::descriptor_set::layout::{DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo, DescriptorType};
 //! use vulkano::format::Format;
 //! use vulkano::image::{ImmutableImage, ImageCreateFlags, ImageDimensions, ImageUsage, MipmapsCount};
-//! use vulkano::image::view::ImageView;
+//! use vulkano::image::view::{ImageView, ImageViewCreateInfo};
 //! use vulkano::sampler::{Sampler, SamplerCreateInfo};
 //! use vulkano::sampler::ycbcr::{SamplerYcbcrConversion, SamplerYcbcrConversionCreateInfo, SamplerYcbcrModelConversion};
 //! use vulkano::shader::ShaderStage;
@@ -72,9 +72,11 @@
 //!     queue.clone(),
 //! ).unwrap();
 //!
-//! let image_view = ImageView::start(image)
-//!     .sampler_ycbcr_conversion(Some(conversion.clone()))
-//!     .build().unwrap();
+//! let create_info = ImageViewCreateInfo {
+//!     sampler_ycbcr_conversion: Some(conversion.clone()),
+//!     ..ImageViewCreateInfo::from_image(&image)
+//! };
+//! let image_view = ImageView::new(image, create_info).unwrap();
 //!
 //! let descriptor_set = PersistentDescriptorSet::new(
 //!     descriptor_set_layout.clone(),

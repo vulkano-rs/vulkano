@@ -573,7 +573,7 @@ pub(crate) fn check_descriptor_write<'a>(
 
                     // VUID-VkDescriptorImageInfo-imageView-00343
                     if matches!(
-                        image_view.ty(),
+                        image_view.view_type(),
                         ImageViewType::Dim2d | ImageViewType::Dim2dArray
                     ) && image_view.image().inner().image.dimensions().image_type()
                         == ImageType::Dim3d
@@ -619,7 +619,7 @@ pub(crate) fn check_descriptor_write<'a>(
 
                     // VUID-VkDescriptorImageInfo-imageView-00343
                     if matches!(
-                        image_view.ty(),
+                        image_view.view_type(),
                         ImageViewType::Dim2d | ImageViewType::Dim2dArray
                     ) && image_view.image().inner().image.dimensions().image_type()
                         == ImageType::Dim3d
@@ -667,7 +667,7 @@ pub(crate) fn check_descriptor_write<'a>(
 
                     // VUID-VkDescriptorImageInfo-imageView-00343
                     if matches!(
-                        image_view.ty(),
+                        image_view.view_type(),
                         ImageViewType::Dim2d | ImageViewType::Dim2dArray
                     ) && image_view.image().inner().image.dimensions().image_type()
                         == ImageType::Dim3d
@@ -723,7 +723,7 @@ pub(crate) fn check_descriptor_write<'a>(
 
                     // VUID-VkDescriptorImageInfo-imageView-00343
                     if matches!(
-                        image_view.ty(),
+                        image_view.view_type(),
                         ImageViewType::Dim2d | ImageViewType::Dim2dArray
                     ) && image_view.image().inner().image.dimensions().image_type()
                         == ImageType::Dim3d
@@ -761,7 +761,7 @@ pub(crate) fn check_descriptor_write<'a>(
                     }
 
                     // VUID??
-                    if image_view.ty().is_arrayed() {
+                    if image_view.view_type().is_arrayed() {
                         return Err(DescriptorSetUpdateError::ImageViewIsArrayed {
                             binding: write.binding(),
                             index: descriptor_range_start + index as u32,
@@ -806,7 +806,7 @@ pub(crate) fn check_descriptor_write<'a>(
 
                     // VUID-VkDescriptorImageInfo-imageView-00343
                     if matches!(
-                        image_view.ty(),
+                        image_view.view_type(),
                         ImageViewType::Dim2d | ImageViewType::Dim2dArray
                     ) && image_view.image().inner().image.dimensions().image_type()
                         == ImageType::Dim3d

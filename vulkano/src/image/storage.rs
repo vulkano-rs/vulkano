@@ -13,6 +13,7 @@ use crate::format::ClearValue;
 use crate::format::Format;
 use crate::image::sys::ImageCreationError;
 use crate::image::sys::UnsafeImage;
+use crate::image::sys::UnsafeImageCreateInfo;
 use crate::image::traits::ImageAccess;
 use crate::image::traits::ImageClearValue;
 use crate::image::traits::ImageContent;
@@ -121,17 +122,24 @@ impl StorageImage {
             .map(|f| f.id())
             .collect::<SmallVec<[u32; 4]>>();
 
-        let image = UnsafeImage::start(device.clone())
-            .dimensions(dimensions)
-            .flags(flags)
-            .format(format)
-            .sharing(if queue_families.len() >= 2 {
-                Sharing::Concurrent(queue_families.iter().cloned())
-            } else {
-                Sharing::Exclusive
-            })
-            .usage(usage)
-            .build()?;
+        let image = UnsafeImage::new(
+            device.clone(),
+            UnsafeImageCreateInfo {
+                dimensions,
+                format: Some(format),
+                usage,
+                sharing: if queue_families.len() >= 2 {
+                    Sharing::Concurrent(queue_families.iter().cloned().collect())
+                } else {
+                    Sharing::Exclusive
+                },
+                mutable_format: flags.mutable_format,
+                cube_compatible: flags.cube_compatible,
+                array_2d_compatible: flags.array_2d_compatible,
+                block_texel_view_compatible: flags.block_texel_view_compatible,
+                ..Default::default()
+            },
+        )?;
 
         let mem_reqs = image.memory_requirements();
         let memory = MemoryPool::alloc_from_requirements(
@@ -179,21 +187,28 @@ impl StorageImage {
             .map(|f| f.id())
             .collect::<SmallVec<[u32; 4]>>();
 
-        let image = UnsafeImage::start(device.clone())
-            .dimensions(dimensions)
-            .external_memory_handle_types(ExternalMemoryHandleTypes {
-                opaque_fd: true,
-                ..ExternalMemoryHandleTypes::none()
-            })
-            .flags(flags)
-            .format(format)
-            .usage(usage)
-            .sharing(if queue_families.len() >= 2 {
-                Sharing::Concurrent(queue_families.iter().cloned())
-            } else {
-                Sharing::Exclusive
-            })
-            .build()?;
+        let image = UnsafeImage::new(
+            device.clone(),
+            UnsafeImageCreateInfo {
+                dimensions,
+                format: Some(format),
+                usage,
+                sharing: if queue_families.len() >= 2 {
+                    Sharing::Concurrent(queue_families.iter().cloned().collect())
+                } else {
+                    Sharing::Exclusive
+                },
+                external_memory_handle_types: ExternalMemoryHandleTypes {
+                    opaque_fd: true,
+                    ..ExternalMemoryHandleTypes::none()
+                },
+                mutable_format: flags.mutable_format,
+                cube_compatible: flags.cube_compatible,
+                array_2d_compatible: flags.array_2d_compatible,
+                block_texel_view_compatible: flags.block_texel_view_compatible,
+                ..Default::default()
+            },
+        )?;
 
         let mem_reqs = image.memory_requirements();
         let memory = alloc_dedicated_with_exportable_fd(

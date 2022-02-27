@@ -205,7 +205,7 @@ impl VulkanoContext {
         .unwrap();
         let images = images
             .into_iter()
-            .map(|image| ImageView::new(image).unwrap())
+            .map(|image| ImageView::new_default(image).unwrap())
             .collect::<Vec<_>>();
         (swapchain, images)
     }
