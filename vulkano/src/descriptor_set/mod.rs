@@ -88,8 +88,8 @@ use crate::image::view::ImageViewAbstract;
 use crate::sampler::Sampler;
 use crate::OomError;
 use crate::VulkanObject;
-use fnv::FnvHashMap;
 use smallvec::{smallvec, SmallVec};
+use std::collections::HashMap;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::ptr;
@@ -246,7 +246,7 @@ impl DescriptorSetInner {
 /// The resources that are bound to a descriptor set.
 #[derive(Clone)]
 pub struct DescriptorSetResources {
-    binding_resources: FnvHashMap<u32, DescriptorBindingResources>,
+    binding_resources: HashMap<u32, DescriptorBindingResources>,
 }
 
 impl DescriptorSetResources {

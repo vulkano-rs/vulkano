@@ -25,7 +25,7 @@ use crate::pipeline::graphics::GraphicsPipelineCreationError;
 use crate::pipeline::{DynamicState, StateMode};
 use crate::render_pass::Subpass;
 use crate::Version;
-use fnv::FnvHashMap;
+use std::collections::HashMap;
 use std::ops::RangeInclusive;
 use std::u32;
 
@@ -80,7 +80,7 @@ impl DepthStencilState {
     pub(crate) fn to_vulkan(
         &self,
         device: &Device,
-        dynamic_state_modes: &mut FnvHashMap<DynamicState, bool>,
+        dynamic_state_modes: &mut HashMap<DynamicState, bool>,
         subpass: &Subpass,
     ) -> Result<ash::vk::PipelineDepthStencilStateCreateInfo, GraphicsPipelineCreationError> {
         let (depth_test_enable, depth_write_enable, depth_compare_op) =

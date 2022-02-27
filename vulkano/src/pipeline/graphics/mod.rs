@@ -73,7 +73,7 @@ use crate::pipeline::{DynamicState, Pipeline, PipelineBindPoint};
 use crate::render_pass::Subpass;
 use crate::shader::{DescriptorRequirements, ShaderStage};
 use crate::VulkanObject;
-use fnv::FnvHashMap;
+use std::collections::HashMap;
 use std::fmt;
 use std::hash::Hash;
 use std::hash::Hasher;
@@ -104,8 +104,8 @@ pub struct GraphicsPipeline {
     layout: Arc<PipelineLayout>,
     subpass: Subpass,
     // TODO: replace () with an object that describes the shaders in some way.
-    shaders: FnvHashMap<ShaderStage, ()>,
-    descriptor_requirements: FnvHashMap<(u32, u32), DescriptorRequirements>,
+    shaders: HashMap<ShaderStage, ()>,
+    descriptor_requirements: HashMap<(u32, u32), DescriptorRequirements>,
     num_used_descriptor_sets: u32,
 
     vertex_input_state: VertexInputState,
@@ -117,7 +117,7 @@ pub struct GraphicsPipeline {
     multisample_state: Option<MultisampleState>,
     depth_stencil_state: Option<DepthStencilState>,
     color_blend_state: Option<ColorBlendState>,
-    dynamic_state: FnvHashMap<DynamicState, bool>,
+    dynamic_state: HashMap<DynamicState, bool>,
 }
 
 impl GraphicsPipeline {

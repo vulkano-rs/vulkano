@@ -25,8 +25,8 @@ use crate::{
         ShaderInterfaceEntryType, ShaderStage, SpecializationConstantRequirements,
     },
 };
-use fnv::{FnvHashMap, FnvHashSet};
 use std::borrow::Cow;
+use std::collections::{HashMap, HashSet};
 
 /// Returns an iterator of the capabilities used by `spirv`.
 pub fn spirv_capabilities<'a>(spirv: &'a Spirv) -> impl Iterator<Item = &'a Capability> {
@@ -170,7 +170,7 @@ fn shader_execution(
 
 #[derive(Clone, Debug, Default)]
 struct InterfaceVariables {
-    descriptor: FnvHashMap<Id, DescriptorVariable>,
+    descriptor: HashMap<Id, DescriptorVariable>,
 }
 
 // See also section 14.5.2 of the Vulkan specs: Descriptor Set Interface.
@@ -209,14 +209,14 @@ fn interface_variables(spirv: &Spirv) -> InterfaceVariables {
 }
 
 fn inspect_entry_point(
-    global: &FnvHashMap<Id, DescriptorVariable>,
+    global: &HashMap<Id, DescriptorVariable>,
     spirv: &Spirv,
     entry_point: Id,
-) -> FnvHashMap<(u32, u32), DescriptorRequirements> {
+) -> HashMap<(u32, u32), DescriptorRequirements> {
     #[inline]
     fn instruction_chain<'a, const N: usize>(
-        result: &'a mut FnvHashMap<Id, DescriptorVariable>,
-        global: &FnvHashMap<Id, DescriptorVariable>,
+        result: &'a mut HashMap<Id, DescriptorVariable>,
+        global: &HashMap<Id, DescriptorVariable>,
         spirv: &Spirv,
         chain: [fn(&Spirv, Id) -> Option<Id>; N],
         id: Id,
@@ -276,9 +276,9 @@ fn inspect_entry_point(
     }
 
     fn inspect_entry_point_r(
-        result: &mut FnvHashMap<Id, DescriptorVariable>,
-        inspected_functions: &mut FnvHashSet<Id>,
-        global: &FnvHashMap<Id, DescriptorVariable>,
+        result: &mut HashMap<Id, DescriptorVariable>,
+        inspected_functions: &mut HashSet<Id>,
+        global: &HashMap<Id, DescriptorVariable>,
         spirv: &Spirv,
         function: Id,
     ) {
@@ -672,8 +672,8 @@ fn inspect_entry_point(
         }
     }
 
-    let mut result = FnvHashMap::default();
-    let mut inspected_functions = FnvHashSet::default();
+    let mut result = HashMap::default();
+    let mut inspected_functions = HashSet::default();
     inspect_entry_point_r(
         &mut result,
         &mut inspected_functions,
@@ -940,7 +940,7 @@ fn push_constant_requirements(spirv: &Spirv, stage: ShaderStage) -> Option<PushC
 /// Extracts the `SpecializationConstantRequirements` from `spirv`.
 fn specialization_constant_requirements(
     spirv: &Spirv,
-) -> FnvHashMap<u32, SpecializationConstantRequirements> {
+) -> HashMap<u32, SpecializationConstantRequirements> {
     spirv
         .iter_global()
         .filter_map(|instruction| {

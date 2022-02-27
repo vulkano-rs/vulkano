@@ -13,7 +13,7 @@ use crate::device::Device;
 use crate::pipeline::graphics::GraphicsPipelineCreationError;
 use crate::pipeline::{DynamicState, StateMode};
 use crate::Version;
-use fnv::FnvHashMap;
+use std::collections::HashMap;
 
 /// The state in a graphics pipeline describing how the rasterization stage should behave.
 #[derive(Clone, Debug)]
@@ -141,7 +141,7 @@ impl RasterizationState {
     pub(crate) fn to_vulkan_line_state(
         &self,
         device: &Device,
-        dynamic_state_modes: &mut FnvHashMap<DynamicState, bool>,
+        dynamic_state_modes: &mut HashMap<DynamicState, bool>,
     ) -> Result<
         Option<ash::vk::PipelineRasterizationLineStateCreateInfoEXT>,
         GraphicsPipelineCreationError,
@@ -274,7 +274,7 @@ impl RasterizationState {
     pub(crate) fn to_vulkan(
         &self,
         device: &Device,
-        dynamic_state_modes: &mut FnvHashMap<DynamicState, bool>,
+        dynamic_state_modes: &mut HashMap<DynamicState, bool>,
         rasterization_line_state: Option<&mut ash::vk::PipelineRasterizationLineStateCreateInfoEXT>,
     ) -> Result<ash::vk::PipelineRasterizationStateCreateInfo, GraphicsPipelineCreationError> {
         if self.depth_clamp_enable && !device.enabled_features().depth_clamp {

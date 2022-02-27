@@ -15,7 +15,7 @@ use crate::pipeline::graphics::input_assembly::{
 };
 use crate::pipeline::graphics::GraphicsPipelineCreationError;
 use crate::pipeline::{DynamicState, PartialStateMode, StateMode};
-use fnv::FnvHashMap;
+use std::collections::HashMap;
 
 /// The state in a graphics pipeline describing the tessellation shader execution of a graphics
 /// pipeline.
@@ -54,7 +54,7 @@ impl TessellationState {
     pub(crate) fn to_vulkan(
         &self,
         device: &Device,
-        dynamic_state_modes: &mut FnvHashMap<DynamicState, bool>,
+        dynamic_state_modes: &mut HashMap<DynamicState, bool>,
         input_assembly_state: &InputAssemblyState,
     ) -> Result<ash::vk::PipelineTessellationStateCreateInfo, GraphicsPipelineCreationError> {
         if !matches!(

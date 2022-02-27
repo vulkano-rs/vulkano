@@ -13,7 +13,7 @@ use crate::device::Device;
 use crate::pipeline::graphics::GraphicsPipelineCreationError;
 use crate::pipeline::{DynamicState, PartialStateMode, StateMode};
 use crate::{DeviceSize, Version};
-use fnv::FnvHashMap;
+use std::collections::HashMap;
 
 /// The state in a graphics pipeline describing how the input assembly stage should behave.
 #[derive(Clone, Copy, Debug)]
@@ -83,7 +83,7 @@ impl InputAssemblyState {
     pub(crate) fn to_vulkan(
         &self,
         device: &Device,
-        dynamic_state_modes: &mut FnvHashMap<DynamicState, bool>,
+        dynamic_state_modes: &mut HashMap<DynamicState, bool>,
     ) -> Result<ash::vk::PipelineInputAssemblyStateCreateInfo, GraphicsPipelineCreationError> {
         let topology = match self.topology {
             PartialStateMode::Fixed(topology) => {

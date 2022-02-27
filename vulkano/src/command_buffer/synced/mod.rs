@@ -82,8 +82,7 @@ use crate::{
         AccessCheckError, AccessError, AccessFlags, GpuFuture, PipelineMemoryAccess, PipelineStages,
     },
 };
-use fnv::FnvHashMap;
-use std::{borrow::Cow, ops::Range, sync::Arc};
+use std::{borrow::Cow, collections::HashMap, ops::Range, sync::Arc};
 
 mod builder;
 
@@ -102,7 +101,7 @@ pub struct SyncCommandBuffer {
     barriers: Vec<usize>,
 
     // State of all the resources used by this command buffer.
-    resources: FnvHashMap<ResourceKey, ResourceFinalState>,
+    resources: HashMap<ResourceKey, ResourceFinalState>,
 
     // Resources and their accesses. Used for executing secondary command buffers in a primary.
     buffers: Vec<(Arc<dyn BufferAccess>, PipelineMemoryAccess)>,

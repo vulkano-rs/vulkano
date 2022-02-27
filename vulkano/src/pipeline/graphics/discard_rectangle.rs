@@ -15,8 +15,8 @@ use crate::device::Device;
 use crate::pipeline::graphics::viewport::Scissor;
 use crate::pipeline::graphics::GraphicsPipelineCreationError;
 use crate::pipeline::{DynamicState, PartialStateMode};
-use fnv::FnvHashMap;
 use smallvec::SmallVec;
+use std::collections::HashMap;
 
 /// The state in a graphics pipeline describing how the discard rectangle test should behave.
 #[derive(Clone, Debug)]
@@ -46,7 +46,7 @@ impl DiscardRectangleState {
     pub(crate) fn to_vulkan_rectangles(
         &self,
         device: &Device,
-        dynamic_state_modes: &mut FnvHashMap<DynamicState, bool>,
+        dynamic_state_modes: &mut HashMap<DynamicState, bool>,
     ) -> Result<SmallVec<[ash::vk::Rect2D; 2]>, GraphicsPipelineCreationError> {
         Ok(match &self.rectangles {
             PartialStateMode::Fixed(rectangles) => {
@@ -63,7 +63,7 @@ impl DiscardRectangleState {
     pub(crate) fn to_vulkan(
         &self,
         device: &Device,
-        dynamic_state_modes: &mut FnvHashMap<DynamicState, bool>,
+        dynamic_state_modes: &mut HashMap<DynamicState, bool>,
         discard_rectangles: &[ash::vk::Rect2D],
     ) -> Result<
         Option<ash::vk::PipelineDiscardRectangleStateCreateInfoEXT>,

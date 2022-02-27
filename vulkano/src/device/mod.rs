@@ -115,7 +115,6 @@ pub use crate::{
     fns::DeviceFunctions,
 };
 use ash::vk::Handle;
-use fnv::FnvHasher;
 use smallvec::SmallVec;
 use std::{
     collections::{hash_map::Entry, HashMap},
@@ -123,7 +122,7 @@ use std::{
     ffi::{CStr, CString},
     fmt,
     fs::File,
-    hash::{BuildHasherDefault, Hash, Hasher},
+    hash::{Hash, Hasher},
     mem::{self, MaybeUninit},
     ops::Deref,
     ptr,
@@ -149,8 +148,7 @@ pub struct Device {
     fns: DeviceFunctions,
     standard_pool: Mutex<Weak<StdMemoryPool>>,
     standard_descriptor_pool: Mutex<Weak<StdDescriptorPool>>,
-    standard_command_pools:
-        Mutex<HashMap<u32, Weak<StandardCommandPool>, BuildHasherDefault<FnvHasher>>>,
+    standard_command_pools: Mutex<HashMap<u32, Weak<StandardCommandPool>>>,
     enabled_extensions: DeviceExtensions,
     enabled_features: Features,
     active_queue_families: SmallVec<[u32; 2]>,

@@ -22,10 +22,8 @@ use crate::memory::DeviceMemory;
 use crate::memory::DeviceMemoryAllocationError;
 use crate::memory::MappedDeviceMemory;
 use crate::DeviceSize;
-use fnv::FnvHasher;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::hash::BuildHasherDefault;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -34,8 +32,7 @@ pub struct StdMemoryPool {
     device: Arc<Device>,
 
     // For each memory type index, stores the associated pool.
-    pools:
-        Mutex<HashMap<(u32, AllocLayout, MappingRequirement), Pool, BuildHasherDefault<FnvHasher>>>,
+    pools: Mutex<HashMap<(u32, AllocLayout, MappingRequirement), Pool>>,
 }
 
 impl StdMemoryPool {
@@ -43,11 +40,10 @@ impl StdMemoryPool {
     #[inline]
     pub fn new(device: Arc<Device>) -> Arc<StdMemoryPool> {
         let cap = device.physical_device().memory_types().len();
-        let hasher = BuildHasherDefault::<FnvHasher>::default();
 
         Arc::new(StdMemoryPool {
             device: device.clone(),
-            pools: Mutex::new(HashMap::with_capacity_and_hasher(cap, hasher)),
+            pools: Mutex::new(HashMap::with_capacity(cap)),
         })
     }
 }

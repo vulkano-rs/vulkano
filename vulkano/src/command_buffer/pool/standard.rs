@@ -9,8 +9,8 @@ use crate::{
     OomError, VulkanObject,
 };
 use crossbeam_queue::SegQueue;
-use fnv::FnvHashMap;
 use std::{
+    collections::HashMap,
     marker::PhantomData,
     mem::ManuallyDrop,
     ptr,
@@ -45,7 +45,7 @@ pub struct StandardCommandPool {
     queue_family: u32,
 
     // For each thread, we store thread-specific info.
-    per_thread: Mutex<FnvHashMap<thread::ThreadId, Weak<StandardCommandPoolPerThread>>>,
+    per_thread: Mutex<HashMap<thread::ThreadId, Weak<StandardCommandPoolPerThread>>>,
 }
 
 unsafe impl Send for StandardCommandPool {}
