@@ -229,7 +229,8 @@ impl Spirv {
                 | Instruction::SpecConstantFalse { .. }
                 | Instruction::SpecConstant { .. }
                 | Instruction::SpecConstantComposite { .. }
-                | Instruction::SpecConstantOp { .. } => set_range(&mut range_global, index)?,
+                | Instruction::SpecConstantOp { .. }
+                | Instruction::Undef { .. } => set_range(&mut range_global, index)?,
                 Instruction::Variable { storage_class, .. }
                     if *storage_class != StorageClass::Function =>
                 {
