@@ -92,6 +92,7 @@
 - `PhysicalDevice::image_format_properties` now includes external memory properties in the returned structure.
 - Added `Device::memory_fd_properties`.
 - Added `PhysicalDevice::external_semaphore_properties`.
+- Replaced `fnv` crate's `FnvHashMap`, `FnvHashSet` & `FnvHasher` with their `std` counterparts.
 
 # Version 0.28.0 (2022-02-02)
 
