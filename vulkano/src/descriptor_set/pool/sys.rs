@@ -16,9 +16,9 @@ use crate::{
     device::{Device, DeviceOwned},
     OomError, Version, VulkanObject,
 };
-use fnv::FnvHashMap;
 use smallvec::SmallVec;
 use std::{
+    collections::HashMap,
     error, fmt,
     hash::{Hash, Hasher},
     mem::MaybeUninit,
@@ -36,7 +36,7 @@ pub struct UnsafeDescriptorPool {
     device: Arc<Device>,
 
     max_sets: u32,
-    pool_sizes: FnvHashMap<DescriptorType, u32>,
+    pool_sizes: HashMap<DescriptorType, u32>,
     can_free_descriptor_sets: bool,
 }
 
@@ -124,7 +124,7 @@ impl UnsafeDescriptorPool {
 
     /// Returns the number of descriptors of each type that the pool was created with.
     #[inline]
-    pub fn pool_sizes(&self) -> &FnvHashMap<DescriptorType, u32> {
+    pub fn pool_sizes(&self) -> &HashMap<DescriptorType, u32> {
         &self.pool_sizes
     }
 
@@ -347,7 +347,7 @@ pub struct UnsafeDescriptorPoolCreateInfo {
     /// The number of descriptors of each type to allocate for the pool.
     ///
     /// The default value is empty, which must be overridden.
-    pub pool_sizes: FnvHashMap<DescriptorType, u32>,
+    pub pool_sizes: HashMap<DescriptorType, u32>,
 
     /// Whether individual descriptor sets can be freed from the pool. Otherwise you must reset or
     /// destroy the whole pool at once.
@@ -363,7 +363,7 @@ impl Default for UnsafeDescriptorPoolCreateInfo {
     fn default() -> Self {
         Self {
             max_sets: 0,
-            pool_sizes: FnvHashMap::default(),
+            pool_sizes: HashMap::default(),
             can_free_descriptor_sets: false,
             _ne: crate::NonExhaustive(()),
         }

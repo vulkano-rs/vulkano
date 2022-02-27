@@ -40,9 +40,13 @@ use crate::{
     sync::{AccessFlags, PipelineMemoryAccess, PipelineStages},
     OomError, VulkanObject,
 };
-use fnv::FnvHashMap;
 use smallvec::SmallVec;
-use std::{borrow::Cow, collections::hash_map::Entry, error, fmt, sync::Arc};
+use std::{
+    borrow::Cow,
+    collections::{hash_map::Entry, HashMap},
+    error, fmt,
+    sync::Arc,
+};
 
 #[path = "commands.rs"]
 mod commands;
@@ -87,7 +91,7 @@ pub struct SyncCommandBufferBuilder {
     latest_render_pass_enter: Option<usize>,
 
     // Stores the current state of buffers and images that are in use by the command buffer.
-    resources: FnvHashMap<ResourceKey, ResourceState>,
+    resources: HashMap<ResourceKey, ResourceState>,
 
     // Resources and their accesses. Used for executing secondary command buffers in a primary.
     buffers: Vec<(Arc<dyn BufferAccess>, PipelineMemoryAccess)>,
@@ -165,7 +169,7 @@ impl SyncCommandBufferBuilder {
             barriers: Vec::new(),
             first_unflushed: 0,
             latest_render_pass_enter,
-            resources: FnvHashMap::default(),
+            resources: HashMap::default(),
             buffers: Vec::new(),
             images: Vec::new(),
             current_state: Default::default(),
@@ -564,7 +568,7 @@ impl SyncCommandBufferBuilder {
         }
 
         // Build the final resources states.
-        let final_resources_states: FnvHashMap<_, _> = {
+        let final_resources_states: HashMap<_, _> = {
             self.resources
                 .into_iter()
                 .map(|(resource, state)| {
@@ -670,11 +674,11 @@ struct ResourceState {
 /// Holds the current binding and setting state.
 #[derive(Default)]
 struct CurrentState {
-    descriptor_sets: FnvHashMap<PipelineBindPoint, DescriptorSetState>,
+    descriptor_sets: HashMap<PipelineBindPoint, DescriptorSetState>,
     index_buffer: Option<(Arc<dyn BufferAccess>, IndexType)>,
     pipeline_compute: Option<Arc<ComputePipeline>>,
     pipeline_graphics: Option<Arc<GraphicsPipeline>>,
-    vertex_buffers: FnvHashMap<u32, Arc<dyn BufferAccess>>,
+    vertex_buffers: HashMap<u32, Arc<dyn BufferAccess>>,
 
     push_constants: RangeSet<u32>,
     push_constants_pipeline_layout: Option<Arc<PipelineLayout>>,
@@ -689,7 +693,7 @@ struct CurrentState {
     depth_compare_op: Option<CompareOp>,
     depth_test_enable: Option<bool>,
     depth_write_enable: Option<bool>,
-    discard_rectangle: FnvHashMap<u32, Scissor>,
+    discard_rectangle: HashMap<u32, Scissor>,
     front_face: Option<FrontFace>,
     line_stipple: Option<LineStipple>,
     line_width: Option<f32>,
@@ -698,14 +702,14 @@ struct CurrentState {
     primitive_restart_enable: Option<bool>,
     primitive_topology: Option<PrimitiveTopology>,
     rasterizer_discard_enable: Option<bool>,
-    scissor: FnvHashMap<u32, Scissor>,
+    scissor: HashMap<u32, Scissor>,
     scissor_with_count: Option<SmallVec<[Scissor; 2]>>,
     stencil_compare_mask: StencilStateDynamic,
     stencil_op: StencilOpStateDynamic,
     stencil_reference: StencilStateDynamic,
     stencil_test_enable: Option<bool>,
     stencil_write_mask: StencilStateDynamic,
-    viewport: FnvHashMap<u32, Viewport>,
+    viewport: HashMap<u32, Viewport>,
     viewport_with_count: Option<SmallVec<[Viewport; 2]>>,
 }
 
@@ -814,7 +818,7 @@ impl CurrentState {
 }
 
 struct DescriptorSetState {
-    descriptor_sets: FnvHashMap<u32, SetOrPush>,
+    descriptor_sets: HashMap<u32, SetOrPush>,
     pipeline_layout: Arc<PipelineLayout>,
 }
 

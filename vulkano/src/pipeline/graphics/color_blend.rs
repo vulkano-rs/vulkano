@@ -23,8 +23,8 @@
 
 use super::{DynamicState, GraphicsPipelineCreationError};
 use crate::{device::Device, pipeline::StateMode, render_pass::Subpass};
-use fnv::FnvHashMap;
 use smallvec::SmallVec;
+use std::collections::HashMap;
 
 /// Describes how the color output of the fragment shader is written to the attachment. See the
 /// documentation of the `blend` module for more info.
@@ -137,7 +137,7 @@ impl ColorBlendState {
     pub(crate) fn to_vulkan_attachments(
         &mut self, // TODO: make non-mut
         device: &Device,
-        dynamic_state_modes: &mut FnvHashMap<DynamicState, bool>,
+        dynamic_state_modes: &mut HashMap<DynamicState, bool>,
         subpass: &Subpass,
     ) -> Result<
         (
@@ -254,7 +254,7 @@ impl ColorBlendState {
     pub(crate) fn to_vulkan_color_write(
         &self,
         device: &Device,
-        dynamic_state_modes: &mut FnvHashMap<DynamicState, bool>,
+        dynamic_state_modes: &mut HashMap<DynamicState, bool>,
         color_write_enables: &[ash::vk::Bool32],
     ) -> Result<Option<ash::vk::PipelineColorWriteCreateInfoEXT>, GraphicsPipelineCreationError>
     {
@@ -272,7 +272,7 @@ impl ColorBlendState {
     pub(crate) fn to_vulkan(
         &self,
         device: &Device,
-        dynamic_state_modes: &mut FnvHashMap<DynamicState, bool>,
+        dynamic_state_modes: &mut HashMap<DynamicState, bool>,
         color_blend_attachments: &[ash::vk::PipelineColorBlendAttachmentState],
         color_write: Option<&mut ash::vk::PipelineColorWriteCreateInfoEXT>,
     ) -> Result<ash::vk::PipelineColorBlendStateCreateInfo, GraphicsPipelineCreationError> {

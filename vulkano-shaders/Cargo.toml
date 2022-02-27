@@ -15,7 +15,6 @@ categories = ["rendering::graphics-api"]
 proc-macro = true
 
 [dependencies]
-fnv = "1.0"
 heck = "0.4"
 proc-macro2 = "1.0"
 quote = "1.0"

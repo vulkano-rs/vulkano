@@ -41,9 +41,8 @@ use crate::shader::{
 };
 use crate::DeviceSize;
 use crate::VulkanObject;
-use fnv::FnvHashMap;
 use smallvec::SmallVec;
-use std::collections::hash_map::{Entry, HashMap};
+use std::collections::{hash_map::Entry, HashMap};
 use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
@@ -160,7 +159,7 @@ where
 
             // Produce `DescriptorRequirements` for each binding, by iterating over all shaders
             // and adding the requirements of each.
-            let mut descriptor_requirements: FnvHashMap<(u32, u32), DescriptorRequirements> =
+            let mut descriptor_requirements: HashMap<(u32, u32), DescriptorRequirements> =
                 HashMap::default();
 
             for (loc, reqs) in stages
@@ -485,7 +484,7 @@ where
         .flatten()
         .collect();
 
-        let mut descriptor_requirements: FnvHashMap<(u32, u32), DescriptorRequirements> =
+        let mut descriptor_requirements: HashMap<(u32, u32), DescriptorRequirements> =
             HashMap::default();
 
         // Check that the pipeline layout is compatible with the shader requirements, and collect
@@ -586,7 +585,7 @@ where
         debug_assert_eq!(stages.len(), stages_info.len());
 
         // Will contain the list of dynamic states. Filled while checking the states.
-        let mut dynamic_state_modes: FnvHashMap<DynamicState, bool> = HashMap::default();
+        let mut dynamic_state_modes: HashMap<DynamicState, bool> = HashMap::default();
 
         // Vertex input state
         let binding_descriptions = self_vertex_input_state.to_vulkan_bindings(&device)?;

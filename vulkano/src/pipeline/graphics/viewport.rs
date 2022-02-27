@@ -51,8 +51,8 @@
 use crate::pipeline::graphics::GraphicsPipelineCreationError;
 use crate::pipeline::DynamicState;
 use crate::{device::Device, Version};
-use fnv::FnvHashMap;
 use smallvec::SmallVec;
+use std::collections::HashMap;
 use std::{ops::Range, ptr};
 
 /// List of viewports and scissors that are used when creating a graphics pipeline object.
@@ -196,7 +196,7 @@ impl ViewportState {
     pub(crate) fn to_vulkan_viewports_scissors(
         &self,
         device: &Device,
-        dynamic_state_modes: &mut FnvHashMap<DynamicState, bool>,
+        dynamic_state_modes: &mut HashMap<DynamicState, bool>,
     ) -> Result<
         (
             u32,
@@ -351,7 +351,7 @@ impl ViewportState {
     pub(crate) fn to_vulkan(
         &self,
         device: &Device,
-        dynamic_state_modes: &mut FnvHashMap<DynamicState, bool>,
+        dynamic_state_modes: &mut HashMap<DynamicState, bool>,
         viewport_count: u32,
         viewports: &[ash::vk::Viewport],
         scissor_count: u32,

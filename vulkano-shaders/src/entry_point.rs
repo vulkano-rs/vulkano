@@ -7,8 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use fnv::FnvHashMap;
 use proc_macro2::TokenStream;
+use std::collections::HashMap;
 use vulkano::pipeline::layout::PushConstantRange;
 use vulkano::shader::spirv::ExecutionModel;
 use vulkano::shader::{
@@ -77,7 +77,7 @@ fn write_shader_execution(execution: &ShaderExecution) -> TokenStream {
 }
 
 fn write_descriptor_requirements(
-    descriptor_requirements: &FnvHashMap<(u32, u32), DescriptorRequirements>,
+    descriptor_requirements: &HashMap<(u32, u32), DescriptorRequirements>,
 ) -> TokenStream {
     let descriptor_requirements = descriptor_requirements.into_iter().map(|(loc, reqs)| {
         let (set_num, binding_num) = loc;
@@ -276,7 +276,7 @@ fn write_push_constant_requirements(
 }
 
 fn write_specialization_constant_requirements(
-    specialization_constant_requirements: &FnvHashMap<u32, SpecializationConstantRequirements>,
+    specialization_constant_requirements: &HashMap<u32, SpecializationConstantRequirements>,
 ) -> TokenStream {
     let specialization_constant_requirements = specialization_constant_requirements
         .into_iter()

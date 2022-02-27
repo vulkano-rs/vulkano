@@ -30,7 +30,6 @@ use crate::DeviceSize;
 use crate::OomError;
 use crate::Version;
 use crate::VulkanObject;
-use fnv::{FnvHashMap, FnvHashSet};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::error;
@@ -368,9 +367,9 @@ impl Display for ShaderSupportError {
 #[derive(Clone, Debug)]
 pub struct EntryPointInfo {
     pub execution: ShaderExecution,
-    pub descriptor_requirements: FnvHashMap<(u32, u32), DescriptorRequirements>,
+    pub descriptor_requirements: HashMap<(u32, u32), DescriptorRequirements>,
     pub push_constant_requirements: Option<PushConstantRange>,
-    pub specialization_constant_requirements: FnvHashMap<u32, SpecializationConstantRequirements>,
+    pub specialization_constant_requirements: HashMap<u32, SpecializationConstantRequirements>,
     pub input_interface: ShaderInterface,
     pub output_interface: ShaderInterface,
 }
@@ -554,35 +553,35 @@ pub struct DescriptorRequirements {
     pub image_view_type: Option<ImageViewType>,
 
     /// For sampler bindings, the descriptor indices that require a depth comparison sampler.
-    pub sampler_compare: FnvHashSet<u32>,
+    pub sampler_compare: HashSet<u32>,
 
     /// For sampler bindings, the descriptor indices that perform sampling operations that are not
     /// permitted with unnormalized coordinates. This includes sampling with `ImplicitLod`,
     /// `Dref` or `Proj` SPIR-V instructions or with an LOD bias or offset.
-    pub sampler_no_unnormalized_coordinates: FnvHashSet<u32>,
+    pub sampler_no_unnormalized_coordinates: HashSet<u32>,
 
     /// For sampler bindings, the descriptor indices that perform sampling operations that are not
     /// permitted with a sampler YCbCr conversion. This includes sampling with `Gather` SPIR-V
     /// instructions or with an offset.
-    pub sampler_no_ycbcr_conversion: FnvHashSet<u32>,
+    pub sampler_no_ycbcr_conversion: HashSet<u32>,
 
     /// For sampler bindings, the sampled image descriptors that are used in combination with each
     /// sampler descriptor index.
-    pub sampler_with_images: FnvHashMap<u32, FnvHashSet<DescriptorIdentifier>>,
+    pub sampler_with_images: HashMap<u32, HashSet<DescriptorIdentifier>>,
 
     /// The shader stages that the descriptor must be declared for.
     pub stages: ShaderStages,
 
     /// For storage image bindings, the descriptor indices that atomic operations are used with.
-    pub storage_image_atomic: FnvHashSet<u32>,
+    pub storage_image_atomic: HashSet<u32>,
 
     /// For storage images and storage texel buffers, the descriptor indices that perform read
     /// operations on the bound resource.
-    pub storage_read: FnvHashSet<u32>,
+    pub storage_read: HashSet<u32>,
 
     /// For storage buffers, storage images and storage texel buffers, the descriptor indices that
     /// perform write operations on the bound resource.
-    pub storage_write: FnvHashSet<u32>,
+    pub storage_write: HashSet<u32>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

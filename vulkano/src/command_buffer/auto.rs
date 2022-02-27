@@ -77,10 +77,11 @@ use crate::{
     },
     DeviceSize, OomError, SafeDeref, Version, VulkanObject,
 };
-use fnv::FnvHashMap;
 use smallvec::SmallVec;
 use std::{
-    cmp, error,
+    cmp,
+    collections::HashMap,
+    error,
     ffi::CStr,
     fmt, iter,
     marker::PhantomData,
@@ -115,7 +116,7 @@ pub struct AutoCommandBufferBuilder<L, P = StandardCommandPoolBuilder> {
     render_pass_state: Option<RenderPassState>,
 
     // If any queries are active, this hashmap contains their state.
-    query_state: FnvHashMap<ash::vk::QueryType, QueryState>,
+    query_state: HashMap<ash::vk::QueryType, QueryState>,
 
     _data: PhantomData<L>,
 }
@@ -349,7 +350,7 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
             pool_builder_alloc,
             queue_family_id: queue_family.id(),
             render_pass_state,
-            query_state: FnvHashMap::default(),
+            query_state: HashMap::default(),
             inheritance_info,
             usage,
             _data: PhantomData,

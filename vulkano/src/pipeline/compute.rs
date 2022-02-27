@@ -38,7 +38,7 @@ use crate::DeviceSize;
 use crate::Error;
 use crate::OomError;
 use crate::VulkanObject;
-use fnv::FnvHashMap;
+use std::collections::HashMap;
 use std::error;
 use std::fmt;
 use std::mem;
@@ -58,7 +58,7 @@ pub struct ComputePipeline {
     handle: ash::vk::Pipeline,
     device: Arc<Device>,
     layout: Arc<PipelineLayout>,
-    descriptor_requirements: FnvHashMap<(u32, u32), DescriptorRequirements>,
+    descriptor_requirements: HashMap<(u32, u32), DescriptorRequirements>,
     num_used_descriptor_sets: u32,
 }
 
@@ -216,7 +216,7 @@ impl ComputePipeline {
             output.assume_init()
         };
 
-        let descriptor_requirements: FnvHashMap<_, _> = shader
+        let descriptor_requirements: HashMap<_, _> = shader
             .descriptor_requirements()
             .map(|(loc, reqs)| (loc, reqs.clone()))
             .collect();

@@ -110,8 +110,8 @@ use crate::device::Device;
 use crate::format::Format;
 use crate::pipeline::graphics::GraphicsPipelineCreationError;
 use crate::pipeline::DynamicState;
-use fnv::FnvHashMap;
 use smallvec::SmallVec;
+use std::collections::HashMap;
 use std::ptr;
 
 mod buffers;
@@ -124,11 +124,11 @@ mod vertex;
 #[derive(Clone, Debug, Default)]
 pub struct VertexInputState {
     /// A description of the vertex buffers that the vertex input stage will read from.
-    pub bindings: FnvHashMap<u32, VertexInputBindingDescription>,
+    pub bindings: HashMap<u32, VertexInputBindingDescription>,
 
     /// Describes, for each shader input location, the mapping between elements in a vertex buffer
     /// and the components of that location in the shader.
-    pub attributes: FnvHashMap<u32, VertexInputAttributeDescription>,
+    pub attributes: HashMap<u32, VertexInputAttributeDescription>,
 }
 
 impl VertexInputState {
@@ -182,7 +182,7 @@ impl VertexInputState {
     pub(crate) fn to_vulkan(
         &self,
         device: &Device,
-        dynamic_state_modes: &mut FnvHashMap<DynamicState, bool>,
+        dynamic_state_modes: &mut HashMap<DynamicState, bool>,
         binding_descriptions: &[ash::vk::VertexInputBindingDescription],
         attribute_descriptions: &[ash::vk::VertexInputAttributeDescription],
         binding_divisor_state: Option<&ash::vk::PipelineVertexInputDivisorStateCreateInfoEXT>,

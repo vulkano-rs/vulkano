@@ -15,7 +15,7 @@ use crate::image::SampleCount;
 use crate::pipeline::graphics::GraphicsPipelineCreationError;
 use crate::pipeline::DynamicState;
 use crate::render_pass::Subpass;
-use fnv::FnvHashMap;
+use std::collections::HashMap;
 use std::ptr;
 
 // TODO: handle some weird behaviors with non-floating-point targets
@@ -77,7 +77,7 @@ impl MultisampleState {
     pub(crate) fn to_vulkan(
         &self,
         device: &Device,
-        dynamic_state_modes: &mut FnvHashMap<DynamicState, bool>,
+        dynamic_state_modes: &mut HashMap<DynamicState, bool>,
         subpass: &Subpass,
     ) -> Result<ash::vk::PipelineMultisampleStateCreateInfo, GraphicsPipelineCreationError> {
         let rasterization_samples = subpass.num_samples().unwrap_or(SampleCount::Sample1).into();

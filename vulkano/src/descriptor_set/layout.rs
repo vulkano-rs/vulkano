@@ -18,9 +18,8 @@ use crate::{
     shader::{DescriptorRequirements, ShaderStages},
     OomError, Version, VulkanObject,
 };
-use fnv::FnvHashMap;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     error, fmt,
     hash::{Hash, Hasher},
     mem::MaybeUninit,
@@ -37,7 +36,7 @@ pub struct DescriptorSetLayout {
     bindings: BTreeMap<u32, DescriptorSetLayoutBinding>,
     push_descriptor: bool,
 
-    descriptor_counts: FnvHashMap<DescriptorType, u32>,
+    descriptor_counts: HashMap<DescriptorType, u32>,
 }
 
 impl DescriptorSetLayout {
@@ -69,14 +68,14 @@ impl DescriptorSetLayout {
     fn validate(
         device: &Device,
         create_info: &mut DescriptorSetLayoutCreateInfo,
-    ) -> Result<FnvHashMap<DescriptorType, u32>, DescriptorSetLayoutCreationError> {
+    ) -> Result<HashMap<DescriptorType, u32>, DescriptorSetLayoutCreationError> {
         let &mut DescriptorSetLayoutCreateInfo {
             ref bindings,
             push_descriptor,
             _ne: _,
         } = create_info;
 
-        let mut descriptor_counts = FnvHashMap::default();
+        let mut descriptor_counts = HashMap::default();
 
         if push_descriptor {
             if !device.enabled_extensions().khr_push_descriptor {
@@ -334,7 +333,7 @@ impl DescriptorSetLayout {
     ///
     /// The map is guaranteed to not contain any elements with a count of `0`.
     #[inline]
-    pub fn descriptor_counts(&self) -> &FnvHashMap<DescriptorType, u32> {
+    pub fn descriptor_counts(&self) -> &HashMap<DescriptorType, u32> {
         &self.descriptor_counts
     }
 
@@ -819,7 +818,7 @@ mod tests {
     use crate::descriptor_set::layout::DescriptorSetLayoutCreateInfo;
     use crate::descriptor_set::layout::DescriptorType;
     use crate::shader::ShaderStages;
-    use fnv::FnvHashMap;
+    use fnv::HashMap;
 
     #[test]
     fn empty() {
@@ -851,7 +850,7 @@ mod tests {
             sl.descriptor_counts(),
             &[(DescriptorType::UniformBuffer, 1)]
                 .into_iter()
-                .collect::<FnvHashMap<_, _>>(),
+                .collect::<HashMap<_, _>>(),
         );
     }
 }

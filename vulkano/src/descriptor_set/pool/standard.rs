@@ -19,7 +19,7 @@ use crate::{
     device::{Device, DeviceOwned},
     OomError,
 };
-use fnv::FnvHashMap;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 /// Standard implementation of a descriptor pool.
@@ -39,7 +39,7 @@ pub struct StdDescriptorPool {
 #[derive(Debug)]
 struct Pool {
     pool: UnsafeDescriptorPool,
-    remaining_capacity: FnvHashMap<DescriptorType, u32>,
+    remaining_capacity: HashMap<DescriptorType, u32>,
     remaining_sets_count: u32,
 }
 
@@ -59,7 +59,7 @@ pub struct StdDescriptorPoolAlloc {
     // The set. Inside an option so that we can extract it in the destructor.
     set: Option<UnsafeDescriptorSet>,
     // We need to keep track of this count in order to add it back to the capacity when freeing.
-    descriptor_counts: FnvHashMap<DescriptorType, u32>,
+    descriptor_counts: HashMap<DescriptorType, u32>,
     // We keep the parent of the pool alive, otherwise it would be destroyed.
     pool_parent: Arc<StdDescriptorPool>,
 }
