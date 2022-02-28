@@ -41,6 +41,15 @@ impl<T: BufferAccessObject> VertexBuffersCollection for Vec<T> {
     }
 }
 
+impl<T: BufferAccessObject, const N: usize> VertexBuffersCollection for [T; N] {
+    #[inline]
+    fn into_vec(self) -> Vec<Arc<dyn BufferAccess>> {
+        self.into_iter()
+            .map(|src| src.as_buffer_access_object())
+            .collect()
+    }
+}
+
 macro_rules! impl_collection {
     ($first:ident $(, $others:ident)+) => (
         impl<$first$(, $others)+> VertexBuffersCollection for ($first, $($others),+)
@@ -70,3 +79,135 @@ macro_rules! impl_collection {
 }
 
 impl_collection!(Z, Y, X, W, V, U, T, S, R, Q, P, O, N, M, L, K, J, I, H, G, F, E, D, C, B, A);
+
+#[cfg(test)]
+mod tests {
+    use super::VertexBuffersCollection;
+    use crate::buffer::BufferAccess;
+    use crate::buffer::BufferAccessObject;
+    use crate::buffer::BufferInner;
+    use crate::device::Device;
+    use crate::device::DeviceOwned;
+    use crate::device::Queue;
+    use crate::sync::AccessError;
+    use crate::DeviceSize;
+    use std::sync::Arc;
+
+    struct DummyBufferA {}
+    struct DummyBufferB {}
+
+    unsafe impl BufferAccess for DummyBufferA {
+        fn inner(&self) -> BufferInner<'_> {
+            unimplemented!()
+        }
+
+        fn size(&self) -> DeviceSize {
+            unimplemented!()
+        }
+
+        fn conflict_key(&self) -> (u64, u64) {
+            unimplemented!()
+        }
+
+        fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
+            unimplemented!()
+        }
+
+        unsafe fn increase_gpu_lock(&self) {
+            unimplemented!()
+        }
+
+        unsafe fn unlock(&self) {
+            unimplemented!()
+        }
+    }
+
+    unsafe impl DeviceOwned for DummyBufferA {
+        fn device(&self) -> &Arc<Device> {
+            unimplemented!()
+        }
+    }
+
+    impl BufferAccessObject for Arc<DummyBufferA> {
+        fn as_buffer_access_object(self: &Arc<DummyBufferA>) -> Arc<dyn BufferAccess> {
+            self.clone()
+        }
+    }
+
+    unsafe impl BufferAccess for DummyBufferB {
+        fn inner(&self) -> BufferInner<'_> {
+            unimplemented!()
+        }
+
+        fn size(&self) -> DeviceSize {
+            unimplemented!()
+        }
+
+        fn conflict_key(&self) -> (u64, u64) {
+            unimplemented!()
+        }
+
+        fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
+            unimplemented!()
+        }
+
+        unsafe fn increase_gpu_lock(&self) {
+            unimplemented!()
+        }
+
+        unsafe fn unlock(&self) {
+            unimplemented!()
+        }
+    }
+
+    unsafe impl DeviceOwned for DummyBufferB {
+        fn device(&self) -> &Arc<Device> {
+            unimplemented!()
+        }
+    }
+
+    impl BufferAccessObject for Arc<DummyBufferB> {
+        fn as_buffer_access_object(self: &Arc<DummyBufferB>) -> Arc<dyn BufferAccess> {
+            self.clone()
+        }
+    }
+
+    fn takes_collection<C: VertexBuffersCollection>(_: C) {}
+
+    #[test]
+    fn vertex_buffer_collection() {
+        let concrete_a = Arc::new(DummyBufferA {});
+        let concrete_b = Arc::new(DummyBufferB {});
+        let concrete_aa = Arc::new(DummyBufferA {});
+        let dynamic_a = concrete_a.clone() as Arc<dyn BufferAccess>;
+        let dynamic_b = concrete_b.clone() as Arc<dyn BufferAccess>;
+
+        // Concrete/Dynamic alone are valid
+        takes_collection(concrete_a.clone());
+        takes_collection(dynamic_a.clone());
+
+        // Tuples of any variation are valid
+        takes_collection((concrete_a.clone(), concrete_b.clone()));
+        takes_collection((concrete_a.clone(), dynamic_b.clone()));
+        takes_collection((dynamic_a.clone(), dynamic_b.clone()));
+
+        // Vec need all the same type
+        takes_collection(vec![concrete_a.clone(), concrete_aa.clone()]);
+        takes_collection(vec![dynamic_a.clone(), dynamic_b.clone()]);
+        // But casting the first or starting off with a dynamic will allow all variations
+        takes_collection(vec![
+            concrete_a.clone() as Arc<dyn BufferAccess>,
+            concrete_b.clone(),
+        ]);
+        takes_collection(vec![dynamic_a.clone(), concrete_b.clone()]);
+
+        // Arrays are similar to Vecs
+        takes_collection([concrete_a.clone(), concrete_aa.clone()]);
+        takes_collection([dynamic_a.clone(), dynamic_b.clone()]);
+        takes_collection([
+            concrete_a.clone() as Arc<dyn BufferAccess>,
+            concrete_b.clone(),
+        ]);
+        takes_collection([dynamic_a.clone(), concrete_b.clone()]);
+    }
+}
