@@ -17,9 +17,9 @@ winit = "0.26"
 # and winit doesn't know about vulkano, so import a crate that will provide a link between the two.
 vulkano-win = { path = "../vulkano-win" }
 
+bytemuck = { version = "1.7", features = ["derive", "extern_crate_std", "min_const_generics"] }
 cgmath = "0.18"
 png = "0.17"
-time = "0.3"
 serde = { version = "1.0", features = ["derive"] }
 ron = "0.7"
 rand = "0.8.4"

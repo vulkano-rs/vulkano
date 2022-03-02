@@ -16,27 +16,38 @@
 // and that you want to learn Vulkan. This means that for example it won't go into details about
 // what a vertex or a shader is.
 
+use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
-use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
-use vulkano::image::view::ImageView;
-use vulkano::image::{ImageAccess, ImageUsage, SwapchainImage};
-use vulkano::instance::{Instance, InstanceCreateInfo};
-use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
-use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
-use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
-use vulkano::pipeline::GraphicsPipeline;
-use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass};
-use vulkano::swapchain::{
-    self, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+use vulkano::{
+    buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
+    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents},
+    device::{
+        physical::{PhysicalDevice, PhysicalDeviceType},
+        Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+    },
+    image::{view::ImageView, ImageAccess, ImageUsage, SwapchainImage},
+    impl_vertex,
+    instance::{Instance, InstanceCreateInfo},
+    pipeline::{
+        graphics::{
+            input_assembly::InputAssemblyState,
+            vertex_input::BuffersDefinition,
+            viewport::{Viewport, ViewportState},
+        },
+        GraphicsPipeline,
+    },
+    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
+    swapchain::{
+        acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+    },
+    sync::{self, FlushError, GpuFuture},
 };
-use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano_win::VkSurfaceBuild;
-use winit::event::{Event, WindowEvent};
-use winit::event_loop::{ControlFlow, EventLoop};
-use winit::window::{Window, WindowBuilder};
+use winit::{
+    event::{Event, WindowEvent},
+    event_loop::{ControlFlow, EventLoop},
+    window::{Window, WindowBuilder},
+};
 
 fn main() {
     // The first step of any Vulkan program is to create an instance.
@@ -233,37 +244,32 @@ fn main() {
     // We use #[repr(C)] here to force rustc to not do anything funky with our data, although for this
     // particular example, it doesn't actually change the in-memory representation.
     #[repr(C)]
-    #[derive(Default, Debug, Clone)]
+    #[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
     struct Vertex {
         position: [f32; 2],
     }
-    vulkano::impl_vertex!(Vertex, position);
+    impl_vertex!(Vertex, position);
 
-    let vertex_buffer = CpuAccessibleBuffer::from_iter(
-        device.clone(),
-        BufferUsage::all(),
-        false,
-        [
-            Vertex {
-                position: [-0.5, -0.25],
-            },
-            Vertex {
-                position: [0.0, 0.5],
-            },
-            Vertex {
-                position: [0.25, -0.1],
-            },
-        ]
-        .iter()
-        .cloned(),
-    )
-    .unwrap();
+    let vertices = [
+        Vertex {
+            position: [-0.5, -0.25],
+        },
+        Vertex {
+            position: [0.0, 0.5],
+        },
+        Vertex {
+            position: [0.25, -0.1],
+        },
+    ];
+    let vertex_buffer =
+        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, vertices)
+            .unwrap();
 
     // The next step is to create the shaders.
     //
     // The raw shader creation API provided by the vulkano library is unsafe, for various reasons.
     //
-    // An overview of what the `vulkano_shaders::shader!` macro generates can be found in the
+    // An overview of what the `shader!` macro generates can be found in the
     // `vulkano-shaders` crate docs. You can view them at https://docs.rs/vulkano-shaders/
     //
     // TODO: explain this in details
@@ -450,7 +456,7 @@ fn main() {
                 // This function can block if no image is available. The parameter is an optional timeout
                 // after which the function call will return an error.
                 let (image_num, suboptimal, acquire_future) =
-                    match swapchain::acquire_next_image(swapchain.clone(), None) {
+                    match acquire_next_image(swapchain.clone(), None) {
                         Ok(r) => r,
                         Err(AcquireError::OutOfDate) => {
                             recreate_swapchain = true;

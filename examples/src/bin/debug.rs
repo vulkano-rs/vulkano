@@ -7,15 +7,18 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
-use vulkano::format::Format;
-use vulkano::image::ImageDimensions;
-use vulkano::image::ImmutableImage;
-use vulkano::image::MipmapsCount;
-use vulkano::instance::debug::{DebugCallback, MessageSeverity, MessageType};
-use vulkano::instance::{self, InstanceCreateInfo};
-use vulkano::instance::{Instance, InstanceExtensions};
+use vulkano::{
+    device::{
+        physical::{PhysicalDevice, PhysicalDeviceType},
+        Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+    },
+    format::Format,
+    image::{ImageDimensions, ImmutableImage, MipmapsCount},
+    instance::{
+        debug::{DebugCallback, MessageSeverity, MessageType},
+        layers_list, Instance, InstanceCreateInfo, InstanceExtensions,
+    },
+};
 
 fn main() {
     // Vulkano Debugging Example Code
@@ -43,7 +46,7 @@ fn main() {
     // and you should verify that list for safety - Vulkano will return an error if you specify
     // any layers that are not installed on this system. That code to do could look like this:
     println!("List of Vulkan debugging layers available to use:");
-    let mut layers = instance::layers_list().unwrap();
+    let mut layers = layers_list().unwrap();
     while let Some(l) = layers.next() {
         println!("\t{}", l.name());
     }
@@ -158,9 +161,9 @@ fn main() {
         height: 4096,
         array_layers: 1,
     };
-    const DATA: [[u8; 4]; 4096 * 4096] = [[0; 4]; 4096 * 4096];
+    static DATA: [[u8; 4]; 4096 * 4096] = [[0; 4]; 4096 * 4096];
     let _ = ImmutableImage::from_iter(
-        DATA.iter().cloned(),
+        DATA.iter().copied(),
         dimensions,
         MipmapsCount::One,
         pixel_format,

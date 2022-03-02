@@ -8,29 +8,29 @@
 // according to those terms.
 
 use crate::place_over_frame::RenderPassPlaceOverFrame;
-
+use std::{collections::HashMap, sync::Arc};
+use vulkano::{
+    device::{
+        physical::{PhysicalDevice, PhysicalDeviceType},
+        Device, DeviceCreateInfo, DeviceExtensions, Features, Queue, QueueCreateInfo,
+    },
+    format::Format,
+    image::{
+        view::ImageView, AttachmentImage, ImageAccess, ImageUsage, ImageViewAbstract, SampleCount,
+        SwapchainImage,
+    },
+    instance::{Instance, InstanceCreateInfo, InstanceExtensions},
+    swapchain::{
+        acquire_next_image, AcquireError, PresentMode, Surface, Swapchain, SwapchainCreateInfo,
+        SwapchainCreationError,
+    },
+    sync::{self, FlushError, GpuFuture},
+};
 use vulkano_win::VkSurfaceBuild;
-
-use std::collections::HashMap;
-use std::sync::Arc;
-use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{
-    Device, DeviceCreateInfo, DeviceExtensions, Features, Queue, QueueCreateInfo,
+use winit::{
+    event_loop::EventLoop,
+    window::{Fullscreen, Window, WindowBuilder},
 };
-use vulkano::format::Format;
-use vulkano::image::view::ImageView;
-use vulkano::image::{
-    AttachmentImage, ImageAccess, ImageUsage, ImageViewAbstract, SampleCount, SwapchainImage,
-};
-use vulkano::instance::InstanceExtensions;
-use vulkano::instance::{Instance, InstanceCreateInfo};
-use vulkano::swapchain::{
-    AcquireError, PresentMode, Surface, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
-};
-use vulkano::sync::{FlushError, GpuFuture};
-use vulkano::{swapchain, sync};
-use winit::event_loop::EventLoop;
-use winit::window::{Fullscreen, Window, WindowBuilder};
 
 /// Final render target (swapchain image)
 pub type FinalImageView = Arc<ImageView<SwapchainImage<Window>>>;
@@ -374,7 +374,7 @@ impl Renderer {
 
         // Acquire next image in the swapchain
         let (image_num, suboptimal, acquire_future) =
-            match swapchain::acquire_next_image(self.swapchain.clone(), None) {
+            match acquire_next_image(self.swapchain.clone(), None) {
                 Ok(r) => r,
                 Err(AcquireError::OutOfDate) => {
                     self.recreate_swapchain = true;

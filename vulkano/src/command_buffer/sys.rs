@@ -12,7 +12,7 @@ use super::{
     CommandBufferUsage, SecondaryCommandBuffer, SubpassContents,
 };
 use crate::{
-    buffer::{BufferAccess, BufferInner, TypedBufferAccess},
+    buffer::{BufferAccess, BufferContents, BufferInner, TypedBufferAccess},
     check_errors,
     descriptor_set::{sys::UnsafeDescriptorSet, DescriptorWriteInfo, WriteDescriptorSet},
     device::{Device, DeviceOwned},
@@ -42,7 +42,13 @@ use crate::{
     DeviceSize, OomError, Version, VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{ffi::CStr, mem, ops::Range, ptr, sync::Arc};
+use std::{
+    ffi::CStr,
+    mem::{size_of, size_of_val},
+    ops::Range,
+    ptr,
+    sync::Arc,
+};
 
 /// Command buffer being built.
 ///
@@ -332,17 +338,14 @@ impl UnsafeCommandBufferBuilder {
     /// Does nothing if the list of descriptor sets is empty, as it would be a no-op and isn't a
     /// valid usage of the command anyway.
     #[inline]
-    pub unsafe fn bind_descriptor_sets<'s, S, I>(
+    pub unsafe fn bind_descriptor_sets<'s>(
         &mut self,
         pipeline_bind_point: PipelineBindPoint,
         pipeline_layout: &PipelineLayout,
         first_set: u32,
-        sets: S,
-        dynamic_offsets: I,
-    ) where
-        S: IntoIterator<Item = &'s UnsafeDescriptorSet>,
-        I: IntoIterator<Item = u32>,
-    {
+        sets: impl IntoIterator<Item = &'s UnsafeDescriptorSet>,
+        dynamic_offsets: impl IntoIterator<Item = u32>,
+    ) {
         let fns = self.device().fns();
         let cmd = self.internal_object();
 
@@ -369,10 +372,7 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdBindIndexBuffer` on the builder.
     #[inline]
-    pub unsafe fn bind_index_buffer<B>(&mut self, buffer: &B, index_ty: IndexType)
-    where
-        B: ?Sized + BufferAccess,
-    {
+    pub unsafe fn bind_index_buffer(&mut self, buffer: &dyn BufferAccess, index_ty: IndexType) {
         let fns = self.device().fns();
         let cmd = self.internal_object();
 
@@ -457,18 +457,14 @@ impl UnsafeCommandBufferBuilder {
     /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
     /// usage of the command anyway.
     #[inline]
-    pub unsafe fn copy_image<S, D, R>(
+    pub unsafe fn copy_image(
         &mut self,
-        source: &S,
+        source: &dyn ImageAccess,
         source_layout: ImageLayout,
-        destination: &D,
+        destination: &dyn ImageAccess,
         destination_layout: ImageLayout,
-        regions: R,
-    ) where
-        S: ?Sized + ImageAccess,
-        D: ?Sized + ImageAccess,
-        R: IntoIterator<Item = UnsafeCommandBufferBuilderImageCopy>,
-    {
+        regions: impl IntoIterator<Item = UnsafeCommandBufferBuilderImageCopy>,
+    ) {
         // TODO: The correct check here is that the uncompressed element size of the source is
         // equal to the compressed element size of the destination.
         debug_assert!(
@@ -572,19 +568,15 @@ impl UnsafeCommandBufferBuilder {
     /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
     /// usage of the command anyway.
     #[inline]
-    pub unsafe fn blit_image<S, D, R>(
+    pub unsafe fn blit_image(
         &mut self,
-        source: &S,
+        source: &dyn ImageAccess,
         source_layout: ImageLayout,
-        destination: &D,
+        destination: &dyn ImageAccess,
         destination_layout: ImageLayout,
-        regions: R,
+        regions: impl IntoIterator<Item = UnsafeCommandBufferBuilderImageBlit>,
         filter: Filter,
-    ) where
-        S: ?Sized + ImageAccess,
-        D: ?Sized + ImageAccess,
-        R: IntoIterator<Item = UnsafeCommandBufferBuilderImageBlit>,
-    {
+    ) {
         let source_aspects = source.format().aspects();
 
         if let (Some(source_type), Some(destination_type)) = (
@@ -703,11 +695,11 @@ impl UnsafeCommandBufferBuilder {
     /// Does nothing if the list of attachments or the list of rects is empty, as it would be a
     /// no-op and isn't a valid usage of the command anyway.
     #[inline]
-    pub unsafe fn clear_attachments<A, R>(&mut self, attachments: A, rects: R)
-    where
-        A: IntoIterator<Item = ClearAttachment>,
-        R: IntoIterator<Item = ClearRect>,
-    {
+    pub unsafe fn clear_attachments(
+        &mut self,
+        attachments: impl IntoIterator<Item = ClearAttachment>,
+        rects: impl IntoIterator<Item = ClearRect>,
+    ) {
         let attachments: SmallVec<[_; 3]> = attachments.into_iter().map(|v| v.into()).collect();
         let rects: SmallVec<[_; 4]> = rects
             .into_iter()
@@ -753,16 +745,13 @@ impl UnsafeCommandBufferBuilder {
     /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
     /// usage of the command anyway.
     // TODO: ClearValue could be more precise
-    pub unsafe fn clear_color_image<I, R>(
+    pub unsafe fn clear_color_image(
         &mut self,
-        image: &I,
+        image: &dyn ImageAccess,
         layout: ImageLayout,
         color: ClearValue,
-        regions: R,
-    ) where
-        I: ?Sized + ImageAccess,
-        R: IntoIterator<Item = UnsafeCommandBufferBuilderColorImageClear>,
-    {
+        regions: impl IntoIterator<Item = UnsafeCommandBufferBuilderColorImageClear>,
+    ) {
         let image_aspects = image.format().aspects();
         debug_assert!(image_aspects.color && !image_aspects.plane0);
         debug_assert!(image.format().compression().is_none());
@@ -822,16 +811,13 @@ impl UnsafeCommandBufferBuilder {
     ///
     /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
     /// usage of the command anyway.
-    pub unsafe fn clear_depth_stencil_image<I, R>(
+    pub unsafe fn clear_depth_stencil_image(
         &mut self,
-        image: &I,
+        image: &dyn ImageAccess,
         layout: ImageLayout,
         clear_value: ClearValue,
-        regions: R,
-    ) where
-        I: ?Sized + ImageAccess,
-        R: IntoIterator<Item = UnsafeCommandBufferBuilderDepthStencilImageClear>,
-    {
+        regions: impl IntoIterator<Item = UnsafeCommandBufferBuilderDepthStencilImageClear>,
+    ) {
         let image_aspects = image.format().aspects();
         debug_assert!((image_aspects.depth || image_aspects.stencil) && !image_aspects.plane0);
         debug_assert!(image.format().compression().is_none());
@@ -911,12 +897,12 @@ impl UnsafeCommandBufferBuilder {
     /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
     /// usage of the command anyway.
     #[inline]
-    pub unsafe fn copy_buffer<S, D, R>(&mut self, source: &S, destination: &D, regions: R)
-    where
-        S: ?Sized + BufferAccess,
-        D: ?Sized + BufferAccess,
-        R: IntoIterator<Item = (DeviceSize, DeviceSize, DeviceSize)>,
-    {
+    pub unsafe fn copy_buffer(
+        &mut self,
+        source: &dyn BufferAccess,
+        destination: &dyn BufferAccess,
+        regions: impl IntoIterator<Item = (DeviceSize, DeviceSize, DeviceSize)>,
+    ) {
         // TODO: debug assert that there's no overlap in the destinations?
 
         let source = source.inner();
@@ -956,17 +942,13 @@ impl UnsafeCommandBufferBuilder {
     /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
     /// usage of the command anyway.
     #[inline]
-    pub unsafe fn copy_buffer_to_image<S, D, R>(
+    pub unsafe fn copy_buffer_to_image(
         &mut self,
-        source: &S,
-        destination: &D,
+        source: &dyn BufferAccess,
+        destination: &dyn ImageAccess,
         destination_layout: ImageLayout,
-        regions: R,
-    ) where
-        S: ?Sized + BufferAccess,
-        D: ?Sized + ImageAccess,
-        R: IntoIterator<Item = UnsafeCommandBufferBuilderBufferImageCopy>,
-    {
+        regions: impl IntoIterator<Item = UnsafeCommandBufferBuilderBufferImageCopy>,
+    ) {
         let source = source.inner();
         debug_assert!(source.offset < source.buffer.size());
         debug_assert!(source.buffer.usage().transfer_source);
@@ -1031,17 +1013,13 @@ impl UnsafeCommandBufferBuilder {
     /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
     /// usage of the command anyway.
     #[inline]
-    pub unsafe fn copy_image_to_buffer<S, D, R>(
+    pub unsafe fn copy_image_to_buffer(
         &mut self,
-        source: &S,
+        source: &dyn ImageAccess,
         source_layout: ImageLayout,
-        destination: &D,
-        regions: R,
-    ) where
-        S: ?Sized + ImageAccess,
-        D: ?Sized + BufferAccess,
-        R: IntoIterator<Item = UnsafeCommandBufferBuilderBufferImageCopy>,
-    {
+        destination: &dyn BufferAccess,
+        regions: impl IntoIterator<Item = UnsafeCommandBufferBuilderBufferImageCopy>,
+    ) {
         debug_assert_eq!(source.samples(), SampleCount::Sample1);
         let source = source.inner();
         debug_assert!(source.image.usage().transfer_source);
@@ -1116,8 +1094,8 @@ impl UnsafeCommandBufferBuilder {
         let range = queries.range();
         debug_assert!(destination.offset < destination.buffer.size());
         debug_assert!(destination.buffer.usage().transfer_destination);
-        debug_assert!(destination.offset % std::mem::size_of::<T>() as DeviceSize == 0);
-        debug_assert!(stride % std::mem::size_of::<T>() as DeviceSize == 0);
+        debug_assert!(destination.offset % size_of::<T>() as DeviceSize == 0);
+        debug_assert!(stride % size_of::<T>() as DeviceSize == 0);
 
         let fns = self.device().fns();
         let cmd = self.internal_object();
@@ -1155,10 +1133,7 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdDispatchIndirect` on the builder.
     #[inline]
-    pub unsafe fn dispatch_indirect<B>(&mut self, buffer: &B)
-    where
-        B: ?Sized + BufferAccess,
-    {
+    pub unsafe fn dispatch_indirect(&mut self, buffer: &dyn BufferAccess) {
         let fns = self.device().fns();
         let cmd = self.internal_object();
 
@@ -1215,17 +1190,19 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdDrawIndirect` on the builder.
     #[inline]
-    pub unsafe fn draw_indirect<B>(&mut self, buffer: &B, draw_count: u32, stride: u32)
-    where
-        B: ?Sized + BufferAccess,
-    {
+    pub unsafe fn draw_indirect(
+        &mut self,
+        buffer: &dyn BufferAccess,
+        draw_count: u32,
+        stride: u32,
+    ) {
         let fns = self.device().fns();
         let cmd = self.internal_object();
 
         debug_assert!(
             draw_count == 0
                 || ((stride % 4) == 0)
-                    && stride as usize >= mem::size_of::<ash::vk::DrawIndirectCommand>()
+                    && stride as usize >= size_of::<ash::vk::DrawIndirectCommand>()
         );
 
         let inner = buffer.inner();
@@ -1243,10 +1220,12 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdDrawIndexedIndirect` on the builder.
     #[inline]
-    pub unsafe fn draw_indexed_indirect<B>(&mut self, buffer: &B, draw_count: u32, stride: u32)
-    where
-        B: ?Sized + BufferAccess,
-    {
+    pub unsafe fn draw_indexed_indirect(
+        &mut self,
+        buffer: &dyn BufferAccess,
+        draw_count: u32,
+        stride: u32,
+    ) {
         let fns = self.device().fns();
         let cmd = self.internal_object();
 
@@ -1314,10 +1293,7 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdFillBuffer` on the builder.
     #[inline]
-    pub unsafe fn fill_buffer<B>(&mut self, buffer: &B, data: u32)
-    where
-        B: ?Sized + BufferAccess,
-    {
+    pub unsafe fn fill_buffer(&mut self, buffer: &dyn BufferAccess, data: u32) {
         let fns = self.device().fns();
         let cmd = self.internal_object();
 
@@ -1413,7 +1389,7 @@ impl UnsafeCommandBufferBuilder {
         size: u32,
         data: &D,
     ) where
-        D: ?Sized,
+        D: BufferContents + ?Sized,
     {
         let fns = self.device().fns();
         let cmd = self.internal_object();
@@ -1422,7 +1398,7 @@ impl UnsafeCommandBufferBuilder {
         debug_assert!(size > 0);
         debug_assert_eq!(size % 4, 0);
         debug_assert_eq!(offset % 4, 0);
-        debug_assert!(mem::size_of_val(data) >= size as usize);
+        debug_assert!(size_of_val(data) >= size as usize);
 
         fns.v1_0.cmd_push_constants(
             cmd,
@@ -1430,7 +1406,7 @@ impl UnsafeCommandBufferBuilder {
             stages.into(),
             offset as u32,
             size as u32,
-            data as *const D as *const _,
+            data.as_bytes().as_ptr() as *const _,
         );
     }
 
@@ -1536,10 +1512,7 @@ impl UnsafeCommandBufferBuilder {
     ///
     /// If the list is empty then the command is automatically ignored.
     #[inline]
-    pub unsafe fn set_color_write_enable<I>(&mut self, enables: I)
-    where
-        I: IntoIterator<Item = bool>,
-    {
+    pub unsafe fn set_color_write_enable(&mut self, enables: impl IntoIterator<Item = bool>) {
         debug_assert!(self.device().enabled_extensions().ext_color_write_enable);
         debug_assert!(self.device().enabled_features().color_write_enable);
 
@@ -1705,10 +1678,11 @@ impl UnsafeCommandBufferBuilder {
     ///
     /// If the list is empty then the command is automatically ignored.
     #[inline]
-    pub unsafe fn set_discard_rectangle<I>(&mut self, first_rectangle: u32, rectangles: I)
-    where
-        I: IntoIterator<Item = Scissor>,
-    {
+    pub unsafe fn set_discard_rectangle(
+        &mut self,
+        first_rectangle: u32,
+        rectangles: impl IntoIterator<Item = Scissor>,
+    ) {
         debug_assert!(self.device().enabled_extensions().ext_discard_rectangles);
 
         let rectangles = rectangles
@@ -1991,10 +1965,11 @@ impl UnsafeCommandBufferBuilder {
     ///
     /// If the list is empty then the command is automatically ignored.
     #[inline]
-    pub unsafe fn set_scissor<I>(&mut self, first_scissor: u32, scissors: I)
-    where
-        I: IntoIterator<Item = Scissor>,
-    {
+    pub unsafe fn set_scissor(
+        &mut self,
+        first_scissor: u32,
+        scissors: impl IntoIterator<Item = Scissor>,
+    ) {
         let scissors = scissors
             .into_iter()
             .map(|v| ash::vk::Rect2D::from(v.clone()))
@@ -2029,10 +2004,7 @@ impl UnsafeCommandBufferBuilder {
     ///
     /// If the list is empty then the command is automatically ignored.
     #[inline]
-    pub unsafe fn set_scissor_with_count<I>(&mut self, scissors: I)
-    where
-        I: IntoIterator<Item = Scissor>,
-    {
+    pub unsafe fn set_scissor_with_count(&mut self, scissors: impl IntoIterator<Item = Scissor>) {
         let scissors = scissors
             .into_iter()
             .map(|v| ash::vk::Rect2D::from(v.clone()))
@@ -2075,10 +2047,11 @@ impl UnsafeCommandBufferBuilder {
     ///
     /// If the list is empty then the command is automatically ignored.
     #[inline]
-    pub unsafe fn set_viewport<I>(&mut self, first_viewport: u32, viewports: I)
-    where
-        I: IntoIterator<Item = Viewport>,
-    {
+    pub unsafe fn set_viewport(
+        &mut self,
+        first_viewport: u32,
+        viewports: impl IntoIterator<Item = Viewport>,
+    ) {
         let viewports = viewports
             .into_iter()
             .map(|v| v.clone().into())
@@ -2110,10 +2083,10 @@ impl UnsafeCommandBufferBuilder {
     ///
     /// If the list is empty then the command is automatically ignored.
     #[inline]
-    pub unsafe fn set_viewport_with_count<I>(&mut self, viewports: I)
-    where
-        I: IntoIterator<Item = Viewport>,
-    {
+    pub unsafe fn set_viewport_with_count(
+        &mut self,
+        viewports: impl IntoIterator<Item = Viewport>,
+    ) {
         let viewports = viewports
             .into_iter()
             .map(|v| v.clone().into())
@@ -2147,10 +2120,9 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdUpdateBuffer` on the builder.
     #[inline]
-    pub unsafe fn update_buffer<B, D>(&mut self, buffer: &B, data: &D)
+    pub unsafe fn update_buffer<D>(&mut self, buffer: &dyn BufferAccess, data: &D)
     where
-        B: ?Sized + BufferAccess,
-        D: ?Sized,
+        D: BufferContents + ?Sized,
     {
         let fns = self.device().fns();
         let cmd = self.internal_object();
@@ -2158,7 +2130,7 @@ impl UnsafeCommandBufferBuilder {
         let size = buffer.size();
         debug_assert_eq!(size % 4, 0);
         debug_assert!(size <= 65536);
-        debug_assert!(size <= mem::size_of_val(data) as DeviceSize);
+        debug_assert!(size <= size_of_val(data) as DeviceSize);
 
         let (buffer_handle, offset) = {
             let BufferInner {
@@ -2175,7 +2147,7 @@ impl UnsafeCommandBufferBuilder {
             buffer_handle,
             offset,
             size,
-            data as *const D as *const _,
+            data.as_bytes().as_ptr() as *const _,
         );
     }
 
@@ -2353,10 +2325,7 @@ impl UnsafeCommandBufferBuilderBindVertexBuffer {
 
     /// Adds a buffer to the list.
     #[inline]
-    pub fn add<B>(&mut self, buffer: &B)
-    where
-        B: ?Sized + BufferAccess,
-    {
+    pub fn add(&mut self, buffer: &dyn BufferAccess) {
         let inner = buffer.inner();
         debug_assert!(inner.buffer.usage().vertex_buffer);
         self.raw_buffers.push(inner.buffer.internal_object());
@@ -2587,9 +2556,9 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
     ///   is added.
     /// - Queue ownership transfers must be correct.
     ///
-    pub unsafe fn add_buffer_memory_barrier<B>(
+    pub unsafe fn add_buffer_memory_barrier(
         &mut self,
-        buffer: &B,
+        buffer: &dyn BufferAccess,
         source_stage: PipelineStages,
         source_access: AccessFlags,
         destination_stage: PipelineStages,
@@ -2598,9 +2567,7 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
         queue_transfer: Option<(u32, u32)>,
         offset: DeviceSize,
         size: DeviceSize,
-    ) where
-        B: ?Sized + BufferAccess,
-    {
+    ) {
         debug_assert!(source_stage.supported_access().contains(&source_access));
         debug_assert!(destination_stage
             .supported_access()
@@ -2650,9 +2617,9 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
     /// - Image layouts transfers must be correct.
     /// - Access flags must be compatible with the image usage flags passed at image creation.
     ///
-    pub unsafe fn add_image_memory_barrier<I>(
+    pub unsafe fn add_image_memory_barrier(
         &mut self,
-        image: &I,
+        image: &dyn ImageAccess,
         mip_levels: Range<u32>,
         array_layers: Range<u32>,
         source_stage: PipelineStages,
@@ -2663,9 +2630,7 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
         queue_transfer: Option<(u32, u32)>,
         current_layout: ImageLayout,
         new_layout: ImageLayout,
-    ) where
-        I: ?Sized + ImageAccess,
-    {
+    ) {
         debug_assert!(source_stage.supported_access().contains(&source_access));
         debug_assert!(destination_stage
             .supported_access()

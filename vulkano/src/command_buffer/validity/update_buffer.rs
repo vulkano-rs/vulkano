@@ -7,15 +7,12 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::buffer::TypedBufferAccess;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::DeviceSize;
-use crate::VulkanObject;
-use std::cmp;
-use std::error;
-use std::fmt;
-use std::mem;
+use crate::{
+    buffer::BufferAccess,
+    device::{Device, DeviceOwned},
+    DeviceSize, VulkanObject,
+};
+use std::{error, fmt, mem::size_of_val};
 
 /// Checks whether an update buffer command is valid.
 ///
@@ -23,13 +20,12 @@ use std::mem;
 ///
 /// - Panics if the buffer not created with `device`.
 ///
-pub fn check_update_buffer<B, D>(
+pub fn check_update_buffer<D>(
     device: &Device,
-    buffer: &B,
+    buffer: &dyn BufferAccess,
     data: &D,
 ) -> Result<(), CheckUpdateBufferError>
 where
-    B: ?Sized + TypedBufferAccess<Content = D>,
     D: ?Sized,
 {
     assert_eq!(
@@ -45,7 +41,7 @@ where
         return Err(CheckUpdateBufferError::WrongAlignment);
     }
 
-    let size = cmp::min(buffer.size(), mem::size_of_val(data) as DeviceSize);
+    let size = buffer.size().min(size_of_val(data) as DeviceSize);
 
     if size % 4 != 0 {
         return Err(CheckUpdateBufferError::WrongAlignment);

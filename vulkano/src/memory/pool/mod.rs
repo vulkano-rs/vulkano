@@ -85,38 +85,25 @@ where
     assert!(device.enabled_extensions().khr_external_memory);
 
     let memory_type = choose_allocation_memory_type(&device, requirements, filter, map);
+    let memory = DeviceMemory::allocate(
+        device.clone(),
+        MemoryAllocateInfo {
+            allocation_size: requirements.size,
+            memory_type_index: memory_type.id(),
+            export_handle_types: ExternalMemoryHandleTypes {
+                opaque_fd: true,
+                ..ExternalMemoryHandleTypes::none()
+            },
+            ..MemoryAllocateInfo::dedicated_allocation(dedicated_allocation)
+        },
+    )?;
 
     match map {
         MappingRequirement::Map => {
-            let mem = DeviceMemory::allocate_and_map(
-                device.clone(),
-                MemoryAllocateInfo {
-                    allocation_size: requirements.size,
-                    memory_type_index: memory_type.id(),
-                    export_handle_types: ExternalMemoryHandleTypes {
-                        opaque_fd: true,
-                        ..ExternalMemoryHandleTypes::none()
-                    },
-                    ..MemoryAllocateInfo::dedicated_allocation(dedicated_allocation)
-                },
-            )?;
-            Ok(PotentialDedicatedAllocation::DedicatedMapped(mem))
+            let mapped_memory = MappedDeviceMemory::new(memory, 0..requirements.size)?;
+            Ok(PotentialDedicatedAllocation::DedicatedMapped(mapped_memory))
         }
-        MappingRequirement::DoNotMap => {
-            let mem = DeviceMemory::allocate(
-                device.clone(),
-                MemoryAllocateInfo {
-                    allocation_size: requirements.size,
-                    memory_type_index: memory_type.id(),
-                    export_handle_types: ExternalMemoryHandleTypes {
-                        opaque_fd: true,
-                        ..ExternalMemoryHandleTypes::none()
-                    },
-                    ..MemoryAllocateInfo::dedicated_allocation(dedicated_allocation)
-                },
-            )?;
-            Ok(PotentialDedicatedAllocation::Dedicated(mem))
-        }
+        MappingRequirement::DoNotMap => Ok(PotentialDedicatedAllocation::Dedicated(memory)),
     }
 }
 
@@ -221,31 +208,22 @@ pub unsafe trait MemoryPool: DeviceOwned {
         }
 
         // If we reach here, then we perform a dedicated alloc.
+        let memory = DeviceMemory::allocate(
+            self.device().clone(),
+            MemoryAllocateInfo {
+                allocation_size: requirements.size,
+                memory_type_index: memory_type.id(),
+                dedicated_allocation,
+                ..Default::default()
+            },
+        )?;
+
         match map {
             MappingRequirement::Map => {
-                let mem = DeviceMemory::allocate_and_map(
-                    self.device().clone(),
-                    MemoryAllocateInfo {
-                        allocation_size: requirements.size,
-                        memory_type_index: memory_type.id(),
-                        dedicated_allocation,
-                        ..Default::default()
-                    },
-                )?;
-                Ok(PotentialDedicatedAllocation::DedicatedMapped(mem))
+                let mapped_memory = MappedDeviceMemory::new(memory, 0..requirements.size)?;
+                Ok(PotentialDedicatedAllocation::DedicatedMapped(mapped_memory))
             }
-            MappingRequirement::DoNotMap => {
-                let mem = DeviceMemory::allocate(
-                    self.device().clone(),
-                    MemoryAllocateInfo {
-                        allocation_size: requirements.size,
-                        memory_type_index: memory_type.id(),
-                        dedicated_allocation,
-                        ..Default::default()
-                    },
-                )?;
-                Ok(PotentialDedicatedAllocation::Dedicated(mem))
-            }
+            MappingRequirement::DoNotMap => Ok(PotentialDedicatedAllocation::Dedicated(memory)),
         }
     }
 }

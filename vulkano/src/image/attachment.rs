@@ -554,7 +554,7 @@ impl AttachmentImage {
 
     /// Return the size of the allocated memory (used for e.g. with cuda)
     pub fn mem_size(&self) -> DeviceSize {
-        self.memory.memory().size()
+        self.memory.memory().allocation_size()
     }
 }
 

@@ -76,41 +76,26 @@
 //! alternative command pool implementations and use them. See the `pool` module for more
 //! information.
 
-pub use self::auto::AutoCommandBufferBuilder;
-pub use self::auto::AutoCommandBufferBuilderContextError;
-pub use self::auto::BeginError;
-pub use self::auto::BeginQueryError;
-pub use self::auto::BeginRenderPassError;
-pub use self::auto::BlitImageError;
-pub use self::auto::BuildError;
-pub use self::auto::ClearColorImageError;
-pub use self::auto::CopyBufferError;
-pub use self::auto::CopyBufferImageError;
-pub use self::auto::CopyImageError;
-pub use self::auto::CopyQueryPoolResultsError;
-pub use self::auto::DebugMarkerError;
-pub use self::auto::DispatchError;
-pub use self::auto::DispatchIndirectError;
-pub use self::auto::DrawError;
-pub use self::auto::DrawIndexedError;
-pub use self::auto::DrawIndexedIndirectError;
-pub use self::auto::DrawIndirectError;
-pub use self::auto::EndQueryError;
-pub use self::auto::ExecuteCommandsError;
-pub use self::auto::FillBufferError;
-pub use self::auto::PrimaryAutoCommandBuffer;
-pub use self::auto::ResetQueryPoolError;
-pub use self::auto::SecondaryAutoCommandBuffer;
-pub use self::auto::UpdateBufferError;
-pub use self::auto::WriteTimestampError;
-pub use self::traits::CommandBufferExecError;
-pub use self::traits::CommandBufferExecFuture;
-pub use self::traits::PrimaryCommandBuffer;
-pub use self::traits::SecondaryCommandBuffer;
-use crate::query::QueryControlFlags;
-use crate::query::QueryPipelineStatisticFlags;
-use crate::render_pass::Framebuffer;
-use crate::render_pass::Subpass;
+pub use self::{
+    auto::{
+        AutoCommandBufferBuilder, AutoCommandBufferBuilderContextError, BeginError,
+        BeginQueryError, BeginRenderPassError, BlitImageError, BuildError, ClearColorImageError,
+        CopyBufferError, CopyBufferImageError, CopyImageError, CopyQueryPoolResultsError,
+        DebugMarkerError, DispatchError, DispatchIndirectError, DrawError, DrawIndexedError,
+        DrawIndexedIndirectError, DrawIndirectError, EndQueryError, ExecuteCommandsError,
+        FillBufferError, PrimaryAutoCommandBuffer, ResetQueryPoolError, SecondaryAutoCommandBuffer,
+        UpdateBufferError, WriteTimestampError,
+    },
+    traits::{
+        CommandBufferExecError, CommandBufferExecFuture, PrimaryCommandBuffer,
+        SecondaryCommandBuffer,
+    },
+};
+use crate::{
+    query::{QueryControlFlags, QueryPipelineStatisticFlags},
+    render_pass::{Framebuffer, Subpass},
+};
+use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
 
 mod auto;
@@ -137,7 +122,7 @@ impl ImageUninitializedSafe {
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, Zeroable, Pod, PartialEq, Eq)]
 pub struct DrawIndirectCommand {
     pub vertex_count: u32,
     pub instance_count: u32,
@@ -146,7 +131,7 @@ pub struct DrawIndirectCommand {
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, Zeroable, Pod, PartialEq, Eq)]
 pub struct DrawIndexedIndirectCommand {
     pub index_count: u32,
     pub instance_count: u32,
@@ -156,7 +141,7 @@ pub struct DrawIndexedIndirectCommand {
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, Zeroable, Pod, PartialEq, Eq)]
 pub struct DispatchIndirectCommand {
     pub x: u32,
     pub y: u32,

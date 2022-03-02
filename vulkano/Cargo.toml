@@ -17,6 +17,7 @@ build = "build.rs"
 # When updating Ash, also update vk.xml to the same Vulkan patch version that Ash uses.
 # All versions of vk.xml can be found at https://github.com/KhronosGroup/Vulkan-Headers/commits/main/registry/vk.xml.
 ash = "0.36"
+bytemuck = { version = "1.7", features = ["derive", "extern_crate_std", "min_const_generics"] }
 crossbeam-queue = "0.3"
 half = "1.8"
 lazy_static = "1.4"

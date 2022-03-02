@@ -8,13 +8,14 @@
 // according to those terms.
 
 use crate::format::Format;
+use bytemuck::Pod;
 
 /// Describes an individual `Vertex`. In other words a collection of attributes that can be read
 /// from a vertex shader.
 ///
 /// At this stage, the vertex is in a "raw" format. For example a `[f32; 4]` can match both a
 /// `vec4` or a `float[4]`. The way the things are bound depends on the shader.
-pub unsafe trait Vertex: Send + Sync + 'static {
+pub unsafe trait Vertex: Pod + Send + Sync + 'static {
     /// Returns the characteristics of a vertex member by its name.
     fn member(name: &str) -> Option<VertexMemberInfo>;
 }

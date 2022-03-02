@@ -7,49 +7,38 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::buffer::BufferUsage;
-use crate::buffer::CpuAccessibleBuffer;
-use crate::buffer::TypedBufferAccess;
-use crate::command_buffer::AutoCommandBufferBuilder;
-use crate::command_buffer::CommandBufferExecFuture;
-use crate::command_buffer::CommandBufferUsage;
-use crate::command_buffer::PrimaryAutoCommandBuffer;
-use crate::command_buffer::PrimaryCommandBuffer;
-use crate::device::physical::QueueFamily;
-use crate::device::Device;
-use crate::device::Queue;
-use crate::format::Format;
-use crate::format::Pixel;
-use crate::image::sys::ImageCreationError;
-use crate::image::sys::UnsafeImage;
-use crate::image::sys::UnsafeImageCreateInfo;
-use crate::image::traits::ImageAccess;
-use crate::image::traits::ImageContent;
-use crate::image::ImageCreateFlags;
-use crate::image::ImageDescriptorLayouts;
-use crate::image::ImageDimensions;
-use crate::image::ImageInner;
-use crate::image::ImageLayout;
-use crate::image::ImageUsage;
-use crate::image::MipmapsCount;
-use crate::memory::pool::AllocFromRequirementsFilter;
-use crate::memory::pool::AllocLayout;
-use crate::memory::pool::MappingRequirement;
-use crate::memory::pool::MemoryPool;
-use crate::memory::pool::MemoryPoolAlloc;
-use crate::memory::pool::PotentialDedicatedAllocation;
-use crate::memory::pool::StdMemoryPoolAlloc;
-use crate::memory::DedicatedAllocation;
-use crate::sampler::Filter;
-use crate::sync::AccessError;
-use crate::sync::NowFuture;
-use crate::sync::Sharing;
+use super::{
+    sys::UnsafeImage, traits::ImageContent, ImageAccess, ImageCreateFlags, ImageCreationError,
+    ImageDescriptorLayouts, ImageDimensions, ImageInner, ImageLayout, ImageUsage, MipmapsCount,
+};
+use crate::{
+    buffer::{BufferAccess, BufferContents, BufferUsage, CpuAccessibleBuffer},
+    command_buffer::{
+        AutoCommandBufferBuilder, CommandBufferExecFuture, CommandBufferUsage,
+        PrimaryAutoCommandBuffer, PrimaryCommandBuffer,
+    },
+    device::{physical::QueueFamily, Device, Queue},
+    format::Format,
+    image::sys::UnsafeImageCreateInfo,
+    memory::{
+        pool::{
+            AllocFromRequirementsFilter, AllocLayout, MappingRequirement, MemoryPoolAlloc,
+            PotentialDedicatedAllocation, StdMemoryPoolAlloc,
+        },
+        DedicatedAllocation, MemoryPool,
+    },
+    sampler::Filter,
+    sync::{AccessError, NowFuture, Sharing},
+};
 use smallvec::SmallVec;
-use std::hash::Hash;
-use std::hash::Hasher;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
+use std::{
+    hash::{Hash, Hasher},
+    ops::Range,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+};
 
 /// Image whose purpose is to be used for read-only purposes. You can write to the image once,
 /// but then you must only ever read from it.
@@ -72,8 +61,8 @@ pub struct ImmutableImage<A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> 
 /// The layout must be the layout of the image at the beginning and at the end of the command buffer
 pub struct SubImage {
     image: Arc<dyn ImageAccess>,
-    mip_levels_access: std::ops::Range<u32>,
-    array_layers_access: std::ops::Range<u32>,
+    mip_levels_access: Range<u32>,
+    array_layers_access: Range<u32>,
     layout: ImageLayout,
 }
 
@@ -319,7 +308,7 @@ impl ImmutableImage {
         ImageCreationError,
     >
     where
-        Px: Pixel + Send + Sync + Clone + 'static,
+        [Px]: BufferContents,
         I: IntoIterator<Item = Px>,
         I::IntoIter: ExactSizeIterator,
     {
@@ -333,8 +322,8 @@ impl ImmutableImage {
     }
 
     /// Construct an ImmutableImage containing a copy of the data in `source`.
-    pub fn from_buffer<B, Px>(
-        source: Arc<B>,
+    pub fn from_buffer(
+        source: Arc<dyn BufferAccess>,
         dimensions: ImageDimensions,
         mip_levels: MipmapsCount,
         format: Format,
@@ -345,11 +334,7 @@ impl ImmutableImage {
             CommandBufferExecFuture<NowFuture, PrimaryAutoCommandBuffer>,
         ),
         ImageCreationError,
-    >
-    where
-        B: TypedBufferAccess<Content = [Px]> + 'static,
-        Px: Pixel + Send + Sync + Clone + 'static,
-    {
+    > {
         let need_to_generate_mipmaps = has_mipmaps(mip_levels);
         let usage = ImageUsage {
             transfer_destination: true,

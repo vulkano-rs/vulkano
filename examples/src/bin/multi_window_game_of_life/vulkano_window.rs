@@ -6,12 +6,16 @@
 // at your option. All files in the project carrying such
 // notice may not be copied, modified, or distributed except
 // according to those terms.
-use std::sync::Arc;
 
+use crate::vulkano_context::{DeviceImageView, FinalImageView, VulkanoContext};
+use std::{collections::HashMap, sync::Arc};
 use vulkano::{
     device::{DeviceOwned, Queue},
     format::Format,
-    image::{view::ImageView, ImageAccess, ImageViewAbstract},
+    image::{
+        view::ImageView, ImageAccess, ImageCreateFlags, ImageDimensions, ImageUsage,
+        ImageViewAbstract, StorageImage,
+    },
     swapchain,
     swapchain::{
         AcquireError, PresentMode, Surface, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
@@ -21,11 +25,6 @@ use vulkano::{
 };
 use vulkano_win::create_surface_from_handle;
 use winit::window::Window;
-
-use crate::vulkano_context::{DeviceImageView, FinalImageView, VulkanoContext};
-
-use std::collections::HashMap;
-use vulkano::image::{ImageCreateFlags, ImageDimensions, ImageUsage, StorageImage};
 
 pub struct VulkanoWindow {
     surface: Arc<Surface<Window>>,

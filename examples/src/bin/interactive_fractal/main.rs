@@ -7,8 +7,10 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::app::FractalApp;
-use crate::renderer::{image_over_frame_renderpass, RenderOptions, Renderer};
+use crate::{
+    app::FractalApp,
+    renderer::{image_over_frame_renderpass, RenderOptions, Renderer},
+};
 use vulkano::sync::GpuFuture;
 use winit::{
     event::{Event, WindowEvent},

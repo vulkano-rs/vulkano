@@ -11,15 +11,18 @@
 // shader source code. The boilerplate is taken from the "basic-compute-shader.rs" example, where
 // most of the boilerplate is explained.
 
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
-use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
-use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
-use vulkano::instance::Instance;
-use vulkano::pipeline::{ComputePipeline, Pipeline, PipelineBindPoint};
-use vulkano::sync;
-use vulkano::sync::GpuFuture;
+use vulkano::{
+    buffer::{BufferUsage, CpuAccessibleBuffer},
+    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage},
+    descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
+    device::{
+        physical::{PhysicalDevice, PhysicalDeviceType},
+        Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+    },
+    instance::Instance,
+    pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
+    sync::{self, GpuFuture},
+};
 
 fn main() {
     let instance = Instance::new(Default::default()).unwrap();

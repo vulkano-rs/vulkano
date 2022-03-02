@@ -7,18 +7,24 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
-use vulkano::command_buffer::{
-    AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer,
+use vulkano::{
+    buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
+    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer},
+    device::Queue,
+    impl_vertex,
+    pipeline::{
+        graphics::{
+            depth_stencil::DepthStencilState,
+            input_assembly::InputAssemblyState,
+            vertex_input::BuffersDefinition,
+            viewport::{Viewport, ViewportState},
+        },
+        GraphicsPipeline,
+    },
+    render_pass::Subpass,
 };
-use vulkano::device::Queue;
-use vulkano::pipeline::graphics::depth_stencil::DepthStencilState;
-use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
-use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
-use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
-use vulkano::pipeline::GraphicsPipeline;
-use vulkano::render_pass::Subpass;
 
 pub struct TriangleDrawSystem {
     gfx_queue: Arc<Queue>,
@@ -29,24 +35,23 @@ pub struct TriangleDrawSystem {
 impl TriangleDrawSystem {
     /// Initializes a triangle drawing system.
     pub fn new(gfx_queue: Arc<Queue>, subpass: Subpass) -> TriangleDrawSystem {
+        let vertices = [
+            Vertex {
+                position: [-0.5, -0.25],
+            },
+            Vertex {
+                position: [0.0, 0.5],
+            },
+            Vertex {
+                position: [0.25, -0.1],
+            },
+        ];
         let vertex_buffer = {
             CpuAccessibleBuffer::from_iter(
                 gfx_queue.device().clone(),
                 BufferUsage::all(),
                 false,
-                [
-                    Vertex {
-                        position: [-0.5, -0.25],
-                    },
-                    Vertex {
-                        position: [0.0, 0.5],
-                    },
-                    Vertex {
-                        position: [0.25, -0.1],
-                    },
-                ]
-                .iter()
-                .cloned(),
+                vertices,
             )
             .expect("failed to create buffer")
         };
@@ -68,9 +73,9 @@ impl TriangleDrawSystem {
         };
 
         TriangleDrawSystem {
-            gfx_queue: gfx_queue,
-            vertex_buffer: vertex_buffer,
-            pipeline: pipeline,
+            gfx_queue,
+            vertex_buffer,
+            pipeline,
         }
     }
 
@@ -101,11 +106,11 @@ impl TriangleDrawSystem {
 }
 
 #[repr(C)]
-#[derive(Default, Debug, Clone)]
+#[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
 struct Vertex {
     position: [f32; 2],
 }
-vulkano::impl_vertex!(Vertex, position);
+impl_vertex!(Vertex, position);
 
 mod vs {
     vulkano_shaders::shader! {

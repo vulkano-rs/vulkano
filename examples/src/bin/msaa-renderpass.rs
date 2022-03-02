@@ -64,27 +64,31 @@
 //! an error), instead it is called *resolving* the image.
 //!
 
-use png;
-use std::fs::File;
-use std::io::BufWriter;
-use std::path::Path;
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
-use vulkano::command_buffer::{
-    AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBuffer, SubpassContents,
+use bytemuck::{Pod, Zeroable};
+use std::{fs::File, io::BufWriter, path::Path};
+use vulkano::{
+    buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
+    command_buffer::{
+        AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBuffer, SubpassContents,
+    },
+    device::{
+        physical::{PhysicalDevice, PhysicalDeviceType},
+        Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+    },
+    format::{ClearValue, Format},
+    image::{view::ImageView, AttachmentImage, ImageDimensions, SampleCount, StorageImage},
+    impl_vertex,
+    instance::{Instance, InstanceCreateInfo},
+    pipeline::{
+        graphics::{
+            vertex_input::BuffersDefinition,
+            viewport::{Viewport, ViewportState},
+        },
+        GraphicsPipeline,
+    },
+    render_pass::{Framebuffer, FramebufferCreateInfo, Subpass},
+    sync::GpuFuture,
 };
-use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
-use vulkano::format::ClearValue;
-use vulkano::format::Format;
-use vulkano::image::{
-    view::ImageView, AttachmentImage, ImageDimensions, SampleCount, StorageImage,
-};
-use vulkano::instance::{Instance, InstanceCreateInfo};
-use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
-use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
-use vulkano::pipeline::GraphicsPipeline;
-use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, Subpass};
-use vulkano::sync::GpuFuture;
 
 fn main() {
     // The usual Vulkan initialization.
@@ -249,28 +253,26 @@ fn main() {
     let fs = fs::load(device.clone()).unwrap();
 
     #[repr(C)]
-    #[derive(Default, Copy, Clone)]
+    #[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
     struct Vertex {
         position: [f32; 2],
     }
-    vulkano::impl_vertex!(Vertex, position);
+    impl_vertex!(Vertex, position);
 
-    let vertex1 = Vertex {
-        position: [-0.5, -0.5],
-    };
-    let vertex2 = Vertex {
-        position: [0.0, 0.5],
-    };
-    let vertex3 = Vertex {
-        position: [0.5, -0.25],
-    };
-    let vertex_buffer = CpuAccessibleBuffer::from_iter(
-        device.clone(),
-        BufferUsage::all(),
-        false,
-        vec![vertex1, vertex2, vertex3].into_iter(),
-    )
-    .unwrap();
+    let vertices = [
+        Vertex {
+            position: [-0.5, -0.5],
+        },
+        Vertex {
+            position: [0.0, 0.5],
+        },
+        Vertex {
+            position: [0.5, -0.25],
+        },
+    ];
+    let vertex_buffer =
+        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, vertices)
+            .unwrap();
 
     let pipeline = GraphicsPipeline::start()
         .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())

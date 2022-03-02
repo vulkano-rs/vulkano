@@ -12,33 +12,39 @@
 // This is a simple, modified version of the `triangle.rs` example that demonstrates how we can use
 // the "instancing" technique with vulkano to draw many instances of the triangle.
 
-#[macro_use]
-extern crate vulkano;
-extern crate vulkano_shaders;
-extern crate vulkano_win;
-extern crate winit;
-
+use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
-use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
-use vulkano::image::view::ImageView;
-use vulkano::image::{ImageAccess, ImageUsage, SwapchainImage};
-use vulkano::instance::{Instance, InstanceCreateInfo};
-use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
-use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
-use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
-use vulkano::pipeline::GraphicsPipeline;
-use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass};
-use vulkano::swapchain::{
-    self, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+use vulkano::{
+    buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
+    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents},
+    device::{
+        physical::{PhysicalDevice, PhysicalDeviceType},
+        Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+    },
+    image::{view::ImageView, ImageAccess, ImageUsage, SwapchainImage},
+    impl_vertex,
+    instance::{Instance, InstanceCreateInfo},
+    pipeline::{
+        graphics::{
+            input_assembly::InputAssemblyState,
+            vertex_input::BuffersDefinition,
+            viewport::{Viewport, ViewportState},
+        },
+        GraphicsPipeline,
+    },
+    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
+    single_pass_renderpass,
+    swapchain::{
+        acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+    },
+    sync::{self, FlushError, GpuFuture},
 };
-use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano_win::VkSurfaceBuild;
-use winit::event::{Event, WindowEvent};
-use winit::event_loop::{ControlFlow, EventLoop};
-use winit::window::{Window, WindowBuilder};
+use winit::{
+    event::{Event, WindowEvent},
+    event_loop::{ControlFlow, EventLoop},
+    window::{Window, WindowBuilder},
+};
 
 // # Vertex Types
 //
@@ -47,7 +53,7 @@ use winit::window::{Window, WindowBuilder};
 //
 // 1. `Vertex` is the vertex type that we will use to describe the triangle's geometry.
 #[repr(C)]
-#[derive(Default, Debug, Clone)]
+#[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
 struct Vertex {
     position: [f32; 2],
 }
@@ -55,7 +61,7 @@ impl_vertex!(Vertex, position);
 
 // 2. `InstanceData` is the vertex type that describes the unique data per instance.
 #[repr(C)]
-#[derive(Default, Debug, Clone)]
+#[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
 struct InstanceData {
     position_offset: [f32; 2],
     scale: f32,
@@ -147,31 +153,24 @@ fn main() {
 
     // We now create a buffer that will store the shape of our triangle.
     // This triangle is identical to the one in the `triangle.rs` example.
-    let triangle_vertex_buffer = {
-        CpuAccessibleBuffer::from_iter(
-            device.clone(),
-            BufferUsage::all(),
-            false,
-            [
-                Vertex {
-                    position: [-0.5, -0.25],
-                },
-                Vertex {
-                    position: [0.0, 0.5],
-                },
-                Vertex {
-                    position: [0.25, -0.1],
-                },
-            ]
-            .iter()
-            .cloned(),
-        )
-        .unwrap()
+    let vertices = [
+        Vertex {
+            position: [-0.5, -0.25],
+        },
+        Vertex {
+            position: [0.0, 0.5],
+        },
+        Vertex {
+            position: [0.25, -0.1],
+        },
+    ];
+    let vertex_buffer = {
+        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, vertices).unwrap()
     };
 
     // Now we create another buffer that will store the unique data per instance.
     // For this example, we'll have the instances form a 10x10 grid that slowly gets larger.
-    let instance_data_buffer = {
+    let instances = {
         let rows = 10;
         let cols = 10;
         let n_instances = rows * cols;
@@ -190,14 +189,11 @@ fn main() {
                 });
             }
         }
-        CpuAccessibleBuffer::from_iter(
-            device.clone(),
-            BufferUsage::all(),
-            false,
-            data.iter().cloned(),
-        )
-        .unwrap()
+        data
     };
+    let instance_buffer =
+        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, instances)
+            .unwrap();
 
     mod vs {
         vulkano_shaders::shader! {
@@ -318,7 +314,7 @@ fn main() {
                 }
 
                 let (image_num, suboptimal, acquire_future) =
-                    match swapchain::acquire_next_image(swapchain.clone(), None) {
+                    match acquire_next_image(swapchain.clone(), None) {
                         Ok(r) => r,
                         Err(AcquireError::OutOfDate) => {
                             recreate_swapchain = true;
@@ -349,13 +345,10 @@ fn main() {
                     .set_viewport(0, [viewport.clone()])
                     .bind_pipeline_graphics(pipeline.clone())
                     // We pass both our lists of vertices here.
-                    .bind_vertex_buffers(
-                        0,
-                        (triangle_vertex_buffer.clone(), instance_data_buffer.clone()),
-                    )
+                    .bind_vertex_buffers(0, (vertex_buffer.clone(), instance_buffer.clone()))
                     .draw(
-                        triangle_vertex_buffer.len() as u32,
-                        instance_data_buffer.len() as u32,
+                        vertex_buffer.len() as u32,
+                        instance_buffer.len() as u32,
                         0,
                         0,
                     )

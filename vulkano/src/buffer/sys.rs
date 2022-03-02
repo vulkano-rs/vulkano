@@ -285,7 +285,7 @@ impl UnsafeBuffer {
             );
 
             let mem_reqs = mem_reqs.assume_init();
-            mem_reqs.size <= (memory.size() - offset)
+            mem_reqs.size <= (memory.allocation_size() - offset)
                 && (offset % mem_reqs.alignment) == 0
                 && mem_reqs.memory_type_bits & (1 << memory.memory_type().id()) != 0
         });

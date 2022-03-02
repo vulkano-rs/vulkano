@@ -9,7 +9,7 @@
 
 use super::{SyncCommandBufferBuilder, SyncCommandBufferBuilderError};
 use crate::{
-    buffer::{BufferAccess, TypedBufferAccess},
+    buffer::{BufferAccess, BufferContents, TypedBufferAccess},
     command_buffer::{
         synced::{Command, KeyTy, ResourceKey, SetOrPush},
         sys::{
@@ -53,7 +53,7 @@ use smallvec::SmallVec;
 use std::{
     borrow::Cow,
     ffi::CStr,
-    mem,
+    mem::size_of_val,
     ops::Range,
     ptr,
     sync::{Arc, Mutex},
@@ -1616,7 +1616,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        debug_assert!(mem::size_of_val(data) >= size as usize);
+        debug_assert!(size_of_val(data) >= size as usize);
 
         let mut out = Vec::with_capacity(size as usize);
         ptr::copy::<u8>(
@@ -2581,7 +2581,7 @@ impl SyncCommandBufferBuilder {
     #[inline]
     pub unsafe fn update_buffer<D, Dd>(&mut self, buffer: Arc<dyn BufferAccess>, data: Dd)
     where
-        D: ?Sized,
+        D: BufferContents + ?Sized,
         Dd: SafeDeref<Target = D> + Send + Sync + 'static,
     {
         struct Cmd<Dd> {
@@ -2591,7 +2591,7 @@ impl SyncCommandBufferBuilder {
 
         impl<D, Dd> Command for Cmd<Dd>
         where
-            D: ?Sized,
+            D: BufferContents + ?Sized,
             Dd: SafeDeref<Target = D> + Send + Sync + 'static,
         {
             fn name(&self) -> &'static str {

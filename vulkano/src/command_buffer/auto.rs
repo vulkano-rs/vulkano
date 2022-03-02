@@ -45,10 +45,10 @@ use super::{
     SubpassContents,
 };
 use crate::{
-    buffer::{BufferAccess, TypedBufferAccess},
+    buffer::{BufferAccess, BufferContents, TypedBufferAccess},
     descriptor_set::{check_descriptor_write, DescriptorSetsCollection, WriteDescriptorSet},
     device::{physical::QueueFamily, Device, DeviceOwned, Queue},
-    format::{ClearValue, NumericType, Pixel},
+    format::{ClearValue, NumericType},
     image::{
         attachment::{ClearAttachment, ClearRect},
         ImageAccess, ImageAspect, ImageAspects, ImageLayout,
@@ -85,7 +85,7 @@ use std::{
     ffi::CStr,
     fmt, iter,
     marker::PhantomData,
-    mem,
+    mem::{size_of, size_of_val},
     ops::Range,
     slice,
     sync::{
@@ -1177,7 +1177,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 copy_size,
             )?;
             self.inner
-                .copy_buffer(source, destination, iter::once((0, 0, copy_size)))?;
+                .copy_buffer(source, destination, [(0, 0, copy_size)])?;
             Ok(self)
         }
     }
@@ -1224,15 +1224,11 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     /// Adds a command that copies from a buffer to an image.
-    pub fn copy_buffer_to_image<S, Px>(
+    pub fn copy_buffer_to_image(
         &mut self,
-        source: Arc<S>,
+        source: Arc<dyn BufferAccess>,
         destination: Arc<dyn ImageAccess>,
-    ) -> Result<&mut Self, CopyBufferImageError>
-    where
-        S: TypedBufferAccess<Content = [Px]> + 'static,
-        Px: Pixel,
-    {
+    ) -> Result<&mut Self, CopyBufferImageError> {
         self.ensure_outside_render_pass()?;
 
         let dims = destination.dimensions().width_height_depth();
@@ -1240,20 +1236,16 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     /// Adds a command that copies from a buffer to an image.
-    pub fn copy_buffer_to_image_dimensions<S, Px>(
+    pub fn copy_buffer_to_image_dimensions(
         &mut self,
-        source: Arc<S>,
+        source: Arc<dyn BufferAccess>,
         destination: Arc<dyn ImageAccess>,
         offset: [u32; 3],
         size: [u32; 3],
         base_array_layer: u32,
         layer_count: u32,
         mip_level: u32,
-    ) -> Result<&mut Self, CopyBufferImageError>
-    where
-        S: TypedBufferAccess<Content = [Px]> + 'static,
-        Px: Pixel,
-    {
+    ) -> Result<&mut Self, CopyBufferImageError> {
         unsafe {
             self.ensure_outside_render_pass()?;
 
@@ -1399,15 +1391,11 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// Adds a command that copies from an image to a buffer.
     // The data layout of the image on the gpu is opaque, as in, it is non of our business how the gpu stores the image.
     // This does not matter since the act of copying the image into a buffer converts it to linear form.
-    pub fn copy_image_to_buffer<D, Px>(
+    pub fn copy_image_to_buffer(
         &mut self,
         source: Arc<dyn ImageAccess>,
-        destination: Arc<D>,
-    ) -> Result<&mut Self, CopyBufferImageError>
-    where
-        D: TypedBufferAccess<Content = [Px]> + 'static,
-        Px: Pixel,
-    {
+        destination: Arc<dyn BufferAccess>,
+    ) -> Result<&mut Self, CopyBufferImageError> {
         self.ensure_outside_render_pass()?;
 
         let dims = source.dimensions().width_height_depth();
@@ -1415,20 +1403,16 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     /// Adds a command that copies from an image to a buffer.
-    pub fn copy_image_to_buffer_dimensions<D, Px>(
+    pub fn copy_image_to_buffer_dimensions(
         &mut self,
         source: Arc<dyn ImageAccess>,
-        destination: Arc<D>,
+        destination: Arc<dyn BufferAccess>,
         offset: [u32; 3],
         size: [u32; 3],
         base_array_layer: u32,
         layer_count: u32,
         mip_level: u32,
-    ) -> Result<&mut Self, CopyBufferImageError>
-    where
-        D: TypedBufferAccess<Content = [Px]> + 'static,
-        Px: Pixel,
-    {
+    ) -> Result<&mut Self, CopyBufferImageError> {
         unsafe {
             self.ensure_outside_render_pass()?;
 
@@ -1664,25 +1648,28 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         check_vertex_buffers(self.state(), pipeline, None, None)?;
         check_indirect_buffer(self.device(), indirect_buffer.as_ref())?;
 
-        let requested = indirect_buffer.len() as u32;
+        let draw_count = indirect_buffer.len() as u32;
         let limit = self
             .device()
             .physical_device()
             .properties()
             .max_draw_indirect_count;
 
-        if requested > limit {
+        if draw_count > limit {
             return Err(
-                CheckIndirectBufferError::MaxDrawIndirectCountLimitExceeded { limit, requested }
-                    .into(),
+                CheckIndirectBufferError::MaxDrawIndirectCountLimitExceeded {
+                    limit,
+                    requested: draw_count,
+                }
+                .into(),
             );
         }
 
         unsafe {
             self.inner.draw_indirect(
                 indirect_buffer,
-                requested,
-                mem::size_of::<DrawIndirectCommand>() as u32,
+                draw_count,
+                size_of::<DrawIndirectCommand>() as u32,
             )?;
         }
 
@@ -1780,25 +1767,28 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         check_index_buffer(self.state(), None)?;
         check_indirect_buffer(self.device(), indirect_buffer.as_ref())?;
 
-        let requested = indirect_buffer.len() as u32;
+        let draw_count = indirect_buffer.len() as u32;
         let limit = self
             .device()
             .physical_device()
             .properties()
             .max_draw_indirect_count;
 
-        if requested > limit {
+        if draw_count > limit {
             return Err(
-                CheckIndirectBufferError::MaxDrawIndirectCountLimitExceeded { limit, requested }
-                    .into(),
+                CheckIndirectBufferError::MaxDrawIndirectCountLimitExceeded {
+                    limit,
+                    requested: draw_count,
+                }
+                .into(),
             );
         }
 
         unsafe {
             self.inner.draw_indexed_indirect(
                 indirect_buffer,
-                requested,
-                mem::size_of::<DrawIndexedIndirectCommand>() as u32,
+                draw_count,
+                size_of::<DrawIndexedIndirectCommand>() as u32,
             )?;
         }
 
@@ -1843,7 +1833,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         offset: u32,
         push_constants: Pc,
     ) -> &mut Self {
-        let size = mem::size_of::<Pc>() as u32;
+        let size = size_of::<Pc>() as u32;
 
         if size == 0 {
             return self;
@@ -3022,14 +3012,14 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ) -> Result<&mut Self, UpdateBufferError>
     where
         B: TypedBufferAccess<Content = D> + 'static,
-        D: ?Sized,
+        D: BufferContents + ?Sized,
         Dd: SafeDeref<Target = D> + Send + Sync + 'static,
     {
         unsafe {
             self.ensure_outside_render_pass()?;
             check_update_buffer(self.device(), buffer.as_ref(), data.deref())?;
 
-            let size_of_data = mem::size_of_val(data.deref()) as DeviceSize;
+            let size_of_data = size_of_val(data.deref()) as DeviceSize;
             if buffer.size() >= size_of_data {
                 self.inner.update_buffer(buffer, data);
             } else {

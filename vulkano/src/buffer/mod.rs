@@ -83,21 +83,27 @@
 //! for how to create a buffer view.
 //!
 
-pub use self::cpu_access::CpuAccessibleBuffer;
-pub use self::cpu_pool::CpuBufferPool;
-pub use self::device_local::DeviceLocalBuffer;
-pub use self::immutable::ImmutableBuffer;
-pub use self::slice::BufferSlice;
-pub use self::sys::BufferCreationError;
-use self::sys::SparseLevel;
-pub use self::traits::BufferAccess;
-pub use self::traits::BufferAccessObject;
-pub use self::traits::BufferDeviceAddressError;
-pub use self::traits::BufferInner;
-pub use self::traits::TypedBufferAccess;
-pub use self::usage::BufferUsage;
-use crate::memory::ExternalMemoryHandleType;
-use crate::memory::ExternalMemoryProperties;
+pub use self::{
+    cpu_access::CpuAccessibleBuffer,
+    cpu_pool::CpuBufferPool,
+    device_local::DeviceLocalBuffer,
+    immutable::ImmutableBuffer,
+    slice::BufferSlice,
+    sys::{BufferCreationError, SparseLevel},
+    traits::{
+        BufferAccess, BufferAccessObject, BufferDeviceAddressError, BufferInner, TypedBufferAccess,
+    },
+    usage::BufferUsage,
+};
+use crate::{
+    memory::{ExternalMemoryHandleType, ExternalMemoryProperties},
+    DeviceSize,
+};
+use bytemuck::{
+    bytes_of, cast_slice, try_cast_slice, try_cast_slice_mut, try_from_bytes, try_from_bytes_mut,
+    Pod, PodCastError,
+};
+use std::mem::size_of;
 
 pub mod cpu_access;
 pub mod cpu_pool;
@@ -109,6 +115,72 @@ pub mod view;
 mod slice;
 mod traits;
 mod usage;
+
+/// Trait for types of data that can be put in a buffer. These can be safely transmuted to and from
+/// a slice of bytes.
+pub unsafe trait BufferContents: Send + Sync + 'static {
+    /// Converts an immutable reference to `Self` to an immutable byte slice.
+    fn as_bytes(&self) -> &[u8];
+
+    /// Converts an immutable byte slice into an immutable reference to `Self`.
+    fn from_bytes(bytes: &[u8]) -> Result<&Self, PodCastError>;
+
+    /// Converts a mutable byte slice into a mutable reference to `Self`.
+    fn from_bytes_mut(bytes: &mut [u8]) -> Result<&mut Self, PodCastError>;
+
+    /// Returns the size of an element of the type.
+    fn size_of_element() -> DeviceSize;
+}
+
+unsafe impl<T> BufferContents for T
+where
+    T: Pod + Send + Sync,
+{
+    #[inline]
+    fn as_bytes(&self) -> &[u8] {
+        bytes_of(self)
+    }
+
+    #[inline]
+    fn from_bytes(bytes: &[u8]) -> Result<&T, PodCastError> {
+        try_from_bytes(bytes)
+    }
+
+    #[inline]
+    fn from_bytes_mut(bytes: &mut [u8]) -> Result<&mut T, PodCastError> {
+        try_from_bytes_mut(bytes)
+    }
+
+    #[inline]
+    fn size_of_element() -> DeviceSize {
+        1
+    }
+}
+
+unsafe impl<T> BufferContents for [T]
+where
+    T: Pod + Send + Sync,
+{
+    #[inline]
+    fn as_bytes(&self) -> &[u8] {
+        cast_slice(self)
+    }
+
+    #[inline]
+    fn from_bytes(bytes: &[u8]) -> Result<&[T], PodCastError> {
+        try_cast_slice(bytes)
+    }
+
+    #[inline]
+    fn from_bytes_mut(bytes: &mut [u8]) -> Result<&mut [T], PodCastError> {
+        try_cast_slice_mut(bytes)
+    }
+
+    #[inline]
+    fn size_of_element() -> DeviceSize {
+        size_of::<T>() as DeviceSize
+    }
+}
 
 /// The buffer configuration to query in
 /// [`PhysicalDevice::external_buffer_properties`](crate::device::physical::PhysicalDevice::external_buffer_properties).

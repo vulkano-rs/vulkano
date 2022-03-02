@@ -7,34 +7,46 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::io::Cursor;
-use std::sync::Arc;
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
-use vulkano::command_buffer::{
-    AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBuffer, SubpassContents,
+use bytemuck::{Pod, Zeroable};
+use std::{io::Cursor, sync::Arc};
+use vulkano::{
+    buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
+    command_buffer::{
+        AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBuffer, SubpassContents,
+    },
+    descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
+    device::{
+        physical::{PhysicalDevice, PhysicalDeviceType},
+        Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+    },
+    format::{ClearValue, Format},
+    image::{
+        view::ImageView, ImageAccess, ImageDimensions, ImageUsage, StorageImage, SwapchainImage,
+    },
+    impl_vertex,
+    instance::{Instance, InstanceCreateInfo},
+    pipeline::{
+        graphics::{
+            color_blend::ColorBlendState,
+            input_assembly::{InputAssemblyState, PrimitiveTopology},
+            vertex_input::BuffersDefinition,
+            viewport::{Viewport, ViewportState},
+        },
+        GraphicsPipeline, Pipeline, PipelineBindPoint,
+    },
+    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
+    sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
+    swapchain::{
+        acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+    },
+    sync::{self, FlushError, GpuFuture},
 };
-use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
-use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
-use vulkano::format::{ClearValue, Format};
-use vulkano::image::{view::ImageView, ImageDimensions, ImageUsage, SwapchainImage};
-use vulkano::image::{ImageAccess, StorageImage};
-use vulkano::instance::{Instance, InstanceCreateInfo};
-use vulkano::pipeline::graphics::color_blend::ColorBlendState;
-use vulkano::pipeline::graphics::input_assembly::{InputAssemblyState, PrimitiveTopology};
-use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
-use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
-use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
-use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass};
-use vulkano::sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo};
-use vulkano::swapchain::{
-    self, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
-};
-use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano_win::VkSurfaceBuild;
-use winit::event::{Event, WindowEvent};
-use winit::event_loop::{ControlFlow, EventLoop};
-use winit::window::{Window, WindowBuilder};
+use winit::{
+    event::{Event, WindowEvent},
+    event_loop::{ControlFlow, EventLoop},
+    window::{Window, WindowBuilder},
+};
 
 fn main() {
     // The start of this example is exactly the same as `triangle`. You should read the
@@ -122,32 +134,31 @@ fn main() {
     };
 
     #[repr(C)]
-    #[derive(Default, Debug, Clone)]
+    #[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
     struct Vertex {
         position: [f32; 2],
     }
-    vulkano::impl_vertex!(Vertex, position);
+    impl_vertex!(Vertex, position);
 
+    let vertices = [
+        Vertex {
+            position: [-0.5, -0.5],
+        },
+        Vertex {
+            position: [-0.5, 0.5],
+        },
+        Vertex {
+            position: [0.5, -0.5],
+        },
+        Vertex {
+            position: [0.5, 0.5],
+        },
+    ];
     let vertex_buffer = CpuAccessibleBuffer::<[Vertex]>::from_iter(
         device.clone(),
         BufferUsage::all(),
         false,
-        [
-            Vertex {
-                position: [-0.5, -0.5],
-            },
-            Vertex {
-                position: [-0.5, 0.5],
-            },
-            Vertex {
-                position: [0.5, -0.5],
-            },
-            Vertex {
-                position: [0.5, 0.5],
-            },
-        ]
-        .iter()
-        .cloned(),
+        vertices,
     )
     .unwrap();
 
@@ -198,7 +209,7 @@ fn main() {
             device.clone(),
             BufferUsage::transfer_source(),
             false,
-            image_data.iter().cloned(),
+            image_data,
         )
         .unwrap();
 
@@ -340,7 +351,7 @@ fn main() {
             }
 
             let (image_num, suboptimal, acquire_future) =
-                match swapchain::acquire_next_image(swapchain.clone(), None) {
+                match acquire_next_image(swapchain.clone(), None) {
                     Ok(r) => r,
                     Err(AcquireError::OutOfDate) => {
                         recreate_swapchain = true;

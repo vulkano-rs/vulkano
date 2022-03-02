@@ -18,49 +18,44 @@
 //! The buffer will be stored in device-local memory if possible
 //!
 
-use crate::buffer::sys::BufferCreationError;
-use crate::buffer::sys::UnsafeBuffer;
-use crate::buffer::sys::UnsafeBufferCreateInfo;
-use crate::buffer::traits::BufferAccess;
-use crate::buffer::traits::BufferAccessObject;
-use crate::buffer::traits::BufferInner;
-use crate::buffer::traits::TypedBufferAccess;
-use crate::buffer::BufferUsage;
-use crate::buffer::CpuAccessibleBuffer;
-use crate::command_buffer::AutoCommandBufferBuilder;
-use crate::command_buffer::CommandBufferExecFuture;
-use crate::command_buffer::CommandBufferUsage;
-use crate::command_buffer::PrimaryAutoCommandBuffer;
-use crate::command_buffer::PrimaryCommandBuffer;
-use crate::device::physical::QueueFamily;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::device::Queue;
-use crate::memory::pool::AllocFromRequirementsFilter;
-use crate::memory::pool::AllocLayout;
-use crate::memory::pool::MappingRequirement;
-use crate::memory::pool::MemoryPool;
-use crate::memory::pool::MemoryPoolAlloc;
-use crate::memory::pool::PotentialDedicatedAllocation;
-use crate::memory::pool::StdMemoryPoolAlloc;
-use crate::memory::DedicatedAllocation;
-use crate::memory::DeviceMemoryAllocationError;
-use crate::sync::AccessError;
-use crate::sync::NowFuture;
-use crate::sync::Sharing;
-use crate::DeviceSize;
+use super::{
+    sys::UnsafeBuffer, BufferAccess, BufferAccessObject, BufferContents, BufferInner, BufferUsage,
+    CpuAccessibleBuffer,
+};
+use crate::{
+    buffer::{sys::UnsafeBufferCreateInfo, BufferCreationError, TypedBufferAccess},
+    command_buffer::{
+        AutoCommandBufferBuilder, CommandBufferExecFuture, CommandBufferUsage,
+        PrimaryAutoCommandBuffer, PrimaryCommandBuffer,
+    },
+    device::{physical::QueueFamily, Device, DeviceOwned, Queue},
+    memory::{
+        pool::{
+            AllocFromRequirementsFilter, AllocLayout, MappingRequirement, MemoryPoolAlloc,
+            PotentialDedicatedAllocation, StdMemoryPoolAlloc,
+        },
+        DedicatedAllocation, DeviceMemoryAllocationError, MemoryPool,
+    },
+    sync::{AccessError, NowFuture, Sharing},
+    DeviceSize,
+};
 use smallvec::SmallVec;
-use std::hash::Hash;
-use std::hash::Hasher;
-use std::marker::PhantomData;
-use std::mem;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
+use std::{
+    hash::{Hash, Hasher},
+    marker::PhantomData,
+    mem::size_of,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+};
 
 /// Buffer that is written once then read for as long as it is alive.
-// TODO: implement Debug
-pub struct ImmutableBuffer<T: ?Sized, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
+#[derive(Debug)]
+pub struct ImmutableBuffer<T, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>>
+where
+    T: BufferContents + ?Sized,
+{
     // Inner content.
     inner: UnsafeBuffer,
 
@@ -81,41 +76,10 @@ pub struct ImmutableBuffer<T: ?Sized, A = PotentialDedicatedAllocation<StdMemory
 // TODO: make this prettier
 type ImmutableBufferFromBufferFuture = CommandBufferExecFuture<NowFuture, PrimaryAutoCommandBuffer>;
 
-impl<T: ?Sized> ImmutableBuffer<T> {
-    /// Builds an `ImmutableBuffer` from some data.
-    ///
-    /// This function builds a memory-mapped intermediate buffer, writes the data to it, builds a
-    /// command buffer that copies from this intermediate buffer to the final buffer, and finally
-    /// submits the command buffer as a future.
-    ///
-    /// This function returns two objects: the newly-created buffer, and a future representing
-    /// the initial upload operation. In order to be allowed to use the `ImmutableBuffer`, you must
-    /// either submit your operation after this future, or execute this future and wait for it to
-    /// be finished before submitting your own operation.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if `T` has zero size.
-    pub fn from_data(
-        data: T,
-        usage: BufferUsage,
-        queue: Arc<Queue>,
-    ) -> Result<
-        (Arc<ImmutableBuffer<T>>, ImmutableBufferFromBufferFuture),
-        DeviceMemoryAllocationError,
-    >
-    where
-        T: Copy + Send + Sync + Sized + 'static,
-    {
-        let source = CpuAccessibleBuffer::from_data(
-            queue.device().clone(),
-            BufferUsage::transfer_source(),
-            false,
-            data,
-        )?;
-        ImmutableBuffer::from_buffer(source, usage, queue)
-    }
-
+impl<T> ImmutableBuffer<T>
+where
+    T: BufferContents + ?Sized,
+{
     /// Builds an `ImmutableBuffer` that copies its data from another buffer.
     ///
     /// This function returns two objects: the newly-created buffer, and a future representing
@@ -132,7 +96,6 @@ impl<T: ?Sized> ImmutableBuffer<T> {
     >
     where
         B: TypedBufferAccess<Content = T> + 'static,
-        T: Send + Sync + 'static,
     {
         unsafe {
             // We automatically set `transfer_destination` to true in order to avoid annoying errors.
@@ -166,7 +129,41 @@ impl<T: ?Sized> ImmutableBuffer<T> {
     }
 }
 
-impl<T> ImmutableBuffer<T> {
+impl<T> ImmutableBuffer<T>
+where
+    T: BufferContents,
+{
+    /// Builds an `ImmutableBuffer` from some data.
+    ///
+    /// This function builds a memory-mapped intermediate buffer, writes the data to it, builds a
+    /// command buffer that copies from this intermediate buffer to the final buffer, and finally
+    /// submits the command buffer as a future.
+    ///
+    /// This function returns two objects: the newly-created buffer, and a future representing
+    /// the initial upload operation. In order to be allowed to use the `ImmutableBuffer`, you must
+    /// either submit your operation after this future, or execute this future and wait for it to
+    /// be finished before submitting your own operation.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `T` has zero size.
+    pub fn from_data(
+        data: T,
+        usage: BufferUsage,
+        queue: Arc<Queue>,
+    ) -> Result<
+        (Arc<ImmutableBuffer<T>>, ImmutableBufferFromBufferFuture),
+        DeviceMemoryAllocationError,
+    > {
+        let source = CpuAccessibleBuffer::from_data(
+            queue.device().clone(),
+            BufferUsage::transfer_source(),
+            false,
+            data,
+        )?;
+        ImmutableBuffer::from_buffer(source, usage, queue)
+    }
+
     /// Builds a new buffer with uninitialized data. Only allowed for sized data.
     ///
     /// Returns two things: the buffer, and a special access that should be used for the initial
@@ -199,14 +196,17 @@ impl<T> ImmutableBuffer<T> {
     > {
         ImmutableBuffer::raw(
             device.clone(),
-            mem::size_of::<T>() as DeviceSize,
+            size_of::<T>() as DeviceSize,
             usage,
             device.active_queue_families(),
         )
     }
 }
 
-impl<T> ImmutableBuffer<[T]> {
+impl<T> ImmutableBuffer<[T]>
+where
+    [T]: BufferContents,
+{
     /// # Panics
     ///
     /// - Panics if `T` has zero size.
@@ -222,7 +222,6 @@ impl<T> ImmutableBuffer<[T]> {
     where
         D: IntoIterator<Item = T>,
         D::IntoIter: ExactSizeIterator,
-        T: Send + Sync + Sized + 'static,
     {
         let source = CpuAccessibleBuffer::from_iter(
             queue.device().clone(),
@@ -267,14 +266,17 @@ impl<T> ImmutableBuffer<[T]> {
     > {
         ImmutableBuffer::raw(
             device.clone(),
-            len * mem::size_of::<T>() as DeviceSize,
+            len * size_of::<T>() as DeviceSize,
             usage,
             device.active_queue_families(),
         )
     }
 }
 
-impl<T: ?Sized> ImmutableBuffer<T> {
+impl<T> ImmutableBuffer<T>
+where
+    T: BufferContents + ?Sized,
+{
     /// Builds a new buffer without checking the size and granting free access for the initial
     /// upload.
     ///
@@ -381,7 +383,10 @@ impl<T: ?Sized> ImmutableBuffer<T> {
     }
 }
 
-impl<T: ?Sized, A> ImmutableBuffer<T, A> {
+impl<T, A> ImmutableBuffer<T, A>
+where
+    T: BufferContents + ?Sized,
+{
     /// Returns the device used to create this buffer.
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
@@ -406,7 +411,7 @@ impl<T: ?Sized, A> ImmutableBuffer<T, A> {
 
 unsafe impl<T, A> BufferAccess for ImmutableBuffer<T, A>
 where
-    T: Send + Sync + ?Sized,
+    T: BufferContents + ?Sized,
     A: Send + Sync,
 {
     #[inline]
@@ -449,7 +454,7 @@ where
 
 impl<T, A> BufferAccessObject for Arc<ImmutableBuffer<T, A>>
 where
-    T: Send + Sync + ?Sized + 'static,
+    T: BufferContents + ?Sized,
     A: Send + Sync + 'static,
 {
     #[inline]
@@ -460,22 +465,25 @@ where
 
 unsafe impl<T, A> TypedBufferAccess for ImmutableBuffer<T, A>
 where
-    T: Send + Sync + ?Sized,
+    T: BufferContents + ?Sized,
     A: Send + Sync,
 {
     type Content = T;
 }
 
-unsafe impl<T: ?Sized, A> DeviceOwned for ImmutableBuffer<T, A> {
+unsafe impl<T, A> DeviceOwned for ImmutableBuffer<T, A>
+where
+    T: BufferContents + ?Sized,
+{
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
     }
 }
 
-impl<T: ?Sized, A> PartialEq for ImmutableBuffer<T, A>
+impl<T, A> PartialEq for ImmutableBuffer<T, A>
 where
-    T: Send + Sync,
+    T: BufferContents + ?Sized,
     A: Send + Sync,
 {
     #[inline]
@@ -484,16 +492,16 @@ where
     }
 }
 
-impl<T: ?Sized, A> Eq for ImmutableBuffer<T, A>
+impl<T, A> Eq for ImmutableBuffer<T, A>
 where
-    T: Send + Sync,
+    T: BufferContents + ?Sized,
     A: Send + Sync,
 {
 }
 
-impl<T: ?Sized, A> Hash for ImmutableBuffer<T, A>
+impl<T, A> Hash for ImmutableBuffer<T, A>
 where
-    T: Send + Sync,
+    T: BufferContents + ?Sized,
     A: Send + Sync,
 {
     #[inline]
@@ -504,18 +512,18 @@ where
 }
 
 /// Access to the immutable buffer that can be used for the initial upload.
-//#[derive(Debug)]      // TODO:
-pub struct ImmutableBufferInitialization<
-    T: ?Sized,
-    A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>,
-> {
+#[derive(Debug)]
+pub struct ImmutableBufferInitialization<T, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>>
+where
+    T: BufferContents + ?Sized,
+{
     buffer: Arc<ImmutableBuffer<T, A>>,
     used: Arc<AtomicBool>,
 }
 
 unsafe impl<T, A> BufferAccess for ImmutableBufferInitialization<T, A>
 where
-    T: Send + Sync + ?Sized,
+    T: BufferContents + ?Sized,
     A: Send + Sync,
 {
     #[inline]
@@ -563,7 +571,7 @@ where
 
 impl<T, A> BufferAccessObject for Arc<ImmutableBufferInitialization<T, A>>
 where
-    T: Send + Sync + ?Sized + 'static,
+    T: BufferContents + ?Sized,
     A: Send + Sync + 'static,
 {
     #[inline]
@@ -574,20 +582,26 @@ where
 
 unsafe impl<T, A> TypedBufferAccess for ImmutableBufferInitialization<T, A>
 where
-    T: Send + Sync + ?Sized,
+    T: BufferContents + ?Sized,
     A: Send + Sync,
 {
     type Content = T;
 }
 
-unsafe impl<T: ?Sized, A> DeviceOwned for ImmutableBufferInitialization<T, A> {
+unsafe impl<T, A> DeviceOwned for ImmutableBufferInitialization<T, A>
+where
+    T: BufferContents + ?Sized,
+{
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.buffer.inner.device()
     }
 }
 
-impl<T: ?Sized, A> Clone for ImmutableBufferInitialization<T, A> {
+impl<T, A> Clone for ImmutableBufferInitialization<T, A>
+where
+    T: BufferContents + ?Sized,
+{
     #[inline]
     fn clone(&self) -> ImmutableBufferInitialization<T, A> {
         ImmutableBufferInitialization {
@@ -597,9 +611,9 @@ impl<T: ?Sized, A> Clone for ImmutableBufferInitialization<T, A> {
     }
 }
 
-impl<T: ?Sized, A> PartialEq for ImmutableBufferInitialization<T, A>
+impl<T, A> PartialEq for ImmutableBufferInitialization<T, A>
 where
-    T: Send + Sync,
+    T: BufferContents + ?Sized,
     A: Send + Sync,
 {
     #[inline]
@@ -608,16 +622,16 @@ where
     }
 }
 
-impl<T: ?Sized, A> Eq for ImmutableBufferInitialization<T, A>
+impl<T, A> Eq for ImmutableBufferInitialization<T, A>
 where
-    T: Send + Sync,
+    T: BufferContents + ?Sized,
     A: Send + Sync,
 {
 }
 
-impl<T: ?Sized, A> Hash for ImmutableBufferInitialization<T, A>
+impl<T, A> Hash for ImmutableBufferInitialization<T, A>
 where
-    T: Send + Sync,
+    T: BufferContents + ?Sized,
     A: Send + Sync,
 {
     #[inline]

@@ -14,20 +14,21 @@
 // properly is important to achieve maximal performance that particular device
 // can provide.
 
-use std::fs::File;
-use std::io::BufWriter;
-use std::path::Path;
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
-use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
-use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
-use vulkano::format::Format;
-use vulkano::image::{view::ImageView, ImageDimensions, StorageImage};
-use vulkano::instance::{Instance, InstanceCreateInfo, InstanceExtensions};
-use vulkano::pipeline::{ComputePipeline, Pipeline, PipelineBindPoint};
-use vulkano::sync;
-use vulkano::sync::GpuFuture;
+use std::{fs::File, io::BufWriter, path::Path};
+use vulkano::{
+    buffer::{BufferUsage, CpuAccessibleBuffer},
+    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage},
+    descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
+    device::{
+        physical::{PhysicalDevice, PhysicalDeviceType},
+        Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+    },
+    format::Format,
+    image::{view::ImageView, ImageDimensions, StorageImage},
+    instance::{Instance, InstanceCreateInfo, InstanceExtensions},
+    pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
+    sync::{self, GpuFuture},
+};
 
 fn main() {
     let instance = Instance::new(InstanceCreateInfo {

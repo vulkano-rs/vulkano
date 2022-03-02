@@ -23,7 +23,7 @@ use std::{
     ffi::c_void,
     fmt,
     hash::{Hash, Hasher},
-    mem::MaybeUninit,
+    mem::{size_of_val, MaybeUninit},
     ops::Range,
     ptr,
     sync::Arc,
@@ -344,7 +344,7 @@ impl<'a> QueriesRange<'a> {
                 self.pool.internal_object(),
                 self.range.start,
                 self.range.end - self.range.start,
-                std::mem::size_of_val(destination),
+                size_of_val(destination),
                 destination.as_mut_ptr() as *mut c_void,
                 stride,
                 ash::vk::QueryResultFlags::from(flags) | T::FLAG,
@@ -372,7 +372,7 @@ impl<'a> QueriesRange<'a> {
 
         let count = self.range.end - self.range.start;
         let per_query_len =
-            self.pool.query_type.result_size() + flags.with_availability as DeviceSize;
+            self.pool.query_type.result_len() + flags.with_availability as DeviceSize;
         let required_len = per_query_len * count as DeviceSize;
 
         if buffer_len < required_len {
@@ -502,7 +502,7 @@ impl QueryType {
     /// If the results are retrieved with [`QueryResultFlags::with_availability`] enabled, then
     /// an additional element is required per query.
     #[inline]
-    pub const fn result_size(&self) -> DeviceSize {
+    pub const fn result_len(&self) -> DeviceSize {
         match self {
             Self::Occlusion | Self::Timestamp => 1,
             Self::PipelineStatistics(flags) => flags.count(),

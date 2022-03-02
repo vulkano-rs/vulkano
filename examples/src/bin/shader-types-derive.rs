@@ -9,7 +9,7 @@
 
 // This example demonstrates how to put derives onto generated Rust structs from
 // the Shader types through the "types-meta" options of
-// `vulkano_shaders::shader!` macro.
+// `shader!` macro.
 
 // Vulkano Shader macro is capable to generate Rust structs representing each
 // type found in the shader source. These structs appear in the `ty` module
@@ -30,8 +30,10 @@
 // developer can also specify derives of traits from external modules/crates
 // whenever such traits provide custom derive feature.
 
-use ron::from_str;
-use ron::ser::{to_string_pretty, PrettyConfig};
+use ron::{
+    from_str,
+    ser::{to_string_pretty, PrettyConfig},
+};
 use std::fmt::{Debug, Display, Error, Formatter};
 
 vulkano_shaders::shader! {

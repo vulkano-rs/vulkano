@@ -1,17 +1,9 @@
-#[cfg(not(target_os = "linux"))]
-pub fn main() {}
-
-#[cfg(target_os = "linux")]
-extern crate glium;
-
-#[cfg(target_os = "linux")]
+use bytemuck::{Pod, Zeroable};
 use glium::glutin::{self, platform::unix::HeadlessContextExt};
-#[cfg(target_os = "linux")]
 use std::{
     sync::{Arc, Barrier},
     time::Instant,
 };
-#[cfg(target_os = "linux")]
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
     command_buffer::{
@@ -25,12 +17,15 @@ use vulkano::{
     },
     format::Format,
     image::{view::ImageView, ImageCreateFlags, ImageUsage, StorageImage, SwapchainImage},
+    impl_vertex,
     instance::{debug::DebugCallback, Instance, InstanceCreateInfo, InstanceExtensions},
     pipeline::{
-        graphics::color_blend::ColorBlendState,
-        graphics::input_assembly::{InputAssemblyState, PrimitiveTopology},
-        graphics::vertex_input::BuffersDefinition,
-        graphics::viewport::{Scissor, Viewport, ViewportState},
+        graphics::{
+            color_blend::ColorBlendState,
+            input_assembly::{InputAssemblyState, PrimitiveTopology},
+            vertex_input::BuffersDefinition,
+            viewport::{Scissor, Viewport, ViewportState},
+        },
         GraphicsPipeline, Pipeline, PipelineBindPoint,
     },
     render_pass::{Framebuffer, RenderPass, Subpass},
@@ -41,15 +36,13 @@ use vulkano::{
         SemaphoreCreateInfo,
     },
 };
-#[cfg(target_os = "linux")]
 use vulkano_win::VkSurfaceBuild;
-#[cfg(target_os = "linux")]
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
-#[cfg(target_os = "linux")]
+
 fn main() {
     let event_loop_gl = glutin::event_loop::EventLoop::new();
     // For some reason, this must be created before the vulkan window
@@ -345,15 +338,13 @@ fn main() {
     });
 }
 
-#[cfg(target_os = "linux")]
-#[derive(Default, Debug, Clone)]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
 struct Vertex {
     position: [f32; 2],
 }
-#[cfg(target_os = "linux")]
-vulkano::impl_vertex!(Vertex, position);
+impl_vertex!(Vertex, position);
 
-#[cfg(target_os = "linux")]
 fn vk_setup(
     display: glium::HeadlessRenderer,
 ) -> (
@@ -485,26 +476,25 @@ fn vk_setup(
         .unwrap()
     };
 
+    let vertices = [
+        Vertex {
+            position: [-0.5, -0.5],
+        },
+        Vertex {
+            position: [-0.5, 0.5],
+        },
+        Vertex {
+            position: [0.5, -0.5],
+        },
+        Vertex {
+            position: [0.5, 0.5],
+        },
+    ];
     let vertex_buffer = CpuAccessibleBuffer::<[Vertex]>::from_iter(
         device.clone(),
         BufferUsage::all(),
         false,
-        [
-            Vertex {
-                position: [-0.5, -0.5],
-            },
-            Vertex {
-                position: [-0.5, 0.5],
-            },
-            Vertex {
-                position: [0.5, -0.5],
-            },
-            Vertex {
-                position: [0.5, 0.5],
-            },
-        ]
-        .iter()
-        .cloned(),
+        vertices,
     )
     .unwrap();
 
@@ -577,7 +567,6 @@ fn vk_setup(
     )
 }
 
-#[cfg(target_os = "linux")]
 fn build_display<F>(ctx: glutin::Context<glutin::NotCurrent>, f: F)
 where
     F: FnOnce(Box<dyn glium::backend::Facade>),
@@ -592,7 +581,7 @@ where
         f(display);
     });
 }
-#[cfg(target_os = "linux")]
+
 fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage<Window>>],
     render_pass: Arc<RenderPass>,
@@ -618,7 +607,7 @@ fn window_size_dependent_setup(
         })
         .collect::<Vec<_>>()
 }
-#[cfg(target_os = "linux")]
+
 mod vs {
     vulkano_shaders::shader! {
         ty: "vertex",
@@ -632,7 +621,7 @@ void main() {
 }"
     }
 }
-#[cfg(target_os = "linux")]
+
 mod fs {
     vulkano_shaders::shader! {
         ty: "fragment",

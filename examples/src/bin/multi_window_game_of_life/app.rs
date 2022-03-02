@@ -7,18 +7,17 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::game_of_life::GameOfLifeComputePipeline;
-use crate::render_pass::RenderPassPlaceOverFrame;
-use crate::vulkano_config::VulkanoConfig;
-use crate::vulkano_context::VulkanoContext;
-use crate::vulkano_window::VulkanoWindow;
-use crate::{SCALING, WINDOW2_HEIGHT, WINDOW2_WIDTH, WINDOW_HEIGHT, WINDOW_WIDTH};
-use std::collections::HashMap;
-use std::sync::Arc;
-use vulkano::device::Queue;
-use vulkano::format::Format;
-use winit::event_loop::EventLoop;
-use winit::window::{WindowBuilder, WindowId};
+use crate::{
+    game_of_life::GameOfLifeComputePipeline, render_pass::RenderPassPlaceOverFrame,
+    vulkano_config::VulkanoConfig, vulkano_context::VulkanoContext, vulkano_window::VulkanoWindow,
+    SCALING, WINDOW2_HEIGHT, WINDOW2_WIDTH, WINDOW_HEIGHT, WINDOW_WIDTH,
+};
+use std::{collections::HashMap, sync::Arc};
+use vulkano::{device::Queue, format::Format};
+use winit::{
+    event_loop::EventLoop,
+    window::{WindowBuilder, WindowId},
+};
 
 pub struct RenderPipeline {
     pub compute: GameOfLifeComputePipeline,

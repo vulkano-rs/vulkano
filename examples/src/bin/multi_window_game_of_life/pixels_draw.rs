@@ -7,29 +7,35 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
-use vulkano::command_buffer::{
-    AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer,
+use vulkano::{
+    buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
+    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer},
+    descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
+    device::Queue,
+    image::ImageViewAbstract,
+    impl_vertex,
+    pipeline::{
+        graphics::{
+            input_assembly::InputAssemblyState,
+            vertex_input::BuffersDefinition,
+            viewport::{Viewport, ViewportState},
+        },
+        GraphicsPipeline, Pipeline, PipelineBindPoint,
+    },
+    render_pass::Subpass,
+    sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerMipmapMode},
 };
-use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
-use vulkano::device::Queue;
-use vulkano::image::ImageViewAbstract;
-use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
-use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
-use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
-use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
-use vulkano::render_pass::Subpass;
-use vulkano::sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerMipmapMode};
 
 /// Vertex for textured quads
 #[repr(C)]
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
 pub struct TexturedVertex {
     pub position: [f32; 2],
     pub tex_coords: [f32; 2],
 }
-vulkano::impl_vertex!(TexturedVertex, position, tex_coords);
+impl_vertex!(TexturedVertex, position, tex_coords);
 
 pub fn textured_quad(width: f32, height: f32) -> (Vec<TexturedVertex>, Vec<u32>) {
     (

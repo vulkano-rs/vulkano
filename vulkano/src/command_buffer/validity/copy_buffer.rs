@@ -8,13 +8,12 @@
 // according to those terms.
 
 use super::ranges::is_overlapping_ranges;
-use crate::buffer::TypedBufferAccess;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::DeviceSize;
-use crate::VulkanObject;
-use std::error;
-use std::fmt;
+use crate::{
+    buffer::BufferAccess,
+    device::{Device, DeviceOwned},
+    DeviceSize, VulkanObject,
+};
+use std::{error, fmt};
 
 /// Checks whether a copy buffer command is valid.
 ///
@@ -22,19 +21,14 @@ use std::fmt;
 ///
 /// - Panics if the source and destination were not created with `device`.
 ///
-pub fn check_copy_buffer<S, D, T>(
+pub fn check_copy_buffer(
     device: &Device,
-    source: &S,
-    destination: &D,
+    source: &dyn BufferAccess,
+    destination: &dyn BufferAccess,
     source_offset: DeviceSize,
     destination_offset: DeviceSize,
     size: DeviceSize,
-) -> Result<(), CheckCopyBufferError>
-where
-    S: ?Sized + TypedBufferAccess<Content = T>,
-    D: ?Sized + TypedBufferAccess<Content = T>,
-    T: ?Sized,
-{
+) -> Result<(), CheckCopyBufferError> {
     assert_eq!(
         source.inner().buffer.device().internal_object(),
         device.internal_object()

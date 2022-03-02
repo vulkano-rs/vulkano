@@ -99,7 +99,7 @@ impl StdNonHostVisibleMemoryTypePool {
 
             // Try append at the end.
             let last_end = entries.last().map(|e| align(e.end, alignment)).unwrap_or(0);
-            if last_end + size <= dev_mem.size() {
+            if last_end + size <= dev_mem.allocation_size() {
                 entries.push(last_end..last_end + size);
                 return Ok(StdNonHostVisibleMemoryTypePoolAlloc {
                     pool: me.clone(),

@@ -64,11 +64,11 @@
 
 pub use ash::vk::Handle;
 pub use half;
-use std::error;
-use std::fmt;
-use std::ops::Deref;
-use std::sync::Arc;
-use std::sync::MutexGuard;
+use std::{
+    error, fmt,
+    ops::Deref,
+    sync::{Arc, MutexGuard},
+};
 pub use version::Version;
 
 #[macro_use]

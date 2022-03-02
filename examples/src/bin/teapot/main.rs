@@ -9,34 +9,40 @@
 
 use cgmath::{Matrix3, Matrix4, Point3, Rad, Vector3};
 use examples::{Normal, Vertex, INDICES, NORMALS, VERTICES};
-use std::sync::Arc;
-use std::time::Instant;
-use vulkano::buffer::cpu_pool::CpuBufferPool;
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
-use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
-use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
-use vulkano::format::Format;
-use vulkano::image::attachment::AttachmentImage;
-use vulkano::image::view::ImageView;
-use vulkano::image::{ImageAccess, ImageUsage, SwapchainImage};
-use vulkano::instance::{Instance, InstanceCreateInfo};
-use vulkano::pipeline::graphics::depth_stencil::DepthStencilState;
-use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
-use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
-use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
-use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
-use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass};
-use vulkano::shader::ShaderModule;
-use vulkano::swapchain::{
-    self, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+use std::{sync::Arc, time::Instant};
+use vulkano::{
+    buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, TypedBufferAccess},
+    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents},
+    descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
+    device::{
+        physical::{PhysicalDevice, PhysicalDeviceType},
+        Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+    },
+    format::Format,
+    image::{view::ImageView, AttachmentImage, ImageAccess, ImageUsage, SwapchainImage},
+    instance::{Instance, InstanceCreateInfo},
+    pipeline::{
+        graphics::{
+            depth_stencil::DepthStencilState,
+            input_assembly::InputAssemblyState,
+            vertex_input::BuffersDefinition,
+            viewport::{Viewport, ViewportState},
+        },
+        GraphicsPipeline, Pipeline, PipelineBindPoint,
+    },
+    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
+    shader::ShaderModule,
+    swapchain::{
+        acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+    },
+    sync::{self, FlushError, GpuFuture},
 };
-use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano_win::VkSurfaceBuild;
-use winit::event::{Event, WindowEvent};
-use winit::event_loop::{ControlFlow, EventLoop};
-use winit::window::{Window, WindowBuilder};
+use winit::{
+    event::{Event, WindowEvent},
+    event_loop::{ControlFlow, EventLoop},
+    window::{Window, WindowBuilder},
+};
 
 fn main() {
     // The start of this example is exactly the same as `triangle`. You should read the
@@ -124,18 +130,13 @@ fn main() {
         .unwrap()
     };
 
-    let vertices = VERTICES.iter().cloned();
     let vertex_buffer =
-        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, vertices)
+        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, VERTICES)
             .unwrap();
-
-    let normals = NORMALS.iter().cloned();
     let normals_buffer =
-        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, normals).unwrap();
-
-    let indices = INDICES.iter().cloned();
+        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, NORMALS).unwrap();
     let index_buffer =
-        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, indices).unwrap();
+        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, INDICES).unwrap();
 
     let uniform_buffer = CpuBufferPool::<vs::ty::Data>::new(device.clone(), BufferUsage::all());
 
@@ -252,7 +253,7 @@ fn main() {
                 .unwrap();
 
                 let (image_num, suboptimal, acquire_future) =
-                    match swapchain::acquire_next_image(swapchain.clone(), None) {
+                    match acquire_next_image(swapchain.clone(), None) {
                         Ok(r) => r,
                         Err(AcquireError::OutOfDate) => {
                             recreate_swapchain = true;
@@ -382,7 +383,12 @@ fn window_size_dependent_setup(
 mod vs {
     vulkano_shaders::shader! {
         ty: "vertex",
-        path: "src/bin/teapot/vert.glsl"
+        path: "src/bin/teapot/vert.glsl",
+        types_meta: {
+            use bytemuck::{Pod, Zeroable};
+
+            #[derive(Clone, Copy, Zeroable, Pod)]
+        },
     }
 }
 
