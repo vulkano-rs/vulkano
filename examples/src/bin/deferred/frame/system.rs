@@ -7,29 +7,24 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::frame::ambient_lighting_system::AmbientLightingSystem;
-use crate::frame::directional_lighting_system::DirectionalLightingSystem;
-use crate::frame::point_lighting_system::PointLightingSystem;
-use cgmath::Matrix4;
-use cgmath::SquareMatrix;
-use cgmath::Vector3;
-use std::sync::Arc;
-use vulkano::command_buffer::{
-    AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer, SecondaryCommandBuffer,
-    SubpassContents,
+use super::{
+    ambient_lighting_system::AmbientLightingSystem,
+    directional_lighting_system::DirectionalLightingSystem,
+    point_lighting_system::PointLightingSystem,
 };
-use vulkano::device::Queue;
-use vulkano::format::Format;
-use vulkano::image::view::ImageView;
-use vulkano::image::AttachmentImage;
-use vulkano::image::ImageAccess;
-use vulkano::image::ImageUsage;
-use vulkano::image::ImageViewAbstract;
-use vulkano::render_pass::Framebuffer;
-use vulkano::render_pass::FramebufferCreateInfo;
-use vulkano::render_pass::RenderPass;
-use vulkano::render_pass::Subpass;
-use vulkano::sync::GpuFuture;
+use cgmath::{Matrix4, SquareMatrix, Vector3};
+use std::sync::Arc;
+use vulkano::{
+    command_buffer::{
+        AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer,
+        SecondaryCommandBuffer, SubpassContents,
+    },
+    device::Queue,
+    format::Format,
+    image::{view::ImageView, AttachmentImage, ImageAccess, ImageUsage, ImageViewAbstract},
+    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
+    sync::GpuFuture,
+};
 
 /// System that contains the necessary facilities for rendering a single frame.
 pub struct FrameSystem {

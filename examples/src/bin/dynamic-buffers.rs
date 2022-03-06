@@ -14,17 +14,21 @@
 // offset into the buffer to read object data from, without having to
 // rebind descriptor sets.
 
-use std::mem;
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
-use vulkano::descriptor_set::layout::DescriptorType;
-use vulkano::descriptor_set::{DescriptorSet, PersistentDescriptorSet, WriteDescriptorSet};
-use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
-use vulkano::instance::Instance;
-use vulkano::pipeline::{ComputePipeline, Pipeline, PipelineBindPoint};
-use vulkano::sync;
-use vulkano::sync::GpuFuture;
+use std::mem::size_of;
+use vulkano::{
+    buffer::{BufferUsage, CpuAccessibleBuffer},
+    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage},
+    descriptor_set::{
+        layout::DescriptorType, DescriptorSet, PersistentDescriptorSet, WriteDescriptorSet,
+    },
+    device::{
+        physical::{PhysicalDevice, PhysicalDeviceType},
+        Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+    },
+    instance::Instance,
+    pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
+    sync::{self, GpuFuture},
+};
 
 fn main() {
     let instance = Instance::new(Default::default()).unwrap();
@@ -124,7 +128,7 @@ fn main() {
     );
     println!("Input: {:?}", data);
     // Round size up to the next multiple of align.
-    let align = (mem::size_of::<u32>() + min_dynamic_align - 1) & !(min_dynamic_align - 1);
+    let align = (size_of::<u32>() + min_dynamic_align - 1) & !(min_dynamic_align - 1);
     let aligned_data = {
         let mut aligned_data = Vec::with_capacity(align * data.len());
         for i in 0..data.len() {
@@ -211,8 +215,5 @@ fn main() {
     future.wait(None).unwrap();
 
     let output_content = output_buffer.read().unwrap();
-    println!(
-        "Output: {:?}",
-        output_content.iter().cloned().collect::<Vec<u32>>()
-    );
+    println!("Output: {:?}", &*output_content);
 }

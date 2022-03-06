@@ -13,41 +13,32 @@
 //! You can read the buffer multiple times simultaneously from multiple queues. Trying to read and
 //! write simultaneously, or write and write simultaneously will block with a semaphore.
 
-use crate::buffer::sys::BufferCreationError;
-use crate::buffer::sys::UnsafeBuffer;
-use crate::buffer::sys::UnsafeBufferCreateInfo;
-use crate::buffer::traits::BufferAccess;
-use crate::buffer::traits::BufferAccessObject;
-use crate::buffer::traits::BufferInner;
-use crate::buffer::traits::TypedBufferAccess;
-use crate::buffer::BufferUsage;
-use crate::device::physical::QueueFamily;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::device::Queue;
-use crate::memory::pool::alloc_dedicated_with_exportable_fd;
-use crate::memory::pool::AllocFromRequirementsFilter;
-use crate::memory::pool::AllocLayout;
-use crate::memory::pool::MappingRequirement;
-use crate::memory::pool::MemoryPool;
-use crate::memory::pool::MemoryPoolAlloc;
-use crate::memory::pool::PotentialDedicatedAllocation;
-use crate::memory::pool::StdMemoryPoolAlloc;
-use crate::memory::DeviceMemoryAllocationError;
-use crate::memory::DeviceMemoryExportError;
-use crate::memory::ExternalMemoryHandleType;
-use crate::memory::{DedicatedAllocation, MemoryRequirements};
-use crate::sync::AccessError;
-use crate::sync::Sharing;
-use crate::DeviceSize;
+use super::{
+    sys::{UnsafeBuffer, UnsafeBufferCreateInfo},
+    BufferAccess, BufferAccessObject, BufferContents, BufferCreationError, BufferInner,
+    BufferUsage, TypedBufferAccess,
+};
+use crate::{
+    device::{physical::QueueFamily, Device, DeviceOwned, Queue},
+    memory::{
+        pool::{
+            alloc_dedicated_with_exportable_fd, AllocFromRequirementsFilter, AllocLayout,
+            MappingRequirement, MemoryPoolAlloc, PotentialDedicatedAllocation, StdMemoryPoolAlloc,
+        },
+        DedicatedAllocation, DeviceMemoryAllocationError, DeviceMemoryExportError,
+        ExternalMemoryHandleType, MemoryPool, MemoryRequirements,
+    },
+    sync::{AccessError, Sharing},
+    DeviceSize,
+};
 use smallvec::SmallVec;
-use std::fs::File;
-use std::hash::Hash;
-use std::hash::Hasher;
-use std::marker::PhantomData;
-use std::mem;
-use std::sync::Arc;
-use std::sync::Mutex;
+use std::{
+    fs::File,
+    hash::{Hash, Hasher},
+    marker::PhantomData,
+    mem::size_of,
+    sync::{Arc, Mutex},
+};
 
 /// Buffer whose content is in device-local memory.
 ///
@@ -58,7 +49,10 @@ use std::sync::Mutex;
 /// The `DeviceLocalBuffer` will be in device-local memory, unless the device doesn't provide any
 /// device-local memory.
 #[derive(Debug)]
-pub struct DeviceLocalBuffer<T: ?Sized, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
+pub struct DeviceLocalBuffer<T, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>>
+where
+    T: BufferContents + ?Sized,
+{
     // Inner content.
     inner: UnsafeBuffer,
 
@@ -82,7 +76,10 @@ enum GpuAccess {
     Exclusive { num: u32 },
 }
 
-impl<T> DeviceLocalBuffer<T> {
+impl<T> DeviceLocalBuffer<T>
+where
+    T: BufferContents,
+{
     /// Builds a new buffer. Only allowed for sized data.
     ///
     /// # Panics
@@ -98,17 +95,15 @@ impl<T> DeviceLocalBuffer<T> {
         I: IntoIterator<Item = QueueFamily<'a>>,
     {
         unsafe {
-            DeviceLocalBuffer::raw(
-                device,
-                mem::size_of::<T>() as DeviceSize,
-                usage,
-                queue_families,
-            )
+            DeviceLocalBuffer::raw(device, size_of::<T>() as DeviceSize, usage, queue_families)
         }
     }
 }
 
-impl<T> DeviceLocalBuffer<[T]> {
+impl<T> DeviceLocalBuffer<[T]>
+where
+    [T]: BufferContents,
+{
     /// Builds a new buffer. Can be used for arrays.
     ///
     /// # Panics
@@ -128,7 +123,7 @@ impl<T> DeviceLocalBuffer<[T]> {
         unsafe {
             DeviceLocalBuffer::raw(
                 device,
-                len * mem::size_of::<T>() as DeviceSize,
+                len * size_of::<T>() as DeviceSize,
                 usage,
                 queue_families,
             )
@@ -136,7 +131,10 @@ impl<T> DeviceLocalBuffer<[T]> {
     }
 }
 
-impl<T: ?Sized> DeviceLocalBuffer<T> {
+impl<T> DeviceLocalBuffer<T>
+where
+    T: BufferContents + ?Sized,
+{
     /// Builds a new buffer without checking the size.
     ///
     /// # Safety
@@ -279,7 +277,10 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
     }
 }
 
-impl<T: ?Sized, A> DeviceLocalBuffer<T, A> {
+impl<T, A> DeviceLocalBuffer<T, A>
+where
+    T: BufferContents + ?Sized,
+{
     /// Returns the queue families this buffer can be used on.
     // TODO: use a custom iterator
     #[inline]
@@ -296,16 +297,19 @@ impl<T: ?Sized, A> DeviceLocalBuffer<T, A> {
     }
 }
 
-unsafe impl<T: ?Sized, A> DeviceOwned for DeviceLocalBuffer<T, A> {
+unsafe impl<T, A> DeviceOwned for DeviceLocalBuffer<T, A>
+where
+    T: BufferContents + ?Sized,
+{
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
     }
 }
 
-unsafe impl<T: ?Sized, A> BufferAccess for DeviceLocalBuffer<T, A>
+unsafe impl<T, A> BufferAccess for DeviceLocalBuffer<T, A>
 where
-    T: Send + Sync + 'static,
+    T: BufferContents + ?Sized,
     A: Send + Sync,
 {
     #[inline]
@@ -393,9 +397,9 @@ where
     }
 }
 
-impl<T: ?Sized, A> BufferAccessObject for Arc<DeviceLocalBuffer<T, A>>
+impl<T, A> BufferAccessObject for Arc<DeviceLocalBuffer<T, A>>
 where
-    T: Send + Sync + 'static,
+    T: BufferContents + ?Sized,
     A: Send + Sync + 'static,
 {
     #[inline]
@@ -404,17 +408,17 @@ where
     }
 }
 
-unsafe impl<T: ?Sized, A> TypedBufferAccess for DeviceLocalBuffer<T, A>
+unsafe impl<T, A> TypedBufferAccess for DeviceLocalBuffer<T, A>
 where
-    T: Send + Sync + 'static,
+    T: BufferContents + ?Sized,
     A: Send + Sync,
 {
     type Content = T;
 }
 
-impl<T: ?Sized, A> PartialEq for DeviceLocalBuffer<T, A>
+impl<T, A> PartialEq for DeviceLocalBuffer<T, A>
 where
-    T: Send + Sync + 'static,
+    T: BufferContents + ?Sized,
     A: Send + Sync,
 {
     #[inline]
@@ -423,16 +427,16 @@ where
     }
 }
 
-impl<T: ?Sized, A> Eq for DeviceLocalBuffer<T, A>
+impl<T, A> Eq for DeviceLocalBuffer<T, A>
 where
-    T: Send + Sync + 'static,
+    T: BufferContents + ?Sized,
     A: Send + Sync,
 {
 }
 
-impl<T: ?Sized, A> Hash for DeviceLocalBuffer<T, A>
+impl<T, A> Hash for DeviceLocalBuffer<T, A>
 where
-    T: Send + Sync + 'static,
+    T: BufferContents + ?Sized,
     A: Send + Sync,
 {
     #[inline]

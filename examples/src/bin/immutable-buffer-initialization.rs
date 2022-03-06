@@ -9,15 +9,18 @@
 
 // This example demonstrates how to initialize immutable buffers.
 
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
-use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
-use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
-use vulkano::instance::Instance;
-use vulkano::pipeline::{ComputePipeline, Pipeline, PipelineBindPoint};
-use vulkano::sync;
-use vulkano::sync::GpuFuture;
+use vulkano::{
+    buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
+    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage},
+    descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
+    device::{
+        physical::{PhysicalDevice, PhysicalDeviceType},
+        Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+    },
+    instance::Instance,
+    pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
+    sync::{self, GpuFuture},
+};
 
 fn main() {
     // The most part of this example is exactly the same as `basic-compute-shader`. You should read the
@@ -127,7 +130,7 @@ void main() {
         // We can use copy_buffer(), fill_buffer() and some other functions that copies data to
         // buffer also.
         builder
-            .update_buffer(immutable_data_buffer_init, &3)
+            .update_buffer(immutable_data_buffer_init, &3u32)
             .unwrap();
 
         let command_buffer = builder.build().unwrap();

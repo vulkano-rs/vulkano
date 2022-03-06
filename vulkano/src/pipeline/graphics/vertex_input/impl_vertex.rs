@@ -13,7 +13,10 @@ use crate::pipeline::graphics::vertex_input::VertexMemberTy;
 ///# Example
 ///
 ///```
-///#[derive(Default, Copy, Clone)]
+/// # use bytemuck::{Zeroable, Pod};
+///
+///#[repr(C)]
+///#[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
 ///struct Vertex{
 ///  position: [f32; 3],
 ///  color: [f32; 4]

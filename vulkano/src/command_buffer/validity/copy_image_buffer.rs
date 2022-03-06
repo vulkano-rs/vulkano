@@ -7,19 +7,14 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::buffer::TypedBufferAccess;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::format::Format;
-use crate::format::IncompatiblePixelsType;
-use crate::format::Pixel;
-use crate::image::ImageAccess;
-use crate::image::ImageDimensions;
-use crate::image::SampleCount;
-use crate::DeviceSize;
-use crate::VulkanObject;
-use std::error;
-use std::fmt;
+use crate::{
+    buffer::BufferAccess,
+    device::{Device, DeviceOwned},
+    format::Format,
+    image::{ImageAccess, ImageDimensions, SampleCount},
+    DeviceSize, VulkanObject,
+};
+use std::{error, fmt};
 
 /// Type of operation to check.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -35,22 +30,17 @@ pub enum CheckCopyBufferImageTy {
 ///
 /// - Panics if the buffer and image were not created with `device`.
 ///
-pub fn check_copy_buffer_image<B, I, Px>(
+pub fn check_copy_buffer_image(
     device: &Device,
-    buffer: &B,
-    image: &I,
+    buffer: &dyn BufferAccess,
+    image: &dyn ImageAccess,
     ty: CheckCopyBufferImageTy,
     image_offset: [u32; 3],
     image_size: [u32; 3],
     image_first_layer: u32,
     image_num_layers: u32,
     image_mipmap: u32,
-) -> Result<(), CheckCopyBufferImageError>
-where
-    I: ?Sized + ImageAccess,
-    B: ?Sized + TypedBufferAccess<Content = [Px]>,
-    Px: Pixel, // TODO: use a trait on the image itself instead
-{
+) -> Result<(), CheckCopyBufferImageError> {
     let buffer_inner = buffer.inner();
     let image_inner = image.inner();
 
@@ -133,17 +123,12 @@ where
         }
     }
 
-    Px::ensure_accepts(image.format())?;
-
-    {
-        let required_len =
-            required_len_for_format::<Px>(image.format(), image_size, image_num_layers);
-        if required_len > buffer.len() {
-            return Err(CheckCopyBufferImageError::BufferTooSmall {
-                required_len,
-                actual_len: buffer.len(),
-            });
-        }
+    let required_size = required_size_for_format(image.format(), image_size, image_num_layers);
+    if required_size > buffer.size() {
+        return Err(CheckCopyBufferImageError::BufferTooSmall {
+            required_size,
+            actual_size: buffer.size(),
+        });
     }
 
     // TODO: check memory overlap?
@@ -153,67 +138,62 @@ where
 
 /// Computes the minimum required len in elements for buffer with image data in specified
 /// format of specified size.
-fn required_len_for_format<Px>(
-    format: Format,
-    image_size: [u32; 3],
-    image_num_layers: u32,
-) -> DeviceSize
-where
-    Px: Pixel,
-{
-    let [block_width, block_height, _block_depth] = format.block_extent();
-    let num_blocks = (image_size[0] + block_width - 1) / block_width
-        * ((image_size[1] + block_height - 1) / block_height)
-        * image_size[2]
-        * image_num_layers;
-    let required_len = num_blocks as DeviceSize * Px::rate(format) as DeviceSize;
-
-    return required_len;
+fn required_size_for_format(format: Format, extent: [u32; 3], layer_count: u32) -> DeviceSize {
+    let num_blocks = extent
+        .into_iter()
+        .zip(format.block_extent())
+        .map(|(extent, block_extent)| {
+            let extent = extent as DeviceSize;
+            let block_extent = block_extent as DeviceSize;
+            (extent + block_extent - 1) / block_extent
+        })
+        .product::<DeviceSize>()
+        * layer_count as DeviceSize;
+    let block_size = format
+        .block_size()
+        .expect("this format cannot accept pixels");
+    num_blocks * block_size
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::command_buffer::validity::copy_image_buffer::required_len_for_format;
+    use crate::command_buffer::validity::copy_image_buffer::required_size_for_format;
     use crate::format::Format;
 
     #[test]
     fn test_required_len_for_format() {
         // issue #1292
         assert_eq!(
-            required_len_for_format::<u8>(Format::BC1_RGB_UNORM_BLOCK, [2048, 2048, 1], 1),
+            required_size_for_format(Format::BC1_RGB_UNORM_BLOCK, [2048, 2048, 1], 1),
             2097152
         );
         // other test cases
         assert_eq!(
-            required_len_for_format::<u8>(Format::R8G8B8A8_UNORM, [2048, 2048, 1], 1),
+            required_size_for_format(Format::R8G8B8A8_UNORM, [2048, 2048, 1], 1),
             16777216
         );
         assert_eq!(
-            required_len_for_format::<u8>(Format::R4G4_UNORM_PACK8, [512, 512, 1], 1),
+            required_size_for_format(Format::R4G4_UNORM_PACK8, [512, 512, 1], 1),
             262144
         );
         assert_eq!(
-            required_len_for_format::<u8>(Format::R8G8B8_USCALED, [512, 512, 1], 1),
+            required_size_for_format(Format::R8G8B8_USCALED, [512, 512, 1], 1),
             786432
         );
         assert_eq!(
-            required_len_for_format::<u8>(Format::R32G32_UINT, [512, 512, 1], 1),
+            required_size_for_format(Format::R32G32_UINT, [512, 512, 1], 1),
             2097152
         );
         assert_eq!(
-            required_len_for_format::<u32>(Format::R32G32_UINT, [512, 512, 1], 1),
-            524288
+            required_size_for_format(Format::R32G32_UINT, [512, 512, 1], 1),
+            2097152
         );
         assert_eq!(
-            required_len_for_format::<[u32; 2]>(Format::R32G32_UINT, [512, 512, 1], 1),
-            262144
-        );
-        assert_eq!(
-            required_len_for_format::<u8>(Format::ASTC_8x8_UNORM_BLOCK, [512, 512, 1], 1),
+            required_size_for_format(Format::ASTC_8x8_UNORM_BLOCK, [512, 512, 1], 1),
             65536
         );
         assert_eq!(
-            required_len_for_format::<u8>(Format::ASTC_12x12_SRGB_BLOCK, [512, 512, 1], 1),
+            required_size_for_format(Format::ASTC_12x12_SRGB_BLOCK, [512, 512, 1], 1),
             29584
         );
     }
@@ -232,25 +212,16 @@ pub enum CheckCopyBufferImageError {
     UnexpectedMultisampled,
     /// The image coordinates are out of range.
     ImageCoordinatesOutOfRange,
-    /// The type of pixels in the buffer isn't compatible with the image format.
-    WrongPixelType(IncompatiblePixelsType),
     /// The buffer is too small for the copy operation.
     BufferTooSmall {
-        /// Required number of elements in the buffer.
-        required_len: DeviceSize,
-        /// Actual number of elements in the buffer.
-        actual_len: DeviceSize,
+        /// Required size of the buffer.
+        required_size: DeviceSize,
+        /// Actual size of the buffer.
+        actual_size: DeviceSize,
     },
 }
 
-impl error::Error for CheckCopyBufferImageError {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match *self {
-            CheckCopyBufferImageError::WrongPixelType(ref err) => Some(err),
-            _ => None,
-        }
-    }
-}
+impl error::Error for CheckCopyBufferImageError {}
 
 impl fmt::Display for CheckCopyBufferImageError {
     #[inline]
@@ -274,20 +245,10 @@ impl fmt::Display for CheckCopyBufferImageError {
                 CheckCopyBufferImageError::ImageCoordinatesOutOfRange => {
                     "the image coordinates are out of range"
                 }
-                CheckCopyBufferImageError::WrongPixelType(_) => {
-                    "the type of pixels in the buffer isn't compatible with the image format"
-                }
                 CheckCopyBufferImageError::BufferTooSmall { .. } => {
                     "the buffer is too small for the copy operation"
                 }
             }
         )
-    }
-}
-
-impl From<IncompatiblePixelsType> for CheckCopyBufferImageError {
-    #[inline]
-    fn from(err: IncompatiblePixelsType) -> CheckCopyBufferImageError {
-        CheckCopyBufferImageError::WrongPixelType(err)
     }
 }

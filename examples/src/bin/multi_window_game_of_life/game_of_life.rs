@@ -7,20 +7,20 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::vulkano_context::DeviceImageView;
-use crate::vulkano_window::create_device_image;
+use crate::{vulkano_context::DeviceImageView, vulkano_window::create_device_image};
 use cgmath::Vector2;
 use rand::Rng;
 use std::sync::Arc;
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
-use vulkano::command_buffer::PrimaryAutoCommandBuffer;
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
-use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
-use vulkano::device::Queue;
-use vulkano::format::Format;
-use vulkano::image::ImageAccess;
-use vulkano::pipeline::{ComputePipeline, Pipeline, PipelineBindPoint};
-use vulkano::sync::GpuFuture;
+use vulkano::{
+    buffer::{BufferUsage, CpuAccessibleBuffer},
+    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer},
+    descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
+    device::Queue,
+    format::Format,
+    image::ImageAccess,
+    pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
+    sync::GpuFuture,
+};
 
 /// Pipeline holding double buffered grid & color image.
 /// Grids are used to calculate the state, and color image is used to show the output.

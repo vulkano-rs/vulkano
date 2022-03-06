@@ -7,11 +7,11 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use super::BufferContents;
 use crate::buffer::sys::UnsafeBuffer;
 use crate::buffer::BufferSlice;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
-use crate::memory::Content;
 use crate::sync::AccessError;
 use crate::DeviceSize;
 use crate::SafeDeref;
@@ -207,17 +207,14 @@ where
 /// Extension trait for `BufferAccess`. Indicates the type of the content of the buffer.
 pub unsafe trait TypedBufferAccess: BufferAccess {
     /// The type of the content.
-    type Content: ?Sized;
+    type Content: BufferContents + ?Sized;
 
     /// Returns the length of the buffer in number of elements.
     ///
     /// This method can only be called for buffers whose type is known to be an array.
     #[inline]
-    fn len(&self) -> DeviceSize
-    where
-        Self::Content: Content,
-    {
-        self.size() / <Self::Content as Content>::indiv_size()
+    fn len(&self) -> DeviceSize {
+        self.size() / Self::Content::size_of_element()
     }
 }
 

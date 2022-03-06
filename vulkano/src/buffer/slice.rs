@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use super::BufferContents;
 use crate::buffer::traits::BufferAccess;
 use crate::buffer::traits::BufferAccessObject;
 use crate::buffer::traits::BufferInner;
@@ -264,7 +265,7 @@ where
 
 unsafe impl<T, B> TypedBufferAccess for BufferSlice<T, B>
 where
-    T: Send + Sync + ?Sized,
+    T: BufferContents + ?Sized,
     B: BufferAccess,
 {
     type Content = T;

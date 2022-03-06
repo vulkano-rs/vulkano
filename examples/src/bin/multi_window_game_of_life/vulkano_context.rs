@@ -6,19 +6,18 @@
 // at your option. All files in the project carrying such
 // notice may not be copied, modified, or distributed except
 // according to those terms.
+
+use crate::vulkano_config::VulkanoConfig;
 use std::{
     ffi::{CStr, CString},
     sync::Arc,
 };
-
-#[cfg(target_os = "macos")]
-use vulkano::instance::InstanceCreationError;
 use vulkano::{
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
         Device, DeviceCreateInfo, DeviceExtensions, Features, Queue, QueueCreateInfo,
     },
-    image::{view::ImageView, ImageUsage},
+    image::{view::ImageView, ImageUsage, StorageImage, SwapchainImage},
     instance::{
         debug::{DebugCallback, MessageSeverity, MessageType},
         Instance, InstanceCreateInfo, InstanceExtensions,
@@ -30,9 +29,6 @@ use vulkano::{
     Version,
 };
 use winit::window::Window;
-
-use crate::vulkano_config::VulkanoConfig;
-use vulkano::image::{StorageImage, SwapchainImage};
 
 /// Final render target onto which whole app is rendered (per window)
 pub type FinalImageView = Arc<ImageView<SwapchainImage<Window>>>;
@@ -257,18 +253,22 @@ pub fn create_vk_instance(
 
     // Handle errors. On mac os, it will ask you to install vulkan sdk if you have not done so.
     #[cfg(target_os = "macos")]
-    let instance = match result {
-        Err(e) => match e {
-            InstanceCreationError::LoadingError(le) => {
-                println!(
-                    "{:?}, Did you install vulkanSDK from https://vulkan.lunarg.com/sdk/home ?",
-                    le
-                );
-                Err(le).expect("")
-            }
-            _ => Err(e).expect("Failed to create instance"),
-        },
-        Ok(i) => i,
+    let instance = {
+        use vulkano::instance::InstanceCreationError;
+
+        match result {
+            Err(e) => match e {
+                InstanceCreationError::LoadingError(le) => {
+                    println!(
+                        "{:?}, Did you install vulkanSDK from https://vulkan.lunarg.com/sdk/home ?",
+                        le
+                    );
+                    Err(le).expect("")
+                }
+                _ => Err(e).expect("Failed to create instance"),
+            },
+            Ok(i) => i,
+        }
     };
     #[cfg(not(target_os = "macos"))]
     let instance = result.expect("Failed to create instance");

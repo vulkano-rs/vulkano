@@ -13,30 +13,36 @@
 //! or other types of stereoscopic rendering where the left and right eye only differ
 //! in a small position offset.
 
-use std::fs::File;
-use std::io::BufWriter;
-use std::path::Path;
-use std::sync::Arc;
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
-use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, Features, QueueCreateInfo};
-use vulkano::format::Format;
-use vulkano::image::view::ImageView;
-use vulkano::image::{
-    ImageAccess, ImageCreateFlags, ImageDimensions, ImageLayout, ImageUsage, SampleCount,
-    StorageImage,
+use bytemuck::{Pod, Zeroable};
+use std::{fs::File, io::BufWriter, path::Path, sync::Arc};
+use vulkano::{
+    buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
+    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents},
+    device::{
+        physical::{PhysicalDevice, PhysicalDeviceType},
+        Device, DeviceCreateInfo, DeviceExtensions, Features, QueueCreateInfo,
+    },
+    format::Format,
+    image::{
+        view::ImageView, ImageAccess, ImageCreateFlags, ImageDimensions, ImageLayout, ImageUsage,
+        SampleCount, StorageImage,
+    },
+    impl_vertex,
+    instance::{Instance, InstanceCreateInfo, InstanceExtensions},
+    pipeline::{
+        graphics::{
+            input_assembly::InputAssemblyState,
+            vertex_input::BuffersDefinition,
+            viewport::{Viewport, ViewportState},
+        },
+        GraphicsPipeline,
+    },
+    render_pass::{
+        AttachmentDescription, AttachmentReference, Framebuffer, FramebufferCreateInfo, LoadOp,
+        RenderPass, RenderPassCreateInfo, StoreOp, Subpass, SubpassDescription,
+    },
+    sync::{self, GpuFuture},
 };
-use vulkano::instance::{Instance, InstanceCreateInfo, InstanceExtensions};
-use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
-use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
-use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
-use vulkano::pipeline::GraphicsPipeline;
-use vulkano::render_pass::{
-    AttachmentDescription, AttachmentReference, Framebuffer, FramebufferCreateInfo, LoadOp,
-    RenderPass, RenderPassCreateInfo, StoreOp, Subpass, SubpassDescription,
-};
-use vulkano::sync::{self, GpuFuture};
 
 fn main() {
     let instance = Instance::new(InstanceCreateInfo {
@@ -131,31 +137,26 @@ fn main() {
     let image_view = ImageView::new_default(image.clone()).unwrap();
 
     #[repr(C)]
-    #[derive(Default, Debug, Clone)]
+    #[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
     struct Vertex {
         position: [f32; 2],
     }
-    vulkano::impl_vertex!(Vertex, position);
+    impl_vertex!(Vertex, position);
 
-    let vertex_buffer = CpuAccessibleBuffer::from_iter(
-        device.clone(),
-        BufferUsage::all(),
-        false,
-        [
-            Vertex {
-                position: [-0.5, -0.25],
-            },
-            Vertex {
-                position: [0.0, 0.5],
-            },
-            Vertex {
-                position: [0.25, -0.1],
-            },
-        ]
-        .iter()
-        .cloned(),
-    )
-    .unwrap();
+    let vertices = [
+        Vertex {
+            position: [-0.5, -0.25],
+        },
+        Vertex {
+            position: [0.0, 0.5],
+        },
+        Vertex {
+            position: [0.25, -0.1],
+        },
+    ];
+    let vertex_buffer =
+        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, vertices)
+            .unwrap();
 
     // Note the `#extension GL_EXT_multiview : enable` that enables the multiview extension
     // for the shader and the use of `gl_ViewIndex` which contains a value based on which

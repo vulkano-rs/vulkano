@@ -11,32 +11,41 @@
 // Occlusion queries allow you to query whether, and sometimes how many, pixels pass the depth test
 // in a range of draw calls.
 
+use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
-use vulkano::buffer::{BufferAccess, BufferUsage, CpuAccessibleBuffer};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
-use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, DeviceOwned, QueueCreateInfo};
-use vulkano::format::Format;
-use vulkano::image::ImageAccess;
-use vulkano::image::{view::ImageView, AttachmentImage, ImageUsage, SwapchainImage};
-use vulkano::instance::{Instance, InstanceCreateInfo};
-use vulkano::pipeline::graphics::depth_stencil::DepthStencilState;
-use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
-use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
-use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
-use vulkano::pipeline::GraphicsPipeline;
-use vulkano::query::{
-    QueryControlFlags, QueryPool, QueryPoolCreateInfo, QueryResultFlags, QueryType,
+use vulkano::{
+    buffer::{BufferAccess, BufferUsage, CpuAccessibleBuffer},
+    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents},
+    device::{
+        physical::{PhysicalDevice, PhysicalDeviceType},
+        Device, DeviceCreateInfo, DeviceExtensions, DeviceOwned, QueueCreateInfo,
+    },
+    format::Format,
+    image::{view::ImageView, AttachmentImage, ImageAccess, ImageUsage, SwapchainImage},
+    impl_vertex,
+    instance::{Instance, InstanceCreateInfo},
+    pipeline::{
+        graphics::{
+            depth_stencil::DepthStencilState,
+            input_assembly::InputAssemblyState,
+            vertex_input::BuffersDefinition,
+            viewport::{Viewport, ViewportState},
+        },
+        GraphicsPipeline,
+    },
+    query::{QueryControlFlags, QueryPool, QueryPoolCreateInfo, QueryResultFlags, QueryType},
+    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
+    swapchain::{
+        acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+    },
+    sync::{self, FlushError, GpuFuture},
 };
-use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass};
-use vulkano::swapchain::{
-    self, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
-};
-use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano_win::VkSurfaceBuild;
-use winit::event::{Event, WindowEvent};
-use winit::event_loop::{ControlFlow, EventLoop};
-use winit::window::{Window, WindowBuilder};
+use winit::{
+    event::{Event, WindowEvent},
+    event_loop::{ControlFlow, EventLoop},
+    window::{Window, WindowBuilder},
+};
 
 fn main() {
     let required_extensions = vulkano_win::required_extensions();
@@ -121,72 +130,67 @@ fn main() {
     };
 
     #[repr(C)]
-    #[derive(Default, Debug, Clone)]
+    #[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
     struct Vertex {
         position: [f32; 3],
         color: [f32; 3],
     }
-    vulkano::impl_vertex!(Vertex, position, color);
+    impl_vertex!(Vertex, position, color);
 
-    let vertex_buffer = CpuAccessibleBuffer::from_iter(
-        device.clone(),
-        BufferUsage::all(),
-        false,
-        [
-            // The first triangle (red) is the same one as in the triangle example.
-            Vertex {
-                position: [-0.5, -0.25, 0.5],
-                color: [1.0, 0.0, 0.0],
-            },
-            Vertex {
-                position: [0.0, 0.5, 0.5],
-                color: [1.0, 0.0, 0.0],
-            },
-            Vertex {
-                position: [0.25, -0.1, 0.5],
-                color: [1.0, 0.0, 0.0],
-            },
-            // The second triangle (cyan) is the same shape and position as the first,
-            // but smaller, and moved behind a bit.
-            // It should be completely occluded by the first triangle.
-            // (You can lower its z value to put it in front)
-            Vertex {
-                position: [-0.25, -0.125, 0.6],
-                color: [0.0, 1.0, 1.0],
-            },
-            Vertex {
-                position: [0.0, 0.25, 0.6],
-                color: [0.0, 1.0, 1.0],
-            },
-            Vertex {
-                position: [0.125, -0.05, 0.6],
-                color: [0.0, 1.0, 1.0],
-            },
-            // The third triangle (green) is the same shape and size as the first,
-            // but moved to the left and behind the second.
-            // It is partially occluded by the first two.
-            Vertex {
-                position: [-0.25, -0.25, 0.7],
-                color: [0.0, 1.0, 0.0],
-            },
-            Vertex {
-                position: [0.25, 0.5, 0.7],
-                color: [0.0, 1.0, 0.0],
-            },
-            Vertex {
-                position: [0.5, -0.1, 0.7],
-                color: [0.0, 1.0, 0.0],
-            },
-        ]
-        .iter()
-        .cloned(),
-    )
-    .unwrap();
+    let vertices = [
+        // The first triangle (red) is the same one as in the triangle example.
+        Vertex {
+            position: [-0.5, -0.25, 0.5],
+            color: [1.0, 0.0, 0.0],
+        },
+        Vertex {
+            position: [0.0, 0.5, 0.5],
+            color: [1.0, 0.0, 0.0],
+        },
+        Vertex {
+            position: [0.25, -0.1, 0.5],
+            color: [1.0, 0.0, 0.0],
+        },
+        // The second triangle (cyan) is the same shape and position as the first,
+        // but smaller, and moved behind a bit.
+        // It should be completely occluded by the first triangle.
+        // (You can lower its z value to put it in front)
+        Vertex {
+            position: [-0.25, -0.125, 0.6],
+            color: [0.0, 1.0, 1.0],
+        },
+        Vertex {
+            position: [0.0, 0.25, 0.6],
+            color: [0.0, 1.0, 1.0],
+        },
+        Vertex {
+            position: [0.125, -0.05, 0.6],
+            color: [0.0, 1.0, 1.0],
+        },
+        // The third triangle (green) is the same shape and size as the first,
+        // but moved to the left and behind the second.
+        // It is partially occluded by the first two.
+        Vertex {
+            position: [-0.25, -0.25, 0.7],
+            color: [0.0, 1.0, 0.0],
+        },
+        Vertex {
+            position: [0.25, 0.5, 0.7],
+            color: [0.0, 1.0, 0.0],
+        },
+        Vertex {
+            position: [0.5, -0.1, 0.7],
+            color: [0.0, 1.0, 0.0],
+        },
+    ];
+    let vertex_buffer =
+        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, vertices)
+            .unwrap();
 
     // Create three buffer slices, one for each triangle.
-    let triangle1 = vertex_buffer.slice(0..3).unwrap();
-    let triangle2 = vertex_buffer.slice(3..6).unwrap();
-    let triangle3 = vertex_buffer.slice(6..9).unwrap();
+    let triangle1 = vertex_buffer.slice::<Vertex>(0..3).unwrap();
+    let triangle2 = vertex_buffer.slice::<Vertex>(3..6).unwrap();
+    let triangle3 = vertex_buffer.slice::<Vertex>(6..9).unwrap();
 
     // Create a query pool for occlusion queries, with 3 slots.
     let query_pool = QueryPool::new(
@@ -201,7 +205,7 @@ fn main() {
     // Create a buffer on the CPU to hold the results of the three queries.
     // Query results are always represented as either `u32` or `u64`.
     // For occlusion queries, you always need one element per query. You can ask for the number of
-    // elements needed at runtime by calling `QueryType::result_size`.
+    // elements needed at runtime by calling `QueryType::result_len`.
     // If you retrieve query results with `with_availability` enabled, then this array needs to
     // be 6 elements long instead of 3.
     let mut query_results = [0u32; 3];
@@ -325,7 +329,7 @@ fn main() {
             }
 
             let (image_num, suboptimal, acquire_future) =
-                match swapchain::acquire_next_image(swapchain.clone(), None) {
+                match acquire_next_image(swapchain.clone(), None) {
                     Ok(r) => r,
                     Err(AcquireError::OutOfDate) => {
                         recreate_swapchain = true;
@@ -433,8 +437,10 @@ fn main() {
                         // Note: if not all the queries have actually been executed, then this
                         // will wait forever for something that never happens!
                         wait: true,
+
                         // Blocking and waiting will never give partial results.
                         partial: false,
+
                         // Blocking and waiting will ensure the results are always available after
                         // the function returns.
                         //

@@ -94,14 +94,13 @@
 
 pub use self::{
     device_memory::{
-        CpuAccess, DeviceMemory, DeviceMemoryAllocationError, DeviceMemoryExportError,
-        DeviceMemoryMapping, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
-        MappedDeviceMemory, MemoryAllocateInfo, MemoryImportInfo,
+        DeviceMemory, DeviceMemoryAllocationError, DeviceMemoryExportError,
+        ExternalMemoryHandleType, ExternalMemoryHandleTypes, MappedDeviceMemory,
+        MemoryAllocateInfo, MemoryImportInfo,
     },
     pool::MemoryPool,
 };
 use crate::{buffer::sys::UnsafeBuffer, image::sys::UnsafeImage, DeviceSize};
-use std::{mem, os::raw::c_void, slice};
 
 mod device_memory;
 pub mod pool;
@@ -202,68 +201,3 @@ impl From<ash::vk::ExternalMemoryProperties> for ExternalMemoryProperties {
         }
     }
 }
-
-/// Trait for types of data that can be mapped.
-// TODO: move to `buffer` module
-pub unsafe trait Content {
-    /// Builds a pointer to this type from a raw pointer.
-    fn ref_from_ptr<'a>(ptr: *mut c_void, size: usize) -> Option<*mut Self>;
-
-    /// Returns true if the size is suitable to store a type like this.
-    fn is_size_suitable(size: DeviceSize) -> bool;
-
-    /// Returns the size of an individual element.
-    fn indiv_size() -> DeviceSize;
-}
-
-unsafe impl<T> Content for T {
-    #[inline]
-    fn ref_from_ptr<'a>(ptr: *mut c_void, size: usize) -> Option<*mut T> {
-        if size < mem::size_of::<T>() {
-            return None;
-        }
-
-        Some(ptr as *mut T)
-    }
-
-    #[inline]
-    fn is_size_suitable(size: DeviceSize) -> bool {
-        size == mem::size_of::<T>() as DeviceSize
-    }
-
-    #[inline]
-    fn indiv_size() -> DeviceSize {
-        mem::size_of::<T>() as DeviceSize
-    }
-}
-
-unsafe impl<T> Content for [T] {
-    #[inline]
-    fn ref_from_ptr<'a>(ptr: *mut c_void, size: usize) -> Option<*mut [T]> {
-        let ptr = ptr as *mut T;
-        let size = size / mem::size_of::<T>();
-        Some(unsafe { slice::from_raw_parts_mut(&mut *ptr, size) as *mut [T] })
-    }
-
-    #[inline]
-    fn is_size_suitable(size: DeviceSize) -> bool {
-        size % mem::size_of::<T>() as DeviceSize == 0
-    }
-
-    #[inline]
-    fn indiv_size() -> DeviceSize {
-        mem::size_of::<T>() as DeviceSize
-    }
-}
-
-/*
-TODO: do this when it's possible
-unsafe impl Content for .. {}
-impl<'a, T> !Content for &'a T {}
-impl<'a, T> !Content for &'a mut T {}
-impl<T> !Content for *const T {}
-impl<T> !Content for *mut T {}
-impl<T> !Content for Box<T> {}
-impl<T> !Content for UnsafeCell<T> {}
-
-*/

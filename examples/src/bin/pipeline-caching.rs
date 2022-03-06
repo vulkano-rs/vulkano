@@ -27,17 +27,18 @@
 // In the future, vulkano might implement those safety checks, but for
 // now, you would have to do that yourself or trust the data and the user.
 
-use std::fs;
-use std::fs::File;
-use std::io::Read;
-use std::io::Write;
-use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::DeviceCreateInfo;
-use vulkano::device::QueueCreateInfo;
-use vulkano::device::{Device, DeviceExtensions};
-use vulkano::instance::Instance;
-use vulkano::pipeline::cache::PipelineCache;
-use vulkano::pipeline::ComputePipeline;
+use std::{
+    fs::{remove_file, rename, File},
+    io::{Read, Write},
+};
+use vulkano::{
+    device::{
+        physical::{PhysicalDevice, PhysicalDeviceType},
+        Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+    },
+    instance::Instance,
+    pipeline::{cache::PipelineCache, ComputePipeline},
+};
 
 fn main() {
     // As with other examples, the first step is to create an instance.
@@ -137,9 +138,9 @@ fn main() {
     if let Ok(data) = pipeline_cache.get_data() {
         if let Ok(mut file) = File::create("pipeline_cache.bin.tmp") {
             if let Ok(_) = file.write_all(&data) {
-                let _ = fs::rename("pipeline_cache.bin.tmp", "pipeline_cache.bin");
+                let _ = rename("pipeline_cache.bin.tmp", "pipeline_cache.bin");
             } else {
-                let _ = fs::remove_file("pipeline_cache.bin.tmp");
+                let _ = remove_file("pipeline_cache.bin.tmp");
             }
         }
     }

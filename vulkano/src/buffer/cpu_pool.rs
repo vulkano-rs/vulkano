@@ -7,41 +7,33 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::buffer::sys::BufferCreationError;
-use crate::buffer::sys::UnsafeBuffer;
-use crate::buffer::sys::UnsafeBufferCreateInfo;
-use crate::buffer::traits::BufferAccess;
-use crate::buffer::traits::BufferAccessObject;
-use crate::buffer::traits::BufferInner;
-use crate::buffer::traits::TypedBufferAccess;
-use crate::buffer::BufferUsage;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::device::Queue;
-use crate::memory::pool::AllocFromRequirementsFilter;
-use crate::memory::pool::AllocLayout;
-use crate::memory::pool::MappingRequirement;
-use crate::memory::pool::MemoryPool;
-use crate::memory::pool::MemoryPoolAlloc;
-use crate::memory::pool::PotentialDedicatedAllocation;
-use crate::memory::pool::StdMemoryPool;
-use crate::memory::DedicatedAllocation;
-use crate::memory::DeviceMemoryAllocationError;
-use crate::sync::AccessError;
-use crate::DeviceSize;
-use crate::OomError;
-use std::cmp;
-use std::hash::Hash;
-use std::hash::Hasher;
-use std::iter;
-use std::marker::PhantomData;
-use std::mem;
-use std::ptr;
-use std::sync::atomic::AtomicU64;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::MutexGuard;
+use super::{
+    sys::{UnsafeBuffer, UnsafeBufferCreateInfo},
+    BufferAccess, BufferAccessObject, BufferContents, BufferCreationError, BufferInner,
+    BufferUsage, TypedBufferAccess,
+};
+use crate::{
+    device::{Device, DeviceOwned, Queue},
+    memory::{
+        pool::{
+            AllocFromRequirementsFilter, AllocLayout, MappingRequirement, MemoryPoolAlloc,
+            PotentialDedicatedAllocation, StdMemoryPool,
+        },
+        DedicatedAllocation, DeviceMemoryAllocationError, MemoryPool,
+    },
+    sync::AccessError,
+    DeviceSize, OomError,
+};
+use std::{
+    hash::{Hash, Hasher},
+    marker::PhantomData,
+    mem::size_of,
+    ptr,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Mutex, MutexGuard,
+    },
+};
 
 // TODO: Add `CpuBufferPoolSubbuffer::read` to read the content of a subbuffer.
 //       But that's hard to do because we must prevent `increase_gpu_lock` from working while a
@@ -102,6 +94,7 @@ use std::sync::MutexGuard;
 ///
 pub struct CpuBufferPool<T, A = Arc<StdMemoryPool>>
 where
+    [T]: BufferContents,
     A: MemoryPool,
 {
     // The device of the pool.
@@ -121,6 +114,7 @@ where
 }
 
 // One buffer of the pool.
+#[derive(Debug)]
 struct ActualBuffer<A>
 where
     A: MemoryPool,
@@ -163,6 +157,7 @@ struct ActualBufferChunk {
 /// When this object is destroyed, the subbuffer is automatically reclaimed by the pool.
 pub struct CpuBufferPoolChunk<T, A>
 where
+    [T]: BufferContents,
     A: MemoryPool,
 {
     buffer: Arc<ActualBuffer<A>>,
@@ -187,13 +182,17 @@ where
 /// When this object is destroyed, the subbuffer is automatically reclaimed by the pool.
 pub struct CpuBufferPoolSubbuffer<T, A>
 where
+    [T]: BufferContents,
     A: MemoryPool,
 {
     // This struct is just a wrapper around `CpuBufferPoolChunk`.
     chunk: CpuBufferPoolChunk<T, A>,
 }
 
-impl<T> CpuBufferPool<T> {
+impl<T> CpuBufferPool<T>
+where
+    [T]: BufferContents,
+{
     /// Builds a `CpuBufferPool`.
     ///
     /// # Panics
@@ -201,7 +200,7 @@ impl<T> CpuBufferPool<T> {
     /// - Panics if `T` has zero size.
     #[inline]
     pub fn new(device: Arc<Device>, usage: BufferUsage) -> CpuBufferPool<T> {
-        assert!(mem::size_of::<T>() > 0);
+        assert!(size_of::<T>() > 0);
         let pool = Device::standard_pool(&device);
 
         CpuBufferPool {
@@ -281,6 +280,7 @@ impl<T> CpuBufferPool<T> {
 
 impl<T, A> CpuBufferPool<T, A>
 where
+    [T]: BufferContents,
     A: MemoryPool,
 {
     /// Returns the current capacity of the pool, in number of elements.
@@ -326,7 +326,7 @@ where
         data: T,
     ) -> Result<Arc<CpuBufferPoolSubbuffer<T, A>>, DeviceMemoryAllocationError> {
         Ok(Arc::new(CpuBufferPoolSubbuffer {
-            chunk: self.chunk_impl(iter::once(data))?,
+            chunk: self.chunk_impl([data].into_iter())?,
         }))
     }
 
@@ -386,7 +386,7 @@ where
     #[inline]
     pub fn try_next(&self, data: T) -> Option<Arc<CpuBufferPoolSubbuffer<T, A>>> {
         let mut mutex = self.current_buffer.lock().unwrap();
-        self.try_next_impl(&mut mutex, iter::once(data))
+        self.try_next_impl(&mut mutex, [data])
             .map(|c| Arc::new(CpuBufferPoolSubbuffer { chunk: c }))
             .ok()
     }
@@ -399,7 +399,7 @@ where
         cur_buf_mutex: &mut MutexGuard<Option<Arc<ActualBuffer<A>>>>,
         capacity: DeviceSize,
     ) -> Result<(), DeviceMemoryAllocationError> {
-        let size = match (mem::size_of::<T>() as DeviceSize).checked_mul(capacity) {
+        let size = match (size_of::<T>() as DeviceSize).checked_mul(capacity) {
             Some(s) => s,
             None => {
                 return Err(DeviceMemoryAllocationError::OomError(
@@ -507,32 +507,31 @@ where
                 let idx = current_buffer.next_index.load(Ordering::SeqCst);
 
                 // Find the required alignment in bytes.
-                let align_bytes = cmp::max(
-                    if self.usage.uniform_buffer {
-                        self.device()
-                            .physical_device()
-                            .properties()
-                            .min_uniform_buffer_offset_alignment
-                    } else {
-                        1
-                    },
-                    if self.usage.storage_buffer {
-                        self.device()
-                            .physical_device()
-                            .properties()
-                            .min_storage_buffer_offset_alignment
-                    } else {
-                        1
-                    },
-                );
+                let align_uniform = if self.usage.uniform_buffer {
+                    self.device()
+                        .physical_device()
+                        .properties()
+                        .min_uniform_buffer_offset_alignment
+                } else {
+                    1
+                };
+                let align_storage = if self.usage.storage_buffer {
+                    self.device()
+                        .physical_device()
+                        .properties()
+                        .min_storage_buffer_offset_alignment
+                } else {
+                    1
+                };
+                let align_bytes = align_uniform.max(align_storage);
 
                 let tentative_align_offset = (align_bytes
-                    - ((idx * mem::size_of::<T>() as DeviceSize) % align_bytes))
+                    - ((idx * size_of::<T>() as DeviceSize) % align_bytes))
                     % align_bytes;
                 let additional_len = if tentative_align_offset == 0 {
                     0
                 } else {
-                    1 + (tentative_align_offset - 1) / mem::size_of::<T>() as DeviceSize
+                    1 + (tentative_align_offset - 1) / size_of::<T>() as DeviceSize
                 };
 
                 (idx, requested_len + additional_len, tentative_align_offset)
@@ -562,21 +561,21 @@ where
         // Write `data` in the memory.
         unsafe {
             let mem_off = current_buffer.memory.offset();
-            let range_start = index * mem::size_of::<T>() as DeviceSize + align_offset + mem_off;
-            let range_end = (index + requested_len) * mem::size_of::<T>() as DeviceSize
-                + align_offset
-                + mem_off;
-            let mut mapping = current_buffer
-                .memory
-                .mapped_memory()
-                .unwrap()
-                .read_write::<[T]>(range_start..range_end);
+            let range = (index * size_of::<T>() as DeviceSize + align_offset + mem_off)
+                ..((index + requested_len) * size_of::<T>() as DeviceSize + align_offset + mem_off);
+
+            let mapped_memory = current_buffer.memory.mapped_memory().unwrap();
+            let bytes = mapped_memory.write(range.clone()).unwrap();
+            let mapping = <[T]>::from_bytes_mut(bytes).unwrap();
 
             let mut written = 0;
             for (o, i) in mapping.iter_mut().zip(data) {
                 ptr::write(o, i);
                 written += 1;
             }
+
+            mapped_memory.flush_range(range).unwrap();
+
             assert_eq!(
                 written, requested_len,
                 "Iterator passed to CpuBufferPool::chunk has a mismatch between reported \
@@ -609,6 +608,7 @@ where
 // Can't automatically derive `Clone`, otherwise the compiler adds a `T: Clone` requirement.
 impl<T, A> Clone for CpuBufferPool<T, A>
 where
+    [T]: BufferContents,
     A: MemoryPool + Clone,
 {
     fn clone(&self) -> Self {
@@ -626,6 +626,7 @@ where
 
 unsafe impl<T, A> DeviceOwned for CpuBufferPool<T, A>
 where
+    [T]: BufferContents,
     A: MemoryPool,
 {
     #[inline]
@@ -636,6 +637,7 @@ where
 
 impl<T, A> Clone for CpuBufferPoolChunk<T, A>
 where
+    [T]: BufferContents,
     A: MemoryPool,
 {
     fn clone(&self) -> CpuBufferPoolChunk<T, A> {
@@ -664,19 +666,20 @@ where
 unsafe impl<T, A> BufferAccess for CpuBufferPoolChunk<T, A>
 where
     T: Send + Sync,
+    [T]: BufferContents,
     A: MemoryPool,
 {
     #[inline]
     fn inner(&self) -> BufferInner {
         BufferInner {
             buffer: &self.buffer.inner,
-            offset: self.index * mem::size_of::<T>() as DeviceSize + self.align_offset,
+            offset: self.index * size_of::<T>() as DeviceSize + self.align_offset,
         }
     }
 
     #[inline]
     fn size(&self) -> DeviceSize {
-        self.requested_len * mem::size_of::<T>() as DeviceSize
+        self.requested_len * size_of::<T>() as DeviceSize
     }
 
     #[inline]
@@ -750,7 +753,8 @@ where
 
 impl<T, A> BufferAccessObject for Arc<CpuBufferPoolChunk<T, A>>
 where
-    T: Send + Sync + 'static,
+    T: Send + Sync,
+    [T]: BufferContents,
     A: MemoryPool + 'static,
 {
     #[inline]
@@ -761,6 +765,7 @@ where
 
 impl<T, A> Drop for CpuBufferPoolChunk<T, A>
 where
+    [T]: BufferContents,
     A: MemoryPool,
 {
     fn drop(&mut self) {
@@ -787,6 +792,7 @@ where
 unsafe impl<T, A> TypedBufferAccess for CpuBufferPoolChunk<T, A>
 where
     T: Send + Sync,
+    [T]: BufferContents,
     A: MemoryPool,
 {
     type Content = [T];
@@ -794,6 +800,7 @@ where
 
 unsafe impl<T, A> DeviceOwned for CpuBufferPoolChunk<T, A>
 where
+    [T]: BufferContents,
     A: MemoryPool,
 {
     #[inline]
@@ -805,6 +812,7 @@ where
 impl<T, A> PartialEq for CpuBufferPoolChunk<T, A>
 where
     T: Send + Sync,
+    [T]: BufferContents,
     A: MemoryPool,
 {
     #[inline]
@@ -816,6 +824,7 @@ where
 impl<T, A> Eq for CpuBufferPoolChunk<T, A>
 where
     T: Send + Sync,
+    [T]: BufferContents,
     A: MemoryPool,
 {
 }
@@ -823,6 +832,7 @@ where
 impl<T, A> Hash for CpuBufferPoolChunk<T, A>
 where
     T: Send + Sync,
+    [T]: BufferContents,
     A: MemoryPool,
 {
     #[inline]
@@ -834,6 +844,7 @@ where
 
 impl<T, A> Clone for CpuBufferPoolSubbuffer<T, A>
 where
+    [T]: BufferContents,
     A: MemoryPool,
 {
     fn clone(&self) -> CpuBufferPoolSubbuffer<T, A> {
@@ -846,6 +857,7 @@ where
 unsafe impl<T, A> BufferAccess for CpuBufferPoolSubbuffer<T, A>
 where
     T: Send + Sync,
+    [T]: BufferContents,
     A: MemoryPool,
 {
     #[inline]
@@ -881,7 +893,8 @@ where
 
 impl<T, A> BufferAccessObject for Arc<CpuBufferPoolSubbuffer<T, A>>
 where
-    T: Send + Sync + 'static,
+    T: Send + Sync,
+    [T]: BufferContents,
     A: MemoryPool + 'static,
 {
     #[inline]
@@ -892,7 +905,8 @@ where
 
 unsafe impl<T, A> TypedBufferAccess for CpuBufferPoolSubbuffer<T, A>
 where
-    T: Send + Sync,
+    T: BufferContents,
+    [T]: BufferContents,
     A: MemoryPool,
 {
     type Content = T;
@@ -900,6 +914,7 @@ where
 
 unsafe impl<T, A> DeviceOwned for CpuBufferPoolSubbuffer<T, A>
 where
+    [T]: BufferContents,
     A: MemoryPool,
 {
     #[inline]
@@ -911,6 +926,7 @@ where
 impl<T, A> PartialEq for CpuBufferPoolSubbuffer<T, A>
 where
     T: Send + Sync,
+    [T]: BufferContents,
     A: MemoryPool,
 {
     #[inline]
@@ -922,6 +938,7 @@ where
 impl<T, A> Eq for CpuBufferPoolSubbuffer<T, A>
 where
     T: Send + Sync,
+    [T]: BufferContents,
     A: MemoryPool,
 {
 }
@@ -929,6 +946,7 @@ where
 impl<T, A> Hash for CpuBufferPoolSubbuffer<T, A>
 where
     T: Send + Sync,
+    [T]: BufferContents,
     A: MemoryPool,
 {
     #[inline]

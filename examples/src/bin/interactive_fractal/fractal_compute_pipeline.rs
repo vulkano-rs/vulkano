@@ -11,19 +11,21 @@ use crate::renderer::InterimImageView;
 use cgmath::Vector2;
 use rand::Rng;
 use std::sync::Arc;
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
-use vulkano::command_buffer::PrimaryCommandBuffer;
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
-use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
-use vulkano::device::Queue;
-use vulkano::image::ImageAccess;
-use vulkano::pipeline::{ComputePipeline, Pipeline, PipelineBindPoint};
-use vulkano::sync::GpuFuture;
+use vulkano::{
+    buffer::{BufferUsage, CpuAccessibleBuffer},
+    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBuffer},
+    descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
+    device::Queue,
+    image::ImageAccess,
+    pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
+    sync::GpuFuture,
+};
 
 pub struct FractalComputePipeline {
     gfx_queue: Arc<Queue>,
     pipeline: Arc<ComputePipeline>,
     palette: Arc<CpuAccessibleBuffer<[[f32; 4]]>>,
+    palette_size: i32,
     end_color: [f32; 4],
 }
 
@@ -38,11 +40,12 @@ impl FractalComputePipeline {
             [0.0, 0.0, 1.0, 1.0],
             [1.0, 0.0, 1.0, 1.0],
         ];
+        let palette_size = colors.len() as i32;
         let palette = CpuAccessibleBuffer::from_iter(
             gfx_queue.device().clone(),
             BufferUsage::all(),
             false,
-            colors.into_iter(),
+            colors,
         )
         .unwrap();
         let end_color = [0.0; 4];
@@ -62,6 +65,7 @@ impl FractalComputePipeline {
             gfx_queue,
             pipeline,
             palette,
+            palette_size,
             end_color,
         }
     }
@@ -69,7 +73,7 @@ impl FractalComputePipeline {
     /// Randomizes our color palette
     pub fn randomize_palette(&mut self) {
         let mut colors = vec![];
-        for _ in 0..self.palette.len() {
+        for _ in 0..self.palette_size {
             let r = rand::thread_rng().gen::<f32>();
             let g = rand::thread_rng().gen::<f32>();
             let b = rand::thread_rng().gen::<f32>();
@@ -118,7 +122,7 @@ impl FractalComputePipeline {
             scale: scale.into(),
             translation: translation.into(),
             end_color: self.end_color,
-            palette_size: self.palette.len() as i32,
+            palette_size: self.palette_size,
             max_iters: max_iters as i32,
             is_julia: is_julia as u32,
             _dummy0: [0u8; 8], // Required for alignment

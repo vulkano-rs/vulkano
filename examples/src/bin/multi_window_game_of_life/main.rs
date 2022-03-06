@@ -17,14 +17,15 @@ mod vulkano_context;
 #[allow(unused)]
 mod vulkano_window;
 
-use crate::app::{App, RenderPipeline};
-use crate::vulkano_window::VulkanoWindow;
+use crate::{
+    app::{App, RenderPipeline},
+    vulkano_window::VulkanoWindow,
+};
 use cgmath::Vector2;
-use time::Instant;
+use std::time::Instant;
 use vulkano::image::ImageAccess;
-use winit::event::{ElementState, MouseButton};
 use winit::{
-    event::{Event, WindowEvent},
+    event::{ElementState, Event, MouseButton, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     platform::run_return::EventLoopExtRunReturn,
 };
@@ -81,7 +82,7 @@ fn main() {
             mouse_is_pressed_w2,
         );
         // Compute life & render 60fps
-        if (Instant::now() - time).as_seconds_f64() > 1.0 / 60.0 {
+        if (Instant::now() - time).as_secs_f64() > 1.0 / 60.0 {
             compute_then_render_per_window(&mut app);
             time = Instant::now();
         }

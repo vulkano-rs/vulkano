@@ -15,13 +15,10 @@ use std::error;
 use std::fmt;
 
 /// Checks whether an indirect buffer can be bound.
-pub fn check_indirect_buffer<Inb>(
+pub fn check_indirect_buffer(
     device: &Device,
-    buffer: &Inb,
-) -> Result<(), CheckIndirectBufferError>
-where
-    Inb: BufferAccess + 'static,
-{
+    buffer: &dyn BufferAccess,
+) -> Result<(), CheckIndirectBufferError> {
     assert_eq!(
         buffer.inner().buffer.device().internal_object(),
         device.internal_object()

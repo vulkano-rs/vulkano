@@ -7,23 +7,27 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use bytemuck::{Pod, Zeroable};
 use cgmath::Vector3;
 use std::sync::Arc;
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
-use vulkano::command_buffer::{
-    AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer,
+use vulkano::{
+    buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
+    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer},
+    descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
+    device::Queue,
+    image::ImageViewAbstract,
+    impl_vertex,
+    pipeline::{
+        graphics::{
+            color_blend::{AttachmentBlend, BlendFactor, BlendOp, ColorBlendState},
+            input_assembly::InputAssemblyState,
+            vertex_input::BuffersDefinition,
+            viewport::{Viewport, ViewportState},
+        },
+        GraphicsPipeline, Pipeline, PipelineBindPoint,
+    },
+    render_pass::Subpass,
 };
-use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
-use vulkano::device::Queue;
-use vulkano::image::ImageViewAbstract;
-use vulkano::pipeline::graphics::color_blend::{
-    AttachmentBlend, BlendFactor, BlendOp, ColorBlendState,
-};
-use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
-use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
-use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
-use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
-use vulkano::render_pass::Subpass;
 
 /// Allows applying a directional light source to a scene.
 pub struct DirectionalLightingSystem {
@@ -37,24 +41,23 @@ impl DirectionalLightingSystem {
     pub fn new(gfx_queue: Arc<Queue>, subpass: Subpass) -> DirectionalLightingSystem {
         // TODO: vulkano doesn't allow us to draw without a vertex buffer, otherwise we could
         //       hard-code these values in the shader
+        let vertices = [
+            Vertex {
+                position: [-1.0, -1.0],
+            },
+            Vertex {
+                position: [-1.0, 3.0],
+            },
+            Vertex {
+                position: [3.0, -1.0],
+            },
+        ];
         let vertex_buffer = {
             CpuAccessibleBuffer::from_iter(
                 gfx_queue.device().clone(),
                 BufferUsage::all(),
                 false,
-                [
-                    Vertex {
-                        position: [-1.0, -1.0],
-                    },
-                    Vertex {
-                        position: [-1.0, 3.0],
-                    },
-                    Vertex {
-                        position: [3.0, -1.0],
-                    },
-                ]
-                .iter()
-                .cloned(),
+                vertices,
             )
             .expect("failed to create buffer")
         };
@@ -85,9 +88,9 @@ impl DirectionalLightingSystem {
         };
 
         DirectionalLightingSystem {
-            gfx_queue: gfx_queue,
-            vertex_buffer: vertex_buffer,
-            pipeline: pipeline,
+            gfx_queue,
+            vertex_buffer,
+            pipeline,
         }
     }
 
@@ -164,11 +167,11 @@ impl DirectionalLightingSystem {
 }
 
 #[repr(C)]
-#[derive(Default, Debug, Clone)]
+#[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
 struct Vertex {
     position: [f32; 2],
 }
-vulkano::impl_vertex!(Vertex, position);
+impl_vertex!(Vertex, position);
 
 mod vs {
     vulkano_shaders::shader! {

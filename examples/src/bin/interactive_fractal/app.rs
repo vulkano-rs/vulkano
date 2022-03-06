@@ -7,14 +7,19 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::fractal_compute_pipeline::FractalComputePipeline;
-use crate::renderer::{InterimImageView, RenderOptions, Renderer};
+use crate::{
+    fractal_compute_pipeline::FractalComputePipeline,
+    renderer::{InterimImageView, RenderOptions, Renderer},
+};
 use cgmath::Vector2;
-use time::Instant;
+use std::time::Instant;
 use vulkano::sync::GpuFuture;
-use winit::dpi::PhysicalPosition;
-use winit::event::{
-    ElementState, Event, KeyboardInput, MouseButton, MouseScrollDelta, VirtualKeyCode, WindowEvent,
+use winit::{
+    dpi::PhysicalPosition,
+    event::{
+        ElementState, Event, KeyboardInput, MouseButton, MouseScrollDelta, VirtualKeyCode,
+        WindowEvent,
+    },
 };
 
 const MAX_ITERS_INIT: u32 = 200;
@@ -116,7 +121,7 @@ Usage:
             self.frame_count = 0.0;
             self.dt_sum = 0.0;
         }
-        self.dt = self.time.elapsed().as_seconds_f32();
+        self.dt = self.time.elapsed().as_secs_f32();
         self.dt_sum += self.dt;
         self.frame_count += 1.0;
         self.time = Instant::now();

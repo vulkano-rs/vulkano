@@ -99,7 +99,7 @@ impl StdHostVisibleMemoryTypePool {
 
             // Try append at the end.
             let last_end = entries.last().map(|e| align(e.end, alignment)).unwrap_or(0);
-            if last_end + size <= (**dev_mem).as_ref().size() {
+            if last_end + size <= (**dev_mem).as_ref().allocation_size() {
                 entries.push(last_end..last_end + size);
                 return Ok(StdHostVisibleMemoryTypePoolAlloc {
                     pool: me.clone(),
@@ -114,7 +114,7 @@ impl StdHostVisibleMemoryTypePool {
         let new_block = {
             const MIN_BLOCK_SIZE: DeviceSize = 8 * 1024 * 1024; // 8 MB
             let allocation_size = cmp::max(MIN_BLOCK_SIZE, size.next_power_of_two());
-            let new_block = DeviceMemory::allocate_and_map(
+            let memory = DeviceMemory::allocate(
                 me.device.clone(),
                 MemoryAllocateInfo {
                     allocation_size,
@@ -122,6 +122,7 @@ impl StdHostVisibleMemoryTypePool {
                     ..Default::default()
                 },
             )?;
+            let new_block = MappedDeviceMemory::new(memory, 0..allocation_size)?;
             Arc::new(new_block)
         };
 

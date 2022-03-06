@@ -25,26 +25,29 @@
 // expensive otherwise. It has some drawbacks, which are the fact that transparent objects must be
 // drawn after the lighting, and that the whole process consumes more memory.
 
-use crate::frame::*;
-use crate::triangle_draw_system::*;
-use cgmath::Matrix4;
-use cgmath::SquareMatrix;
-use cgmath::Vector3;
-use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::DeviceCreateInfo;
-use vulkano::device::QueueCreateInfo;
-use vulkano::device::{Device, DeviceExtensions};
-use vulkano::image::view::ImageView;
-use vulkano::image::ImageUsage;
-use vulkano::instance::{Instance, InstanceCreateInfo};
-use vulkano::swapchain;
-use vulkano::swapchain::{AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError};
-use vulkano::sync;
-use vulkano::sync::{FlushError, GpuFuture};
+use crate::{
+    frame::{FrameSystem, Pass},
+    triangle_draw_system::TriangleDrawSystem,
+};
+use cgmath::{Matrix4, SquareMatrix, Vector3};
+use vulkano::{
+    device::{
+        physical::{PhysicalDevice, PhysicalDeviceType},
+        Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+    },
+    image::{view::ImageView, ImageUsage},
+    instance::{Instance, InstanceCreateInfo},
+    swapchain::{
+        acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+    },
+    sync::{self, FlushError, GpuFuture},
+};
 use vulkano_win::VkSurfaceBuild;
-use winit::event::{Event, WindowEvent};
-use winit::event_loop::{ControlFlow, EventLoop};
-use winit::window::WindowBuilder;
+use winit::{
+    event::{Event, WindowEvent},
+    event_loop::{ControlFlow, EventLoop},
+    window::WindowBuilder,
+};
 
 mod frame;
 mod triangle_draw_system;
@@ -182,7 +185,7 @@ fn main() {
             }
 
             let (image_num, suboptimal, acquire_future) =
-                match swapchain::acquire_next_image(swapchain.clone(), None) {
+                match acquire_next_image(swapchain.clone(), None) {
                     Ok(r) => r,
                     Err(AcquireError::OutOfDate) => {
                         recreate_swapchain = true;
