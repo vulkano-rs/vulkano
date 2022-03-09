@@ -95,7 +95,10 @@ pub(in super::super) fn check_vertex_buffers(
                 .max_multiview_instance_index
                 .unwrap_or(0);
 
-            if first_instance + instance_count > max_instance_index + 1 {
+            // The condition is somewhat convoluted to avoid integer overflows.
+            let out_of_range = first_instance > max_instance_index
+                || (instance_count > 0 && instance_count - 1 > max_instance_index - first_instance);
+            if out_of_range {
                 return Err(CheckVertexBufferError::TooManyInstances {
                     instance_count,
                     max_instance_count: max_instance_index + 1, // TODO: this can overflow
