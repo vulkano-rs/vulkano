@@ -102,6 +102,7 @@
 - Replaced `fnv` crate's `FnvHashMap`, `FnvHashSet` & `FnvHasher` with their `std` counterparts.
 - Validate SPIR-V code containing `OpUndef` correctly.
 - `VertexBuffersCollection` now supports arrays.
+- Fixed overflow in multiview vertex buffer validation.
 
 # Version 0.28.0 (2022-02-02)
 
