@@ -7,6 +7,8 @@
     Pull Request merge. 
 -->
 
+# Version 0.29.0 (2022-03-11)
+
 - **Breaking** `Instance` creation parameters are given using `InstanceCreateInfo`.
 - **Breaking** `ApplicationInfo` and the `app_info_from_cargo_toml!` macro are removed, their functionality is now integrated into `InstanceCreateInfo`.
 - **Breaking** `Device` creation parameters are given using `DeviceCreateInfo`.
