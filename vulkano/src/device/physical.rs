@@ -7,27 +7,21 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::buffer::{BufferUsage, ExternalBufferInfo, ExternalBufferProperties};
-use crate::device::{DeviceExtensions, Features, FeaturesFfi, Properties, PropertiesFfi};
-use crate::format::{Format, FormatProperties};
-use crate::image::{ImageCreateFlags, ImageFormatInfo, ImageFormatProperties, ImageUsage};
-use crate::instance::{Instance, InstanceCreationError};
-use crate::swapchain::{
-    ColorSpace, FullScreenExclusive, PresentMode, SupportedSurfaceTransforms, Surface, SurfaceApi,
-    SurfaceCapabilities, SurfaceInfo,
+use crate::{
+    buffer::{BufferUsage, ExternalBufferInfo, ExternalBufferProperties},
+    check_errors,
+    device::{DeviceExtensions, Features, FeaturesFfi, Properties, PropertiesFfi},
+    format::{Format, FormatProperties},
+    image::{ImageCreateFlags, ImageFormatInfo, ImageFormatProperties, ImageUsage},
+    instance::{Instance, InstanceCreationError},
+    swapchain::{
+        ColorSpace, FullScreenExclusive, PresentMode, SupportedSurfaceTransforms, Surface,
+        SurfaceApi, SurfaceCapabilities, SurfaceInfo,
+    },
+    sync::{ExternalSemaphoreInfo, ExternalSemaphoreProperties, PipelineStage},
+    DeviceSize, Error, OomError, Version, VulkanObject,
 };
-use crate::sync::{ExternalSemaphoreInfo, ExternalSemaphoreProperties, PipelineStage};
-use crate::Version;
-use crate::VulkanObject;
-use crate::{check_errors, OomError};
-use crate::{DeviceSize, Error};
-use std::error;
-use std::ffi::CStr;
-use std::fmt;
-use std::hash::Hash;
-use std::mem::MaybeUninit;
-use std::ptr;
-use std::sync::Arc;
+use std::{error, ffi::CStr, fmt, hash::Hash, mem::MaybeUninit, ptr, sync::Arc};
 
 #[derive(Clone, Debug)]
 pub(crate) struct PhysicalDeviceInfo {
@@ -1191,7 +1185,7 @@ impl<'a> PhysicalDevice<'a> {
                         ),
                 )?;
 
-                surface_format2s = Vec::with_capacity(num as usize);
+                surface_format2s = vec![ash::vk::SurfaceFormat2KHR::default(); num as usize];
                 check_errors(
                     fns.khr_get_surface_capabilities2
                         .get_physical_device_surface_formats2_khr(
