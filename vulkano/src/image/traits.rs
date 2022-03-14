@@ -160,7 +160,7 @@ pub unsafe trait ImageAccess: Send + Sync {
     /// can rely on the fact that `unlock()` is going to be called.
     fn try_gpu_lock(
         &self,
-        exclusive_access: bool,
+        write: bool,
         uninitialized_safe: bool,
         expected_layout: ImageLayout,
     ) -> Result<(), AccessError>;
@@ -173,7 +173,7 @@ pub unsafe trait ImageAccess: Send + Sync {
     /// If you call this function, you should call `unlock()` once the resource is no longer in use
     /// by the GPU. The implementation is not expected to automatically perform any unlocking and
     /// can rely on the fact that `unlock()` is going to be called.
-    unsafe fn increase_gpu_lock(&self);
+    unsafe fn increase_gpu_lock(&self, write: bool);
 
     /// Unlocks the resource previously acquired with `try_gpu_lock` or `increase_gpu_lock`.
     ///
@@ -194,7 +194,7 @@ pub unsafe trait ImageAccess: Send + Sync {
     ///   `ColorAttachmentOptimal` if the image wasn't created with the `color_attachment` usage).
     /// - The transitioned layout must not be `Undefined`.
     ///
-    unsafe fn unlock(&self, transitioned_layout: Option<ImageLayout>);
+    unsafe fn unlock(&self, write: bool, transitioned_layout: Option<ImageLayout>);
 }
 
 /// Inner information about an image.
@@ -276,22 +276,22 @@ where
     #[inline]
     fn try_gpu_lock(
         &self,
-        exclusive_access: bool,
+        write: bool,
         uninitialized_safe: bool,
         expected_layout: ImageLayout,
     ) -> Result<(), AccessError> {
         self.image
-            .try_gpu_lock(exclusive_access, uninitialized_safe, expected_layout)
+            .try_gpu_lock(write, uninitialized_safe, expected_layout)
     }
 
     #[inline]
-    unsafe fn increase_gpu_lock(&self) {
-        self.image.increase_gpu_lock()
+    unsafe fn increase_gpu_lock(&self, write: bool) {
+        self.image.increase_gpu_lock(write)
     }
 
     #[inline]
-    unsafe fn unlock(&self, new_layout: Option<ImageLayout>) {
-        self.image.unlock(new_layout)
+    unsafe fn unlock(&self, write: bool, new_layout: Option<ImageLayout>) {
+        self.image.unlock(write, new_layout)
     }
 
     fn current_mip_levels_access(&self) -> std::ops::Range<u32> {
@@ -370,21 +370,21 @@ where
     #[inline]
     fn try_gpu_lock(
         &self,
-        exclusive_access: bool,
+        write: bool,
         uninitialized_safe: bool,
         expected_layout: ImageLayout,
     ) -> Result<(), AccessError> {
-        (**self).try_gpu_lock(exclusive_access, uninitialized_safe, expected_layout)
+        (**self).try_gpu_lock(write, uninitialized_safe, expected_layout)
     }
 
     #[inline]
-    unsafe fn increase_gpu_lock(&self) {
-        (**self).increase_gpu_lock()
+    unsafe fn increase_gpu_lock(&self, write: bool) {
+        (**self).increase_gpu_lock(write)
     }
 
     #[inline]
-    unsafe fn unlock(&self, transitioned_layout: Option<ImageLayout>) {
-        (**self).unlock(transitioned_layout)
+    unsafe fn unlock(&self, write: bool, transitioned_layout: Option<ImageLayout>) {
+        (**self).unlock(write, transitioned_layout)
     }
 
     #[inline]

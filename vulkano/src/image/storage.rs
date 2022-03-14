@@ -7,43 +7,33 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::device::physical::QueueFamily;
-use crate::device::Device;
-use crate::format::ClearValue;
-use crate::format::Format;
-use crate::image::sys::ImageCreationError;
-use crate::image::sys::UnsafeImage;
-use crate::image::sys::UnsafeImageCreateInfo;
-use crate::image::traits::ImageAccess;
-use crate::image::traits::ImageClearValue;
-use crate::image::traits::ImageContent;
-use crate::image::ImageCreateFlags;
-use crate::image::ImageDescriptorLayouts;
-use crate::image::ImageDimensions;
-use crate::image::ImageInner;
-use crate::image::ImageLayout;
-use crate::image::ImageUsage;
-use crate::memory::pool::alloc_dedicated_with_exportable_fd;
-use crate::memory::pool::AllocFromRequirementsFilter;
-use crate::memory::pool::AllocLayout;
-use crate::memory::pool::MappingRequirement;
-use crate::memory::pool::MemoryPool;
-use crate::memory::pool::MemoryPoolAlloc;
-use crate::memory::pool::PotentialDedicatedAllocation;
-use crate::memory::pool::StdMemoryPool;
-use crate::memory::DedicatedAllocation;
-use crate::memory::ExternalMemoryHandleType;
-use crate::memory::{DeviceMemoryExportError, ExternalMemoryHandleTypes};
-use crate::sync::AccessError;
-use crate::sync::Sharing;
-use crate::DeviceSize;
+use super::{
+    sys::UnsafeImage,
+    traits::{ImageClearValue, ImageContent},
+    ImageAccess, ImageCreateFlags, ImageCreationError, ImageDescriptorLayouts, ImageDimensions,
+    ImageInner, ImageLayout, ImageUsage,
+};
+use crate::{
+    device::{physical::QueueFamily, Device},
+    format::{ClearValue, Format},
+    image::sys::UnsafeImageCreateInfo,
+    memory::{
+        pool::{
+            alloc_dedicated_with_exportable_fd, AllocFromRequirementsFilter, AllocLayout,
+            MappingRequirement, MemoryPoolAlloc, PotentialDedicatedAllocation, StdMemoryPool,
+        },
+        DedicatedAllocation, DeviceMemoryExportError, ExternalMemoryHandleType,
+        ExternalMemoryHandleTypes, MemoryPool,
+    },
+    sync::{AccessError, Sharing},
+    DeviceSize,
+};
 use smallvec::SmallVec;
-use std::fs::File;
-use std::hash::Hash;
-use std::hash::Hasher;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
+use std::{
+    fs::File,
+    hash::{Hash, Hasher},
+    sync::Arc,
+};
 
 /// General-purpose image in device memory. Can be used for any usage, but will be slower than a
 /// specialized image.
@@ -66,9 +56,6 @@ where
 
     // Queue families allowed to access this image.
     queue_families: SmallVec<[u32; 4]>,
-
-    // Number of times this image is locked on the GPU side.
-    gpu_lock: AtomicUsize,
 }
 
 impl StorageImage {
@@ -167,7 +154,6 @@ impl StorageImage {
             dimensions,
             format,
             queue_families,
-            gpu_lock: AtomicUsize::new(0),
         }))
     }
 
@@ -236,7 +222,6 @@ impl StorageImage {
             dimensions,
             format,
             queue_families,
-            gpu_lock: AtomicUsize::new(0),
         }))
     }
 
@@ -297,39 +282,48 @@ where
     #[inline]
     fn try_gpu_lock(
         &self,
-        _: bool,
+        write: bool,
         uninitialized_safe: bool,
         expected_layout: ImageLayout,
     ) -> Result<(), AccessError> {
-        // TODO: handle initial layout transition
-        if expected_layout != ImageLayout::General && expected_layout != ImageLayout::Undefined {
-            return Err(AccessError::UnexpectedImageLayout {
-                requested: expected_layout,
-                allowed: ImageLayout::General,
-            });
-        }
-
-        let val = self
-            .gpu_lock
-            .compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst)
-            .unwrap_or_else(|e| e);
-        if val == 0 {
-            Ok(())
-        } else {
-            Err(AccessError::AlreadyInUse)
-        }
+        let mut state = self.inner().image.state();
+        state.try_gpu_lock(
+            self.inner().image.format().unwrap().aspects(),
+            self.inner().first_mipmap_level as u32
+                ..self.inner().first_mipmap_level as u32 + self.inner().num_mipmap_levels as u32,
+            self.inner().first_layer as u32
+                ..self.inner().first_layer as u32 + self.inner().num_layers as u32,
+            write,
+            expected_layout,
+            self.final_layout_requirement(),
+        )
     }
 
     #[inline]
-    unsafe fn increase_gpu_lock(&self) {
-        let val = self.gpu_lock.fetch_add(1, Ordering::SeqCst);
-        debug_assert!(val >= 1);
+    unsafe fn increase_gpu_lock(&self, write: bool) {
+        let mut state = self.inner().image.state();
+        state.increase_gpu_lock(
+            self.inner().image.format().unwrap().aspects(),
+            self.inner().first_mipmap_level as u32
+                ..self.inner().first_mipmap_level as u32 + self.inner().num_mipmap_levels as u32,
+            self.inner().first_layer as u32
+                ..self.inner().first_layer as u32 + self.inner().num_layers as u32,
+            write,
+            self.final_layout_requirement(),
+        )
     }
 
     #[inline]
-    unsafe fn unlock(&self, new_layout: Option<ImageLayout>) {
-        assert!(new_layout.is_none() || new_layout == Some(ImageLayout::General));
-        self.gpu_lock.fetch_sub(1, Ordering::SeqCst);
+    unsafe fn unlock(&self, write: bool, new_layout: Option<ImageLayout>) {
+        let mut state = self.inner().image.state();
+        state.gpu_unlock(
+            self.inner().image.format().unwrap().aspects(),
+            self.inner().first_mipmap_level as u32
+                ..self.inner().first_mipmap_level as u32 + self.inner().num_mipmap_levels as u32,
+            self.inner().first_layer as u32
+                ..self.inner().first_layer as u32 + self.inner().num_layers as u32,
+            write,
+        )
     }
 
     #[inline]

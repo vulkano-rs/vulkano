@@ -414,6 +414,10 @@ impl SyncCommandBufferBuilder {
                                 if initial_layout_requirement != start_layout
                                     || !is_layout_initialized
                                 {
+                                    // A layout transition is a write, so if we perform one, we need
+                                    // exclusive access.
+                                    actually_exclusive = true;
+
                                     // Note that we transition from `bottom_of_pipe`, which means that we
                                     // wait for all the previous commands to be entirely finished. This is
                                     // suboptimal, but:
@@ -426,14 +430,15 @@ impl SyncCommandBufferBuilder {
                                     //
                                     unsafe {
                                         let from_layout = if is_layout_initialized {
-                                            actually_exclusive = true;
+                                            if initial_layout_requirement != start_layout {
+                                                actual_start_layout = initial_layout_requirement;
+                                            }
+
                                             initial_layout_requirement
                                         } else {
+                                            actual_start_layout = image.initial_layout();
                                             image.initial_layout()
                                         };
-                                        if initial_layout_requirement != start_layout {
-                                            actual_start_layout = initial_layout_requirement;
-                                        }
                                         let b = &mut self.pending_barrier;
                                         b.add_image_memory_barrier(
                                             image.as_ref(),

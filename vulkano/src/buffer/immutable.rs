@@ -433,8 +433,8 @@ where
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, _: &Queue) -> Result<(), AccessError> {
-        if exclusive_access {
+    fn try_gpu_lock(&self, write: bool, _: &Queue) -> Result<(), AccessError> {
+        if write {
             return Err(AccessError::ExclusiveDenied);
         }
 
@@ -442,14 +442,24 @@ where
             return Err(AccessError::BufferNotInitialized);
         }
 
-        Ok(())
+        let mut state = self.inner.state();
+        let range = self.inner().offset..self.inner().offset + self.size();
+        state.try_gpu_lock(range, write)
     }
 
     #[inline]
-    unsafe fn increase_gpu_lock(&self) {}
+    unsafe fn increase_gpu_lock(&self, write: bool) {
+        let mut state = self.inner.state();
+        let range = self.inner().offset..self.inner().offset + self.size();
+        state.increase_gpu_lock(range, write)
+    }
 
     #[inline]
-    unsafe fn unlock(&self) {}
+    unsafe fn unlock(&self, write: bool) {
+        let mut state = self.inner.state();
+        let range = self.inner().offset..self.inner().offset + self.size();
+        state.gpu_unlock(range, write)
+    }
 }
 
 impl<T, A> BufferAccessObject for Arc<ImmutableBuffer<T, A>>
@@ -542,30 +552,40 @@ where
     }
 
     #[inline]
-    fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
+    fn try_gpu_lock(&self, write: bool, _: &Queue) -> Result<(), AccessError> {
         if self.buffer.initialized.load(Ordering::Relaxed) {
             return Err(AccessError::AlreadyInUse);
         }
 
-        if !self
+        if self
             .used
             .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
             .unwrap_or_else(|e| e)
         {
-            Ok(())
-        } else {
-            Err(AccessError::AlreadyInUse)
+            return Err(AccessError::AlreadyInUse);
         }
+
+        let mut state = self.inner().buffer.state();
+        let range = self.inner().offset..self.inner().offset + self.size();
+        state.try_gpu_lock(range, write)
     }
 
     #[inline]
-    unsafe fn increase_gpu_lock(&self) {
+    unsafe fn increase_gpu_lock(&self, write: bool) {
         debug_assert!(self.used.load(Ordering::Relaxed));
+
+        let mut state = self.inner().buffer.state();
+        let range = self.inner().offset..self.inner().offset + self.size();
+        state.increase_gpu_lock(range, write)
     }
 
     #[inline]
-    unsafe fn unlock(&self) {
+    unsafe fn unlock(&self, write: bool) {
         self.buffer.initialized.store(true, Ordering::Relaxed);
+
+        let mut state = self.inner().buffer.state();
+        let range = self.inner().offset..self.inner().offset + self.size();
+        state.gpu_unlock(range, write)
     }
 }
 

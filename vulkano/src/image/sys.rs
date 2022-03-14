@@ -14,10 +14,11 @@
 //! that you create must wrap around the types in this module.
 
 use super::{
-    ImageAspect, ImageCreateFlags, ImageDimensions, ImageLayout, ImageTiling, ImageUsage,
-    SampleCount, SampleCounts,
+    ImageAspect, ImageAspects, ImageCreateFlags, ImageDimensions, ImageLayout, ImageTiling,
+    ImageUsage, SampleCount, SampleCounts,
 };
 use crate::{
+    buffer::cpu_access::{ReadLockError, WriteLockError},
     check_errors,
     device::{Device, DeviceOwned},
     format::{ChromaSampling, Format, FormatFeatures, NumericType},
@@ -26,15 +27,19 @@ use crate::{
         DeviceMemory, DeviceMemoryAllocationError, ExternalMemoryHandleType,
         ExternalMemoryHandleTypes, MemoryRequirements,
     },
-    sync::Sharing,
+    sync::{AccessError, CurrentAccess, Sharing},
     DeviceSize, Error, OomError, Version, VulkanObject,
 };
 use ash::vk::Handle;
+use parking_lot::{Mutex, MutexGuard};
+use rangemap::RangeMap;
 use smallvec::{smallvec, SmallVec};
 use std::{
     error, fmt,
     hash::{Hash, Hasher},
+    iter::{FusedIterator, Peekable},
     mem::MaybeUninit,
+    ops::Range,
     ptr,
     sync::Arc,
 };
@@ -71,6 +76,7 @@ pub struct UnsafeImage {
 
     // `vkDestroyImage` is called only if `needs_destruction` is true.
     needs_destruction: bool,
+    state: Mutex<ImageState>,
 }
 
 impl UnsafeImage {
@@ -114,6 +120,8 @@ impl UnsafeImage {
             _ne: _,
         } = create_info;
 
+        let aspects = format.unwrap().aspects();
+
         let image = UnsafeImage {
             device,
             handle,
@@ -132,6 +140,12 @@ impl UnsafeImage {
             block_texel_view_compatible,
 
             needs_destruction: true,
+            state: Mutex::new(ImageState::new(
+                aspects,
+                mip_levels,
+                dimensions.array_layers(),
+                initial_layout,
+            )),
         };
 
         Ok(image)
@@ -843,6 +857,9 @@ impl UnsafeImage {
 
         // TODO: check that usage is correct in regard to `output`?
 
+        let aspects = format.aspects();
+        let initial_layout = ImageLayout::Undefined; // TODO: Maybe this should be passed in?
+
         UnsafeImage {
             handle,
             device: device.clone(),
@@ -850,7 +867,7 @@ impl UnsafeImage {
             dimensions,
             format: Some(format),
             format_features,
-            initial_layout: ImageLayout::Undefined, // TODO: Maybe this should be passed in?
+            initial_layout,
             mip_levels,
             samples,
             tiling,
@@ -861,6 +878,12 @@ impl UnsafeImage {
             block_texel_view_compatible: flags.block_texel_view_compatible,
 
             needs_destruction: false, // TODO: pass as parameter
+            state: Mutex::new(ImageState::new(
+                aspects,
+                mip_levels,
+                dimensions.array_layers(),
+                initial_layout,
+            )),
         }
     }
 
@@ -953,6 +976,10 @@ impl UnsafeImage {
             offset,
         ))?;
         Ok(())
+    }
+
+    pub(crate) fn state(&self) -> MutexGuard<ImageState> {
+        self.state.lock()
     }
 
     /// Returns the dimensions of the image.
@@ -1595,14 +1622,563 @@ pub struct LinearLayout {
     pub depth_pitch: DeviceSize,
 }
 
+/// The current state of an image.
+#[derive(Debug)]
+pub(crate) struct ImageState {
+    ranges: RangeMap<DeviceSize, ImageRangeState>,
+    subresources: Subresources,
+}
+
+impl ImageState {
+    fn new(
+        aspects: ImageAspects,
+        mip_levels: u32,
+        array_layers: u32,
+        initial_layout: ImageLayout,
+    ) -> Self {
+        let subresources = Subresources::new(aspects, mip_levels, array_layers);
+
+        ImageState {
+            ranges: [(
+                subresources.range(),
+                ImageRangeState {
+                    current_access: CurrentAccess::Shared {
+                        cpu_reads: 0,
+                        gpu_reads: 0,
+                    },
+                    layout: initial_layout,
+                },
+            )]
+            .into_iter()
+            .collect(),
+            subresources,
+        }
+    }
+
+    pub(crate) fn try_cpu_read(
+        &mut self,
+        aspects: ImageAspects,
+        mip_levels: Range<u32>,
+        array_layers: Range<u32>,
+    ) -> Result<(), ReadLockError> {
+        let iter = self
+            .subresources
+            .iter_ranges(aspects, mip_levels, array_layers);
+
+        for range in iter.clone() {
+            for (_range, state) in self.ranges.range(&range) {
+                match &state.current_access {
+                    CurrentAccess::CpuExclusive { .. } => {
+                        return Err(ReadLockError::CpuWriteLocked)
+                    }
+                    CurrentAccess::GpuExclusive { .. } => {
+                        return Err(ReadLockError::GpuWriteLocked)
+                    }
+                    CurrentAccess::Shared { .. } => (),
+                }
+            }
+        }
+
+        for range in iter {
+            self.ranges.split_at(&range.start);
+            self.ranges.split_at(&range.end);
+
+            for (_range, state) in self.ranges.range_mut(&range) {
+                match &mut state.current_access {
+                    CurrentAccess::Shared { cpu_reads, .. } => {
+                        *cpu_reads += 1;
+                    }
+                    _ => unreachable!(),
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn try_cpu_write(
+        &mut self,
+        aspects: ImageAspects,
+        mip_levels: Range<u32>,
+        array_layers: Range<u32>,
+    ) -> Result<(), WriteLockError> {
+        let iter = self
+            .subresources
+            .iter_ranges(aspects, mip_levels, array_layers);
+
+        for range in iter.clone() {
+            for (_range, state) in self.ranges.range(&range) {
+                match &state.current_access {
+                    CurrentAccess::CpuExclusive => return Err(WriteLockError::CpuLocked),
+                    CurrentAccess::GpuExclusive { .. } => return Err(WriteLockError::GpuLocked),
+                    CurrentAccess::Shared {
+                        cpu_reads: 0,
+                        gpu_reads: 0,
+                    } => (),
+                    CurrentAccess::Shared { cpu_reads, .. } if *cpu_reads > 0 => {
+                        return Err(WriteLockError::CpuLocked)
+                    }
+                    CurrentAccess::Shared { .. } => return Err(WriteLockError::GpuLocked),
+                }
+            }
+        }
+
+        for range in iter {
+            self.ranges.split_at(&range.start);
+            self.ranges.split_at(&range.end);
+
+            for (_range, state) in self.ranges.range_mut(&range) {
+                state.current_access = CurrentAccess::CpuExclusive;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub(crate) unsafe fn cpu_unlock(
+        &mut self,
+        aspects: ImageAspects,
+        mip_levels: Range<u32>,
+        array_layers: Range<u32>,
+        write: bool,
+    ) {
+        let iter = self
+            .subresources
+            .iter_ranges(aspects, mip_levels, array_layers);
+
+        if write {
+            for range in iter {
+                self.ranges.split_at(&range.start);
+                self.ranges.split_at(&range.end);
+
+                for (_range, state) in self.ranges.range_mut(&range) {
+                    match &mut state.current_access {
+                        CurrentAccess::CpuExclusive => {
+                            state.current_access = CurrentAccess::Shared {
+                                cpu_reads: 0,
+                                gpu_reads: 0,
+                            }
+                        }
+                        CurrentAccess::GpuExclusive { .. } => {
+                            unreachable!("Image is being written by the GPU")
+                        }
+                        CurrentAccess::Shared { .. } => {
+                            unreachable!("Image is not being written by the CPU")
+                        }
+                    }
+                }
+            }
+        } else {
+            for range in iter {
+                self.ranges.split_at(&range.start);
+                self.ranges.split_at(&range.end);
+
+                for (_range, state) in self.ranges.range_mut(&range) {
+                    match &mut state.current_access {
+                        CurrentAccess::CpuExclusive => {
+                            unreachable!("Image is being written by the CPU")
+                        }
+                        CurrentAccess::GpuExclusive { .. } => {
+                            unreachable!("Image is being written by the GPU")
+                        }
+                        CurrentAccess::Shared { cpu_reads, .. } => *cpu_reads -= 1,
+                    }
+                }
+            }
+        }
+    }
+
+    pub(crate) fn try_gpu_lock(
+        &mut self,
+        aspects: ImageAspects,
+        mip_levels: Range<u32>,
+        array_layers: Range<u32>,
+        write: bool,
+        expected_layout: ImageLayout,
+        destination_layout: ImageLayout,
+    ) -> Result<(), AccessError> {
+        debug_assert!(!matches!(
+            destination_layout,
+            ImageLayout::Undefined | ImageLayout::Preinitialized
+        ));
+
+        let iter = self
+            .subresources
+            .iter_ranges(aspects, mip_levels, array_layers);
+
+        if write {
+            for range in iter.clone() {
+                for (_range, state) in self.ranges.range(&range) {
+                    match &state.current_access {
+                        CurrentAccess::Shared {
+                            cpu_reads: 0,
+                            gpu_reads: 0,
+                        } => (),
+                        _ => return Err(AccessError::AlreadyInUse),
+                    }
+
+                    if expected_layout != ImageLayout::Undefined && state.layout != expected_layout
+                    {
+                        return Err(AccessError::UnexpectedImageLayout {
+                            allowed: state.layout,
+                            requested: expected_layout,
+                        });
+                    }
+                }
+            }
+
+            for range in iter {
+                self.ranges.split_at(&range.start);
+                self.ranges.split_at(&range.end);
+
+                for (_range, state) in self.ranges.range_mut(&range) {
+                    state.current_access = CurrentAccess::GpuExclusive {
+                        gpu_reads: 0,
+                        gpu_writes: 1,
+                    };
+                    state.layout = destination_layout;
+                }
+            }
+        } else {
+            debug_assert_eq!(expected_layout, destination_layout);
+
+            for range in iter.clone() {
+                for (_range, state) in self.ranges.range(&range) {
+                    match &state.current_access {
+                        CurrentAccess::Shared { .. } => (),
+                        _ => return Err(AccessError::AlreadyInUse),
+                    }
+
+                    if expected_layout != ImageLayout::Undefined && state.layout != expected_layout
+                    {
+                        return Err(AccessError::UnexpectedImageLayout {
+                            allowed: state.layout,
+                            requested: expected_layout,
+                        });
+                    }
+                }
+            }
+
+            for range in iter {
+                self.ranges.split_at(&range.start);
+                self.ranges.split_at(&range.end);
+
+                for (_range, state) in self.ranges.range_mut(&range) {
+                    match &mut state.current_access {
+                        CurrentAccess::Shared { gpu_reads, .. } => *gpu_reads += 1,
+                        _ => unreachable!(),
+                    }
+
+                    state.layout = destination_layout;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    pub(crate) unsafe fn increase_gpu_lock(
+        &mut self,
+        aspects: ImageAspects,
+        mip_levels: Range<u32>,
+        array_layers: Range<u32>,
+        write: bool,
+        destination_layout: ImageLayout,
+    ) {
+        debug_assert!(!matches!(
+            destination_layout,
+            ImageLayout::Undefined | ImageLayout::Preinitialized
+        ));
+
+        let iter = self
+            .subresources
+            .iter_ranges(aspects, mip_levels, array_layers);
+
+        if write {
+            for range in iter {
+                self.ranges.split_at(&range.start);
+                self.ranges.split_at(&range.end);
+
+                for (_range, state) in self.ranges.range_mut(&range) {
+                    match &mut state.current_access {
+                        CurrentAccess::CpuExclusive => {
+                            unreachable!("Image is being written by the CPU")
+                        }
+                        CurrentAccess::GpuExclusive { gpu_writes, .. } => *gpu_writes += 1,
+                        &mut CurrentAccess::Shared {
+                            cpu_reads: 0,
+                            gpu_reads,
+                        } => {
+                            state.current_access = CurrentAccess::GpuExclusive {
+                                gpu_reads,
+                                gpu_writes: 1,
+                            }
+                        }
+                        CurrentAccess::Shared { .. } => {
+                            unreachable!("Image is being read by the CPU")
+                        }
+                    }
+
+                    state.layout = destination_layout;
+                }
+            }
+        } else {
+            for range in iter {
+                self.ranges.split_at(&range.start);
+                self.ranges.split_at(&range.end);
+
+                for (_range, state) in self.ranges.range_mut(&range) {
+                    match &mut state.current_access {
+                        CurrentAccess::CpuExclusive => {
+                            unreachable!("Image is being written by the CPU")
+                        }
+                        CurrentAccess::GpuExclusive { gpu_reads, .. }
+                        | CurrentAccess::Shared { gpu_reads, .. } => *gpu_reads += 1,
+                    }
+
+                    state.layout = destination_layout;
+                }
+            }
+        }
+    }
+
+    pub(crate) unsafe fn gpu_unlock(
+        &mut self,
+        aspects: ImageAspects,
+        mip_levels: Range<u32>,
+        array_layers: Range<u32>,
+        write: bool,
+    ) {
+        let iter = self
+            .subresources
+            .iter_ranges(aspects, mip_levels, array_layers);
+
+        if write {
+            for range in iter {
+                self.ranges.split_at(&range.start);
+                self.ranges.split_at(&range.end);
+
+                for (_range, state) in self.ranges.range_mut(&range) {
+                    match &mut state.current_access {
+                        CurrentAccess::CpuExclusive => {
+                            unreachable!("Image is being written by the CPU")
+                        }
+                        &mut CurrentAccess::GpuExclusive {
+                            gpu_reads,
+                            gpu_writes: 1,
+                        } => {
+                            state.current_access = CurrentAccess::Shared {
+                                cpu_reads: 0,
+                                gpu_reads,
+                            }
+                        }
+                        CurrentAccess::GpuExclusive { gpu_writes, .. } => *gpu_writes -= 1,
+                        CurrentAccess::Shared { .. } => {
+                            unreachable!("Image is not being written by the GPU")
+                        }
+                    }
+                }
+            }
+        } else {
+            for range in iter {
+                self.ranges.split_at(&range.start);
+                self.ranges.split_at(&range.end);
+
+                for (_range, state) in self.ranges.range_mut(&range) {
+                    match &mut state.current_access {
+                        CurrentAccess::CpuExclusive => {
+                            unreachable!("Buffer is being written by the CPU")
+                        }
+                        CurrentAccess::GpuExclusive { gpu_reads, .. } => *gpu_reads -= 1,
+                        CurrentAccess::Shared { gpu_reads, .. } => *gpu_reads -= 1,
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The current state of a specific subresource range in an image.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ImageRangeState {
+    current_access: CurrentAccess,
+    layout: ImageLayout,
+}
+
+/// Helper type for the subresources of an image.
+///
+/// In ranges, the subresources are "flattened" to `DeviceSize`, where each index in the range
+/// is a single array layer. The layers are arranged hierarchically: aspects at the top level,
+/// with the mip levels in that aspect, and the array layers in that mip level.
+#[derive(Debug)]
+struct Subresources {
+    aspects: ImageAspects,
+    aspect_list: SmallVec<[ImageAspect; 4]>,
+    aspect_size: DeviceSize,
+
+    mip_levels: u32,
+    mip_level_size: DeviceSize,
+
+    array_layers: u32,
+}
+
+impl Subresources {
+    #[inline]
+    fn new(aspects: ImageAspects, mip_levels: u32, array_layers: u32) -> Self {
+        let mip_level_size = array_layers as DeviceSize;
+        let aspect_size = mip_level_size * mip_levels as DeviceSize;
+        let aspect_list: SmallVec<[ImageAspect; 4]> = aspects.iter().collect();
+
+        Self {
+            aspects,
+            aspect_list,
+            aspect_size,
+            mip_levels,
+            mip_level_size,
+            array_layers,
+        }
+    }
+
+    /// Returns a range representing all subresources of the image.
+    #[inline]
+    fn range(&self) -> Range<DeviceSize> {
+        0..self.aspect_list.len() as DeviceSize * self.aspect_size
+    }
+
+    fn iter_ranges(
+        &self,
+        aspects: ImageAspects,
+        mip_levels: Range<u32>,
+        array_layers: Range<u32>,
+    ) -> SubresourceRangeIterator {
+        assert!(self.aspects.contains(&aspects));
+        assert!(!mip_levels.is_empty());
+        assert!(mip_levels.end <= self.mip_levels);
+        assert!(!array_layers.is_empty());
+        assert!(array_layers.end <= self.array_layers);
+
+        let next_fn = if array_layers.start != 0 || array_layers.end != self.array_layers {
+            SubresourceRangeIterator::next_some_layers
+        } else if mip_levels.start != 0 || mip_levels.end != self.mip_levels {
+            SubresourceRangeIterator::next_some_levels_all_layers
+        } else {
+            SubresourceRangeIterator::next_all_levels_all_layers
+        };
+
+        let mut aspect_nums = aspects
+            .iter()
+            .map(|aspect| self.aspect_list.iter().position(|&a| a == aspect).unwrap())
+            .collect::<SmallVec<[usize; 4]>>()
+            .into_iter()
+            .peekable();
+        assert!(aspect_nums.len() != 0);
+        let current_aspect_num = aspect_nums.next();
+        let current_mip_level = mip_levels.start;
+
+        SubresourceRangeIterator {
+            subresources: self,
+            next_fn,
+
+            aspect_nums,
+            current_aspect_num,
+            mip_levels,
+            current_mip_level,
+            array_layers,
+        }
+    }
+}
+
+#[derive(Clone)]
+struct SubresourceRangeIterator<'a> {
+    subresources: &'a Subresources,
+    next_fn: fn(&mut Self) -> Option<Range<DeviceSize>>,
+
+    aspect_nums: Peekable<smallvec::IntoIter<[usize; 4]>>,
+    current_aspect_num: Option<usize>,
+    mip_levels: Range<u32>,
+    current_mip_level: u32,
+    array_layers: Range<u32>,
+}
+
+impl<'a> SubresourceRangeIterator<'a> {
+    /// Used when the requested range contains only a subset of the array layers in the image.
+    /// The iterator returns one range for each mip level and aspect, each covering the range of
+    /// array layers of that mip level and aspect.
+    fn next_some_layers(&mut self) -> Option<Range<DeviceSize>> {
+        self.current_aspect_num.map(|aspect_num| {
+            let mip_level_offset = aspect_num as DeviceSize * self.subresources.aspect_size
+                + self.current_mip_level as DeviceSize * self.subresources.mip_level_size;
+            self.current_mip_level += 1;
+
+            if self.current_mip_level >= self.mip_levels.end {
+                self.current_mip_level = self.mip_levels.start;
+                self.current_aspect_num = self.aspect_nums.next();
+            }
+
+            let start = mip_level_offset + self.array_layers.start as DeviceSize;
+            let end = mip_level_offset + self.array_layers.end as DeviceSize;
+            start..end
+        })
+    }
+
+    /// Used when the requested range contains all array layers in the image, but not all mip
+    /// levels. The iterator returns one range for each aspect, each covering all layers of the
+    /// range of mip levels of that aspect.
+    fn next_some_levels_all_layers(&mut self) -> Option<Range<DeviceSize>> {
+        self.current_aspect_num.map(|aspect_num| {
+            let aspect_offset = aspect_num as DeviceSize * self.subresources.aspect_size;
+            self.current_aspect_num = self.aspect_nums.next();
+
+            let start = aspect_offset
+                + self.mip_levels.start as DeviceSize * self.subresources.mip_level_size;
+            let end = aspect_offset
+                + self.mip_levels.end as DeviceSize * self.subresources.mip_level_size;
+            start..end
+        })
+    }
+
+    /// Used when the requested range contains all array layers and mip levels in the image.
+    /// The iterator returns one range for each series of adjacent aspect numbers, each covering
+    /// all mip levels and all layers of those aspects. If the range contains the whole image, then
+    /// exactly one range is returned since all aspect numbers will be adjacent.
+    fn next_all_levels_all_layers(&mut self) -> Option<Range<DeviceSize>> {
+        self.current_aspect_num.map(|aspect_num_start| {
+            self.current_aspect_num = self.aspect_nums.next();
+            let mut aspect_num_end = aspect_num_start + 1;
+
+            while self.current_aspect_num == Some(aspect_num_end) {
+                self.current_aspect_num = self.aspect_nums.next();
+                aspect_num_end += 1;
+            }
+
+            let start = aspect_num_start as DeviceSize * self.subresources.aspect_size;
+            let end = aspect_num_end as DeviceSize * self.subresources.aspect_size;
+            start..end
+        })
+    }
+}
+
+impl<'a> Iterator for SubresourceRangeIterator<'a> {
+    type Item = Range<DeviceSize>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        (self.next_fn)(self)
+    }
+}
+
+impl<'a> FusedIterator for SubresourceRangeIterator<'a> {}
+
 #[cfg(test)]
 mod tests {
     use super::ImageCreationError;
+    use super::ImageState;
     use super::ImageUsage;
     use super::UnsafeImage;
     use super::UnsafeImageCreateInfo;
     use crate::format::Format;
+    use crate::image::ImageAspects;
     use crate::image::ImageDimensions;
+    use crate::image::ImageLayout;
     use crate::image::SampleCount;
 
     #[test]
@@ -1819,5 +2395,123 @@ mod tests {
             Err(ImageCreationError::CubeCompatibleNotSquare) => (),
             _ => panic!(),
         };
+    }
+
+    #[test]
+    fn subresource_range_iterator() {
+        // A fictitious set of aspects that no real image would actually ever have.
+        let image_state = ImageState::new(
+            ImageAspects {
+                color: true,
+                depth: true,
+                stencil: true,
+                plane0: true,
+                ..ImageAspects::none()
+            },
+            6,
+            8,
+            ImageLayout::Undefined,
+        );
+
+        let mip = image_state.subresources.mip_level_size;
+        let asp = image_state.subresources.aspect_size;
+
+        assert_eq!(mip, 8);
+        assert_eq!(asp, 8 * 6);
+
+        // Whole image
+        let mut iter = image_state.subresources.iter_ranges(
+            ImageAspects {
+                color: true,
+                depth: true,
+                stencil: true,
+                plane0: true,
+                ..ImageAspects::none()
+            },
+            0..6,
+            0..8,
+        );
+        assert_eq!(iter.next(), Some(0 * asp..4 * asp));
+        assert_eq!(iter.next(), None);
+
+        // Only some aspects
+        let mut iter = image_state.subresources.iter_ranges(
+            ImageAspects {
+                color: true,
+                depth: true,
+                stencil: false,
+                plane0: true,
+                ..ImageAspects::none()
+            },
+            0..6,
+            0..8,
+        );
+        assert_eq!(iter.next(), Some(0 * asp..2 * asp));
+        assert_eq!(iter.next(), Some(3 * asp..4 * asp));
+        assert_eq!(iter.next(), None);
+
+        // Two aspects, and only some of the mip levels
+        let mut iter = image_state.subresources.iter_ranges(
+            ImageAspects {
+                color: false,
+                depth: true,
+                stencil: true,
+                plane0: false,
+                ..ImageAspects::none()
+            },
+            2..4,
+            0..8,
+        );
+        assert_eq!(iter.next(), Some(1 * asp + 2 * mip..1 * asp + 4 * mip));
+        assert_eq!(iter.next(), Some(2 * asp + 2 * mip..2 * asp + 4 * mip));
+        assert_eq!(iter.next(), None);
+
+        // One aspect, one mip level, only some of the array layers
+        let mut iter = image_state.subresources.iter_ranges(
+            ImageAspects {
+                color: true,
+                depth: false,
+                stencil: false,
+                plane0: false,
+                ..ImageAspects::none()
+            },
+            0..1,
+            2..4,
+        );
+        assert_eq!(
+            iter.next(),
+            Some(0 * asp + 0 * mip + 2..0 * asp + 0 * mip + 4)
+        );
+        assert_eq!(iter.next(), None);
+
+        // Two aspects, two mip levels, only some of the array layers
+        let mut iter = image_state.subresources.iter_ranges(
+            ImageAspects {
+                color: false,
+                depth: true,
+                stencil: true,
+                plane0: false,
+                ..ImageAspects::none()
+            },
+            2..4,
+            6..8,
+        );
+        assert_eq!(
+            iter.next(),
+            Some(1 * asp + 2 * mip + 6..1 * asp + 2 * mip + 8)
+        );
+        assert_eq!(
+            iter.next(),
+            Some(1 * asp + 3 * mip + 6..1 * asp + 3 * mip + 8)
+        );
+        assert_eq!(
+            iter.next(),
+            Some(2 * asp + 2 * mip + 6..2 * asp + 2 * mip + 8)
+        );
+        assert_eq!(
+            iter.next(),
+            Some(2 * asp + 3 * mip + 6..2 * asp + 3 * mip + 8)
+        );
+        assert_eq!(iter.next(), None);
     }
 }

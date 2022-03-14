@@ -444,18 +444,11 @@ where
     #[inline]
     fn try_gpu_lock(
         &self,
-        exclusive_access: bool,
+        write: bool,
         uninitialized_safe: bool,
         expected_layout: ImageLayout,
     ) -> Result<(), AccessError> {
-        if expected_layout != self.layout && expected_layout != ImageLayout::Undefined {
-            return Err(AccessError::UnexpectedImageLayout {
-                requested: expected_layout,
-                allowed: self.layout,
-            });
-        }
-
-        if exclusive_access {
+        if write {
             return Err(AccessError::ExclusiveDenied);
         }
 
@@ -463,15 +456,44 @@ where
             return Err(AccessError::BufferNotInitialized);
         }
 
-        Ok(())
+        let mut state = self.inner().image.state();
+        state.try_gpu_lock(
+            self.inner().image.format().unwrap().aspects(),
+            self.inner().first_mipmap_level as u32
+                ..self.inner().first_mipmap_level as u32 + self.inner().num_mipmap_levels as u32,
+            self.inner().first_layer as u32
+                ..self.inner().first_layer as u32 + self.inner().num_layers as u32,
+            write,
+            expected_layout,
+            self.final_layout_requirement(),
+        )
     }
 
     #[inline]
-    unsafe fn increase_gpu_lock(&self) {}
+    unsafe fn increase_gpu_lock(&self, write: bool) {
+        let mut state = self.inner().image.state();
+        state.increase_gpu_lock(
+            self.inner().image.format().unwrap().aspects(),
+            self.inner().first_mipmap_level as u32
+                ..self.inner().first_mipmap_level as u32 + self.inner().num_mipmap_levels as u32,
+            self.inner().first_layer as u32
+                ..self.inner().first_layer as u32 + self.inner().num_layers as u32,
+            write,
+            self.final_layout_requirement(),
+        )
+    }
 
     #[inline]
-    unsafe fn unlock(&self, new_layout: Option<ImageLayout>) {
-        debug_assert!(new_layout.is_none());
+    unsafe fn unlock(&self, write: bool, new_layout: Option<ImageLayout>) {
+        let mut state = self.inner().image.state();
+        state.gpu_unlock(
+            self.inner().image.format().unwrap().aspects(),
+            self.inner().first_mipmap_level as u32
+                ..self.inner().first_mipmap_level as u32 + self.inner().num_mipmap_levels as u32,
+            self.inner().first_layer as u32
+                ..self.inner().first_layer as u32 + self.inner().num_layers as u32,
+            write,
+        )
     }
 
     #[inline]
@@ -532,28 +554,42 @@ unsafe impl ImageAccess for SubImage {
     #[inline]
     fn try_gpu_lock(
         &self,
-        exclusive_access: bool,
+        write: bool,
         uninitialized_safe: bool,
         expected_layout: ImageLayout,
     ) -> Result<(), AccessError> {
-        if expected_layout != self.layout && expected_layout != ImageLayout::Undefined {
-            return Err(AccessError::UnexpectedImageLayout {
-                requested: expected_layout,
-                allowed: self.layout,
-            });
-        }
-
-        Ok(())
+        let mut state = self.inner().image.state();
+        state.try_gpu_lock(
+            self.inner().image.format().unwrap().aspects(),
+            self.mip_levels_access.clone(),
+            self.array_layers_access.clone(),
+            write,
+            expected_layout,
+            self.final_layout_requirement(),
+        )
     }
 
     #[inline]
-    unsafe fn increase_gpu_lock(&self) {
-        self.image.increase_gpu_lock()
+    unsafe fn increase_gpu_lock(&self, write: bool) {
+        let mut state = self.inner().image.state();
+        state.increase_gpu_lock(
+            self.inner().image.format().unwrap().aspects(),
+            self.mip_levels_access.clone(),
+            self.array_layers_access.clone(),
+            write,
+            self.final_layout_requirement(),
+        )
     }
 
     #[inline]
-    unsafe fn unlock(&self, new_layout: Option<ImageLayout>) {
-        self.image.unlock(new_layout)
+    unsafe fn unlock(&self, write: bool, new_layout: Option<ImageLayout>) {
+        let mut state = self.inner().image.state();
+        state.gpu_unlock(
+            self.inner().image.format().unwrap().aspects(),
+            self.mip_levels_access.clone(),
+            self.array_layers_access.clone(),
+            write,
+        )
     }
 }
 
@@ -611,42 +647,63 @@ where
     #[inline]
     fn try_gpu_lock(
         &self,
-        _: bool,
+        write: bool,
         uninitialized_safe: bool,
         expected_layout: ImageLayout,
     ) -> Result<(), AccessError> {
-        if expected_layout != ImageLayout::Undefined {
-            return Err(AccessError::UnexpectedImageLayout {
-                requested: expected_layout,
-                allowed: ImageLayout::Undefined,
-            });
-        }
-
         if self.image.initialized.load(Ordering::Relaxed) {
             return Err(AccessError::AlreadyInUse);
         }
 
         // FIXME: Mipmapped textures require multiple writes to initialize
-        if !self
+        if self
             .used
             .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
             .unwrap_or_else(|e| e)
         {
-            Ok(())
-        } else {
-            Err(AccessError::AlreadyInUse)
+            return Err(AccessError::AlreadyInUse);
         }
+
+        let mut state = self.inner().image.state();
+        state.try_gpu_lock(
+            self.inner().image.format().unwrap().aspects(),
+            self.inner().first_mipmap_level as u32
+                ..self.inner().first_mipmap_level as u32 + self.inner().num_mipmap_levels as u32,
+            self.inner().first_layer as u32
+                ..self.inner().first_layer as u32 + self.inner().num_layers as u32,
+            write,
+            expected_layout,
+            self.final_layout_requirement(),
+        )
     }
 
     #[inline]
-    unsafe fn increase_gpu_lock(&self) {
-        debug_assert!(self.used.load(Ordering::Relaxed));
+    unsafe fn increase_gpu_lock(&self, write: bool) {
+        let mut state = self.inner().image.state();
+        state.increase_gpu_lock(
+            self.inner().image.format().unwrap().aspects(),
+            self.inner().first_mipmap_level as u32
+                ..self.inner().first_mipmap_level as u32 + self.inner().num_mipmap_levels as u32,
+            self.inner().first_layer as u32
+                ..self.inner().first_layer as u32 + self.inner().num_layers as u32,
+            write,
+            self.final_layout_requirement(),
+        )
     }
 
     #[inline]
-    unsafe fn unlock(&self, new_layout: Option<ImageLayout>) {
-        assert_eq!(new_layout, Some(self.image.layout));
+    unsafe fn unlock(&self, write: bool, new_layout: Option<ImageLayout>) {
         self.image.initialized.store(true, Ordering::Relaxed);
+
+        let mut state = self.inner().image.state();
+        state.gpu_unlock(
+            self.inner().image.format().unwrap().aspects(),
+            self.inner().first_mipmap_level as u32
+                ..self.inner().first_mipmap_level as u32 + self.inner().num_mipmap_levels as u32,
+            self.inner().first_layer as u32
+                ..self.inner().first_layer as u32 + self.inner().num_layers as u32,
+            write,
+        )
     }
 
     #[inline]

@@ -89,7 +89,7 @@ pub unsafe trait BufferAccess: DeviceOwned + Send + Sync {
     /// If you call this function, you should call `unlock()` once the resource is no longer in use
     /// by the GPU. The implementation is not expected to automatically perform any unlocking and
     /// can rely on the fact that `unlock()` is going to be called.
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError>;
+    fn try_gpu_lock(&self, write: bool, queue: &Queue) -> Result<(), AccessError>;
 
     /// Locks the resource for usage on the GPU. Supposes that the resource is already locked, and
     /// simply increases the lock by one.
@@ -99,14 +99,14 @@ pub unsafe trait BufferAccess: DeviceOwned + Send + Sync {
     /// If you call this function, you should call `unlock()` once the resource is no longer in use
     /// by the GPU. The implementation is not expected to automatically perform any unlocking and
     /// can rely on the fact that `unlock()` is going to be called.
-    unsafe fn increase_gpu_lock(&self);
+    unsafe fn increase_gpu_lock(&self, write: bool);
 
     /// Unlocks the resource previously acquired with `try_gpu_lock` or `increase_gpu_lock`.
     ///
     /// # Safety
     ///
     /// Must only be called once per previous lock.
-    unsafe fn unlock(&self);
+    unsafe fn unlock(&self, write: bool);
 
     /// Gets the device address for this buffer.
     ///
@@ -189,18 +189,18 @@ where
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError> {
-        (**self).try_gpu_lock(exclusive_access, queue)
+    fn try_gpu_lock(&self, write: bool, queue: &Queue) -> Result<(), AccessError> {
+        (**self).try_gpu_lock(write, queue)
     }
 
     #[inline]
-    unsafe fn increase_gpu_lock(&self) {
-        (**self).increase_gpu_lock()
+    unsafe fn increase_gpu_lock(&self, write: bool) {
+        (**self).increase_gpu_lock(write)
     }
 
     #[inline]
-    unsafe fn unlock(&self) {
-        (**self).unlock()
+    unsafe fn unlock(&self, write: bool) {
+        (**self).unlock(write)
     }
 }
 

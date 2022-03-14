@@ -237,18 +237,18 @@ where
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError> {
-        self.resource.try_gpu_lock(exclusive_access, queue)
+    fn try_gpu_lock(&self, write: bool, queue: &Queue) -> Result<(), AccessError> {
+        self.resource.try_gpu_lock(write, queue)
     }
 
     #[inline]
-    unsafe fn increase_gpu_lock(&self) {
-        self.resource.increase_gpu_lock()
+    unsafe fn increase_gpu_lock(&self, write: bool) {
+        self.resource.increase_gpu_lock(write)
     }
 
     #[inline]
-    unsafe fn unlock(&self) {
-        self.resource.unlock()
+    unsafe fn unlock(&self, write: bool) {
+        self.resource.unlock(write)
     }
 }
 

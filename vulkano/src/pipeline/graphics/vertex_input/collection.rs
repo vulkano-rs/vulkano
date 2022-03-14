@@ -109,15 +109,15 @@ mod tests {
             unimplemented!()
         }
 
-        fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
+        fn try_gpu_lock(&self, write: bool, queue: &Queue) -> Result<(), AccessError> {
             unimplemented!()
         }
 
-        unsafe fn increase_gpu_lock(&self) {
+        unsafe fn increase_gpu_lock(&self, write: bool) {
             unimplemented!()
         }
 
-        unsafe fn unlock(&self) {
+        unsafe fn unlock(&self, write: bool) {
             unimplemented!()
         }
     }
@@ -147,15 +147,15 @@ mod tests {
             unimplemented!()
         }
 
-        fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
+        fn try_gpu_lock(&self, write: bool, queue: &Queue) -> Result<(), AccessError> {
             unimplemented!()
         }
 
-        unsafe fn increase_gpu_lock(&self) {
+        unsafe fn increase_gpu_lock(&self, write: bool) {
             unimplemented!()
         }
 
-        unsafe fn unlock(&self) {
+        unsafe fn unlock(&self, write: bool) {
             unimplemented!()
         }
     }

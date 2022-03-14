@@ -27,12 +27,11 @@ use crate::{
             AllocFromRequirementsFilter, AllocLayout, MappingRequirement, MemoryPoolAlloc,
             PotentialDedicatedAllocation, StdMemoryPoolAlloc,
         },
-        DedicatedAllocation, DeviceMemoryAllocationError, MappedDeviceMemory, MemoryPool,
+        DedicatedAllocation, DeviceMemoryAllocationError, MemoryPool,
     },
     sync::{AccessError, Sharing},
     DeviceSize,
 };
-use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use smallvec::SmallVec;
 use std::{
     error, fmt,
@@ -41,10 +40,7 @@ use std::{
     mem::size_of,
     ops::{Deref, DerefMut, Range},
     ptr,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
+    sync::{atomic::AtomicUsize, Arc},
 };
 
 /// Buffer whose content is accessible by the CPU.
@@ -63,12 +59,6 @@ where
 
     // The memory held by the buffer.
     memory: A,
-
-    // Access pattern of the buffer.
-    // Every time the user tries to read or write the buffer from the CPU, this `RwLock` is kept
-    // locked and its content is checked to verify that we are allowed access. Every time the user
-    // tries to submit this buffer for the GPU, this `RwLock` is briefly locked and modified.
-    access: RwLock<CurrentGpuAccess>,
 
     // Queue families allowed to access this buffer.
     queue_families: SmallVec<[u32; 4]>,
@@ -261,7 +251,7 @@ where
         };
         let mem_reqs = buffer.memory_requirements();
 
-        let mem = MemoryPool::alloc_from_requirements(
+        let memory = MemoryPool::alloc_from_requirements(
             &Device::standard_pool(&device),
             &mem_reqs,
             AllocLayout::Linear,
@@ -283,17 +273,14 @@ where
                 }
             },
         )?;
-        debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
-        debug_assert!(mem.mapped_memory().is_some());
-        buffer.bind_memory(mem.memory(), mem.offset())?;
+        debug_assert!((memory.offset() % mem_reqs.alignment) == 0);
+        debug_assert!(memory.mapped_memory().is_some());
+        buffer.bind_memory(memory.memory(), memory.offset())?;
 
         Ok(Arc::new(CpuAccessibleBuffer {
             inner: buffer,
-            memory: mem,
-            access: RwLock::new(CurrentGpuAccess::NonExclusive {
-                num: AtomicUsize::new(0),
-            }),
-            queue_families: queue_families,
+            memory,
+            queue_families,
             marker: PhantomData,
         }))
     }
@@ -334,22 +321,14 @@ where
     /// that uses it in exclusive mode will fail. You can still submit this buffer for non-exclusive
     /// accesses (ie. reads).
     #[inline]
-    pub fn read(&self) -> Result<ReadLock<T>, ReadLockError> {
-        let lock = match self.access.try_read() {
-            Some(l) => l,
-            // TODO: if a user simultaneously calls .write(), and write() is currently finding out
-            //       that the buffer is in fact GPU locked, then we will return a CpuWriteLocked
-            //       error instead of a GpuWriteLocked ; is this a problem? how do we fix this?
-            None => return Err(ReadLockError::CpuWriteLocked),
-        };
-
-        if let CurrentGpuAccess::Exclusive { .. } = *lock {
-            return Err(ReadLockError::GpuWriteLocked);
-        }
+    pub fn read(&self) -> Result<ReadLock<T, A>, ReadLockError> {
+        let mut state = self.inner.state();
+        let buffer_range = self.inner().offset..self.inner().offset + self.size();
+        state.try_cpu_read(buffer_range.clone())?;
 
         let mapped_memory = self.memory.mapped_memory().unwrap();
         let offset = self.memory.offset();
-        let range = offset..offset + self.inner.size();
+        let memory_range = offset..offset + self.inner.size();
 
         let bytes = unsafe {
             // If there are other read locks being held at this point, they also called
@@ -357,14 +336,17 @@ where
             // lock, so there will no new data and this call will do nothing.
             // TODO: probably still more efficient to call it only if we're the first to acquire a
             // read lock, but the number of CPU locks isn't currently tracked anywhere.
-            mapped_memory.invalidate_range(range.clone()).unwrap();
-            mapped_memory.read(range.clone()).unwrap()
+            mapped_memory
+                .invalidate_range(memory_range.clone())
+                .unwrap();
+            mapped_memory.read(memory_range.clone()).unwrap()
         };
 
         Ok(ReadLock {
+            inner: self,
+            buffer_range,
+            memory_range,
             data: T::from_bytes(bytes).unwrap(),
-            range,
-            lock,
         })
     }
 
@@ -377,35 +359,27 @@ where
     /// After this function successfully locks the buffer, any attempt to submit a command buffer
     /// that uses it and any attempt to call `read()` will return an error.
     #[inline]
-    pub fn write(&self) -> Result<WriteLock<T>, WriteLockError> {
-        let lock = match self.access.try_write() {
-            Some(l) => l,
-            // TODO: if a user simultaneously calls .read() or .write(), and the function is
-            //       currently finding out that the buffer is in fact GPU locked, then we will
-            //       return a CpuLocked error instead of a GpuLocked ; is this a problem?
-            //       how do we fix this?
-            None => return Err(WriteLockError::CpuLocked),
-        };
-
-        match *lock {
-            CurrentGpuAccess::NonExclusive { ref num } if num.load(Ordering::SeqCst) == 0 => (),
-            _ => return Err(WriteLockError::GpuLocked),
-        }
+    pub fn write(&self) -> Result<WriteLock<T, A>, WriteLockError> {
+        let mut state = self.inner.state();
+        let buffer_range = self.inner().offset..self.inner().offset + self.size();
+        state.try_cpu_write(buffer_range.clone())?;
 
         let mapped_memory = self.memory.mapped_memory().unwrap();
         let offset = self.memory.offset();
-        let range = offset..offset + self.inner.size();
+        let memory_range = offset..offset + self.size();
 
         let bytes = unsafe {
-            mapped_memory.invalidate_range(range.clone()).unwrap();
-            mapped_memory.write(range.clone()).unwrap()
+            mapped_memory
+                .invalidate_range(memory_range.clone())
+                .unwrap();
+            mapped_memory.write(memory_range.clone()).unwrap()
         };
 
         Ok(WriteLock {
+            inner: self,
+            buffer_range,
+            memory_range,
             data: T::from_bytes_mut(bytes).unwrap(),
-            mapped_memory,
-            range,
-            lock,
         })
     }
 }
@@ -434,96 +408,24 @@ where
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, _: &Queue) -> Result<(), AccessError> {
-        if exclusive_access {
-            let mut lock = match self.access.try_write() {
-                Some(lock) => lock,
-                None => return Err(AccessError::AlreadyInUse),
-            };
-
-            match *lock {
-                CurrentGpuAccess::NonExclusive { ref num } if num.load(Ordering::SeqCst) == 0 => (),
-                _ => return Err(AccessError::AlreadyInUse),
-            };
-
-            *lock = CurrentGpuAccess::Exclusive { num: 1 };
-            Ok(())
-        } else {
-            let lock = match self.access.try_read() {
-                Some(lock) => lock,
-                None => return Err(AccessError::AlreadyInUse),
-            };
-
-            match *lock {
-                CurrentGpuAccess::Exclusive { .. } => return Err(AccessError::AlreadyInUse),
-                CurrentGpuAccess::NonExclusive { ref num } => num.fetch_add(1, Ordering::SeqCst),
-            };
-
-            Ok(())
-        }
+    fn try_gpu_lock(&self, write: bool, _: &Queue) -> Result<(), AccessError> {
+        let mut state = self.inner().buffer.state();
+        let range = self.inner().offset..self.inner().offset + self.size();
+        state.try_gpu_lock(range, write)
     }
 
     #[inline]
-    unsafe fn increase_gpu_lock(&self) {
-        // First, handle if we have a non-exclusive access.
-        {
-            // Since the buffer is in use by the GPU, it is invalid to hold a write-lock to
-            // the buffer. The buffer can still be briefly in a write-locked state for the duration
-            // of the check though.
-            let read_lock = self.access.read();
-            if let CurrentGpuAccess::NonExclusive { ref num } = *read_lock {
-                let prev = num.fetch_add(1, Ordering::SeqCst);
-                debug_assert!(prev >= 1);
-                return;
-            }
-        }
-
-        // If we reach here, this means that `access` contains `CurrentGpuAccess::Exclusive`.
-        {
-            // Same remark as above, but for writing.
-            let mut write_lock = self.access.write();
-            if let CurrentGpuAccess::Exclusive { ref mut num } = *write_lock {
-                *num += 1;
-            } else {
-                unreachable!()
-            }
-        }
+    unsafe fn increase_gpu_lock(&self, write: bool) {
+        let mut state = self.inner().buffer.state();
+        let range = self.inner().offset..self.inner().offset + self.size();
+        state.increase_gpu_lock(range, write)
     }
 
     #[inline]
-    unsafe fn unlock(&self) {
-        // First, handle if we had a non-exclusive access.
-        {
-            // Since the buffer is in use by the GPU, it is invalid to hold a write-lock to
-            // the buffer. The buffer can still be briefly in a write-locked state for the duration
-            // of the check though.
-            let read_lock = self.access.read();
-            if let CurrentGpuAccess::NonExclusive { ref num } = *read_lock {
-                let prev = num.fetch_sub(1, Ordering::SeqCst);
-                debug_assert!(prev >= 1);
-                return;
-            }
-        }
-
-        // If we reach here, this means that `access` contains `CurrentGpuAccess::Exclusive`.
-        {
-            // Same remark as above, but for writing.
-            let mut write_lock = self.access.write();
-            if let CurrentGpuAccess::Exclusive { ref mut num } = *write_lock {
-                if *num != 1 {
-                    *num -= 1;
-                    return;
-                }
-            } else {
-                // Can happen if we lock in exclusive mode N times, and unlock N+1 times with the
-                // last two unlocks happen simultaneously.
-                panic!()
-            }
-
-            *write_lock = CurrentGpuAccess::NonExclusive {
-                num: AtomicUsize::new(0),
-            };
-        }
+    unsafe fn unlock(&self, write: bool) {
+        let mut state = self.inner().buffer.state();
+        let range = self.inner().offset..self.inner().offset + self.size();
+        state.gpu_unlock(range, write)
     }
 }
 
@@ -591,18 +493,35 @@ where
 /// Note that this object holds a rwlock read guard on the chunk. If another thread tries to access
 /// this buffer's content or tries to submit a GPU command that uses this buffer, it will block.
 #[derive(Debug)]
-pub struct ReadLock<'a, T>
+pub struct ReadLock<'a, T, A>
 where
     T: BufferContents + ?Sized + 'a,
+    A: MemoryPoolAlloc,
 {
+    inner: &'a CpuAccessibleBuffer<T, A>,
+    buffer_range: Range<DeviceSize>,
+    memory_range: Range<DeviceSize>,
     data: &'a T,
-    range: Range<DeviceSize>,
-    lock: RwLockReadGuard<'a, CurrentGpuAccess>,
 }
 
-impl<'a, T> Deref for ReadLock<'a, T>
+impl<'a, T, A> Drop for ReadLock<'a, T, A>
 where
     T: BufferContents + ?Sized + 'a,
+    A: MemoryPoolAlloc,
+{
+    #[inline]
+    fn drop(&mut self) {
+        unsafe {
+            let mut state = self.inner.inner.state();
+            state.cpu_unlock(self.buffer_range.clone(), false);
+        }
+    }
+}
+
+impl<'a, T, A> Deref for ReadLock<'a, T, A>
+where
+    T: BufferContents + ?Sized + 'a,
+    A: MemoryPoolAlloc,
 {
     type Target = T;
 
@@ -617,31 +536,42 @@ where
 /// Note that this object holds a rwlock write guard on the chunk. If another thread tries to access
 /// this buffer's content or tries to submit a GPU command that uses this buffer, it will block.
 #[derive(Debug)]
-pub struct WriteLock<'a, T>
+pub struct WriteLock<'a, T, A>
 where
     T: BufferContents + ?Sized + 'a,
+    A: MemoryPoolAlloc,
 {
+    inner: &'a CpuAccessibleBuffer<T, A>,
+    buffer_range: Range<DeviceSize>,
+    memory_range: Range<DeviceSize>,
     data: &'a mut T,
-    mapped_memory: &'a MappedDeviceMemory,
-    range: Range<DeviceSize>,
-    lock: RwLockWriteGuard<'a, CurrentGpuAccess>,
 }
 
-impl<'a, T> Drop for WriteLock<'a, T>
+impl<'a, T, A> Drop for WriteLock<'a, T, A>
 where
     T: BufferContents + ?Sized + 'a,
+    A: MemoryPoolAlloc,
 {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            self.mapped_memory.flush_range(self.range.clone()).unwrap();
+            self.inner
+                .memory
+                .mapped_memory()
+                .unwrap()
+                .flush_range(self.memory_range.clone())
+                .unwrap();
+
+            let mut state = self.inner.inner.state();
+            state.cpu_unlock(self.buffer_range.clone(), true);
         }
     }
 }
 
-impl<'a, T> Deref for WriteLock<'a, T>
+impl<'a, T, A> Deref for WriteLock<'a, T, A>
 where
     T: BufferContents + ?Sized + 'a,
+    A: MemoryPoolAlloc,
 {
     type Target = T;
 
@@ -651,9 +581,10 @@ where
     }
 }
 
-impl<'a, T> DerefMut for WriteLock<'a, T>
+impl<'a, T, A> DerefMut for WriteLock<'a, T, A>
 where
     T: BufferContents + ?Sized + 'a,
+    A: MemoryPoolAlloc,
 {
     #[inline]
     fn deref_mut(&mut self) -> &mut T {

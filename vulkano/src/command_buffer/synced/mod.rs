@@ -141,7 +141,7 @@ impl SyncCommandBuffer {
                         match future.check_buffer_access(buffer.as_ref(), state.exclusive, queue) {
                             Ok(_) => {
                                 unsafe {
-                                    buffer.increase_gpu_lock();
+                                    buffer.increase_gpu_lock(state.exclusive);
                                 }
                                 locked_resources += 1;
                                 continue;
@@ -175,7 +175,7 @@ impl SyncCommandBuffer {
                     ) {
                         Ok(_) => {
                             unsafe {
-                                image.increase_gpu_lock();
+                                image.increase_gpu_lock(state.exclusive);
                             }
                             locked_resources += 1;
                             continue;
@@ -218,7 +218,7 @@ impl SyncCommandBuffer {
 
                 match &resource_use.resource {
                     KeyTy::Buffer(buffer) => unsafe {
-                        buffer.unlock();
+                        buffer.unlock(state.exclusive);
                     },
                     KeyTy::Image(image) => {
                         let trans = if state.final_layout != state.initial_layout {
@@ -227,7 +227,7 @@ impl SyncCommandBuffer {
                             None
                         };
                         unsafe {
-                            image.unlock(trans);
+                            image.unlock(state.exclusive, trans);
                         }
                     }
                 }
@@ -253,7 +253,7 @@ impl SyncCommandBuffer {
 
             match &resource_use.resource {
                 KeyTy::Buffer(buffer) => {
-                    buffer.unlock();
+                    buffer.unlock(state.exclusive);
                 }
                 KeyTy::Image(image) => {
                     let trans = if state.final_layout != state.initial_layout {
@@ -261,7 +261,7 @@ impl SyncCommandBuffer {
                     } else {
                         None
                     };
-                    image.unlock(trans);
+                    image.unlock(state.exclusive, trans);
                 }
             }
         }

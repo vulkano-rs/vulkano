@@ -7,41 +7,35 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::device::Device;
-use crate::format::ClearValue;
-use crate::format::Format;
-use crate::image::sys::ImageCreationError;
-use crate::image::sys::UnsafeImage;
-use crate::image::sys::UnsafeImageCreateInfo;
-use crate::image::traits::ImageAccess;
-use crate::image::traits::ImageClearValue;
-use crate::image::traits::ImageContent;
-use crate::image::ImageDescriptorLayouts;
-use crate::image::ImageDimensions;
-use crate::image::ImageInner;
-use crate::image::ImageLayout;
-use crate::image::ImageUsage;
-use crate::image::SampleCount;
-use crate::memory::pool::alloc_dedicated_with_exportable_fd;
-use crate::memory::pool::AllocFromRequirementsFilter;
-use crate::memory::pool::AllocLayout;
-use crate::memory::pool::MappingRequirement;
-use crate::memory::pool::MemoryPool;
-use crate::memory::pool::MemoryPoolAlloc;
-use crate::memory::pool::PotentialDedicatedAllocation;
-use crate::memory::pool::StdMemoryPoolAlloc;
-use crate::memory::DedicatedAllocation;
-use crate::memory::ExternalMemoryHandleType;
-use crate::memory::{DeviceMemoryExportError, ExternalMemoryHandleTypes};
-use crate::sync::AccessError;
-use crate::DeviceSize;
-use std::fs::File;
-use std::hash::Hash;
-use std::hash::Hasher;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
+use super::{
+    sys::UnsafeImage,
+    traits::{ImageClearValue, ImageContent},
+    ImageAccess, ImageCreationError, ImageDescriptorLayouts, ImageInner, ImageLayout, ImageUsage,
+    SampleCount,
+};
+use crate::{
+    device::Device,
+    format::{ClearValue, Format},
+    image::{sys::UnsafeImageCreateInfo, ImageDimensions},
+    memory::{
+        pool::{
+            alloc_dedicated_with_exportable_fd, AllocFromRequirementsFilter, AllocLayout,
+            MappingRequirement, MemoryPoolAlloc, PotentialDedicatedAllocation, StdMemoryPoolAlloc,
+        },
+        DedicatedAllocation, DeviceMemoryExportError, ExternalMemoryHandleType,
+        ExternalMemoryHandleTypes, MemoryPool,
+    },
+    sync::AccessError,
+    DeviceSize,
+};
+use std::{
+    fs::File,
+    hash::{Hash, Hasher},
+    sync::{
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+        Arc,
+    },
+};
 
 /// ImageAccess whose purpose is to be used as a framebuffer attachment.
 ///
@@ -601,59 +595,53 @@ where
     #[inline]
     fn try_gpu_lock(
         &self,
-        _: bool,
+        write: bool,
         uninitialized_safe: bool,
         expected_layout: ImageLayout,
     ) -> Result<(), AccessError> {
-        if expected_layout != self.attachment_layout && expected_layout != ImageLayout::Undefined {
-            if self.initialized.load(Ordering::SeqCst) {
-                return Err(AccessError::UnexpectedImageLayout {
-                    requested: expected_layout,
-                    allowed: self.attachment_layout,
-                });
-            } else {
-                return Err(AccessError::UnexpectedImageLayout {
-                    requested: expected_layout,
-                    allowed: ImageLayout::Undefined,
-                });
-            }
-        }
-
-        if !uninitialized_safe && expected_layout != ImageLayout::Undefined {
-            if !self.initialized.load(Ordering::SeqCst) {
-                return Err(AccessError::ImageNotInitialized {
-                    requested: expected_layout,
-                });
-            }
-        }
-
-        if self
-            .gpu_lock
-            .compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst)
-            .unwrap_or_else(|e| e)
-            == 0
-        {
-            Ok(())
-        } else {
-            Err(AccessError::AlreadyInUse)
-        }
+        let mut state = self.inner().image.state();
+        state.try_gpu_lock(
+            self.format.aspects(),
+            self.inner().first_mipmap_level as u32
+                ..self.inner().first_mipmap_level as u32 + self.inner().num_mipmap_levels as u32,
+            self.inner().first_layer as u32
+                ..self.inner().first_layer as u32 + self.inner().num_layers as u32,
+            write,
+            expected_layout,
+            self.final_layout_requirement(),
+        )
     }
 
     #[inline]
-    unsafe fn increase_gpu_lock(&self) {
-        let val = self.gpu_lock.fetch_add(1, Ordering::SeqCst);
-        debug_assert!(val >= 1);
+    unsafe fn increase_gpu_lock(&self, write: bool) {
+        let mut state = self.inner().image.state();
+        state.increase_gpu_lock(
+            self.inner().image.format().unwrap().aspects(),
+            self.inner().first_mipmap_level as u32
+                ..self.inner().first_mipmap_level as u32 + self.inner().num_mipmap_levels as u32,
+            self.inner().first_layer as u32
+                ..self.inner().first_layer as u32 + self.inner().num_layers as u32,
+            write,
+            self.final_layout_requirement(),
+        )
     }
 
     #[inline]
-    unsafe fn unlock(&self, new_layout: Option<ImageLayout>) {
+    unsafe fn unlock(&self, write: bool, new_layout: Option<ImageLayout>) {
         if let Some(new_layout) = new_layout {
             debug_assert_eq!(new_layout, self.attachment_layout);
             self.initialized.store(true, Ordering::SeqCst);
         }
 
-        let prev_val = self.gpu_lock.fetch_sub(1, Ordering::SeqCst);
-        debug_assert!(prev_val >= 1);
+        let mut state = self.inner().image.state();
+        state.gpu_unlock(
+            self.inner().image.format().unwrap().aspects(),
+            self.inner().first_mipmap_level as u32
+                ..self.inner().first_mipmap_level as u32 + self.inner().num_mipmap_levels as u32,
+            self.inner().first_layer as u32
+                ..self.inner().first_layer as u32 + self.inner().num_layers as u32,
+            write,
+        )
     }
 
     #[inline]

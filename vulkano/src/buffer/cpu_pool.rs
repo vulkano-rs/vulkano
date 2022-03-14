@@ -146,10 +146,6 @@ struct ActualBufferChunk {
 
     // Number of `CpuBufferPoolSubbuffer` objects that point to this subbuffer.
     num_cpu_accesses: usize,
-
-    // Number of `CpuBufferPoolSubbuffer` objects that point to this subbuffer and that have been
-    // GPU-locked.
-    num_gpu_accesses: usize,
 }
 
 /// A subbuffer allocated from a `CpuBufferPool`.
@@ -591,13 +587,12 @@ where
             index,
             len: occupied_len,
             num_cpu_accesses: 1,
-            num_gpu_accesses: 0,
         });
 
         Ok(CpuBufferPoolChunk {
             // TODO: remove .clone() once non-lexical borrows land
             buffer: current_buffer.clone(),
-            index: index,
+            index,
             align_offset,
             requested_len,
             marker: PhantomData,
@@ -696,58 +691,36 @@ where
     }
 
     #[inline]
-    fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
+    fn try_gpu_lock(&self, write: bool, _: &Queue) -> Result<(), AccessError> {
         if self.requested_len == 0 {
             return Ok(());
         }
 
-        let mut chunks_in_use_lock = self.buffer.chunks_in_use.lock().unwrap();
-        let chunk = chunks_in_use_lock
-            .iter_mut()
-            .find(|c| c.index == self.index)
-            .unwrap();
-
-        if chunk.num_gpu_accesses != 0 {
-            return Err(AccessError::AlreadyInUse);
-        }
-
-        chunk.num_gpu_accesses = 1;
-        Ok(())
+        let mut state = self.inner().buffer.state();
+        let range = self.inner().offset..self.inner().offset + self.size();
+        state.try_gpu_lock(range, write)
     }
 
     #[inline]
-    unsafe fn increase_gpu_lock(&self) {
+    unsafe fn increase_gpu_lock(&self, write: bool) {
         if self.requested_len == 0 {
             return;
         }
 
-        let mut chunks_in_use_lock = self.buffer.chunks_in_use.lock().unwrap();
-        let chunk = chunks_in_use_lock
-            .iter_mut()
-            .find(|c| c.index == self.index)
-            .unwrap();
-
-        debug_assert!(chunk.num_gpu_accesses >= 1);
-        chunk.num_gpu_accesses = chunk
-            .num_gpu_accesses
-            .checked_add(1)
-            .expect("Overflow in GPU usages");
+        let mut state = self.inner().buffer.state();
+        let range = self.inner().offset..self.inner().offset + self.size();
+        state.increase_gpu_lock(range, write)
     }
 
     #[inline]
-    unsafe fn unlock(&self) {
+    unsafe fn unlock(&self, write: bool) {
         if self.requested_len == 0 {
             return;
         }
 
-        let mut chunks_in_use_lock = self.buffer.chunks_in_use.lock().unwrap();
-        let chunk = chunks_in_use_lock
-            .iter_mut()
-            .find(|c| c.index == self.index)
-            .unwrap();
-
-        debug_assert!(chunk.num_gpu_accesses >= 1);
-        chunk.num_gpu_accesses -= 1;
+        let mut state = self.inner().buffer.state();
+        let range = self.inner().offset..self.inner().offset + self.size();
+        state.gpu_unlock(range, write)
     }
 }
 
@@ -783,7 +756,6 @@ where
         if chunks_in_use_lock[chunk_num].num_cpu_accesses >= 2 {
             chunks_in_use_lock[chunk_num].num_cpu_accesses -= 1;
         } else {
-            debug_assert_eq!(chunks_in_use_lock[chunk_num].num_gpu_accesses, 0);
             chunks_in_use_lock.remove(chunk_num);
         }
     }
@@ -876,18 +848,18 @@ where
     }
 
     #[inline]
-    fn try_gpu_lock(&self, e: bool, q: &Queue) -> Result<(), AccessError> {
-        self.chunk.try_gpu_lock(e, q)
+    fn try_gpu_lock(&self, write: bool, queue: &Queue) -> Result<(), AccessError> {
+        self.chunk.try_gpu_lock(write, queue)
     }
 
     #[inline]
-    unsafe fn increase_gpu_lock(&self) {
-        self.chunk.increase_gpu_lock()
+    unsafe fn increase_gpu_lock(&self, write: bool) {
+        self.chunk.increase_gpu_lock(write)
     }
 
     #[inline]
-    unsafe fn unlock(&self) {
-        self.chunk.unlock()
+    unsafe fn unlock(&self, write: bool) {
+        self.chunk.unlock(write)
     }
 }
 
