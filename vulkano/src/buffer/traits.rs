@@ -7,22 +7,15 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::BufferContents;
-use crate::buffer::sys::UnsafeBuffer;
-use crate::buffer::BufferSlice;
-use crate::device::DeviceOwned;
-use crate::device::Queue;
-use crate::sync::AccessError;
-use crate::DeviceSize;
-use crate::SafeDeref;
-use crate::VulkanObject;
-use std::error;
-use std::fmt;
-use std::hash::Hash;
-use std::hash::Hasher;
-use std::num::NonZeroU64;
-use std::ops::Range;
-use std::sync::Arc;
+use super::{sys::UnsafeBuffer, BufferContents, BufferSlice};
+use crate::{device::DeviceOwned, DeviceSize, SafeDeref, VulkanObject};
+use std::{
+    error, fmt,
+    hash::{Hash, Hasher},
+    num::NonZeroU64,
+    ops::Range,
+    sync::Arc,
+};
 
 /// Trait for objects that represent a way for the GPU to have access to a buffer or a slice of a
 /// buffer.
@@ -80,33 +73,6 @@ pub unsafe trait BufferAccess: DeviceOwned + Send + Sync {
     /// overlap, the `conflicts_buffer` or `conflicts_image` function should always be called to
     /// verify whether they actually overlap.
     fn conflict_key(&self) -> (u64, u64);
-
-    /// Locks the resource for usage on the GPU. Returns an error if the lock can't be acquired.
-    ///
-    /// This function exists to prevent the user from causing a data race by reading and writing
-    /// to the same resource at the same time.
-    ///
-    /// If you call this function, you should call `unlock()` once the resource is no longer in use
-    /// by the GPU. The implementation is not expected to automatically perform any unlocking and
-    /// can rely on the fact that `unlock()` is going to be called.
-    fn try_gpu_lock(&self, write: bool, queue: &Queue) -> Result<(), AccessError>;
-
-    /// Locks the resource for usage on the GPU. Supposes that the resource is already locked, and
-    /// simply increases the lock by one.
-    ///
-    /// Must only be called after `try_gpu_lock()` succeeded.
-    ///
-    /// If you call this function, you should call `unlock()` once the resource is no longer in use
-    /// by the GPU. The implementation is not expected to automatically perform any unlocking and
-    /// can rely on the fact that `unlock()` is going to be called.
-    unsafe fn increase_gpu_lock(&self, write: bool);
-
-    /// Unlocks the resource previously acquired with `try_gpu_lock` or `increase_gpu_lock`.
-    ///
-    /// # Safety
-    ///
-    /// Must only be called once per previous lock.
-    unsafe fn unlock(&self, write: bool);
 
     /// Gets the device address for this buffer.
     ///
@@ -186,21 +152,6 @@ where
     #[inline]
     fn conflict_key(&self) -> (u64, u64) {
         (**self).conflict_key()
-    }
-
-    #[inline]
-    fn try_gpu_lock(&self, write: bool, queue: &Queue) -> Result<(), AccessError> {
-        (**self).try_gpu_lock(write, queue)
-    }
-
-    #[inline]
-    unsafe fn increase_gpu_lock(&self, write: bool) {
-        (**self).increase_gpu_lock(write)
-    }
-
-    #[inline]
-    unsafe fn unlock(&self, write: bool) {
-        (**self).unlock(write)
     }
 }
 

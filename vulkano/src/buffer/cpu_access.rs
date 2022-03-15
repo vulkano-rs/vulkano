@@ -21,7 +21,7 @@ use super::{
 };
 use crate::{
     buffer::{sys::UnsafeBufferCreateInfo, BufferCreationError, TypedBufferAccess},
-    device::{physical::QueueFamily, Device, DeviceOwned, Queue},
+    device::{physical::QueueFamily, Device, DeviceOwned},
     memory::{
         pool::{
             AllocFromRequirementsFilter, AllocLayout, MappingRequirement, MemoryPoolAlloc,
@@ -29,7 +29,7 @@ use crate::{
         },
         DedicatedAllocation, DeviceMemoryAllocationError, MemoryPool,
     },
-    sync::{AccessError, Sharing},
+    sync::Sharing,
     DeviceSize,
 };
 use smallvec::SmallVec;
@@ -405,27 +405,6 @@ where
     #[inline]
     fn conflict_key(&self) -> (u64, u64) {
         (self.inner.key(), 0)
-    }
-
-    #[inline]
-    fn try_gpu_lock(&self, write: bool, _: &Queue) -> Result<(), AccessError> {
-        let mut state = self.inner().buffer.state();
-        let range = self.inner().offset..self.inner().offset + self.size();
-        state.try_gpu_lock(range, write)
-    }
-
-    #[inline]
-    unsafe fn increase_gpu_lock(&self, write: bool) {
-        let mut state = self.inner().buffer.state();
-        let range = self.inner().offset..self.inner().offset + self.size();
-        state.increase_gpu_lock(range, write)
-    }
-
-    #[inline]
-    unsafe fn unlock(&self, write: bool) {
-        let mut state = self.inner().buffer.state();
-        let range = self.inner().offset..self.inner().offset + self.size();
-        state.gpu_unlock(range, write)
     }
 }
 

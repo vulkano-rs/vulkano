@@ -13,7 +13,7 @@ use super::{
     BufferUsage, TypedBufferAccess,
 };
 use crate::{
-    device::{Device, DeviceOwned, Queue},
+    device::{Device, DeviceOwned},
     memory::{
         pool::{
             AllocFromRequirementsFilter, AllocLayout, MappingRequirement, MemoryPoolAlloc,
@@ -21,7 +21,6 @@ use crate::{
         },
         DedicatedAllocation, DeviceMemoryAllocationError, MemoryPool,
     },
-    sync::AccessError,
     DeviceSize, OomError,
 };
 use std::{
@@ -689,39 +688,6 @@ where
             },
         )
     }
-
-    #[inline]
-    fn try_gpu_lock(&self, write: bool, _: &Queue) -> Result<(), AccessError> {
-        if self.requested_len == 0 {
-            return Ok(());
-        }
-
-        let mut state = self.inner().buffer.state();
-        let range = self.inner().offset..self.inner().offset + self.size();
-        state.try_gpu_lock(range, write)
-    }
-
-    #[inline]
-    unsafe fn increase_gpu_lock(&self, write: bool) {
-        if self.requested_len == 0 {
-            return;
-        }
-
-        let mut state = self.inner().buffer.state();
-        let range = self.inner().offset..self.inner().offset + self.size();
-        state.increase_gpu_lock(range, write)
-    }
-
-    #[inline]
-    unsafe fn unlock(&self, write: bool) {
-        if self.requested_len == 0 {
-            return;
-        }
-
-        let mut state = self.inner().buffer.state();
-        let range = self.inner().offset..self.inner().offset + self.size();
-        state.gpu_unlock(range, write)
-    }
 }
 
 impl<T, A> BufferAccessObject for Arc<CpuBufferPoolChunk<T, A>>
@@ -845,21 +811,6 @@ where
     #[inline]
     fn conflict_key(&self) -> (u64, u64) {
         self.chunk.conflict_key()
-    }
-
-    #[inline]
-    fn try_gpu_lock(&self, write: bool, queue: &Queue) -> Result<(), AccessError> {
-        self.chunk.try_gpu_lock(write, queue)
-    }
-
-    #[inline]
-    unsafe fn increase_gpu_lock(&self, write: bool) {
-        self.chunk.increase_gpu_lock(write)
-    }
-
-    #[inline]
-    unsafe fn unlock(&self, write: bool) {
-        self.chunk.unlock(write)
     }
 }
 

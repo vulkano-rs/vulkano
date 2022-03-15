@@ -28,16 +28,13 @@ use crate::{
         DedicatedAllocation, MemoryPool,
     },
     sampler::Filter,
-    sync::{AccessError, NowFuture, Sharing},
+    sync::{NowFuture, Sharing},
 };
 use smallvec::SmallVec;
 use std::{
     hash::{Hash, Hasher},
     ops::Range,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
+    sync::Arc,
 };
 
 /// Image whose purpose is to be used for read-only purposes. You can write to the image once,
@@ -49,7 +46,6 @@ pub struct ImmutableImage<A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> 
     dimensions: ImageDimensions,
     memory: A,
     format: Format,
-    initialized: AtomicBool,
     layout: ImageLayout,
 }
 
@@ -96,7 +92,6 @@ impl SubImage {
 // Must not implement Clone, as that would lead to multiple `used` values.
 pub struct ImmutableImageInitialization<A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
     image: Arc<ImmutableImage<A>>,
-    used: AtomicBool,
     mip_levels_access: std::ops::Range<u32>,
     array_layers_access: std::ops::Range<u32>,
 }
@@ -203,7 +198,6 @@ impl ImmutableImage {
             ImageLayout::ShaderReadOnlyOptimal,
             queue_families,
         )?;
-        image.initialized.store(true, Ordering::Relaxed); // Allow uninitialized access for backwards compatibility
         Ok(image)
     }
 
@@ -278,13 +272,11 @@ impl ImmutableImage {
             memory,
             dimensions,
             format,
-            initialized: AtomicBool::new(false),
             layout,
         });
 
         let init = Arc::new(ImmutableImageInitialization {
             image: image.clone(),
-            used: AtomicBool::new(false),
             mip_levels_access: 0..image.mip_levels(),
             array_layers_access: 0..image.dimensions().array_layers(),
         });
@@ -390,8 +382,6 @@ impl ImmutableImage {
             Err(e) => unreachable!("{:?}", e),
         };
 
-        image.initialized.store(true, Ordering::Relaxed);
-
         Ok((image, future))
     }
 }
@@ -439,61 +429,6 @@ where
     #[inline]
     fn conflict_key(&self) -> u64 {
         self.image.key()
-    }
-
-    #[inline]
-    fn try_gpu_lock(
-        &self,
-        write: bool,
-        uninitialized_safe: bool,
-        expected_layout: ImageLayout,
-    ) -> Result<(), AccessError> {
-        if write {
-            return Err(AccessError::ExclusiveDenied);
-        }
-
-        if !self.initialized.load(Ordering::Relaxed) {
-            return Err(AccessError::BufferNotInitialized);
-        }
-
-        let mut state = self.inner().image.state();
-        state.try_gpu_lock(
-            self.inner().image.format().unwrap().aspects(),
-            self.inner().first_mipmap_level as u32
-                ..self.inner().first_mipmap_level as u32 + self.inner().num_mipmap_levels as u32,
-            self.inner().first_layer as u32
-                ..self.inner().first_layer as u32 + self.inner().num_layers as u32,
-            write,
-            expected_layout,
-            self.final_layout_requirement(),
-        )
-    }
-
-    #[inline]
-    unsafe fn increase_gpu_lock(&self, write: bool) {
-        let mut state = self.inner().image.state();
-        state.increase_gpu_lock(
-            self.inner().image.format().unwrap().aspects(),
-            self.inner().first_mipmap_level as u32
-                ..self.inner().first_mipmap_level as u32 + self.inner().num_mipmap_levels as u32,
-            self.inner().first_layer as u32
-                ..self.inner().first_layer as u32 + self.inner().num_layers as u32,
-            write,
-            self.final_layout_requirement(),
-        )
-    }
-
-    #[inline]
-    unsafe fn unlock(&self, write: bool, new_layout: Option<ImageLayout>) {
-        let mut state = self.inner().image.state();
-        state.gpu_unlock(
-            self.inner().image.format().unwrap().aspects(),
-            self.inner().first_mipmap_level as u32
-                ..self.inner().first_mipmap_level as u32 + self.inner().num_mipmap_levels as u32,
-            self.inner().first_layer as u32
-                ..self.inner().first_layer as u32 + self.inner().num_layers as u32,
-            write,
-        )
     }
 
     #[inline]
@@ -550,47 +485,6 @@ unsafe impl ImageAccess for SubImage {
     fn conflict_key(&self) -> u64 {
         self.image.conflict_key()
     }
-
-    #[inline]
-    fn try_gpu_lock(
-        &self,
-        write: bool,
-        uninitialized_safe: bool,
-        expected_layout: ImageLayout,
-    ) -> Result<(), AccessError> {
-        let mut state = self.inner().image.state();
-        state.try_gpu_lock(
-            self.inner().image.format().unwrap().aspects(),
-            self.mip_levels_access.clone(),
-            self.array_layers_access.clone(),
-            write,
-            expected_layout,
-            self.final_layout_requirement(),
-        )
-    }
-
-    #[inline]
-    unsafe fn increase_gpu_lock(&self, write: bool) {
-        let mut state = self.inner().image.state();
-        state.increase_gpu_lock(
-            self.inner().image.format().unwrap().aspects(),
-            self.mip_levels_access.clone(),
-            self.array_layers_access.clone(),
-            write,
-            self.final_layout_requirement(),
-        )
-    }
-
-    #[inline]
-    unsafe fn unlock(&self, write: bool, new_layout: Option<ImageLayout>) {
-        let mut state = self.inner().image.state();
-        state.gpu_unlock(
-            self.inner().image.format().unwrap().aspects(),
-            self.mip_levels_access.clone(),
-            self.array_layers_access.clone(),
-            write,
-        )
-    }
 }
 
 impl<A> PartialEq for ImmutableImage<A>
@@ -642,68 +536,6 @@ where
     #[inline]
     fn conflict_key(&self) -> u64 {
         self.image.image.key()
-    }
-
-    #[inline]
-    fn try_gpu_lock(
-        &self,
-        write: bool,
-        uninitialized_safe: bool,
-        expected_layout: ImageLayout,
-    ) -> Result<(), AccessError> {
-        if self.image.initialized.load(Ordering::Relaxed) {
-            return Err(AccessError::AlreadyInUse);
-        }
-
-        // FIXME: Mipmapped textures require multiple writes to initialize
-        if self
-            .used
-            .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
-            .unwrap_or_else(|e| e)
-        {
-            return Err(AccessError::AlreadyInUse);
-        }
-
-        let mut state = self.inner().image.state();
-        state.try_gpu_lock(
-            self.inner().image.format().unwrap().aspects(),
-            self.inner().first_mipmap_level as u32
-                ..self.inner().first_mipmap_level as u32 + self.inner().num_mipmap_levels as u32,
-            self.inner().first_layer as u32
-                ..self.inner().first_layer as u32 + self.inner().num_layers as u32,
-            write,
-            expected_layout,
-            self.final_layout_requirement(),
-        )
-    }
-
-    #[inline]
-    unsafe fn increase_gpu_lock(&self, write: bool) {
-        let mut state = self.inner().image.state();
-        state.increase_gpu_lock(
-            self.inner().image.format().unwrap().aspects(),
-            self.inner().first_mipmap_level as u32
-                ..self.inner().first_mipmap_level as u32 + self.inner().num_mipmap_levels as u32,
-            self.inner().first_layer as u32
-                ..self.inner().first_layer as u32 + self.inner().num_layers as u32,
-            write,
-            self.final_layout_requirement(),
-        )
-    }
-
-    #[inline]
-    unsafe fn unlock(&self, write: bool, new_layout: Option<ImageLayout>) {
-        self.image.initialized.store(true, Ordering::Relaxed);
-
-        let mut state = self.inner().image.state();
-        state.gpu_unlock(
-            self.inner().image.format().unwrap().aspects(),
-            self.inner().first_mipmap_level as u32
-                ..self.inner().first_mipmap_level as u32 + self.inner().num_mipmap_levels as u32,
-            self.inner().first_layer as u32
-                ..self.inner().first_layer as u32 + self.inner().num_layers as u32,
-            write,
-        )
     }
 
     #[inline]

@@ -1788,6 +1788,23 @@ impl ImageState {
         }
     }
 
+    /// Locks the resource for usage on the GPU. Returns an error if the lock can't be acquired.
+    ///
+    /// After this function returns `Ok`, you are authorized to use the image on the GPU. If the
+    /// GPU operation requires write access to the image (which includes image layout transitions)
+    /// then `write` should be true.
+    ///
+    /// The `expected_layout` is the layout we expect the image to be in when we lock it. If the
+    /// actual layout doesn't match this expected layout, then an error should be returned. If
+    /// `Undefined` is passed, that means that the caller doesn't care about the actual layout,
+    /// and that a layout mismatch shouldn't return an error.
+    ///
+    /// This function exists to prevent the user from causing a data race by reading and writing
+    /// to the same resource at the same time.
+    ///
+    /// If you call this function, you should call `gpu_unlock` once the resource is no longer in
+    /// use by the GPU. The implementation is not expected to automatically perform any unlocking
+    /// and can rely on the fact that `gpu_unlock` is going to be called.
     pub(crate) fn try_gpu_lock(
         &mut self,
         aspects: ImageAspects,
@@ -1877,6 +1894,12 @@ impl ImageState {
         Ok(())
     }
 
+    /// Locks the resource for usage on the GPU without checking for errors. Supposes that a
+    /// future has already granted access to the resource.
+    ///
+    /// If you call this function, you should call `gpu_unlock` once the resource is no longer in
+    /// use by the GPU. The implementation is not expected to automatically perform any unlocking
+    /// and can rely on the fact that `gpu_unlock` is going to be called.
     pub(crate) unsafe fn increase_gpu_lock(
         &mut self,
         aspects: ImageAspects,
@@ -1942,6 +1965,11 @@ impl ImageState {
         }
     }
 
+    /// Unlocks the resource previously acquired with `try_gpu_lock` or `increase_gpu_lock`.
+    ///
+    /// # Safety
+    ///
+    /// - Must only be called once per previous lock.
     pub(crate) unsafe fn gpu_unlock(
         &mut self,
         aspects: ImageAspects,

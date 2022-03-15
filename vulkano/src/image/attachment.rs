@@ -25,7 +25,6 @@ use crate::{
         DedicatedAllocation, DeviceMemoryExportError, ExternalMemoryHandleType,
         ExternalMemoryHandleTypes, MemoryPool,
     },
-    sync::AccessError,
     DeviceSize,
 };
 use std::{
@@ -590,58 +589,6 @@ where
     #[inline]
     fn conflict_key(&self) -> u64 {
         self.image.key()
-    }
-
-    #[inline]
-    fn try_gpu_lock(
-        &self,
-        write: bool,
-        uninitialized_safe: bool,
-        expected_layout: ImageLayout,
-    ) -> Result<(), AccessError> {
-        let mut state = self.inner().image.state();
-        state.try_gpu_lock(
-            self.format.aspects(),
-            self.inner().first_mipmap_level as u32
-                ..self.inner().first_mipmap_level as u32 + self.inner().num_mipmap_levels as u32,
-            self.inner().first_layer as u32
-                ..self.inner().first_layer as u32 + self.inner().num_layers as u32,
-            write,
-            expected_layout,
-            self.final_layout_requirement(),
-        )
-    }
-
-    #[inline]
-    unsafe fn increase_gpu_lock(&self, write: bool) {
-        let mut state = self.inner().image.state();
-        state.increase_gpu_lock(
-            self.inner().image.format().unwrap().aspects(),
-            self.inner().first_mipmap_level as u32
-                ..self.inner().first_mipmap_level as u32 + self.inner().num_mipmap_levels as u32,
-            self.inner().first_layer as u32
-                ..self.inner().first_layer as u32 + self.inner().num_layers as u32,
-            write,
-            self.final_layout_requirement(),
-        )
-    }
-
-    #[inline]
-    unsafe fn unlock(&self, write: bool, new_layout: Option<ImageLayout>) {
-        if let Some(new_layout) = new_layout {
-            debug_assert_eq!(new_layout, self.attachment_layout);
-            self.initialized.store(true, Ordering::SeqCst);
-        }
-
-        let mut state = self.inner().image.state();
-        state.gpu_unlock(
-            self.inner().image.format().unwrap().aspects(),
-            self.inner().first_mipmap_level as u32
-                ..self.inner().first_mipmap_level as u32 + self.inner().num_mipmap_levels as u32,
-            self.inner().first_layer as u32
-                ..self.inner().first_layer as u32 + self.inner().num_layers as u32,
-            write,
-        )
     }
 
     #[inline]

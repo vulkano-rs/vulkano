@@ -7,23 +7,18 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::BufferContents;
-use crate::buffer::traits::BufferAccess;
-use crate::buffer::traits::BufferAccessObject;
-use crate::buffer::traits::BufferInner;
-use crate::buffer::traits::TypedBufferAccess;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::device::Queue;
-use crate::sync::AccessError;
-use crate::DeviceSize;
-use std::hash::Hash;
-use std::hash::Hasher;
-use std::marker::PhantomData;
-use std::mem;
-use std::mem::MaybeUninit;
-use std::ops::Range;
-use std::sync::Arc;
+use super::{BufferAccess, BufferAccessObject, BufferContents, BufferInner, TypedBufferAccess};
+use crate::{
+    device::{Device, DeviceOwned},
+    DeviceSize,
+};
+use std::{
+    hash::{Hash, Hasher},
+    marker::PhantomData,
+    mem::{size_of, size_of_val, MaybeUninit},
+    ops::Range,
+    sync::Arc,
+};
 
 /// A subpart of a buffer.
 ///
@@ -123,7 +118,7 @@ impl<T: ?Sized, B> BufferSlice<T, B> {
     {
         let data: MaybeUninit<&T> = MaybeUninit::zeroed();
         let result = f(data.assume_init());
-        let size = mem::size_of_val(result) as DeviceSize;
+        let size = size_of_val(result) as DeviceSize;
         let result = result as *const R as *const () as DeviceSize;
 
         assert!(result <= self.size());
@@ -173,8 +168,8 @@ impl<T, B> BufferSlice<[T], B> {
     /// Returns the number of elements in this slice.
     #[inline]
     pub fn len(&self) -> DeviceSize {
-        debug_assert_eq!(self.size() % mem::size_of::<T>() as DeviceSize, 0);
-        self.size() / mem::size_of::<T>() as DeviceSize
+        debug_assert_eq!(self.size() % size_of::<T>() as DeviceSize, 0);
+        self.size() / size_of::<T>() as DeviceSize
     }
 
     /// Reduces the slice to just one element of the array.
@@ -189,8 +184,8 @@ impl<T, B> BufferSlice<[T], B> {
         Some(Arc::new(BufferSlice {
             marker: PhantomData,
             resource: self.resource.clone(),
-            offset: self.offset + index * mem::size_of::<T>() as DeviceSize,
-            size: mem::size_of::<T>() as DeviceSize,
+            offset: self.offset + index * size_of::<T>() as DeviceSize,
+            size: size_of::<T>() as DeviceSize,
         }))
     }
 
@@ -206,8 +201,8 @@ impl<T, B> BufferSlice<[T], B> {
         Some(Arc::new(BufferSlice {
             marker: PhantomData,
             resource: self.resource.clone(),
-            offset: self.offset + range.start * mem::size_of::<T>() as DeviceSize,
-            size: (range.end - range.start) * mem::size_of::<T>() as DeviceSize,
+            offset: self.offset + range.start * size_of::<T>() as DeviceSize,
+            size: (range.end - range.start) * size_of::<T>() as DeviceSize,
         }))
     }
 }
@@ -234,21 +229,6 @@ where
     #[inline]
     fn conflict_key(&self) -> (u64, u64) {
         self.resource.conflict_key()
-    }
-
-    #[inline]
-    fn try_gpu_lock(&self, write: bool, queue: &Queue) -> Result<(), AccessError> {
-        self.resource.try_gpu_lock(write, queue)
-    }
-
-    #[inline]
-    unsafe fn increase_gpu_lock(&self, write: bool) {
-        self.resource.increase_gpu_lock(write)
-    }
-
-    #[inline]
-    unsafe fn unlock(&self, write: bool) {
-        self.resource.unlock(write)
     }
 }
 

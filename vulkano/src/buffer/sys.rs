@@ -651,6 +651,14 @@ impl BufferState {
         }
     }
 
+    /// Locks the resource for usage on the GPU. Returns an error if the lock can't be acquired.
+    ///
+    /// This function exists to prevent the user from causing a data race by reading and writing
+    /// to the same resource at the same time.
+    ///
+    /// If you call this function, you should call `gpu_unlock` once the resource is no longer in
+    /// use by the GPU. The implementation is not expected to automatically perform any unlocking
+    /// and can rely on the fact that `gpu_unlock` is going to be called.
     pub(crate) fn try_gpu_lock(
         &mut self,
         range: Range<DeviceSize>,
@@ -698,6 +706,12 @@ impl BufferState {
         Ok(())
     }
 
+    /// Locks the resource for usage on the GPU without checking for errors. Supposes that a
+    /// future has already granted access to the resource.
+    ///
+    /// If you call this function, you should call `gpu_unlock` once the resource is no longer in
+    /// use by the GPU. The implementation is not expected to automatically perform any unlocking
+    /// and can rely on the fact that `gpu_unlock` is going to be called.
     pub(crate) unsafe fn increase_gpu_lock(&mut self, range: Range<DeviceSize>, write: bool) {
         if write {
             self.ranges.split_at(&range.start);
@@ -739,6 +753,11 @@ impl BufferState {
         }
     }
 
+    /// Unlocks the resource previously acquired with `try_gpu_lock` or `increase_gpu_lock`.
+    ///
+    /// # Safety
+    ///
+    /// Must only be called once per previous lock.
     pub(crate) unsafe fn gpu_unlock(&mut self, range: Range<DeviceSize>, write: bool) {
         if write {
             self.ranges.split_at(&range.start);

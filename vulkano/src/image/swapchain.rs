@@ -11,7 +11,7 @@ use super::{
     traits::{ImageClearValue, ImageContent},
     ImageAccess, ImageDescriptorLayouts, ImageInner, ImageLayout,
 };
-use crate::{format::ClearValue, swapchain::Swapchain, sync::AccessError, OomError};
+use crate::{format::ClearValue, swapchain::Swapchain, OomError};
 use std::{
     hash::{Hash, Hasher},
     sync::Arc,
@@ -107,58 +107,6 @@ where
     #[inline]
     fn conflict_key(&self) -> u64 {
         self.my_image().image.key()
-    }
-
-    #[inline]
-    fn try_gpu_lock(
-        &self,
-        write: bool,
-        uninitialized_safe: bool,
-        expected_layout: ImageLayout,
-    ) -> Result<(), AccessError> {
-        if !self.swapchain.is_full_screen_exclusive() {
-            // Swapchain image are only accessible after being acquired.
-            return Err(AccessError::SwapchainImageAcquireOnly);
-        }
-
-        let mut state = self.inner().image.state();
-        state.try_gpu_lock(
-            self.inner().image.format().unwrap().aspects(),
-            self.inner().first_mipmap_level as u32
-                ..self.inner().first_mipmap_level as u32 + self.inner().num_mipmap_levels as u32,
-            self.inner().first_layer as u32
-                ..self.inner().first_layer as u32 + self.inner().num_layers as u32,
-            write,
-            expected_layout,
-            self.final_layout_requirement(),
-        )
-    }
-
-    #[inline]
-    unsafe fn increase_gpu_lock(&self, write: bool) {
-        let mut state = self.inner().image.state();
-        state.increase_gpu_lock(
-            self.inner().image.format().unwrap().aspects(),
-            self.inner().first_mipmap_level as u32
-                ..self.inner().first_mipmap_level as u32 + self.inner().num_mipmap_levels as u32,
-            self.inner().first_layer as u32
-                ..self.inner().first_layer as u32 + self.inner().num_layers as u32,
-            write,
-            self.final_layout_requirement(),
-        )
-    }
-
-    #[inline]
-    unsafe fn unlock(&self, write: bool, new_layout: Option<ImageLayout>) {
-        let mut state = self.inner().image.state();
-        state.gpu_unlock(
-            self.inner().image.format().unwrap().aspects(),
-            self.inner().first_mipmap_level as u32
-                ..self.inner().first_mipmap_level as u32 + self.inner().num_mipmap_levels as u32,
-            self.inner().first_layer as u32
-                ..self.inner().first_layer as u32 + self.inner().num_layers as u32,
-            write,
-        )
     }
 
     #[inline]
