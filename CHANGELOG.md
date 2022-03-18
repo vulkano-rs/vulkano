@@ -106,6 +106,7 @@
 - Validate SPIR-V code containing `OpUndef` correctly.
 - `VertexBuffersCollection` now supports arrays.
 - Fixed overflow in multiview vertex buffer validation.
+- Fixed missing initialization in `PhysicalDevice::surface_formats`.
 
 # Version 0.28.0 (2022-02-02)
 
