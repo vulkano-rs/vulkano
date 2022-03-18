@@ -165,3 +165,19 @@ where
     /// The resource is used in multiple queue families. Can be slower than `Exclusive`.
     Concurrent(I),
 }
+
+/// How the memory of a resource is currently being accessed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CurrentAccess {
+    /// The resource is currently being accessed exclusively by the CPU.
+    CpuExclusive,
+
+    /// The resource is currently being accessed exclusively by the GPU.
+    /// The GPU can have multiple exclusive accesses, if they are separated by synchronization.
+    ///
+    /// `gpu_writes` must not be 0. If it's decremented to 0, switch to `Shared`.
+    GpuExclusive { gpu_reads: usize, gpu_writes: usize },
+
+    /// The resource is not currently being accessed, or is being accessed for reading only.
+    Shared { cpu_reads: usize, gpu_reads: usize },
+}

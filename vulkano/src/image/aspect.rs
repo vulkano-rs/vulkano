@@ -12,7 +12,7 @@ use std::ops::BitOr;
 /// An individual data type within an image.
 ///
 /// Most images have only the `Color` aspect, but some may have several.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[repr(u32)]
 pub enum ImageAspect {
     Color = ash::vk::ImageAspectFlags::COLOR.as_raw(),
@@ -91,6 +91,36 @@ impl ImageAspects {
             && (memory_plane0 || !other.memory_plane0)
             && (memory_plane1 || !other.memory_plane1)
             && (memory_plane2 || !other.memory_plane2)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = ImageAspect> {
+        let Self {
+            color,
+            depth,
+            stencil,
+            metadata,
+            plane0,
+            plane1,
+            plane2,
+            memory_plane0,
+            memory_plane1,
+            memory_plane2,
+        } = *self;
+
+        [
+            color.then(|| ImageAspect::Color),
+            depth.then(|| ImageAspect::Depth),
+            stencil.then(|| ImageAspect::Stencil),
+            metadata.then(|| ImageAspect::Metadata),
+            plane0.then(|| ImageAspect::Plane0),
+            plane1.then(|| ImageAspect::Plane1),
+            plane2.then(|| ImageAspect::Plane2),
+            memory_plane0.then(|| ImageAspect::MemoryPlane0),
+            memory_plane1.then(|| ImageAspect::MemoryPlane1),
+            memory_plane2.then(|| ImageAspect::MemoryPlane2),
+        ]
+        .into_iter()
+        .flatten()
     }
 }
 

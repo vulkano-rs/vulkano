@@ -7,8 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::buffer::BufferAccess;
-use crate::buffer::BufferAccessObject;
+use crate::buffer::{BufferAccess, BufferAccessObject};
 use std::sync::Arc;
 
 /// A collection of vertex buffers.
@@ -88,8 +87,6 @@ mod tests {
     use crate::buffer::BufferInner;
     use crate::device::Device;
     use crate::device::DeviceOwned;
-    use crate::device::Queue;
-    use crate::sync::AccessError;
     use crate::DeviceSize;
     use std::sync::Arc;
 
@@ -106,18 +103,6 @@ mod tests {
         }
 
         fn conflict_key(&self) -> (u64, u64) {
-            unimplemented!()
-        }
-
-        fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
-            unimplemented!()
-        }
-
-        unsafe fn increase_gpu_lock(&self) {
-            unimplemented!()
-        }
-
-        unsafe fn unlock(&self) {
             unimplemented!()
         }
     }
@@ -144,18 +129,6 @@ mod tests {
         }
 
         fn conflict_key(&self) -> (u64, u64) {
-            unimplemented!()
-        }
-
-        fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
-            unimplemented!()
-        }
-
-        unsafe fn increase_gpu_lock(&self) {
-            unimplemented!()
-        }
-
-        unsafe fn unlock(&self) {
             unimplemented!()
         }
     }

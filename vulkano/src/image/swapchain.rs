@@ -7,19 +7,15 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::format::ClearValue;
-use crate::image::traits::ImageAccess;
-use crate::image::traits::ImageClearValue;
-use crate::image::traits::ImageContent;
-use crate::image::ImageDescriptorLayouts;
-use crate::image::ImageInner;
-use crate::image::ImageLayout;
-use crate::swapchain::Swapchain;
-use crate::sync::AccessError;
-use crate::OomError;
-use std::hash::Hash;
-use std::hash::Hasher;
-use std::sync::Arc;
+use super::{
+    traits::{ImageClearValue, ImageContent},
+    ImageAccess, ImageDescriptorLayouts, ImageInner, ImageLayout,
+};
+use crate::{format::ClearValue, swapchain::Swapchain, OomError};
+use std::{
+    hash::{Hash, Hasher},
+    sync::Arc,
+};
 
 /// An image that is part of a swapchain.
 ///
@@ -114,16 +110,6 @@ where
     }
 
     #[inline]
-    fn try_gpu_lock(&self, _: bool, _: bool, _: ImageLayout) -> Result<(), AccessError> {
-        if self.swapchain.is_full_screen_exclusive() {
-            Ok(())
-        } else {
-            // Swapchain image are only accessible after being acquired.
-            Err(AccessError::SwapchainImageAcquireOnly)
-        }
-    }
-
-    #[inline]
     unsafe fn layout_initialized(&self) {
         self.layout_initialized();
     }
@@ -131,14 +117,6 @@ where
     #[inline]
     fn is_layout_initialized(&self) -> bool {
         self.is_layout_initialized()
-    }
-
-    #[inline]
-    unsafe fn increase_gpu_lock(&self) {}
-
-    #[inline]
-    unsafe fn unlock(&self, _: Option<ImageLayout>) {
-        // TODO: store that the image was initialized
     }
 
     #[inline]

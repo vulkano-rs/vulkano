@@ -135,21 +135,36 @@ impl SyncCommandBuffer {
 
             match &resource_use.resource {
                 KeyTy::Buffer(buffer) => {
+                    // Can happen with `CpuBufferPool`
+                    if buffer.size() == 0 {
+                        continue;
+                    }
+
+                    let inner = buffer.inner();
+                    let mut buffer_state = inner.buffer.state();
+
                     // Because try_gpu_lock needs to be called first,
                     // this should never return Ok without first returning Err
                     let prev_err =
                         match future.check_buffer_access(buffer.as_ref(), state.exclusive, queue) {
-                            Ok(_) => {
-                                unsafe {
-                                    buffer.increase_gpu_lock();
-                                }
+                            Ok(_) => unsafe {
+                                buffer_state.increase_gpu_lock(
+                                    inner.offset..inner.offset + buffer.size(),
+                                    state.exclusive,
+                                );
                                 locked_resources += 1;
                                 continue;
-                            }
+                            },
                             Err(err) => err,
                         };
 
-                    match (buffer.try_gpu_lock(state.exclusive, queue), prev_err) {
+                    match (
+                        buffer_state.try_gpu_lock(
+                            inner.offset..inner.offset + buffer.size(),
+                            state.exclusive,
+                        ),
+                        prev_err,
+                    ) {
                         (Ok(_), _) => (),
                         (Err(err), AccessCheckError::Unknown)
                         | (_, AccessCheckError::Denied(err)) => {
@@ -167,27 +182,37 @@ impl SyncCommandBuffer {
                 }
 
                 KeyTy::Image(image) => {
+                    let inner = image.inner();
+                    let mut image_state = inner.image.state();
+
                     let prev_err = match future.check_image_access(
                         image.as_ref(),
                         state.initial_layout,
                         state.exclusive,
                         queue,
                     ) {
-                        Ok(_) => {
-                            unsafe {
-                                image.increase_gpu_lock();
-                            }
+                        Ok(_) => unsafe {
+                            image_state.increase_gpu_lock(
+                                inner.image.format().unwrap().aspects(),
+                                image.current_mip_levels_access(),
+                                image.current_array_layers_access(),
+                                state.exclusive,
+                                state.final_layout,
+                            );
                             locked_resources += 1;
                             continue;
-                        }
+                        },
                         Err(err) => err,
                     };
 
                     match (
-                        image.try_gpu_lock(
+                        image_state.try_gpu_lock(
+                            inner.image.format().unwrap().aspects(),
+                            image.current_mip_levels_access(),
+                            image.current_array_layers_access(),
                             state.exclusive,
-                            state.image_uninitialized_safe.is_safe(),
                             state.initial_layout,
+                            state.final_layout,
                         ),
                         prev_err,
                     ) {
@@ -218,18 +243,23 @@ impl SyncCommandBuffer {
 
                 match &resource_use.resource {
                     KeyTy::Buffer(buffer) => unsafe {
-                        buffer.unlock();
+                        let inner = buffer.inner();
+                        let mut buffer_state = inner.buffer.state();
+                        buffer_state.gpu_unlock(
+                            inner.offset..inner.offset + buffer.size(),
+                            state.exclusive,
+                        );
                     },
-                    KeyTy::Image(image) => {
-                        let trans = if state.final_layout != state.initial_layout {
-                            Some(state.final_layout)
-                        } else {
-                            None
-                        };
-                        unsafe {
-                            image.unlock(trans);
-                        }
-                    }
+                    KeyTy::Image(image) => unsafe {
+                        let inner = image.inner();
+                        let mut image_state = inner.image.state();
+                        image_state.gpu_unlock(
+                            inner.image.format().unwrap().aspects(),
+                            image.current_mip_levels_access(),
+                            image.current_array_layers_access(),
+                            state.exclusive,
+                        )
+                    },
                 }
             }
         }
@@ -253,15 +283,20 @@ impl SyncCommandBuffer {
 
             match &resource_use.resource {
                 KeyTy::Buffer(buffer) => {
-                    buffer.unlock();
+                    let inner = buffer.inner();
+                    let mut buffer_state = inner.buffer.state();
+                    buffer_state
+                        .gpu_unlock(inner.offset..inner.offset + buffer.size(), state.exclusive);
                 }
                 KeyTy::Image(image) => {
-                    let trans = if state.final_layout != state.initial_layout {
-                        Some(state.final_layout)
-                    } else {
-                        None
-                    };
-                    image.unlock(trans);
+                    let inner = image.inner();
+                    let mut image_state = inner.image.state();
+                    image_state.gpu_unlock(
+                        inner.image.format().unwrap().aspects(),
+                        image.current_mip_levels_access(),
+                        image.current_array_layers_access(),
+                        state.exclusive,
+                    )
                 }
             }
         }

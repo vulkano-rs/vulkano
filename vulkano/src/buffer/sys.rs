@@ -24,35 +24,40 @@
 //!   sparse binding.
 //! - Type safety.
 
-use crate::check_errors;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::memory::DeviceMemory;
-use crate::memory::DeviceMemoryAllocationError;
-use crate::memory::MemoryRequirements;
-use crate::sync::Sharing;
-use crate::DeviceSize;
-use crate::Error;
-use crate::OomError;
-use crate::VulkanObject;
-use crate::{buffer::BufferUsage, Version};
+use super::{
+    cpu_access::{ReadLockError, WriteLockError},
+    BufferUsage,
+};
+use crate::{
+    check_errors,
+    device::{Device, DeviceOwned},
+    memory::{DeviceMemory, DeviceMemoryAllocationError, MemoryRequirements},
+    sync::{AccessError, CurrentAccess, Sharing},
+    DeviceSize, Error, OomError, Version, VulkanObject,
+};
 use ash::vk::Handle;
+use parking_lot::{Mutex, MutexGuard};
+use rangemap::RangeMap;
 use smallvec::SmallVec;
-use std::error;
-use std::fmt;
-use std::hash::Hash;
-use std::hash::Hasher;
-use std::mem::MaybeUninit;
-use std::ptr;
-use std::sync::Arc;
+use std::{
+    error, fmt,
+    hash::{Hash, Hasher},
+    mem::MaybeUninit,
+    ops::Range,
+    ptr,
+    sync::Arc,
+};
 
 /// Data storage in a GPU-accessible location.
 #[derive(Debug)]
 pub struct UnsafeBuffer {
     handle: ash::vk::Buffer,
     device: Arc<Device>,
+
     size: DeviceSize,
     usage: BufferUsage,
+
+    state: Mutex<BufferState>,
 }
 
 impl UnsafeBuffer {
@@ -167,8 +172,11 @@ impl UnsafeBuffer {
         let buffer = UnsafeBuffer {
             handle,
             device,
+
             size,
             usage,
+
+            state: Mutex::new(BufferState::new(size)),
         };
 
         Ok(buffer)
@@ -311,6 +319,10 @@ impl UnsafeBuffer {
             offset,
         ))?;
         Ok(())
+    }
+
+    pub(crate) fn state(&self) -> MutexGuard<BufferState> {
+        self.state.lock()
     }
 
     /// Returns the size of the buffer in bytes.
@@ -525,6 +537,273 @@ impl From<SparseLevel> for ash::vk::BufferCreateFlags {
         }
         result
     }
+}
+
+/// The current state of a buffer.
+#[derive(Debug)]
+pub(crate) struct BufferState {
+    ranges: RangeMap<DeviceSize, BufferRangeState>,
+}
+
+impl BufferState {
+    fn new(size: DeviceSize) -> Self {
+        BufferState {
+            ranges: [(
+                0..size,
+                BufferRangeState {
+                    current_access: CurrentAccess::Shared {
+                        cpu_reads: 0,
+                        gpu_reads: 0,
+                    },
+                },
+            )]
+            .into_iter()
+            .collect(),
+        }
+    }
+
+    pub(crate) fn try_cpu_read(&mut self, range: Range<DeviceSize>) -> Result<(), ReadLockError> {
+        for (_range, state) in self.ranges.range(&range) {
+            match &state.current_access {
+                CurrentAccess::CpuExclusive { .. } => return Err(ReadLockError::CpuWriteLocked),
+                CurrentAccess::GpuExclusive { .. } => return Err(ReadLockError::GpuWriteLocked),
+                CurrentAccess::Shared { .. } => (),
+            }
+        }
+
+        self.ranges.split_at(&range.start);
+        self.ranges.split_at(&range.end);
+
+        for (_range, state) in self.ranges.range_mut(&range) {
+            match &mut state.current_access {
+                CurrentAccess::Shared { cpu_reads, .. } => {
+                    *cpu_reads += 1;
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn try_cpu_write(&mut self, range: Range<DeviceSize>) -> Result<(), WriteLockError> {
+        for (_range, state) in self.ranges.range(&range) {
+            match &state.current_access {
+                CurrentAccess::CpuExclusive => return Err(WriteLockError::CpuLocked),
+                CurrentAccess::GpuExclusive { .. } => return Err(WriteLockError::GpuLocked),
+                CurrentAccess::Shared {
+                    cpu_reads: 0,
+                    gpu_reads: 0,
+                } => (),
+                CurrentAccess::Shared { cpu_reads, .. } if *cpu_reads > 0 => {
+                    return Err(WriteLockError::CpuLocked)
+                }
+                CurrentAccess::Shared { .. } => return Err(WriteLockError::GpuLocked),
+            }
+        }
+
+        self.ranges.split_at(&range.start);
+        self.ranges.split_at(&range.end);
+
+        for (_range, state) in self.ranges.range_mut(&range) {
+            state.current_access = CurrentAccess::CpuExclusive;
+        }
+
+        Ok(())
+    }
+
+    pub(crate) unsafe fn cpu_unlock(&mut self, range: Range<DeviceSize>, write: bool) {
+        if write {
+            self.ranges.split_at(&range.start);
+            self.ranges.split_at(&range.end);
+
+            for (_range, state) in self.ranges.range_mut(&range) {
+                match &mut state.current_access {
+                    CurrentAccess::CpuExclusive => {
+                        state.current_access = CurrentAccess::Shared {
+                            cpu_reads: 0,
+                            gpu_reads: 0,
+                        }
+                    }
+                    CurrentAccess::GpuExclusive { .. } => {
+                        unreachable!("Buffer is being written by the GPU")
+                    }
+                    CurrentAccess::Shared { .. } => {
+                        unreachable!("Buffer is not being written by the CPU")
+                    }
+                }
+            }
+        } else {
+            self.ranges.split_at(&range.start);
+            self.ranges.split_at(&range.end);
+
+            for (_range, state) in self.ranges.range_mut(&range) {
+                match &mut state.current_access {
+                    CurrentAccess::CpuExclusive => {
+                        unreachable!("Buffer is being written by the CPU")
+                    }
+                    CurrentAccess::GpuExclusive { .. } => {
+                        unreachable!("Buffer is being written by the GPU")
+                    }
+                    CurrentAccess::Shared { cpu_reads, .. } => *cpu_reads -= 1,
+                }
+            }
+        }
+    }
+
+    /// Locks the resource for usage on the GPU. Returns an error if the lock can't be acquired.
+    ///
+    /// This function exists to prevent the user from causing a data race by reading and writing
+    /// to the same resource at the same time.
+    ///
+    /// If you call this function, you should call `gpu_unlock` once the resource is no longer in
+    /// use by the GPU. The implementation is not expected to automatically perform any unlocking
+    /// and can rely on the fact that `gpu_unlock` is going to be called.
+    pub(crate) fn try_gpu_lock(
+        &mut self,
+        range: Range<DeviceSize>,
+        write: bool,
+    ) -> Result<(), AccessError> {
+        if write {
+            for (_range, state) in self.ranges.range(&range) {
+                match &state.current_access {
+                    CurrentAccess::Shared {
+                        cpu_reads: 0,
+                        gpu_reads: 0,
+                    } => (),
+                    _ => return Err(AccessError::AlreadyInUse),
+                }
+            }
+
+            self.ranges.split_at(&range.start);
+            self.ranges.split_at(&range.end);
+
+            for (_range, state) in self.ranges.range_mut(&range) {
+                state.current_access = CurrentAccess::GpuExclusive {
+                    gpu_reads: 0,
+                    gpu_writes: 1,
+                };
+            }
+        } else {
+            for (_range, state) in self.ranges.range(&range) {
+                match &state.current_access {
+                    CurrentAccess::Shared { .. } => (),
+                    _ => return Err(AccessError::AlreadyInUse),
+                }
+            }
+
+            self.ranges.split_at(&range.start);
+            self.ranges.split_at(&range.end);
+
+            for (_range, state) in self.ranges.range_mut(&range) {
+                match &mut state.current_access {
+                    CurrentAccess::Shared { gpu_reads, .. } => *gpu_reads += 1,
+                    _ => unreachable!(),
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Locks the resource for usage on the GPU without checking for errors. Supposes that a
+    /// future has already granted access to the resource.
+    ///
+    /// If you call this function, you should call `gpu_unlock` once the resource is no longer in
+    /// use by the GPU. The implementation is not expected to automatically perform any unlocking
+    /// and can rely on the fact that `gpu_unlock` is going to be called.
+    pub(crate) unsafe fn increase_gpu_lock(&mut self, range: Range<DeviceSize>, write: bool) {
+        if write {
+            self.ranges.split_at(&range.start);
+            self.ranges.split_at(&range.end);
+
+            for (_range, state) in self.ranges.range_mut(&range) {
+                match &mut state.current_access {
+                    CurrentAccess::CpuExclusive => {
+                        unreachable!("Buffer is being written by the CPU")
+                    }
+                    CurrentAccess::GpuExclusive { gpu_writes, .. } => *gpu_writes += 1,
+                    &mut CurrentAccess::Shared {
+                        cpu_reads: 0,
+                        gpu_reads,
+                    } => {
+                        state.current_access = CurrentAccess::GpuExclusive {
+                            gpu_reads,
+                            gpu_writes: 1,
+                        }
+                    }
+                    CurrentAccess::Shared { .. } => {
+                        unreachable!("Buffer is being read by the CPU")
+                    }
+                }
+            }
+        } else {
+            self.ranges.split_at(&range.start);
+            self.ranges.split_at(&range.end);
+
+            for (_range, state) in self.ranges.range_mut(&range) {
+                match &mut state.current_access {
+                    CurrentAccess::CpuExclusive => {
+                        unreachable!("Buffer is being written by the CPU")
+                    }
+                    CurrentAccess::GpuExclusive { gpu_reads, .. }
+                    | CurrentAccess::Shared { gpu_reads, .. } => *gpu_reads += 1,
+                }
+            }
+        }
+    }
+
+    /// Unlocks the resource previously acquired with `try_gpu_lock` or `increase_gpu_lock`.
+    ///
+    /// # Safety
+    ///
+    /// Must only be called once per previous lock.
+    pub(crate) unsafe fn gpu_unlock(&mut self, range: Range<DeviceSize>, write: bool) {
+        if write {
+            self.ranges.split_at(&range.start);
+            self.ranges.split_at(&range.end);
+
+            for (_range, state) in self.ranges.range_mut(&range) {
+                match &mut state.current_access {
+                    CurrentAccess::CpuExclusive => {
+                        unreachable!("Buffer is being written by the CPU")
+                    }
+                    &mut CurrentAccess::GpuExclusive {
+                        gpu_reads,
+                        gpu_writes: 1,
+                    } => {
+                        state.current_access = CurrentAccess::Shared {
+                            cpu_reads: 0,
+                            gpu_reads,
+                        }
+                    }
+                    CurrentAccess::GpuExclusive { gpu_writes, .. } => *gpu_writes -= 1,
+                    CurrentAccess::Shared { .. } => {
+                        unreachable!("Buffer is not being written by the GPU")
+                    }
+                }
+            }
+        } else {
+            self.ranges.split_at(&range.start);
+            self.ranges.split_at(&range.end);
+
+            for (_range, state) in self.ranges.range_mut(&range) {
+                match &mut state.current_access {
+                    CurrentAccess::CpuExclusive => {
+                        unreachable!("Buffer is being written by the CPU")
+                    }
+                    CurrentAccess::GpuExclusive { gpu_reads, .. } => *gpu_reads -= 1,
+                    CurrentAccess::Shared { gpu_reads, .. } => *gpu_reads -= 1,
+                }
+            }
+        }
+    }
+}
+
+/// The current state of a specific range of bytes in a buffer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct BufferRangeState {
+    current_access: CurrentAccess,
 }
 
 #[cfg(test)]

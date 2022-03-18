@@ -7,19 +7,15 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::format::ClearValue;
-use crate::format::Format;
-use crate::format::FormatFeatures;
-use crate::image::sys::UnsafeImage;
-use crate::image::ImageDescriptorLayouts;
-use crate::image::ImageDimensions;
-use crate::image::ImageLayout;
-use crate::image::SampleCount;
-use crate::sync::AccessError;
-use crate::SafeDeref;
-use std::hash::Hash;
-use std::hash::Hasher;
-use std::sync::Arc;
+use super::{sys::UnsafeImage, ImageDescriptorLayouts, ImageDimensions, ImageLayout, SampleCount};
+use crate::{
+    format::{ClearValue, Format, FormatFeatures},
+    SafeDeref,
+};
+use std::{
+    hash::{Hash, Hasher},
+    sync::Arc,
+};
 
 /// Trait for types that represent the way a GPU can access an image.
 pub unsafe trait ImageAccess: Send + Sync {
@@ -140,61 +136,6 @@ pub unsafe trait ImageAccess: Send + Sync {
 
     /// Returns the current array layer that is accessed by the gpu
     fn current_array_layers_access(&self) -> std::ops::Range<u32>;
-
-    /// Locks the resource for usage on the GPU. Returns an error if the lock can't be acquired.
-    ///
-    /// After this function returns `Ok`, you are authorized to use the image on the GPU. If the
-    /// GPU operation requires an exclusive access to the image (which includes image layout
-    /// transitions) then `exclusive_access` should be true.
-    ///
-    /// The `expected_layout` is the layout we expect the image to be in when we lock it. If the
-    /// actual layout doesn't match this expected layout, then an error should be returned. If
-    /// `Undefined` is passed, that means that the caller doesn't care about the actual layout,
-    /// and that a layout mismatch shouldn't return an error.
-    ///
-    /// This function exists to prevent the user from causing a data race by reading and writing
-    /// to the same resource at the same time.
-    ///
-    /// If you call this function, you should call `unlock()` once the resource is no longer in use
-    /// by the GPU. The implementation is not expected to automatically perform any unlocking and
-    /// can rely on the fact that `unlock()` is going to be called.
-    fn try_gpu_lock(
-        &self,
-        exclusive_access: bool,
-        uninitialized_safe: bool,
-        expected_layout: ImageLayout,
-    ) -> Result<(), AccessError>;
-
-    /// Locks the resource for usage on the GPU. Supposes that the resource is already locked, and
-    /// simply increases the lock by one.
-    ///
-    /// Must only be called after `try_gpu_lock()` succeeded.
-    ///
-    /// If you call this function, you should call `unlock()` once the resource is no longer in use
-    /// by the GPU. The implementation is not expected to automatically perform any unlocking and
-    /// can rely on the fact that `unlock()` is going to be called.
-    unsafe fn increase_gpu_lock(&self);
-
-    /// Unlocks the resource previously acquired with `try_gpu_lock` or `increase_gpu_lock`.
-    ///
-    /// If the GPU operation that we unlock from transitioned the image to another layout, then
-    /// it should be passed as parameter.
-    ///
-    /// A layout transition requires exclusive access to the image, which means two things:
-    ///
-    /// - The implementation can panic if it finds out that the layout is not the same as it
-    ///   currently is and that it is not locked in exclusive mode.
-    /// - There shouldn't be any possible race between `unlock` and `try_gpu_lock`, since
-    ///   `try_gpu_lock` should fail if the image is already locked in exclusive mode.
-    ///
-    /// # Safety
-    ///
-    /// - Must only be called once per previous lock.
-    /// - The transitioned layout must be supported by the image (eg. the layout shouldn't be
-    ///   `ColorAttachmentOptimal` if the image wasn't created with the `color_attachment` usage).
-    /// - The transitioned layout must not be `Undefined`.
-    ///
-    unsafe fn unlock(&self, transitioned_layout: Option<ImageLayout>);
 }
 
 /// Inner information about an image.
@@ -273,27 +214,6 @@ where
         self.image.conflict_key()
     }
 
-    #[inline]
-    fn try_gpu_lock(
-        &self,
-        exclusive_access: bool,
-        uninitialized_safe: bool,
-        expected_layout: ImageLayout,
-    ) -> Result<(), AccessError> {
-        self.image
-            .try_gpu_lock(exclusive_access, uninitialized_safe, expected_layout)
-    }
-
-    #[inline]
-    unsafe fn increase_gpu_lock(&self) {
-        self.image.increase_gpu_lock()
-    }
-
-    #[inline]
-    unsafe fn unlock(&self, new_layout: Option<ImageLayout>) {
-        self.image.unlock(new_layout)
-    }
-
     fn current_mip_levels_access(&self) -> std::ops::Range<u32> {
         self.image.current_mip_levels_access()
     }
@@ -365,26 +285,6 @@ where
     #[inline]
     fn conflict_key(&self) -> u64 {
         (**self).conflict_key()
-    }
-
-    #[inline]
-    fn try_gpu_lock(
-        &self,
-        exclusive_access: bool,
-        uninitialized_safe: bool,
-        expected_layout: ImageLayout,
-    ) -> Result<(), AccessError> {
-        (**self).try_gpu_lock(exclusive_access, uninitialized_safe, expected_layout)
-    }
-
-    #[inline]
-    unsafe fn increase_gpu_lock(&self) {
-        (**self).increase_gpu_lock()
-    }
-
-    #[inline]
-    unsafe fn unlock(&self, transitioned_layout: Option<ImageLayout>) {
-        (**self).unlock(transitioned_layout)
     }
 
     #[inline]

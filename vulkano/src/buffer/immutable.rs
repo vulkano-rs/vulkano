@@ -36,7 +36,7 @@ use crate::{
         },
         DedicatedAllocation, DeviceMemoryAllocationError, MemoryPool,
     },
-    sync::{AccessError, NowFuture, Sharing},
+    sync::{NowFuture, Sharing},
     DeviceSize,
 };
 use smallvec::SmallVec;
@@ -44,10 +44,7 @@ use std::{
     hash::{Hash, Hasher},
     marker::PhantomData,
     mem::size_of,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
+    sync::Arc,
 };
 
 /// Buffer that is written once then read for as long as it is alive.
@@ -61,10 +58,6 @@ where
 
     // Memory allocated for the buffer.
     memory: A,
-
-    // True if the `ImmutableBufferInitialization` object was used by the GPU then dropped.
-    // This means that the `ImmutableBuffer` can be used as much as we want without any restriction.
-    initialized: AtomicBool,
 
     // Queue families allowed to access this buffer.
     queue_families: SmallVec<[u32; 4]>,
@@ -370,13 +363,11 @@ where
             inner: buffer,
             memory: mem,
             queue_families: queue_families,
-            initialized: AtomicBool::new(false),
             marker: PhantomData,
         });
 
         let initialization = Arc::new(ImmutableBufferInitialization {
             buffer: final_buf.clone(),
-            used: Arc::new(AtomicBool::new(false)),
         });
 
         Ok((final_buf, initialization))
@@ -431,25 +422,6 @@ where
     fn conflict_key(&self) -> (u64, u64) {
         (self.inner.key(), 0)
     }
-
-    #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, _: &Queue) -> Result<(), AccessError> {
-        if exclusive_access {
-            return Err(AccessError::ExclusiveDenied);
-        }
-
-        if !self.initialized.load(Ordering::Relaxed) {
-            return Err(AccessError::BufferNotInitialized);
-        }
-
-        Ok(())
-    }
-
-    #[inline]
-    unsafe fn increase_gpu_lock(&self) {}
-
-    #[inline]
-    unsafe fn unlock(&self) {}
 }
 
 impl<T, A> BufferAccessObject for Arc<ImmutableBuffer<T, A>>
@@ -518,7 +490,6 @@ where
     T: BufferContents + ?Sized,
 {
     buffer: Arc<ImmutableBuffer<T, A>>,
-    used: Arc<AtomicBool>,
 }
 
 unsafe impl<T, A> BufferAccess for ImmutableBufferInitialization<T, A>
@@ -539,33 +510,6 @@ where
     #[inline]
     fn conflict_key(&self) -> (u64, u64) {
         (self.buffer.inner.key(), 0)
-    }
-
-    #[inline]
-    fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
-        if self.buffer.initialized.load(Ordering::Relaxed) {
-            return Err(AccessError::AlreadyInUse);
-        }
-
-        if !self
-            .used
-            .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
-            .unwrap_or_else(|e| e)
-        {
-            Ok(())
-        } else {
-            Err(AccessError::AlreadyInUse)
-        }
-    }
-
-    #[inline]
-    unsafe fn increase_gpu_lock(&self) {
-        debug_assert!(self.used.load(Ordering::Relaxed));
-    }
-
-    #[inline]
-    unsafe fn unlock(&self) {
-        self.buffer.initialized.store(true, Ordering::Relaxed);
     }
 }
 
@@ -606,7 +550,6 @@ where
     fn clone(&self) -> ImmutableBufferInitialization<T, A> {
         ImmutableBufferInitialization {
             buffer: self.buffer.clone(),
-            used: self.used.clone(),
         }
     }
 }
@@ -718,62 +661,6 @@ mod tests {
         for (n, &v) in destination_content.iter().enumerate() {
             assert_eq!(n * 2, v as usize);
         }
-    }
-
-    #[test]
-    fn writing_forbidden() {
-        let (device, queue) = gfx_dev_and_queue!();
-
-        let (buffer, _) =
-            ImmutableBuffer::from_data(12u32, BufferUsage::all(), queue.clone()).unwrap();
-
-        assert_should_panic!({
-            // TODO: check Result error instead of panicking
-            let mut cbb = AutoCommandBufferBuilder::primary(
-                device.clone(),
-                queue.family(),
-                CommandBufferUsage::MultipleSubmit,
-            )
-            .unwrap();
-            cbb.fill_buffer(buffer, 50).unwrap();
-            let _ = cbb
-                .build()
-                .unwrap()
-                .execute(queue.clone())
-                .unwrap()
-                .then_signal_fence_and_flush()
-                .unwrap();
-        });
-    }
-
-    #[test]
-    fn read_uninitialized_forbidden() {
-        let (device, queue) = gfx_dev_and_queue!();
-
-        let (buffer, _) = unsafe {
-            ImmutableBuffer::<u32>::uninitialized(device.clone(), BufferUsage::all()).unwrap()
-        };
-
-        let source =
-            CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), false, 0).unwrap();
-
-        assert_should_panic!({
-            // TODO: check Result error instead of panicking
-            let mut cbb = AutoCommandBufferBuilder::primary(
-                device.clone(),
-                queue.family(),
-                CommandBufferUsage::MultipleSubmit,
-            )
-            .unwrap();
-            cbb.copy_buffer(source, buffer).unwrap();
-            let _ = cbb
-                .build()
-                .unwrap()
-                .execute(queue.clone())
-                .unwrap()
-                .then_signal_fence_and_flush()
-                .unwrap();
-        });
     }
 
     #[test]

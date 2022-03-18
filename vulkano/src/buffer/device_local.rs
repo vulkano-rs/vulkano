@@ -19,7 +19,7 @@ use super::{
     BufferUsage, TypedBufferAccess,
 };
 use crate::{
-    device::{physical::QueueFamily, Device, DeviceOwned, Queue},
+    device::{physical::QueueFamily, Device, DeviceOwned},
     memory::{
         pool::{
             alloc_dedicated_with_exportable_fd, AllocFromRequirementsFilter, AllocLayout,
@@ -28,7 +28,7 @@ use crate::{
         DedicatedAllocation, DeviceMemoryAllocationError, DeviceMemoryExportError,
         ExternalMemoryHandleType, MemoryPool, MemoryRequirements,
     },
-    sync::{AccessError, Sharing},
+    sync::Sharing,
     DeviceSize,
 };
 use smallvec::SmallVec;
@@ -37,7 +37,7 @@ use std::{
     hash::{Hash, Hasher},
     marker::PhantomData,
     mem::size_of,
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
 /// Buffer whose content is in device-local memory.
@@ -61,9 +61,6 @@ where
 
     // Queue families allowed to access this buffer.
     queue_families: SmallVec<[u32; 4]>,
-
-    // Number of times this buffer is locked on the GPU side.
-    gpu_lock: Mutex<GpuAccess>,
 
     // Necessary to make it compile.
     marker: PhantomData<Box<T>>,
@@ -160,7 +157,7 @@ where
 
         let (buffer, mem_reqs) = Self::build_buffer(&device, size, usage, &queue_families)?;
 
-        let mem = MemoryPool::alloc_from_requirements(
+        let memory = MemoryPool::alloc_from_requirements(
             &Device::standard_pool(&device),
             &mem_reqs,
             AllocLayout::Linear,
@@ -174,14 +171,13 @@ where
                 }
             },
         )?;
-        debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
-        buffer.bind_memory(mem.memory(), mem.offset())?;
+        debug_assert!((memory.offset() % mem_reqs.alignment) == 0);
+        buffer.bind_memory(memory.memory(), memory.offset())?;
 
         Ok(Arc::new(DeviceLocalBuffer {
             inner: buffer,
-            memory: mem,
-            queue_families: queue_families,
-            gpu_lock: Mutex::new(GpuAccess::None),
+            memory,
+            queue_families,
             marker: PhantomData,
         }))
     }
@@ -210,7 +206,7 @@ where
 
         let (buffer, mem_reqs) = Self::build_buffer(&device, size, usage, &queue_families)?;
 
-        let mem = alloc_dedicated_with_exportable_fd(
+        let memory = alloc_dedicated_with_exportable_fd(
             device.clone(),
             &mem_reqs,
             AllocLayout::Linear,
@@ -224,15 +220,14 @@ where
                 }
             },
         )?;
-        let mem_offset = mem.offset();
+        let mem_offset = memory.offset();
         debug_assert!((mem_offset % mem_reqs.alignment) == 0);
-        buffer.bind_memory(mem.memory(), mem_offset)?;
+        buffer.bind_memory(memory.memory(), mem_offset)?;
 
         Ok(Arc::new(DeviceLocalBuffer {
             inner: buffer,
-            memory: mem,
-            queue_families: queue_families,
-            gpu_lock: Mutex::new(GpuAccess::None),
+            memory,
+            queue_families,
             marker: PhantomData,
         }))
     }
@@ -328,72 +323,6 @@ where
     #[inline]
     fn conflict_key(&self) -> (u64, u64) {
         (self.inner.key(), 0)
-    }
-
-    #[inline]
-    fn try_gpu_lock(&self, exclusive: bool, _: &Queue) -> Result<(), AccessError> {
-        let mut lock = self.gpu_lock.lock().unwrap();
-        match &mut *lock {
-            a @ &mut GpuAccess::None => {
-                if exclusive {
-                    *a = GpuAccess::Exclusive { num: 1 };
-                } else {
-                    *a = GpuAccess::NonExclusive { num: 1 };
-                }
-
-                Ok(())
-            }
-            &mut GpuAccess::NonExclusive { ref mut num } => {
-                if exclusive {
-                    Err(AccessError::AlreadyInUse)
-                } else {
-                    *num += 1;
-                    Ok(())
-                }
-            }
-            &mut GpuAccess::Exclusive { .. } => Err(AccessError::AlreadyInUse),
-        }
-    }
-
-    #[inline]
-    unsafe fn increase_gpu_lock(&self) {
-        let mut lock = self.gpu_lock.lock().unwrap();
-        match *lock {
-            GpuAccess::None => panic!(),
-            GpuAccess::NonExclusive { ref mut num } => {
-                debug_assert!(*num >= 1);
-                *num += 1;
-            }
-            GpuAccess::Exclusive { ref mut num } => {
-                debug_assert!(*num >= 1);
-                *num += 1;
-            }
-        }
-    }
-
-    #[inline]
-    unsafe fn unlock(&self) {
-        let mut lock = self.gpu_lock.lock().unwrap();
-
-        match *lock {
-            GpuAccess::None => panic!("Tried to unlock a buffer that isn't locked"),
-            GpuAccess::NonExclusive { ref mut num } => {
-                assert!(*num >= 1);
-                *num -= 1;
-                if *num >= 1 {
-                    return;
-                }
-            }
-            GpuAccess::Exclusive { ref mut num } => {
-                assert!(*num >= 1);
-                *num -= 1;
-                if *num >= 1 {
-                    return;
-                }
-            }
-        };
-
-        *lock = GpuAccess::None;
     }
 }
 
