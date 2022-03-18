@@ -6,6 +6,7 @@
     description. They will be transferred to this file right after the
     Pull Request merge. 
 -->
+- **Breaking** Removed the `try_gpu_lock`, `increase_gpu_lock` and `unlock` methods from the `BufferAccess` and `ImageAccess` traits. Locking is now implemented internally in `UnsafeBuffer` and `UnsafeImage`.
 
 # Version 0.29.0 (2022-03-11)
 
