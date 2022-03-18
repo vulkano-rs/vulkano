@@ -75,13 +75,15 @@ use super::{
     CommandBufferExecError, ImageUninitializedSafe,
 };
 use crate::{
-    buffer::BufferAccess,
+    buffer::{sys::UnsafeBuffer, BufferAccess},
     device::{Device, DeviceOwned, Queue},
-    image::{ImageAccess, ImageLayout},
+    image::{sys::UnsafeImage, ImageAccess, ImageLayout},
     sync::{
         AccessCheckError, AccessError, AccessFlags, GpuFuture, PipelineMemoryAccess, PipelineStages,
     },
+    DeviceSize,
 };
+use rangemap::RangeMap;
 use std::{borrow::Cow, collections::HashMap, ops::Range, sync::Arc};
 
 mod builder;
@@ -101,7 +103,8 @@ pub struct SyncCommandBuffer {
     barriers: Vec<usize>,
 
     // State of all the resources used by this command buffer.
-    resources: HashMap<ResourceKey, ResourceFinalState>,
+    buffers2: HashMap<Arc<UnsafeBuffer>, RangeMap<DeviceSize, BufferFinalState>>,
+    images2: HashMap<Arc<UnsafeImage>, RangeMap<DeviceSize, ImageFinalState>>,
 
     // Resources and their accesses. Used for executing secondary command buffers in a primary.
     buffers: Vec<(Arc<dyn BufferAccess>, PipelineMemoryAccess)>,
@@ -123,52 +126,23 @@ impl SyncCommandBuffer {
         future: &dyn GpuFuture,
         queue: &Queue,
     ) -> Result<(), CommandBufferExecError> {
-        // Number of resources in `self.resources` that have been successfully locked.
-        let mut locked_resources = 0;
-        // Final return value of this function.
-        let mut ret_value = Ok(());
+        /*
+            Acquire the state mutexes and check if the resources can be locked.
+        */
 
-        // Try locking resources. Updates `locked_resources` and `ret_value`, and break if an error
-        // happens.
-        for state in self.resources.values() {
-            let resource_use = &state.resource_uses[0];
+        let buffer_state_mutexes = self
+            .buffers2
+            .iter()
+            .map(|(buffer, range_map)| {
+                let mut buffer_state = buffer.state();
 
-            match &resource_use.resource {
-                KeyTy::Buffer(buffer) => {
-                    // Can happen with `CpuBufferPool`
-                    if buffer.size() == 0 {
-                        continue;
-                    }
+                for (range, state) in range_map.iter() {
+                    match future.check_buffer_access(buffer, range.clone(), state.exclusive, queue)
+                    {
+                        Err(AccessCheckError::Denied(err)) => {
+                            let resource_use = &state.resource_uses[0];
 
-                    let inner = buffer.inner();
-                    let mut buffer_state = inner.buffer.state();
-
-                    // Because try_gpu_lock needs to be called first,
-                    // this should never return Ok without first returning Err
-                    let prev_err =
-                        match future.check_buffer_access(buffer.as_ref(), state.exclusive, queue) {
-                            Ok(_) => unsafe {
-                                buffer_state.increase_gpu_lock(
-                                    inner.offset..inner.offset + buffer.size(),
-                                    state.exclusive,
-                                );
-                                locked_resources += 1;
-                                continue;
-                            },
-                            Err(err) => err,
-                        };
-
-                    match (
-                        buffer_state.try_gpu_lock(
-                            inner.offset..inner.offset + buffer.size(),
-                            state.exclusive,
-                        ),
-                        prev_err,
-                    ) {
-                        (Ok(_), _) => (),
-                        (Err(err), AccessCheckError::Unknown)
-                        | (_, AccessCheckError::Denied(err)) => {
-                            ret_value = Err(CommandBufferExecError::AccessError {
+                            return Err(CommandBufferExecError::AccessError {
                                 error: err,
                                 command_name: self.commands[resource_use.command_index]
                                     .name()
@@ -176,97 +150,118 @@ impl SyncCommandBuffer {
                                 command_param: resource_use.name.clone(),
                                 command_offset: resource_use.command_index,
                             });
-                            break;
                         }
+                        Err(AccessCheckError::Unknown) => {
+                            let result = if state.exclusive {
+                                buffer_state.check_gpu_write(range.clone())
+                            } else {
+                                buffer_state.check_gpu_read(range.clone())
+                            };
+
+                            if let Err(err) = result {
+                                let resource_use = &state.resource_uses[0];
+
+                                return Err(CommandBufferExecError::AccessError {
+                                    error: err,
+                                    command_name: self.commands[resource_use.command_index]
+                                        .name()
+                                        .into(),
+                                    command_param: resource_use.name.clone(),
+                                    command_offset: resource_use.command_index,
+                                });
+                            }
+                        }
+                        _ => (),
+                    }
+                }
+
+                Ok((buffer.as_ref(), buffer_state))
+            })
+            .collect::<Result<Vec<(_, _)>, _>>()?;
+
+        let image_state_mutexes = self
+            .images2
+            .iter()
+            .map(|(image, range_map)| {
+                let mut image_state = image.state();
+
+                for (range, state) in range_map.iter() {
+                    match future.check_image_access(
+                        image,
+                        range.clone(),
+                        state.exclusive,
+                        state.initial_layout,
+                        queue,
+                    ) {
+                        Err(AccessCheckError::Denied(err)) => {
+                            let resource_use = &state.resource_uses[0];
+
+                            return Err(CommandBufferExecError::AccessError {
+                                error: err,
+                                command_name: self.commands[resource_use.command_index]
+                                    .name()
+                                    .into(),
+                                command_param: resource_use.name.clone(),
+                                command_offset: resource_use.command_index,
+                            });
+                        }
+                        Err(AccessCheckError::Unknown) => {
+                            let result = if state.exclusive {
+                                image_state.check_gpu_write(range.clone(), state.initial_layout)
+                            } else {
+                                image_state.check_gpu_read(range.clone(), state.initial_layout)
+                            };
+
+                            if let Err(err) = result {
+                                let resource_use = &state.resource_uses[0];
+
+                                return Err(CommandBufferExecError::AccessError {
+                                    error: err,
+                                    command_name: self.commands[resource_use.command_index]
+                                        .name()
+                                        .into(),
+                                    command_param: resource_use.name.clone(),
+                                    command_offset: resource_use.command_index,
+                                });
+                            }
+                        }
+                        _ => (),
                     };
                 }
 
-                KeyTy::Image(image) => {
-                    let inner = image.inner();
-                    let mut image_state = inner.image.state();
+                Ok((image.as_ref(), image_state))
+            })
+            .collect::<Result<Vec<(_, _)>, _>>()?;
 
-                    let prev_err = match future.check_image_access(
-                        image.as_ref(),
-                        state.initial_layout,
-                        state.exclusive,
-                        queue,
-                    ) {
-                        Ok(_) => unsafe {
-                            image_state.increase_gpu_lock(
-                                inner.image.format().unwrap().aspects(),
-                                image.current_mip_levels_access(),
-                                image.current_array_layers_access(),
-                                state.exclusive,
-                                state.final_layout,
-                            );
-                            locked_resources += 1;
-                            continue;
-                        },
-                        Err(err) => err,
-                    };
-
-                    match (
-                        image_state.try_gpu_lock(
-                            inner.image.format().unwrap().aspects(),
-                            image.current_mip_levels_access(),
-                            image.current_array_layers_access(),
-                            state.exclusive,
-                            state.initial_layout,
-                            state.final_layout,
-                        ),
-                        prev_err,
-                    ) {
-                        (Ok(_), _) => (),
-                        (Err(err), AccessCheckError::Unknown)
-                        | (_, AccessCheckError::Denied(err)) => {
-                            ret_value = Err(CommandBufferExecError::AccessError {
-                                error: err,
-                                command_name: self.commands[resource_use.command_index]
-                                    .name()
-                                    .into(),
-                                command_param: resource_use.name.clone(),
-                                command_offset: resource_use.command_index,
-                            });
-                            break;
-                        }
-                    };
+        /*
+            We verified that the resources can be locked, so while still holding the mutexes,
+            lock them now.
+        */
+        unsafe {
+            for (buffer, mut buffer_state) in buffer_state_mutexes {
+                for (range, state) in self.buffers2[buffer].iter() {
+                    if state.exclusive {
+                        buffer_state.gpu_write_lock(range.clone());
+                    } else {
+                        buffer_state.gpu_read_lock(range.clone());
+                    }
                 }
             }
 
-            locked_resources += 1;
-        }
-
-        // If we are going to return an error, we have to unlock all the resources we locked above.
-        if let Err(_) = ret_value {
-            for state in self.resources.values().take(locked_resources) {
-                let resource_use = &state.resource_uses[0];
-
-                match &resource_use.resource {
-                    KeyTy::Buffer(buffer) => unsafe {
-                        let inner = buffer.inner();
-                        let mut buffer_state = inner.buffer.state();
-                        buffer_state.gpu_unlock(
-                            inner.offset..inner.offset + buffer.size(),
-                            state.exclusive,
-                        );
-                    },
-                    KeyTy::Image(image) => unsafe {
-                        let inner = image.inner();
-                        let mut image_state = inner.image.state();
-                        image_state.gpu_unlock(
-                            inner.image.format().unwrap().aspects(),
-                            image.current_mip_levels_access(),
-                            image.current_array_layers_access(),
-                            state.exclusive,
-                        )
-                    },
+            for (image, mut image_state) in image_state_mutexes {
+                for (range, state) in self.images2[image].iter() {
+                    if state.exclusive {
+                        image_state.gpu_write_lock(range.clone(), state.final_layout);
+                    } else {
+                        image_state.gpu_read_lock(range.clone());
+                    }
                 }
             }
         }
 
         // TODO: pipeline barriers if necessary?
 
-        ret_value
+        Ok(())
     }
 
     /// Unlocks the resources used by the command buffer.
@@ -278,25 +273,26 @@ impl SyncCommandBuffer {
     /// The command buffer must have been successfully locked with `lock_submit()`.
     ///
     pub unsafe fn unlock(&self) {
-        for state in self.resources.values() {
-            let resource_use = &state.resource_uses[0];
+        for (buffer, range_map) in &self.buffers2 {
+            let mut buffer_state = buffer.state();
 
-            match &resource_use.resource {
-                KeyTy::Buffer(buffer) => {
-                    let inner = buffer.inner();
-                    let mut buffer_state = inner.buffer.state();
-                    buffer_state
-                        .gpu_unlock(inner.offset..inner.offset + buffer.size(), state.exclusive);
+            for (range, state) in range_map.iter() {
+                if state.exclusive {
+                    buffer_state.gpu_write_unlock(range.clone());
+                } else {
+                    buffer_state.gpu_read_unlock(range.clone());
                 }
-                KeyTy::Image(image) => {
-                    let inner = image.inner();
-                    let mut image_state = inner.image.state();
-                    image_state.gpu_unlock(
-                        inner.image.format().unwrap().aspects(),
-                        image.current_mip_levels_access(),
-                        image.current_array_layers_access(),
-                        state.exclusive,
-                    )
+            }
+        }
+
+        for (image, range_map) in &self.images2 {
+            let mut image_state = image.state();
+
+            for (range, state) in range_map.iter() {
+                if state.exclusive {
+                    image_state.gpu_write_unlock(range.clone());
+                } else {
+                    image_state.gpu_read_unlock(range.clone());
                 }
             }
         }
@@ -308,20 +304,31 @@ impl SyncCommandBuffer {
     #[inline]
     pub fn check_buffer_access(
         &self,
-        buffer: &dyn BufferAccess,
+        buffer: &UnsafeBuffer,
+        range: Range<DeviceSize>,
         exclusive: bool,
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
+        let range_map = match self.buffers2.get(buffer) {
+            Some(x) => x,
+            None => return Err(AccessCheckError::Unknown),
+        };
+
         // TODO: check the queue family
-        if let Some(value) = self.resources.get(&buffer.into()) {
-            if !value.exclusive && exclusive {
-                return Err(AccessCheckError::Unknown);
-            }
 
-            return Ok(Some((value.final_stages, value.final_access)));
-        }
-
-        Err(AccessCheckError::Unknown)
+        range_map
+            .range(&range)
+            .try_fold(
+                (PipelineStages::none(), AccessFlags::none()),
+                |(stages, access), (_range, state)| {
+                    if !state.exclusive && exclusive {
+                        Err(AccessCheckError::Unknown)
+                    } else {
+                        Ok((stages | state.final_stages, access | state.final_access))
+                    }
+                },
+            )
+            .map(Some)
     }
 
     /// Checks whether this command buffer has access to an image.
@@ -330,30 +337,43 @@ impl SyncCommandBuffer {
     #[inline]
     pub fn check_image_access(
         &self,
-        image: &dyn ImageAccess,
-        layout: ImageLayout,
+        image: &UnsafeImage,
+        range: Range<DeviceSize>,
         exclusive: bool,
+        expected_layout: ImageLayout,
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
+        let range_map = match self.images2.get(image) {
+            Some(x) => x,
+            None => return Err(AccessCheckError::Unknown),
+        };
+
         // TODO: check the queue family
-        if let Some(value) = self.resources.get(&image.into()) {
-            if layout != ImageLayout::Undefined && value.final_layout != layout {
-                return Err(AccessCheckError::Denied(
-                    AccessError::UnexpectedImageLayout {
-                        allowed: value.final_layout,
-                        requested: layout,
-                    },
-                ));
-            }
 
-            if !value.exclusive && exclusive {
-                return Err(AccessCheckError::Unknown);
-            }
+        range_map
+            .range(&range)
+            .try_fold(
+                (PipelineStages::none(), AccessFlags::none()),
+                |(stages, access), (_range, state)| {
+                    if expected_layout != ImageLayout::Undefined
+                        && state.final_layout != expected_layout
+                    {
+                        return Err(AccessCheckError::Denied(
+                            AccessError::UnexpectedImageLayout {
+                                allowed: state.final_layout,
+                                requested: expected_layout,
+                            },
+                        ));
+                    }
 
-            return Ok(Some((value.final_stages, value.final_access)));
-        }
-
-        Err(AccessCheckError::Unknown)
+                    if !state.exclusive && exclusive {
+                        Err(AccessCheckError::Unknown)
+                    } else {
+                        Ok((stages | state.final_stages, access | state.final_access))
+                    }
+                },
+            )
+            .map(Some)
     }
 
     #[inline]
@@ -412,37 +432,26 @@ unsafe impl DeviceOwned for SyncCommandBuffer {
     }
 }
 
-// Key that identifies a resource. Implements `PartialEq`, `Eq` and `Hash` so that two resources
-// that conflict with each other compare equal.
-#[derive(Debug, PartialEq, Eq, Hash)]
-enum ResourceKey {
-    Buffer((u64, u64)),
-    Image(u64, Range<u32>, Range<u32>),
-}
+// Usage of a resource in a finished command buffer.
+#[derive(Clone, PartialEq, Eq)]
+struct BufferFinalState {
+    // Lists every use of the resource.
+    resource_uses: Vec<BufferUse>,
 
-impl From<&dyn BufferAccess> for ResourceKey {
-    #[inline]
-    fn from(buffer: &dyn BufferAccess) -> Self {
-        Self::Buffer(buffer.conflict_key())
-    }
-}
+    // Stages of the last command that uses the resource.
+    final_stages: PipelineStages,
+    // Access for the last command that uses the resource.
+    final_access: AccessFlags,
 
-impl From<&dyn ImageAccess> for ResourceKey {
-    #[inline]
-    fn from(image: &dyn ImageAccess) -> Self {
-        Self::Image(
-            image.conflict_key(),
-            image.current_mip_levels_access(),
-            image.current_array_layers_access(),
-        )
-    }
+    // True if the resource is used in exclusive mode.
+    exclusive: bool,
 }
 
 // Usage of a resource in a finished command buffer.
-#[derive(Clone)]
-struct ResourceFinalState {
+#[derive(Clone, PartialEq, Eq)]
+struct ImageFinalState {
     // Lists every use of the resource.
-    resource_uses: Vec<ResourceUse>,
+    resource_uses: Vec<ImageUse>,
 
     // Stages of the last command that uses the resource.
     final_stages: PipelineStages,
@@ -458,14 +467,17 @@ struct ResourceFinalState {
 
     // Layout the image will be in at the end of the command buffer.
     final_layout: ImageLayout, // TODO: maybe wrap in an Option to mean that the layout doesn't change? because of buffers?
-
-    image_uninitialized_safe: ImageUninitializedSafe,
 }
 
-#[derive(Clone)]
-struct ResourceUse {
+#[derive(Clone, PartialEq, Eq)]
+struct BufferUse {
     command_index: usize,
-    resource: KeyTy,
+    name: Cow<'static, str>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+struct ImageUse {
+    command_index: usize,
     name: Cow<'static, str>,
 }
 
@@ -474,15 +486,6 @@ struct ResourceUse {
 enum KeyTy {
     Buffer(Arc<dyn BufferAccess>),
     Image(Arc<dyn ImageAccess>),
-}
-
-// Identifies a resource within the list of commands.
-#[derive(Clone, Copy, Debug)]
-struct ResourceLocation {
-    // Index of the command that holds the resource.
-    command_id: usize,
-    // Index of the resource within the command.
-    resource_index: usize,
 }
 
 // Trait for single commands within the list of commands.

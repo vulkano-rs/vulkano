@@ -14,6 +14,7 @@ use super::{
 use crate::{format::ClearValue, swapchain::Swapchain, OomError};
 use std::{
     hash::{Hash, Hasher},
+    ops::Range,
     sync::Arc,
 };
 
@@ -120,12 +121,12 @@ where
     }
 
     #[inline]
-    fn current_mip_levels_access(&self) -> std::ops::Range<u32> {
+    fn current_mip_levels_access(&self) -> Range<u32> {
         0..self.mip_levels()
     }
 
     #[inline]
-    fn current_array_layers_access(&self) -> std::ops::Range<u32> {
+    fn current_array_layers_access(&self) -> Range<u32> {
         0..1
     }
 }

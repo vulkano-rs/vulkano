@@ -11,7 +11,7 @@ use super::{SyncCommandBufferBuilder, SyncCommandBufferBuilderError};
 use crate::{
     buffer::{BufferAccess, BufferContents, TypedBufferAccess},
     command_buffer::{
-        synced::{Command, KeyTy, ResourceKey, SetOrPush},
+        synced::{Command, KeyTy, SetOrPush},
         sys::{
             RenderPassBeginInfo, UnsafeCommandBufferBuilder,
             UnsafeCommandBufferBuilderBindVertexBuffer, UnsafeCommandBufferBuilderBufferImageCopy,
@@ -322,8 +322,16 @@ impl SyncCommandBufferBuilder {
         let mut resources: SmallVec<[_; 2]> = SmallVec::new();
 
         // if its the same image in source and destination, we need to lock it once
-        let source_key = ResourceKey::from(source.as_ref());
-        let destination_key = ResourceKey::from(destination.as_ref());
+        let source_key = (
+            source.conflict_key(),
+            source.current_mip_levels_access(),
+            source.current_array_layers_access(),
+        );
+        let destination_key = (
+            destination.conflict_key(),
+            destination.current_mip_levels_access(),
+            destination.current_array_layers_access(),
+        );
         if source_key == destination_key {
             resources.push((
                 KeyTy::Image(source.clone()),
@@ -455,8 +463,16 @@ impl SyncCommandBufferBuilder {
         let mut resources: SmallVec<[_; 2]> = SmallVec::new();
 
         // if its the same image in source and destination, we need to lock it once
-        let source_key = ResourceKey::from(source.as_ref());
-        let destination_key = ResourceKey::from(destination.as_ref());
+        let source_key = (
+            source.conflict_key(),
+            source.current_mip_levels_access(),
+            source.current_array_layers_access(),
+        );
+        let destination_key = (
+            destination.conflict_key(),
+            destination.current_mip_levels_access(),
+            destination.current_array_layers_access(),
+        );
         if source_key == destination_key {
             resources.push((
                 KeyTy::Image(source.clone()),

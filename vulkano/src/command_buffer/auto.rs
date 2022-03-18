@@ -45,12 +45,13 @@ use super::{
     SubpassContents,
 };
 use crate::{
-    buffer::{BufferAccess, BufferContents, TypedBufferAccess},
+    buffer::{sys::UnsafeBuffer, BufferAccess, BufferContents, TypedBufferAccess},
     descriptor_set::{check_descriptor_write, DescriptorSetsCollection, WriteDescriptorSet},
     device::{physical::QueueFamily, Device, DeviceOwned, Queue},
     format::{ClearValue, NumericType},
     image::{
         attachment::{ClearAttachment, ClearRect},
+        sys::UnsafeImage,
         ImageAccess, ImageAspect, ImageAspects, ImageLayout,
     },
     pipeline::{
@@ -3684,23 +3685,26 @@ where
     #[inline]
     fn check_buffer_access(
         &self,
-        buffer: &dyn BufferAccess,
+        buffer: &UnsafeBuffer,
+        range: Range<DeviceSize>,
         exclusive: bool,
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
-        self.inner.check_buffer_access(buffer, exclusive, queue)
+        self.inner
+            .check_buffer_access(buffer, range, exclusive, queue)
     }
 
     #[inline]
     fn check_image_access(
         &self,
-        image: &dyn ImageAccess,
-        layout: ImageLayout,
+        image: &UnsafeImage,
+        range: Range<DeviceSize>,
         exclusive: bool,
+        expected_layout: ImageLayout,
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         self.inner
-            .check_image_access(image, layout, exclusive, queue)
+            .check_image_access(image, range, exclusive, expected_layout, queue)
     }
 }
 

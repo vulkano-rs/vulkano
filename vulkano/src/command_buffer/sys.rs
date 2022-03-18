@@ -12,14 +12,15 @@ use super::{
     CommandBufferUsage, SecondaryCommandBuffer, SubpassContents,
 };
 use crate::{
-    buffer::{BufferAccess, BufferContents, BufferInner, TypedBufferAccess},
+    buffer::{sys::UnsafeBuffer, BufferAccess, BufferContents, BufferInner, TypedBufferAccess},
     check_errors,
     descriptor_set::{sys::UnsafeDescriptorSet, DescriptorWriteInfo, WriteDescriptorSet},
     device::{Device, DeviceOwned},
     format::{ClearValue, NumericType},
     image::{
         attachment::{ClearAttachment, ClearRect},
-        ImageAccess, ImageAspect, ImageAspects, ImageLayout, SampleCount,
+        sys::UnsafeImage,
+        ImageAccess, ImageAspect, ImageAspects, ImageLayout, ImageSubresourceRange, SampleCount,
     },
     pipeline::{
         graphics::{
@@ -2558,15 +2559,14 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
     ///
     pub unsafe fn add_buffer_memory_barrier(
         &mut self,
-        buffer: &dyn BufferAccess,
+        buffer: &UnsafeBuffer,
         source_stage: PipelineStages,
         source_access: AccessFlags,
         destination_stage: PipelineStages,
         destination_access: AccessFlags,
         by_region: bool,
         queue_transfer: Option<(u32, u32)>,
-        offset: DeviceSize,
-        size: DeviceSize,
+        range: Range<DeviceSize>,
     ) {
         debug_assert!(source_stage.supported_access().contains(&source_access));
         debug_assert!(destination_stage
@@ -2575,12 +2575,8 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
 
         self.add_execution_dependency(source_stage, destination_stage, by_region);
 
-        debug_assert!(size <= buffer.size());
-        let BufferInner {
-            buffer,
-            offset: org_offset,
-        } = buffer.inner();
-        let offset = offset + org_offset;
+        debug_assert!(!range.is_empty());
+        debug_assert!(range.end <= buffer.size());
 
         let (src_queue, dest_queue) = if let Some((src_queue, dest_queue)) = queue_transfer {
             (src_queue, dest_queue)
@@ -2594,8 +2590,8 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
             src_queue_family_index: src_queue,
             dst_queue_family_index: dest_queue,
             buffer: buffer.internal_object(),
-            offset,
-            size,
+            offset: range.start,
+            size: range.end - range.start,
             ..Default::default()
         });
     }
@@ -2619,9 +2615,7 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
     ///
     pub unsafe fn add_image_memory_barrier(
         &mut self,
-        image: &dyn ImageAccess,
-        mip_levels: Range<u32>,
-        array_layers: Range<u32>,
+        image: &UnsafeImage,
         source_stage: PipelineStages,
         source_access: AccessFlags,
         destination_stage: PipelineStages,
@@ -2630,6 +2624,7 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
         queue_transfer: Option<(u32, u32)>,
         current_layout: ImageLayout,
         new_layout: ImageLayout,
+        subresource_range: ImageSubresourceRange,
     ) {
         debug_assert!(source_stage.supported_access().contains(&source_access));
         debug_assert!(destination_stage
@@ -2638,23 +2633,26 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
 
         self.add_execution_dependency(source_stage, destination_stage, by_region);
 
-        debug_assert_ne!(new_layout, ImageLayout::Undefined);
-        debug_assert_ne!(new_layout, ImageLayout::Preinitialized);
+        debug_assert!(!matches!(
+            new_layout,
+            ImageLayout::Undefined | ImageLayout::Preinitialized
+        ));
 
-        debug_assert!(mip_levels.start < mip_levels.end);
-        debug_assert!(mip_levels.end <= image.mip_levels());
-        debug_assert!(array_layers.start < array_layers.end);
-        debug_assert!(array_layers.end <= image.dimensions().array_layers());
+        debug_assert!(image
+            .format()
+            .unwrap()
+            .aspects()
+            .contains(&subresource_range.aspects));
+        debug_assert!(!subresource_range.mip_levels.is_empty());
+        debug_assert!(subresource_range.mip_levels.end <= image.mip_levels());
+        debug_assert!(!subresource_range.array_layers.is_empty());
+        debug_assert!(subresource_range.array_layers.end <= image.dimensions().array_layers());
 
         let (src_queue, dest_queue) = if let Some((src_queue, dest_queue)) = queue_transfer {
             (src_queue, dest_queue)
         } else {
             (ash::vk::QUEUE_FAMILY_IGNORED, ash::vk::QUEUE_FAMILY_IGNORED)
         };
-
-        // TODO: Let user choose
-        let aspects = image.format().aspects();
-        let image = image.inner();
 
         self.image_barriers.push(ash::vk::ImageMemoryBarrier {
             src_access_mask: source_access.into(),
@@ -2663,14 +2661,8 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
             new_layout: new_layout.into(),
             src_queue_family_index: src_queue,
             dst_queue_family_index: dest_queue,
-            image: image.image.internal_object(),
-            subresource_range: ash::vk::ImageSubresourceRange {
-                aspect_mask: aspects.into(),
-                base_mip_level: mip_levels.start + image.first_mipmap_level as u32,
-                level_count: mip_levels.end - mip_levels.start,
-                base_array_layer: array_layers.start + image.first_layer as u32,
-                layer_count: array_layers.end - array_layers.start,
-            },
+            image: image.internal_object(),
+            subresource_range: subresource_range.into(),
             ..Default::default()
         });
     }

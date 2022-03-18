@@ -7,26 +7,25 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
-use std::sync::Mutex;
-
-use crate::buffer::BufferAccess;
-use crate::command_buffer::submit::SubmitAnyBuilder;
-use crate::command_buffer::submit::SubmitCommandBufferBuilder;
-use crate::command_buffer::submit::SubmitSemaphoresWaitBuilder;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::device::Queue;
-use crate::image::ImageAccess;
-use crate::image::ImageLayout;
-use crate::sync::AccessCheckError;
-use crate::sync::AccessFlags;
-use crate::sync::FlushError;
-use crate::sync::GpuFuture;
-use crate::sync::PipelineStages;
-use crate::sync::Semaphore;
+use super::{AccessCheckError, FlushError, GpuFuture};
+use crate::{
+    buffer::sys::UnsafeBuffer,
+    command_buffer::submit::{
+        SubmitAnyBuilder, SubmitCommandBufferBuilder, SubmitSemaphoresWaitBuilder,
+    },
+    device::{Device, DeviceOwned, Queue},
+    image::{sys::UnsafeImage, ImageLayout},
+    sync::{AccessFlags, PipelineStages, Semaphore},
+    DeviceSize,
+};
+use parking_lot::Mutex;
+use std::{
+    ops::Range,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+};
 
 /// Builds a new semaphore signal future.
 #[inline]
@@ -83,7 +82,7 @@ where
 
     fn flush(&self) -> Result<(), FlushError> {
         unsafe {
-            let mut wait_submitted = self.wait_submitted.lock().unwrap();
+            let mut wait_submitted = self.wait_submitted.lock();
 
             if *wait_submitted {
                 return Ok(());
@@ -129,7 +128,7 @@ where
 
     #[inline]
     unsafe fn signal_finished(&self) {
-        debug_assert!(*self.wait_submitted.lock().unwrap());
+        debug_assert!(*self.wait_submitted.lock());
         self.finished.store(true, Ordering::SeqCst);
         self.previous.signal_finished();
     }
@@ -147,25 +146,27 @@ where
     #[inline]
     fn check_buffer_access(
         &self,
-        buffer: &dyn BufferAccess,
+        buffer: &UnsafeBuffer,
+        range: Range<DeviceSize>,
         exclusive: bool,
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         self.previous
-            .check_buffer_access(buffer, exclusive, queue)
+            .check_buffer_access(buffer, range, exclusive, queue)
             .map(|_| None)
     }
 
     #[inline]
     fn check_image_access(
         &self,
-        image: &dyn ImageAccess,
-        layout: ImageLayout,
+        image: &UnsafeImage,
+        range: Range<DeviceSize>,
         exclusive: bool,
+        expected_layout: ImageLayout,
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         self.previous
-            .check_image_access(image, layout, exclusive, queue)
+            .check_image_access(image, range, exclusive, expected_layout, queue)
             .map(|_| None)
     }
 }

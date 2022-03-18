@@ -7,65 +7,43 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::SupportedCompositeAlpha;
-use super::SupportedSurfaceTransforms;
-use crate::buffer::BufferAccess;
-use crate::check_errors;
-use crate::command_buffer::submit::SubmitAnyBuilder;
-use crate::command_buffer::submit::SubmitPresentBuilder;
-use crate::command_buffer::submit::SubmitPresentError;
-use crate::command_buffer::submit::SubmitSemaphoresWaitBuilder;
-use crate::device::physical::SurfacePropertiesError;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::device::Queue;
-use crate::format::Format;
-use crate::image::swapchain::SwapchainImage;
-use crate::image::sys::UnsafeImage;
-use crate::image::ImageAccess;
-use crate::image::ImageCreateFlags;
-use crate::image::ImageDimensions;
-use crate::image::ImageFormatInfo;
-use crate::image::ImageInner;
-use crate::image::ImageLayout;
-use crate::image::ImageTiling;
-use crate::image::ImageType;
-use crate::image::ImageUsage;
-use crate::image::SampleCount;
-use crate::swapchain::ColorSpace;
-use crate::swapchain::CompositeAlpha;
-use crate::swapchain::PresentMode;
-use crate::swapchain::PresentRegion;
-use crate::swapchain::Surface;
-use crate::swapchain::SurfaceApi;
-use crate::swapchain::SurfaceInfo;
-use crate::swapchain::SurfaceSwapchainLock;
-use crate::swapchain::SurfaceTransform;
-use crate::sync::AccessCheckError;
-use crate::sync::AccessError;
-use crate::sync::AccessFlags;
-use crate::sync::Fence;
-use crate::sync::FlushError;
-use crate::sync::GpuFuture;
-use crate::sync::PipelineStages;
-use crate::sync::Semaphore;
-use crate::sync::SemaphoreCreationError;
-use crate::sync::Sharing;
-use crate::Error;
-use crate::OomError;
-use crate::Success;
-use crate::VulkanObject;
+use super::{
+    ColorSpace, CompositeAlpha, PresentMode, PresentRegion, SupportedCompositeAlpha,
+    SupportedSurfaceTransforms, Surface, SurfaceTransform,
+};
+use crate::{
+    buffer::sys::UnsafeBuffer,
+    check_errors,
+    command_buffer::submit::{
+        SubmitAnyBuilder, SubmitPresentBuilder, SubmitPresentError, SubmitSemaphoresWaitBuilder,
+    },
+    device::{physical::SurfacePropertiesError, Device, DeviceOwned, Queue},
+    format::Format,
+    image::{
+        sys::UnsafeImage, ImageCreateFlags, ImageDimensions, ImageFormatInfo, ImageInner,
+        ImageLayout, ImageTiling, ImageType, ImageUsage, SampleCount, SwapchainImage,
+    },
+    swapchain::{SurfaceApi, SurfaceInfo, SurfaceSwapchainLock},
+    sync::{
+        AccessCheckError, AccessError, AccessFlags, Fence, FlushError, GpuFuture, PipelineStages,
+        Semaphore, SemaphoreCreationError, Sharing,
+    },
+    DeviceSize, Error, OomError, Success, VulkanObject,
+};
+use parking_lot::Mutex;
 use smallvec::SmallVec;
-use std::error;
-use std::fmt;
-use std::hash::{Hash, Hasher};
-use std::mem::MaybeUninit;
-use std::ptr;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::time::Duration;
+use std::{
+    error, fmt,
+    hash::{Hash, Hasher},
+    mem::MaybeUninit,
+    ops::Range,
+    ptr,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
 /// Contains the swapping system and the images that can be shown on a surface.
 #[derive(Debug)]
@@ -105,7 +83,7 @@ pub struct Swapchain<W> {
 #[derive(Debug)]
 struct ImageEntry {
     // The actual image.
-    image: UnsafeImage,
+    image: Arc<UnsafeImage>,
     // If true, then the image is still in the undefined layout and must be transitioned.
     undefined_layout: AtomicBool,
 }
@@ -216,7 +194,7 @@ impl<W> Swapchain<W> {
         Self::validate(&self.device, &self.surface, &mut create_info)?;
 
         {
-            let mut retired = self.retired.lock().unwrap();
+            let mut retired = self.retired.lock();
 
             // The swapchain has already been used to create a new one.
             if *retired {
@@ -1390,7 +1368,7 @@ pub fn acquire_next_image<W>(
         // Check that this is not an old swapchain. From specs:
         // > swapchain must not have been replaced by being passed as the
         // > VkSwapchainCreateInfoKHR::oldSwapchain value to vkCreateSwapchainKHR
-        let retired = swapchain.retired.lock().unwrap();
+        let retired = swapchain.retired.lock();
         if *retired {
             return Err(AcquireError::OutOfDate);
         }
@@ -1558,9 +1536,10 @@ unsafe impl<W> GpuFuture for SwapchainAcquireFuture<W> {
     #[inline]
     fn check_buffer_access(
         &self,
-        _: &dyn BufferAccess,
-        _: bool,
-        _: &Queue,
+        buffer: &UnsafeBuffer,
+        range: Range<DeviceSize>,
+        exclusive: bool,
+        queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         Err(AccessCheckError::Unknown)
     }
@@ -1568,31 +1547,32 @@ unsafe impl<W> GpuFuture for SwapchainAcquireFuture<W> {
     #[inline]
     fn check_image_access(
         &self,
-        image: &dyn ImageAccess,
-        layout: ImageLayout,
-        _: bool,
-        _: &Queue,
+        image: &UnsafeImage,
+        range: Range<DeviceSize>,
+        exclusive: bool,
+        expected_layout: ImageLayout,
+        queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         let swapchain_image = self.swapchain.raw_image(self.image_id).unwrap();
-        if swapchain_image.image.internal_object() != image.inner().image.internal_object() {
+        if swapchain_image.image.internal_object() != image.internal_object() {
             return Err(AccessCheckError::Unknown);
         }
 
         if self.swapchain.images[self.image_id]
             .undefined_layout
             .load(Ordering::Relaxed)
-            && layout != ImageLayout::Undefined
+            && expected_layout != ImageLayout::Undefined
         {
             return Err(AccessCheckError::Denied(AccessError::ImageNotInitialized {
-                requested: layout,
+                requested: expected_layout,
             }));
         }
 
-        if layout != ImageLayout::Undefined && layout != ImageLayout::PresentSrc {
+        if expected_layout != ImageLayout::Undefined && expected_layout != ImageLayout::PresentSrc {
             return Err(AccessCheckError::Denied(
                 AccessError::UnexpectedImageLayout {
                     allowed: ImageLayout::PresentSrc,
-                    requested: layout,
+                    requested: expected_layout,
                 },
             ));
         }
@@ -1877,23 +1857,26 @@ where
     #[inline]
     fn check_buffer_access(
         &self,
-        buffer: &dyn BufferAccess,
+        buffer: &UnsafeBuffer,
+        range: Range<DeviceSize>,
         exclusive: bool,
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
-        self.previous.check_buffer_access(buffer, exclusive, queue)
+        self.previous
+            .check_buffer_access(buffer, range, exclusive, queue)
     }
 
     #[inline]
     fn check_image_access(
         &self,
-        image: &dyn ImageAccess,
-        layout: ImageLayout,
+        image: &UnsafeImage,
+        range: Range<DeviceSize>,
         exclusive: bool,
+        expected_layout: ImageLayout,
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         let swapchain_image = self.swapchain.raw_image(self.image_id).unwrap();
-        if swapchain_image.image.internal_object() == image.inner().image.internal_object() {
+        if swapchain_image.image.internal_object() == image.internal_object() {
             // This future presents the swapchain image, which "unlocks" it. Therefore any attempt
             // to use this swapchain image afterwards shouldn't get granted automatic access.
             // Instead any attempt to access the image afterwards should get an authorization from
@@ -1901,7 +1884,7 @@ where
             Err(AccessCheckError::Unknown)
         } else {
             self.previous
-                .check_image_access(image, layout, exclusive, queue)
+                .check_image_access(image, range, exclusive, expected_layout, queue)
         }
     }
 }

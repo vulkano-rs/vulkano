@@ -54,7 +54,7 @@ where
     T: BufferContents + ?Sized,
 {
     // Inner content.
-    inner: UnsafeBuffer,
+    inner: Arc<UnsafeBuffer>,
 
     // Memory allocated for the buffer.
     memory: A,

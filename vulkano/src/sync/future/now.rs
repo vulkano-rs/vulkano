@@ -7,25 +7,21 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::sync::Arc;
-
-use crate::buffer::BufferAccess;
-use crate::command_buffer::submit::SubmitAnyBuilder;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::device::Queue;
-use crate::image::ImageAccess;
-use crate::image::ImageLayout;
-use crate::sync::AccessCheckError;
-use crate::sync::AccessFlags;
-use crate::sync::FlushError;
-use crate::sync::GpuFuture;
-use crate::sync::PipelineStages;
+use super::{AccessCheckError, FlushError, GpuFuture};
+use crate::{
+    buffer::sys::UnsafeBuffer,
+    command_buffer::submit::SubmitAnyBuilder,
+    device::{Device, DeviceOwned, Queue},
+    image::{sys::UnsafeImage, ImageLayout},
+    sync::{AccessFlags, PipelineStages},
+    DeviceSize,
+};
+use std::{ops::Range, sync::Arc};
 
 /// Builds a future that represents "now".
 #[inline]
 pub fn now(device: Arc<Device>) -> NowFuture {
-    NowFuture { device: device }
+    NowFuture { device }
 }
 
 /// A dummy future that represents "now".
@@ -63,9 +59,10 @@ unsafe impl GpuFuture for NowFuture {
     #[inline]
     fn check_buffer_access(
         &self,
-        buffer: &dyn BufferAccess,
-        _: bool,
-        _: &Queue,
+        buffer: &UnsafeBuffer,
+        range: Range<DeviceSize>,
+        exclusive: bool,
+        queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         Err(AccessCheckError::Unknown)
     }
@@ -73,10 +70,11 @@ unsafe impl GpuFuture for NowFuture {
     #[inline]
     fn check_image_access(
         &self,
-        _: &dyn ImageAccess,
-        _: ImageLayout,
-        _: bool,
-        _: &Queue,
+        image: &UnsafeImage,
+        range: Range<DeviceSize>,
+        exclusive: bool,
+        expected_layout: ImageLayout,
+        queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         Err(AccessCheckError::Unknown)
     }

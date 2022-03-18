@@ -55,7 +55,7 @@ where
     T: BufferContents + ?Sized,
 {
     // Inner content.
-    inner: UnsafeBuffer,
+    inner: Arc<UnsafeBuffer>,
 
     // The memory held by the buffer.
     memory: A,
@@ -324,7 +324,11 @@ where
     pub fn read(&self) -> Result<ReadLock<T, A>, ReadLockError> {
         let mut state = self.inner.state();
         let buffer_range = self.inner().offset..self.inner().offset + self.size();
-        state.try_cpu_read(buffer_range.clone())?;
+
+        unsafe {
+            state.check_cpu_read(buffer_range.clone())?;
+            state.cpu_read_lock(buffer_range.clone());
+        }
 
         let mapped_memory = self.memory.mapped_memory().unwrap();
         let offset = self.memory.offset();
@@ -362,7 +366,11 @@ where
     pub fn write(&self) -> Result<WriteLock<T, A>, WriteLockError> {
         let mut state = self.inner.state();
         let buffer_range = self.inner().offset..self.inner().offset + self.size();
-        state.try_cpu_write(buffer_range.clone())?;
+
+        unsafe {
+            state.check_cpu_write(buffer_range.clone())?;
+            state.cpu_write_lock(buffer_range.clone());
+        }
 
         let mapped_memory = self.memory.mapped_memory().unwrap();
         let offset = self.memory.offset();
@@ -492,7 +500,7 @@ where
     fn drop(&mut self) {
         unsafe {
             let mut state = self.inner.inner.state();
-            state.cpu_unlock(self.buffer_range.clone(), false);
+            state.cpu_read_unlock(self.buffer_range.clone());
         }
     }
 }
@@ -542,7 +550,7 @@ where
                 .unwrap();
 
             let mut state = self.inner.inner.state();
-            state.cpu_unlock(self.buffer_range.clone(), true);
+            state.cpu_write_unlock(self.buffer_range.clone());
         }
     }
 }

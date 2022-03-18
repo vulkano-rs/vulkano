@@ -234,7 +234,7 @@ pipeline_stages! {
 
 macro_rules! access_flags {
     ($($elem:ident => $val:expr,)+) => (
-        #[derive(Debug, Copy, Clone)]
+        #[derive(Debug, Copy, Clone, PartialEq, Eq)]
         #[allow(missing_docs)]
         pub struct AccessFlags {
             $(
@@ -325,7 +325,7 @@ access_flags! {
 }
 
 /// The full specification of memory access by the pipeline for a particular resource.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PipelineMemoryAccess {
     /// The pipeline stages the resource will be accessed in.
     pub stages: PipelineStages,

@@ -199,3 +199,47 @@ impl From<ash::vk::ImageAspectFlags> for ImageAspects {
         }
     }
 }
+
+impl From<ImageAspect> for ImageAspects {
+    fn from(aspect: ImageAspect) -> Self {
+        let mut result = Self::none();
+
+        match aspect {
+            ImageAspect::Color => result.color = true,
+            ImageAspect::Depth => result.depth = true,
+            ImageAspect::Stencil => result.stencil = true,
+            ImageAspect::Metadata => result.metadata = true,
+            ImageAspect::Plane0 => result.plane0 = true,
+            ImageAspect::Plane1 => result.plane1 = true,
+            ImageAspect::Plane2 => result.plane2 = true,
+            ImageAspect::MemoryPlane0 => result.memory_plane0 = true,
+            ImageAspect::MemoryPlane1 => result.memory_plane1 = true,
+            ImageAspect::MemoryPlane2 => result.memory_plane2 = true,
+        }
+
+        result
+    }
+}
+
+impl FromIterator<ImageAspect> for ImageAspects {
+    fn from_iter<T: IntoIterator<Item = ImageAspect>>(iter: T) -> Self {
+        let mut result = Self::none();
+
+        for aspect in iter {
+            match aspect {
+                ImageAspect::Color => result.color = true,
+                ImageAspect::Depth => result.depth = true,
+                ImageAspect::Stencil => result.stencil = true,
+                ImageAspect::Metadata => result.metadata = true,
+                ImageAspect::Plane0 => result.plane0 = true,
+                ImageAspect::Plane1 => result.plane1 = true,
+                ImageAspect::Plane2 => result.plane2 = true,
+                ImageAspect::MemoryPlane0 => result.memory_plane0 = true,
+                ImageAspect::MemoryPlane1 => result.memory_plane1 = true,
+                ImageAspect::MemoryPlane2 => result.memory_plane2 = true,
+            }
+        }
+
+        result
+    }
+}

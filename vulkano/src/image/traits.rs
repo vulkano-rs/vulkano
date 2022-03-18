@@ -14,6 +14,7 @@ use crate::{
 };
 use std::{
     hash::{Hash, Hasher},
+    ops::Range,
     sync::Arc,
 };
 
@@ -132,17 +133,17 @@ pub unsafe trait ImageAccess: Send + Sync {
     fn conflict_key(&self) -> u64;
 
     /// Returns the current mip level that is accessed by the gpu
-    fn current_mip_levels_access(&self) -> std::ops::Range<u32>;
+    fn current_mip_levels_access(&self) -> Range<u32>;
 
     /// Returns the current array layer that is accessed by the gpu
-    fn current_array_layers_access(&self) -> std::ops::Range<u32>;
+    fn current_array_layers_access(&self) -> Range<u32>;
 }
 
 /// Inner information about an image.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ImageInner<'a> {
     /// The underlying image object.
-    pub image: &'a UnsafeImage,
+    pub image: &'a Arc<UnsafeImage>,
 
     /// The first layer of `image` to consider.
     pub first_layer: usize,
@@ -214,11 +215,11 @@ where
         self.image.conflict_key()
     }
 
-    fn current_mip_levels_access(&self) -> std::ops::Range<u32> {
+    fn current_mip_levels_access(&self) -> Range<u32> {
         self.image.current_mip_levels_access()
     }
 
-    fn current_array_layers_access(&self) -> std::ops::Range<u32> {
+    fn current_array_layers_access(&self) -> Range<u32> {
         self.image.current_array_layers_access()
     }
 }
@@ -297,11 +298,11 @@ where
         (**self).is_layout_initialized()
     }
 
-    fn current_mip_levels_access(&self) -> std::ops::Range<u32> {
+    fn current_mip_levels_access(&self) -> Range<u32> {
         (**self).current_mip_levels_access()
     }
 
-    fn current_array_layers_access(&self) -> std::ops::Range<u32> {
+    fn current_array_layers_access(&self) -> Range<u32> {
         (**self).current_array_layers_access()
     }
 }

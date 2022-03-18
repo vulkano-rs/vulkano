@@ -7,35 +7,31 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::buffer::BufferAccess;
-use crate::command_buffer::submit::SubmitAnyBuilder;
-use crate::command_buffer::submit::SubmitCommandBufferBuilder;
-use crate::command_buffer::sys::UnsafeCommandBuffer;
-use crate::command_buffer::CommandBufferInheritanceInfo;
-use crate::command_buffer::ImageUninitializedSafe;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::device::Queue;
-use crate::image::ImageAccess;
-use crate::image::ImageLayout;
-use crate::sync::now;
-use crate::sync::AccessCheckError;
-use crate::sync::AccessError;
-use crate::sync::AccessFlags;
-use crate::sync::FlushError;
-use crate::sync::GpuFuture;
-use crate::sync::NowFuture;
-use crate::sync::PipelineMemoryAccess;
-use crate::sync::PipelineStages;
-use crate::SafeDeref;
-use crate::VulkanObject;
-use std::borrow::Cow;
-use std::error;
-use std::fmt;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
-use std::sync::Mutex;
+use super::{
+    submit::{SubmitAnyBuilder, SubmitCommandBufferBuilder},
+    sys::UnsafeCommandBuffer,
+    CommandBufferInheritanceInfo, ImageUninitializedSafe,
+};
+use crate::{
+    buffer::{sys::UnsafeBuffer, BufferAccess},
+    device::{Device, DeviceOwned, Queue},
+    image::{sys::UnsafeImage, ImageAccess, ImageLayout},
+    sync::{
+        now, AccessCheckError, AccessError, AccessFlags, FlushError, GpuFuture, NowFuture,
+        PipelineMemoryAccess, PipelineStages,
+    },
+    DeviceSize, SafeDeref, VulkanObject,
+};
+use parking_lot::Mutex;
+use std::{
+    borrow::Cow,
+    error, fmt,
+    ops::Range,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+};
 
 pub unsafe trait PrimaryCommandBuffer: DeviceOwned + Send + Sync {
     /// Returns the underlying `UnsafeCommandBuffer` of this command buffer.
@@ -142,16 +138,18 @@ pub unsafe trait PrimaryCommandBuffer: DeviceOwned + Send + Sync {
 
     fn check_buffer_access(
         &self,
-        buffer: &dyn BufferAccess,
+        buffer: &UnsafeBuffer,
+        range: Range<DeviceSize>,
         exclusive: bool,
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError>;
 
     fn check_image_access(
         &self,
-        image: &dyn ImageAccess,
-        layout: ImageLayout,
+        image: &UnsafeImage,
+        range: Range<DeviceSize>,
         exclusive: bool,
+        expected_layout: ImageLayout,
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError>;
 }
@@ -183,22 +181,24 @@ where
     #[inline]
     fn check_buffer_access(
         &self,
-        buffer: &dyn BufferAccess,
+        buffer: &UnsafeBuffer,
+        range: Range<DeviceSize>,
         exclusive: bool,
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
-        (**self).check_buffer_access(buffer, exclusive, queue)
+        (**self).check_buffer_access(buffer, range, exclusive, queue)
     }
 
     #[inline]
     fn check_image_access(
         &self,
-        image: &dyn ImageAccess,
-        layout: ImageLayout,
+        image: &UnsafeImage,
+        range: Range<DeviceSize>,
         exclusive: bool,
+        expected_layout: ImageLayout,
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
-        (**self).check_image_access(image, layout, exclusive, queue)
+        (**self).check_image_access(image, range, exclusive, expected_layout, queue)
     }
 }
 
@@ -368,7 +368,7 @@ where
     }
 
     unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
-        if *self.submitted.lock().unwrap() {
+        if *self.submitted.lock() {
             return Ok(SubmitAnyBuilder::Empty);
         }
 
@@ -378,7 +378,7 @@ where
     #[inline]
     fn flush(&self) -> Result<(), FlushError> {
         unsafe {
-            let mut submitted = self.submitted.lock().unwrap();
+            let mut submitted = self.submitted.lock();
             if *submitted {
                 return Ok(());
             }
@@ -421,39 +421,45 @@ where
     #[inline]
     fn check_buffer_access(
         &self,
-        buffer: &dyn BufferAccess,
+        buffer: &UnsafeBuffer,
+        range: Range<DeviceSize>,
         exclusive: bool,
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         match self
             .command_buffer
-            .check_buffer_access(buffer, exclusive, queue)
+            .check_buffer_access(buffer, range.clone(), exclusive, queue)
         {
             Ok(v) => Ok(v),
             Err(AccessCheckError::Denied(err)) => Err(AccessCheckError::Denied(err)),
-            Err(AccessCheckError::Unknown) => {
-                self.previous.check_buffer_access(buffer, exclusive, queue)
-            }
+            Err(AccessCheckError::Unknown) => self
+                .previous
+                .check_buffer_access(buffer, range, exclusive, queue),
         }
     }
 
     #[inline]
     fn check_image_access(
         &self,
-        image: &dyn ImageAccess,
-        layout: ImageLayout,
+        image: &UnsafeImage,
+        range: Range<DeviceSize>,
         exclusive: bool,
+        expected_layout: ImageLayout,
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
-        match self
-            .command_buffer
-            .check_image_access(image, layout, exclusive, queue)
-        {
+        match self.command_buffer.check_image_access(
+            image,
+            range.clone(),
+            exclusive,
+            expected_layout,
+            queue,
+        ) {
             Ok(v) => Ok(v),
             Err(AccessCheckError::Denied(err)) => Err(AccessCheckError::Denied(err)),
-            Err(AccessCheckError::Unknown) => self
-                .previous
-                .check_image_access(image, layout, exclusive, queue),
+            Err(AccessCheckError::Unknown) => {
+                self.previous
+                    .check_image_access(image, range, exclusive, expected_layout, queue)
+            }
         }
     }
 }

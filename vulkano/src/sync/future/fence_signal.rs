@@ -7,26 +7,17 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::mem;
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::MutexGuard;
-use std::time::Duration;
-
-use crate::buffer::BufferAccess;
-use crate::command_buffer::submit::SubmitAnyBuilder;
-use crate::command_buffer::submit::SubmitCommandBufferBuilder;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::device::Queue;
-use crate::image::ImageAccess;
-use crate::image::ImageLayout;
-use crate::sync::AccessCheckError;
-use crate::sync::AccessFlags;
-use crate::sync::Fence;
-use crate::sync::FlushError;
-use crate::sync::GpuFuture;
-use crate::sync::PipelineStages;
+use super::{AccessCheckError, FlushError, GpuFuture};
+use crate::{
+    buffer::sys::UnsafeBuffer,
+    command_buffer::submit::{SubmitAnyBuilder, SubmitCommandBufferBuilder},
+    device::{Device, DeviceOwned, Queue},
+    image::{sys::UnsafeImage, ImageLayout},
+    sync::{AccessFlags, Fence, PipelineStages},
+    DeviceSize,
+};
+use parking_lot::{Mutex, MutexGuard};
+use std::{mem::replace, ops::Range, sync::Arc, time::Duration};
 
 /// Builds a new fence signal future.
 #[inline]
@@ -40,9 +31,9 @@ where
 
     let fence = Fence::from_pool(device.clone()).unwrap();
     FenceSignalFuture {
-        device: device,
+        device,
         state: Mutex::new(FenceSignalFutureState::Pending(future, fence)),
-        behavior: behavior,
+        behavior,
     }
 }
 
@@ -138,11 +129,11 @@ where
     /// If the wait is successful, this function also cleans any resource locked by previous
     /// submissions.
     pub fn wait(&self, timeout: Option<Duration>) -> Result<(), FlushError> {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
 
         self.flush_impl(&mut state)?;
 
-        match mem::replace(&mut *state, FenceSignalFutureState::Cleaned) {
+        match replace(&mut *state, FenceSignalFutureState::Cleaned) {
             FenceSignalFutureState::Flushed(previous, fence) => {
                 fence.wait(timeout)?;
                 unsafe {
@@ -164,7 +155,7 @@ where
     // This is an external function so that we can also call it from an `Arc<FenceSignalFuture>`.
     #[inline]
     fn cleanup_finished_impl(&self) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
 
         match *state {
             FenceSignalFutureState::Flushed(ref mut prev, ref fence) => {
@@ -201,7 +192,7 @@ where
             // In this function we temporarily replace the current state with `Poisoned` at the
             // beginning, and we take care to always put back a value into `state` before
             // returning (even in case of error).
-            let old_state = mem::replace(&mut **state, FenceSignalFutureState::Poisoned);
+            let old_state = replace(&mut **state, FenceSignalFutureState::Poisoned);
 
             let (previous, fence, partially_flushed) = match old_state {
                 FenceSignalFutureState::Pending(prev, fence) => (prev, fence, false),
@@ -320,7 +311,7 @@ where
 
     #[inline]
     unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         self.flush_impl(&mut state)?;
 
         match *state {
@@ -340,13 +331,13 @@ where
 
     #[inline]
     fn flush(&self) -> Result<(), FlushError> {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
         self.flush_impl(&mut state)
     }
 
     #[inline]
     unsafe fn signal_finished(&self) {
-        let state = self.state.lock().unwrap();
+        let state = self.state.lock();
         match *state {
             FenceSignalFutureState::Flushed(ref prev, _) => {
                 prev.signal_finished();
@@ -360,7 +351,7 @@ where
     fn queue_change_allowed(&self) -> bool {
         match self.behavior {
             FenceSignalFutureBehavior::Continue => {
-                let state = self.state.lock().unwrap();
+                let state = self.state.lock();
                 if state.get_prev().is_some() {
                     false
                 } else {
@@ -373,7 +364,7 @@ where
 
     #[inline]
     fn queue(&self) -> Option<Arc<Queue>> {
-        let state = self.state.lock().unwrap();
+        let state = self.state.lock();
         if let Some(prev) = state.get_prev() {
             prev.queue()
         } else {
@@ -384,13 +375,14 @@ where
     #[inline]
     fn check_buffer_access(
         &self,
-        buffer: &dyn BufferAccess,
+        buffer: &UnsafeBuffer,
+        range: Range<DeviceSize>,
         exclusive: bool,
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
-        let state = self.state.lock().unwrap();
+        let state = self.state.lock();
         if let Some(previous) = state.get_prev() {
-            previous.check_buffer_access(buffer, exclusive, queue)
+            previous.check_buffer_access(buffer, range, exclusive, queue)
         } else {
             Err(AccessCheckError::Unknown)
         }
@@ -399,14 +391,15 @@ where
     #[inline]
     fn check_image_access(
         &self,
-        image: &dyn ImageAccess,
-        layout: ImageLayout,
+        image: &UnsafeImage,
+        range: Range<DeviceSize>,
         exclusive: bool,
+        expected_layout: ImageLayout,
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
-        let state = self.state.lock().unwrap();
+        let state = self.state.lock();
         if let Some(previous) = state.get_prev() {
-            previous.check_image_access(image, layout, exclusive, queue)
+            previous.check_image_access(image, range, exclusive, expected_layout, queue)
         } else {
             Err(AccessCheckError::Unknown)
         }
@@ -428,12 +421,12 @@ where
     F: GpuFuture,
 {
     fn drop(&mut self) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock();
 
         // We ignore any possible error while submitting for now. Problems are handled below.
         let _ = self.flush_impl(&mut state);
 
-        match mem::replace(&mut *state, FenceSignalFutureState::Cleaned) {
+        match replace(&mut *state, FenceSignalFutureState::Cleaned) {
             FenceSignalFutureState::Flushed(previous, fence) => {
                 // This is a normal situation. Submitting worked.
                 // TODO: handle errors?
@@ -496,21 +489,23 @@ where
     #[inline]
     fn check_buffer_access(
         &self,
-        buffer: &dyn BufferAccess,
+        buffer: &UnsafeBuffer,
+        range: Range<DeviceSize>,
         exclusive: bool,
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
-        (**self).check_buffer_access(buffer, exclusive, queue)
+        (**self).check_buffer_access(buffer, range, exclusive, queue)
     }
 
     #[inline]
     fn check_image_access(
         &self,
-        image: &dyn ImageAccess,
-        layout: ImageLayout,
+        image: &UnsafeImage,
+        range: Range<DeviceSize>,
         exclusive: bool,
+        expected_layout: ImageLayout,
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
-        (**self).check_image_access(image, layout, exclusive, queue)
+        (**self).check_image_access(image, range, exclusive, expected_layout, queue)
     }
 }

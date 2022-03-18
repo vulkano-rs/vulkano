@@ -42,7 +42,7 @@ use std::{
 // TODO: type (2D, 3D, array, etc.) as template parameter
 #[derive(Debug)]
 pub struct ImmutableImage<A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
-    image: UnsafeImage,
+    image: Arc<UnsafeImage>,
     dimensions: ImageDimensions,
     memory: A,
     format: Format,
@@ -92,8 +92,8 @@ impl SubImage {
 // Must not implement Clone, as that would lead to multiple `used` values.
 pub struct ImmutableImageInitialization<A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
     image: Arc<ImmutableImage<A>>,
-    mip_levels_access: std::ops::Range<u32>,
-    array_layers_access: std::ops::Range<u32>,
+    mip_levels_access: Range<u32>,
+    array_layers_access: Range<u32>,
 }
 
 fn has_mipmaps(mipmaps: MipmapsCount) -> bool {
@@ -432,12 +432,12 @@ where
     }
 
     #[inline]
-    fn current_mip_levels_access(&self) -> std::ops::Range<u32> {
+    fn current_mip_levels_access(&self) -> Range<u32> {
         0..self.mip_levels()
     }
 
     #[inline]
-    fn current_array_layers_access(&self) -> std::ops::Range<u32> {
+    fn current_array_layers_access(&self) -> Range<u32> {
         0..self.dimensions().array_layers()
     }
 }
@@ -473,11 +473,11 @@ unsafe impl ImageAccess for SubImage {
         None
     }
 
-    fn current_mip_levels_access(&self) -> std::ops::Range<u32> {
+    fn current_mip_levels_access(&self) -> Range<u32> {
         self.mip_levels_access.clone()
     }
 
-    fn current_array_layers_access(&self) -> std::ops::Range<u32> {
+    fn current_array_layers_access(&self) -> Range<u32> {
         self.array_layers_access.clone()
     }
 
@@ -539,12 +539,12 @@ where
     }
 
     #[inline]
-    fn current_mip_levels_access(&self) -> std::ops::Range<u32> {
+    fn current_mip_levels_access(&self) -> Range<u32> {
         self.mip_levels_access.clone()
     }
 
     #[inline]
-    fn current_array_layers_access(&self) -> std::ops::Range<u32> {
+    fn current_array_layers_access(&self) -> Range<u32> {
         self.array_layers_access.clone()
     }
 }

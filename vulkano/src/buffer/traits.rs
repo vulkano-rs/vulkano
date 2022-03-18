@@ -128,7 +128,7 @@ impl BufferAccessObject for Arc<dyn BufferAccess> {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct BufferInner<'a> {
     /// The underlying buffer object.
-    pub buffer: &'a UnsafeBuffer,
+    pub buffer: &'a Arc<UnsafeBuffer>,
     /// The offset in bytes from the start of the underlying buffer object to the start of the
     /// buffer we're describing.
     pub offset: DeviceSize,

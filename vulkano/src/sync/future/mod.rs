@@ -7,33 +7,27 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-pub use self::fence_signal::{FenceSignalFuture, FenceSignalFutureBehavior};
-pub use self::join::JoinFuture;
-pub use self::now::{now, NowFuture};
-pub use self::semaphore_signal::SemaphoreSignalFuture;
-use crate::buffer::BufferAccess;
-use crate::command_buffer::submit::SubmitAnyBuilder;
-use crate::command_buffer::submit::SubmitBindSparseError;
-use crate::command_buffer::submit::SubmitCommandBufferError;
-use crate::command_buffer::submit::SubmitPresentError;
-use crate::command_buffer::CommandBufferExecError;
-use crate::command_buffer::CommandBufferExecFuture;
-use crate::command_buffer::PrimaryCommandBuffer;
-use crate::device::DeviceOwned;
-use crate::device::Queue;
-use crate::image::ImageAccess;
-use crate::image::ImageLayout;
-use crate::swapchain;
-use crate::swapchain::PresentFuture;
-use crate::swapchain::PresentRegion;
-use crate::swapchain::Swapchain;
-use crate::sync::AccessFlags;
-use crate::sync::FenceWaitError;
-use crate::sync::PipelineStages;
-use crate::OomError;
-use std::error;
-use std::fmt;
-use std::sync::Arc;
+pub use self::{
+    fence_signal::{FenceSignalFuture, FenceSignalFutureBehavior},
+    join::JoinFuture,
+    now::{now, NowFuture},
+    semaphore_signal::SemaphoreSignalFuture,
+};
+use super::{AccessFlags, FenceWaitError, PipelineStages};
+use crate::{
+    buffer::sys::UnsafeBuffer,
+    command_buffer::{
+        submit::{
+            SubmitAnyBuilder, SubmitBindSparseError, SubmitCommandBufferError, SubmitPresentError,
+        },
+        CommandBufferExecError, CommandBufferExecFuture, PrimaryCommandBuffer,
+    },
+    device::{DeviceOwned, Queue},
+    image::{sys::UnsafeImage, ImageLayout},
+    swapchain::{self, PresentFuture, PresentRegion, Swapchain},
+    DeviceSize, OomError,
+};
+use std::{error, fmt, ops::Range, sync::Arc};
 
 mod fence_signal;
 mod join;
@@ -115,7 +109,8 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// > "don't know". Therefore returning `Err` is never unsafe.
     fn check_buffer_access(
         &self,
-        buffer: &dyn BufferAccess,
+        buffer: &UnsafeBuffer,
+        range: Range<DeviceSize>,
         exclusive: bool,
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError>;
@@ -136,9 +131,10 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// > access.
     fn check_image_access(
         &self,
-        image: &dyn ImageAccess,
-        layout: ImageLayout,
+        image: &UnsafeImage,
+        range: Range<DeviceSize>,
         exclusive: bool,
+        expected_layout: ImageLayout,
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError>;
 
@@ -360,22 +356,24 @@ where
     #[inline]
     fn check_buffer_access(
         &self,
-        buffer: &dyn BufferAccess,
+        buffer: &UnsafeBuffer,
+        range: Range<DeviceSize>,
         exclusive: bool,
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
-        (**self).check_buffer_access(buffer, exclusive, queue)
+        (**self).check_buffer_access(buffer, range, exclusive, queue)
     }
 
     #[inline]
     fn check_image_access(
         &self,
-        image: &dyn ImageAccess,
-        layout: ImageLayout,
+        image: &UnsafeImage,
+        range: Range<DeviceSize>,
         exclusive: bool,
+        expected_layout: ImageLayout,
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
-        (**self).check_image_access(image, layout, exclusive, queue)
+        (**self).check_image_access(image, range, exclusive, expected_layout, queue)
     }
 }
 
