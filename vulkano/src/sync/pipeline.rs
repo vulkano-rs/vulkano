@@ -7,10 +7,19 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::ops;
+use crate::{
+    buffer::sys::UnsafeBuffer,
+    image::{sys::UnsafeImage, ImageAspects, ImageLayout, ImageSubresourceRange},
+    DeviceSize,
+};
+use smallvec::SmallVec;
+use std::{
+    ops::{self, Range},
+    sync::Arc,
+};
 
 macro_rules! pipeline_stages {
-    ($($elem:ident, $var:ident => $val:expr, $queue:expr;)+) => (
+    ($($elem:ident, $var:ident => $val:ident, $queue:expr;)+) => (
         #[derive(Debug, Copy, Clone, PartialEq, Eq)]
         pub struct PipelineStages {
             $(
@@ -34,7 +43,18 @@ macro_rules! pipeline_stages {
             fn from(val: PipelineStages) -> Self {
                 let mut result = ash::vk::PipelineStageFlags::empty();
                 $(
-                    if val.$elem { result |= $val }
+                    if val.$elem { result |= ash::vk::PipelineStageFlags::$val }
+                )+
+                result
+            }
+        }
+
+        impl From<PipelineStages> for ash::vk::PipelineStageFlags2 {
+            #[inline]
+            fn from(val: PipelineStages) -> Self {
+                let mut result = ash::vk::PipelineStageFlags2::empty();
+                $(
+                    if val.$elem { result |= ash::vk::PipelineStageFlags2::$val }
                 )+
                 result
             }
@@ -63,10 +83,10 @@ macro_rules! pipeline_stages {
         }
 
         #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-        #[repr(u32)]
+        #[repr(u64)]
         pub enum PipelineStage {
             $(
-                $var = $val.as_raw(),
+                $var = ash::vk::PipelineStageFlags2::$val.as_raw(),
             )+
         }
 
@@ -211,29 +231,36 @@ impl From<PipelineStage> for ash::vk::PipelineStageFlags {
     }
 }
 
+impl From<PipelineStage> for ash::vk::PipelineStageFlags2 {
+    #[inline]
+    fn from(val: PipelineStage) -> Self {
+        Self::from_raw(val as u64)
+    }
+}
+
 pipeline_stages! {
-    top_of_pipe, TopOfPipe => ash::vk::PipelineStageFlags::TOP_OF_PIPE, ash::vk::QueueFlags::empty();
-    draw_indirect, DrawIndirect => ash::vk::PipelineStageFlags::DRAW_INDIRECT, ash::vk::QueueFlags::GRAPHICS | ash::vk::QueueFlags::COMPUTE;
-    vertex_input, VertexInput => ash::vk::PipelineStageFlags::VERTEX_INPUT, ash::vk::QueueFlags::GRAPHICS;
-    vertex_shader, VertexShader => ash::vk::PipelineStageFlags::VERTEX_SHADER, ash::vk::QueueFlags::GRAPHICS;
-    tessellation_control_shader, TessellationControlShader => ash::vk::PipelineStageFlags::TESSELLATION_CONTROL_SHADER, ash::vk::QueueFlags::GRAPHICS;
-    tessellation_evaluation_shader, TessellationEvaluationShader => ash::vk::PipelineStageFlags::TESSELLATION_EVALUATION_SHADER, ash::vk::QueueFlags::GRAPHICS;
-    geometry_shader, GeometryShader => ash::vk::PipelineStageFlags::GEOMETRY_SHADER, ash::vk::QueueFlags::GRAPHICS;
-    fragment_shader, FragmentShader => ash::vk::PipelineStageFlags::FRAGMENT_SHADER, ash::vk::QueueFlags::GRAPHICS;
-    early_fragment_tests, EarlyFragmentTests => ash::vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS, ash::vk::QueueFlags::GRAPHICS;
-    late_fragment_tests, LateFragmentTests => ash::vk::PipelineStageFlags::LATE_FRAGMENT_TESTS, ash::vk::QueueFlags::GRAPHICS;
-    color_attachment_output, ColorAttachmentOutput => ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT, ash::vk::QueueFlags::GRAPHICS;
-    compute_shader, ComputeShader => ash::vk::PipelineStageFlags::COMPUTE_SHADER, ash::vk::QueueFlags::COMPUTE;
-    transfer, Transfer => ash::vk::PipelineStageFlags::TRANSFER, ash::vk::QueueFlags::GRAPHICS | ash::vk::QueueFlags::COMPUTE | ash::vk::QueueFlags::TRANSFER;
-    bottom_of_pipe, BottomOfPipe => ash::vk::PipelineStageFlags::BOTTOM_OF_PIPE, ash::vk::QueueFlags::empty();
-    host, Host => ash::vk::PipelineStageFlags::HOST, ash::vk::QueueFlags::empty();
-    all_graphics, AllGraphics => ash::vk::PipelineStageFlags::ALL_GRAPHICS, ash::vk::QueueFlags::GRAPHICS;
-    all_commands, AllCommands => ash::vk::PipelineStageFlags::ALL_COMMANDS, ash::vk::QueueFlags::empty();
-    ray_tracing_shader, RayTracingShader => ash::vk::PipelineStageFlags::RAY_TRACING_SHADER_KHR, ash::vk::QueueFlags::GRAPHICS | ash::vk::QueueFlags::COMPUTE | ash::vk::QueueFlags::TRANSFER;
+    top_of_pipe, TopOfPipe => TOP_OF_PIPE, ash::vk::QueueFlags::empty();
+    draw_indirect, DrawIndirect => DRAW_INDIRECT, ash::vk::QueueFlags::GRAPHICS | ash::vk::QueueFlags::COMPUTE;
+    vertex_input, VertexInput => VERTEX_INPUT, ash::vk::QueueFlags::GRAPHICS;
+    vertex_shader, VertexShader => VERTEX_SHADER, ash::vk::QueueFlags::GRAPHICS;
+    tessellation_control_shader, TessellationControlShader => TESSELLATION_CONTROL_SHADER, ash::vk::QueueFlags::GRAPHICS;
+    tessellation_evaluation_shader, TessellationEvaluationShader => TESSELLATION_EVALUATION_SHADER, ash::vk::QueueFlags::GRAPHICS;
+    geometry_shader, GeometryShader => GEOMETRY_SHADER, ash::vk::QueueFlags::GRAPHICS;
+    fragment_shader, FragmentShader => FRAGMENT_SHADER, ash::vk::QueueFlags::GRAPHICS;
+    early_fragment_tests, EarlyFragmentTests => EARLY_FRAGMENT_TESTS, ash::vk::QueueFlags::GRAPHICS;
+    late_fragment_tests, LateFragmentTests => LATE_FRAGMENT_TESTS, ash::vk::QueueFlags::GRAPHICS;
+    color_attachment_output, ColorAttachmentOutput => COLOR_ATTACHMENT_OUTPUT, ash::vk::QueueFlags::GRAPHICS;
+    compute_shader, ComputeShader => COMPUTE_SHADER, ash::vk::QueueFlags::COMPUTE;
+    transfer, Transfer => TRANSFER, ash::vk::QueueFlags::GRAPHICS | ash::vk::QueueFlags::COMPUTE | ash::vk::QueueFlags::TRANSFER;
+    bottom_of_pipe, BottomOfPipe => BOTTOM_OF_PIPE, ash::vk::QueueFlags::empty();
+    host, Host => HOST, ash::vk::QueueFlags::empty();
+    all_graphics, AllGraphics => ALL_GRAPHICS, ash::vk::QueueFlags::GRAPHICS;
+    all_commands, AllCommands => ALL_COMMANDS, ash::vk::QueueFlags::empty();
+    ray_tracing_shader, RayTracingShader => RAY_TRACING_SHADER_KHR, ash::vk::QueueFlags::GRAPHICS | ash::vk::QueueFlags::COMPUTE | ash::vk::QueueFlags::TRANSFER;
 }
 
 macro_rules! access_flags {
-    ($($elem:ident => $val:expr,)+) => (
+    ($($elem:ident => $val:ident,)+) => (
         #[derive(Debug, Copy, Clone, PartialEq, Eq)]
         #[allow(missing_docs)]
         pub struct AccessFlags {
@@ -274,7 +301,18 @@ macro_rules! access_flags {
             fn from(val: AccessFlags) -> Self {
                 let mut result = ash::vk::AccessFlags::empty();
                 $(
-                    if val.$elem { result |= $val }
+                    if val.$elem { result |= ash::vk::AccessFlags::$val }
+                )+
+                result
+            }
+        }
+
+        impl From<AccessFlags> for ash::vk::AccessFlags2 {
+            #[inline]
+            fn from(val: AccessFlags) -> Self {
+                let mut result = ash::vk::AccessFlags2::empty();
+                $(
+                    if val.$elem { result |= ash::vk::AccessFlags2::$val }
                 )+
                 result
             }
@@ -305,23 +343,23 @@ macro_rules! access_flags {
 }
 
 access_flags! {
-    indirect_command_read => ash::vk::AccessFlags::INDIRECT_COMMAND_READ,
-    index_read => ash::vk::AccessFlags::INDEX_READ,
-    vertex_attribute_read => ash::vk::AccessFlags::VERTEX_ATTRIBUTE_READ,
-    uniform_read => ash::vk::AccessFlags::UNIFORM_READ,
-    input_attachment_read => ash::vk::AccessFlags::INPUT_ATTACHMENT_READ,
-    shader_read => ash::vk::AccessFlags::SHADER_READ,
-    shader_write => ash::vk::AccessFlags::SHADER_WRITE,
-    color_attachment_read => ash::vk::AccessFlags::COLOR_ATTACHMENT_READ,
-    color_attachment_write => ash::vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-    depth_stencil_attachment_read => ash::vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ,
-    depth_stencil_attachment_write => ash::vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
-    transfer_read => ash::vk::AccessFlags::TRANSFER_READ,
-    transfer_write => ash::vk::AccessFlags::TRANSFER_WRITE,
-    host_read => ash::vk::AccessFlags::HOST_READ,
-    host_write => ash::vk::AccessFlags::HOST_WRITE,
-    memory_read => ash::vk::AccessFlags::MEMORY_READ,
-    memory_write => ash::vk::AccessFlags::MEMORY_WRITE,
+    indirect_command_read => INDIRECT_COMMAND_READ,
+    index_read => INDEX_READ,
+    vertex_attribute_read => VERTEX_ATTRIBUTE_READ,
+    uniform_read => UNIFORM_READ,
+    input_attachment_read => INPUT_ATTACHMENT_READ,
+    shader_read => SHADER_READ,
+    shader_write => SHADER_WRITE,
+    color_attachment_read => COLOR_ATTACHMENT_READ,
+    color_attachment_write => COLOR_ATTACHMENT_WRITE,
+    depth_stencil_attachment_read => DEPTH_STENCIL_ATTACHMENT_READ,
+    depth_stencil_attachment_write => DEPTH_STENCIL_ATTACHMENT_WRITE,
+    transfer_read => TRANSFER_READ,
+    transfer_write => TRANSFER_WRITE,
+    host_read => HOST_READ,
+    host_write => HOST_WRITE,
+    memory_read => MEMORY_READ,
+    memory_write => MEMORY_WRITE,
 }
 
 /// The full specification of memory access by the pipeline for a particular resource.
@@ -333,4 +371,218 @@ pub struct PipelineMemoryAccess {
     pub access: AccessFlags,
     /// Whether the resource needs exclusive (mutable) access or can be shared.
     pub exclusive: bool,
+}
+
+/// Dependency info for a pipeline barrier.
+///
+/// A pipeline barrier creates a dependency between commands submitted before the barrier (the
+/// source scope) and commands submitted after it (the destination scope). A pipeline barrier
+/// consists of multiple individual barriers that concern a either single resource or
+/// operate globally.
+///
+/// Each barrier has a set of source/destination pipeline stages and source/destination memory
+/// access types. The pipeline stages create an *execution dependency*: the `source_stages` of
+/// commands submitted before the barrier must be completely finished before before any of the
+/// `destination_stages` of commands after the barrier are allowed to start. The memory access types
+/// create a *memory dependency*: in addition to the execution dependency, any `source_access`
+/// performed before the barrier must be made available and visible before any `destination_access`
+/// are made after the barrier.
+#[derive(Clone, Debug)]
+pub struct DependencyInfo {
+    /// Memory barriers for global operations and accesses, not limited to a single resource.
+    pub memory_barriers: SmallVec<[MemoryBarrier; 2]>,
+
+    /// Memory barriers for individual buffers.
+    pub buffer_memory_barriers: SmallVec<[BufferMemoryBarrier; 8]>,
+
+    /// Memory barriers for individual images.
+    pub image_memory_barriers: SmallVec<[ImageMemoryBarrier; 8]>,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl DependencyInfo {
+    /// Returns whether `self` contains any barriers.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.memory_barriers.is_empty()
+            && self.buffer_memory_barriers.is_empty()
+            && self.image_memory_barriers.is_empty()
+    }
+}
+
+impl Default for DependencyInfo {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            memory_barriers: SmallVec::new(),
+            buffer_memory_barriers: SmallVec::new(),
+            image_memory_barriers: SmallVec::new(),
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+/// A memory barrier that is applied globally.
+#[derive(Clone, Debug)]
+pub struct MemoryBarrier {
+    /// The pipeline stages in the source scope to wait for.
+    ///
+    /// The default value is [`PipelineStages::none()`].
+    pub source_stages: PipelineStages,
+
+    /// The memory accesses in the source scope to make available and visible.
+    ///
+    /// The default value is [`AccessFlags::none()`].
+    pub source_access: AccessFlags,
+
+    /// The pipeline stages in the destination scope that must wait for `source_stages`.
+    ///
+    /// The default value is [`PipelineStages::none()`].
+    pub destination_stages: PipelineStages,
+
+    /// The memory accesses in the destination scope that must wait for `source_access` to be made
+    /// available and visible.
+    pub destination_access: AccessFlags,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for MemoryBarrier {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            source_stages: PipelineStages::none(),
+            source_access: AccessFlags::none(),
+            destination_stages: PipelineStages::none(),
+            destination_access: AccessFlags::none(),
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+/// A memory barrier that is applied to a single buffer.
+#[derive(Clone, Debug)]
+pub struct BufferMemoryBarrier {
+    /// The pipeline stages in the source scope to wait for.
+    ///
+    /// The default value is [`PipelineStages::none()`].
+    pub source_stages: PipelineStages,
+
+    /// The memory accesses in the source scope to make available and visible.
+    ///
+    /// The default value is [`AccessFlags::none()`].
+    pub source_access: AccessFlags,
+
+    /// The pipeline stages in the destination scope that must wait for `source_stages`.
+    ///
+    /// The default value is [`PipelineStages::none()`].
+    pub destination_stages: PipelineStages,
+
+    /// The memory accesses in the destination scope that must wait for `source_access` to be made
+    /// available and visible.
+    pub destination_access: AccessFlags,
+
+    /// For resources created with [`Sharing::Exclusive`](crate::sync::Sharing), transfers
+    /// ownership of a resource from one queue family to another.
+    pub queue_family_transfer: Option<QueueFamilyTransfer>,
+
+    /// The buffer to apply the barrier to.
+    pub buffer: Arc<UnsafeBuffer>,
+
+    /// The byte range of `buffer` to apply the barrier to.
+    pub range: Range<DeviceSize>,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl BufferMemoryBarrier {
+    #[inline]
+    pub fn buffer(buffer: Arc<UnsafeBuffer>) -> Self {
+        Self {
+            source_stages: PipelineStages::none(),
+            source_access: AccessFlags::none(),
+            destination_stages: PipelineStages::none(),
+            destination_access: AccessFlags::none(),
+            queue_family_transfer: None,
+            buffer,
+            range: 0..0,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+/// A memory barrier that is applied to a single image.
+#[derive(Clone, Debug)]
+pub struct ImageMemoryBarrier {
+    /// The pipeline stages in the source scope to wait for.
+    ///
+    /// The default value is [`PipelineStages::none()`].
+    pub source_stages: PipelineStages,
+
+    /// The memory accesses in the source scope to make available and visible.
+    ///
+    /// The default value is [`AccessFlags::none()`].
+    pub source_access: AccessFlags,
+
+    /// The pipeline stages in the destination scope that must wait for `source_stages`.
+    ///
+    /// The default value is [`PipelineStages::none()`].
+    pub destination_stages: PipelineStages,
+
+    /// The memory accesses in the destination scope that must wait for `source_access` to be made
+    /// available and visible.
+    pub destination_access: AccessFlags,
+
+    /// The layout that the specified `subresource_range` of `image` is expected to be in when the
+    /// source scope completes.
+    pub old_layout: ImageLayout,
+
+    /// The layout that the specified `subresource_range` of `image` will be transitioned to before
+    /// the destination scope begins.
+    pub new_layout: ImageLayout,
+
+    /// For resources created with [`Sharing::Exclusive`](crate::sync::Sharing), transfers
+    /// ownership of a resource from one queue family to another.
+    pub queue_family_transfer: Option<QueueFamilyTransfer>,
+
+    /// The image to apply the barrier to.
+    pub image: Arc<UnsafeImage>,
+
+    /// The subresource range of `image` to apply the barrier to.
+    pub subresource_range: ImageSubresourceRange,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl ImageMemoryBarrier {
+    #[inline]
+    pub fn image(image: Arc<UnsafeImage>) -> Self {
+        Self {
+            source_stages: PipelineStages::none(),
+            source_access: AccessFlags::none(),
+            destination_stages: PipelineStages::none(),
+            destination_access: AccessFlags::none(),
+            old_layout: ImageLayout::Undefined,
+            new_layout: ImageLayout::Undefined,
+            queue_family_transfer: None,
+            image,
+            subresource_range: ImageSubresourceRange {
+                aspects: ImageAspects::none(), // Can't use image format aspects because `color` can't be specified with `planeN`.
+                mip_levels: 0..0,
+                array_layers: 0..0,
+            },
+            _ne: Default::default(),
+        }
+    }
+}
+
+/// Specifies a queue family ownership transfer for a resource.
+#[derive(Clone, Copy, Debug)]
+pub struct QueueFamilyTransfer {
+    /// The queue family that currently owns the resource.
+    pub source_index: u32,
+
+    /// The queue family to transfer ownership to.
+    pub destination_index: u32,
 }

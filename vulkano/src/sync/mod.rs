@@ -113,7 +113,10 @@ pub use self::{
         now, AccessCheckError, AccessError, FenceSignalFuture, FlushError, GpuFuture, JoinFuture,
         NowFuture, SemaphoreSignalFuture,
     },
-    pipeline::{AccessFlags, PipelineMemoryAccess, PipelineStage, PipelineStages},
+    pipeline::{
+        AccessFlags, BufferMemoryBarrier, DependencyInfo, ImageMemoryBarrier, MemoryBarrier,
+        PipelineMemoryAccess, PipelineStage, PipelineStages, QueueFamilyTransfer,
+    },
     semaphore::{
         ExternalSemaphoreHandleType, ExternalSemaphoreHandleTypes, ExternalSemaphoreInfo,
         ExternalSemaphoreProperties, Semaphore, SemaphoreCreateInfo, SemaphoreCreationError,

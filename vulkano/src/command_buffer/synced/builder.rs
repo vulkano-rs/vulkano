@@ -17,10 +17,7 @@ use crate::{
     command_buffer::{
         pool::UnsafeCommandPoolAlloc,
         synced::{BufferFinalState, BufferUse, ImageFinalState, ImageUse},
-        sys::{
-            CommandBufferBeginInfo, UnsafeCommandBufferBuilder,
-            UnsafeCommandBufferBuilderPipelineBarrier,
-        },
+        sys::{CommandBufferBeginInfo, UnsafeCommandBufferBuilder},
         CommandBufferExecError, CommandBufferLevel,
     },
     descriptor_set::{DescriptorSetResources, DescriptorSetWithOffsets},
@@ -37,7 +34,10 @@ use crate::{
         ComputePipeline, DynamicState, GraphicsPipeline, PipelineBindPoint, PipelineLayout,
     },
     range_set::RangeSet,
-    sync::{AccessFlags, PipelineMemoryAccess, PipelineStages},
+    sync::{
+        AccessFlags, BufferMemoryBarrier, DependencyInfo, ImageMemoryBarrier, PipelineMemoryAccess,
+        PipelineStages,
+    },
     DeviceSize, OomError, VulkanObject,
 };
 use rangemap::RangeMap;
@@ -46,6 +46,7 @@ use std::{
     borrow::Cow,
     collections::{hash_map::Entry, HashMap},
     error, fmt,
+    mem::replace,
     sync::Arc,
 };
 
@@ -77,7 +78,7 @@ pub struct SyncCommandBufferBuilder {
 
     // Prototype for the pipeline barrier that must be submitted before flushing the commands
     // in `commands`.
-    pending_barrier: UnsafeCommandBufferBuilderPipelineBarrier,
+    pending_barrier: DependencyInfo,
 
     // Locations within commands that pipeline barriers were inserted. For debugging purposes.
     // TODO: present only in cfg(debug_assertions)?
@@ -166,7 +167,7 @@ impl SyncCommandBufferBuilder {
         SyncCommandBufferBuilder {
             inner: cmd,
             commands: Vec::new(),
-            pending_barrier: UnsafeCommandBufferBuilderPipelineBarrier::new(),
+            pending_barrier: DependencyInfo::default(),
             barriers: Vec::new(),
             first_unflushed: 0,
             latest_render_pass_enter,
@@ -304,9 +305,9 @@ impl SyncCommandBufferBuilder {
                         }) {
                             unsafe {
                                 // Flush the pending barrier.
-                                self.inner.pipeline_barrier(&self.pending_barrier);
-                                self.pending_barrier =
-                                    UnsafeCommandBufferBuilderPipelineBarrier::new();
+                                let barrier =
+                                    replace(&mut self.pending_barrier, DependencyInfo::default());
+                                self.inner.pipeline_barrier(barrier);
 
                                 // Flush the commands if possible, or return an error if not possible.
                                 {
@@ -344,19 +345,16 @@ impl SyncCommandBufferBuilder {
                         }
 
                         // Modify the pipeline barrier to handle the collision.
-                        unsafe {
-                            let b = &mut self.pending_barrier;
-                            b.add_buffer_memory_barrier(
-                                inner.buffer,
-                                state.memory.stages,
-                                state.memory.access,
-                                memory.stages,
-                                memory.access,
-                                true,
-                                None,
-                                range.clone(),
-                            );
-                        }
+                        self.pending_barrier
+                            .buffer_memory_barriers
+                            .push(BufferMemoryBarrier {
+                                source_stages: state.memory.stages,
+                                source_access: state.memory.access,
+                                destination_stages: memory.stages,
+                                destination_access: memory.access,
+                                range: range.clone(),
+                                ..BufferMemoryBarrier::buffer(inner.buffer.clone())
+                            });
 
                         state.resource_uses.push(BufferUse {
                             command_index: latest_command_id,
@@ -451,9 +449,11 @@ impl SyncCommandBufferBuilder {
                             {
                                 unsafe {
                                     // Flush the pending barrier.
-                                    self.inner.pipeline_barrier(&self.pending_barrier);
-                                    self.pending_barrier =
-                                        UnsafeCommandBufferBuilderPipelineBarrier::new();
+                                    let barrier = replace(
+                                        &mut self.pending_barrier,
+                                        DependencyInfo::default(),
+                                    );
+                                    self.inner.pipeline_barrier(barrier);
 
                                     // Flush the commands if possible, or return an error if not possible.
                                     {
@@ -492,21 +492,20 @@ impl SyncCommandBufferBuilder {
                             }
 
                             // Modify the pipeline barrier to handle the collision.
-                            unsafe {
-                                let b = &mut self.pending_barrier;
-                                b.add_image_memory_barrier(
-                                    inner.image,
-                                    state.memory.stages,
-                                    state.memory.access,
-                                    memory.stages,
-                                    memory.access,
-                                    true,
-                                    None,
-                                    state.current_layout,
-                                    start_layout,
-                                    inner.image.range_to_subresources(range.clone()),
-                                );
-                            }
+                            self.pending_barrier
+                                .image_memory_barriers
+                                .push(ImageMemoryBarrier {
+                                    source_stages: state.memory.stages,
+                                    source_access: state.memory.access,
+                                    destination_stages: memory.stages,
+                                    destination_access: memory.access,
+                                    old_layout: state.current_layout,
+                                    new_layout: start_layout,
+                                    subresource_range: inner
+                                        .image
+                                        .range_to_subresources(range.clone()),
+                                    ..ImageMemoryBarrier::image(inner.image.clone())
+                                });
 
                             state.resource_uses.push(ImageUse {
                                 command_index: latest_command_id,
@@ -575,21 +574,22 @@ impl SyncCommandBufferBuilder {
                                         actual_start_layout = image.initial_layout();
                                         image.initial_layout()
                                     };
-                                    let b = &mut self.pending_barrier;
-                                    b.add_image_memory_barrier(
-                                        inner.image,
-                                        PipelineStages {
-                                            bottom_of_pipe: true,
-                                            ..PipelineStages::none()
+                                    self.pending_barrier.image_memory_barriers.push(
+                                        ImageMemoryBarrier {
+                                            source_stages: PipelineStages {
+                                                bottom_of_pipe: true,
+                                                ..PipelineStages::none()
+                                            },
+                                            source_access: AccessFlags::none(),
+                                            destination_stages: memory.stages,
+                                            destination_access: memory.access,
+                                            old_layout: from_layout,
+                                            new_layout: start_layout,
+                                            subresource_range: inner
+                                                .image
+                                                .range_to_subresources(range.clone()),
+                                            ..ImageMemoryBarrier::image(inner.image.clone())
                                         },
-                                        AccessFlags::none(),
-                                        memory.stages,
-                                        memory.access,
-                                        true,
-                                        None,
-                                        from_layout,
-                                        start_layout,
-                                        inner.image.range_to_subresources(range.clone()),
                                     );
                                     image.layout_initialized();
                                 }
@@ -634,7 +634,7 @@ impl SyncCommandBufferBuilder {
 
         // The commands that haven't been sent to the inner command buffer yet need to be sent.
         unsafe {
-            self.inner.pipeline_barrier(&self.pending_barrier);
+            self.inner.pipeline_barrier(self.pending_barrier);
             let start = self.first_unflushed;
             self.barriers.push(start); // Track inserted barriers
             for command in &mut self.commands[start..] {
@@ -646,7 +646,7 @@ impl SyncCommandBufferBuilder {
         if !self.is_secondary {
             unsafe {
                 // TODO: this could be optimized by merging the barrier with the barrier above?
-                let mut barrier = UnsafeCommandBufferBuilderPipelineBarrier::new();
+                let mut barrier = DependencyInfo::default();
 
                 for (image, range_map) in self.images2.iter_mut() {
                     for (range, state) in range_map
@@ -657,28 +657,26 @@ impl SyncCommandBufferBuilder {
                             continue;
                         }
 
-                        barrier.add_image_memory_barrier(
-                            image,
-                            state.memory.stages,
-                            state.memory.access,
-                            PipelineStages {
+                        barrier.image_memory_barriers.push(ImageMemoryBarrier {
+                            source_stages: state.memory.stages,
+                            source_access: state.memory.access,
+                            destination_stages: PipelineStages {
                                 top_of_pipe: true,
                                 ..PipelineStages::none()
                             },
-                            AccessFlags::none(),
-                            true,
-                            None, // TODO: queue transfers?
-                            state.current_layout,
-                            state.final_layout,
-                            image.range_to_subresources(range.clone()),
-                        );
+                            destination_access: AccessFlags::none(),
+                            old_layout: state.current_layout,
+                            new_layout: state.final_layout,
+                            subresource_range: image.range_to_subresources(range.clone()),
+                            ..ImageMemoryBarrier::image(image.clone())
+                        });
 
                         state.exclusive_any = true;
                         state.current_layout = state.final_layout;
                     }
                 }
 
-                self.inner.pipeline_barrier(&barrier);
+                self.inner.pipeline_barrier(barrier);
             }
         }
 

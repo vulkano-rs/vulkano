@@ -12,15 +12,14 @@ use super::{
     CommandBufferUsage, SecondaryCommandBuffer, SubpassContents,
 };
 use crate::{
-    buffer::{sys::UnsafeBuffer, BufferAccess, BufferContents, BufferInner, TypedBufferAccess},
+    buffer::{BufferAccess, BufferContents, BufferInner, TypedBufferAccess},
     check_errors,
     descriptor_set::{sys::UnsafeDescriptorSet, DescriptorWriteInfo, WriteDescriptorSet},
     device::{Device, DeviceOwned},
     format::{ClearValue, NumericType},
     image::{
         attachment::{ClearAttachment, ClearRect},
-        sys::UnsafeImage,
-        ImageAccess, ImageAspect, ImageAspects, ImageLayout, ImageSubresourceRange, SampleCount,
+        ImageAccess, ImageAspect, ImageAspects, ImageLayout, SampleCount,
     },
     pipeline::{
         graphics::{
@@ -39,14 +38,16 @@ use crate::{
     render_pass::Framebuffer,
     sampler::Filter,
     shader::ShaderStages,
-    sync::{AccessFlags, Event, PipelineStage, PipelineStages},
+    sync::{
+        BufferMemoryBarrier, DependencyInfo, Event, ImageMemoryBarrier, MemoryBarrier,
+        PipelineStage, PipelineStages,
+    },
     DeviceSize, OomError, Version, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{
     ffi::CStr,
     mem::{size_of, size_of_val},
-    ops::Range,
     ptr,
     sync::Arc,
 };
@@ -1350,34 +1351,317 @@ impl UnsafeCommandBufferBuilder {
     }
 
     #[inline]
-    pub unsafe fn pipeline_barrier(&mut self, command: &UnsafeCommandBufferBuilderPipelineBarrier) {
-        // If barrier is empty, don't do anything.
-        if command.src_stage_mask.is_empty() || command.dst_stage_mask.is_empty() {
-            debug_assert!(command.src_stage_mask.is_empty() && command.dst_stage_mask.is_empty());
-            debug_assert!(command.memory_barriers.is_empty());
-            debug_assert!(command.buffer_barriers.is_empty());
-            debug_assert!(command.image_barriers.is_empty());
+    pub unsafe fn pipeline_barrier(&mut self, dependency_info: DependencyInfo) {
+        if dependency_info.is_empty() {
             return;
         }
 
-        let fns = self.device().fns();
-        let cmd = self.internal_object();
+        let DependencyInfo {
+            memory_barriers,
+            buffer_memory_barriers,
+            image_memory_barriers,
+            _ne: _,
+        } = dependency_info;
 
-        debug_assert!(!command.src_stage_mask.is_empty());
-        debug_assert!(!command.dst_stage_mask.is_empty());
+        let dependency_flags = ash::vk::DependencyFlags::BY_REGION;
 
-        fns.v1_0.cmd_pipeline_barrier(
-            cmd,
-            command.src_stage_mask,
-            command.dst_stage_mask,
-            command.dependency_flags,
-            command.memory_barriers.len() as u32,
-            command.memory_barriers.as_ptr(),
-            command.buffer_barriers.len() as u32,
-            command.buffer_barriers.as_ptr(),
-            command.image_barriers.len() as u32,
-            command.image_barriers.as_ptr(),
-        );
+        if self.device.enabled_features().synchronization2 {
+            let memory_barriers: SmallVec<[_; 2]> = memory_barriers
+                .into_iter()
+                .map(|barrier| {
+                    let MemoryBarrier {
+                        source_stages,
+                        source_access,
+                        destination_stages,
+                        destination_access,
+                        _ne: _,
+                    } = barrier;
+
+                    debug_assert!(source_stages.supported_access().contains(&source_access));
+                    debug_assert!(destination_stages
+                        .supported_access()
+                        .contains(&destination_access));
+
+                    ash::vk::MemoryBarrier2 {
+                        src_stage_mask: source_stages.into(),
+                        src_access_mask: source_access.into(),
+                        dst_stage_mask: destination_stages.into(),
+                        dst_access_mask: destination_access.into(),
+                        ..Default::default()
+                    }
+                })
+                .collect();
+
+            let buffer_memory_barriers: SmallVec<[_; 8]> = buffer_memory_barriers
+                .into_iter()
+                .map(|barrier| {
+                    let BufferMemoryBarrier {
+                        source_stages,
+                        source_access,
+                        destination_stages,
+                        destination_access,
+                        queue_family_transfer,
+                        buffer,
+                        range,
+                        _ne: _,
+                    } = barrier;
+
+                    debug_assert!(source_stages.supported_access().contains(&source_access));
+                    debug_assert!(destination_stages
+                        .supported_access()
+                        .contains(&destination_access));
+                    debug_assert!(!range.is_empty());
+                    debug_assert!(range.end <= buffer.size());
+
+                    ash::vk::BufferMemoryBarrier2 {
+                        src_stage_mask: source_stages.into(),
+                        src_access_mask: source_access.into(),
+                        dst_stage_mask: destination_stages.into(),
+                        dst_access_mask: destination_access.into(),
+                        src_queue_family_index: queue_family_transfer
+                            .map_or(ash::vk::QUEUE_FAMILY_IGNORED, |transfer| {
+                                transfer.source_index
+                            }),
+                        dst_queue_family_index: queue_family_transfer
+                            .map_or(ash::vk::QUEUE_FAMILY_IGNORED, |transfer| {
+                                transfer.destination_index
+                            }),
+                        buffer: buffer.internal_object(),
+                        offset: range.start,
+                        size: range.end - range.start,
+                        ..Default::default()
+                    }
+                })
+                .collect();
+
+            let image_memory_barriers: SmallVec<[_; 8]> = image_memory_barriers
+                .into_iter()
+                .map(|barrier| {
+                    let ImageMemoryBarrier {
+                        source_stages,
+                        source_access,
+                        destination_stages,
+                        destination_access,
+                        old_layout,
+                        new_layout,
+                        queue_family_transfer,
+                        image,
+                        subresource_range,
+                        _ne: _,
+                    } = barrier;
+
+                    debug_assert!(source_stages.supported_access().contains(&source_access));
+                    debug_assert!(destination_stages
+                        .supported_access()
+                        .contains(&destination_access));
+                    debug_assert!(!matches!(
+                        new_layout,
+                        ImageLayout::Undefined | ImageLayout::Preinitialized
+                    ));
+                    debug_assert!(image
+                        .format()
+                        .unwrap()
+                        .aspects()
+                        .contains(&subresource_range.aspects));
+                    debug_assert!(!subresource_range.mip_levels.is_empty());
+                    debug_assert!(subresource_range.mip_levels.end <= image.mip_levels());
+                    debug_assert!(!subresource_range.array_layers.is_empty());
+                    debug_assert!(
+                        subresource_range.array_layers.end <= image.dimensions().array_layers()
+                    );
+
+                    ash::vk::ImageMemoryBarrier2 {
+                        src_stage_mask: source_stages.into(),
+                        src_access_mask: source_access.into(),
+                        dst_stage_mask: destination_stages.into(),
+                        dst_access_mask: destination_access.into(),
+                        old_layout: old_layout.into(),
+                        new_layout: new_layout.into(),
+                        src_queue_family_index: queue_family_transfer
+                            .map_or(ash::vk::QUEUE_FAMILY_IGNORED, |transfer| {
+                                transfer.source_index
+                            }),
+                        dst_queue_family_index: queue_family_transfer
+                            .map_or(ash::vk::QUEUE_FAMILY_IGNORED, |transfer| {
+                                transfer.destination_index
+                            }),
+                        image: image.internal_object(),
+                        subresource_range: subresource_range.into(),
+                        ..Default::default()
+                    }
+                })
+                .collect();
+
+            let dependency_info = ash::vk::DependencyInfo {
+                dependency_flags,
+                memory_barrier_count: memory_barriers.len() as u32,
+                p_memory_barriers: memory_barriers.as_ptr(),
+                buffer_memory_barrier_count: buffer_memory_barriers.len() as u32,
+                p_buffer_memory_barriers: buffer_memory_barriers.as_ptr(),
+                image_memory_barrier_count: image_memory_barriers.len() as u32,
+                p_image_memory_barriers: image_memory_barriers.as_ptr(),
+                ..Default::default()
+            };
+
+            let fns = self.device.fns();
+
+            if self.device.api_version() >= Version::V1_3 {
+                fns.v1_3
+                    .cmd_pipeline_barrier2(self.internal_object(), &dependency_info);
+            } else {
+                fns.khr_synchronization2
+                    .cmd_pipeline_barrier2_khr(self.internal_object(), &dependency_info);
+            }
+        } else {
+            let mut src_stage_mask = ash::vk::PipelineStageFlags::empty();
+            let mut dst_stage_mask = ash::vk::PipelineStageFlags::empty();
+
+            let memory_barriers: SmallVec<[_; 2]> = memory_barriers
+                .into_iter()
+                .map(|barrier| {
+                    let MemoryBarrier {
+                        source_stages,
+                        source_access,
+                        destination_stages,
+                        destination_access,
+                        _ne: _,
+                    } = barrier;
+
+                    debug_assert!(source_stages.supported_access().contains(&source_access));
+                    debug_assert!(destination_stages
+                        .supported_access()
+                        .contains(&destination_access));
+
+                    src_stage_mask |= source_stages.into();
+                    dst_stage_mask |= destination_stages.into();
+
+                    ash::vk::MemoryBarrier {
+                        src_access_mask: source_access.into(),
+                        dst_access_mask: destination_access.into(),
+                        ..Default::default()
+                    }
+                })
+                .collect();
+
+            let buffer_memory_barriers: SmallVec<[_; 8]> = buffer_memory_barriers
+                .into_iter()
+                .map(|barrier| {
+                    let BufferMemoryBarrier {
+                        source_stages,
+                        source_access,
+                        destination_stages,
+                        destination_access,
+                        queue_family_transfer,
+                        buffer,
+                        range,
+                        _ne: _,
+                    } = barrier;
+
+                    debug_assert!(source_stages.supported_access().contains(&source_access));
+                    debug_assert!(destination_stages
+                        .supported_access()
+                        .contains(&destination_access));
+                    debug_assert!(!range.is_empty());
+                    debug_assert!(range.end <= buffer.size());
+
+                    src_stage_mask |= source_stages.into();
+                    dst_stage_mask |= destination_stages.into();
+
+                    ash::vk::BufferMemoryBarrier {
+                        src_access_mask: source_access.into(),
+                        dst_access_mask: destination_access.into(),
+                        src_queue_family_index: queue_family_transfer
+                            .map_or(ash::vk::QUEUE_FAMILY_IGNORED, |transfer| {
+                                transfer.source_index
+                            }),
+                        dst_queue_family_index: queue_family_transfer
+                            .map_or(ash::vk::QUEUE_FAMILY_IGNORED, |transfer| {
+                                transfer.destination_index
+                            }),
+                        buffer: buffer.internal_object(),
+                        offset: range.start,
+                        size: range.end - range.start,
+                        ..Default::default()
+                    }
+                })
+                .collect();
+
+            let image_memory_barriers: SmallVec<[_; 8]> = image_memory_barriers
+                .into_iter()
+                .map(|barrier| {
+                    let ImageMemoryBarrier {
+                        source_stages,
+                        source_access,
+                        destination_stages,
+                        destination_access,
+                        old_layout,
+                        new_layout,
+                        queue_family_transfer,
+                        image,
+                        subresource_range,
+                        _ne: _,
+                    } = barrier;
+
+                    debug_assert!(source_stages.supported_access().contains(&source_access));
+                    debug_assert!(destination_stages
+                        .supported_access()
+                        .contains(&destination_access));
+                    debug_assert!(!matches!(
+                        new_layout,
+                        ImageLayout::Undefined | ImageLayout::Preinitialized
+                    ));
+                    debug_assert!(image
+                        .format()
+                        .unwrap()
+                        .aspects()
+                        .contains(&subresource_range.aspects));
+                    debug_assert!(!subresource_range.mip_levels.is_empty());
+                    debug_assert!(subresource_range.mip_levels.end <= image.mip_levels());
+                    debug_assert!(!subresource_range.array_layers.is_empty());
+                    debug_assert!(
+                        subresource_range.array_layers.end <= image.dimensions().array_layers()
+                    );
+
+                    src_stage_mask |= source_stages.into();
+                    dst_stage_mask |= destination_stages.into();
+
+                    ash::vk::ImageMemoryBarrier {
+                        src_access_mask: source_access.into(),
+                        dst_access_mask: destination_access.into(),
+                        old_layout: old_layout.into(),
+                        new_layout: new_layout.into(),
+                        src_queue_family_index: queue_family_transfer
+                            .map_or(ash::vk::QUEUE_FAMILY_IGNORED, |transfer| {
+                                transfer.source_index
+                            }),
+                        dst_queue_family_index: queue_family_transfer
+                            .map_or(ash::vk::QUEUE_FAMILY_IGNORED, |transfer| {
+                                transfer.destination_index
+                            }),
+                        image: image.internal_object(),
+                        subresource_range: subresource_range.into(),
+                        ..Default::default()
+                    }
+                })
+                .collect();
+
+            debug_assert!(!src_stage_mask.is_empty());
+            debug_assert!(!dst_stage_mask.is_empty());
+
+            let fns = self.device.fns();
+            fns.v1_0.cmd_pipeline_barrier(
+                self.internal_object(),
+                src_stage_mask,
+                dst_stage_mask,
+                dependency_flags,
+                memory_barriers.len() as u32,
+                memory_barriers.as_ptr(),
+                buffer_memory_barriers.len() as u32,
+                buffer_memory_barriers.as_ptr(),
+                image_memory_barriers.len() as u32,
+                image_memory_barriers.as_ptr(),
+            );
+        }
     }
 
     /// Calls `vkCmdPushConstants` on the builder.
@@ -2425,247 +2709,6 @@ pub struct UnsafeCommandBufferBuilderImageBlit {
     pub source_bottom_right: [i32; 3],
     pub destination_top_left: [i32; 3],
     pub destination_bottom_right: [i32; 3],
-}
-
-/// Command that adds a pipeline barrier to a command buffer builder.
-///
-/// A pipeline barrier is a low-level system-ish command that is often necessary for safety. By
-/// default all commands that you add to a command buffer can potentially run simultaneously.
-/// Adding a pipeline barrier separates commands before the barrier from commands after the barrier
-/// and prevents them from running simultaneously.
-///
-/// Please take a look at the Vulkan specifications for more information. Pipeline barriers are a
-/// complex topic and explaining them in this documentation would be redundant.
-///
-/// > **Note**: We use a builder-like API here so that users can pass multiple buffers or images of
-/// > multiple different types. Doing so with a single function would be very tedious in terms of
-/// > API.
-pub struct UnsafeCommandBufferBuilderPipelineBarrier {
-    src_stage_mask: ash::vk::PipelineStageFlags,
-    dst_stage_mask: ash::vk::PipelineStageFlags,
-    dependency_flags: ash::vk::DependencyFlags,
-    memory_barriers: SmallVec<[ash::vk::MemoryBarrier; 2]>,
-    buffer_barriers: SmallVec<[ash::vk::BufferMemoryBarrier; 8]>,
-    image_barriers: SmallVec<[ash::vk::ImageMemoryBarrier; 8]>,
-}
-
-impl UnsafeCommandBufferBuilderPipelineBarrier {
-    /// Creates a new empty pipeline barrier command.
-    #[inline]
-    pub fn new() -> UnsafeCommandBufferBuilderPipelineBarrier {
-        UnsafeCommandBufferBuilderPipelineBarrier {
-            src_stage_mask: ash::vk::PipelineStageFlags::empty(),
-            dst_stage_mask: ash::vk::PipelineStageFlags::empty(),
-            dependency_flags: ash::vk::DependencyFlags::BY_REGION,
-            memory_barriers: SmallVec::new(),
-            buffer_barriers: SmallVec::new(),
-            image_barriers: SmallVec::new(),
-        }
-    }
-
-    /// Returns true if no barrier or execution dependency has been added yet.
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.src_stage_mask.is_empty() || self.dst_stage_mask.is_empty()
-    }
-
-    /// Merges another pipeline builder into this one.
-    #[inline]
-    pub fn merge(&mut self, other: UnsafeCommandBufferBuilderPipelineBarrier) {
-        self.src_stage_mask |= other.src_stage_mask;
-        self.dst_stage_mask |= other.dst_stage_mask;
-        self.dependency_flags &= other.dependency_flags;
-
-        self.memory_barriers
-            .extend(other.memory_barriers.into_iter());
-        self.buffer_barriers
-            .extend(other.buffer_barriers.into_iter());
-        self.image_barriers.extend(other.image_barriers.into_iter());
-    }
-
-    /// Adds an execution dependency. This means that all the stages in `source` of the previous
-    /// commands must finish before any of the stages in `destination` of the following commands can start.
-    ///
-    /// # Safety
-    ///
-    /// - If the pipeline stages include geometry or tessellation stages, then the corresponding
-    ///   features must have been enabled in the device.
-    /// - There are certain rules regarding the pipeline barriers inside render passes.
-    ///
-    #[inline]
-    pub unsafe fn add_execution_dependency(
-        &mut self,
-        source: PipelineStages,
-        destination: PipelineStages,
-        by_region: bool,
-    ) {
-        if !by_region {
-            self.dependency_flags = ash::vk::DependencyFlags::empty();
-        }
-
-        debug_assert_ne!(source, PipelineStages::none());
-        debug_assert_ne!(destination, PipelineStages::none());
-
-        self.src_stage_mask |= ash::vk::PipelineStageFlags::from(source);
-        self.dst_stage_mask |= ash::vk::PipelineStageFlags::from(destination);
-    }
-
-    /// Adds a memory barrier. This means that all the memory writes by the given source stages
-    /// for the given source accesses must be visible by the given destination stages for the given
-    /// destination accesses.
-    ///
-    /// Also adds an execution dependency similar to `add_execution_dependency`.
-    ///
-    /// # Safety
-    ///
-    /// - Same as `add_execution_dependency`.
-    ///
-    pub unsafe fn add_memory_barrier(
-        &mut self,
-        source_stage: PipelineStages,
-        source_access: AccessFlags,
-        destination_stage: PipelineStages,
-        destination_access: AccessFlags,
-        by_region: bool,
-    ) {
-        debug_assert!(source_stage.supported_access().contains(&source_access));
-        debug_assert!(destination_stage
-            .supported_access()
-            .contains(&destination_access));
-
-        self.add_execution_dependency(source_stage, destination_stage, by_region);
-
-        self.memory_barriers.push(ash::vk::MemoryBarrier {
-            src_access_mask: source_access.into(),
-            dst_access_mask: destination_access.into(),
-            ..Default::default()
-        });
-    }
-
-    /// Adds a buffer memory barrier. This means that all the memory writes to the given buffer by
-    /// the given source stages for the given source accesses must be visible by the given dest
-    /// stages for the given destination accesses.
-    ///
-    /// Also adds an execution dependency similar to `add_execution_dependency`.
-    ///
-    /// Also allows transferring buffer ownership between queues.
-    ///
-    /// # Safety
-    ///
-    /// - Same as `add_execution_dependency`.
-    /// - The buffer must be alive for at least as long as the command buffer to which this barrier
-    ///   is added.
-    /// - Queue ownership transfers must be correct.
-    ///
-    pub unsafe fn add_buffer_memory_barrier(
-        &mut self,
-        buffer: &UnsafeBuffer,
-        source_stage: PipelineStages,
-        source_access: AccessFlags,
-        destination_stage: PipelineStages,
-        destination_access: AccessFlags,
-        by_region: bool,
-        queue_transfer: Option<(u32, u32)>,
-        range: Range<DeviceSize>,
-    ) {
-        debug_assert!(source_stage.supported_access().contains(&source_access));
-        debug_assert!(destination_stage
-            .supported_access()
-            .contains(&destination_access));
-
-        self.add_execution_dependency(source_stage, destination_stage, by_region);
-
-        debug_assert!(!range.is_empty());
-        debug_assert!(range.end <= buffer.size());
-
-        let (src_queue, dest_queue) = if let Some((src_queue, dest_queue)) = queue_transfer {
-            (src_queue, dest_queue)
-        } else {
-            (ash::vk::QUEUE_FAMILY_IGNORED, ash::vk::QUEUE_FAMILY_IGNORED)
-        };
-
-        self.buffer_barriers.push(ash::vk::BufferMemoryBarrier {
-            src_access_mask: source_access.into(),
-            dst_access_mask: destination_access.into(),
-            src_queue_family_index: src_queue,
-            dst_queue_family_index: dest_queue,
-            buffer: buffer.internal_object(),
-            offset: range.start,
-            size: range.end - range.start,
-            ..Default::default()
-        });
-    }
-
-    /// Adds an image memory barrier. This is the equivalent of `add_buffer_memory_barrier` but
-    /// for images.
-    ///
-    /// In addition to transferring image ownership between queues, it also allows changing the
-    /// layout of images.
-    ///
-    /// Also adds an execution dependency similar to `add_execution_dependency`.
-    ///
-    /// # Safety
-    ///
-    /// - Same as `add_execution_dependency`.
-    /// - The buffer must be alive for at least as long as the command buffer to which this barrier
-    ///   is added.
-    /// - Queue ownership transfers must be correct.
-    /// - Image layouts transfers must be correct.
-    /// - Access flags must be compatible with the image usage flags passed at image creation.
-    ///
-    pub unsafe fn add_image_memory_barrier(
-        &mut self,
-        image: &UnsafeImage,
-        source_stage: PipelineStages,
-        source_access: AccessFlags,
-        destination_stage: PipelineStages,
-        destination_access: AccessFlags,
-        by_region: bool,
-        queue_transfer: Option<(u32, u32)>,
-        current_layout: ImageLayout,
-        new_layout: ImageLayout,
-        subresource_range: ImageSubresourceRange,
-    ) {
-        debug_assert!(source_stage.supported_access().contains(&source_access));
-        debug_assert!(destination_stage
-            .supported_access()
-            .contains(&destination_access));
-
-        self.add_execution_dependency(source_stage, destination_stage, by_region);
-
-        debug_assert!(!matches!(
-            new_layout,
-            ImageLayout::Undefined | ImageLayout::Preinitialized
-        ));
-
-        debug_assert!(image
-            .format()
-            .unwrap()
-            .aspects()
-            .contains(&subresource_range.aspects));
-        debug_assert!(!subresource_range.mip_levels.is_empty());
-        debug_assert!(subresource_range.mip_levels.end <= image.mip_levels());
-        debug_assert!(!subresource_range.array_layers.is_empty());
-        debug_assert!(subresource_range.array_layers.end <= image.dimensions().array_layers());
-
-        let (src_queue, dest_queue) = if let Some((src_queue, dest_queue)) = queue_transfer {
-            (src_queue, dest_queue)
-        } else {
-            (ash::vk::QUEUE_FAMILY_IGNORED, ash::vk::QUEUE_FAMILY_IGNORED)
-        };
-
-        self.image_barriers.push(ash::vk::ImageMemoryBarrier {
-            src_access_mask: source_access.into(),
-            dst_access_mask: destination_access.into(),
-            old_layout: current_layout.into(),
-            new_layout: new_layout.into(),
-            src_queue_family_index: src_queue,
-            dst_queue_family_index: dest_queue,
-            image: image.internal_object(),
-            subresource_range: subresource_range.into(),
-            ..Default::default()
-        });
-    }
 }
 
 /// Command buffer that has been built.

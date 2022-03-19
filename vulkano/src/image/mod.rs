@@ -556,7 +556,7 @@ impl ImageDimensions {
 }
 
 /// One or more subresources of an image that should be accessed by a command.
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ImageSubresourceRange {
     /// Selects the aspects that will be included.
     ///
