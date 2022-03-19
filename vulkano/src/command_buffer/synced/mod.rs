@@ -72,7 +72,7 @@ pub use self::builder::{
 };
 use super::{
     sys::{UnsafeCommandBuffer, UnsafeCommandBufferBuilder},
-    CommandBufferExecError, ImageUninitializedSafe,
+    CommandBufferExecError,
 };
 use crate::{
     buffer::{sys::UnsafeBuffer, BufferAccess},
@@ -113,7 +113,6 @@ pub struct SyncCommandBuffer {
         PipelineMemoryAccess,
         ImageLayout,
         ImageLayout,
-        ImageUninitializedSafe,
     )>,
 }
 
@@ -402,19 +401,12 @@ impl SyncCommandBuffer {
         PipelineMemoryAccess,
         ImageLayout,
         ImageLayout,
-        ImageUninitializedSafe,
     )> {
-        self.images.get(index).map(
-            |(image, memory, start_layout, end_layout, image_uninitialized_safe)| {
-                (
-                    image,
-                    *memory,
-                    *start_layout,
-                    *end_layout,
-                    *image_uninitialized_safe,
-                )
-            },
-        )
+        self.images
+            .get(index)
+            .map(|(image, memory, start_layout, end_layout)| {
+                (image, *memory, *start_layout, *end_layout)
+            })
     }
 }
 

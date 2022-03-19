@@ -10,7 +10,7 @@
 use super::{
     submit::{SubmitAnyBuilder, SubmitCommandBufferBuilder},
     sys::UnsafeCommandBuffer,
-    CommandBufferInheritanceInfo, ImageUninitializedSafe,
+    CommandBufferInheritanceInfo,
 };
 use crate::{
     buffer::{sys::UnsafeBuffer, BufferAccess},
@@ -245,7 +245,6 @@ pub unsafe trait SecondaryCommandBuffer: DeviceOwned + Send + Sync {
         PipelineMemoryAccess,
         ImageLayout,
         ImageLayout,
-        ImageUninitializedSafe,
     )>;
 }
 
@@ -298,7 +297,6 @@ where
         PipelineMemoryAccess,
         ImageLayout,
         ImageLayout,
-        ImageUninitializedSafe,
     )> {
         (**self).image(index)
     }

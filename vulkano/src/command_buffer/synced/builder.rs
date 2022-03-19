@@ -21,7 +21,7 @@ use crate::{
             CommandBufferBeginInfo, UnsafeCommandBufferBuilder,
             UnsafeCommandBufferBuilderPipelineBarrier,
         },
-        CommandBufferExecError, CommandBufferLevel, ImageUninitializedSafe,
+        CommandBufferExecError, CommandBufferLevel,
     },
     descriptor_set::{DescriptorSetResources, DescriptorSetWithOffsets},
     device::{Device, DeviceOwned},
@@ -102,7 +102,6 @@ pub struct SyncCommandBufferBuilder {
         PipelineMemoryAccess,
         ImageLayout,
         ImageLayout,
-        ImageUninitializedSafe,
     )>,
 
     // Current binding/setting state.
@@ -217,12 +216,7 @@ impl SyncCommandBufferBuilder {
             Item = (
                 KeyTy,
                 Cow<'static, str>,
-                Option<(
-                    PipelineMemoryAccess,
-                    ImageLayout,
-                    ImageLayout,
-                    ImageUninitializedSafe,
-                )>,
+                Option<(PipelineMemoryAccess, ImageLayout, ImageLayout)>,
             ),
         >,
     ) -> Result<(), SyncCommandBufferBuilderError>
@@ -244,7 +238,7 @@ impl SyncCommandBufferBuilder {
         };
 
         for (resource_ty, resource_name, resource) in resources {
-            if let Some((memory, start_layout, end_layout, image_uninitialized_safe)) = resource {
+            if let Some((memory, start_layout, end_layout)) = resource {
                 // Anti-dumbness checks.
                 debug_assert!(memory.exclusive || start_layout == end_layout);
                 debug_assert!(memory.stages.supported_access().contains(&memory.access));
@@ -258,14 +252,7 @@ impl SyncCommandBufferBuilder {
                     KeyTy::Image(image) => {
                         debug_assert!(end_layout != ImageLayout::Undefined);
                         debug_assert!(end_layout != ImageLayout::Preinitialized);
-                        self.add_image(
-                            image,
-                            resource_name,
-                            memory,
-                            start_layout,
-                            end_layout,
-                            image_uninitialized_safe,
-                        )?;
+                        self.add_image(image, resource_name, memory, start_layout, end_layout)?;
                     }
                 }
             }
@@ -418,7 +405,6 @@ impl SyncCommandBufferBuilder {
         memory: PipelineMemoryAccess,
         start_layout: ImageLayout,
         end_layout: ImageLayout,
-        image_uninitialized_safe: ImageUninitializedSafe,
     ) -> Result<(), SyncCommandBufferBuilderError> {
         let latest_command_id = self.commands.len() - 1;
         let end = self.latest_render_pass_enter.unwrap_or(latest_command_id);
@@ -631,13 +617,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.images.push((
-            image,
-            memory,
-            start_layout,
-            end_layout,
-            image_uninitialized_safe,
-        ));
+        self.images.push((image, memory, start_layout, end_layout));
         Ok(())
     }
 

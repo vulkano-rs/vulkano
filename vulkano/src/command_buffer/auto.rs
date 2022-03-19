@@ -41,8 +41,7 @@ use super::{
     },
     CommandBufferExecError, CommandBufferInheritanceInfo, CommandBufferInheritanceRenderPassInfo,
     CommandBufferLevel, CommandBufferUsage, DispatchIndirectCommand, DrawIndexedIndirectCommand,
-    DrawIndirectCommand, ImageUninitializedSafe, PrimaryCommandBuffer, SecondaryCommandBuffer,
-    SubpassContents,
+    DrawIndirectCommand, PrimaryCommandBuffer, SecondaryCommandBuffer, SubpassContents,
 };
 use crate::{
     buffer::{sys::UnsafeBuffer, BufferAccess, BufferContents, TypedBufferAccess},
@@ -3801,7 +3800,6 @@ where
         PipelineMemoryAccess,
         ImageLayout,
         ImageLayout,
-        ImageUninitializedSafe,
     )> {
         self.inner.image(index)
     }
