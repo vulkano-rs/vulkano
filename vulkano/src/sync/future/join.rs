@@ -7,22 +7,16 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::sync::Arc;
-
-use crate::buffer::BufferAccess;
-use crate::command_buffer::submit::SubmitAnyBuilder;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::device::Queue;
-use crate::image::ImageAccess;
-use crate::image::ImageLayout;
-use crate::sync::AccessCheckError;
-use crate::sync::AccessFlags;
-use crate::sync::FlushError;
-use crate::sync::GpuFuture;
-use crate::sync::PipelineStages;
-
-use crate::VulkanObject;
+use super::{AccessCheckError, FlushError, GpuFuture};
+use crate::{
+    buffer::sys::UnsafeBuffer,
+    command_buffer::submit::SubmitAnyBuilder,
+    device::{Device, DeviceOwned, Queue},
+    image::{sys::UnsafeImage, ImageLayout},
+    sync::{AccessFlags, PipelineStages},
+    DeviceSize, VulkanObject,
+};
+use std::{ops::Range, sync::Arc};
 
 /// Joins two futures together.
 // TODO: handle errors
@@ -204,12 +198,17 @@ where
     #[inline]
     fn check_buffer_access(
         &self,
-        buffer: &dyn BufferAccess,
+        buffer: &UnsafeBuffer,
+        range: Range<DeviceSize>,
         exclusive: bool,
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
-        let first = self.first.check_buffer_access(buffer, exclusive, queue);
-        let second = self.second.check_buffer_access(buffer, exclusive, queue);
+        let first = self
+            .first
+            .check_buffer_access(buffer, range.clone(), exclusive, queue);
+        let second = self
+            .second
+            .check_buffer_access(buffer, range, exclusive, queue);
         debug_assert!(
             !exclusive || !(first.is_ok() && second.is_ok()),
             "Two futures gave exclusive access to the same resource"
@@ -234,17 +233,18 @@ where
     #[inline]
     fn check_image_access(
         &self,
-        image: &dyn ImageAccess,
-        layout: ImageLayout,
+        image: &UnsafeImage,
+        range: Range<DeviceSize>,
         exclusive: bool,
+        expected_layout: ImageLayout,
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
-        let first = self
-            .first
-            .check_image_access(image, layout, exclusive, queue);
-        let second = self
-            .second
-            .check_image_access(image, layout, exclusive, queue);
+        let first =
+            self.first
+                .check_image_access(image, range.clone(), exclusive, expected_layout, queue);
+        let second =
+            self.second
+                .check_image_access(image, range, exclusive, expected_layout, queue);
         debug_assert!(
             !exclusive || !(first.is_ok() && second.is_ok()),
             "Two futures gave exclusive access to the same resource"

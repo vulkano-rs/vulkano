@@ -14,8 +14,8 @@
 //! that you create must wrap around the types in this module.
 
 use super::{
-    ImageAspect, ImageAspects, ImageCreateFlags, ImageDimensions, ImageLayout, ImageTiling,
-    ImageUsage, SampleCount, SampleCounts,
+    ImageAspect, ImageAspects, ImageCreateFlags, ImageDimensions, ImageLayout,
+    ImageSubresourceRange, ImageTiling, ImageUsage, SampleCount, SampleCounts,
 };
 use crate::{
     buffer::cpu_access::{ReadLockError, WriteLockError},
@@ -74,8 +74,11 @@ pub struct UnsafeImage {
     array_2d_compatible: bool,
     block_texel_view_compatible: bool,
 
-    // `vkDestroyImage` is called only if `needs_destruction` is true.
-    needs_destruction: bool,
+    aspect_list: SmallVec<[ImageAspect; 4]>,
+    aspect_size: DeviceSize,
+    mip_level_size: DeviceSize,
+    needs_destruction: bool, // `vkDestroyImage` is called only if true.
+    range_size: DeviceSize,
     state: Mutex<ImageState>,
 }
 
@@ -99,7 +102,7 @@ impl UnsafeImage {
     pub fn new(
         device: Arc<Device>,
         mut create_info: UnsafeImageCreateInfo,
-    ) -> Result<UnsafeImage, ImageCreationError> {
+    ) -> Result<Arc<UnsafeImage>, ImageCreationError> {
         let format_features = Self::validate(&device, &mut create_info)?;
         let handle = unsafe { Self::create(&device, &create_info)? };
 
@@ -121,6 +124,10 @@ impl UnsafeImage {
         } = create_info;
 
         let aspects = format.unwrap().aspects();
+        let aspect_list: SmallVec<[ImageAspect; 4]> = aspects.iter().collect();
+        let mip_level_size = dimensions.array_layers() as DeviceSize;
+        let aspect_size = mip_level_size * mip_levels as DeviceSize;
+        let range_size = aspect_list.len() as DeviceSize * aspect_size;
 
         let image = UnsafeImage {
             device,
@@ -139,16 +146,15 @@ impl UnsafeImage {
             array_2d_compatible,
             block_texel_view_compatible,
 
+            aspect_list,
+            aspect_size,
+            mip_level_size,
             needs_destruction: true,
-            state: Mutex::new(ImageState::new(
-                aspects,
-                mip_levels,
-                dimensions.array_layers(),
-                initial_layout,
-            )),
+            range_size,
+            state: Mutex::new(ImageState::new(range_size, initial_layout)),
         };
 
-        Ok(image)
+        Ok(Arc::new(image))
     }
 
     fn validate(
@@ -838,7 +844,7 @@ impl UnsafeImage {
         dimensions: ImageDimensions,
         samples: SampleCount,
         mip_levels: u32,
-    ) -> UnsafeImage {
+    ) -> Arc<UnsafeImage> {
         let tiling = ImageTiling::Optimal;
         let format_features = device
             .physical_device()
@@ -860,7 +866,12 @@ impl UnsafeImage {
         let aspects = format.aspects();
         let initial_layout = ImageLayout::Undefined; // TODO: Maybe this should be passed in?
 
-        UnsafeImage {
+        let aspect_list: SmallVec<[ImageAspect; 4]> = aspects.iter().collect();
+        let mip_level_size = dimensions.array_layers() as DeviceSize;
+        let aspect_size = mip_level_size * mip_levels as DeviceSize;
+        let range_size = aspect_list.len() as DeviceSize * aspect_size;
+
+        let image = UnsafeImage {
             handle,
             device: device.clone(),
 
@@ -877,14 +888,15 @@ impl UnsafeImage {
             array_2d_compatible: flags.array_2d_compatible,
             block_texel_view_compatible: flags.block_texel_view_compatible,
 
+            aspect_list,
+            aspect_size,
+            mip_level_size,
             needs_destruction: false, // TODO: pass as parameter
-            state: Mutex::new(ImageState::new(
-                aspects,
-                mip_levels,
-                dimensions.array_layers(),
-                initial_layout,
-            )),
-        }
+            range_size,
+            state: Mutex::new(ImageState::new(range_size, initial_layout)),
+        };
+
+        Arc::new(image)
     }
 
     /// Returns the memory requirements for this image.
@@ -978,6 +990,107 @@ impl UnsafeImage {
         Ok(())
     }
 
+    #[inline]
+    pub(crate) fn range_size(&self) -> DeviceSize {
+        self.range_size
+    }
+
+    /// Returns an iterator over subresource ranges.
+    ///
+    /// In ranges, the subresources are "flattened" to `DeviceSize`, where each index in the range
+    /// is a single array layer. The layers are arranged hierarchically: aspects at the top level,
+    /// with the mip levels in that aspect, and the array layers in that mip level.
+    #[inline]
+    pub(crate) fn iter_ranges(
+        &self,
+        aspects: ImageAspects,
+        mip_levels: Range<u32>,
+        array_layers: Range<u32>,
+    ) -> SubresourceRangeIterator {
+        assert!(self.format().unwrap().aspects().contains(&aspects));
+        assert!(mip_levels.end <= self.mip_levels);
+        assert!(array_layers.end <= self.dimensions.array_layers());
+
+        SubresourceRangeIterator::new(
+            aspects,
+            mip_levels,
+            array_layers,
+            &self.aspect_list,
+            self.aspect_size,
+            self.mip_levels,
+            self.mip_level_size,
+            self.dimensions.array_layers(),
+        )
+    }
+
+    #[inline]
+    pub(crate) fn range_to_subresources(
+        &self,
+        mut range: Range<DeviceSize>,
+    ) -> ImageSubresourceRange {
+        debug_assert!(!range.is_empty());
+        debug_assert!(range.end <= self.range_size);
+
+        if range.end - range.start > self.aspect_size {
+            debug_assert!(range.start % self.aspect_size == 0);
+            debug_assert!(range.end % self.aspect_size == 0);
+
+            let start_aspect_num = (range.start / self.aspect_size) as usize;
+            let end_aspect_num = (range.end / self.aspect_size) as usize;
+
+            ImageSubresourceRange {
+                aspects: self.aspect_list[start_aspect_num..end_aspect_num]
+                    .iter()
+                    .copied()
+                    .collect(),
+                mip_levels: 0..self.mip_levels,
+                array_layers: 0..self.dimensions.array_layers(),
+            }
+        } else {
+            let aspect_num = (range.start / self.aspect_size) as usize;
+            range.start %= self.aspect_size;
+            range.end %= self.aspect_size;
+
+            // Wraparound
+            if range.end == 0 {
+                range.end = self.aspect_size;
+            }
+
+            if range.end - range.start > self.mip_level_size {
+                debug_assert!(range.start % self.mip_level_size == 0);
+                debug_assert!(range.end % self.mip_level_size == 0);
+
+                let start_mip_level = (range.start / self.mip_level_size) as u32;
+                let end_mip_level = (range.end / self.mip_level_size) as u32;
+
+                ImageSubresourceRange {
+                    aspects: self.aspect_list[aspect_num].into(),
+                    mip_levels: start_mip_level..end_mip_level,
+                    array_layers: 0..self.dimensions.array_layers(),
+                }
+            } else {
+                let mip_level = (range.start / self.mip_level_size) as u32;
+                range.start %= self.mip_level_size;
+                range.end %= self.mip_level_size;
+
+                // Wraparound
+                if range.end == 0 {
+                    range.end = self.mip_level_size;
+                }
+
+                let start_array_layer = range.start as u32;
+                let end_array_layer = range.end as u32;
+
+                ImageSubresourceRange {
+                    aspects: self.aspect_list[aspect_num].into(),
+                    mip_levels: mip_level..mip_level + 1,
+                    array_layers: start_array_layer..end_array_layer,
+                }
+            }
+        }
+    }
+
+    #[inline]
     pub(crate) fn state(&self) -> MutexGuard<ImageState> {
         self.state.lock()
     }
@@ -1626,21 +1739,13 @@ pub struct LinearLayout {
 #[derive(Debug)]
 pub(crate) struct ImageState {
     ranges: RangeMap<DeviceSize, ImageRangeState>,
-    subresources: Subresources,
 }
 
 impl ImageState {
-    fn new(
-        aspects: ImageAspects,
-        mip_levels: u32,
-        array_layers: u32,
-        initial_layout: ImageLayout,
-    ) -> Self {
-        let subresources = Subresources::new(aspects, mip_levels, array_layers);
-
+    fn new(size: DeviceSize, initial_layout: ImageLayout) -> Self {
         ImageState {
             ranges: [(
-                subresources.range(),
+                0..size,
                 ImageRangeState {
                     current_access: CurrentAccess::Shared {
                         cpu_reads: 0,
@@ -1651,261 +1756,171 @@ impl ImageState {
             )]
             .into_iter()
             .collect(),
-            subresources,
         }
     }
 
-    pub(crate) fn try_cpu_read(
-        &mut self,
-        aspects: ImageAspects,
-        mip_levels: Range<u32>,
-        array_layers: Range<u32>,
-    ) -> Result<(), ReadLockError> {
-        let iter = self
-            .subresources
-            .iter_ranges(aspects, mip_levels, array_layers);
-
-        for range in iter.clone() {
-            for (_range, state) in self.ranges.range(&range) {
-                match &state.current_access {
-                    CurrentAccess::CpuExclusive { .. } => {
-                        return Err(ReadLockError::CpuWriteLocked)
-                    }
-                    CurrentAccess::GpuExclusive { .. } => {
-                        return Err(ReadLockError::GpuWriteLocked)
-                    }
-                    CurrentAccess::Shared { .. } => (),
-                }
-            }
-        }
-
-        for range in iter {
-            self.ranges.split_at(&range.start);
-            self.ranges.split_at(&range.end);
-
-            for (_range, state) in self.ranges.range_mut(&range) {
-                match &mut state.current_access {
-                    CurrentAccess::Shared { cpu_reads, .. } => {
-                        *cpu_reads += 1;
-                    }
-                    _ => unreachable!(),
-                }
+    pub(crate) fn check_cpu_read(&mut self, range: Range<DeviceSize>) -> Result<(), ReadLockError> {
+        for (_range, state) in self.ranges.range(&range) {
+            match &state.current_access {
+                CurrentAccess::CpuExclusive { .. } => return Err(ReadLockError::CpuWriteLocked),
+                CurrentAccess::GpuExclusive { .. } => return Err(ReadLockError::GpuWriteLocked),
+                CurrentAccess::Shared { .. } => (),
             }
         }
 
         Ok(())
     }
 
-    pub(crate) fn try_cpu_write(
-        &mut self,
-        aspects: ImageAspects,
-        mip_levels: Range<u32>,
-        array_layers: Range<u32>,
-    ) -> Result<(), WriteLockError> {
-        let iter = self
-            .subresources
-            .iter_ranges(aspects, mip_levels, array_layers);
+    pub(crate) unsafe fn cpu_read_lock(&mut self, range: Range<DeviceSize>) {
+        self.ranges.split_at(&range.start);
+        self.ranges.split_at(&range.end);
 
-        for range in iter.clone() {
-            for (_range, state) in self.ranges.range(&range) {
-                match &state.current_access {
-                    CurrentAccess::CpuExclusive => return Err(WriteLockError::CpuLocked),
-                    CurrentAccess::GpuExclusive { .. } => return Err(WriteLockError::GpuLocked),
-                    CurrentAccess::Shared {
+        for (_range, state) in self.ranges.range_mut(&range) {
+            match &mut state.current_access {
+                CurrentAccess::Shared { cpu_reads, .. } => {
+                    *cpu_reads += 1;
+                }
+                _ => unreachable!("Image is being written by the CPU or GPU"),
+            }
+        }
+    }
+
+    pub(crate) unsafe fn cpu_read_unlock(&mut self, range: Range<DeviceSize>) {
+        self.ranges.split_at(&range.start);
+        self.ranges.split_at(&range.end);
+
+        for (_range, state) in self.ranges.range_mut(&range) {
+            match &mut state.current_access {
+                CurrentAccess::Shared { cpu_reads, .. } => *cpu_reads -= 1,
+                _ => unreachable!("Image was not locked for CPU read"),
+            }
+        }
+    }
+
+    pub(crate) fn check_cpu_write(
+        &mut self,
+        range: Range<DeviceSize>,
+    ) -> Result<(), WriteLockError> {
+        for (_range, state) in self.ranges.range(&range) {
+            match &state.current_access {
+                CurrentAccess::CpuExclusive => return Err(WriteLockError::CpuLocked),
+                CurrentAccess::GpuExclusive { .. } => return Err(WriteLockError::GpuLocked),
+                CurrentAccess::Shared {
+                    cpu_reads: 0,
+                    gpu_reads: 0,
+                } => (),
+                CurrentAccess::Shared { cpu_reads, .. } if *cpu_reads > 0 => {
+                    return Err(WriteLockError::CpuLocked)
+                }
+                CurrentAccess::Shared { .. } => return Err(WriteLockError::GpuLocked),
+            }
+        }
+
+        Ok(())
+    }
+
+    pub(crate) unsafe fn cpu_write_lock(&mut self, range: Range<DeviceSize>) {
+        self.ranges.split_at(&range.start);
+        self.ranges.split_at(&range.end);
+
+        for (_range, state) in self.ranges.range_mut(&range) {
+            state.current_access = CurrentAccess::CpuExclusive;
+        }
+    }
+
+    pub(crate) unsafe fn cpu_write_unlock(&mut self, range: Range<DeviceSize>) {
+        self.ranges.split_at(&range.start);
+        self.ranges.split_at(&range.end);
+
+        for (_range, state) in self.ranges.range_mut(&range) {
+            match &mut state.current_access {
+                CurrentAccess::CpuExclusive => {
+                    state.current_access = CurrentAccess::Shared {
                         cpu_reads: 0,
                         gpu_reads: 0,
-                    } => (),
-                    CurrentAccess::Shared { cpu_reads, .. } if *cpu_reads > 0 => {
-                        return Err(WriteLockError::CpuLocked)
-                    }
-                    CurrentAccess::Shared { .. } => return Err(WriteLockError::GpuLocked),
-                }
-            }
-        }
-
-        for range in iter {
-            self.ranges.split_at(&range.start);
-            self.ranges.split_at(&range.end);
-
-            for (_range, state) in self.ranges.range_mut(&range) {
-                state.current_access = CurrentAccess::CpuExclusive;
-            }
-        }
-
-        Ok(())
-    }
-
-    pub(crate) unsafe fn cpu_unlock(
-        &mut self,
-        aspects: ImageAspects,
-        mip_levels: Range<u32>,
-        array_layers: Range<u32>,
-        write: bool,
-    ) {
-        let iter = self
-            .subresources
-            .iter_ranges(aspects, mip_levels, array_layers);
-
-        if write {
-            for range in iter {
-                self.ranges.split_at(&range.start);
-                self.ranges.split_at(&range.end);
-
-                for (_range, state) in self.ranges.range_mut(&range) {
-                    match &mut state.current_access {
-                        CurrentAccess::CpuExclusive => {
-                            state.current_access = CurrentAccess::Shared {
-                                cpu_reads: 0,
-                                gpu_reads: 0,
-                            }
-                        }
-                        CurrentAccess::GpuExclusive { .. } => {
-                            unreachable!("Image is being written by the GPU")
-                        }
-                        CurrentAccess::Shared { .. } => {
-                            unreachable!("Image is not being written by the CPU")
-                        }
                     }
                 }
-            }
-        } else {
-            for range in iter {
-                self.ranges.split_at(&range.start);
-                self.ranges.split_at(&range.end);
-
-                for (_range, state) in self.ranges.range_mut(&range) {
-                    match &mut state.current_access {
-                        CurrentAccess::CpuExclusive => {
-                            unreachable!("Image is being written by the CPU")
-                        }
-                        CurrentAccess::GpuExclusive { .. } => {
-                            unreachable!("Image is being written by the GPU")
-                        }
-                        CurrentAccess::Shared { cpu_reads, .. } => *cpu_reads -= 1,
-                    }
-                }
+                _ => unreachable!("Image was not locked for CPU write"),
             }
         }
     }
 
-    /// Locks the resource for usage on the GPU. Returns an error if the lock can't be acquired.
-    ///
-    /// After this function returns `Ok`, you are authorized to use the image on the GPU. If the
-    /// GPU operation requires write access to the image (which includes image layout transitions)
-    /// then `write` should be true.
-    ///
-    /// The `expected_layout` is the layout we expect the image to be in when we lock it. If the
-    /// actual layout doesn't match this expected layout, then an error should be returned. If
-    /// `Undefined` is passed, that means that the caller doesn't care about the actual layout,
-    /// and that a layout mismatch shouldn't return an error.
-    ///
-    /// This function exists to prevent the user from causing a data race by reading and writing
-    /// to the same resource at the same time.
-    ///
-    /// If you call this function, you should call `gpu_unlock` once the resource is no longer in
-    /// use by the GPU. The implementation is not expected to automatically perform any unlocking
-    /// and can rely on the fact that `gpu_unlock` is going to be called.
-    pub(crate) fn try_gpu_lock(
+    pub(crate) fn check_gpu_read(
         &mut self,
-        aspects: ImageAspects,
-        mip_levels: Range<u32>,
-        array_layers: Range<u32>,
-        write: bool,
+        range: Range<DeviceSize>,
         expected_layout: ImageLayout,
-        destination_layout: ImageLayout,
     ) -> Result<(), AccessError> {
-        debug_assert!(!matches!(
-            destination_layout,
-            ImageLayout::Undefined | ImageLayout::Preinitialized
-        ));
-
-        let iter = self
-            .subresources
-            .iter_ranges(aspects, mip_levels, array_layers);
-
-        if write {
-            for range in iter.clone() {
-                for (_range, state) in self.ranges.range(&range) {
-                    match &state.current_access {
-                        CurrentAccess::Shared {
-                            cpu_reads: 0,
-                            gpu_reads: 0,
-                        } => (),
-                        _ => return Err(AccessError::AlreadyInUse),
-                    }
-
-                    if expected_layout != ImageLayout::Undefined && state.layout != expected_layout
-                    {
-                        return Err(AccessError::UnexpectedImageLayout {
-                            allowed: state.layout,
-                            requested: expected_layout,
-                        });
-                    }
-                }
+        for (_range, state) in self.ranges.range(&range) {
+            match &state.current_access {
+                CurrentAccess::Shared { .. } => (),
+                _ => return Err(AccessError::AlreadyInUse),
             }
 
-            for range in iter {
-                self.ranges.split_at(&range.start);
-                self.ranges.split_at(&range.end);
-
-                for (_range, state) in self.ranges.range_mut(&range) {
-                    state.current_access = CurrentAccess::GpuExclusive {
-                        gpu_reads: 0,
-                        gpu_writes: 1,
-                    };
-                    state.layout = destination_layout;
-                }
-            }
-        } else {
-            debug_assert_eq!(expected_layout, destination_layout);
-
-            for range in iter.clone() {
-                for (_range, state) in self.ranges.range(&range) {
-                    match &state.current_access {
-                        CurrentAccess::Shared { .. } => (),
-                        _ => return Err(AccessError::AlreadyInUse),
-                    }
-
-                    if expected_layout != ImageLayout::Undefined && state.layout != expected_layout
-                    {
-                        return Err(AccessError::UnexpectedImageLayout {
-                            allowed: state.layout,
-                            requested: expected_layout,
-                        });
-                    }
-                }
-            }
-
-            for range in iter {
-                self.ranges.split_at(&range.start);
-                self.ranges.split_at(&range.end);
-
-                for (_range, state) in self.ranges.range_mut(&range) {
-                    match &mut state.current_access {
-                        CurrentAccess::Shared { gpu_reads, .. } => *gpu_reads += 1,
-                        _ => unreachable!(),
-                    }
-
-                    state.layout = destination_layout;
-                }
+            if expected_layout != ImageLayout::Undefined && state.layout != expected_layout {
+                return Err(AccessError::UnexpectedImageLayout {
+                    allowed: state.layout,
+                    requested: expected_layout,
+                });
             }
         }
 
         Ok(())
     }
 
-    /// Locks the resource for usage on the GPU without checking for errors. Supposes that a
-    /// future has already granted access to the resource.
-    ///
-    /// If you call this function, you should call `gpu_unlock` once the resource is no longer in
-    /// use by the GPU. The implementation is not expected to automatically perform any unlocking
-    /// and can rely on the fact that `gpu_unlock` is going to be called.
-    pub(crate) unsafe fn increase_gpu_lock(
+    pub(crate) unsafe fn gpu_read_lock(&mut self, range: Range<DeviceSize>) {
+        self.ranges.split_at(&range.start);
+        self.ranges.split_at(&range.end);
+
+        for (_range, state) in self.ranges.range_mut(&range) {
+            match &mut state.current_access {
+                CurrentAccess::GpuExclusive { gpu_reads, .. }
+                | CurrentAccess::Shared { gpu_reads, .. } => *gpu_reads += 1,
+                _ => unreachable!("Image is being written by the CPU"),
+            }
+        }
+    }
+
+    pub(crate) unsafe fn gpu_read_unlock(&mut self, range: Range<DeviceSize>) {
+        self.ranges.split_at(&range.start);
+        self.ranges.split_at(&range.end);
+
+        for (_range, state) in self.ranges.range_mut(&range) {
+            match &mut state.current_access {
+                CurrentAccess::GpuExclusive { gpu_reads, .. } => *gpu_reads -= 1,
+                CurrentAccess::Shared { gpu_reads, .. } => *gpu_reads -= 1,
+                _ => unreachable!("Buffer was not locked for GPU read"),
+            }
+        }
+    }
+
+    pub(crate) fn check_gpu_write(
         &mut self,
-        aspects: ImageAspects,
-        mip_levels: Range<u32>,
-        array_layers: Range<u32>,
-        write: bool,
+        range: Range<DeviceSize>,
+        expected_layout: ImageLayout,
+    ) -> Result<(), AccessError> {
+        for (_range, state) in self.ranges.range(&range) {
+            match &state.current_access {
+                CurrentAccess::Shared {
+                    cpu_reads: 0,
+                    gpu_reads: 0,
+                } => (),
+                _ => return Err(AccessError::AlreadyInUse),
+            }
+
+            if expected_layout != ImageLayout::Undefined && state.layout != expected_layout {
+                return Err(AccessError::UnexpectedImageLayout {
+                    allowed: state.layout,
+                    requested: expected_layout,
+                });
+            }
+        }
+
+        Ok(())
+    }
+
+    pub(crate) unsafe fn gpu_write_lock(
+        &mut self,
+        range: Range<DeviceSize>,
         destination_layout: ImageLayout,
     ) {
         debug_assert!(!matches!(
@@ -1913,114 +1928,45 @@ impl ImageState {
             ImageLayout::Undefined | ImageLayout::Preinitialized
         ));
 
-        let iter = self
-            .subresources
-            .iter_ranges(aspects, mip_levels, array_layers);
+        self.ranges.split_at(&range.start);
+        self.ranges.split_at(&range.end);
 
-        if write {
-            for range in iter {
-                self.ranges.split_at(&range.start);
-                self.ranges.split_at(&range.end);
-
-                for (_range, state) in self.ranges.range_mut(&range) {
-                    match &mut state.current_access {
-                        CurrentAccess::CpuExclusive => {
-                            unreachable!("Image is being written by the CPU")
-                        }
-                        CurrentAccess::GpuExclusive { gpu_writes, .. } => *gpu_writes += 1,
-                        &mut CurrentAccess::Shared {
-                            cpu_reads: 0,
-                            gpu_reads,
-                        } => {
-                            state.current_access = CurrentAccess::GpuExclusive {
-                                gpu_reads,
-                                gpu_writes: 1,
-                            }
-                        }
-                        CurrentAccess::Shared { .. } => {
-                            unreachable!("Image is being read by the CPU")
-                        }
+        for (_range, state) in self.ranges.range_mut(&range) {
+            match &mut state.current_access {
+                CurrentAccess::GpuExclusive { gpu_writes, .. } => *gpu_writes += 1,
+                &mut CurrentAccess::Shared {
+                    cpu_reads: 0,
+                    gpu_reads,
+                } => {
+                    state.current_access = CurrentAccess::GpuExclusive {
+                        gpu_reads,
+                        gpu_writes: 1,
                     }
-
-                    state.layout = destination_layout;
                 }
+                _ => unreachable!("Image is being accessed by the CPU"),
             }
-        } else {
-            for range in iter {
-                self.ranges.split_at(&range.start);
-                self.ranges.split_at(&range.end);
 
-                for (_range, state) in self.ranges.range_mut(&range) {
-                    match &mut state.current_access {
-                        CurrentAccess::CpuExclusive => {
-                            unreachable!("Image is being written by the CPU")
-                        }
-                        CurrentAccess::GpuExclusive { gpu_reads, .. }
-                        | CurrentAccess::Shared { gpu_reads, .. } => *gpu_reads += 1,
-                    }
-
-                    state.layout = destination_layout;
-                }
-            }
+            state.layout = destination_layout;
         }
     }
 
-    /// Unlocks the resource previously acquired with `try_gpu_lock` or `increase_gpu_lock`.
-    ///
-    /// # Safety
-    ///
-    /// - Must only be called once per previous lock.
-    pub(crate) unsafe fn gpu_unlock(
-        &mut self,
-        aspects: ImageAspects,
-        mip_levels: Range<u32>,
-        array_layers: Range<u32>,
-        write: bool,
-    ) {
-        let iter = self
-            .subresources
-            .iter_ranges(aspects, mip_levels, array_layers);
+    pub(crate) unsafe fn gpu_write_unlock(&mut self, range: Range<DeviceSize>) {
+        self.ranges.split_at(&range.start);
+        self.ranges.split_at(&range.end);
 
-        if write {
-            for range in iter {
-                self.ranges.split_at(&range.start);
-                self.ranges.split_at(&range.end);
-
-                for (_range, state) in self.ranges.range_mut(&range) {
-                    match &mut state.current_access {
-                        CurrentAccess::CpuExclusive => {
-                            unreachable!("Image is being written by the CPU")
-                        }
-                        &mut CurrentAccess::GpuExclusive {
-                            gpu_reads,
-                            gpu_writes: 1,
-                        } => {
-                            state.current_access = CurrentAccess::Shared {
-                                cpu_reads: 0,
-                                gpu_reads,
-                            }
-                        }
-                        CurrentAccess::GpuExclusive { gpu_writes, .. } => *gpu_writes -= 1,
-                        CurrentAccess::Shared { .. } => {
-                            unreachable!("Image is not being written by the GPU")
-                        }
+        for (_range, state) in self.ranges.range_mut(&range) {
+            match &mut state.current_access {
+                &mut CurrentAccess::GpuExclusive {
+                    gpu_reads,
+                    gpu_writes: 1,
+                } => {
+                    state.current_access = CurrentAccess::Shared {
+                        cpu_reads: 0,
+                        gpu_reads,
                     }
                 }
-            }
-        } else {
-            for range in iter {
-                self.ranges.split_at(&range.start);
-                self.ranges.split_at(&range.end);
-
-                for (_range, state) in self.ranges.range_mut(&range) {
-                    match &mut state.current_access {
-                        CurrentAccess::CpuExclusive => {
-                            unreachable!("Buffer is being written by the CPU")
-                        }
-                        CurrentAccess::GpuExclusive { gpu_reads, .. } => *gpu_reads -= 1,
-                        CurrentAccess::Shared { gpu_reads, .. } => *gpu_reads -= 1,
-                    }
-                }
+                CurrentAccess::GpuExclusive { gpu_writes, .. } => *gpu_writes -= 1,
+                _ => unreachable!("Image was not locked for GPU write"),
             }
         }
     }
@@ -2033,69 +1979,44 @@ struct ImageRangeState {
     layout: ImageLayout,
 }
 
-/// Helper type for the subresources of an image.
-///
-/// In ranges, the subresources are "flattened" to `DeviceSize`, where each index in the range
-/// is a single array layer. The layers are arranged hierarchically: aspects at the top level,
-/// with the mip levels in that aspect, and the array layers in that mip level.
-#[derive(Debug)]
-struct Subresources {
-    aspects: ImageAspects,
-    aspect_list: SmallVec<[ImageAspect; 4]>,
-    aspect_size: DeviceSize,
+#[derive(Clone)]
+pub(crate) struct SubresourceRangeIterator {
+    next_fn: fn(&mut Self) -> Option<Range<DeviceSize>>,
+    image_aspect_size: DeviceSize,
+    image_mip_level_size: DeviceSize,
+    mip_levels: Range<u32>,
+    array_layers: Range<u32>,
 
-    mip_levels: u32,
-    mip_level_size: DeviceSize,
-
-    array_layers: u32,
+    aspect_nums: Peekable<smallvec::IntoIter<[usize; 4]>>,
+    current_aspect_num: Option<usize>,
+    current_mip_level: u32,
 }
 
-impl Subresources {
-    #[inline]
-    fn new(aspects: ImageAspects, mip_levels: u32, array_layers: u32) -> Self {
-        let mip_level_size = array_layers as DeviceSize;
-        let aspect_size = mip_level_size * mip_levels as DeviceSize;
-        let aspect_list: SmallVec<[ImageAspect; 4]> = aspects.iter().collect();
-
-        Self {
-            aspects,
-            aspect_list,
-            aspect_size,
-            mip_levels,
-            mip_level_size,
-            array_layers,
-        }
-    }
-
-    /// Returns a range representing all subresources of the image.
-    #[inline]
-    fn range(&self) -> Range<DeviceSize> {
-        0..self.aspect_list.len() as DeviceSize * self.aspect_size
-    }
-
-    fn iter_ranges(
-        &self,
+impl SubresourceRangeIterator {
+    fn new(
         aspects: ImageAspects,
         mip_levels: Range<u32>,
         array_layers: Range<u32>,
-    ) -> SubresourceRangeIterator {
-        assert!(self.aspects.contains(&aspects));
+        image_aspect_list: &[ImageAspect],
+        image_aspect_size: DeviceSize,
+        image_mip_levels: u32,
+        image_mip_level_size: DeviceSize,
+        image_array_layers: u32,
+    ) -> Self {
         assert!(!mip_levels.is_empty());
-        assert!(mip_levels.end <= self.mip_levels);
         assert!(!array_layers.is_empty());
-        assert!(array_layers.end <= self.array_layers);
 
-        let next_fn = if array_layers.start != 0 || array_layers.end != self.array_layers {
-            SubresourceRangeIterator::next_some_layers
-        } else if mip_levels.start != 0 || mip_levels.end != self.mip_levels {
-            SubresourceRangeIterator::next_some_levels_all_layers
+        let next_fn = if array_layers.start != 0 || array_layers.end != image_array_layers {
+            Self::next_some_layers
+        } else if mip_levels.start != 0 || mip_levels.end != image_mip_levels {
+            Self::next_some_levels_all_layers
         } else {
-            SubresourceRangeIterator::next_all_levels_all_layers
+            Self::next_all_levels_all_layers
         };
 
         let mut aspect_nums = aspects
             .iter()
-            .map(|aspect| self.aspect_list.iter().position(|&a| a == aspect).unwrap())
+            .map(|aspect| image_aspect_list.iter().position(|&a| a == aspect).unwrap())
             .collect::<SmallVec<[usize; 4]>>()
             .into_iter()
             .peekable();
@@ -2103,39 +2024,26 @@ impl Subresources {
         let current_aspect_num = aspect_nums.next();
         let current_mip_level = mip_levels.start;
 
-        SubresourceRangeIterator {
-            subresources: self,
+        Self {
             next_fn,
+            image_aspect_size,
+            image_mip_level_size,
+            mip_levels,
+            array_layers,
 
             aspect_nums,
             current_aspect_num,
-            mip_levels,
             current_mip_level,
-            array_layers,
         }
     }
-}
 
-#[derive(Clone)]
-struct SubresourceRangeIterator<'a> {
-    subresources: &'a Subresources,
-    next_fn: fn(&mut Self) -> Option<Range<DeviceSize>>,
-
-    aspect_nums: Peekable<smallvec::IntoIter<[usize; 4]>>,
-    current_aspect_num: Option<usize>,
-    mip_levels: Range<u32>,
-    current_mip_level: u32,
-    array_layers: Range<u32>,
-}
-
-impl<'a> SubresourceRangeIterator<'a> {
     /// Used when the requested range contains only a subset of the array layers in the image.
     /// The iterator returns one range for each mip level and aspect, each covering the range of
     /// array layers of that mip level and aspect.
     fn next_some_layers(&mut self) -> Option<Range<DeviceSize>> {
         self.current_aspect_num.map(|aspect_num| {
-            let mip_level_offset = aspect_num as DeviceSize * self.subresources.aspect_size
-                + self.current_mip_level as DeviceSize * self.subresources.mip_level_size;
+            let mip_level_offset = aspect_num as DeviceSize * self.image_aspect_size
+                + self.current_mip_level as DeviceSize * self.image_mip_level_size;
             self.current_mip_level += 1;
 
             if self.current_mip_level >= self.mip_levels.end {
@@ -2154,13 +2062,12 @@ impl<'a> SubresourceRangeIterator<'a> {
     /// range of mip levels of that aspect.
     fn next_some_levels_all_layers(&mut self) -> Option<Range<DeviceSize>> {
         self.current_aspect_num.map(|aspect_num| {
-            let aspect_offset = aspect_num as DeviceSize * self.subresources.aspect_size;
+            let aspect_offset = aspect_num as DeviceSize * self.image_aspect_size;
             self.current_aspect_num = self.aspect_nums.next();
 
-            let start = aspect_offset
-                + self.mip_levels.start as DeviceSize * self.subresources.mip_level_size;
-            let end = aspect_offset
-                + self.mip_levels.end as DeviceSize * self.subresources.mip_level_size;
+            let start =
+                aspect_offset + self.mip_levels.start as DeviceSize * self.image_mip_level_size;
+            let end = aspect_offset + self.mip_levels.end as DeviceSize * self.image_mip_level_size;
             start..end
         })
     }
@@ -2179,14 +2086,14 @@ impl<'a> SubresourceRangeIterator<'a> {
                 aspect_num_end += 1;
             }
 
-            let start = aspect_num_start as DeviceSize * self.subresources.aspect_size;
-            let end = aspect_num_end as DeviceSize * self.subresources.aspect_size;
+            let start = aspect_num_start as DeviceSize * self.image_aspect_size;
+            let end = aspect_num_end as DeviceSize * self.image_aspect_size;
             start..end
         })
     }
 }
 
-impl<'a> Iterator for SubresourceRangeIterator<'a> {
+impl Iterator for SubresourceRangeIterator {
     type Item = Range<DeviceSize>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -2194,20 +2101,22 @@ impl<'a> Iterator for SubresourceRangeIterator<'a> {
     }
 }
 
-impl<'a> FusedIterator for SubresourceRangeIterator<'a> {}
+impl FusedIterator for SubresourceRangeIterator {}
 
 #[cfg(test)]
 mod tests {
     use super::ImageCreationError;
-    use super::ImageState;
     use super::ImageUsage;
     use super::UnsafeImage;
     use super::UnsafeImageCreateInfo;
     use crate::format::Format;
+    use crate::image::sys::SubresourceRangeIterator;
+    use crate::image::ImageAspect;
     use crate::image::ImageAspects;
     use crate::image::ImageDimensions;
-    use crate::image::ImageLayout;
     use crate::image::SampleCount;
+    use crate::DeviceSize;
+    use smallvec::SmallVec;
 
     #[test]
     fn create_sampled() {
@@ -2428,27 +2337,23 @@ mod tests {
     #[test]
     fn subresource_range_iterator() {
         // A fictitious set of aspects that no real image would actually ever have.
-        let image_state = ImageState::new(
-            ImageAspects {
-                color: true,
-                depth: true,
-                stencil: true,
-                plane0: true,
-                ..ImageAspects::none()
-            },
-            6,
-            8,
-            ImageLayout::Undefined,
-        );
+        let image_aspect_list: SmallVec<[ImageAspect; 4]> = ImageAspects {
+            color: true,
+            depth: true,
+            stencil: true,
+            plane0: true,
+            ..ImageAspects::none()
+        }
+        .iter()
+        .collect();
+        let image_mip_levels = 6;
+        let image_array_layers = 8;
 
-        let mip = image_state.subresources.mip_level_size;
-        let asp = image_state.subresources.aspect_size;
-
-        assert_eq!(mip, 8);
-        assert_eq!(asp, 8 * 6);
+        let mip = image_array_layers as DeviceSize;
+        let asp = mip * image_mip_levels as DeviceSize;
 
         // Whole image
-        let mut iter = image_state.subresources.iter_ranges(
+        let mut iter = SubresourceRangeIterator::new(
             ImageAspects {
                 color: true,
                 depth: true,
@@ -2458,12 +2363,17 @@ mod tests {
             },
             0..6,
             0..8,
+            &image_aspect_list,
+            asp,
+            image_mip_levels,
+            mip,
+            image_array_layers,
         );
         assert_eq!(iter.next(), Some(0 * asp..4 * asp));
         assert_eq!(iter.next(), None);
 
         // Only some aspects
-        let mut iter = image_state.subresources.iter_ranges(
+        let mut iter = SubresourceRangeIterator::new(
             ImageAspects {
                 color: true,
                 depth: true,
@@ -2473,13 +2383,18 @@ mod tests {
             },
             0..6,
             0..8,
+            &image_aspect_list,
+            asp,
+            image_mip_levels,
+            mip,
+            image_array_layers,
         );
         assert_eq!(iter.next(), Some(0 * asp..2 * asp));
         assert_eq!(iter.next(), Some(3 * asp..4 * asp));
         assert_eq!(iter.next(), None);
 
         // Two aspects, and only some of the mip levels
-        let mut iter = image_state.subresources.iter_ranges(
+        let mut iter = SubresourceRangeIterator::new(
             ImageAspects {
                 color: false,
                 depth: true,
@@ -2489,13 +2404,18 @@ mod tests {
             },
             2..4,
             0..8,
+            &image_aspect_list,
+            asp,
+            image_mip_levels,
+            mip,
+            image_array_layers,
         );
         assert_eq!(iter.next(), Some(1 * asp + 2 * mip..1 * asp + 4 * mip));
         assert_eq!(iter.next(), Some(2 * asp + 2 * mip..2 * asp + 4 * mip));
         assert_eq!(iter.next(), None);
 
         // One aspect, one mip level, only some of the array layers
-        let mut iter = image_state.subresources.iter_ranges(
+        let mut iter = SubresourceRangeIterator::new(
             ImageAspects {
                 color: true,
                 depth: false,
@@ -2505,6 +2425,11 @@ mod tests {
             },
             0..1,
             2..4,
+            &image_aspect_list,
+            asp,
+            image_mip_levels,
+            mip,
+            image_array_layers,
         );
         assert_eq!(
             iter.next(),
@@ -2513,7 +2438,7 @@ mod tests {
         assert_eq!(iter.next(), None);
 
         // Two aspects, two mip levels, only some of the array layers
-        let mut iter = image_state.subresources.iter_ranges(
+        let mut iter = SubresourceRangeIterator::new(
             ImageAspects {
                 color: false,
                 depth: true,
@@ -2523,6 +2448,11 @@ mod tests {
             },
             2..4,
             6..8,
+            &image_aspect_list,
+            asp,
+            image_mip_levels,
+            mip,
+            image_array_layers,
         );
         assert_eq!(
             iter.next(),

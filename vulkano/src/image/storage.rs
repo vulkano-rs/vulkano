@@ -32,6 +32,7 @@ use smallvec::SmallVec;
 use std::{
     fs::File,
     hash::{Hash, Hasher},
+    ops::Range,
     sync::Arc,
 };
 
@@ -43,7 +44,7 @@ where
     A: MemoryPool,
 {
     // Inner implementation.
-    image: UnsafeImage,
+    image: Arc<UnsafeImage>,
 
     // Memory used to back the image.
     memory: PotentialDedicatedAllocation<A::Alloc>,
@@ -280,12 +281,12 @@ where
     }
 
     #[inline]
-    fn current_mip_levels_access(&self) -> std::ops::Range<u32> {
+    fn current_mip_levels_access(&self) -> Range<u32> {
         0..self.mip_levels()
     }
 
     #[inline]
-    fn current_array_layers_access(&self) -> std::ops::Range<u32> {
+    fn current_array_layers_access(&self) -> Range<u32> {
         0..self.dimensions().array_layers()
     }
 }

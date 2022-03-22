@@ -54,7 +54,7 @@ where
     T: BufferContents + ?Sized,
 {
     // Inner content.
-    inner: UnsafeBuffer,
+    inner: Arc<UnsafeBuffer>,
 
     // The memory held by the buffer.
     memory: A,
@@ -237,7 +237,7 @@ where
         size: DeviceSize,
         usage: BufferUsage,
         queue_families: &SmallVec<[u32; 4]>,
-    ) -> Result<(UnsafeBuffer, MemoryRequirements), DeviceMemoryAllocationError> {
+    ) -> Result<(Arc<UnsafeBuffer>, MemoryRequirements), DeviceMemoryAllocationError> {
         let buffer = {
             match UnsafeBuffer::new(
                 device.clone(),

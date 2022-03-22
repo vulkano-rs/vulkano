@@ -11,7 +11,7 @@ use super::{SyncCommandBufferBuilder, SyncCommandBufferBuilderError};
 use crate::{
     buffer::{BufferAccess, BufferContents, TypedBufferAccess},
     command_buffer::{
-        synced::{Command, KeyTy, ResourceKey, SetOrPush},
+        synced::{Command, KeyTy, SetOrPush},
         sys::{
             RenderPassBeginInfo, UnsafeCommandBufferBuilder,
             UnsafeCommandBufferBuilderBindVertexBuffer, UnsafeCommandBufferBuilderBufferImageCopy,
@@ -20,7 +20,7 @@ use crate::{
             UnsafeCommandBufferBuilderExecuteCommands, UnsafeCommandBufferBuilderImageBlit,
             UnsafeCommandBufferBuilderImageCopy,
         },
-        CommandBufferExecError, ImageUninitializedSafe, SecondaryCommandBuffer, SubpassContents,
+        CommandBufferExecError, SecondaryCommandBuffer, SubpassContents,
     },
     descriptor_set::{
         layout::DescriptorType, DescriptorBindingResources, DescriptorSetResources,
@@ -43,7 +43,6 @@ use crate::{
         ComputePipeline, GraphicsPipeline, PipelineBindPoint, PipelineLayout,
     },
     query::{QueryControlFlags, QueryPool, QueryResultElement, QueryResultFlags},
-    render_pass::LoadOp,
     sampler::Filter,
     shader::{DescriptorRequirements, ShaderStages},
     sync::{AccessFlags, Event, PipelineMemoryAccess, PipelineStage, PipelineStages},
@@ -160,12 +159,6 @@ impl SyncCommandBufferBuilder {
                         },
                         desc.initial_layout,
                         desc.final_layout,
-                        match desc.initial_layout != ImageLayout::Undefined
-                            || desc.load_op == LoadOp::Clear
-                        {
-                            true => ImageUninitializedSafe::Safe,
-                            false => ImageUninitializedSafe::Unsafe,
-                        },
                     )),
                 )
             })
@@ -322,8 +315,16 @@ impl SyncCommandBufferBuilder {
         let mut resources: SmallVec<[_; 2]> = SmallVec::new();
 
         // if its the same image in source and destination, we need to lock it once
-        let source_key = ResourceKey::from(source.as_ref());
-        let destination_key = ResourceKey::from(destination.as_ref());
+        let source_key = (
+            source.conflict_key(),
+            source.current_mip_levels_access(),
+            source.current_array_layers_access(),
+        );
+        let destination_key = (
+            destination.conflict_key(),
+            destination.current_mip_levels_access(),
+            destination.current_array_layers_access(),
+        );
         if source_key == destination_key {
             resources.push((
                 KeyTy::Image(source.clone()),
@@ -344,7 +345,6 @@ impl SyncCommandBufferBuilder {
                     // TODO: should, we take the layout as parameter? if so, which? source or destination?
                     ImageLayout::General,
                     ImageLayout::General,
-                    ImageUninitializedSafe::Safe,
                 )),
             ));
         } else {
@@ -366,7 +366,6 @@ impl SyncCommandBufferBuilder {
                         },
                         source_layout,
                         source_layout,
-                        ImageUninitializedSafe::Unsafe,
                     )),
                 ),
                 (
@@ -386,7 +385,6 @@ impl SyncCommandBufferBuilder {
                         },
                         destination_layout,
                         destination_layout,
-                        ImageUninitializedSafe::Safe,
                     )),
                 ),
             ]);
@@ -455,8 +453,16 @@ impl SyncCommandBufferBuilder {
         let mut resources: SmallVec<[_; 2]> = SmallVec::new();
 
         // if its the same image in source and destination, we need to lock it once
-        let source_key = ResourceKey::from(source.as_ref());
-        let destination_key = ResourceKey::from(destination.as_ref());
+        let source_key = (
+            source.conflict_key(),
+            source.current_mip_levels_access(),
+            source.current_array_layers_access(),
+        );
+        let destination_key = (
+            destination.conflict_key(),
+            destination.current_mip_levels_access(),
+            destination.current_array_layers_access(),
+        );
         if source_key == destination_key {
             resources.push((
                 KeyTy::Image(source.clone()),
@@ -477,7 +483,6 @@ impl SyncCommandBufferBuilder {
                     // TODO: should, we take the layout as parameter? if so, which? source or destination?
                     ImageLayout::General,
                     ImageLayout::General,
-                    ImageUninitializedSafe::Safe,
                 )),
             ));
         } else {
@@ -499,7 +504,6 @@ impl SyncCommandBufferBuilder {
                         },
                         source_layout,
                         source_layout,
-                        ImageUninitializedSafe::Unsafe,
                     )),
                 ),
                 (
@@ -519,7 +523,6 @@ impl SyncCommandBufferBuilder {
                         },
                         destination_layout,
                         destination_layout,
-                        ImageUninitializedSafe::Safe,
                     )),
                 ),
             ]);
@@ -645,7 +648,6 @@ impl SyncCommandBufferBuilder {
                     },
                     layout,
                     layout,
-                    ImageUninitializedSafe::Safe,
                 )),
             )],
         )?;
@@ -722,7 +724,6 @@ impl SyncCommandBufferBuilder {
                     },
                     layout,
                     layout,
-                    ImageUninitializedSafe::Safe,
                 )),
             )],
         )?;
@@ -789,7 +790,6 @@ impl SyncCommandBufferBuilder {
                     },
                     ImageLayout::Undefined,
                     ImageLayout::Undefined,
-                    ImageUninitializedSafe::Unsafe,
                 )),
             ));
         } else {
@@ -811,7 +811,6 @@ impl SyncCommandBufferBuilder {
                         },
                         ImageLayout::Undefined,
                         ImageLayout::Undefined,
-                        ImageUninitializedSafe::Unsafe,
                     )),
                 ),
                 (
@@ -831,7 +830,6 @@ impl SyncCommandBufferBuilder {
                         },
                         ImageLayout::Undefined,
                         ImageLayout::Undefined,
-                        ImageUninitializedSafe::Unsafe,
                     )),
                 ),
             ]);
@@ -914,7 +912,6 @@ impl SyncCommandBufferBuilder {
                         },
                         ImageLayout::Undefined,
                         ImageLayout::Undefined,
-                        ImageUninitializedSafe::Unsafe,
                     )),
                 ),
                 (
@@ -934,7 +931,6 @@ impl SyncCommandBufferBuilder {
                         },
                         destination_layout,
                         destination_layout,
-                        ImageUninitializedSafe::Safe,
                     )),
                 ),
             ],
@@ -1008,7 +1004,6 @@ impl SyncCommandBufferBuilder {
                         },
                         source_layout,
                         source_layout,
-                        ImageUninitializedSafe::Unsafe,
                     )),
                 ),
                 (
@@ -1028,7 +1023,6 @@ impl SyncCommandBufferBuilder {
                         },
                         ImageLayout::Undefined,
                         ImageLayout::Undefined,
-                        ImageUninitializedSafe::Unsafe,
                     )),
                 ),
             ],
@@ -1105,7 +1099,6 @@ impl SyncCommandBufferBuilder {
                     },
                     ImageLayout::Undefined,
                     ImageLayout::Undefined,
-                    ImageUninitializedSafe::Unsafe,
                 )),
             )],
         )?;
@@ -1553,7 +1546,6 @@ impl SyncCommandBufferBuilder {
                     },
                     ImageLayout::Undefined,
                     ImageLayout::Undefined,
-                    ImageUninitializedSafe::Unsafe,
                 )),
             )],
         )
@@ -2625,7 +2617,6 @@ impl SyncCommandBufferBuilder {
                     },
                     ImageLayout::Undefined,
                     ImageLayout::Undefined,
-                    ImageUninitializedSafe::Unsafe,
                 )),
             )],
         )
@@ -2672,12 +2663,7 @@ impl SyncCommandBufferBuilder {
         resources: &mut Vec<(
             KeyTy,
             Cow<'static, str>,
-            Option<(
-                PipelineMemoryAccess,
-                ImageLayout,
-                ImageLayout,
-                ImageUninitializedSafe,
-            )>,
+            Option<(PipelineMemoryAccess, ImageLayout, ImageLayout)>,
         )>,
         pipeline_bind_point: PipelineBindPoint,
         descriptor_requirements: impl IntoIterator<Item = ((u32, u32), &'a DescriptorRequirements)>,
@@ -2736,12 +2722,7 @@ impl SyncCommandBufferBuilder {
                     (
                         KeyTy::Buffer(buffer),
                         format!("Buffer bound to set {} descriptor {}", set, binding).into(),
-                        Some((
-                            access,
-                            ImageLayout::Undefined,
-                            ImageLayout::Undefined,
-                            ImageUninitializedSafe::Unsafe,
-                        )),
+                        Some((access, ImageLayout::Undefined, ImageLayout::Undefined)),
                     )
                 };
             let image_resource =
@@ -2761,7 +2742,7 @@ impl SyncCommandBufferBuilder {
                             // input attachments.
                             None
                         } else {
-                            Some((access, layout, layout, ImageUninitializedSafe::Unsafe))
+                            Some((access, layout, layout))
                         },
                     )
                 };
@@ -2828,12 +2809,7 @@ impl SyncCommandBufferBuilder {
         resources: &mut Vec<(
             KeyTy,
             Cow<'static, str>,
-            Option<(
-                PipelineMemoryAccess,
-                ImageLayout,
-                ImageLayout,
-                ImageUninitializedSafe,
-            )>,
+            Option<(PipelineMemoryAccess, ImageLayout, ImageLayout)>,
         )>,
         vertex_input: &VertexInputState,
     ) {
@@ -2856,7 +2832,6 @@ impl SyncCommandBufferBuilder {
                     },
                     ImageLayout::Undefined,
                     ImageLayout::Undefined,
-                    ImageUninitializedSafe::Unsafe,
                 )),
             )
         }));
@@ -2867,12 +2842,7 @@ impl SyncCommandBufferBuilder {
         resources: &mut Vec<(
             KeyTy,
             Cow<'static, str>,
-            Option<(
-                PipelineMemoryAccess,
-                ImageLayout,
-                ImageLayout,
-                ImageUninitializedSafe,
-            )>,
+            Option<(PipelineMemoryAccess, ImageLayout, ImageLayout)>,
         )>,
     ) {
         let index_buffer = self.current_state.index_buffer.as_ref().unwrap().0.clone();
@@ -2893,7 +2863,6 @@ impl SyncCommandBufferBuilder {
                 },
                 ImageLayout::Undefined,
                 ImageLayout::Undefined,
-                ImageUninitializedSafe::Unsafe,
             )),
         ));
     }
@@ -2903,12 +2872,7 @@ impl SyncCommandBufferBuilder {
         resources: &mut Vec<(
             KeyTy,
             Cow<'static, str>,
-            Option<(
-                PipelineMemoryAccess,
-                ImageLayout,
-                ImageLayout,
-                ImageUninitializedSafe,
-            )>,
+            Option<(PipelineMemoryAccess, ImageLayout, ImageLayout)>,
         )>,
         indirect_buffer: Arc<dyn BufferAccess>,
     ) {
@@ -2929,7 +2893,6 @@ impl SyncCommandBufferBuilder {
                 },
                 ImageLayout::Undefined,
                 ImageLayout::Undefined,
-                ImageUninitializedSafe::Unsafe,
             )),
         ));
     }
@@ -3134,17 +3097,15 @@ impl<'a> SyncCommandBufferBuilderExecuteCommands<'a> {
                             cbuf.buffer(buf_num).unwrap().1,
                             ImageLayout::Undefined,
                             ImageLayout::Undefined,
-                            ImageUninitializedSafe::Unsafe,
                         )),
                     ));
                 }
                 for img_num in 0..cbuf.num_images() {
-                    let (_, memory, start_layout, end_layout, image_uninitialized_safe) =
-                        cbuf.image(img_num).unwrap();
+                    let (_, memory, start_layout, end_layout) = cbuf.image(img_num).unwrap();
                     resources.push((
                         KeyTy::Image(cbuf.image(img_num).unwrap().0.clone()),
                         format!("Image bound to secondary command buffer {}", cbuf_num).into(),
-                        Some((memory, start_layout, end_layout, image_uninitialized_safe)),
+                        Some((memory, start_layout, end_layout)),
                     ));
                 }
             }

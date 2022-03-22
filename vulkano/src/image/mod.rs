@@ -65,6 +65,7 @@ use crate::memory::ExternalMemoryHandleType;
 use crate::memory::ExternalMemoryProperties;
 use crate::DeviceSize;
 use std::cmp;
+use std::ops::Range;
 
 mod aspect;
 pub mod attachment; // TODO: make private
@@ -551,6 +552,38 @@ impl ImageDimensions {
                 }
             }
         })
+    }
+}
+
+/// One or more subresources of an image that should be accessed by a command.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ImageSubresourceRange {
+    /// Selects the aspects that will be included.
+    ///
+    /// The value must not be empty, and must not include any of the `memory_plane` aspects.
+    /// The `color` aspect cannot be selected together any of with the `plane` aspects.
+    pub aspects: ImageAspects,
+
+    /// Selects the range of the mip levels that will be included.
+    ///
+    /// The range must not be empty.
+    pub mip_levels: Range<u32>,
+
+    /// Selects the range of array layers that will be included.
+    ///
+    /// The range must not be empty.
+    pub array_layers: Range<u32>,
+}
+
+impl From<ImageSubresourceRange> for ash::vk::ImageSubresourceRange {
+    fn from(val: ImageSubresourceRange) -> Self {
+        Self {
+            aspect_mask: val.aspects.into(),
+            base_mip_level: val.mip_levels.start,
+            level_count: val.mip_levels.end - val.mip_levels.start,
+            base_array_layer: val.array_layers.start,
+            layer_count: val.array_layers.end - val.array_layers.start,
+        }
     }
 }
 

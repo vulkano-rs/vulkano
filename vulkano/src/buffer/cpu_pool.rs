@@ -119,7 +119,7 @@ where
     A: MemoryPool,
 {
     // Inner content.
-    inner: UnsafeBuffer,
+    inner: Arc<UnsafeBuffer>,
 
     // The memory held by the buffer.
     memory: PotentialDedicatedAllocation<A::Alloc>,

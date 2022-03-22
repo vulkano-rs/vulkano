@@ -72,7 +72,7 @@ impl UnsafeBuffer {
     pub fn new(
         device: Arc<Device>,
         create_info: UnsafeBufferCreateInfo,
-    ) -> Result<UnsafeBuffer, BufferCreationError> {
+    ) -> Result<Arc<UnsafeBuffer>, BufferCreationError> {
         let UnsafeBufferCreateInfo {
             mut sharing,
             size,
@@ -179,7 +179,7 @@ impl UnsafeBuffer {
             state: Mutex::new(BufferState::new(size)),
         };
 
-        Ok(buffer)
+        Ok(Arc::new(buffer))
     }
 
     /// Returns the memory requirements for this buffer.
@@ -562,7 +562,7 @@ impl BufferState {
         }
     }
 
-    pub(crate) fn try_cpu_read(&mut self, range: Range<DeviceSize>) -> Result<(), ReadLockError> {
+    pub(crate) fn check_cpu_read(&self, range: Range<DeviceSize>) -> Result<(), ReadLockError> {
         for (_range, state) in self.ranges.range(&range) {
             match &state.current_access {
                 CurrentAccess::CpuExclusive { .. } => return Err(ReadLockError::CpuWriteLocked),
@@ -571,6 +571,10 @@ impl BufferState {
             }
         }
 
+        Ok(())
+    }
+
+    pub(crate) unsafe fn cpu_read_lock(&mut self, range: Range<DeviceSize>) {
         self.ranges.split_at(&range.start);
         self.ranges.split_at(&range.end);
 
@@ -579,14 +583,27 @@ impl BufferState {
                 CurrentAccess::Shared { cpu_reads, .. } => {
                     *cpu_reads += 1;
                 }
-                _ => unreachable!(),
+                _ => unreachable!("Buffer is being written by the CPU or GPU"),
             }
         }
-
-        Ok(())
     }
 
-    pub(crate) fn try_cpu_write(&mut self, range: Range<DeviceSize>) -> Result<(), WriteLockError> {
+    pub(crate) unsafe fn cpu_read_unlock(&mut self, range: Range<DeviceSize>) {
+        self.ranges.split_at(&range.start);
+        self.ranges.split_at(&range.end);
+
+        for (_range, state) in self.ranges.range_mut(&range) {
+            match &mut state.current_access {
+                CurrentAccess::Shared { cpu_reads, .. } => *cpu_reads -= 1,
+                _ => unreachable!("Buffer was not locked for CPU read"),
+            }
+        }
+    }
+
+    pub(crate) fn check_cpu_write(
+        &mut self,
+        range: Range<DeviceSize>,
+    ) -> Result<(), WriteLockError> {
         for (_range, state) in self.ranges.range(&range) {
             match &state.current_access {
                 CurrentAccess::CpuExclusive => return Err(WriteLockError::CpuLocked),
@@ -602,199 +619,124 @@ impl BufferState {
             }
         }
 
+        Ok(())
+    }
+
+    pub(crate) unsafe fn cpu_write_lock(&mut self, range: Range<DeviceSize>) {
         self.ranges.split_at(&range.start);
         self.ranges.split_at(&range.end);
 
         for (_range, state) in self.ranges.range_mut(&range) {
             state.current_access = CurrentAccess::CpuExclusive;
         }
-
-        Ok(())
     }
 
-    pub(crate) unsafe fn cpu_unlock(&mut self, range: Range<DeviceSize>, write: bool) {
-        if write {
-            self.ranges.split_at(&range.start);
-            self.ranges.split_at(&range.end);
+    pub(crate) unsafe fn cpu_write_unlock(&mut self, range: Range<DeviceSize>) {
+        self.ranges.split_at(&range.start);
+        self.ranges.split_at(&range.end);
 
-            for (_range, state) in self.ranges.range_mut(&range) {
-                match &mut state.current_access {
-                    CurrentAccess::CpuExclusive => {
-                        state.current_access = CurrentAccess::Shared {
-                            cpu_reads: 0,
-                            gpu_reads: 0,
-                        }
-                    }
-                    CurrentAccess::GpuExclusive { .. } => {
-                        unreachable!("Buffer is being written by the GPU")
-                    }
-                    CurrentAccess::Shared { .. } => {
-                        unreachable!("Buffer is not being written by the CPU")
-                    }
-                }
-            }
-        } else {
-            self.ranges.split_at(&range.start);
-            self.ranges.split_at(&range.end);
-
-            for (_range, state) in self.ranges.range_mut(&range) {
-                match &mut state.current_access {
-                    CurrentAccess::CpuExclusive => {
-                        unreachable!("Buffer is being written by the CPU")
-                    }
-                    CurrentAccess::GpuExclusive { .. } => {
-                        unreachable!("Buffer is being written by the GPU")
-                    }
-                    CurrentAccess::Shared { cpu_reads, .. } => *cpu_reads -= 1,
-                }
-            }
-        }
-    }
-
-    /// Locks the resource for usage on the GPU. Returns an error if the lock can't be acquired.
-    ///
-    /// This function exists to prevent the user from causing a data race by reading and writing
-    /// to the same resource at the same time.
-    ///
-    /// If you call this function, you should call `gpu_unlock` once the resource is no longer in
-    /// use by the GPU. The implementation is not expected to automatically perform any unlocking
-    /// and can rely on the fact that `gpu_unlock` is going to be called.
-    pub(crate) fn try_gpu_lock(
-        &mut self,
-        range: Range<DeviceSize>,
-        write: bool,
-    ) -> Result<(), AccessError> {
-        if write {
-            for (_range, state) in self.ranges.range(&range) {
-                match &state.current_access {
-                    CurrentAccess::Shared {
+        for (_range, state) in self.ranges.range_mut(&range) {
+            match &mut state.current_access {
+                CurrentAccess::CpuExclusive => {
+                    state.current_access = CurrentAccess::Shared {
                         cpu_reads: 0,
                         gpu_reads: 0,
-                    } => (),
-                    _ => return Err(AccessError::AlreadyInUse),
+                    }
                 }
+                _ => unreachable!("Buffer was not locked for CPU write"),
             }
+        }
+    }
 
-            self.ranges.split_at(&range.start);
-            self.ranges.split_at(&range.end);
-
-            for (_range, state) in self.ranges.range_mut(&range) {
-                state.current_access = CurrentAccess::GpuExclusive {
-                    gpu_reads: 0,
-                    gpu_writes: 1,
-                };
-            }
-        } else {
-            for (_range, state) in self.ranges.range(&range) {
-                match &state.current_access {
-                    CurrentAccess::Shared { .. } => (),
-                    _ => return Err(AccessError::AlreadyInUse),
-                }
-            }
-
-            self.ranges.split_at(&range.start);
-            self.ranges.split_at(&range.end);
-
-            for (_range, state) in self.ranges.range_mut(&range) {
-                match &mut state.current_access {
-                    CurrentAccess::Shared { gpu_reads, .. } => *gpu_reads += 1,
-                    _ => unreachable!(),
-                }
+    pub(crate) fn check_gpu_read(&mut self, range: Range<DeviceSize>) -> Result<(), AccessError> {
+        for (_range, state) in self.ranges.range(&range) {
+            match &state.current_access {
+                CurrentAccess::Shared { .. } => (),
+                _ => return Err(AccessError::AlreadyInUse),
             }
         }
 
         Ok(())
     }
 
-    /// Locks the resource for usage on the GPU without checking for errors. Supposes that a
-    /// future has already granted access to the resource.
-    ///
-    /// If you call this function, you should call `gpu_unlock` once the resource is no longer in
-    /// use by the GPU. The implementation is not expected to automatically perform any unlocking
-    /// and can rely on the fact that `gpu_unlock` is going to be called.
-    pub(crate) unsafe fn increase_gpu_lock(&mut self, range: Range<DeviceSize>, write: bool) {
-        if write {
-            self.ranges.split_at(&range.start);
-            self.ranges.split_at(&range.end);
+    pub(crate) unsafe fn gpu_read_lock(&mut self, range: Range<DeviceSize>) {
+        self.ranges.split_at(&range.start);
+        self.ranges.split_at(&range.end);
 
-            for (_range, state) in self.ranges.range_mut(&range) {
-                match &mut state.current_access {
-                    CurrentAccess::CpuExclusive => {
-                        unreachable!("Buffer is being written by the CPU")
-                    }
-                    CurrentAccess::GpuExclusive { gpu_writes, .. } => *gpu_writes += 1,
-                    &mut CurrentAccess::Shared {
-                        cpu_reads: 0,
-                        gpu_reads,
-                    } => {
-                        state.current_access = CurrentAccess::GpuExclusive {
-                            gpu_reads,
-                            gpu_writes: 1,
-                        }
-                    }
-                    CurrentAccess::Shared { .. } => {
-                        unreachable!("Buffer is being read by the CPU")
-                    }
-                }
-            }
-        } else {
-            self.ranges.split_at(&range.start);
-            self.ranges.split_at(&range.end);
-
-            for (_range, state) in self.ranges.range_mut(&range) {
-                match &mut state.current_access {
-                    CurrentAccess::CpuExclusive => {
-                        unreachable!("Buffer is being written by the CPU")
-                    }
-                    CurrentAccess::GpuExclusive { gpu_reads, .. }
-                    | CurrentAccess::Shared { gpu_reads, .. } => *gpu_reads += 1,
-                }
+        for (_range, state) in self.ranges.range_mut(&range) {
+            match &mut state.current_access {
+                CurrentAccess::GpuExclusive { gpu_reads, .. }
+                | CurrentAccess::Shared { gpu_reads, .. } => *gpu_reads += 1,
+                _ => unreachable!("Buffer is being written by the CPU"),
             }
         }
     }
 
-    /// Unlocks the resource previously acquired with `try_gpu_lock` or `increase_gpu_lock`.
-    ///
-    /// # Safety
-    ///
-    /// Must only be called once per previous lock.
-    pub(crate) unsafe fn gpu_unlock(&mut self, range: Range<DeviceSize>, write: bool) {
-        if write {
-            self.ranges.split_at(&range.start);
-            self.ranges.split_at(&range.end);
+    pub(crate) unsafe fn gpu_read_unlock(&mut self, range: Range<DeviceSize>) {
+        self.ranges.split_at(&range.start);
+        self.ranges.split_at(&range.end);
 
-            for (_range, state) in self.ranges.range_mut(&range) {
-                match &mut state.current_access {
-                    CurrentAccess::CpuExclusive => {
-                        unreachable!("Buffer is being written by the CPU")
-                    }
-                    &mut CurrentAccess::GpuExclusive {
+        for (_range, state) in self.ranges.range_mut(&range) {
+            match &mut state.current_access {
+                CurrentAccess::GpuExclusive { gpu_reads, .. } => *gpu_reads -= 1,
+                CurrentAccess::Shared { gpu_reads, .. } => *gpu_reads -= 1,
+                _ => unreachable!("Buffer was not locked for GPU read"),
+            }
+        }
+    }
+
+    pub(crate) fn check_gpu_write(&mut self, range: Range<DeviceSize>) -> Result<(), AccessError> {
+        for (_range, state) in self.ranges.range(&range) {
+            match &state.current_access {
+                CurrentAccess::Shared {
+                    cpu_reads: 0,
+                    gpu_reads: 0,
+                } => (),
+                _ => return Err(AccessError::AlreadyInUse),
+            }
+        }
+
+        Ok(())
+    }
+
+    pub(crate) unsafe fn gpu_write_lock(&mut self, range: Range<DeviceSize>) {
+        self.ranges.split_at(&range.start);
+        self.ranges.split_at(&range.end);
+
+        for (_range, state) in self.ranges.range_mut(&range) {
+            match &mut state.current_access {
+                CurrentAccess::GpuExclusive { gpu_writes, .. } => *gpu_writes += 1,
+                &mut CurrentAccess::Shared {
+                    cpu_reads: 0,
+                    gpu_reads,
+                } => {
+                    state.current_access = CurrentAccess::GpuExclusive {
                         gpu_reads,
                         gpu_writes: 1,
-                    } => {
-                        state.current_access = CurrentAccess::Shared {
-                            cpu_reads: 0,
-                            gpu_reads,
-                        }
-                    }
-                    CurrentAccess::GpuExclusive { gpu_writes, .. } => *gpu_writes -= 1,
-                    CurrentAccess::Shared { .. } => {
-                        unreachable!("Buffer is not being written by the GPU")
                     }
                 }
+                _ => unreachable!("Buffer is being accessed by the CPU"),
             }
-        } else {
-            self.ranges.split_at(&range.start);
-            self.ranges.split_at(&range.end);
+        }
+    }
 
-            for (_range, state) in self.ranges.range_mut(&range) {
-                match &mut state.current_access {
-                    CurrentAccess::CpuExclusive => {
-                        unreachable!("Buffer is being written by the CPU")
+    pub(crate) unsafe fn gpu_write_unlock(&mut self, range: Range<DeviceSize>) {
+        self.ranges.split_at(&range.start);
+        self.ranges.split_at(&range.end);
+
+        for (_range, state) in self.ranges.range_mut(&range) {
+            match &mut state.current_access {
+                &mut CurrentAccess::GpuExclusive {
+                    gpu_reads,
+                    gpu_writes: 1,
+                } => {
+                    state.current_access = CurrentAccess::Shared {
+                        cpu_reads: 0,
+                        gpu_reads,
                     }
-                    CurrentAccess::GpuExclusive { gpu_reads, .. } => *gpu_reads -= 1,
-                    CurrentAccess::Shared { gpu_reads, .. } => *gpu_reads -= 1,
                 }
+                CurrentAccess::GpuExclusive { gpu_writes, .. } => *gpu_writes -= 1,
+                _ => unreachable!("Buffer was not locked for GPU write"),
             }
         }
     }
