@@ -314,7 +314,7 @@ impl<'a> QueriesRange<'a> {
 
     /// Copies the results of this range of queries to a buffer on the CPU.
     ///
-    /// [`self.pool().ty().result_size()`](QueryType::result_size) elements
+    /// [`self.pool().ty().result_len()`](QueryType::result_len) elements
     /// will be written for each query in the range, plus 1 extra element per query if
     /// [`QueryResultFlags::with_availability`] is enabled.
     /// The provided buffer must be large enough to hold the data.
