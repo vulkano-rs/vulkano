@@ -18,7 +18,10 @@
 
 pub use self::{
     standard::StandardCommandPool,
-    sys::{CommandPoolTrimError, UnsafeCommandPool, UnsafeCommandPoolAlloc},
+    sys::{
+        CommandPoolTrimError, UnsafeCommandPool, UnsafeCommandPoolAlloc,
+        UnsafeCommandPoolCreateInfo, UnsafeCommandPoolCreationError,
+    },
 };
 use super::CommandBufferLevel;
 use crate::{
