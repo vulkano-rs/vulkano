@@ -634,7 +634,7 @@ impl<W> Swapchain<W> {
                     array_layers: image_array_layers,
                 };
 
-                let img = unsafe {
+                let img = {
                     UnsafeImage::from_raw(
                         device.clone(),
                         handle,
