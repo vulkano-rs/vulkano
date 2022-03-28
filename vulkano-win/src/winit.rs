@@ -197,6 +197,8 @@ unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
     instance: Arc<Instance>,
     win: W,
 ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
+    use winit::platform::macos::WindowExtMacOS;
+
     set_ca_metal_layer_to_winit(win.borrow());
     Surface::from_mac_os(instance, win.borrow().ns_view() as *const (), win)
 }
