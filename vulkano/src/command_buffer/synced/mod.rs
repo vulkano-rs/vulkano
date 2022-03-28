@@ -475,13 +475,13 @@ struct ImageUse {
 
 /// Type of resource whose state is to be tracked.
 #[derive(Clone)]
-enum KeyTy {
+pub(super) enum KeyTy {
     Buffer(Arc<dyn BufferAccess>),
     Image(Arc<dyn ImageAccess>),
 }
 
 // Trait for single commands within the list of commands.
-trait Command: Send + Sync {
+pub(super) trait Command: Send + Sync {
     // Returns a user-friendly name for the command, for error reporting purposes.
     fn name(&self) -> &'static str;
 

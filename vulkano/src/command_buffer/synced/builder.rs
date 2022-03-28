@@ -7,11 +7,13 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-pub use self::commands::{
-    SyncCommandBufferBuilderBindDescriptorSets, SyncCommandBufferBuilderBindVertexBuffer,
-    SyncCommandBufferBuilderExecuteCommands,
-};
 use super::{Command, KeyTy, SyncCommandBuffer};
+pub use crate::command_buffer::commands::{
+    bind_push::{
+        SyncCommandBufferBuilderBindDescriptorSets, SyncCommandBufferBuilderBindVertexBuffer,
+    },
+    secondary::SyncCommandBufferBuilderExecuteCommands,
+};
 use crate::{
     buffer::{sys::UnsafeBuffer, BufferAccess},
     command_buffer::{
@@ -50,9 +52,6 @@ use std::{
     sync::Arc,
 };
 
-#[path = "commands.rs"]
-mod commands;
-
 /// Wrapper around `UnsafeCommandBufferBuilder` that handles synchronization for you.
 ///
 /// Each method of the `UnsafeCommandBufferBuilder` has an equivalent in this wrapper, except
@@ -74,7 +73,7 @@ pub struct SyncCommandBufferBuilder {
 
     // Stores all the commands that were added to the sync builder. Some of them are maybe not
     // submitted to the inner builder yet.
-    commands: Vec<Box<dyn Command>>,
+    pub(in crate::command_buffer) commands: Vec<Box<dyn Command>>,
 
     // Prototype for the pipeline barrier that must be submitted before flushing the commands
     // in `commands`.
@@ -90,7 +89,7 @@ pub struct SyncCommandBufferBuilder {
 
     // If we're currently inside a render pass, contains the index of the `CmdBeginRenderPass`
     // command.
-    latest_render_pass_enter: Option<usize>,
+    pub(in crate::command_buffer) latest_render_pass_enter: Option<usize>,
 
     // Stores the current state of buffers and images that are in use by the command buffer.
     buffers2: HashMap<Arc<UnsafeBuffer>, RangeMap<DeviceSize, Option<BufferState>>>,
@@ -106,7 +105,7 @@ pub struct SyncCommandBufferBuilder {
     )>,
 
     // Current binding/setting state.
-    current_state: CurrentState,
+    pub(in crate::command_buffer) current_state: CurrentState,
 
     // `true` if the builder has been put in an inconsistent state. This happens when
     // `append_command` throws an error, because some changes to the internal state have already
@@ -210,7 +209,7 @@ impl SyncCommandBufferBuilder {
     //   in when the command starts, and the image layout that the image will be transitioned to
     //   during the command. When it comes to buffers, you should pass `Undefined` for both.
     #[inline]
-    fn append_command<C>(
+    pub(in crate::command_buffer) fn append_command<C>(
         &mut self,
         command: C,
         resources: impl IntoIterator<
@@ -833,48 +832,51 @@ struct ImageState {
 
 /// Holds the current binding and setting state.
 #[derive(Default)]
-struct CurrentState {
-    descriptor_sets: HashMap<PipelineBindPoint, DescriptorSetState>,
-    index_buffer: Option<(Arc<dyn BufferAccess>, IndexType)>,
-    pipeline_compute: Option<Arc<ComputePipeline>>,
-    pipeline_graphics: Option<Arc<GraphicsPipeline>>,
-    vertex_buffers: HashMap<u32, Arc<dyn BufferAccess>>,
+pub(in crate::command_buffer) struct CurrentState {
+    pub(in crate::command_buffer) descriptor_sets: HashMap<PipelineBindPoint, DescriptorSetState>,
+    pub(in crate::command_buffer) index_buffer: Option<(Arc<dyn BufferAccess>, IndexType)>,
+    pub(in crate::command_buffer) pipeline_compute: Option<Arc<ComputePipeline>>,
+    pub(in crate::command_buffer) pipeline_graphics: Option<Arc<GraphicsPipeline>>,
+    pub(in crate::command_buffer) vertex_buffers: HashMap<u32, Arc<dyn BufferAccess>>,
 
-    push_constants: RangeSet<u32>,
-    push_constants_pipeline_layout: Option<Arc<PipelineLayout>>,
+    pub(in crate::command_buffer) push_constants: RangeSet<u32>,
+    pub(in crate::command_buffer) push_constants_pipeline_layout: Option<Arc<PipelineLayout>>,
 
-    blend_constants: Option<[f32; 4]>,
-    color_write_enable: Option<SmallVec<[bool; 4]>>,
-    cull_mode: Option<CullMode>,
-    depth_bias: Option<DepthBias>,
-    depth_bias_enable: Option<bool>,
-    depth_bounds: Option<(f32, f32)>,
-    depth_bounds_test_enable: Option<bool>,
-    depth_compare_op: Option<CompareOp>,
-    depth_test_enable: Option<bool>,
-    depth_write_enable: Option<bool>,
-    discard_rectangle: HashMap<u32, Scissor>,
-    front_face: Option<FrontFace>,
-    line_stipple: Option<LineStipple>,
-    line_width: Option<f32>,
-    logic_op: Option<LogicOp>,
-    patch_control_points: Option<u32>,
-    primitive_restart_enable: Option<bool>,
-    primitive_topology: Option<PrimitiveTopology>,
-    rasterizer_discard_enable: Option<bool>,
-    scissor: HashMap<u32, Scissor>,
-    scissor_with_count: Option<SmallVec<[Scissor; 2]>>,
-    stencil_compare_mask: StencilStateDynamic,
-    stencil_op: StencilOpStateDynamic,
-    stencil_reference: StencilStateDynamic,
-    stencil_test_enable: Option<bool>,
-    stencil_write_mask: StencilStateDynamic,
-    viewport: HashMap<u32, Viewport>,
-    viewport_with_count: Option<SmallVec<[Viewport; 2]>>,
+    pub(in crate::command_buffer) blend_constants: Option<[f32; 4]>,
+    pub(in crate::command_buffer) color_write_enable: Option<SmallVec<[bool; 4]>>,
+    pub(in crate::command_buffer) cull_mode: Option<CullMode>,
+    pub(in crate::command_buffer) depth_bias: Option<DepthBias>,
+    pub(in crate::command_buffer) depth_bias_enable: Option<bool>,
+    pub(in crate::command_buffer) depth_bounds: Option<(f32, f32)>,
+    pub(in crate::command_buffer) depth_bounds_test_enable: Option<bool>,
+    pub(in crate::command_buffer) depth_compare_op: Option<CompareOp>,
+    pub(in crate::command_buffer) depth_test_enable: Option<bool>,
+    pub(in crate::command_buffer) depth_write_enable: Option<bool>,
+    pub(in crate::command_buffer) discard_rectangle: HashMap<u32, Scissor>,
+    pub(in crate::command_buffer) front_face: Option<FrontFace>,
+    pub(in crate::command_buffer) line_stipple: Option<LineStipple>,
+    pub(in crate::command_buffer) line_width: Option<f32>,
+    pub(in crate::command_buffer) logic_op: Option<LogicOp>,
+    pub(in crate::command_buffer) patch_control_points: Option<u32>,
+    pub(in crate::command_buffer) primitive_restart_enable: Option<bool>,
+    pub(in crate::command_buffer) primitive_topology: Option<PrimitiveTopology>,
+    pub(in crate::command_buffer) rasterizer_discard_enable: Option<bool>,
+    pub(in crate::command_buffer) scissor: HashMap<u32, Scissor>,
+    pub(in crate::command_buffer) scissor_with_count: Option<SmallVec<[Scissor; 2]>>,
+    pub(in crate::command_buffer) stencil_compare_mask: StencilStateDynamic,
+    pub(in crate::command_buffer) stencil_op: StencilOpStateDynamic,
+    pub(in crate::command_buffer) stencil_reference: StencilStateDynamic,
+    pub(in crate::command_buffer) stencil_test_enable: Option<bool>,
+    pub(in crate::command_buffer) stencil_write_mask: StencilStateDynamic,
+    pub(in crate::command_buffer) viewport: HashMap<u32, Viewport>,
+    pub(in crate::command_buffer) viewport_with_count: Option<SmallVec<[Viewport; 2]>>,
 }
 
 impl CurrentState {
-    fn reset_dynamic_states(&mut self, states: impl IntoIterator<Item = DynamicState>) {
+    pub(in crate::command_buffer) fn reset_dynamic_states(
+        &mut self,
+        states: impl IntoIterator<Item = DynamicState>,
+    ) {
         for state in states {
             match state {
                 DynamicState::BlendConstants => self.blend_constants = None,
@@ -918,7 +920,7 @@ impl CurrentState {
         }
     }
 
-    fn invalidate_descriptor_sets(
+    pub(in crate::command_buffer) fn invalidate_descriptor_sets(
         &mut self,
         pipeline_bind_point: PipelineBindPoint,
         pipeline_layout: Arc<PipelineLayout>,
@@ -977,9 +979,9 @@ impl CurrentState {
     }
 }
 
-struct DescriptorSetState {
-    descriptor_sets: HashMap<u32, SetOrPush>,
-    pipeline_layout: Arc<PipelineLayout>,
+pub(in crate::command_buffer) struct DescriptorSetState {
+    pub(in crate::command_buffer) descriptor_sets: HashMap<u32, SetOrPush>,
+    pub(in crate::command_buffer) pipeline_layout: Arc<PipelineLayout>,
 }
 
 #[derive(Clone)]

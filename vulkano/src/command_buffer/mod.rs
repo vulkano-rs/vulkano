@@ -76,6 +76,23 @@
 //! alternative command pool implementations and use them. See the `pool` module for more
 //! information.
 
+pub use self::commands::{
+    debug::CheckColorError,
+    image::{CheckClearColorImageError, CheckClearDepthStencilImageError, CheckBlitImageError},
+    pipeline::{
+        CheckDescriptorSetsValidityError, CheckDispatchError, CheckDynamicStateValidityError,
+        CheckIndexBufferError, CheckIndirectBufferError, CheckPipelineError,
+        CheckPushConstantsValidityError, CheckVertexBufferError,
+    },
+    query::{
+        CheckBeginQueryError, CheckCopyQueryPoolResultsError, CheckEndQueryError,
+        CheckResetQueryPoolError, CheckWriteTimestampError,
+    },
+    transfer::{
+        CheckCopyBufferError, CheckCopyBufferImageError, CheckCopyImageError,
+        CheckFillBufferError, CheckUpdateBufferError,
+    },
+};
 pub use self::{
     auto::{
         AutoCommandBufferBuilder, AutoCommandBufferBuilderContextError, BeginError,
@@ -99,12 +116,12 @@ use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
 
 mod auto;
+mod commands;
 pub mod pool;
 pub mod submit;
 pub mod synced;
 pub mod sys;
 mod traits;
-pub mod validity;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Zeroable, Pod, PartialEq, Eq)]
