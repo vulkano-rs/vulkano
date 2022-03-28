@@ -5,7 +5,10 @@ use vulkano::swapchain::Surface;
 use vulkano::swapchain::SurfaceCreationError;
 
 /// Creates a vulkan surface from a generic window
-/// which implements HasRawWindowHandle and thus can reveal the os-dependent handle
+/// which implements HasRawWindowHandle and thus can reveal the os-dependent handle.
+/// - Note that if you wish to use this function with MacOS, you will need to ensure that the
+/// `CAMetalLayer` is set to the ns_view. An example of how one might do that can be found in
+/// `vulkano_win::set_ca_metal_layer_to_winit`
 pub fn create_surface_from_handle<W>(
     window: W,
     instance: Arc<Instance>,

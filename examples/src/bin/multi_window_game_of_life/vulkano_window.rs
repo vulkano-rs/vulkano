@@ -23,7 +23,7 @@ use vulkano::{
     sync,
     sync::{FlushError, GpuFuture},
 };
-use vulkano_win::create_surface_from_handle;
+use vulkano_win::create_surface_from_winit;
 use winit::window::Window;
 
 pub struct VulkanoWindow {
@@ -52,7 +52,7 @@ impl VulkanoWindow {
         vsync: bool,
     ) -> VulkanoWindow {
         // Create rendering surface from window
-        let surface = create_surface_from_handle(window, vulkano_context.instance()).unwrap();
+        let surface = create_surface_from_winit(window, vulkano_context.instance()).unwrap();
         // Create swap chain & frame(s) to which we'll render
         let (swapchain, final_views) = vulkano_context.create_swapchain(
             surface.clone(),

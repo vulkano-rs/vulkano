@@ -172,11 +172,10 @@ use objc::runtime::YES;
 #[cfg(target_os = "macos")]
 use std::mem;
 
+/// Ensure `CAMetalLayer` (native rendering surface on MacOs) is used by the ns_view.
+/// This is necessary to be able to render on Mac.
 #[cfg(target_os = "macos")]
-unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
-    instance: Arc<Instance>,
-    win: W,
-) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
+unsafe fn set_ca_metal_layer_to_winit<W: SafeBorrow<Window>>(win: W) {
     use winit::platform::macos::WindowExtMacOS;
 
     let wnd: cocoa_id = mem::transmute(win.borrow().ns_window());
@@ -191,7 +190,16 @@ unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
     layer.set_contents_scale(view.backingScaleFactor());
     view.setLayer(mem::transmute(layer.as_ref())); // Bombs here with out of memory
     view.setWantsLayer(YES);
+}
 
+#[cfg(target_os = "macos")]
+unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
+    instance: Arc<Instance>,
+    win: W,
+) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
+    use winit::platform::macos::WindowExtMacOS;
+
+    set_ca_metal_layer_to_winit(win.borrow());
     Surface::from_mac_os(instance, win.borrow().ns_view() as *const (), win)
 }
 
