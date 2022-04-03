@@ -154,17 +154,14 @@ fn shader_execution(
 
         ExecutionModel::GLCompute => ShaderExecution::Compute,
 
-        ExecutionModel::Kernel
-        | ExecutionModel::TaskNV
-        | ExecutionModel::MeshNV
-        | ExecutionModel::RayGenerationKHR
-        | ExecutionModel::IntersectionKHR
-        | ExecutionModel::AnyHitKHR
-        | ExecutionModel::ClosestHitKHR
-        | ExecutionModel::MissKHR
-        | ExecutionModel::CallableKHR => {
-            todo!()
-        }
+        ExecutionModel::RayGenerationKHR => ShaderExecution::RayGeneration,
+        ExecutionModel::IntersectionKHR => ShaderExecution::Intersection,
+        ExecutionModel::AnyHitKHR => ShaderExecution::AnyHit,
+        ExecutionModel::ClosestHitKHR => ShaderExecution::ClosestHit,
+        ExecutionModel::MissKHR => ShaderExecution::Miss,
+        ExecutionModel::CallableKHR => ShaderExecution::Callable,
+
+        ExecutionModel::Kernel | ExecutionModel::TaskNV | ExecutionModel::MeshNV => todo!(),
     }
 }
 

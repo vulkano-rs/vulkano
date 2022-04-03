@@ -260,7 +260,6 @@ where
         format_ident!("load_{}", prefix)
     };
 
-    println!("-----------------------------------------"); // TODO remove
     let shader_code = quote! {
         /// Loads the shader in Vulkan as a `ShaderModule`.
         #[inline]
@@ -286,7 +285,6 @@ where
 
         #specialization_constants
     };
-    println!("+++++++++++++++++++++++++++++++++++++"); // TODO remove
 
     let structs = structs::write_structs(prefix, &spirv, types_meta, types_registry);
 
