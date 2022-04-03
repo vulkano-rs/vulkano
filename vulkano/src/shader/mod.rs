@@ -454,6 +454,12 @@ pub enum ShaderExecution {
     Geometry(GeometryShaderExecution),
     Fragment,
     Compute,
+    RayGeneration,
+    AnyHit,
+    ClosestHit,
+    Miss,
+    Intersection,
+    Callable,
 }
 
 /*#[derive(Clone, Copy, Debug)]
@@ -1059,6 +1065,12 @@ impl From<ShaderExecution> for ShaderStage {
             ShaderExecution::Geometry(_) => Self::Geometry,
             ShaderExecution::Fragment => Self::Fragment,
             ShaderExecution::Compute => Self::Compute,
+            ShaderExecution::RayGeneration => Self::Raygen,
+            ShaderExecution::AnyHit => Self::AnyHit,
+            ShaderExecution::ClosestHit => Self::ClosestHit,
+            ShaderExecution::Miss => Self::Miss,
+            ShaderExecution::Intersection => Self::Intersection,
+            ShaderExecution::Callable => Self::Callable,
         }
     }
 }

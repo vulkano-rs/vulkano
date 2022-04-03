@@ -870,6 +870,8 @@ fn descriptor_requirements_of(spirv: &Spirv, variable_id: Id) -> DescriptorVaria
                 Some(element_type)
             }
 
+            &Instruction::TypeAccelerationStructureKHR { result_id } => None, // FIXME temporary workaround
+
             _ => {
                 let name = variable_id_info
                     .iter_name()
