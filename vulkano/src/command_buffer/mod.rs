@@ -78,7 +78,7 @@
 
 pub use self::commands::{
     debug::CheckColorError,
-    image::{CheckClearColorImageError, CheckClearDepthStencilImageError, CheckBlitImageError},
+    image::{CheckBlitImageError, CheckClearColorImageError, CheckClearDepthStencilImageError},
     pipeline::{
         CheckDescriptorSetsValidityError, CheckDispatchError, CheckDynamicStateValidityError,
         CheckIndexBufferError, CheckIndirectBufferError, CheckPipelineError,
@@ -89,8 +89,8 @@ pub use self::commands::{
         CheckResetQueryPoolError, CheckWriteTimestampError,
     },
     transfer::{
-        CheckCopyBufferError, CheckCopyBufferImageError, CheckCopyImageError,
-        CheckFillBufferError, CheckUpdateBufferError,
+        CheckCopyBufferError, CheckCopyBufferImageError, CheckCopyImageError, CheckFillBufferError,
+        CheckUpdateBufferError,
     },
 };
 pub use self::{
