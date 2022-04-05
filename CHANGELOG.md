@@ -10,6 +10,7 @@
 - **Breaking** All `check_buffer_access` and `check_image_access` functions now take an `UnsafeBuffer`/`UnsafeImage` and a `Range<DeviceSize>`.
 - **Breaking** `UnsafeCommandBufferBuilder::pipeline_barrier` now takes a `DependencyInfo`. It will use `vkCmdPipelineBarrier2` if supported.
 - `UnsafeCommandPoolCreateInfo` and `UnsafeCommandPoolCreationError` interfaces exposed.
+- Fixed compile error in Vulkano-win on Android.
 
 # Version 0.29.0 (2022-03-11)
 
