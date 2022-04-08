@@ -833,6 +833,7 @@ err_gen!(CopyQueryPoolResultsError {
 err_gen!(FillBufferError {
     AutoCommandBufferBuilderContextError,
     CheckFillBufferError,
+    SyncCommandBufferBuilderError,
 });
 
 err_gen!(DebugMarkerError {
@@ -931,6 +932,7 @@ err_gen!(ResetQueryPoolError {
 err_gen!(UpdateBufferError {
     AutoCommandBufferBuilderContextError,
     CheckUpdateBufferError,
+    SyncCommandBufferBuilderError,
 });
 
 /// Errors that can happen when calling [`clear_attachments`](AutoCommandBufferBuilder::clear_attachments)

@@ -13,7 +13,7 @@ use crate::{
         auto::{ClearAttachmentsError, RenderPassState},
         pool::CommandPoolBuilderAlloc,
         synced::{
-            Command, CommandBufferState, KeyTy, SyncCommandBufferBuilder,
+            Command, CommandBufferState, Resource, SyncCommandBufferBuilder,
             SyncCommandBufferBuilderError,
         },
         sys::UnsafeCommandBufferBuilder,
@@ -23,7 +23,7 @@ use crate::{
     format::{ClearValue, NumericType},
     image::{
         attachment::{ClearAttachment, ClearRect},
-        ImageAspects,
+        ImageAspects, ImageSubresourceRange,
     },
     pipeline::GraphicsPipeline,
     render_pass::{Framebuffer, LoadOp},
@@ -375,7 +375,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdBeginRenderPass"
+                "begin_render_pass"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -402,11 +402,20 @@ impl SyncCommandBufferBuilder {
             .iter()
             .enumerate()
             .map(|(num, desc)| {
+                let image = render_pass_begin_info.framebuffer.attachments()[num].image();
+                let subresource_range = ImageSubresourceRange {
+                    // TODO:
+                    aspects: image.format().aspects(),
+                    mip_levels: image.current_mip_levels_access(),
+                    array_layers: image.current_array_layers_access(),
+                };
+
                 (
-                    KeyTy::Image(render_pass_begin_info.framebuffer.attachments()[num].image()),
                     format!("attachment {}", num).into(),
-                    Some((
-                        PipelineMemoryAccess {
+                    Resource::Image {
+                        image,
+                        subresource_range,
+                        memory: PipelineMemoryAccess {
                             stages: PipelineStages {
                                 all_commands: true,
                                 ..PipelineStages::none()
@@ -421,22 +430,28 @@ impl SyncCommandBufferBuilder {
                             }, // TODO: suboptimal
                             exclusive: true, // TODO: suboptimal ; note: remember to always pass true if desc.initial_layout != desc.final_layout
                         },
-                        desc.initial_layout,
-                        desc.final_layout,
-                    )),
+                        start_layout: desc.initial_layout,
+                        end_layout: desc.final_layout,
+                    },
                 )
             })
             .collect::<Vec<_>>();
 
-        self.append_command(
-            Cmd {
-                render_pass_begin_info: Mutex::new(render_pass_begin_info),
-                subpass_contents,
-            },
-            resources,
-        )?;
+        for resource in &resources {
+            self.check_resource_conflicts(resource)?;
+        }
+
+        self.commands.push(Box::new(Cmd {
+            render_pass_begin_info: Mutex::new(render_pass_begin_info),
+            subpass_contents,
+        }));
+
+        for resource in resources {
+            self.add_resource(resource);
+        }
 
         self.latest_render_pass_enter = Some(self.commands.len() - 1);
+
         Ok(())
     }
 
@@ -449,7 +464,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdNextSubpass"
+                "next_subpass"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -457,7 +472,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { subpass_contents }, []).unwrap();
+        self.commands.push(Box::new(Cmd { subpass_contents }));
     }
 
     /// Calls `vkCmdEndRenderPass` on the builder.
@@ -467,7 +482,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdEndRenderPass"
+                "end_render_pass"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -475,7 +490,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd, []).unwrap();
+        self.commands.push(Box::new(Cmd));
         debug_assert!(self.latest_render_pass_enter.is_some());
         self.latest_render_pass_enter = None;
     }
@@ -496,7 +511,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdClearAttachments"
+                "clear_attachments"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -509,14 +524,10 @@ impl SyncCommandBufferBuilder {
         let attachments: SmallVec<[_; 3]> = attachments.into_iter().collect();
         let rects: SmallVec<[_; 4]> = rects.into_iter().collect();
 
-        self.append_command(
-            Cmd {
-                attachments: Mutex::new(attachments),
-                rects: Mutex::new(rects),
-            },
-            [],
-        )
-        .unwrap();
+        self.commands.push(Box::new(Cmd {
+            attachments: Mutex::new(attachments),
+            rects: Mutex::new(rects),
+        }));
     }
 }
 

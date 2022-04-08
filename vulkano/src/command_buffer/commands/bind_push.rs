@@ -475,7 +475,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdBindIndexBuffer"
+                "bind_index_buffer"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -484,7 +484,7 @@ impl SyncCommandBufferBuilder {
         }
 
         self.current_state.index_buffer = Some((buffer.clone(), index_ty));
-        self.append_command(Cmd { buffer, index_ty }, []).unwrap();
+        self.commands.push(Box::new(Cmd { buffer, index_ty }));
     }
 
     /// Calls `vkCmdBindPipeline` on the builder with a compute pipeline.
@@ -496,7 +496,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdBindPipeline"
+                "bind_pipeline_compute"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -505,7 +505,7 @@ impl SyncCommandBufferBuilder {
         }
 
         self.current_state.pipeline_compute = Some(pipeline.clone());
-        self.append_command(Cmd { pipeline }, []).unwrap();
+        self.commands.push(Box::new(Cmd { pipeline }));
     }
 
     /// Calls `vkCmdBindPipeline` on the builder with a graphics pipeline.
@@ -517,7 +517,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdBindPipeline"
+                "bind_pipeline_graphics"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -534,7 +534,7 @@ impl SyncCommandBufferBuilder {
                 .map(|(s, _)| s),
         );
         self.current_state.pipeline_graphics = Some(pipeline.clone());
-        self.append_command(Cmd { pipeline }, []).unwrap();
+        self.commands.push(Box::new(Cmd { pipeline }));
     }
 
     /// Starts the process of binding vertex buffers. Returns an intermediate struct which can be
@@ -570,7 +570,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdPushConstants"
+                "push_constants"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -594,17 +594,13 @@ impl SyncCommandBufferBuilder {
         );
         out.set_len(size as usize);
 
-        self.append_command(
-            Cmd {
-                pipeline_layout: pipeline_layout.clone(),
-                stages,
-                offset,
-                size,
-                data: out.into(),
-            },
-            [],
-        )
-        .unwrap();
+        self.commands.push(Box::new(Cmd {
+            pipeline_layout: pipeline_layout.clone(),
+            stages,
+            offset,
+            size,
+            data: out.into(),
+        }));
 
         // TODO: Push constant invalidations.
         // The Vulkan spec currently is unclear about this, so Vulkano currently just marks
@@ -634,7 +630,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdPushDescriptorSetKHR"
+                "push_descriptor_set"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -672,16 +668,12 @@ impl SyncCommandBufferBuilder {
             set_resources.update(write);
         }
 
-        self.append_command(
-            Cmd {
-                pipeline_bind_point,
-                pipeline_layout,
-                set_num,
-                descriptor_writes,
-            },
-            [],
-        )
-        .unwrap();
+        self.commands.push(Box::new(Cmd {
+            pipeline_bind_point,
+            pipeline_layout,
+            set_num,
+            descriptor_writes,
+        }));
     }
 }
 
@@ -720,7 +712,7 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdBindDescriptorSets"
+                "bind_descriptor_sets"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -754,17 +746,12 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
                 .insert(first_set + set_num as u32, SetOrPush::Set(set.clone()));
         }
 
-        self.builder
-            .append_command(
-                Cmd {
-                    descriptor_sets: self.descriptor_sets,
-                    pipeline_bind_point,
-                    pipeline_layout,
-                    first_set,
-                },
-                [],
-            )
-            .unwrap();
+        self.builder.commands.push(Box::new(Cmd {
+            descriptor_sets: self.descriptor_sets,
+            pipeline_bind_point,
+            pipeline_layout,
+            first_set,
+        }));
     }
 }
 
@@ -793,7 +780,7 @@ impl<'a> SyncCommandBufferBuilderBindVertexBuffer<'a> {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdBindVertexBuffers"
+                "bind_vertex_buffers"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -808,16 +795,11 @@ impl<'a> SyncCommandBufferBuilderBindVertexBuffer<'a> {
                 .insert(first_set + i as u32, buffer.clone());
         }
 
-        self.builder
-            .append_command(
-                Cmd {
-                    first_set,
-                    inner: Mutex::new(Some(self.inner)),
-                    buffers: self.buffers,
-                },
-                [],
-            )
-            .unwrap();
+        self.builder.commands.push(Box::new(Cmd {
+            first_set,
+            inner: Mutex::new(Some(self.inner)),
+            buffers: self.buffers,
+        }));
     }
 }
 
