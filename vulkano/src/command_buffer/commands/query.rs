@@ -11,13 +11,12 @@ use crate::{
     buffer::TypedBufferAccess,
     command_buffer::{
         auto::QueryState,
-        synced::{Command, KeyTy, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
+        synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder, AutoCommandBufferBuilderContextError, BeginQueryError,
         CopyQueryPoolResultsError, EndQueryError, ResetQueryPoolError, WriteTimestampError,
     },
     device::{physical::QueueFamily, Device, DeviceOwned},
-    image::ImageLayout,
     query::{
         GetResultsError, QueriesRange, Query, QueryControlFlags, QueryPool, QueryResultElement,
         QueryResultFlags, QueryType,
@@ -591,7 +590,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdBeginQuery"
+                "begin_query"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -599,15 +598,11 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(
-            Cmd {
-                query_pool,
-                query,
-                flags,
-            },
-            [],
-        )
-        .unwrap();
+        self.commands.push(Box::new(Cmd {
+            query_pool,
+            query,
+            flags,
+        }));
     }
 
     /// Calls `vkCmdEndQuery` on the builder.
@@ -620,7 +615,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdEndQuery"
+                "end_query"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -628,7 +623,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { query_pool, query }, []).unwrap();
+        self.commands.push(Box::new(Cmd { query_pool, query }));
     }
 
     /// Calls `vkCmdWriteTimestamp` on the builder.
@@ -647,7 +642,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdWriteTimestamp"
+                "write_timestamp"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -655,15 +650,11 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(
-            Cmd {
-                query_pool,
-                query,
-                stage,
-            },
-            [],
-        )
-        .unwrap();
+        self.commands.push(Box::new(Cmd {
+            query_pool,
+            query,
+            stage,
+        }));
     }
 
     /// Calls `vkCmdCopyQueryPoolResults` on the builder.
@@ -696,7 +687,7 @@ impl SyncCommandBufferBuilder {
             T: QueryResultElement,
         {
             fn name(&self) -> &'static str {
-                "vkCmdCopyQueryPoolResults"
+                "copy_query_pool_results"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -709,34 +700,40 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(
-            Cmd {
-                query_pool,
-                queries,
-                destination: destination.clone(),
-                stride,
-                flags,
-            },
-            [(
-                KeyTy::Buffer(destination),
-                "destination".into(),
-                Some((
-                    PipelineMemoryAccess {
-                        stages: PipelineStages {
-                            transfer: true,
-                            ..PipelineStages::none()
-                        },
-                        access: AccessFlags {
-                            transfer_write: true,
-                            ..AccessFlags::none()
-                        },
-                        exclusive: true,
+        let resources = [(
+            "destination".into(),
+            Resource::Buffer {
+                buffer: destination.clone(),
+                range: 0..destination.size(), // TODO:
+                memory: PipelineMemoryAccess {
+                    stages: PipelineStages {
+                        transfer: true,
+                        ..PipelineStages::none()
                     },
-                    ImageLayout::Undefined,
-                    ImageLayout::Undefined,
-                )),
-            )],
-        )?;
+                    access: AccessFlags {
+                        transfer_write: true,
+                        ..AccessFlags::none()
+                    },
+                    exclusive: true,
+                },
+            },
+        )];
+
+        for resource in &resources {
+            self.check_resource_conflicts(resource)?;
+        }
+
+        self.commands.push(Box::new(Cmd {
+            query_pool,
+            queries,
+            destination,
+            stride,
+            flags,
+        }));
+
+        for resource in resources {
+            self.add_resource(resource);
+        }
 
         Ok(())
     }
@@ -751,7 +748,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdResetQueryPool"
+                "reset_query_pool"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -759,14 +756,10 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(
-            Cmd {
-                query_pool,
-                queries,
-            },
-            [],
-        )
-        .unwrap();
+        self.commands.push(Box::new(Cmd {
+            query_pool,
+            queries,
+        }));
     }
 }
 

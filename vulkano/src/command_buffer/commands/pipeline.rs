@@ -11,7 +11,7 @@ use crate::{
     buffer::{view::BufferViewAbstract, BufferAccess, TypedBufferAccess},
     command_buffer::{
         synced::{
-            Command, CommandBufferState, KeyTy, SyncCommandBufferBuilder,
+            Command, CommandBufferState, Resource, SyncCommandBufferBuilder,
             SyncCommandBufferBuilderError,
         },
         sys::UnsafeCommandBufferBuilder,
@@ -23,7 +23,9 @@ use crate::{
     descriptor_set::{layout::DescriptorType, DescriptorBindingResources},
     device::{Device, DeviceOwned},
     format::Format,
-    image::{view::ImageViewType, ImageAccess, ImageLayout, ImageViewAbstract, SampleCount},
+    image::{
+        view::ImageViewType, ImageAccess, ImageSubresourceRange, ImageViewAbstract, SampleCount,
+    },
     pipeline::{
         graphics::{
             input_assembly::PrimitiveTopology,
@@ -61,7 +63,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         check_dispatch(self.device(), group_counts)?;
 
         unsafe {
-            self.inner.dispatch(group_counts);
+            self.inner.dispatch(group_counts)?;
         }
 
         Ok(self)
@@ -131,7 +133,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
         unsafe {
             self.inner
-                .draw(vertex_count, instance_count, first_vertex, first_instance);
+                .draw(vertex_count, instance_count, first_vertex, first_instance)?;
         }
 
         Ok(self)
@@ -244,7 +246,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 first_index,
                 vertex_offset,
                 first_instance,
-            );
+            )?;
         }
 
         Ok(self)
@@ -1644,14 +1646,17 @@ impl fmt::Display for CheckDispatchError {
 impl SyncCommandBufferBuilder {
     /// Calls `vkCmdDispatch` on the builder.
     #[inline]
-    pub unsafe fn dispatch(&mut self, group_counts: [u32; 3]) {
+    pub unsafe fn dispatch(
+        &mut self,
+        group_counts: [u32; 3],
+    ) -> Result<(), SyncCommandBufferBuilderError> {
         struct Cmd {
             group_counts: [u32; 3],
         }
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdDispatch"
+                "dispatch"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1668,8 +1673,17 @@ impl SyncCommandBufferBuilder {
             pipeline.descriptor_requirements(),
         );
 
-        self.append_command(Cmd { group_counts }, resources)
-            .unwrap();
+        for resource in &resources {
+            self.check_resource_conflicts(resource)?;
+        }
+
+        self.commands.push(Box::new(Cmd { group_counts }));
+
+        for resource in resources {
+            self.add_resource(resource);
+        }
+
+        Ok(())
     }
 
     /// Calls `vkCmdDispatchIndirect` on the builder.
@@ -1684,7 +1698,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdDispatchIndirect"
+                "dispatch_indirect"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1700,9 +1714,17 @@ impl SyncCommandBufferBuilder {
             PipelineBindPoint::Compute,
             pipeline.descriptor_requirements(),
         );
-        self.add_indirect_buffer_resources(&mut resources, indirect_buffer.clone());
+        self.add_indirect_buffer_resources(&mut resources, &indirect_buffer);
 
-        self.append_command(Cmd { indirect_buffer }, resources)?;
+        for resource in &resources {
+            self.check_resource_conflicts(resource)?;
+        }
+
+        self.commands.push(Box::new(Cmd { indirect_buffer }));
+
+        for resource in resources {
+            self.add_resource(resource);
+        }
 
         Ok(())
     }
@@ -1715,7 +1737,7 @@ impl SyncCommandBufferBuilder {
         instance_count: u32,
         first_vertex: u32,
         first_instance: u32,
-    ) {
+    ) -> Result<(), SyncCommandBufferBuilderError> {
         struct Cmd {
             vertex_count: u32,
             instance_count: u32,
@@ -1725,7 +1747,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdDraw"
+                "draw"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1748,16 +1770,22 @@ impl SyncCommandBufferBuilder {
         );
         self.add_vertex_buffer_resources(&mut resources, pipeline.vertex_input_state());
 
-        self.append_command(
-            Cmd {
-                vertex_count,
-                instance_count,
-                first_vertex,
-                first_instance,
-            },
-            resources,
-        )
-        .unwrap();
+        for resource in &resources {
+            self.check_resource_conflicts(resource)?;
+        }
+
+        self.commands.push(Box::new(Cmd {
+            vertex_count,
+            instance_count,
+            first_vertex,
+            first_instance,
+        }));
+
+        for resource in resources {
+            self.add_resource(resource);
+        }
+
+        Ok(())
     }
 
     /// Calls `vkCmdDrawIndexed` on the builder.
@@ -1769,7 +1797,7 @@ impl SyncCommandBufferBuilder {
         first_index: u32,
         vertex_offset: i32,
         first_instance: u32,
-    ) {
+    ) -> Result<(), SyncCommandBufferBuilderError> {
         struct Cmd {
             index_count: u32,
             instance_count: u32,
@@ -1780,7 +1808,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdDrawIndexed"
+                "draw_indexed"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1805,17 +1833,23 @@ impl SyncCommandBufferBuilder {
         self.add_vertex_buffer_resources(&mut resources, pipeline.vertex_input_state());
         self.add_index_buffer_resources(&mut resources);
 
-        self.append_command(
-            Cmd {
-                index_count,
-                instance_count,
-                first_index,
-                vertex_offset,
-                first_instance,
-            },
-            resources,
-        )
-        .unwrap();
+        for resource in &resources {
+            self.check_resource_conflicts(resource)?;
+        }
+
+        self.commands.push(Box::new(Cmd {
+            index_count,
+            instance_count,
+            first_index,
+            vertex_offset,
+            first_instance,
+        }));
+
+        for resource in resources {
+            self.add_resource(resource);
+        }
+
+        Ok(())
     }
 
     /// Calls `vkCmdDrawIndirect` on the builder.
@@ -1834,7 +1868,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdDrawIndirect"
+                "draw_indirect"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1851,16 +1885,21 @@ impl SyncCommandBufferBuilder {
             pipeline.descriptor_requirements(),
         );
         self.add_vertex_buffer_resources(&mut resources, pipeline.vertex_input_state());
-        self.add_indirect_buffer_resources(&mut resources, indirect_buffer.clone());
+        self.add_indirect_buffer_resources(&mut resources, &indirect_buffer);
 
-        self.append_command(
-            Cmd {
-                indirect_buffer,
-                draw_count,
-                stride,
-            },
-            resources,
-        )?;
+        for resource in &resources {
+            self.check_resource_conflicts(resource)?;
+        }
+
+        self.commands.push(Box::new(Cmd {
+            indirect_buffer,
+            draw_count,
+            stride,
+        }));
+
+        for resource in resources {
+            self.add_resource(resource);
+        }
 
         Ok(())
     }
@@ -1881,7 +1920,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdDrawIndexedIndirect"
+                "draw_indexed_indirect"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1903,27 +1942,28 @@ impl SyncCommandBufferBuilder {
         );
         self.add_vertex_buffer_resources(&mut resources, pipeline.vertex_input_state());
         self.add_index_buffer_resources(&mut resources);
-        self.add_indirect_buffer_resources(&mut resources, indirect_buffer.clone());
+        self.add_indirect_buffer_resources(&mut resources, &indirect_buffer);
 
-        self.append_command(
-            Cmd {
-                indirect_buffer,
-                draw_count,
-                stride,
-            },
-            resources,
-        )?;
+        for resource in &resources {
+            self.check_resource_conflicts(resource)?;
+        }
+
+        self.commands.push(Box::new(Cmd {
+            indirect_buffer,
+            draw_count,
+            stride,
+        }));
+
+        for resource in resources {
+            self.add_resource(resource);
+        }
 
         Ok(())
     }
 
     fn add_descriptor_set_resources<'a>(
         &self,
-        resources: &mut Vec<(
-            KeyTy,
-            Cow<'static, str>,
-            Option<(PipelineMemoryAccess, ImageLayout, ImageLayout)>,
-        )>,
+        resources: &mut Vec<(Cow<'static, str>, Resource)>,
         pipeline_bind_point: PipelineBindPoint,
         descriptor_requirements: impl IntoIterator<Item = ((u32, u32), &'a DescriptorRequirements)>,
     ) {
@@ -1937,6 +1977,15 @@ impl SyncCommandBufferBuilder {
             let descriptor_type = state.pipeline_layout.set_layouts()[set as usize].bindings()
                 [&binding]
                 .descriptor_type;
+
+            // FIXME: This is tricky. Since we read from the input attachment
+            // and this input attachment is being written in an earlier pass,
+            // vulkano will think that it needs to put a pipeline barrier and will
+            // return a `Conflict` error. For now as a work-around we simply ignore
+            // input attachments.
+            if descriptor_type == DescriptorType::InputAttachment {
+                continue;
+            }
 
             // TODO: Maybe include this on DescriptorRequirements?
             let access = PipelineMemoryAccess {
@@ -1977,31 +2026,37 @@ impl SyncCommandBufferBuilder {
             });
 
             let buffer_resource =
-                move |(access, buffer): (PipelineMemoryAccess, Arc<dyn BufferAccess>)| {
+                move |(memory, buffer): (PipelineMemoryAccess, Arc<dyn BufferAccess>)| {
+                    let range = 0..buffer.size(); // TODO:
                     (
-                        KeyTy::Buffer(buffer),
                         format!("Buffer bound to set {} descriptor {}", set, binding).into(),
-                        Some((access, ImageLayout::Undefined, ImageLayout::Undefined)),
+                        Resource::Buffer {
+                            buffer,
+                            range,
+                            memory,
+                        },
                     )
                 };
             let image_resource =
-                move |(access, image): (PipelineMemoryAccess, Arc<dyn ImageAccess>)| {
+                move |(memory, image): (PipelineMemoryAccess, Arc<dyn ImageAccess>)| {
+                    let subresource_range = ImageSubresourceRange {
+                        // TODO:
+                        aspects: image.format().aspects(),
+                        mip_levels: image.current_mip_levels_access(),
+                        array_layers: image.current_array_layers_access(),
+                    };
                     let layout = image
                         .descriptor_layouts()
                         .expect("descriptor_layouts must return Some when used in an image view")
                         .layout_for(descriptor_type);
                     (
-                        KeyTy::Image(image),
                         format!("Image bound to set {} descriptor {}", set, binding).into(),
-                        if descriptor_type == DescriptorType::InputAttachment {
-                            // FIXME: This is tricky. Since we read from the input attachment
-                            // and this input attachment is being written in an earlier pass,
-                            // vulkano will think that it needs to put a pipeline barrier and will
-                            // return a `Conflict` error. For now as a work-around we simply ignore
-                            // input attachments.
-                            None
-                        } else {
-                            Some((access, layout, layout))
+                        Resource::Image {
+                            image,
+                            subresource_range,
+                            memory,
+                            start_layout: layout,
+                            end_layout: layout,
                         },
                     )
                 };
@@ -2065,20 +2120,17 @@ impl SyncCommandBufferBuilder {
 
     fn add_vertex_buffer_resources(
         &self,
-        resources: &mut Vec<(
-            KeyTy,
-            Cow<'static, str>,
-            Option<(PipelineMemoryAccess, ImageLayout, ImageLayout)>,
-        )>,
+        resources: &mut Vec<(Cow<'static, str>, Resource)>,
         vertex_input: &VertexInputState,
     ) {
         resources.extend(vertex_input.bindings.iter().map(|(&binding_num, _)| {
-            let buffer = self.current_state.vertex_buffers[&binding_num].clone();
+            let vertex_buffer = &self.current_state.vertex_buffers[&binding_num];
             (
-                KeyTy::Buffer(buffer),
                 format!("Vertex buffer binding {}", binding_num).into(),
-                Some((
-                    PipelineMemoryAccess {
+                Resource::Buffer {
+                    buffer: vertex_buffer.clone(),
+                    range: 0..vertex_buffer.size(), // TODO:
+                    memory: PipelineMemoryAccess {
                         stages: PipelineStages {
                             vertex_input: true,
                             ..PipelineStages::none()
@@ -2089,27 +2141,19 @@ impl SyncCommandBufferBuilder {
                         },
                         exclusive: false,
                     },
-                    ImageLayout::Undefined,
-                    ImageLayout::Undefined,
-                )),
+                },
             )
         }));
     }
 
-    fn add_index_buffer_resources(
-        &self,
-        resources: &mut Vec<(
-            KeyTy,
-            Cow<'static, str>,
-            Option<(PipelineMemoryAccess, ImageLayout, ImageLayout)>,
-        )>,
-    ) {
-        let index_buffer = self.current_state.index_buffer.as_ref().unwrap().0.clone();
+    fn add_index_buffer_resources(&self, resources: &mut Vec<(Cow<'static, str>, Resource)>) {
+        let index_buffer = &self.current_state.index_buffer.as_ref().unwrap().0;
         resources.push((
-            KeyTy::Buffer(index_buffer),
             "index buffer".into(),
-            Some((
-                PipelineMemoryAccess {
+            Resource::Buffer {
+                buffer: index_buffer.clone(),
+                range: 0..index_buffer.size(), // TODO:
+                memory: PipelineMemoryAccess {
                     stages: PipelineStages {
                         vertex_input: true,
                         ..PipelineStages::none()
@@ -2120,26 +2164,21 @@ impl SyncCommandBufferBuilder {
                     },
                     exclusive: false,
                 },
-                ImageLayout::Undefined,
-                ImageLayout::Undefined,
-            )),
+            },
         ));
     }
 
     fn add_indirect_buffer_resources(
         &self,
-        resources: &mut Vec<(
-            KeyTy,
-            Cow<'static, str>,
-            Option<(PipelineMemoryAccess, ImageLayout, ImageLayout)>,
-        )>,
-        indirect_buffer: Arc<dyn BufferAccess>,
+        resources: &mut Vec<(Cow<'static, str>, Resource)>,
+        indirect_buffer: &Arc<dyn BufferAccess>,
     ) {
         resources.push((
-            KeyTy::Buffer(indirect_buffer),
             "indirect buffer".into(),
-            Some((
-                PipelineMemoryAccess {
+            Resource::Buffer {
+                buffer: indirect_buffer.clone(),
+                range: 0..indirect_buffer.size(), // TODO:
+                memory: PipelineMemoryAccess {
                     stages: PipelineStages {
                         draw_indirect: true,
                         ..PipelineStages::none()
@@ -2150,9 +2189,7 @@ impl SyncCommandBufferBuilder {
                     },
                     exclusive: false,
                 },
-                ImageLayout::Undefined,
-                ImageLayout::Undefined,
-            )),
+            },
         ));
     }
 }

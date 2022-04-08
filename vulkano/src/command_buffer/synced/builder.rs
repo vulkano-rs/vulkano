@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{Command, KeyTy, SyncCommandBuffer};
+use super::{Command, Resource, SyncCommandBuffer};
 pub use crate::command_buffer::commands::{
     bind_push::{
         SyncCommandBufferBuilderBindDescriptorSets, SyncCommandBufferBuilderBindVertexBuffer,
@@ -24,7 +24,7 @@ use crate::{
     },
     descriptor_set::{DescriptorSetResources, DescriptorSetWithOffsets},
     device::{Device, DeviceOwned},
-    image::{sys::UnsafeImage, ImageAccess, ImageLayout},
+    image::{sys::UnsafeImage, ImageAccess, ImageLayout, ImageSubresourceRange},
     pipeline::{
         graphics::{
             color_blend::LogicOp,
@@ -48,7 +48,7 @@ use std::{
     borrow::Cow,
     collections::{hash_map::Entry, HashMap},
     error, fmt,
-    mem::replace,
+    ops::Range,
     sync::Arc,
 };
 
@@ -106,13 +106,6 @@ pub struct SyncCommandBufferBuilder {
 
     // Current binding/setting state.
     pub(in crate::command_buffer) current_state: CurrentState,
-
-    // `true` if the builder has been put in an inconsistent state. This happens when
-    // `append_command` throws an error, because some changes to the internal state have already
-    // been made at that point and can't be reverted.
-    // TODO: throw the error in `append_command` _before_ any state changes are made,
-    // so that this is no longer needed.
-    is_poisoned: bool,
 
     // True if we're a secondary command buffer.
     is_secondary: bool,
@@ -175,7 +168,6 @@ impl SyncCommandBufferBuilder {
             buffers: Vec::new(),
             images: Vec::new(),
             current_state: Default::default(),
-            is_poisoned: false,
             is_secondary,
         }
     }
@@ -197,6 +189,148 @@ impl SyncCommandBufferBuilder {
         self.current_state = Default::default();
     }
 
+    pub(in crate::command_buffer) fn check_resource_conflicts(
+        &self,
+        resource: &(Cow<'static, str>, Resource),
+    ) -> Result<(), SyncCommandBufferBuilderError> {
+        let (resource_name, resource) = resource;
+
+        match resource {
+            &Resource::Buffer {
+                ref buffer,
+                ref range,
+                ref memory,
+            } => {
+                debug_assert!(memory.stages.supported_access().contains(&memory.access));
+
+                if let Some(conflicting_use) =
+                    self.find_buffer_conflict(buffer, range.clone(), memory)
+                {
+                    return Err(SyncCommandBufferBuilderError::Conflict {
+                        command_param: resource_name.clone(),
+                        previous_command_name: self.commands[conflicting_use.command_index].name(),
+                        previous_command_offset: conflicting_use.command_index,
+                        previous_command_param: conflicting_use.name.clone(),
+                    });
+                }
+            }
+            &Resource::Image {
+                ref image,
+                ref subresource_range,
+                ref memory,
+                start_layout,
+                end_layout,
+            } => {
+                debug_assert!(memory.exclusive || start_layout == end_layout);
+                debug_assert!(memory.stages.supported_access().contains(&memory.access));
+                debug_assert!(end_layout != ImageLayout::Undefined);
+                debug_assert!(end_layout != ImageLayout::Preinitialized);
+
+                if let Some(conflicting_use) = self.find_image_conflict(
+                    image,
+                    subresource_range.clone(),
+                    memory,
+                    start_layout,
+                    end_layout,
+                ) {
+                    return Err(SyncCommandBufferBuilderError::Conflict {
+                        command_param: resource_name.clone(),
+                        previous_command_name: self.commands[conflicting_use.command_index].name(),
+                        previous_command_offset: conflicting_use.command_index,
+                        previous_command_param: conflicting_use.name.clone(),
+                    });
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn find_buffer_conflict(
+        &self,
+        buffer: &dyn BufferAccess,
+        mut range: Range<DeviceSize>,
+        memory: &PipelineMemoryAccess,
+    ) -> Option<&BufferUse> {
+        // Barriers work differently in render passes, so if we're in one, we can only insert a
+        // barrier before the start of the render pass.
+        let last_allowed_barrier_index =
+            self.latest_render_pass_enter.unwrap_or(self.commands.len());
+
+        let inner = buffer.inner();
+        range.start += inner.offset;
+        range.end += inner.offset;
+
+        let range_map = self.buffers2.get(inner.buffer)?;
+
+        for (range, state) in range_map.range(&range) {
+            if let Some(state) = state {
+                debug_assert!(state
+                    .resource_uses
+                    .iter()
+                    .all(|resource_use| resource_use.command_index <= self.commands.len()));
+
+                if memory.exclusive || state.memory.exclusive {
+                    // If there is a resource use at a position beyond where we can insert a
+                    // barrier, then there is an unsolvable conflict.
+                    if let Some(conflicting_use) = state.resource_uses.iter().find(|resource_use| {
+                        resource_use.command_index >= last_allowed_barrier_index
+                    }) {
+                        return Some(conflicting_use);
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    fn find_image_conflict(
+        &self,
+        image: &dyn ImageAccess,
+        subresource_range: ImageSubresourceRange,
+        memory: &PipelineMemoryAccess,
+        start_layout: ImageLayout,
+        end_layout: ImageLayout,
+    ) -> Option<&ImageUse> {
+        // Barriers work differently in render passes, so if we're in one, we can only insert a
+        // barrier before the start of the render pass.
+        let last_allowed_barrier_index =
+            self.latest_render_pass_enter.unwrap_or(self.commands.len());
+
+        let inner = image.inner();
+
+        let range_map = self.images2.get(inner.image)?;
+
+        for range in inner.image.iter_ranges(subresource_range) {
+            for (range, state) in range_map.range(&range) {
+                if let Some(state) = state {
+                    debug_assert!(state
+                        .resource_uses
+                        .iter()
+                        .all(|resource_use| resource_use.command_index <= self.commands.len()));
+
+                    if memory.exclusive
+                        || state.memory.exclusive
+                        || state.current_layout != start_layout
+                    {
+                        // If there is a resource use at a position beyond where we can insert a
+                        // barrier, then there is an unsolvable conflict.
+                        if let Some(conflicting_use) =
+                            state.resource_uses.iter().find(|resource_use| {
+                                resource_use.command_index >= last_allowed_barrier_index
+                            })
+                        {
+                            return Some(conflicting_use);
+                        }
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
     // Adds a command to be processed by the builder.
     //
     // The `resources` argument should contain each buffer or image used by the command.
@@ -209,74 +343,60 @@ impl SyncCommandBufferBuilder {
     //   in when the command starts, and the image layout that the image will be transitioned to
     //   during the command. When it comes to buffers, you should pass `Undefined` for both.
     #[inline]
-    pub(in crate::command_buffer) fn append_command<C>(
+    pub(in crate::command_buffer) fn add_resource(
         &mut self,
-        command: C,
-        resources: impl IntoIterator<
-            Item = (
-                KeyTy,
-                Cow<'static, str>,
-                Option<(PipelineMemoryAccess, ImageLayout, ImageLayout)>,
-            ),
-        >,
-    ) -> Result<(), SyncCommandBufferBuilderError>
-    where
-        C: Command + 'static,
-    {
-        // TODO: see comment for the `is_poisoned` member in the struct
-        assert!(
-            !self.is_poisoned,
-            "The builder has been put in an inconsistent state by a previous error"
-        );
+        resource: (Cow<'static, str>, Resource),
+    ) {
+        let (resource_name, resource) = resource;
 
-        // Note that we don't submit the command to the inner command buffer yet.
-        let (latest_command_id, end) = {
-            self.commands.push(Box::new(command));
-            let latest_command_id = self.commands.len() - 1;
-            let end = self.latest_render_pass_enter.unwrap_or(latest_command_id);
-            (latest_command_id, end)
-        };
-
-        for (resource_ty, resource_name, resource) in resources {
-            if let Some((memory, start_layout, end_layout)) = resource {
-                // Anti-dumbness checks.
-                debug_assert!(memory.exclusive || start_layout == end_layout);
-                debug_assert!(memory.stages.supported_access().contains(&memory.access));
-
-                match resource_ty {
-                    KeyTy::Buffer(buffer) => {
-                        debug_assert!(start_layout == ImageLayout::Undefined);
-                        debug_assert!(end_layout == ImageLayout::Undefined);
-                        self.add_buffer(buffer, resource_name, memory)?;
-                    }
-                    KeyTy::Image(image) => {
-                        debug_assert!(end_layout != ImageLayout::Undefined);
-                        debug_assert!(end_layout != ImageLayout::Preinitialized);
-                        self.add_image(image, resource_name, memory, start_layout, end_layout)?;
-                    }
-                }
+        match resource {
+            Resource::Buffer {
+                buffer,
+                range,
+                memory,
+            } => {
+                self.add_buffer(resource_name, buffer, range, memory);
+            }
+            Resource::Image {
+                image,
+                subresource_range,
+                memory,
+                start_layout,
+                end_layout,
+            } => {
+                self.add_image(
+                    resource_name,
+                    image,
+                    subresource_range,
+                    memory,
+                    start_layout,
+                    end_layout,
+                );
             }
         }
-
-        Ok(())
     }
 
     fn add_buffer(
         &mut self,
-        buffer: Arc<dyn BufferAccess>,
         resource_name: Cow<'static, str>,
+        buffer: Arc<dyn BufferAccess>,
+        mut range: Range<DeviceSize>,
         memory: PipelineMemoryAccess,
-    ) -> Result<(), SyncCommandBufferBuilderError> {
-        let latest_command_id = self.commands.len() - 1;
-        let end = self.latest_render_pass_enter.unwrap_or(latest_command_id);
+    ) {
+        // Barriers work differently in render passes, so if we're in one, we can only insert a
+        // barrier before the start of the render pass.
+        let last_allowed_barrier_index = self
+            .latest_render_pass_enter
+            .unwrap_or(self.commands.len() - 1);
 
         let inner = buffer.inner();
+        range.start += inner.offset;
+        range.end += inner.offset;
+
         let range_map = self
             .buffers2
             .entry(inner.buffer.clone())
             .or_insert_with(|| [(0..inner.buffer.size(), None)].into_iter().collect());
-
-        let range = inner.offset..inner.offset + buffer.size();
         range_map.split_at(&range.start);
         range_map.split_at(&range.end);
 
@@ -284,11 +404,6 @@ impl SyncCommandBufferBuilder {
             match state {
                 // Situation where this resource was used before in this command buffer.
                 Some(state) => {
-                    debug_assert!(state
-                        .resource_uses
-                        .iter()
-                        .all(|resource_use| resource_use.command_index <= latest_command_id));
-
                     // Find out if we have a collision with the pending commands.
                     if memory.exclusive || state.memory.exclusive {
                         // Collision found between `latest_command_id` and `collision_cmd_id`.
@@ -297,49 +412,24 @@ impl SyncCommandBufferBuilder {
                         // collision. But since the pipeline barrier is going to be submitted before
                         // the flushed commands, it would be a mistake if `collision_cmd_id` hasn't
                         // been flushed yet.
-                        let first_unflushed_cmd_id = self.first_unflushed;
-
-                        if state.resource_uses.iter().any(|resource_use| {
-                            resource_use.command_index >= first_unflushed_cmd_id
-                        }) {
+                        if state
+                            .resource_uses
+                            .iter()
+                            .any(|resource_use| resource_use.command_index >= self.first_unflushed)
+                        {
                             unsafe {
                                 // Flush the pending barrier.
-                                let barrier =
-                                    replace(&mut self.pending_barrier, DependencyInfo::default());
-                                self.inner.pipeline_barrier(barrier);
+                                self.inner.pipeline_barrier(&self.pending_barrier);
+                                self.pending_barrier.clear();
+                                self.barriers.push(self.first_unflushed); // Track inserted barriers
 
-                                // Flush the commands if possible, or return an error if not possible.
+                                for command in &mut self.commands
+                                    [self.first_unflushed..last_allowed_barrier_index]
                                 {
-                                    let start = self.first_unflushed;
-                                    self.barriers.push(start); // Track inserted barriers
-
-                                    if let Some(conflicting_use) = state
-                                        .resource_uses
-                                        .iter()
-                                        .find(|resource_use| resource_use.command_index >= end)
-                                    {
-                                        // TODO: see comment for the `is_poisoned` member in the struct
-                                        self.is_poisoned = true;
-
-                                        let cmd2 = &self.commands[latest_command_id];
-
-                                        return Err(SyncCommandBufferBuilderError::Conflict {
-                                            command1_name: self.commands
-                                                [conflicting_use.command_index]
-                                                .name(),
-                                            command1_param: conflicting_use.name.clone(),
-                                            command1_offset: conflicting_use.command_index,
-
-                                            command2_name: self.commands[latest_command_id].name(),
-                                            command2_param: resource_name.clone(),
-                                            command2_offset: latest_command_id,
-                                        });
-                                    }
-                                    for command in &mut self.commands[start..end] {
-                                        command.send(&mut self.inner);
-                                    }
-                                    self.first_unflushed = end;
+                                    command.send(&mut self.inner);
                                 }
+
+                                self.first_unflushed = last_allowed_barrier_index;
                             }
                         }
 
@@ -356,7 +446,7 @@ impl SyncCommandBufferBuilder {
                             });
 
                         state.resource_uses.push(BufferUse {
-                            command_index: latest_command_id,
+                            command_index: self.commands.len() - 1,
                             name: resource_name.clone(),
                         });
 
@@ -376,7 +466,7 @@ impl SyncCommandBufferBuilder {
                 None => {
                     *state = Some(BufferState {
                         resource_uses: vec![BufferUse {
-                            command_index: latest_command_id,
+                            command_index: self.commands.len() - 1,
                             name: resource_name.clone(),
                         }],
 
@@ -392,31 +482,31 @@ impl SyncCommandBufferBuilder {
         }
 
         self.buffers.push((buffer, memory));
-        Ok(())
     }
 
     fn add_image(
         &mut self,
-        image: Arc<dyn ImageAccess>,
         resource_name: Cow<'static, str>,
+        image: Arc<dyn ImageAccess>,
+        subresource_range: ImageSubresourceRange,
         memory: PipelineMemoryAccess,
         start_layout: ImageLayout,
         end_layout: ImageLayout,
-    ) -> Result<(), SyncCommandBufferBuilderError> {
-        let latest_command_id = self.commands.len() - 1;
-        let end = self.latest_render_pass_enter.unwrap_or(latest_command_id);
+    ) {
+        // Barriers work differently in render passes, so if we're in one, we can only insert a
+        // barrier before the start of the render pass.
+        let last_allowed_barrier_index = self
+            .latest_render_pass_enter
+            .unwrap_or(self.commands.len() - 1);
 
         let inner = image.inner();
+
         let range_map = self
             .images2
             .entry(inner.image.clone())
             .or_insert_with(|| [(0..inner.image.range_size(), None)].into_iter().collect());
 
-        for range in inner.image.iter_ranges(
-            image.format().aspects(),
-            image.current_mip_levels_access(),
-            image.current_array_layers_access(),
-        ) {
+        for range in inner.image.iter_ranges(subresource_range) {
             range_map.split_at(&range.start);
             range_map.split_at(&range.end);
 
@@ -424,11 +514,6 @@ impl SyncCommandBufferBuilder {
                 match state {
                     // Situation where this resource was used before in this command buffer.
                     Some(state) => {
-                        debug_assert!(state
-                            .resource_uses
-                            .iter()
-                            .all(|resource_use| resource_use.command_index <= latest_command_id));
-
                         // Find out if we have a collision with the pending commands.
                         if memory.exclusive
                             || state.memory.exclusive
@@ -440,53 +525,28 @@ impl SyncCommandBufferBuilder {
                             // collision. But since the pipeline barrier is going to be submitted before
                             // the flushed commands, it would be a mistake if `collision_cmd_id` hasn't
                             // been flushed yet.
-                            let first_unflushed_cmd_id = self.first_unflushed;
-
                             if state.resource_uses.iter().any(|resource_use| {
-                                resource_use.command_index >= first_unflushed_cmd_id
+                                resource_use.command_index >= self.first_unflushed
                             }) || state.current_layout != start_layout
                             {
+                                debug_assert!(state
+                                    .resource_uses
+                                    .iter()
+                                    .all(|resource_use| resource_use.command_index
+                                        < last_allowed_barrier_index));
+
                                 unsafe {
                                     // Flush the pending barrier.
-                                    let barrier = replace(
-                                        &mut self.pending_barrier,
-                                        DependencyInfo::default(),
-                                    );
-                                    self.inner.pipeline_barrier(barrier);
+                                    self.inner.pipeline_barrier(&self.pending_barrier);
+                                    self.pending_barrier.clear();
+                                    self.barriers.push(self.first_unflushed); // Track inserted barriers
 
-                                    // Flush the commands if possible, or return an error if not possible.
+                                    for command in &mut self.commands
+                                        [self.first_unflushed..last_allowed_barrier_index]
                                     {
-                                        let start = self.first_unflushed;
-                                        self.barriers.push(start); // Track inserted barriers
-
-                                        if let Some(conflicting_use) = state
-                                            .resource_uses
-                                            .iter()
-                                            .find(|resource_use| resource_use.command_index >= end)
-                                        {
-                                            // TODO: see comment for the `is_poisoned` member in the struct
-                                            self.is_poisoned = true;
-
-                                            let cmd2 = &self.commands[latest_command_id];
-
-                                            return Err(SyncCommandBufferBuilderError::Conflict {
-                                                command1_name: self.commands
-                                                    [conflicting_use.command_index]
-                                                    .name(),
-                                                command1_param: conflicting_use.name.clone(),
-                                                command1_offset: conflicting_use.command_index,
-
-                                                command2_name: self.commands[latest_command_id]
-                                                    .name(),
-                                                command2_param: resource_name.clone(),
-                                                command2_offset: latest_command_id,
-                                            });
-                                        }
-                                        for command in &mut self.commands[start..end] {
-                                            command.send(&mut self.inner);
-                                        }
-                                        self.first_unflushed = end;
+                                        command.send(&mut self.inner);
                                     }
+                                    self.first_unflushed = last_allowed_barrier_index;
                                 }
                             }
 
@@ -507,7 +567,7 @@ impl SyncCommandBufferBuilder {
                                 });
 
                             state.resource_uses.push(ImageUse {
-                                command_index: latest_command_id,
+                                command_index: self.commands.len() - 1,
                                 name: resource_name.clone(),
                             });
 
@@ -597,7 +657,7 @@ impl SyncCommandBufferBuilder {
 
                         *state = Some(ImageState {
                             resource_uses: vec![ImageUse {
-                                command_index: latest_command_id,
+                                command_index: self.commands.len() - 1,
                                 name: resource_name.clone(),
                             }],
 
@@ -617,25 +677,20 @@ impl SyncCommandBufferBuilder {
         }
 
         self.images.push((image, memory, start_layout, end_layout));
-        Ok(())
     }
 
     /// Builds the command buffer and turns it into a `SyncCommandBuffer`.
     #[inline]
     pub fn build(mut self) -> Result<SyncCommandBuffer, OomError> {
-        // TODO: see comment for the `is_poisoned` member in the struct
-        assert!(
-            !self.is_poisoned,
-            "The builder has been put in an inconsistent state by a previous error"
-        );
-
         debug_assert!(self.latest_render_pass_enter.is_none() || self.pending_barrier.is_empty());
 
         // The commands that haven't been sent to the inner command buffer yet need to be sent.
         unsafe {
-            self.inner.pipeline_barrier(self.pending_barrier);
+            self.inner.pipeline_barrier(&self.pending_barrier);
+            self.pending_barrier.clear();
             let start = self.first_unflushed;
             self.barriers.push(start); // Track inserted barriers
+
             for command in &mut self.commands[start..] {
                 command.send(&mut self.inner);
             }
@@ -644,9 +699,6 @@ impl SyncCommandBufferBuilder {
         // Transition images to their desired final layout.
         if !self.is_secondary {
             unsafe {
-                // TODO: this could be optimized by merging the barrier with the barrier above?
-                let mut barrier = DependencyInfo::default();
-
                 for (image, range_map) in self.images2.iter_mut() {
                     for (range, state) in range_map
                         .iter_mut()
@@ -656,26 +708,28 @@ impl SyncCommandBufferBuilder {
                             continue;
                         }
 
-                        barrier.image_memory_barriers.push(ImageMemoryBarrier {
-                            source_stages: state.memory.stages,
-                            source_access: state.memory.access,
-                            destination_stages: PipelineStages {
-                                top_of_pipe: true,
-                                ..PipelineStages::none()
-                            },
-                            destination_access: AccessFlags::none(),
-                            old_layout: state.current_layout,
-                            new_layout: state.final_layout,
-                            subresource_range: image.range_to_subresources(range.clone()),
-                            ..ImageMemoryBarrier::image(image.clone())
-                        });
+                        self.pending_barrier
+                            .image_memory_barriers
+                            .push(ImageMemoryBarrier {
+                                source_stages: state.memory.stages,
+                                source_access: state.memory.access,
+                                destination_stages: PipelineStages {
+                                    top_of_pipe: true,
+                                    ..PipelineStages::none()
+                                },
+                                destination_access: AccessFlags::none(),
+                                old_layout: state.current_layout,
+                                new_layout: state.final_layout,
+                                subresource_range: image.range_to_subresources(range.clone()),
+                                ..ImageMemoryBarrier::image(image.clone())
+                            });
 
                         state.exclusive_any = true;
                         state.current_layout = state.final_layout;
                     }
                 }
 
-                self.inner.pipeline_barrier(barrier);
+                self.inner.pipeline_barrier(&self.pending_barrier);
             }
         }
 
@@ -761,13 +815,10 @@ impl fmt::Debug for SyncCommandBufferBuilder {
 pub enum SyncCommandBufferBuilderError {
     /// Unsolvable conflict.
     Conflict {
-        command1_name: &'static str,
-        command1_param: Cow<'static, str>,
-        command1_offset: usize,
-
-        command2_name: &'static str,
-        command2_param: Cow<'static, str>,
-        command2_offset: usize,
+        command_param: Cow<'static, str>,
+        previous_command_name: &'static str,
+        previous_command_offset: usize,
+        previous_command_param: Cow<'static, str>,
     },
 
     ExecError(CommandBufferExecError),

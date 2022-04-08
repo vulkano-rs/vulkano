@@ -126,7 +126,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdBeginDebugUtilsLabelEXT"
+                "debug_marker_begin"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -134,7 +134,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { name, color }, []).unwrap();
+        self.commands.push(Box::new(Cmd { name, color }));
     }
 
     /// Calls `vkCmdEndDebugUtilsLabelEXT` on the builder.
@@ -150,7 +150,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdEndDebugUtilsLabelEXT"
+                "debug_marker_end"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -158,7 +158,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd {}, []).unwrap();
+        self.commands.push(Box::new(Cmd {}));
     }
 
     /// Calls `vkCmdInsertDebugUtilsLabelEXT` on the builder.
@@ -175,7 +175,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdInsertDebugUtilsLabelEXT"
+                "debug_marker_insert"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -183,7 +183,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { name, color }, []).unwrap();
+        self.commands.push(Box::new(Cmd { name, color }));
     }
 }
 

@@ -11,20 +11,22 @@ use crate::{
     command_buffer::{
         auto::ClearDepthStencilImageError,
         commands::transfer::{is_overlapping_ranges, is_overlapping_regions},
-        synced::{Command, KeyTy, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
+        synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder, AutoCommandBufferBuilderContextError, BlitImageError,
         ClearColorImageError,
     },
     device::{Device, DeviceOwned},
     format::{ClearValue, NumericType},
-    image::{ImageAccess, ImageAspects, ImageDimensions, ImageLayout, SampleCount},
+    image::{
+        ImageAccess, ImageAspects, ImageDimensions, ImageLayout, ImageSubresourceRange, SampleCount,
+    },
     sampler::Filter,
     sync::{AccessFlags, PipelineMemoryAccess, PipelineStages},
     VulkanObject,
 };
 use parking_lot::Mutex;
-use smallvec::SmallVec;
+use smallvec::{smallvec, SmallVec};
 use std::{error, fmt, sync::Arc};
 
 /// # Commands that operate on images.
@@ -845,7 +847,7 @@ impl SyncCommandBufferBuilder {
             R: IntoIterator<Item = UnsafeCommandBufferBuilderImageBlit> + Send + Sync,
         {
             fn name(&self) -> &'static str {
-                "vkCmdBlitImage"
+                "blit_image"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -860,8 +862,6 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        let mut resources: SmallVec<[_; 2]> = SmallVec::new();
-
         // if its the same image in source and destination, we need to lock it once
         let source_key = (
             source.conflict_key(),
@@ -873,12 +873,19 @@ impl SyncCommandBufferBuilder {
             destination.current_mip_levels_access(),
             destination.current_array_layers_access(),
         );
-        if source_key == destination_key {
-            resources.push((
-                KeyTy::Image(source.clone()),
+
+        let resources: SmallVec<[_; 2]> = if source_key == destination_key {
+            smallvec![(
                 "source_and_destination".into(),
-                Some((
-                    PipelineMemoryAccess {
+                Resource::Image {
+                    image: source.clone(),
+                    subresource_range: ImageSubresourceRange {
+                        // TODO:
+                        aspects: source.format().aspects(),
+                        mip_levels: source.current_mip_levels_access(),
+                        array_layers: source.current_array_layers_access(),
+                    },
+                    memory: PipelineMemoryAccess {
                         stages: PipelineStages {
                             transfer: true,
                             ..PipelineStages::none()
@@ -890,18 +897,23 @@ impl SyncCommandBufferBuilder {
                         },
                         exclusive: true,
                     },
-                    // TODO: should, we take the layout as parameter? if so, which? source or destination?
-                    ImageLayout::General,
-                    ImageLayout::General,
-                )),
-            ));
+                    start_layout: ImageLayout::General,
+                    end_layout: ImageLayout::General,
+                },
+            )]
         } else {
-            resources.extend([
+            smallvec![
                 (
-                    KeyTy::Image(source.clone()),
                     "source".into(),
-                    Some((
-                        PipelineMemoryAccess {
+                    Resource::Image {
+                        image: source.clone(),
+                        subresource_range: ImageSubresourceRange {
+                            // TODO:
+                            aspects: source.format().aspects(),
+                            mip_levels: source.current_mip_levels_access(),
+                            array_layers: source.current_array_layers_access(),
+                        },
+                        memory: PipelineMemoryAccess {
                             stages: PipelineStages {
                                 transfer: true,
                                 ..PipelineStages::none()
@@ -912,15 +924,21 @@ impl SyncCommandBufferBuilder {
                             },
                             exclusive: false,
                         },
-                        source_layout,
-                        source_layout,
-                    )),
+                        start_layout: source_layout,
+                        end_layout: source_layout,
+                    },
                 ),
                 (
-                    KeyTy::Image(destination.clone()),
                     "destination".into(),
-                    Some((
-                        PipelineMemoryAccess {
+                    Resource::Image {
+                        image: destination.clone(),
+                        subresource_range: ImageSubresourceRange {
+                            // TODO:
+                            aspects: destination.format().aspects(),
+                            mip_levels: destination.current_mip_levels_access(),
+                            array_layers: destination.current_array_layers_access(),
+                        },
+                        memory: PipelineMemoryAccess {
                             stages: PipelineStages {
                                 transfer: true,
                                 ..PipelineStages::none()
@@ -931,24 +949,29 @@ impl SyncCommandBufferBuilder {
                             },
                             exclusive: true,
                         },
-                        destination_layout,
-                        destination_layout,
-                    )),
+                        start_layout: destination_layout,
+                        end_layout: destination_layout,
+                    },
                 ),
-            ]);
+            ]
+        };
+
+        for resource in &resources {
+            self.check_resource_conflicts(resource)?;
         }
 
-        self.append_command(
-            Cmd {
-                source,
-                source_layout,
-                destination,
-                destination_layout,
-                regions: Mutex::new(Some(regions)),
-                filter,
-            },
-            resources,
-        )?;
+        self.commands.push(Box::new(Cmd {
+            source,
+            source_layout,
+            destination,
+            destination_layout,
+            regions: Mutex::new(Some(regions)),
+            filter,
+        }));
+
+        for resource in resources {
+            self.add_resource(resource);
+        }
 
         Ok(())
     }
@@ -982,7 +1005,7 @@ impl SyncCommandBufferBuilder {
                 + 'static,
         {
             fn name(&self) -> &'static str {
-                "vkCmdClearColorImage"
+                "clear_color_image"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -995,33 +1018,46 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(
-            Cmd {
+        let resources = [(
+            "target".into(),
+            Resource::Image {
                 image: image.clone(),
-                layout,
-                color,
-                regions: Mutex::new(Some(regions)),
-            },
-            [(
-                KeyTy::Image(image),
-                "target".into(),
-                Some((
-                    PipelineMemoryAccess {
-                        stages: PipelineStages {
-                            transfer: true,
-                            ..PipelineStages::none()
-                        },
-                        access: AccessFlags {
-                            transfer_write: true,
-                            ..AccessFlags::none()
-                        },
-                        exclusive: true,
+                subresource_range: ImageSubresourceRange {
+                    // TODO:
+                    aspects: image.format().aspects(),
+                    mip_levels: image.current_mip_levels_access(),
+                    array_layers: image.current_array_layers_access(),
+                },
+                memory: PipelineMemoryAccess {
+                    stages: PipelineStages {
+                        transfer: true,
+                        ..PipelineStages::none()
                     },
-                    layout,
-                    layout,
-                )),
-            )],
-        )?;
+                    access: AccessFlags {
+                        transfer_write: true,
+                        ..AccessFlags::none()
+                    },
+                    exclusive: true,
+                },
+                start_layout: layout,
+                end_layout: layout,
+            },
+        )];
+
+        for resource in &resources {
+            self.check_resource_conflicts(resource)?;
+        }
+
+        self.commands.push(Box::new(Cmd {
+            image,
+            layout,
+            color,
+            regions: Mutex::new(Some(regions)),
+        }));
+
+        for resource in resources {
+            self.add_resource(resource);
+        }
 
         Ok(())
     }
@@ -1058,7 +1094,7 @@ impl SyncCommandBufferBuilder {
                 + 'static,
         {
             fn name(&self) -> &'static str {
-                "vkCmdClearColorImage"
+                "clear_depth_stencil_image"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1071,33 +1107,46 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(
-            Cmd {
+        let resources = [(
+            "target".into(),
+            Resource::Image {
                 image: image.clone(),
-                layout,
-                clear_value,
-                regions: Mutex::new(Some(regions)),
-            },
-            [(
-                KeyTy::Image(image),
-                "target".into(),
-                Some((
-                    PipelineMemoryAccess {
-                        stages: PipelineStages {
-                            transfer: true,
-                            ..PipelineStages::none()
-                        },
-                        access: AccessFlags {
-                            transfer_write: true,
-                            ..AccessFlags::none()
-                        },
-                        exclusive: true,
+                subresource_range: ImageSubresourceRange {
+                    // TODO:
+                    aspects: image.format().aspects(),
+                    mip_levels: image.current_mip_levels_access(),
+                    array_layers: image.current_array_layers_access(),
+                },
+                memory: PipelineMemoryAccess {
+                    stages: PipelineStages {
+                        transfer: true,
+                        ..PipelineStages::none()
                     },
-                    layout,
-                    layout,
-                )),
-            )],
-        )?;
+                    access: AccessFlags {
+                        transfer_write: true,
+                        ..AccessFlags::none()
+                    },
+                    exclusive: true,
+                },
+                start_layout: layout,
+                end_layout: layout,
+            },
+        )];
+
+        for resource in &resources {
+            self.check_resource_conflicts(resource)?;
+        }
+
+        self.commands.push(Box::new(Cmd {
+            image,
+            layout,
+            clear_value,
+            regions: Mutex::new(Some(regions)),
+        }));
+
+        for resource in resources {
+            self.add_resource(resource);
+        }
 
         Ok(())
     }
