@@ -362,8 +362,17 @@ impl UnsafeCommandBufferBuilder {
                 })
                 .collect();
 
-            debug_assert!(!src_stage_mask.is_empty());
-            debug_assert!(!dst_stage_mask.is_empty());
+            if src_stage_mask.is_empty() {
+                // "VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT is [...] equivalent to
+                // VK_PIPELINE_STAGE_2_NONE in the first scope."
+                src_stage_mask |= ash::vk::PipelineStageFlags::TOP_OF_PIPE;
+            }
+
+            if dst_stage_mask.is_empty() {
+                // "VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT is [...] equivalent to
+                // VK_PIPELINE_STAGE_2_NONE in the second scope."
+                dst_stage_mask |= ash::vk::PipelineStageFlags::BOTTOM_OF_PIPE;
+            }
 
             let fns = self.device.fns();
             fns.v1_0.cmd_pipeline_barrier(

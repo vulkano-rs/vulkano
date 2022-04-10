@@ -501,10 +501,29 @@ impl SyncCommandBufferBuilder {
 
         let inner = image.inner();
 
-        let range_map = self
-            .images2
-            .entry(inner.image.clone())
-            .or_insert_with(|| [(0..inner.image.range_size(), None)].into_iter().collect());
+        let range_map = self.images2.entry(inner.image.clone()).or_insert_with(|| {
+            [(
+                0..inner.image.range_size(),
+                if !self.is_secondary && !image.is_layout_initialized() {
+                    unsafe {
+                        image.layout_initialized();
+                    }
+
+                    Some(ImageState {
+                        resource_uses: Vec::new(),
+                        memory: PipelineMemoryAccess::default(),
+                        exclusive_any: false,
+                        initial_layout: image.initial_layout(),
+                        current_layout: image.initial_layout(),
+                        final_layout: image.final_layout_requirement(),
+                    })
+                } else {
+                    None
+                },
+            )]
+            .into_iter()
+            .collect()
+        });
 
         for range in inner.image.iter_ranges(subresource_range) {
             range_map.split_at(&range.start);
@@ -591,68 +610,52 @@ impl SyncCommandBufferBuilder {
 
                     // Situation where this is the first time we use this resource in this command buffer.
                     None => {
-                        // We need to perform some tweaks if the initial layout requirement of the image
-                        // is different from the first layout usage.
                         let mut actually_exclusive = memory.exclusive;
-                        let mut actual_start_layout = start_layout;
+                        let mut initial_layout = start_layout;
+                        let initial_layout_requirement = image.initial_layout_requirement();
 
+                        // If this is the first use of the image, and the start layout of the
+                        // command differs from the default layout of the image, insert a transition
+                        // from the default layout to `start_layout` before the command.
                         if !self.is_secondary
-                            && start_layout != ImageLayout::Undefined
-                            && start_layout != ImageLayout::Preinitialized
+                            && !matches!(
+                                start_layout,
+                                ImageLayout::Undefined | ImageLayout::Preinitialized,
+                            )
+                            && initial_layout_requirement != start_layout
                         {
-                            let initial_layout_requirement = image.initial_layout_requirement();
+                            // A layout transition is a write, so if we perform one, we need
+                            // exclusive access.
+                            actually_exclusive = true;
+                            initial_layout = initial_layout_requirement;
 
-                            // Checks if the image is initialized and transitions it
-                            // if it isn't
-                            let is_layout_initialized = image.is_layout_initialized();
-
-                            if initial_layout_requirement != start_layout || !is_layout_initialized
-                            {
-                                // A layout transition is a write, so if we perform one, we need
-                                // exclusive access.
-                                actually_exclusive = true;
-
-                                // Note that we transition from `bottom_of_pipe`, which means that we
-                                // wait for all the previous commands to be entirely finished. This is
-                                // suboptimal, but:
-                                //
-                                // - If we're at the start of the command buffer we have no choice anyway,
-                                //   because we have no knowledge about what comes before.
-                                // - If we're in the middle of the command buffer, this pipeline is going
-                                //   to be merged with an existing barrier. While it may still be
-                                //   suboptimal in some cases, in the general situation it will be ok.
-                                //
-                                unsafe {
-                                    let from_layout = if is_layout_initialized {
-                                        if initial_layout_requirement != start_layout {
-                                            actual_start_layout = initial_layout_requirement;
-                                        }
-
-                                        initial_layout_requirement
-                                    } else {
-                                        actual_start_layout = image.initial_layout();
-                                        image.initial_layout()
-                                    };
-                                    self.pending_barrier.image_memory_barriers.push(
-                                        ImageMemoryBarrier {
-                                            source_stages: PipelineStages {
-                                                bottom_of_pipe: true,
-                                                ..PipelineStages::none()
-                                            },
-                                            source_access: AccessFlags::none(),
-                                            destination_stages: memory.stages,
-                                            destination_access: memory.access,
-                                            old_layout: from_layout,
-                                            new_layout: start_layout,
-                                            subresource_range: inner
-                                                .image
-                                                .range_to_subresources(range.clone()),
-                                            ..ImageMemoryBarrier::image(inner.image.clone())
-                                        },
-                                    );
-                                    image.layout_initialized();
-                                }
-                            }
+                            // Note that we transition from `bottom_of_pipe`, which means that we
+                            // wait for all the previous commands to be entirely finished. This is
+                            // suboptimal, but:
+                            //
+                            // - If we're at the start of the command buffer we have no choice anyway,
+                            //   because we have no knowledge about what comes before.
+                            // - If we're in the middle of the command buffer, this pipeline is going
+                            //   to be merged with an existing barrier. While it may still be
+                            //   suboptimal in some cases, in the general situation it will be ok.
+                            //
+                            self.pending_barrier
+                                .image_memory_barriers
+                                .push(ImageMemoryBarrier {
+                                    source_stages: PipelineStages {
+                                        bottom_of_pipe: true,
+                                        ..PipelineStages::none()
+                                    },
+                                    source_access: AccessFlags::none(),
+                                    destination_stages: memory.stages,
+                                    destination_access: memory.access,
+                                    old_layout: initial_layout_requirement,
+                                    new_layout: start_layout,
+                                    subresource_range: inner
+                                        .image
+                                        .range_to_subresources(range.clone()),
+                                    ..ImageMemoryBarrier::image(inner.image.clone())
+                                });
                         }
 
                         *state = Some(ImageState {
@@ -664,10 +667,10 @@ impl SyncCommandBufferBuilder {
                             memory: PipelineMemoryAccess {
                                 stages: memory.stages,
                                 access: memory.access,
-                                exclusive: actually_exclusive,
+                                exclusive: actually_exclusive, // TODO: is this correct, or should it be memory.exclusive?
                             },
                             exclusive_any: actually_exclusive,
-                            initial_layout: actual_start_layout,
+                            initial_layout,
                             current_layout: end_layout,
                             final_layout: image.final_layout_requirement(),
                         });
