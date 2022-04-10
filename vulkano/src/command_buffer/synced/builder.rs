@@ -548,12 +548,6 @@ impl SyncCommandBufferBuilder {
                                 resource_use.command_index >= self.first_unflushed
                             }) || state.current_layout != start_layout
                             {
-                                debug_assert!(state
-                                    .resource_uses
-                                    .iter()
-                                    .all(|resource_use| resource_use.command_index
-                                        < last_allowed_barrier_index));
-
                                 unsafe {
                                     // Flush the pending barrier.
                                     self.inner.pipeline_barrier(&self.pending_barrier);
