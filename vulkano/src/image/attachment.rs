@@ -14,7 +14,7 @@ use super::{
     SampleCount,
 };
 use crate::{
-    device::Device,
+    device::{Device, DeviceOwned},
     format::{ClearValue, Format},
     image::{sys::UnsafeImageCreateInfo, ImageDimensions},
     memory::{
@@ -561,7 +561,7 @@ where
         ImageInner {
             image: &self.image,
             first_layer: 0,
-            num_layers: self.image.dimensions().array_layers() as usize,
+            num_layers: self.image.dimensions().array_layers(),
             first_mipmap_level: 0,
             num_mipmap_levels: 1,
         }
@@ -610,6 +610,12 @@ where
     #[inline]
     fn current_array_layers_access(&self) -> Range<u32> {
         0..self.dimensions().array_layers()
+    }
+}
+
+unsafe impl<A> DeviceOwned for AttachmentImage<A> {
+    fn device(&self) -> &Arc<Device> {
+        self.image.device()
     }
 }
 

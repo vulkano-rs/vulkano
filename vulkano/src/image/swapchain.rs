@@ -11,7 +11,12 @@ use super::{
     traits::{ImageClearValue, ImageContent},
     ImageAccess, ImageDescriptorLayouts, ImageInner, ImageLayout,
 };
-use crate::{format::ClearValue, swapchain::Swapchain, OomError};
+use crate::{
+    device::{Device, DeviceOwned},
+    format::ClearValue,
+    swapchain::Swapchain,
+    OomError,
+};
 use std::{
     hash::{Hash, Hasher},
     ops::Range,
@@ -73,6 +78,12 @@ impl<W> SwapchainImage<W> {
     fn is_layout_initialized(&self) -> bool {
         self.swapchain
             .is_image_layout_initialized(self.image_offset)
+    }
+}
+
+unsafe impl<W> DeviceOwned for SwapchainImage<W> {
+    fn device(&self) -> &Arc<Device> {
+        self.swapchain.device()
     }
 }
 

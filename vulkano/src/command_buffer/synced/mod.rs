@@ -508,31 +508,25 @@ impl std::fmt::Debug for dyn Command {
 
 #[cfg(test)]
 mod tests {
-    use super::SyncCommandBufferBuilder;
-    use crate::buffer::BufferUsage;
-    use crate::buffer::CpuAccessibleBuffer;
-    use crate::buffer::ImmutableBuffer;
-    use crate::command_buffer::pool::CommandPool;
-    use crate::command_buffer::pool::CommandPoolBuilderAlloc;
-    use crate::command_buffer::sys::CommandBufferBeginInfo;
-    use crate::command_buffer::AutoCommandBufferBuilder;
-    use crate::command_buffer::CommandBufferLevel;
-    use crate::command_buffer::CommandBufferUsage;
-    use crate::descriptor_set::layout::DescriptorSetLayout;
-    use crate::descriptor_set::layout::DescriptorSetLayoutBinding;
-    use crate::descriptor_set::layout::DescriptorSetLayoutCreateInfo;
-    use crate::descriptor_set::layout::DescriptorType;
-    use crate::descriptor_set::PersistentDescriptorSet;
-    use crate::descriptor_set::WriteDescriptorSet;
-    use crate::device::Device;
-    use crate::pipeline::layout::PipelineLayout;
-    use crate::pipeline::layout::PipelineLayoutCreateInfo;
-    use crate::pipeline::PipelineBindPoint;
-    use crate::sampler::Sampler;
-    use crate::sampler::SamplerCreateInfo;
-    use crate::shader::ShaderStages;
-    use crate::sync::GpuFuture;
-    use std::sync::Arc;
+    use super::*;
+    use crate::{
+        buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
+        command_buffer::{
+            pool::{CommandPool, CommandPoolBuilderAlloc},
+            sys::CommandBufferBeginInfo,
+            AutoCommandBufferBuilder, CommandBufferLevel, CommandBufferUsage, FillBufferInfo,
+        },
+        descriptor_set::{
+            layout::{
+                DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
+                DescriptorType,
+            },
+            PersistentDescriptorSet, WriteDescriptorSet,
+        },
+        pipeline::{layout::PipelineLayoutCreateInfo, PipelineBindPoint, PipelineLayout},
+        sampler::{Sampler, SamplerCreateInfo},
+        shader::ShaderStages,
+    };
 
     #[test]
     fn basic_creation() {
@@ -563,12 +557,9 @@ mod tests {
             let (device, queue) = gfx_dev_and_queue!();
 
             // Create a tiny test buffer
-            let (buf, future) = ImmutableBuffer::from_data(
-                0u32,
-                BufferUsage::transfer_destination(),
-                queue.clone(),
-            )
-            .unwrap();
+            let (buf, future) =
+                ImmutableBuffer::from_data(0u32, BufferUsage::transfer_dst(), queue.clone())
+                    .unwrap();
             future
                 .then_signal_fence_and_flush()
                 .unwrap()
@@ -584,7 +575,12 @@ mod tests {
                         CommandBufferUsage::SimultaneousUse,
                     )
                     .unwrap();
-                    builder.fill_buffer(buf.clone(), 42u32).unwrap();
+                    builder
+                        .fill_buffer(FillBufferInfo {
+                            data: 42u32,
+                            ..FillBufferInfo::dst_buffer(buf.clone())
+                        })
+                        .unwrap();
                     Arc::new(builder.build().unwrap())
                 })
                 .collect::<Vec<_>>();

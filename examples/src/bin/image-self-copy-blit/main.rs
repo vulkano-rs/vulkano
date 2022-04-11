@@ -12,16 +12,19 @@ use std::{io::Cursor, sync::Arc};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
     command_buffer::{
-        AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBuffer, SubpassContents,
+        AutoCommandBufferBuilder, BlitImageInfo, BufferImageCopy, ClearColorImageInfo,
+        CommandBufferUsage, CopyBufferToImageInfo, CopyImageInfo, ImageBlit, ImageCopy,
+        PrimaryCommandBuffer, SubpassContents,
     },
     descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
         Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
     },
-    format::{ClearValue, Format},
+    format::Format,
     image::{
-        view::ImageView, ImageAccess, ImageDimensions, ImageUsage, StorageImage, SwapchainImage,
+        view::ImageView, ImageAccess, ImageDimensions, ImageLayout, ImageUsage, StorageImage,
+        SwapchainImage,
     },
     impl_vertex,
     instance::{Instance, InstanceCreateInfo},
@@ -207,7 +210,7 @@ fn main() {
 
         let buffer = CpuAccessibleBuffer::from_iter(
             device.clone(),
-            BufferUsage::transfer_source(),
+            BufferUsage::transfer_src(),
             false,
             image_data,
         )
@@ -222,49 +225,60 @@ fn main() {
         // here, we perform image copying and blitting on the same image
         builder
             //  clear the image buffer
-            .clear_color_image(image.clone(), ClearValue::Float([0.0, 0.0, 0.0, 0.0]))
+            .clear_color_image(ClearColorImageInfo::image(image.clone()))
             .unwrap()
             // put our image in the top left corner
-            .copy_buffer_to_image_dimensions(
-                buffer,
-                image.clone(),
-                [0, 0, 0],
-                [img_size[0], img_size[1], 1],
-                0,
-                1,
-                0,
-            )
+            .copy_buffer_to_image(CopyBufferToImageInfo {
+                regions: [BufferImageCopy {
+                    image_subresource: image.subresource_layers(),
+                    image_extent: [img_size[0], img_size[1], 1],
+                    ..Default::default()
+                }]
+                .into(),
+                ..CopyBufferToImageInfo::buffer_image(buffer, image.clone())
+            })
             .unwrap()
             // copy from the top left corner to the bottom right corner
-            .copy_image(
-                image.clone(),
-                [0, 0, 0],
-                0,
-                0,
-                image.clone(),
-                [img_size[0] as i32, img_size[1] as i32, 0],
-                0,
-                0,
-                [img_size[0], img_size[1], 1],
-                1,
-            )
+            .copy_image(CopyImageInfo {
+                // Copying within the same image requires the General layout if the source and
+                // destination subresources overlap.
+                src_image_layout: ImageLayout::General,
+                dst_image_layout: ImageLayout::General,
+                regions: [ImageCopy {
+                    src_subresource: image.subresource_layers(),
+                    src_offset: [0, 0, 0],
+                    dst_subresource: image.subresource_layers(),
+                    dst_offset: [img_size[0], img_size[1], 0],
+                    extent: [img_size[0], img_size[1], 1],
+                    ..Default::default()
+                }]
+                .into(),
+                ..CopyImageInfo::images(image.clone(), image.clone())
+            })
             .unwrap()
             // blit from the bottom right corner to the top right corner (flipped)
-            .blit_image(
-                image.clone(),
-                [img_size[0] as i32, img_size[1] as i32, 0],
-                [img_size[0] as i32 * 2, img_size[1] as i32 * 2, 1],
-                0,
-                0,
-                image.clone(),
-                // flipping the top_left and bottom_right corners results in flipped image
-                [img_size[0] as i32 * 2 - 1, img_size[1] as i32 - 1, 0],
-                [img_size[0] as i32, 0, 1],
-                0,
-                0,
-                1,
-                Filter::Nearest,
-            )
+            .blit_image(BlitImageInfo {
+                // Same for blitting.
+                src_image_layout: ImageLayout::General,
+                dst_image_layout: ImageLayout::General,
+                regions: [ImageBlit {
+                    src_subresource: image.subresource_layers(),
+                    src_offsets: [
+                        [img_size[0], img_size[1], 0],
+                        [img_size[0] * 2, img_size[1] * 2, 1],
+                    ],
+                    dst_subresource: image.subresource_layers(),
+                    // swapping the two corners results in flipped image
+                    dst_offsets: [
+                        [img_size[0] * 2 - 1, img_size[1] - 1, 0],
+                        [img_size[0], 0, 1],
+                    ],
+                    ..Default::default()
+                }]
+                .into(),
+                filter: Filter::Nearest,
+                ..BlitImageInfo::images(image.clone(), image.clone())
+            })
             .unwrap();
         let command_buffer = builder.build().unwrap();
 

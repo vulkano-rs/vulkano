@@ -290,7 +290,7 @@ pub fn create_device_image(queue: Arc<Queue>, size: [u32; 2], format: Format) ->
                 sampled: true,
                 storage: true,
                 color_attachment: true,
-                transfer_destination: true,
+                transfer_dst: true,
                 ..ImageUsage::none()
             },
             flags,

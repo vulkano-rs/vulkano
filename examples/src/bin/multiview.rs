@@ -17,15 +17,18 @@ use bytemuck::{Pod, Zeroable};
 use std::{fs::File, io::BufWriter, path::Path, sync::Arc};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
-    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents},
+    command_buffer::{
+        AutoCommandBufferBuilder, BufferImageCopy, CommandBufferUsage, CopyImageToBufferInfo,
+        SubpassContents,
+    },
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
         Device, DeviceCreateInfo, DeviceExtensions, Features, QueueCreateInfo,
     },
     format::Format,
     image::{
-        view::ImageView, ImageAccess, ImageCreateFlags, ImageDimensions, ImageLayout, ImageUsage,
-        SampleCount, StorageImage,
+        view::ImageView, ImageAccess, ImageCreateFlags, ImageDimensions, ImageLayout,
+        ImageSubresourceLayers, ImageUsage, SampleCount, StorageImage,
     },
     impl_vertex,
     instance::{Instance, InstanceCreateInfo, InstanceExtensions},
@@ -125,7 +128,7 @@ fn main() {
         },
         Format::B8G8R8A8_SRGB,
         ImageUsage {
-            transfer_source: true,
+            transfer_src: true,
             color_attachment: true,
             ..ImageUsage::none()
         },
@@ -293,25 +296,31 @@ fn main() {
 
     // copy the image layers to different buffers to save them as individual images to disk
     builder
-        .copy_image_to_buffer_dimensions(
-            image.clone(),
-            buffer1.clone(),
-            [0, 0, 0],
-            image.dimensions().width_height_depth(),
-            0,
-            1,
-            0,
-        )
+        .copy_image_to_buffer(CopyImageToBufferInfo {
+            regions: [BufferImageCopy {
+                image_subresource: ImageSubresourceLayers {
+                    array_layers: 0..1,
+                    ..image.subresource_layers()
+                },
+                image_extent: image.dimensions().width_height_depth(),
+                ..Default::default()
+            }]
+            .into(),
+            ..CopyImageToBufferInfo::image_buffer(image.clone(), buffer1.clone())
+        })
         .unwrap()
-        .copy_image_to_buffer_dimensions(
-            image.clone(),
-            buffer2.clone(),
-            [0, 0, 0],
-            image.dimensions().width_height_depth(),
-            1,
-            1,
-            0,
-        )
+        .copy_image_to_buffer(CopyImageToBufferInfo {
+            regions: [BufferImageCopy {
+                image_subresource: ImageSubresourceLayers {
+                    array_layers: 1..2,
+                    ..image.subresource_layers()
+                },
+                image_extent: image.dimensions().width_height_depth(),
+                ..Default::default()
+            }]
+            .into(),
+            ..CopyImageToBufferInfo::image_buffer(image.clone(), buffer2.clone())
+        })
         .unwrap();
 
     let command_buffer = builder.build().unwrap();

@@ -25,7 +25,7 @@ use super::{
 use crate::{
     buffer::{sys::UnsafeBufferCreateInfo, BufferCreationError, TypedBufferAccess},
     command_buffer::{
-        AutoCommandBufferBuilder, CommandBufferExecFuture, CommandBufferUsage,
+        AutoCommandBufferBuilder, CommandBufferExecFuture, CommandBufferUsage, CopyBufferInfo,
         PrimaryAutoCommandBuffer, PrimaryCommandBuffer,
     },
     device::{physical::QueueFamily, Device, DeviceOwned, Queue},
@@ -91,9 +91,9 @@ where
         B: TypedBufferAccess<Content = T> + 'static,
     {
         unsafe {
-            // We automatically set `transfer_destination` to true in order to avoid annoying errors.
+            // We automatically set `transfer_dst` to true in order to avoid annoying errors.
             let actual_usage = BufferUsage {
-                transfer_destination: true,
+                transfer_dst: true,
                 ..usage
             };
 
@@ -109,7 +109,8 @@ where
                 queue.family(),
                 CommandBufferUsage::MultipleSubmit,
             )?;
-            cbb.copy_buffer(source, init).unwrap(); // TODO: return error?
+            cbb.copy_buffer(CopyBufferInfo::buffers(source, init))
+                .unwrap(); // TODO: return error?
             let cb = cbb.build().unwrap(); // TODO: return OomError
 
             let future = match cb.execute(queue) {
@@ -150,7 +151,7 @@ where
     > {
         let source = CpuAccessibleBuffer::from_data(
             queue.device().clone(),
-            BufferUsage::transfer_source(),
+            BufferUsage::transfer_src(),
             false,
             data,
         )?;
@@ -218,7 +219,7 @@ where
     {
         let source = CpuAccessibleBuffer::from_iter(
             queue.device().clone(),
-            BufferUsage::transfer_source(),
+            BufferUsage::transfer_src(),
             false,
             data,
         )?;
@@ -586,12 +587,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::buffer::cpu_access::CpuAccessibleBuffer;
-    use crate::buffer::immutable::ImmutableBuffer;
-    use crate::buffer::BufferUsage;
-    use crate::command_buffer::AutoCommandBufferBuilder;
-    use crate::command_buffer::CommandBufferUsage;
-    use crate::command_buffer::PrimaryCommandBuffer;
+    use super::*;
     use crate::sync::GpuFuture;
 
     #[test]
@@ -610,7 +606,8 @@ mod tests {
             CommandBufferUsage::MultipleSubmit,
         )
         .unwrap();
-        cbb.copy_buffer(buffer, destination.clone()).unwrap();
+        cbb.copy_buffer(CopyBufferInfo::buffers(buffer, destination.clone()))
+            .unwrap();
         let _ = cbb
             .build()
             .unwrap()
@@ -648,7 +645,8 @@ mod tests {
             CommandBufferUsage::MultipleSubmit,
         )
         .unwrap();
-        cbb.copy_buffer(buffer, destination.clone()).unwrap();
+        cbb.copy_buffer(CopyBufferInfo::buffers(buffer, destination.clone()))
+            .unwrap();
         let _ = cbb
             .build()
             .unwrap()
@@ -680,9 +678,9 @@ mod tests {
             CommandBufferUsage::MultipleSubmit,
         )
         .unwrap();
-        cbb.copy_buffer(source.clone(), init)
+        cbb.copy_buffer(CopyBufferInfo::buffers(source.clone(), init))
             .unwrap()
-            .copy_buffer(buffer, source.clone())
+            .copy_buffer(CopyBufferInfo::buffers(buffer, source.clone()))
             .unwrap();
         let _ = cbb
             .build()
@@ -711,7 +709,8 @@ mod tests {
             CommandBufferUsage::MultipleSubmit,
         )
         .unwrap();
-        cbb.copy_buffer(source.clone(), init).unwrap();
+        cbb.copy_buffer(CopyBufferInfo::buffers(source.clone(), init))
+            .unwrap();
         let cb1 = cbb.build().unwrap();
 
         let mut cbb = AutoCommandBufferBuilder::primary(
@@ -720,7 +719,8 @@ mod tests {
             CommandBufferUsage::MultipleSubmit,
         )
         .unwrap();
-        cbb.copy_buffer(buffer, source.clone()).unwrap();
+        cbb.copy_buffer(CopyBufferInfo::buffers(buffer, source.clone()))
+            .unwrap();
         let cb2 = cbb.build().unwrap();
 
         let _ = cb1

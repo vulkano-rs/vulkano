@@ -14,8 +14,9 @@
 //! that you create must wrap around the types in this module.
 
 use super::{
-    ImageAspect, ImageCreateFlags, ImageDimensions, ImageLayout, ImageSubresourceRange,
-    ImageTiling, ImageUsage, SampleCount, SampleCounts,
+    ImageAspect, ImageAspects, ImageCreateFlags, ImageDimensions, ImageLayout,
+    ImageSubresourceLayers, ImageSubresourceRange, ImageTiling, ImageUsage, SampleCount,
+    SampleCounts,
 };
 use crate::{
     buffer::cpu_access::{ReadLockError, WriteLockError},
@@ -397,14 +398,14 @@ impl UnsafeImage {
 
         // These flags only exist in later versions, ignore them otherwise
         if device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1 {
-            if usage.transfer_source && !format_features.transfer_src {
+            if usage.transfer_src && !format_features.transfer_src {
                 return Err(ImageCreationError::FormatUsageNotSupported {
-                    usage: "transfer_source",
+                    usage: "transfer_src",
                 });
             }
-            if usage.transfer_destination && !format_features.transfer_dst {
+            if usage.transfer_dst && !format_features.transfer_dst {
                 return Err(ImageCreationError::FormatUsageNotSupported {
-                    usage: "transfer_destination",
+                    usage: "transfer_dst",
                 });
             }
         }
@@ -632,8 +633,8 @@ impl UnsafeImage {
                     // VUID-VkImageCreateInfo-samples-02257 already states that multisampling+linear
                     // is invalid so no need to check for that here.
                     && ImageUsage {
-                        transfer_source: false,
-                        transfer_destination: false,
+                        transfer_src: false,
+                        transfer_dst: false,
                         ..usage.clone()
                     } == ImageUsage::none())
             } else {
@@ -1165,6 +1166,44 @@ impl UnsafeImage {
     #[inline]
     pub fn block_texel_view_compatible(&self) -> bool {
         self.block_texel_view_compatible
+    }
+
+    /// Returns an `ImageSubresourceLayers` covering the first mip level of the image. All aspects
+    /// of the image are selected, or `plane0` if the image is multi-planar.
+    #[inline]
+    pub fn subresource_layers(&self) -> ImageSubresourceLayers {
+        ImageSubresourceLayers {
+            aspects: {
+                let aspects = self.format.unwrap().aspects();
+
+                if aspects.plane0 {
+                    ImageAspects {
+                        plane0: true,
+                        ..ImageAspects::none()
+                    }
+                } else {
+                    aspects
+                }
+            },
+            mip_level: 0,
+            array_layers: 0..self.dimensions.array_layers(),
+        }
+    }
+
+    /// Returns an `ImageSubresourceRange` covering the whole image. If the image is multi-planar,
+    /// only the `color` aspect is selected.
+    #[inline]
+    pub fn subresource_range(&self) -> ImageSubresourceRange {
+        ImageSubresourceRange {
+            aspects: ImageAspects {
+                plane0: false,
+                plane1: false,
+                plane2: false,
+                ..self.format.unwrap().aspects()
+            },
+            mip_levels: 0..self.mip_levels,
+            array_layers: 0..self.dimensions.array_layers(),
+        }
     }
 
     /// Returns a key unique to each `UnsafeImage`. Can be used for the `conflicts_key` method.
