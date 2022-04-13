@@ -7,16 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::check_errors;
-use crate::instance::loader;
-use crate::instance::loader::LoadingError;
-use crate::Error;
 use crate::OomError;
 use crate::Version;
-use std::error;
 use std::ffi::CStr;
-use std::fmt;
-use std::ptr;
 
 /// Queries the list of layers that are available when creating an instance.
 ///
@@ -41,35 +34,12 @@ use std::ptr;
 ///     println!("Available layer: {}", layer.name());
 /// }
 /// ```
-pub fn layers_list() -> Result<impl ExactSizeIterator<Item = LayerProperties>, LayersListError> {
-    layers_list_from_loader(loader::auto_loader()?)
-}
+pub fn layers_list_from_loader(
+    entry: &ash::Entry,
+) -> Result<impl ExactSizeIterator<Item = LayerProperties>, OomError> {
+    let layers = entry.enumerate_instance_layer_properties()?;
 
-/// Same as `layers_list()`, but allows specifying a loader.
-pub fn layers_list_from_loader<L>(
-    ptrs: &loader::FunctionPointers<L>,
-) -> Result<impl ExactSizeIterator<Item = LayerProperties>, LayersListError>
-where
-    L: loader::Loader,
-{
-    unsafe {
-        let fns = ptrs.fns();
-
-        let mut num = 0;
-        check_errors(
-            fns.v1_0
-                .enumerate_instance_layer_properties(&mut num, ptr::null_mut()),
-        )?;
-
-        let mut layers: Vec<ash::vk::LayerProperties> = Vec::with_capacity(num as usize);
-        check_errors({
-            fns.v1_0
-                .enumerate_instance_layer_properties(&mut num, layers.as_mut_ptr())
-        })?;
-        layers.set_len(num as usize);
-
-        Ok(layers.into_iter().map(|p| LayerProperties { props: p }))
-    }
+    Ok(layers.into_iter().map(|p| LayerProperties { props: p }))
 }
 
 /// Properties of a layer.
@@ -161,65 +131,6 @@ impl LayerProperties {
         self.props.implementation_version
     }
 }
-
-/// Error that can happen when loading the list of layers.
-#[derive(Clone, Debug)]
-pub enum LayersListError {
-    /// Failed to load the Vulkan shared library.
-    LoadingError(LoadingError),
-    /// Not enough memory.
-    OomError(OomError),
-}
-
-impl error::Error for LayersListError {
-    #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match *self {
-            LayersListError::LoadingError(ref err) => Some(err),
-            LayersListError::OomError(ref err) => Some(err),
-        }
-    }
-}
-
-impl fmt::Display for LayersListError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                LayersListError::LoadingError(_) => "failed to load the Vulkan shared library",
-                LayersListError::OomError(_) => "not enough memory available",
-            }
-        )
-    }
-}
-
-impl From<OomError> for LayersListError {
-    #[inline]
-    fn from(err: OomError) -> LayersListError {
-        LayersListError::OomError(err)
-    }
-}
-
-impl From<LoadingError> for LayersListError {
-    #[inline]
-    fn from(err: LoadingError) -> LayersListError {
-        LayersListError::LoadingError(err)
-    }
-}
-
-impl From<Error> for LayersListError {
-    #[inline]
-    fn from(err: Error) -> LayersListError {
-        match err {
-            err @ Error::OutOfHostMemory => LayersListError::OomError(OomError::from(err)),
-            err @ Error::OutOfDeviceMemory => LayersListError::OomError(OomError::from(err)),
-            _ => panic!("unexpected error: {:?}", err),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::instance;

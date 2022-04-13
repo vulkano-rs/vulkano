@@ -8,11 +8,9 @@
 // according to those terms.
 
 use crate::device::physical::PhysicalDevice;
-pub use crate::extensions::{
-    ExtensionRestriction, ExtensionRestrictionError, OneOfRequirements, SupportedExtensionsError,
-};
+pub use crate::extensions::{ExtensionRestriction, ExtensionRestrictionError, OneOfRequirements};
 use crate::instance::InstanceExtensions;
-use crate::Version;
+use crate::{OomError, Version};
 use std::ffi::{CStr, CString};
 use std::fmt::Formatter;
 
@@ -25,9 +23,7 @@ impl DeviceExtensions {
         since = "0.25",
         note = "Use PhysicalDevice::supported_extensions instead"
     )]
-    pub fn supported_by_device_raw(
-        physical_device: PhysicalDevice,
-    ) -> Result<Self, SupportedExtensionsError> {
+    pub fn supported_by_device_raw(physical_device: PhysicalDevice) -> Result<Self, OomError> {
         Ok(*physical_device.supported_extensions())
     }
 

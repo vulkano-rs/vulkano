@@ -7,11 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-pub use crate::extensions::{
-    ExtensionRestriction, ExtensionRestrictionError, OneOfRequirements, SupportedExtensionsError,
-};
-use crate::instance::loader::LoadingError;
-use crate::Version;
+pub use crate::extensions::{ExtensionRestriction, ExtensionRestrictionError, OneOfRequirements};
+use crate::{OomError, Version};
 use std::ffi::{CStr, CString};
 use std::fmt::Formatter;
 
@@ -19,19 +16,7 @@ use std::fmt::Formatter;
 include!(concat!(env!("OUT_DIR"), "/instance_extensions.rs"));
 
 impl InstanceExtensions {
-    /// Same as `supported_by_core`, but allows specifying a loader.
-    pub fn supported_by_core_with_loader(entry: &ash::Entry) -> Result<Self, LoadingError> {
-        match InstanceExtensions::supported_by_core_raw_with_loader(entry) {
-            Ok(l) => Ok(l),
-            Err(SupportedExtensionsError::LoadingError(e)) => Err(e),
-            Err(SupportedExtensionsError::OomError(e)) => panic!("{:?}", e),
-        }
-    }
-
-    /// See the docs of supported_by_core().
-    pub fn supported_by_core_raw_with_loader(
-        entry: &ash::Entry,
-    ) -> Result<Self, SupportedExtensionsError> {
+    pub fn supported_by_core_with_loader(entry: &ash::Entry) -> Result<Self, OomError> {
         let properties: Vec<ash::vk::ExtensionProperties> =
             entry.enumerate_instance_extension_properties(None)?;
 

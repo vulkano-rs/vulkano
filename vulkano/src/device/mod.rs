@@ -111,7 +111,7 @@ use crate::{
 };
 pub use crate::{
     device::extensions::DeviceExtensions,
-    extensions::{ExtensionRestriction, ExtensionRestrictionError, SupportedExtensionsError},
+    extensions::{ExtensionRestriction, ExtensionRestrictionError},
     fns::DeviceFunctions,
 };
 use ash::vk::Handle;

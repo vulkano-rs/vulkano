@@ -52,14 +52,9 @@
 //! `device` module for more info.
 
 pub use self::extensions::InstanceExtensions;
-pub use self::layers::layers_list;
 pub use self::layers::LayerProperties;
-pub use self::layers::LayersListError;
-pub use self::loader::LoadingError;
 use crate::device::physical::{init_physical_devices, PhysicalDeviceInfo};
-pub use crate::extensions::{
-    ExtensionRestriction, ExtensionRestrictionError, SupportedExtensionsError,
-};
+pub use crate::extensions::{ExtensionRestriction, ExtensionRestrictionError};
 pub use crate::fns::InstanceFunctions;
 pub use crate::version::Version;
 use crate::Error;
@@ -80,7 +75,6 @@ use std::sync::Arc;
 pub mod debug;
 pub(crate) mod extensions;
 mod layers;
-pub mod loader;
 
 /// An instance of a Vulkan context. This is the main object that should be created by an
 /// application before everything else.
@@ -535,8 +529,6 @@ impl InstanceCreateInfo {
 /// Error that can happen when creating an instance.
 #[derive(Clone, Debug)]
 pub enum InstanceCreationError {
-    /// Failed to load the Vulkan shared library.
-    LoadingError(LoadingError),
     /// Not enough memory.
     OomError(OomError),
     /// Failed to initialize for an implementation-specific reason.
@@ -555,7 +547,6 @@ impl error::Error for InstanceCreationError {
     #[inline]
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
-            InstanceCreationError::LoadingError(ref err) => Some(err),
             InstanceCreationError::OomError(ref err) => Some(err),
             _ => None,
         }
@@ -566,9 +557,6 @@ impl fmt::Display for InstanceCreationError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match *self {
-            InstanceCreationError::LoadingError(_) => {
-                write!(fmt, "failed to load the Vulkan shared library")
-            }
             InstanceCreationError::OomError(_) => write!(fmt, "not enough memory available"),
             InstanceCreationError::InitializationFailed => write!(fmt, "initialization failed"),
             InstanceCreationError::LayerNotPresent => write!(fmt, "layer not present"),
@@ -583,13 +571,6 @@ impl From<OomError> for InstanceCreationError {
     #[inline]
     fn from(err: OomError) -> InstanceCreationError {
         InstanceCreationError::OomError(err)
-    }
-}
-
-impl From<LoadingError> for InstanceCreationError {
-    #[inline]
-    fn from(err: LoadingError) -> InstanceCreationError {
-        InstanceCreationError::LoadingError(err)
     }
 }
 

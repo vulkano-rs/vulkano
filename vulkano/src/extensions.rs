@@ -7,88 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::instance::loader::LoadingError;
-use crate::Error;
-use crate::OomError;
 use crate::Version;
 use std::error;
 use std::fmt::{Display, Error as FmtError, Formatter};
-
-/// Error that can happen when loading the list of layers.
-#[derive(Clone, Debug)]
-pub enum SupportedExtensionsError {
-    /// Failed to load the Vulkan shared library.
-    LoadingError(LoadingError),
-    /// Not enough memory.
-    OomError(OomError),
-}
-
-impl error::Error for SupportedExtensionsError {
-    #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match *self {
-            SupportedExtensionsError::LoadingError(ref err) => Some(err),
-            SupportedExtensionsError::OomError(ref err) => Some(err),
-        }
-    }
-}
-
-impl Display for SupportedExtensionsError {
-    #[inline]
-    fn fmt(&self, fmt: &mut Formatter) -> Result<(), FmtError> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                SupportedExtensionsError::LoadingError(_) =>
-                    "failed to load the Vulkan shared library",
-                SupportedExtensionsError::OomError(_) => "not enough memory available",
-            }
-        )
-    }
-}
-
-impl From<OomError> for SupportedExtensionsError {
-    #[inline]
-    fn from(err: OomError) -> SupportedExtensionsError {
-        SupportedExtensionsError::OomError(err)
-    }
-}
-
-impl From<LoadingError> for SupportedExtensionsError {
-    #[inline]
-    fn from(err: LoadingError) -> SupportedExtensionsError {
-        SupportedExtensionsError::LoadingError(err)
-    }
-}
-
-impl From<Error> for SupportedExtensionsError {
-    #[inline]
-    fn from(err: Error) -> SupportedExtensionsError {
-        match err {
-            err @ Error::OutOfHostMemory => SupportedExtensionsError::OomError(OomError::from(err)),
-            err @ Error::OutOfDeviceMemory => {
-                SupportedExtensionsError::OomError(OomError::from(err))
-            }
-            _ => panic!("unexpected error: {:?}", err),
-        }
-    }
-}
-
-impl From<ash::vk::Result> for SupportedExtensionsError {
-    #[inline]
-    fn from(err: ash::vk::Result) -> SupportedExtensionsError {
-        match err {
-            err @ ash::vk::Result::ERROR_OUT_OF_HOST_MEMORY => {
-                SupportedExtensionsError::OomError(OomError::from(err))
-            }
-            err @ ash::vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => {
-                SupportedExtensionsError::OomError(OomError::from(err))
-            }
-            _ => panic!("unexpected error: {:?}", err),
-        }
-    }
-}
 
 /// An error that can happen when enabling an extension on an instance or device.
 #[derive(Clone, Copy, Debug)]
