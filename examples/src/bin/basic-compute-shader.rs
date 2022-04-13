@@ -27,7 +27,7 @@ use vulkano::{
 };
 
 fn main() {
-    // As with other examples, the first step is to create an instance.3
+    // As with other examples, the first step is to create an instance.
     let entry = Instance::entry().unwrap();
     let instance = Instance::new(entry, Default::default()).unwrap();
 
