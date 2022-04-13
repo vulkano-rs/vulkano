@@ -75,6 +75,21 @@ impl From<Error> for SupportedExtensionsError {
     }
 }
 
+impl From<ash::vk::Result> for SupportedExtensionsError {
+    #[inline]
+    fn from(err: ash::vk::Result) -> SupportedExtensionsError {
+        match err {
+            err @ ash::vk::Result::ERROR_OUT_OF_HOST_MEMORY => {
+                SupportedExtensionsError::OomError(OomError::from(err))
+            }
+            err @ ash::vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => {
+                SupportedExtensionsError::OomError(OomError::from(err))
+            }
+            _ => panic!("unexpected error: {:?}", err),
+        }
+    }
+}
+
 /// An error that can happen when enabling an extension on an instance or device.
 #[derive(Clone, Copy, Debug)]
 pub struct ExtensionRestrictionError {

@@ -160,6 +160,17 @@ impl From<Error> for OomError {
     }
 }
 
+impl From<ash::vk::Result> for OomError {
+    #[inline]
+    fn from(err: ash::vk::Result) -> OomError {
+        match err {
+            ash::vk::Result::ERROR_OUT_OF_HOST_MEMORY => OomError::OutOfHostMemory,
+            ash::vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => OomError::OutOfDeviceMemory,
+            _ => panic!("unexpected error: {:?}", err),
+        }
+    }
+}
+
 /// All possible success codes returned by any Vulkan function.
 #[derive(Debug, Copy, Clone)]
 #[repr(i32)]

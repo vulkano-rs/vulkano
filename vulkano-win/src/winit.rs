@@ -4,6 +4,7 @@ use std::fmt;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use vulkano::instance::Entry;
 use vulkano::instance::Instance;
 use vulkano::instance::InstanceExtensions;
 use vulkano::swapchain::Surface;
@@ -14,7 +15,7 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-pub fn required_extensions() -> InstanceExtensions {
+pub fn required_extensions(entry: &Entry) -> InstanceExtensions {
     let ideal = InstanceExtensions {
         khr_surface: true,
         khr_xlib_surface: true,
@@ -29,7 +30,7 @@ pub fn required_extensions() -> InstanceExtensions {
         ..InstanceExtensions::none()
     };
 
-    match InstanceExtensions::supported_by_core() {
+    match InstanceExtensions::supported_by_core_with_loader(entry) {
         Ok(supported) => supported.intersection(&ideal),
         Err(_) => InstanceExtensions::none(),
     }

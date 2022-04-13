@@ -56,18 +56,16 @@ pub use self::layers::layers_list;
 pub use self::layers::LayerProperties;
 pub use self::layers::LayersListError;
 pub use self::loader::LoadingError;
-use crate::check_errors;
 use crate::device::physical::{init_physical_devices, PhysicalDeviceInfo};
 pub use crate::extensions::{
     ExtensionRestriction, ExtensionRestrictionError, SupportedExtensionsError,
 };
 pub use crate::fns::InstanceFunctions;
-use crate::instance::loader::FunctionPointers;
-use crate::instance::loader::Loader;
 pub use crate::version::Version;
 use crate::Error;
 use crate::OomError;
 use crate::VulkanObject;
+pub use ash::Entry;
 use smallvec::SmallVec;
 use std::error;
 use std::ffi::CString;
@@ -217,7 +215,6 @@ pub mod loader;
 /// # }
 /// ```
 // TODO: mention that extensions must be supported by layers as well
-#[derive(Debug)]
 pub struct Instance {
     handle: ash::vk::Instance,
     fns: InstanceFunctions,
@@ -226,8 +223,22 @@ pub struct Instance {
     api_version: Version,
     enabled_extensions: InstanceExtensions,
     enabled_layers: Vec<String>,
-    function_pointers: OwnedOrRef<FunctionPointers<Box<dyn Loader>>>,
+    entry: ash::Entry,
     max_api_version: Version,
+}
+
+impl std::fmt::Debug for Instance {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Instance")
+            .field("handle", &self.handle)
+            .field("fns", &self.fns)
+            .field("physical_device_infos", &self.physical_device_infos)
+            .field("api_version", &self.api_version)
+            .field("enabled_extensions", &self.enabled_extensions)
+            .field("enabled_layers", &self.enabled_layers)
+            .field("max_api_version", &self.max_api_version)
+            .finish()
+    }
 }
 
 // TODO: fix the underlying cause instead
@@ -235,6 +246,14 @@ impl ::std::panic::UnwindSafe for Instance {}
 impl ::std::panic::RefUnwindSafe for Instance {}
 
 impl Instance {
+    pub fn entry() -> ash::Entry {
+        #[cfg(feature = "loaded")]
+        let entry = unsafe { ash::Entry::load() }.unwrap();
+
+        #[cfg(feature = "linked")]
+        let entry = ash::Entry::linked();
+        entry
+    }
     /// Creates a new `Instance`.
     ///
     /// # Panics
@@ -242,7 +261,10 @@ impl Instance {
     /// - Panics if any version numbers in `create_info` contain a field too large to be converted
     ///   into a Vulkan version number.
     /// - Panics if `create_info.max_api_version` is not at least `V1_0`.
-    pub fn new(create_info: InstanceCreateInfo) -> Result<Arc<Instance>, InstanceCreationError> {
+    pub fn new(
+        entry: ash::Entry,
+        create_info: InstanceCreateInfo,
+    ) -> Result<Arc<Instance>, InstanceCreationError> {
         let InstanceCreateInfo {
             application_name,
             application_version,
@@ -250,19 +272,15 @@ impl Instance {
             enabled_layers,
             engine_name,
             engine_version,
-            function_pointers,
             max_api_version,
             _ne: _,
         } = create_info;
 
-        let function_pointers = if let Some(function_pointers) = function_pointers {
-            OwnedOrRef::Owned(function_pointers)
-        } else {
-            OwnedOrRef::Ref(loader::auto_loader()?)
-        };
-
         let (api_version, max_api_version) = {
-            let api_version = function_pointers.api_version()?;
+            let api_version = entry
+                .try_enumerate_instance_version()
+                .map_err(OomError::from)?
+                .map_or(Version::V1_0, Version::from);
             let max_api_version = if let Some(max_api_version) = max_api_version {
                 max_api_version
             } else if api_version < Version::V1_1 {
@@ -279,7 +297,7 @@ impl Instance {
 
         // Check if the extensions are correct
         enabled_extensions.check_requirements(
-            &InstanceExtensions::supported_by_core_with_loader(&function_pointers)?,
+            &InstanceExtensions::supported_by_core_with_loader(&entry)?,
             api_version,
         )?;
 
@@ -331,18 +349,18 @@ impl Instance {
         // Creating the Vulkan instance.
         let handle = unsafe {
             let mut output = MaybeUninit::uninit();
-            let fns = function_pointers.fns();
-            check_errors(
-                fns.v1_0
-                    .create_instance(&create_info, ptr::null(), output.as_mut_ptr()),
-            )?;
+            entry
+                .fp_v1_0()
+                .create_instance(&create_info, ptr::null(), output.as_mut_ptr())
+                .result()?;
             output.assume_init()
         };
 
         // Loading the function pointers of the newly-created instance.
         let fns = {
-            InstanceFunctions::load(|name| {
-                function_pointers.get_instance_proc_addr(handle, name.as_ptr())
+            InstanceFunctions::load(|name| unsafe {
+                let fn_ptr = entry.get_instance_proc_addr(handle, name.as_ptr());
+                std::mem::transmute(fn_ptr)
             })
         };
 
@@ -354,7 +372,7 @@ impl Instance {
             api_version,
             enabled_extensions,
             enabled_layers,
-            function_pointers,
+            entry,
             max_api_version,
         };
 
@@ -465,12 +483,6 @@ pub struct InstanceCreateInfo {
     /// The default value is zero.
     pub engine_version: Version,
 
-    /// Function pointers loaded from a custom loader.
-    ///
-    /// You can use this if you want to load the Vulkan API explicitly, rather than using Vulkano's
-    /// default.
-    pub function_pointers: Option<FunctionPointers<Box<dyn Loader>>>,
-
     /// The highest Vulkan API version that the application will use with the instance.
     ///
     /// Usually, you will want to leave this at the default.
@@ -492,7 +504,6 @@ impl Default for InstanceCreateInfo {
             enabled_layers: Vec::new(),
             engine_name: None,
             engine_version: Version::major_minor(0, 0),
-            function_pointers: None,
             max_api_version: None,
             _ne: crate::NonExhaustive(()),
         }
@@ -599,6 +610,29 @@ impl From<Error> for InstanceCreationError {
             Error::LayerNotPresent => InstanceCreationError::LayerNotPresent,
             Error::ExtensionNotPresent => InstanceCreationError::ExtensionNotPresent,
             Error::IncompatibleDriver => InstanceCreationError::IncompatibleDriver,
+            _ => panic!("unexpected error: {:?}", err),
+        }
+    }
+}
+
+impl From<ash::vk::Result> for InstanceCreationError {
+    #[inline]
+    fn from(err: ash::vk::Result) -> InstanceCreationError {
+        match err {
+            ash::vk::Result::ERROR_OUT_OF_HOST_MEMORY => {
+                InstanceCreationError::OomError(OomError::OutOfHostMemory)
+            }
+            ash::vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => {
+                InstanceCreationError::OomError(OomError::OutOfDeviceMemory)
+            }
+            ash::vk::Result::ERROR_INITIALIZATION_FAILED => {
+                InstanceCreationError::InitializationFailed
+            }
+            ash::vk::Result::ERROR_LAYER_NOT_PRESENT => InstanceCreationError::LayerNotPresent,
+            ash::vk::Result::ERROR_EXTENSION_NOT_PRESENT => {
+                InstanceCreationError::ExtensionNotPresent
+            }
+            ash::vk::Result::ERROR_INCOMPATIBLE_DRIVER => InstanceCreationError::IncompatibleDriver,
             _ => panic!("unexpected error: {:?}", err),
         }
     }

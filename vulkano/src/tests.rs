@@ -13,8 +13,9 @@
 macro_rules! instance {
     () => {{
         use crate::instance::Instance;
+        let entry = Instance::entry();
 
-        match Instance::new(Default::default()) {
+        match Instance::new(entry, Default::default()) {
             Ok(i) => i,
             Err(_) => return,
         }
