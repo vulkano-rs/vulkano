@@ -1,10 +1,12 @@
+# Vulkano's coverage of Vulkan
+
 Coverage of support for Vulkan core features and extensions in Vulkano.
 
 "Partially supported" includes core features and extensions that have some support in Vulkano, but are not fully implemented. A list of unimplemented features is given.
 
-# Vulkan 1.0
+## Vulkan 1.0
 
-## Unsupported
+### Unsupported
 
 - `vkGetDeviceMemoryCommitment`
 - `vkGetImageSparseMemoryRequirements`
@@ -15,9 +17,9 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - `VkPipelineCreateFlags`
 - Possibly more?
 
-# Vulkan 1.1
+## Vulkan 1.1
 
-## Fully supported
+### Fully supported
 
 - [`VK_KHR_16bit_storage`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_16bit_storage.html)
 - [`VK_KHR_dedicated_allocation`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_dedicated_allocation.html)
@@ -29,7 +31,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_KHR_storage_buffer_storage_class`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_storage_buffer_storage_class.html)
 - [`VK_KHR_variable_pointers`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_variable_pointers.html)
 
-## Partially supported
+### Partially supported
 
 - [`VK_KHR_external_memory`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_memory.html)
 	- `VkExternalMemoryBufferCreateInfoKHR`
@@ -52,7 +54,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 	- `VkSamplerYcbcrConversionImageFormatPropertiesKHR`
 	- `VkImagePlaneMemoryRequirementsInfoKHR`
 
-## Unsupported
+### Unsupported
 
 - [`VK_KHR_bind_memory2`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_bind_memory2.html)
 - [`VK_KHR_descriptor_update_template`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_descriptor_update_template.html)
@@ -65,9 +67,9 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - Protected memory
 - `vkEnumerateInstanceVersion`
 
-# Vulkan 1.2
+## Vulkan 1.2
 
-## Fully supported
+### Fully supported
 
 - [`VK_KHR_8bit_storage`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_8bit_storage.html)
 - [`VK_KHR_driver_properties`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_driver_properties.html)
@@ -84,7 +86,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_EXT_shader_viewport_index_layer`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_EXT_shader_viewport_index_layer.html)
 - SPIR-V 1.4 and 1.5
 
-## Partially supported
+### Partially supported
 
 - [`VK_KHR_buffer_device_address`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_buffer_device_address.html)
 	- Only the deprecated EXT version is supported.
@@ -96,7 +98,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 	- `VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT_EXT` / `VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT_EXT` / `VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT`
 	- `VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT_EXT`
 
-## Unsupported
+### Unsupported
 
 - [`VK_KHR_depth_stencil_resolve`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_depth_stencil_resolve.html)
 - [`VK_KHR_draw_indirect_count`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_draw_indirect_count.html)
@@ -108,9 +110,9 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_EXT_separate_stencil_usage`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_EXT_separate_stencil_usage.html)
 - `framebufferIntegerColorSampleCounts`
 
-# Vulkan 1.3
+## Vulkan 1.3
 
-## Fully supported
+### Fully supported
 
 - [`VK_KHR_copy_commands2`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_copy_commands2.html)
 - [`VK_KHR_create_renderpass2`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_create_renderpass2.html)
@@ -127,7 +129,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_EXT_ycbcr_2plane_444_formats`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_EXT_ycbcr_2plane_444_formats.html)
 - SPIR-V 1.6
 
-## Partially supported
+### Partially supported
 
 - [`VK_KHR_synchronization2`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_synchronization2.html)
 	- `vkCmdResetEvent2KHR`
@@ -138,7 +140,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 	- `VkMemoryBarrier2KHR` extending `VkSubpassDependency`
 	- `VkAccessFlagBits2KHR` / `VkPipelineStageFlagBits2KHR` (only the base Vulkan 1.0 bits are defined)
 
-## Unsupported
+### Unsupported
 
 - [`VK_KHR_dynamic_rendering`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_dynamic_rendering.html)
 - [`VK_KHR_maintenance4`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_maintenance4.html)
@@ -151,9 +153,9 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_EXT_subgroup_size_control`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_EXT_subgroup_size_control.html)
 - [`VK_EXT_tooling_info`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_EXT_tooling_info.html)
 
-# Unpromoted extensions
+## Unpromoted extensions
 
-## Fully supported
+### Fully supported
 
 - [`VK_KHR_android_surface`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_android_surface.html)
 - [`VK_KHR_external_memory_fd`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_memory_fd.html)
@@ -177,7 +179,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_MVK_ios_surface`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_MVK_ios_surface.html) (deprecated)
 - [`VK_MVK_macos_surface`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_MVK_macos_surface.html) (deprecated)
 
-## Partially supported
+### Partially supported
 
 - [`VK_KHR_display`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_display.html)
 	- `vkCreateDisplayModeKHR` / `VkDisplayModeCreateInfoKHR` / `VkDisplayModeParametersKHR`
