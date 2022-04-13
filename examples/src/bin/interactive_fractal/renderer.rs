@@ -82,15 +82,19 @@ impl Renderer {
     /// Creates a new GPU renderer for window with given parameters
     pub fn new(event_loop: &EventLoop<()>, opts: RenderOptions) -> Self {
         println!("Creating renderer for window size {:?}", opts.window_size);
+        let entry = Instance::entry();
         // Add instance extensions based on needs
         let instance_extensions = InstanceExtensions {
-            ..vulkano_win::required_extensions()
+            ..vulkano_win::required_extensions(&entry)
         };
         // Create instance
-        let instance = Instance::new(InstanceCreateInfo {
-            enabled_extensions: instance_extensions,
-            ..Default::default()
-        })
+        let instance = Instance::new(
+            entry,
+            InstanceCreateInfo {
+                enabled_extensions: instance_extensions,
+                ..Default::default()
+            },
+        )
         .expect("Failed to create instance");
 
         // Get desired device

@@ -69,11 +69,15 @@ struct InstanceData {
 impl_vertex!(InstanceData, position_offset, scale);
 
 fn main() {
-    let required_extensions = vulkano_win::required_extensions();
-    let instance = Instance::new(InstanceCreateInfo {
-        enabled_extensions: required_extensions,
-        ..Default::default()
-    })
+    let entry = Instance::entry();
+    let required_extensions = vulkano_win::required_extensions(&entry);
+    let instance = Instance::new(
+        entry,
+        InstanceCreateInfo {
+            enabled_extensions: required_extensions,
+            ..Default::default()
+        },
+    )
     .unwrap();
 
     let event_loop = EventLoop::new();

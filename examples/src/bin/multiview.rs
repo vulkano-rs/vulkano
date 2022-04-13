@@ -45,13 +45,17 @@ use vulkano::{
 };
 
 fn main() {
-    let instance = Instance::new(InstanceCreateInfo {
-        enabled_extensions: InstanceExtensions {
-            khr_get_physical_device_properties2: true, // required to get multiview limits
-            ..InstanceExtensions::none()
+    let entry = Instance::entry();
+    let instance = Instance::new(
+        entry,
+        InstanceCreateInfo {
+            enabled_extensions: InstanceExtensions {
+                khr_get_physical_device_properties2: true, // required to get multiview limits
+                ..InstanceExtensions::none()
+            },
+            ..Default::default()
         },
-        ..Default::default()
-    })
+    )
     .unwrap();
 
     let device_extensions = DeviceExtensions {

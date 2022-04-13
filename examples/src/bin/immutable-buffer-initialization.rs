@@ -25,8 +25,8 @@ use vulkano::{
 fn main() {
     // The most part of this example is exactly the same as `basic-compute-shader`. You should read the
     // `basic-compute-shader` example if you haven't done so yet.
-
-    let instance = Instance::new(Default::default()).unwrap();
+    let entry = Instance::entry();
+    let instance = Instance::new(entry, Default::default()).unwrap();
 
     let device_extensions = DeviceExtensions {
         khr_storage_buffer_storage_class: true,

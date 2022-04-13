@@ -9,7 +9,7 @@
 
 use vulkano::{
     device::{DeviceExtensions, Features},
-    instance::InstanceExtensions,
+    instance::{Entry, Instance, InstanceExtensions},
 };
 
 /// A utility struct to configure vulkano context
@@ -20,16 +20,18 @@ pub struct VulkanoConfig {
     pub device_extensions: DeviceExtensions,
     pub features: Features,
     pub layers: Vec<String>,
+    pub entry: Entry,
 }
 
 impl Default for VulkanoConfig {
     fn default() -> Self {
+        let entry = Instance::entry();
         VulkanoConfig {
             return_from_run: false,
             add_primary_window: true,
             instance_extensions: InstanceExtensions {
                 ext_debug_utils: true,
-                ..vulkano_win::required_extensions()
+                ..vulkano_win::required_extensions(&entry)
             },
             device_extensions: DeviceExtensions {
                 khr_swapchain: true,
@@ -37,6 +39,7 @@ impl Default for VulkanoConfig {
             },
             features: Features::none(),
             layers: vec![],
+            entry,
         }
     }
 }

@@ -20,7 +20,7 @@ use vulkano::{
     image::{view::ImageView, ImageUsage, StorageImage, SwapchainImage},
     instance::{
         debug::{DebugCallback, MessageSeverity, MessageType},
-        Instance, InstanceCreateInfo, InstanceExtensions,
+        Entry, Instance, InstanceCreateInfo, InstanceExtensions,
     },
     swapchain::{
         ColorSpace, FullScreenExclusive, PresentMode, Surface, SurfaceTransform, Swapchain,
@@ -54,8 +54,12 @@ unsafe impl Sync for VulkanoContext {}
 unsafe impl Send for VulkanoContext {}
 
 impl VulkanoContext {
-    pub fn new(config: &VulkanoConfig) -> Self {
-        let instance = create_vk_instance(config.instance_extensions, config.layers.clone());
+    pub fn new(config: VulkanoConfig) -> Self {
+        let instance = create_vk_instance(
+            config.entry,
+            config.instance_extensions,
+            config.layers.clone(),
+        );
         let is_debug = config.layers.iter().any(|layer| {
             layer == "VK_LAYER_LUNARG_standard_validation" || layer == "VK_LAYER_KHRONOS_validation"
         });
@@ -241,15 +245,19 @@ impl VulkanoContext {
 
 // Create vk instance with given layers
 pub fn create_vk_instance(
+    entry: Entry,
     instance_extensions: InstanceExtensions,
     layers: Vec<String>,
 ) -> Arc<Instance> {
     // Create instance.
-    let result = Instance::new(InstanceCreateInfo {
-        enabled_extensions: instance_extensions,
-        enabled_layers: layers,
-        ..Default::default()
-    });
+    let result = Instance::new(
+        entry,
+        InstanceCreateInfo {
+            enabled_extensions: instance_extensions,
+            enabled_layers: layers,
+            ..Default::default()
+        },
+    );
 
     // Handle errors. On mac os, it will ask you to install vulkan sdk if you have not done so.
     #[cfg(target_os = "macos")]

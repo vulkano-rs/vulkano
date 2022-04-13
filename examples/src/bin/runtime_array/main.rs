@@ -56,11 +56,15 @@ fn main() {
     // The start of this example is exactly the same as `triangle`. You should read the
     // `triangle` example if you haven't done so yet.
 
-    let required_extensions = vulkano_win::required_extensions();
-    let instance = Instance::new(InstanceCreateInfo {
-        enabled_extensions: required_extensions,
-        ..Default::default()
-    })
+    let entry = Instance::entry();
+    let required_extensions = vulkano_win::required_extensions(&entry);
+    let instance = Instance::new(
+        entry,
+        InstanceCreateInfo {
+            enabled_extensions: required_extensions,
+            ..Default::default()
+        },
+    )
     .unwrap();
 
     let event_loop = EventLoop::new();

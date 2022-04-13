@@ -94,7 +94,7 @@ impl App {
 impl Default for App {
     fn default() -> Self {
         App {
-            context: VulkanoContext::new(&VulkanoConfig::default()),
+            context: VulkanoContext::new(VulkanoConfig::default()),
             windows: HashMap::new(),
             pipelines: HashMap::new(),
             primary_window_id: unsafe { WindowId::dummy() },

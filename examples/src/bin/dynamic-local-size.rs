@@ -31,16 +31,20 @@ use vulkano::{
 };
 
 fn main() {
-    let instance = Instance::new(InstanceCreateInfo {
-        enabled_extensions: InstanceExtensions {
-            // This extension is required to obtain physical device metadata
-            // about the device workgroup size limits
-            khr_get_physical_device_properties2: true,
+    let entry = Instance::entry();
+    let instance = Instance::new(
+        entry,
+        InstanceCreateInfo {
+            enabled_extensions: InstanceExtensions {
+                // This extension is required to obtain physical device metadata
+                // about the device workgroup size limits
+                khr_get_physical_device_properties2: true,
 
-            ..InstanceExtensions::none()
+                ..InstanceExtensions::none()
+            },
+            ..Default::default()
         },
-        ..Default::default()
-    })
+    )
     .unwrap();
 
     let device_extensions = DeviceExtensions {

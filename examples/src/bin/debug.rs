@@ -59,11 +59,15 @@ fn main() {
     let layers = vec!["VK_LAYER_KHRONOS_validation".to_owned()];
 
     // Important: pass the extension(s) and layer(s) when creating the vulkano instance
-    let instance = Instance::new(InstanceCreateInfo {
-        enabled_extensions: extensions,
-        enabled_layers: layers,
-        ..Default::default()
-    })
+    let entry = Instance::entry();
+    let instance = Instance::new(
+        entry,
+        InstanceCreateInfo {
+            enabled_extensions: extensions,
+            enabled_layers: layers,
+            ..Default::default()
+        },
+    )
     .expect("failed to create Vulkan instance");
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
