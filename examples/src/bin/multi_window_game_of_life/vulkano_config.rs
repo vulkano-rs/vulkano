@@ -25,7 +25,7 @@ pub struct VulkanoConfig {
 
 impl Default for VulkanoConfig {
     fn default() -> Self {
-        let entry = Instance::entry();
+        let entry = Instance::entry().unwrap();
         VulkanoConfig {
             return_from_run: false,
             add_primary_window: true,

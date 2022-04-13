@@ -13,7 +13,7 @@
 macro_rules! instance {
     () => {{
         use crate::instance::Instance;
-        let entry = Instance::entry();
+        let entry = Instance::entry().unwrap();
 
         match Instance::new(entry, Default::default()) {
             Ok(i) => i,

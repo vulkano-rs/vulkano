@@ -24,7 +24,7 @@ use vulkano::{
 };
 
 fn main() {
-    let entry = Instance::entry();
+    let entry = Instance::entry().unwrap();
     let instance = Instance::new(entry, Default::default()).unwrap();
 
     let device_extensions = DeviceExtensions {

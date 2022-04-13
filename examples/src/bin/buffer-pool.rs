@@ -63,7 +63,7 @@ struct Vertex {
 impl_vertex!(Vertex, position);
 
 fn main() {
-    let entry = Instance::entry();
+    let entry = Instance::entry().unwrap();
     let required_extensions = vulkano_win::required_extensions(&entry);
     let instance = Instance::new(
         entry,

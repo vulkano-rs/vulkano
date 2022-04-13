@@ -552,7 +552,8 @@ mod tests {
 
     #[test]
     fn semaphore_export() {
-        let instance = match Instance::new(InstanceCreateInfo {
+        let entry = Instance::entry().unwrap();
+        let instance = match Instance::new(entry, InstanceCreateInfo {
             enabled_extensions: InstanceExtensions {
                 khr_get_physical_device_properties2: true,
                 khr_external_semaphore_capabilities: true,

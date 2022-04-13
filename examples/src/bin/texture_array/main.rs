@@ -53,7 +53,7 @@ fn main() {
     // And not this:
     //     uniform sampler2D array_of_textures[42];
 
-    let entry = Instance::entry();
+    let entry = Instance::entry().unwrap();
     let required_extensions = vulkano_win::required_extensions(&entry);
     let instance = Instance::new(
         entry,

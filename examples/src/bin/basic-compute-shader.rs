@@ -28,7 +28,7 @@ use vulkano::{
 
 fn main() {
     // As with other examples, the first step is to create an instance.3
-    let entry = Instance::entry();
+    let entry = Instance::entry().unwrap();
     let instance = Instance::new(entry, Default::default()).unwrap();
 
     // Choose which physical device to use.

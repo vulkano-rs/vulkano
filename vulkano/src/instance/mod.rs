@@ -61,6 +61,7 @@ use crate::Error;
 use crate::OomError;
 use crate::VulkanObject;
 pub use ash::Entry;
+pub use ash::LoadingError;
 use smallvec::SmallVec;
 use std::error;
 use std::ffi::CString;
@@ -242,13 +243,13 @@ impl ::std::panic::UnwindSafe for Instance {}
 impl ::std::panic::RefUnwindSafe for Instance {}
 
 impl Instance {
-    pub fn entry() -> ash::Entry {
+    pub fn entry() -> Result<ash::Entry, LoadingError> {
         #[cfg(feature = "loaded")]
-        let entry = unsafe { ash::Entry::load() }.unwrap();
+        let entry = unsafe { ash::Entry::load()? };
 
         #[cfg(feature = "linked")]
         let entry = ash::Entry::linked();
-        entry
+        Ok(entry)
     }
     /// Creates a new `Instance`.
     ///

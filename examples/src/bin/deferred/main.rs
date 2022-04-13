@@ -55,7 +55,7 @@ mod triangle_draw_system;
 fn main() {
     // Basic initialization. See the triangle example if you want more details about this.
 
-    let entry = Instance::entry();
+    let entry = Instance::entry().unwrap();
     let required_extensions = vulkano_win::required_extensions(&entry);
     let instance = Instance::new(
         entry,

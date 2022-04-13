@@ -46,7 +46,8 @@ fn main() {
     // and you should verify that list for safety - Vulkano will return an error if you specify
     // any layers that are not installed on this system. That code to do could look like this:
     println!("List of Vulkan debugging layers available to use:");
-    let mut layers = layers_list().unwrap();
+    let entry = Instance::entry().unwrap();
+    let mut layers = layers_list(&entry).unwrap();
     while let Some(l) = layers.next() {
         println!("\t{}", l.name());
     }
@@ -59,7 +60,6 @@ fn main() {
     let layers = vec!["VK_LAYER_KHRONOS_validation".to_owned()];
 
     // Important: pass the extension(s) and layer(s) when creating the vulkano instance
-    let entry = Instance::entry();
     let instance = Instance::new(
         entry,
         InstanceCreateInfo {

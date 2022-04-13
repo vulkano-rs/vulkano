@@ -133,11 +133,12 @@ impl LayerProperties {
 }
 #[cfg(test)]
 mod tests {
-    use crate::instance;
+    use crate::instance::{self, Instance};
 
     #[test]
     fn layers_list() {
-        let mut list = match instance::layers_list() {
+        let entry = Instance::entry().unwrap();
+        let mut list = match instance::layers_list(&entry) {
             Ok(l) => l,
             Err(_) => return,
         };
