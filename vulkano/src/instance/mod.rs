@@ -76,6 +76,8 @@ pub mod debug;
 pub(crate) mod extensions;
 mod layers;
 
+pub use layers::layers_list;
+
 /// An instance of a Vulkan context. This is the main object that should be created by an
 /// application before everything else.
 ///

@@ -34,7 +34,7 @@ use std::ffi::CStr;
 ///     println!("Available layer: {}", layer.name());
 /// }
 /// ```
-pub fn layers_list_from_loader(
+pub fn layers_list(
     entry: &ash::Entry,
 ) -> Result<impl ExactSizeIterator<Item = LayerProperties>, OomError> {
     let layers = entry.enumerate_instance_layer_properties()?;
