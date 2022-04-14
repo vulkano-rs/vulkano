@@ -20,7 +20,7 @@ use vulkano::{
         view::ImageView,
         ImageUsage, SwapchainImage,
     },
-    instance::{Instance, InstanceCreateInfo},
+    instance::{Instance, InstanceCreateInfo, VulkanLibrary},
     pipeline::{graphics::viewport::ViewportState, GraphicsPipeline},
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     swapchain::{
@@ -39,7 +39,7 @@ fn main() {
     // The start of this example is exactly the same as `triangle`. You should read the
     // `triangle` example if you haven't done so yet.
 
-    let entry = Instance::entry().unwrap();
+    let entry = VulkanLibrary::default();
     let required_extensions = vulkano_win::required_extensions(&entry);
     let instance = Instance::new(
         entry,

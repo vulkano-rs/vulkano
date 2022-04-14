@@ -28,7 +28,7 @@ use vulkano::{
         SampleCount, StorageImage,
     },
     impl_vertex,
-    instance::{Instance, InstanceCreateInfo, InstanceExtensions},
+    instance::{Instance, InstanceCreateInfo, InstanceExtensions, VulkanLibrary},
     pipeline::{
         graphics::{
             input_assembly::InputAssemblyState,
@@ -45,7 +45,7 @@ use vulkano::{
 };
 
 fn main() {
-    let entry = Instance::entry().unwrap();
+    let entry = VulkanLibrary::default();
     let instance = Instance::new(
         entry,
         InstanceCreateInfo {

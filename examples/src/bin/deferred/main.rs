@@ -36,7 +36,7 @@ use vulkano::{
         Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
     },
     image::{view::ImageView, ImageUsage},
-    instance::{Instance, InstanceCreateInfo},
+    instance::{Instance, InstanceCreateInfo, VulkanLibrary},
     swapchain::{
         acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
     },
@@ -55,7 +55,7 @@ mod triangle_draw_system;
 fn main() {
     // Basic initialization. See the triangle example if you want more details about this.
 
-    let entry = Instance::entry().unwrap();
+    let entry = VulkanLibrary::default();
     let required_extensions = vulkano_win::required_extensions(&entry);
     let instance = Instance::new(
         entry,

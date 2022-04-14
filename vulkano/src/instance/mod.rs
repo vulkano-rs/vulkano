@@ -60,8 +60,7 @@ pub use crate::version::Version;
 use crate::Error;
 use crate::OomError;
 use crate::VulkanObject;
-pub use ash::Entry;
-pub use ash::LoadingError;
+pub use library::VulkanLibrary;
 use smallvec::SmallVec;
 use std::error;
 use std::ffi::CString;
@@ -76,6 +75,7 @@ use std::sync::Arc;
 pub mod debug;
 pub(crate) mod extensions;
 mod layers;
+mod library;
 
 pub use layers::layers_list;
 
@@ -220,7 +220,7 @@ pub struct Instance {
     api_version: Version,
     enabled_extensions: InstanceExtensions,
     enabled_layers: Vec<String>,
-    entry: ash::Entry,
+    lib: VulkanLibrary,
     max_api_version: Version,
 }
 
@@ -243,14 +243,6 @@ impl ::std::panic::UnwindSafe for Instance {}
 impl ::std::panic::RefUnwindSafe for Instance {}
 
 impl Instance {
-    pub fn entry() -> Result<ash::Entry, LoadingError> {
-        #[cfg(feature = "loaded")]
-        let entry = unsafe { ash::Entry::load()? };
-
-        #[cfg(feature = "linked")]
-        let entry = ash::Entry::linked();
-        Ok(entry)
-    }
     /// Creates a new `Instance`.
     ///
     /// # Panics
@@ -259,7 +251,7 @@ impl Instance {
     ///   into a Vulkan version number.
     /// - Panics if `create_info.max_api_version` is not at least `V1_0`.
     pub fn new(
-        entry: ash::Entry,
+        lib: VulkanLibrary,
         create_info: InstanceCreateInfo,
     ) -> Result<Arc<Instance>, InstanceCreationError> {
         let InstanceCreateInfo {
@@ -274,7 +266,8 @@ impl Instance {
         } = create_info;
 
         let (api_version, max_api_version) = {
-            let api_version = entry
+            let api_version = lib
+                .entry()
                 .try_enumerate_instance_version()
                 .map_err(OomError::from)?
                 .map_or(Version::V1_0, Version::from);
@@ -294,7 +287,7 @@ impl Instance {
 
         // Check if the extensions are correct
         enabled_extensions.check_requirements(
-            &InstanceExtensions::supported_by_core_with_loader(&entry)?,
+            &InstanceExtensions::supported_by_core_with_loader(&lib)?,
             api_version,
         )?;
 
@@ -346,7 +339,7 @@ impl Instance {
         // Creating the Vulkan instance.
         let handle = unsafe {
             let mut output = MaybeUninit::uninit();
-            entry
+            lib.entry()
                 .fp_v1_0()
                 .create_instance(&create_info, ptr::null(), output.as_mut_ptr())
                 .result()?;
@@ -356,7 +349,7 @@ impl Instance {
         // Loading the function pointers of the newly-created instance.
         let fns = {
             InstanceFunctions::load(|name| unsafe {
-                let fn_ptr = entry.get_instance_proc_addr(handle, name.as_ptr());
+                let fn_ptr = lib.entry().get_instance_proc_addr(handle, name.as_ptr());
                 std::mem::transmute(fn_ptr)
             })
         };
@@ -369,7 +362,7 @@ impl Instance {
             api_version,
             enabled_extensions,
             enabled_layers,
-            entry,
+            lib,
             max_api_version,
         };
 

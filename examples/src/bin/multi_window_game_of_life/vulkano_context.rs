@@ -20,7 +20,7 @@ use vulkano::{
     image::{view::ImageView, ImageUsage, StorageImage, SwapchainImage},
     instance::{
         debug::{DebugCallback, MessageSeverity, MessageType},
-        Entry, Instance, InstanceCreateInfo, InstanceExtensions,
+        Instance, InstanceCreateInfo, InstanceExtensions, VulkanLibrary,
     },
     swapchain::{
         ColorSpace, FullScreenExclusive, PresentMode, Surface, SurfaceTransform, Swapchain,
@@ -56,7 +56,7 @@ unsafe impl Send for VulkanoContext {}
 impl VulkanoContext {
     pub fn new(config: VulkanoConfig) -> Self {
         let instance = create_vk_instance(
-            config.entry,
+            config.lib,
             config.instance_extensions,
             config.layers.clone(),
         );
@@ -245,13 +245,13 @@ impl VulkanoContext {
 
 // Create vk instance with given layers
 pub fn create_vk_instance(
-    entry: Entry,
+    lib: VulkanLibrary,
     instance_extensions: InstanceExtensions,
     layers: Vec<String>,
 ) -> Arc<Instance> {
     // Create instance.
     let result = Instance::new(
-        entry,
+        lib,
         InstanceCreateInfo {
             enabled_extensions: instance_extensions,
             enabled_layers: layers,

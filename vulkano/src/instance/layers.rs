@@ -11,6 +11,8 @@ use crate::OomError;
 use crate::Version;
 use std::ffi::CStr;
 
+use super::VulkanLibrary;
+
 /// Queries the list of layers that are available when creating an instance.
 ///
 /// On success, this function returns an iterator that produces
@@ -35,9 +37,9 @@ use std::ffi::CStr;
 /// }
 /// ```
 pub fn layers_list(
-    entry: &ash::Entry,
+    lib: &VulkanLibrary,
 ) -> Result<impl ExactSizeIterator<Item = LayerProperties>, OomError> {
-    let layers = entry.enumerate_instance_layer_properties()?;
+    let layers = lib.entry().enumerate_instance_layer_properties()?;
 
     Ok(layers.into_iter().map(|p| LayerProperties { props: p }))
 }
@@ -133,12 +135,12 @@ impl LayerProperties {
 }
 #[cfg(test)]
 mod tests {
-    use crate::instance::{self, Instance};
+    use crate::instance::{self, Instance, VulkanLibrary};
 
     #[test]
     fn layers_list() {
-        let entry = Instance::entry().unwrap();
-        let mut list = match instance::layers_list(&entry) {
+        let lib = VulkanLibrary::default();
+        let mut list = match instance::layers_list(&lib) {
             Ok(l) => l,
             Err(_) => return,
         };

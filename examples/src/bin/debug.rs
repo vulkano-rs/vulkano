@@ -16,7 +16,7 @@ use vulkano::{
     image::{ImageDimensions, ImmutableImage, MipmapsCount},
     instance::{
         debug::{DebugCallback, MessageSeverity, MessageType},
-        layers_list, Instance, InstanceCreateInfo, InstanceExtensions,
+        layers_list, Instance, InstanceCreateInfo, InstanceExtensions, VulkanLibrary,
     },
 };
 
@@ -46,7 +46,7 @@ fn main() {
     // and you should verify that list for safety - Vulkano will return an error if you specify
     // any layers that are not installed on this system. That code to do could look like this:
     println!("List of Vulkan debugging layers available to use:");
-    let entry = Instance::entry().unwrap();
+    let entry = VulkanLibrary::default();
     let mut layers = layers_list(&entry).unwrap();
     while let Some(l) = layers.next() {
         println!("\t{}", l.name());

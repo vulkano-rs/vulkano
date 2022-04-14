@@ -23,7 +23,7 @@ use vulkano::{
         SwapchainImage,
     },
     impl_vertex,
-    instance::{Instance, InstanceCreateInfo},
+    instance::{Instance, InstanceCreateInfo, VulkanLibrary},
     pipeline::{
         graphics::{
             color_blend::ColorBlendState,
@@ -48,7 +48,7 @@ use winit::{
 };
 
 fn main() {
-    let entry = Instance::entry().unwrap();
+    let entry = VulkanLibrary::default();
     let required_extensions = vulkano_win::required_extensions(&entry);
     let instance = Instance::new(
         entry,

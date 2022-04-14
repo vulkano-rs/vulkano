@@ -25,13 +25,13 @@ use vulkano::{
     },
     format::Format,
     image::{view::ImageView, ImageDimensions, StorageImage},
-    instance::{Instance, InstanceCreateInfo, InstanceExtensions},
+    instance::{Instance, InstanceCreateInfo, InstanceExtensions, VulkanLibrary},
     pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
     sync::{self, GpuFuture},
 };
 
 fn main() {
-    let entry = Instance::entry().unwrap();
+    let entry = VulkanLibrary::default();
     let instance = Instance::new(
         entry,
         InstanceCreateInfo {

@@ -17,7 +17,7 @@ use vulkano::{
         physical::{PhysicalDevice, PhysicalDeviceType},
         Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
     },
-    instance::Instance,
+    instance::{Instance, VulkanLibrary},
     pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
     sync::{self, GpuFuture},
 };
@@ -25,7 +25,7 @@ use vulkano::{
 fn main() {
     // The most part of this example is exactly the same as `basic-compute-shader`. You should read the
     // `basic-compute-shader` example if you haven't done so yet.
-    let entry = Instance::entry().unwrap();
+    let entry = VulkanLibrary::default();
     let instance = Instance::new(entry, Default::default()).unwrap();
 
     let device_extensions = DeviceExtensions {

@@ -12,8 +12,8 @@
 /// Creates an instance or returns if initialization fails.
 macro_rules! instance {
     () => {{
-        use crate::instance::Instance;
-        let entry = Instance::entry().unwrap();
+        use crate::instance::{Instance, VulkanLibrary};
+        let entry = VulkanLibrary::default();
 
         match Instance::new(entry, Default::default()) {
             Ok(i) => i,

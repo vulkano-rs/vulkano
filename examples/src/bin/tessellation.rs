@@ -29,7 +29,7 @@ use vulkano::{
     },
     image::{view::ImageView, ImageAccess, ImageUsage, SwapchainImage},
     impl_vertex,
-    instance::{Instance, InstanceCreateInfo},
+    instance::{Instance, InstanceCreateInfo, VulkanLibrary},
     pipeline::{
         graphics::{
             input_assembly::{InputAssemblyState, PrimitiveTopology},
@@ -149,7 +149,7 @@ mod fs {
 }
 
 fn main() {
-    let entry = Instance::entry().unwrap();
+    let entry = VulkanLibrary::default();
     let required_extensions = vulkano_win::required_extensions(&entry);
     let instance = Instance::new(
         entry,

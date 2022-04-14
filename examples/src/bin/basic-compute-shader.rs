@@ -21,14 +21,14 @@ use vulkano::{
         physical::{PhysicalDevice, PhysicalDeviceType},
         Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
     },
-    instance::Instance,
+    instance::{Instance, VulkanLibrary},
     pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
     sync::{self, GpuFuture},
 };
 
 fn main() {
     // As with other examples, the first step is to create an instance.
-    let entry = Instance::entry().unwrap();
+    let entry = VulkanLibrary::default();
     let instance = Instance::new(entry, Default::default()).unwrap();
 
     // Choose which physical device to use.

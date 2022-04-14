@@ -78,7 +78,7 @@ use vulkano::{
     format::{ClearValue, Format},
     image::{view::ImageView, AttachmentImage, ImageDimensions, SampleCount, StorageImage},
     impl_vertex,
-    instance::{Instance, InstanceCreateInfo},
+    instance::{Instance, InstanceCreateInfo, VulkanLibrary},
     pipeline::{
         graphics::{
             vertex_input::BuffersDefinition,
@@ -92,7 +92,7 @@ use vulkano::{
 
 fn main() {
     // The usual Vulkan initialization.
-    let entry = Instance::entry().unwrap();
+    let entry = VulkanLibrary::default();
     let required_extensions = vulkano_win::required_extensions(&entry);
     let instance = Instance::new(
         entry,

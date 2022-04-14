@@ -33,7 +33,7 @@ use vulkano::{
     },
     image::{view::ImageView, ImageAccess, ImageUsage, SwapchainImage},
     impl_vertex,
-    instance::{Instance, InstanceCreateInfo},
+    instance::{Instance, InstanceCreateInfo, VulkanLibrary},
     pipeline::{
         graphics::{
             input_assembly::InputAssemblyState,
@@ -63,7 +63,7 @@ struct Vertex {
 impl_vertex!(Vertex, position);
 
 fn main() {
-    let entry = Instance::entry().unwrap();
+    let entry = VulkanLibrary::default();
     let required_extensions = vulkano_win::required_extensions(&entry);
     let instance = Instance::new(
         entry,

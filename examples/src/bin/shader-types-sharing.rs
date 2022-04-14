@@ -36,13 +36,13 @@ use vulkano::{
         physical::{PhysicalDevice, PhysicalDeviceType},
         Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo,
     },
-    instance::Instance,
+    instance::{Instance, VulkanLibrary},
     pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
     sync::{self, GpuFuture},
 };
 
 fn main() {
-    let entry = Instance::entry().unwrap();
+    let entry = VulkanLibrary::default();
     let instance = Instance::new(entry, Default::default()).unwrap();
 
     let device_extensions = DeviceExtensions {

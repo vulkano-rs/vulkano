@@ -27,7 +27,7 @@ use vulkano::{
     },
     image::{view::ImageView, ImageAccess, ImageUsage, SwapchainImage},
     impl_vertex,
-    instance::{Instance, InstanceCreateInfo},
+    instance::{Instance, InstanceCreateInfo, VulkanLibrary},
     pipeline::{
         graphics::{
             input_assembly::InputAssemblyState,
@@ -57,7 +57,7 @@ fn main() {
     // All the window-drawing functionalities are part of non-core extensions that we need
     // to enable manually. To do so, we ask the `vulkano_win` crate for the list of extensions
     // required to draw to a window.
-    let entry = Instance::entry().unwrap();
+    let entry = VulkanLibrary::default();
     let required_extensions = vulkano_win::required_extensions(&entry);
 
     // Now creating the instance.

@@ -523,7 +523,7 @@ impl From<OomError> for SemaphoreExportError {
 mod tests {
     use crate::device::physical::PhysicalDevice;
     use crate::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
-    use crate::instance::{Instance, InstanceCreateInfo, InstanceExtensions};
+    use crate::instance::{Instance, InstanceCreateInfo, InstanceExtensions, VulkanLibrary};
     use crate::sync::{ExternalSemaphoreHandleTypes, Semaphore, SemaphoreCreateInfo};
     use crate::VulkanObject;
 
@@ -552,15 +552,18 @@ mod tests {
 
     #[test]
     fn semaphore_export() {
-        let entry = Instance::entry().unwrap();
-        let instance = match Instance::new(entry, InstanceCreateInfo {
-            enabled_extensions: InstanceExtensions {
-                khr_get_physical_device_properties2: true,
-                khr_external_semaphore_capabilities: true,
-                ..InstanceExtensions::none()
+        let entry = VulkanLibrary::default();
+        let instance = match Instance::new(
+            entry,
+            InstanceCreateInfo {
+                enabled_extensions: InstanceExtensions {
+                    khr_get_physical_device_properties2: true,
+                    khr_external_semaphore_capabilities: true,
+                    ..InstanceExtensions::none()
+                },
+                ..Default::default()
             },
-            ..Default::default()
-        }) {
+        ) {
             Ok(x) => x,
             Err(_) => return,
         };
