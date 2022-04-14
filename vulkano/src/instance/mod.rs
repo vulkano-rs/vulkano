@@ -16,9 +16,11 @@
 //! ```no_run
 //! use vulkano::instance::Instance;
 //! use vulkano::instance::InstanceExtensions;
+//! use vulkano::instance::VulkanLibrary;
 //! use vulkano::Version;
 //!
-//! let instance = match Instance::new(Default::default()) {
+//! let lib = VulkanLibrary::default();
+//! let instance = match Instance::new(lib, Default::default()) {
 //!     Ok(i) => i,
 //!     Err(err) => panic!("Couldn't build instance: {:?}", err)
 //! };
@@ -30,10 +32,12 @@
 //! ```no_run
 //! # use vulkano::instance::Instance;
 //! # use vulkano::instance::InstanceExtensions;
+//! # use vulkano::instance::VulkanLibrary;
 //! # use vulkano::Version;
 //! use vulkano::device::physical::PhysicalDevice;
 //!
-//! # let instance = Instance::new(Default::default()).unwrap();
+//! let lib = VulkanLibrary::default();
+//! # let instance = Instance::new(lib, Default::default()).unwrap();
 //! for physical_device in PhysicalDevice::enumerate(&instance) {
 //!     println!("Available device: {}", physical_device.properties().device_name);
 //! }
@@ -91,10 +95,11 @@ mod library;
 /// ```no_run
 /// # #[macro_use] extern crate vulkano;
 /// # fn main() {
-/// use vulkano::instance::{Instance, InstanceCreateInfo, InstanceExtensions};
+/// use vulkano::instance::{Instance, InstanceCreateInfo, InstanceExtensions, VulkanLibrary};
 /// use vulkano::Version;
 ///
-/// let _instance = Instance::new(InstanceCreateInfo::application_from_cargo_toml()).unwrap();
+/// let lib = VulkanLibrary::default();
+/// let _instance = Instance::new(lib, InstanceCreateInfo::application_from_cargo_toml()).unwrap();
 /// # }
 /// ```
 ///
@@ -145,7 +150,7 @@ mod library;
 /// succeed on anything else than an Android-running device.
 ///
 /// ```no_run
-/// use vulkano::instance::{Instance, InstanceCreateInfo, InstanceExtensions};
+/// use vulkano::instance::{Instance, InstanceCreateInfo, InstanceExtensions, VulkanLibrary};
 /// use vulkano::Version;
 ///
 /// let extensions = InstanceExtensions {
@@ -154,7 +159,8 @@ mod library;
 ///     .. InstanceExtensions::none()
 /// };
 ///
-/// let instance = match Instance::new(InstanceCreateInfo {
+/// let lib = VulkanLibrary::default();
+/// let instance = match Instance::new(lib, InstanceCreateInfo {
 ///     enabled_extensions: extensions,
 ///     ..Default::default()
 /// }) {
@@ -190,19 +196,20 @@ mod library;
 /// ```
 /// # use std::sync::Arc;
 /// # use std::error::Error;
-/// # use vulkano::instance;
 /// # use vulkano::instance::Instance;
 /// # use vulkano::instance::InstanceCreateInfo;
 /// # use vulkano::instance::InstanceExtensions;
+/// # use vulkano::instance::VulkanLibrary;
 /// # use vulkano::Version;
 /// # fn test() -> Result<Arc<Instance>, Box<dyn Error>> {
 /// // For the sake of the example, we activate all the layers that
 /// // contain the word "foo" in their description.
-/// let layers: Vec<_> = instance::layers_list()?
+/// let lib = VulkanLibrary::default();
+/// let layers: Vec<_> = lib.layers()?
 ///     .filter(|l| l.description().contains("foo"))
 ///     .collect();
 ///
-/// let instance = Instance::new(InstanceCreateInfo {
+/// let instance = Instance::new(lib, InstanceCreateInfo {
 ///     enabled_layers: layers.iter().map(|l| l.name().to_owned()).collect(),
 ///     ..Default::default()
 /// })?;

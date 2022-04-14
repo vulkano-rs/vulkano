@@ -55,7 +55,7 @@
 //!
 //! ```no_run
 //! use std::ptr;
-//! use vulkano::instance::{Instance, InstanceCreateInfo, InstanceExtensions};
+//! use vulkano::instance::{Instance, InstanceCreateInfo, InstanceExtensions, VulkanLibrary};
 //! use vulkano::swapchain::Surface;
 //! use vulkano::Version;
 //!
@@ -66,7 +66,8 @@
 //!         .. InstanceExtensions::none()
 //!     };
 //!
-//!     match Instance::new(InstanceCreateInfo {
+//!     let lib = VulkanLibrary::default();
+//!     match Instance::new(lib, InstanceCreateInfo {
 //!         enabled_extensions: extensions,
 //!         ..Default::default()
 //!     }) {

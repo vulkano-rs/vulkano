@@ -17,11 +17,12 @@
 //! ```no_run
 //! use vulkano::device::physical::PhysicalDevice;
 //! use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, Features, QueueCreateInfo};
-//! use vulkano::instance::{Instance, InstanceExtensions};
+//! use vulkano::instance::{Instance, InstanceExtensions, VulkanLibrary};
 //! use vulkano::Version;
 //!
 //! // Creating the instance. See the documentation of the `instance` module.
-//! let instance = match Instance::new(Default::default()) {
+//! let lib = VulkanLibrary::default();
+//! let instance = match Instance::new(lib, Default::default()) {
 //!     Ok(i) => i,
 //!     Err(err) => panic!("Couldn't build instance: {:?}", err)
 //! };

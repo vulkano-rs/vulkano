@@ -30,9 +30,10 @@ use super::VulkanLibrary;
 /// # Example
 ///
 /// ```no_run
-/// use vulkano::instance;
+/// use vulkano::instance::VulkanLibrary;
 ///
-/// for layer in instance::layers_list().unwrap() {
+/// let lib = VulkanLibrary::default();
+/// for layer in lib.layers().unwrap() {
 ///     println!("Available layer: {}", layer.name());
 /// }
 /// ```
@@ -60,9 +61,10 @@ impl LayerProperties {
     /// # Example
     ///
     /// ```no_run
-    /// use vulkano::instance;
+    /// use vulkano::instance::VulkanLibrary;
     ///
-    /// for layer in instance::layers_list().unwrap() {
+    /// let lib = VulkanLibrary::default();
+    /// for layer in lib.layers().unwrap() {
     ///     println!("Layer name: {}", layer.name());
     /// }
     /// ```
@@ -82,9 +84,10 @@ impl LayerProperties {
     /// # Example
     ///
     /// ```no_run
-    /// use vulkano::instance;
+    /// use vulkano::instance::VulkanLibrary;
     ///
-    /// for layer in instance::layers_list().unwrap() {
+    /// let lib = VulkanLibrary::default();
+    /// for layer in lib.layers().unwrap() {
     ///     println!("Layer description: {}", layer.description());
     /// }
     /// ```
@@ -102,10 +105,11 @@ impl LayerProperties {
     /// # Example
     ///
     /// ```no_run
-    /// use vulkano::instance;
     /// use vulkano::instance::Version;
+    /// use vulkano::instance::VulkanLibrary;
     ///
-    /// for layer in instance::layers_list().unwrap() {
+    /// let lib = VulkanLibrary::default();
+    /// for layer in lib.layers().unwrap() {
     ///     if layer.vulkan_version() >= Version::major_minor(2, 0) {
     ///         println!("Layer {} requires Vulkan 2.0", layer.name());
     ///     }
@@ -123,9 +127,10 @@ impl LayerProperties {
     /// # Example
     ///
     /// ```no_run
-    /// use vulkano::instance;
+    /// use vulkano::instance::VulkanLibrary;
     ///
-    /// for layer in instance::layers_list().unwrap() {
+    /// let lib = VulkanLibrary::default();
+    /// for layer in lib.layers().unwrap() {
     ///     println!("Layer {} - Version: {}", layer.name(), layer.implementation_version());
     /// }
     /// ```
@@ -136,7 +141,7 @@ impl LayerProperties {
 }
 #[cfg(test)]
 mod tests {
-    use crate::instance::{self, VulkanLibrary};
+    use crate::instance::VulkanLibrary;
 
     #[test]
     fn layers_list() {
