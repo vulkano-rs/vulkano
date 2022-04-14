@@ -26,7 +26,9 @@ mod linux {
         format::Format,
         image::{view::ImageView, ImageCreateFlags, ImageUsage, StorageImage, SwapchainImage},
         impl_vertex,
-        instance::{debug::DebugCallback, Instance, InstanceCreateInfo, InstanceExtensions},
+        instance::{
+            debug::DebugCallback, Instance, InstanceCreateInfo, InstanceExtensions, VulkanLibrary,
+        },
         pipeline::{
             graphics::{
                 color_blend::ColorBlendState,
@@ -374,21 +376,25 @@ mod linux {
         Arc<GraphicsPipeline>,
         Arc<CpuAccessibleBuffer<[Vertex]>>,
     ) {
-        let required_extensions = vulkano_win::required_extensions();
+        let lib = VulkanLibrary::default();
+        let required_extensions = vulkano_win::required_extensions(&lib);
 
-        let instance = Instance::new(InstanceCreateInfo {
-            enabled_extensions: InstanceExtensions {
-                khr_get_physical_device_properties2: true,
-                khr_external_memory_capabilities: true,
-                khr_external_semaphore_capabilities: true,
-                khr_external_fence_capabilities: true,
-                ext_debug_utils: true,
+        let instance = Instance::new(
+            lib,
+            InstanceCreateInfo {
+                enabled_extensions: InstanceExtensions {
+                    khr_get_physical_device_properties2: true,
+                    khr_external_memory_capabilities: true,
+                    khr_external_semaphore_capabilities: true,
+                    khr_external_fence_capabilities: true,
+                    ext_debug_utils: true,
 
-                ..InstanceExtensions::none()
-            }
-            .union(&required_extensions),
-            ..Default::default()
-        })
+                    ..InstanceExtensions::none()
+                }
+                .union(&required_extensions),
+                ..Default::default()
+            },
+        )
         .unwrap();
 
         let _debug_callback = DebugCallback::errors_and_warnings(&instance, |msg| {

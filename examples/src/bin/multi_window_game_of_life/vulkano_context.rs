@@ -259,26 +259,6 @@ pub fn create_vk_instance(
         },
     );
 
-    // Handle errors. On mac os, it will ask you to install vulkan sdk if you have not done so.
-    #[cfg(target_os = "macos")]
-    let instance = {
-        use vulkano::instance::InstanceCreationError;
-
-        match result {
-            Err(e) => match e {
-                InstanceCreationError::LoadingError(le) => {
-                    println!(
-                        "{:?}, Did you install vulkanSDK from https://vulkan.lunarg.com/sdk/home ?",
-                        le
-                    );
-                    Err(le).expect("")
-                }
-                _ => Err(e).expect("Failed to create instance"),
-            },
-            Ok(i) => i,
-        }
-    };
-    #[cfg(not(target_os = "macos"))]
     let instance = result.expect("Failed to create instance");
 
     instance
