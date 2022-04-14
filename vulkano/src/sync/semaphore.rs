@@ -552,9 +552,9 @@ mod tests {
 
     #[test]
     fn semaphore_export() {
-        let entry = VulkanLibrary::default();
+        let lib = VulkanLibrary::default();
         let instance = match Instance::new(
-            entry,
+            lib,
             InstanceCreateInfo {
                 enabled_extensions: InstanceExtensions {
                     khr_get_physical_device_properties2: true,

@@ -25,8 +25,8 @@ use vulkano::{
 };
 
 fn main() {
-    let entry = VulkanLibrary::default();
-    let instance = Instance::new(entry, Default::default()).unwrap();
+    let lib = VulkanLibrary::default();
+    let instance = Instance::new(lib, Default::default()).unwrap();
     let device_extensions = DeviceExtensions {
         khr_storage_buffer_storage_class: true,
         ..DeviceExtensions::none()

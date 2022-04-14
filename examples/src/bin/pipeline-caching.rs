@@ -42,8 +42,8 @@ use vulkano::{
 
 fn main() {
     // As with other examples, the first step is to create an instance.
-    let entry = VulkanLibrary::default();
-    let instance = Instance::new(entry, Default::default()).unwrap();
+    let lib = VulkanLibrary::default();
+    let instance = Instance::new(lib, Default::default()).unwrap();
 
     // Choose which physical device to use.
     let device_extensions = DeviceExtensions {

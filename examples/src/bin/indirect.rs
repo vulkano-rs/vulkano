@@ -71,10 +71,10 @@ struct Vertex {
 impl_vertex!(Vertex, position);
 
 fn main() {
-    let entry = VulkanLibrary::default();
-    let required_extensions = vulkano_win::required_extensions(&entry);
+    let lib = VulkanLibrary::default();
+    let required_extensions = vulkano_win::required_extensions(&lib);
     let instance = Instance::new(
-        entry,
+        lib,
         InstanceCreateInfo {
             enabled_extensions: required_extensions,
             ..Default::default()

@@ -51,10 +51,10 @@ fn main() {
     // The start of this example is exactly the same as `triangle`. You should read the
     // `triangle` example if you haven't done so yet.
 
-    let entry = VulkanLibrary::default();
-    let required_extensions = vulkano_win::required_extensions(&entry);
+    let lib = VulkanLibrary::default();
+    let required_extensions = vulkano_win::required_extensions(&lib);
     let instance = Instance::new(
-        entry,
+        lib,
         InstanceCreateInfo {
             enabled_extensions: required_extensions,
             ..Default::default()

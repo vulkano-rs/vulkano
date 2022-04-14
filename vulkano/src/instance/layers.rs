@@ -135,7 +135,7 @@ impl LayerProperties {
 }
 #[cfg(test)]
 mod tests {
-    use crate::instance::{self, Instance, VulkanLibrary};
+    use crate::instance::{self, VulkanLibrary};
 
     #[test]
     fn layers_list() {

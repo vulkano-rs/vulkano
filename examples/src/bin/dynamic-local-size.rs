@@ -31,9 +31,9 @@ use vulkano::{
 };
 
 fn main() {
-    let entry = VulkanLibrary::default();
+    let lib = VulkanLibrary::default();
     let instance = Instance::new(
-        entry,
+        lib,
         InstanceCreateInfo {
             enabled_extensions: InstanceExtensions {
                 // This extension is required to obtain physical device metadata

@@ -46,8 +46,8 @@ fn main() {
     // and you should verify that list for safety - Vulkano will return an error if you specify
     // any layers that are not installed on this system. That code to do could look like this:
     println!("List of Vulkan debugging layers available to use:");
-    let entry = VulkanLibrary::default();
-    let mut layers = layers_list(&entry).unwrap();
+    let lib = VulkanLibrary::default();
+    let mut layers = layers_list(&lib).unwrap();
     while let Some(l) = layers.next() {
         println!("\t{}", l.name());
     }
@@ -61,7 +61,7 @@ fn main() {
 
     // Important: pass the extension(s) and layer(s) when creating the vulkano instance
     let instance = Instance::new(
-        entry,
+        lib,
         InstanceCreateInfo {
             enabled_extensions: extensions,
             enabled_layers: layers,

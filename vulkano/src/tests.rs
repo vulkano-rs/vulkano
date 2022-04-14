@@ -13,9 +13,9 @@
 macro_rules! instance {
     () => {{
         use crate::instance::{Instance, VulkanLibrary};
-        let entry = VulkanLibrary::default();
+        let lib = VulkanLibrary::default();
 
-        match Instance::new(entry, Default::default()) {
+        match Instance::new(lib, Default::default()) {
             Ok(i) => i,
             Err(_) => return,
         }

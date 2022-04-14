@@ -45,9 +45,9 @@ use vulkano::{
 };
 
 fn main() {
-    let entry = VulkanLibrary::default();
+    let lib = VulkanLibrary::default();
     let instance = Instance::new(
-        entry,
+        lib,
         InstanceCreateInfo {
             enabled_extensions: InstanceExtensions {
                 khr_get_physical_device_properties2: true, // required to get multiview limits
