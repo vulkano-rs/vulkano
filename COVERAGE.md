@@ -25,6 +25,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_KHR_dedicated_allocation`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_dedicated_allocation.html)
 - [`VK_KHR_external_memory_capabilities`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_memory_capabilities.html)
 - [`VK_KHR_external_semaphore_capabilities`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_semaphore_capabilities.html)
+- [`VK_KHR_maintenance1`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_maintenance1.html)
 - [`VK_KHR_multiview`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_multiview.html)
 - [`VK_KHR_relaxed_block_layout`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_relaxed_block_layout.html)
 - [`VK_KHR_shader_draw_parameters`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_shader_draw_parameters.html)
@@ -41,8 +42,6 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 	- `vkGetImageSparseMemoryRequirements2KHR`
 - [`VK_KHR_get_physical_device_properties2`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_get_physical_device_properties2.html)
 	- `vkGetPhysicalDeviceSparseImageFormatProperties2KHR`
-- [`VK_KHR_maintenance1`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_maintenance1.html)
-	- `vkTrimCommandPoolKHR`
 - [`VK_KHR_maintenance2`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_maintenance2.html)
 	- `VkImageViewUsageCreateInfoKHR`
 	- `VkPipelineTessellationDomainOriginStateCreateInfoKHR`
