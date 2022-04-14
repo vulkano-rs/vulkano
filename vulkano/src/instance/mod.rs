@@ -77,8 +77,6 @@ pub(crate) mod extensions;
 mod layers;
 mod library;
 
-pub use layers::layers_list;
-
 /// An instance of a Vulkan context. This is the main object that should be created by an
 /// application before everything else.
 ///
@@ -286,10 +284,7 @@ impl Instance {
         assert!(max_api_version >= Version::V1_0);
 
         // Check if the extensions are correct
-        enabled_extensions.check_requirements(
-            &InstanceExtensions::supported_by_core_with_loader(&lib)?,
-            api_version,
-        )?;
+        enabled_extensions.check_requirements(&lib.instance_extensions()?, api_version)?;
 
         // FIXME: check whether each layer is supported
         let enabled_layers_cstr: Vec<CString> = enabled_layers

@@ -30,7 +30,7 @@ pub fn required_extensions(lib: &VulkanLibrary) -> InstanceExtensions {
         ..InstanceExtensions::none()
     };
 
-    match InstanceExtensions::supported_by_core_with_loader(lib) {
+    match lib.instance_extensions() {
         Ok(supported) => supported.intersection(&ideal),
         Err(_) => InstanceExtensions::none(),
     }

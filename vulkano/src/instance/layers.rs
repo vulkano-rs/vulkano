@@ -36,12 +36,13 @@ use super::VulkanLibrary;
 ///     println!("Available layer: {}", layer.name());
 /// }
 /// ```
-pub fn layers_list(
-    lib: &VulkanLibrary,
-) -> Result<impl ExactSizeIterator<Item = LayerProperties>, OomError> {
-    let layers = lib.entry().enumerate_instance_layer_properties()?;
 
-    Ok(layers.into_iter().map(|p| LayerProperties { props: p }))
+impl VulkanLibrary {
+    pub fn layers(&self) -> Result<impl ExactSizeIterator<Item = LayerProperties>, OomError> {
+        let layers = self.entry().enumerate_instance_layer_properties()?;
+
+        Ok(layers.into_iter().map(|p| LayerProperties { props: p }))
+    }
 }
 
 /// Properties of a layer.
@@ -140,7 +141,7 @@ mod tests {
     #[test]
     fn layers_list() {
         let lib = VulkanLibrary::default();
-        let mut list = match instance::layers_list(&lib) {
+        let mut list = match lib.layers() {
             Ok(l) => l,
             Err(_) => return,
         };

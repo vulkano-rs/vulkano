@@ -11,6 +11,9 @@
 - **Breaking** `UnsafeCommandBufferBuilder::pipeline_barrier` now takes a `DependencyInfo`. It will use `vkCmdPipelineBarrier2` if supported.
 - `UnsafeCommandPoolCreateInfo` and `UnsafeCommandPoolCreationError` interfaces exposed.
 - Fixed compile error in Vulkano-win on Android.
+- You can now choose to link Vulkan directly at compile time by enabling the `linked` feature flag.
+- **Breaking** Creating `Instance` with `Instance::new` now requires a `VulkanLibrary`, which could be created with `VulkanLibrary::linked()`, `VulkanLibrary::load()` or `VulkanLibrary::default()`. `FunctionPointers` and related types and functions are now removed.
+- **Breaking** `InstanceExtensions::supported_by_core_with_loader` was removed in favor of `VulkanLibrary::instance_extensions`. `layers_list` was removed in favor of `VulkanLibrary::layers`
 
 # Version 0.29.0 (2022-03-11)
 
