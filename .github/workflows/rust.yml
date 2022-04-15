@@ -29,6 +29,8 @@ jobs:
   linux_stable:
     runs-on: ubuntu-latest
     steps:
+    - name: Install Vulkan loader
+      run: sudo apt-get install libvulkan-dev
     - uses: actions/checkout@v2
     - name: Build
       run: cargo build --verbose
