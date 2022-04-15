@@ -68,18 +68,6 @@ pub unsafe trait BufferAccess: DeviceOwned + Send + Sync {
         BufferSlice::index(&self.into_buffer_slice(), index)
     }
 
-    /// Returns a key that uniquely identifies the buffer. Two buffers or images that potentially
-    /// overlap in memory must return the same key.
-    ///
-    /// The key is shared amongst all buffers and images, which means that you can make several
-    /// different buffer objects share the same memory, or make some buffer objects share memory
-    /// with images, as long as they return the same key.
-    ///
-    /// Since it is possible to accidentally return the same key for memory ranges that don't
-    /// overlap, the `conflicts_buffer` or `conflicts_image` function should always be called to
-    /// verify whether they actually overlap.
-    fn conflict_key(&self) -> (u64, u64);
-
     /// Gets the device address for this buffer.
     ///
     /// # Safety
@@ -153,11 +141,6 @@ where
     #[inline]
     fn size(&self) -> DeviceSize {
         (**self).size()
-    }
-
-    #[inline]
-    fn conflict_key(&self) -> (u64, u64) {
-        (**self).conflict_key()
     }
 }
 

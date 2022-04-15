@@ -145,18 +145,6 @@ pub unsafe trait ImageAccess: DeviceOwned + Send + Sync {
     /// This must return `Some` if the image is to be used to create an image view.
     fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts>;
 
-    /// Returns a key that uniquely identifies the memory content of the image.
-    /// Two ranges that potentially overlap in memory must return the same key.
-    ///
-    /// The key is shared amongst all buffers and images, which means that you can make several
-    /// different image objects share the same memory, or make some image objects share memory
-    /// with buffers, as long as they return the same key.
-    ///
-    /// Since it is possible to accidentally return the same key for memory ranges that don't
-    /// overlap, the `conflicts_image` or `conflicts_buffer` function should always be called to
-    /// verify whether they actually overlap.
-    fn conflict_key(&self) -> u64;
-
     /// Returns the current mip level that is accessed by the gpu
     fn current_mip_levels_access(&self) -> Range<u32>;
 
@@ -252,11 +240,6 @@ where
         self.image.descriptor_layouts()
     }
 
-    #[inline]
-    fn conflict_key(&self) -> u64 {
-        self.image.conflict_key()
-    }
-
     fn current_mip_levels_access(&self) -> Range<u32> {
         self.image.current_mip_levels_access()
     }
@@ -323,11 +306,6 @@ where
     #[inline]
     fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
         (**self).descriptor_layouts()
-    }
-
-    #[inline]
-    fn conflict_key(&self) -> u64 {
-        (**self).conflict_key()
     }
 
     #[inline]

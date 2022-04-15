@@ -285,11 +285,6 @@ where
     }
 
     #[inline]
-    fn conflict_key(&self) -> u64 {
-        self.image.key()
-    }
-
-    #[inline]
     fn current_mip_levels_access(&self) -> Range<u32> {
         0..self.mip_levels()
     }

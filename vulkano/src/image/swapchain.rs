@@ -117,11 +117,6 @@ where
     }
 
     #[inline]
-    fn conflict_key(&self) -> u64 {
-        self.my_image().image.key()
-    }
-
-    #[inline]
     unsafe fn layout_initialized(&self) {
         self.layout_initialized();
     }

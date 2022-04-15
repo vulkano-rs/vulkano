@@ -675,19 +675,6 @@ where
     fn size(&self) -> DeviceSize {
         self.requested_len * size_of::<T>() as DeviceSize
     }
-
-    #[inline]
-    fn conflict_key(&self) -> (u64, u64) {
-        (
-            self.buffer.inner.key(),
-            // ensure the special cased empty buffers don't collide with a regular buffer starting at 0
-            if self.requested_len == 0 {
-                u64::MAX
-            } else {
-                self.index
-            },
-        )
-    }
 }
 
 impl<T, A> BufferAccessObject for Arc<CpuBufferPoolChunk<T, A>>
@@ -806,11 +793,6 @@ where
     #[inline]
     fn size(&self) -> DeviceSize {
         self.chunk.size()
-    }
-
-    #[inline]
-    fn conflict_key(&self) -> (u64, u64) {
-        self.chunk.conflict_key()
     }
 }
 

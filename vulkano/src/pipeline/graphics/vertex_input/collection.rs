@@ -101,10 +101,6 @@ mod tests {
         fn size(&self) -> DeviceSize {
             unimplemented!()
         }
-
-        fn conflict_key(&self) -> (u64, u64) {
-            unimplemented!()
-        }
     }
 
     unsafe impl DeviceOwned for DummyBufferA {
@@ -125,10 +121,6 @@ mod tests {
         }
 
         fn size(&self) -> DeviceSize {
-            unimplemented!()
-        }
-
-        fn conflict_key(&self) -> (u64, u64) {
             unimplemented!()
         }
     }

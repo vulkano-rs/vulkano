@@ -588,11 +588,6 @@ where
     }
 
     #[inline]
-    fn conflict_key(&self) -> u64 {
-        self.image.key()
-    }
-
-    #[inline]
     unsafe fn layout_initialized(&self) {
         self.initialized.store(true, Ordering::SeqCst);
     }
