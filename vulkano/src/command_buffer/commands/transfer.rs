@@ -1945,7 +1945,6 @@ impl SyncCommandBufferBuilder {
             _ne: _,
         } = &copy_buffer_info;
 
-        // if its the same image in source and destination, we need to lock it once
         let resources: SmallVec<[_; 8]> = regions
             .iter()
             .flat_map(|region| {

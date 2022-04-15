@@ -1157,18 +1157,6 @@ impl SyncCommandBufferBuilder {
             _ne: _,
         } = &blit_image_info;
 
-        // if its the same image in source and destination, we need to lock it once
-        let src_key = (
-            src_image.conflict_key(),
-            src_image.current_mip_levels_access(),
-            src_image.current_array_layers_access(),
-        );
-        let dst_key = (
-            dst_image.conflict_key(),
-            dst_image.current_mip_levels_access(),
-            dst_image.current_array_layers_access(),
-        );
-
         let resources: SmallVec<[_; 8]> = regions
             .iter()
             .flat_map(|region| {
