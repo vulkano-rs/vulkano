@@ -13,12 +13,17 @@
 macro_rules! instance {
     () => {{
         use crate::instance::{Instance, VulkanLibrary};
-        let lib = VulkanLibrary::default();
 
-        match Instance::new(lib, Default::default()) {
-            Ok(i) => i,
+        #[cfg(feature = "linked")]
+        let lib = VulkanLibrary::linked();
+
+        #[cfg(feature = "loaded")]
+        let lib = match unsafe { VulkanLibrary::load() } {
+            Ok(lib) => lib,
             Err(_) => return,
-        }
+        };
+
+        Instance::new(lib, Default::default()).unwrap()
     }};
 }
 
