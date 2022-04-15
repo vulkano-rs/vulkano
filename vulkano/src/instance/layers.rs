@@ -145,11 +145,16 @@ mod tests {
 
     #[test]
     fn layers_list() {
-        let lib = VulkanLibrary::default();
-        let mut list = match lib.layers() {
+        #[cfg(feature="linked")]
+        let lib = VulkanLibrary::linked();
+    
+        #[cfg(feature="loaded")]
+        let lib = match unsafe { VulkanLibrary::load() } {
             Ok(l) => l,
             Err(_) => return,
         };
+
+        let mut list = lib.layers().unwrap();
 
         while let Some(_) = list.next() {}
     }

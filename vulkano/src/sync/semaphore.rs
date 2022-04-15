@@ -552,8 +552,17 @@ mod tests {
 
     #[test]
     fn semaphore_export() {
-        let lib = VulkanLibrary::default();
-        let instance = match Instance::new(
+
+        #[cfg(feature="linked")]
+        let lib = VulkanLibrary::linked();
+    
+        #[cfg(feature="loaded")]
+        let lib = match unsafe { VulkanLibrary::load() } {
+            Ok(l) => l,
+            Err(_) => return,
+        };
+
+        let instance = Instance::new(
             lib,
             InstanceCreateInfo {
                 enabled_extensions: InstanceExtensions {
@@ -563,10 +572,7 @@ mod tests {
                 },
                 ..Default::default()
             },
-        ) {
-            Ok(x) => x,
-            Err(_) => return,
-        };
+        ).unwrap();
 
         let physical_device = PhysicalDevice::enumerate(&instance).next().unwrap();
         let queue_family = physical_device.queue_families().next().unwrap();
