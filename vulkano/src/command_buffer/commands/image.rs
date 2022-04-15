@@ -79,6 +79,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     fn validate_blit_image(&self, blit_image_info: &mut BlitImageInfo) -> Result<(), CopyError> {
+        let device = self.device();
+
         // VUID-vkCmdBlitImage2-renderpass
         if self.render_pass_state.is_some() {
             return Err(CopyError::ForbiddenInsideRenderPass);
@@ -99,7 +101,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             _ne: _,
         } = blit_image_info;
 
-        let device = self.device();
         let src_image_inner = src_image.inner();
         let dst_image_inner = dst_image.inner();
 
@@ -583,6 +584,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         &self,
         clear_info: &mut ClearColorImageInfo,
     ) -> Result<(), CopyError> {
+        let device = self.device();
+
         // VUID-vkCmdClearColorImage-renderpass
         if self.render_pass_state.is_some() {
             return Err(CopyError::ForbiddenInsideRenderPass);
@@ -601,8 +604,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             _ne: _,
         } = clear_info;
 
-        let device = self.device();
-
         // VUID-vkCmdClearColorImage-commonparent
         assert_eq!(device, image.device());
 
@@ -614,12 +615,14 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             });
         }
 
-        // VUID-vkCmdClearColorImage-image-01993
-        if !image.format_features().transfer_dst {
-            return Err(CopyError::MissingFormatFeature {
-                resource: CopyErrorResource::Destination,
-                format_feature: "transfer_dst",
-            });
+        if device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1 {
+            // VUID-vkCmdClearColorImage-image-01993
+            if !image.format_features().transfer_dst {
+                return Err(CopyError::MissingFormatFeature {
+                    resource: CopyErrorResource::Destination,
+                    format_feature: "transfer_dst",
+                });
+            }
         }
 
         let image_aspects = image.format().aspects();
@@ -723,6 +726,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         &self,
         clear_info: &mut ClearDepthStencilImageInfo,
     ) -> Result<(), CopyError> {
+        let device = self.device();
+
         // VUID-vkCmdClearDepthStencilImage-renderpass
         if self.render_pass_state.is_some() {
             return Err(CopyError::ForbiddenInsideRenderPass);
@@ -741,8 +746,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             _ne: _,
         } = clear_info;
 
-        let device = self.device();
-
         // VUID-vkCmdClearDepthStencilImage-commonparent
         assert_eq!(device, image.device());
 
@@ -757,12 +760,14 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             }
         }
 
-        // VUID-vkCmdClearDepthStencilImage-image-01994
-        if !image.format_features().transfer_dst {
-            return Err(CopyError::MissingFormatFeature {
-                resource: CopyErrorResource::Destination,
-                format_feature: "transfer_dst",
-            });
+        if device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1 {
+            // VUID-vkCmdClearDepthStencilImage-image-01994
+            if !image.format_features().transfer_dst {
+                return Err(CopyError::MissingFormatFeature {
+                    resource: CopyErrorResource::Destination,
+                    format_feature: "transfer_dst",
+                });
+            }
         }
 
         let image_aspects = image.format().aspects();
@@ -867,6 +872,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         &self,
         resolve_image_info: &mut ResolveImageInfo,
     ) -> Result<(), CopyError> {
+        let device = self.device();
+
         // VUID-vkCmdResolveImage2-renderpass
         if self.render_pass_state.is_some() {
             return Err(CopyError::ForbiddenInsideRenderPass);
@@ -885,8 +892,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             ref regions,
             _ne: _,
         } = resolve_image_info;
-
-        let device = self.device();
 
         // VUID-VkResolveImageInfo2-commonparent
         assert_eq!(device, src_image.device());

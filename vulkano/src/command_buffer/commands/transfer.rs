@@ -56,6 +56,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     fn validate_copy_buffer(&self, copy_buffer_info: &mut CopyBufferInfo) -> Result<(), CopyError> {
+        let device = self.device();
+
         // VUID-vkCmdCopyBuffer2-renderpass
         if self.render_pass_state.is_some() {
             return Err(CopyError::ForbiddenInsideRenderPass);
@@ -76,7 +78,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             _ne: _,
         } = copy_buffer_info;
 
-        let device = self.device();
         let src_buffer_inner = src_buffer.inner();
         let dst_buffer_inner = dst_buffer.inner();
 
@@ -203,6 +204,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     fn validate_copy_image(&self, copy_image_info: &mut CopyImageInfo) -> Result<(), CopyError> {
+        let device = self.device();
+
         // VUID-vkCmdCopyImage2-renderpass
         if self.render_pass_state.is_some() {
             return Err(CopyError::ForbiddenInsideRenderPass);
@@ -224,8 +227,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             ref regions,
             _ne: _,
         } = copy_image_info;
-
-        let device = self.device();
 
         // VUID-VkCopyImageInfo2-commonparent
         assert_eq!(device, src_image.device());
@@ -254,20 +255,22 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             });
         }
 
-        // VUID-VkCopyImageInfo2-srcImage-01995
-        if !src_image.format_features().transfer_src {
-            return Err(CopyError::MissingFormatFeature {
-                resource: CopyErrorResource::Source,
-                format_feature: "transfer_src",
-            });
-        }
+        if device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1 {
+            // VUID-VkCopyImageInfo2-srcImage-01995
+            if !src_image.format_features().transfer_src {
+                return Err(CopyError::MissingFormatFeature {
+                    resource: CopyErrorResource::Source,
+                    format_feature: "transfer_src",
+                });
+            }
 
-        // VUID-VkCopyImageInfo2-dstImage-01996
-        if !dst_image.format_features().transfer_dst {
-            return Err(CopyError::MissingFormatFeature {
-                resource: CopyErrorResource::Destination,
-                format_feature: "transfer_dst",
-            });
+            // VUID-VkCopyImageInfo2-dstImage-01996
+            if !dst_image.format_features().transfer_dst {
+                return Err(CopyError::MissingFormatFeature {
+                    resource: CopyErrorResource::Destination,
+                    format_feature: "transfer_dst",
+                });
+            }
         }
 
         // VUID-VkCopyImageInfo2-srcImage-00136
@@ -842,6 +845,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         &self,
         copy_buffer_to_image_info: &mut CopyBufferToImageInfo,
     ) -> Result<(), CopyError> {
+        let device = self.device();
+
         // VUID-vkCmdCopyBufferToImage2-renderpass
         if self.render_pass_state.is_some() {
             return Err(CopyError::ForbiddenInsideRenderPass);
@@ -862,8 +867,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             ref regions,
             _ne: _,
         } = copy_buffer_to_image_info;
-
-        let device = self.device();
 
         // VUID-VkCopyBufferToImageInfo2-commonparent
         assert_eq!(device, buffer.device());
@@ -893,12 +896,14 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             });
         }
 
-        // VUID-VkCopyBufferToImageInfo2-dstImage-01997
-        if !image.format_features().transfer_dst {
-            return Err(CopyError::MissingFormatFeature {
-                resource: CopyErrorResource::Destination,
-                format_feature: "transfer_dst",
-            });
+        if device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1 {
+            // VUID-VkCopyBufferToImageInfo2-dstImage-01997
+            if !image.format_features().transfer_dst {
+                return Err(CopyError::MissingFormatFeature {
+                    resource: CopyErrorResource::Destination,
+                    format_feature: "transfer_dst",
+                });
+            }
         }
 
         // VUID-VkCopyBufferToImageInfo2-dstImage-00179
@@ -1271,6 +1276,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         &self,
         copy_image_to_buffer_info: &mut CopyImageToBufferInfo,
     ) -> Result<(), CopyError> {
+        let device = self.device();
+
         // VUID-vkCmdCopyImageToBuffer2-renderpass
         if self.render_pass_state.is_some() {
             return Err(CopyError::ForbiddenInsideRenderPass);
@@ -1291,8 +1298,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             ref regions,
             _ne: _,
         } = copy_image_to_buffer_info;
-
-        let device = self.device();
 
         // VUID-VkCopyImageToBufferInfo2-commonparent
         assert_eq!(device, buffer.device());
@@ -1317,12 +1322,14 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             });
         }
 
-        // VUID-VkCopyImageToBufferInfo2-srcImage-01998
-        if !image.format_features().transfer_src {
-            return Err(CopyError::MissingFormatFeature {
-                resource: CopyErrorResource::Source,
-                format_feature: "transfer_src",
-            });
+        if device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1 {
+            // VUID-VkCopyImageToBufferInfo2-srcImage-01998
+            if !image.format_features().transfer_src {
+                return Err(CopyError::MissingFormatFeature {
+                    resource: CopyErrorResource::Source,
+                    format_feature: "transfer_src",
+                });
+            }
         }
 
         // VUID-VkCopyImageToBufferInfo2-srcImage-00188
@@ -1698,17 +1705,27 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     fn validate_fill_buffer(&self, fill_buffer_info: &mut FillBufferInfo) -> Result<(), CopyError> {
+        let device = self.device();
+
         // VUID-vkCmdFillBuffer-renderpass
         if self.render_pass_state.is_some() {
             return Err(CopyError::ForbiddenInsideRenderPass);
         }
 
-        // VUID-vkCmdFillBuffer-commandBuffer-cmdpool
-        if !(self.queue_family().explicitly_supports_transfers()
-            || self.queue_family().supports_graphics()
-            || self.queue_family().supports_compute())
-        {
-            return Err(CopyError::NotSupportedByQueueFamily);
+        if device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1 {
+            // VUID-vkCmdFillBuffer-commandBuffer-cmdpool
+            if !(self.queue_family().explicitly_supports_transfers()
+                || self.queue_family().supports_graphics()
+                || self.queue_family().supports_compute())
+            {
+                return Err(CopyError::NotSupportedByQueueFamily);
+            }
+        } else {
+            // VUID-vkCmdFillBuffer-commandBuffer-00030
+            if !(self.queue_family().supports_graphics() || self.queue_family().supports_compute())
+            {
+                return Err(CopyError::NotSupportedByQueueFamily);
+            }
         }
 
         let &mut FillBufferInfo {
@@ -1719,7 +1736,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             _ne: _,
         } = fill_buffer_info;
 
-        let device = self.device();
         let dst_buffer_inner = dst_buffer.inner();
 
         // VUID-vkCmdFillBuffer-commonparent
@@ -1805,6 +1821,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     where
         D: ?Sized,
     {
+        let device = self.device();
+
         // VUID-vkCmdUpdateBuffer-renderpass
         if self.render_pass_state.is_some() {
             return Err(CopyError::ForbiddenInsideRenderPass);
@@ -1818,7 +1836,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             return Err(CopyError::NotSupportedByQueueFamily);
         }
 
-        let device = self.device();
         let dst_buffer_inner = dst_buffer.inner();
 
         // VUID-vkCmdUpdateBuffer-commonparent
