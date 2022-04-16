@@ -96,9 +96,14 @@ pub struct SyncCommandBufferBuilder {
     images2: HashMap<Arc<UnsafeImage>, RangeMap<DeviceSize, Option<ImageState>>>,
 
     // Resources and their accesses. Used for executing secondary command buffers in a primary.
-    buffers: Vec<(Arc<dyn BufferAccess>, PipelineMemoryAccess)>,
+    buffers: Vec<(
+        Arc<dyn BufferAccess>,
+        Range<DeviceSize>,
+        PipelineMemoryAccess,
+    )>,
     images: Vec<(
         Arc<dyn ImageAccess>,
+        ImageSubresourceRange,
         PipelineMemoryAccess,
         ImageLayout,
         ImageLayout,
@@ -288,7 +293,7 @@ impl SyncCommandBufferBuilder {
     fn find_image_conflict(
         &self,
         image: &dyn ImageAccess,
-        subresource_range: ImageSubresourceRange,
+        mut subresource_range: ImageSubresourceRange,
         memory: &PipelineMemoryAccess,
         start_layout: ImageLayout,
         end_layout: ImageLayout,
@@ -299,6 +304,10 @@ impl SyncCommandBufferBuilder {
             self.latest_render_pass_enter.unwrap_or(self.commands.len());
 
         let inner = image.inner();
+        subresource_range.array_layers.start += inner.first_layer;
+        subresource_range.array_layers.end += inner.first_layer;
+        subresource_range.mip_levels.start += inner.first_mipmap_level;
+        subresource_range.mip_levels.end += inner.first_mipmap_level;
 
         let range_map = self.images2.get(inner.image)?;
 
@@ -383,6 +392,8 @@ impl SyncCommandBufferBuilder {
         mut range: Range<DeviceSize>,
         memory: PipelineMemoryAccess,
     ) {
+        self.buffers.push((buffer.clone(), range.clone(), memory));
+
         // Barriers work differently in render passes, so if we're in one, we can only insert a
         // barrier before the start of the render pass.
         let last_allowed_barrier_index = self
@@ -480,19 +491,25 @@ impl SyncCommandBufferBuilder {
                 }
             }
         }
-
-        self.buffers.push((buffer, memory));
     }
 
     fn add_image(
         &mut self,
         resource_name: Cow<'static, str>,
         image: Arc<dyn ImageAccess>,
-        subresource_range: ImageSubresourceRange,
+        mut subresource_range: ImageSubresourceRange,
         memory: PipelineMemoryAccess,
         start_layout: ImageLayout,
         end_layout: ImageLayout,
     ) {
+        self.images.push((
+            image.clone(),
+            subresource_range.clone(),
+            memory,
+            start_layout,
+            end_layout,
+        ));
+
         // Barriers work differently in render passes, so if we're in one, we can only insert a
         // barrier before the start of the render pass.
         let last_allowed_barrier_index = self
@@ -500,6 +517,10 @@ impl SyncCommandBufferBuilder {
             .unwrap_or(self.commands.len() - 1);
 
         let inner = image.inner();
+        subresource_range.array_layers.start += inner.first_layer;
+        subresource_range.array_layers.end += inner.first_layer;
+        subresource_range.mip_levels.start += inner.first_mipmap_level;
+        subresource_range.mip_levels.end += inner.first_mipmap_level;
 
         let range_map = self.images2.entry(inner.image.clone()).or_insert_with(|| {
             [(
@@ -672,8 +693,6 @@ impl SyncCommandBufferBuilder {
                 }
             }
         }
-
-        self.images.push((image, memory, start_layout, end_layout));
     }
 
     /// Builds the command buffer and turns it into a `SyncCommandBuffer`.

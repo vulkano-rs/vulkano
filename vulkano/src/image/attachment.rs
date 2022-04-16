@@ -30,7 +30,6 @@ use crate::{
 use std::{
     fs::File,
     hash::{Hash, Hasher},
-    ops::Range,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc,
@@ -595,16 +594,6 @@ where
     #[inline]
     fn is_layout_initialized(&self) -> bool {
         self.initialized.load(Ordering::SeqCst)
-    }
-
-    #[inline]
-    fn current_mip_levels_access(&self) -> Range<u32> {
-        0..self.mip_levels()
-    }
-
-    #[inline]
-    fn current_array_layers_access(&self) -> Range<u32> {
-        0..self.dimensions().array_layers()
     }
 }
 

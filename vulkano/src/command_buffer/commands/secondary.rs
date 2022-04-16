@@ -16,7 +16,6 @@ use crate::{
         CommandBufferInheritanceRenderPassInfo, CommandBufferUsage, ExecuteCommandsError,
         PrimaryAutoCommandBuffer, SecondaryCommandBuffer, SubpassContents,
     },
-    image::ImageSubresourceRange,
     query::QueryType,
     SafeDeref, VulkanObject,
 };
@@ -248,28 +247,24 @@ impl<'a> SyncCommandBufferBuilderExecuteCommands<'a> {
             let mut resources = Vec::new();
             for (cbuf_num, cbuf) in self.inner.iter().enumerate() {
                 for buf_num in 0..cbuf.num_buffers() {
-                    let (buffer, memory) = cbuf.buffer(buf_num).unwrap();
+                    let (buffer, range, memory) = cbuf.buffer(buf_num).unwrap();
                     resources.push((
                         format!("Buffer bound to secondary command buffer {}", cbuf_num).into(),
                         Resource::Buffer {
                             buffer: buffer.clone(),
-                            range: 0..buffer.size(), // TODO:
+                            range,
                             memory,
                         },
                     ));
                 }
                 for img_num in 0..cbuf.num_images() {
-                    let (image, memory, start_layout, end_layout) = cbuf.image(img_num).unwrap();
+                    let (image, subresource_range, memory, start_layout, end_layout) =
+                        cbuf.image(img_num).unwrap();
                     resources.push((
                         format!("Image bound to secondary command buffer {}", cbuf_num).into(),
                         Resource::Image {
                             image: image.clone(),
-                            subresource_range: ImageSubresourceRange {
-                                // TODO:
-                                aspects: image.format().aspects(),
-                                mip_levels: image.current_mip_levels_access(),
-                                array_layers: image.current_array_layers_access(),
-                            },
+                            subresource_range: subresource_range.clone(),
                             memory,
                             start_layout,
                             end_layout,

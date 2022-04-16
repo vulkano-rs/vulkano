@@ -35,7 +35,7 @@ use super::{
 use crate::{
     buffer::{sys::UnsafeBuffer, BufferAccess},
     device::{physical::QueueFamily, Device, DeviceOwned, Queue},
-    image::{sys::UnsafeImage, ImageAccess, ImageLayout},
+    image::{sys::UnsafeImage, ImageAccess, ImageLayout, ImageSubresourceRange},
     pipeline::GraphicsPipeline,
     query::{QueryControlFlags, QueryPipelineStatisticFlags, QueryType},
     render_pass::Subpass,
@@ -684,7 +684,14 @@ where
     }
 
     #[inline]
-    fn buffer(&self, index: usize) -> Option<(&Arc<dyn BufferAccess>, PipelineMemoryAccess)> {
+    fn buffer(
+        &self,
+        index: usize,
+    ) -> Option<(
+        &Arc<dyn BufferAccess>,
+        Range<DeviceSize>,
+        PipelineMemoryAccess,
+    )> {
         self.inner.buffer(index)
     }
 
@@ -699,6 +706,7 @@ where
         index: usize,
     ) -> Option<(
         &Arc<dyn ImageAccess>,
+        &ImageSubresourceRange,
         PipelineMemoryAccess,
         ImageLayout,
         ImageLayout,

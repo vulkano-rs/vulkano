@@ -7,19 +7,16 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::buffer::view::BufferViewAbstract;
-use crate::buffer::{BufferAccess, BufferInner};
-use crate::descriptor_set::layout::{DescriptorSetLayoutBinding, DescriptorType};
-use crate::descriptor_set::DescriptorSetLayout;
-use crate::device::DeviceOwned;
-use crate::image::view::{ImageViewAbstract, ImageViewType};
-use crate::image::ImageType;
-use crate::sampler::{Sampler, SamplerImageViewIncompatibleError};
-use crate::DeviceSize;
-use crate::VulkanObject;
+use super::layout::{DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorType};
+use crate::{
+    buffer::{view::BufferViewAbstract, BufferAccess, BufferInner},
+    device::DeviceOwned,
+    image::{view::ImageViewType, ImageType, ImageViewAbstract},
+    sampler::{Sampler, SamplerImageViewIncompatibleError},
+    DeviceSize, VulkanObject,
+};
 use smallvec::SmallVec;
-use std::ptr;
-use std::sync::Arc;
+use std::{ptr, sync::Arc};
 
 /// Represents a single write operation to the binding of a descriptor set.
 ///
@@ -585,7 +582,9 @@ pub(crate) fn check_descriptor_write<'a>(
                     }
 
                     // VUID-VkDescriptorImageInfo-imageView-01976
-                    if image_view.aspects().depth && image_view.aspects().stencil {
+                    if image_view.subresource_range().aspects.depth
+                        && image_view.subresource_range().aspects.stencil
+                    {
                         return Err(DescriptorSetUpdateError::ImageViewDepthAndStencil {
                             binding: write.binding(),
                             index: descriptor_range_start + index as u32,
@@ -631,7 +630,9 @@ pub(crate) fn check_descriptor_write<'a>(
                     }
 
                     // VUID-VkDescriptorImageInfo-imageView-01976
-                    if image_view.aspects().depth && image_view.aspects().stencil {
+                    if image_view.subresource_range().aspects.depth
+                        && image_view.subresource_range().aspects.stencil
+                    {
                         return Err(DescriptorSetUpdateError::ImageViewDepthAndStencil {
                             binding: write.binding(),
                             index: descriptor_range_start + index as u32,
@@ -679,7 +680,9 @@ pub(crate) fn check_descriptor_write<'a>(
                     }
 
                     // VUID-VkDescriptorImageInfo-imageView-01976
-                    if image_view.aspects().depth && image_view.aspects().stencil {
+                    if image_view.subresource_range().aspects.depth
+                        && image_view.subresource_range().aspects.stencil
+                    {
                         return Err(DescriptorSetUpdateError::ImageViewDepthAndStencil {
                             binding: write.binding(),
                             index: descriptor_range_start + index as u32,
@@ -735,7 +738,9 @@ pub(crate) fn check_descriptor_write<'a>(
                     }
 
                     // VUID-VkDescriptorImageInfo-imageView-01976
-                    if image_view.aspects().depth && image_view.aspects().stencil {
+                    if image_view.subresource_range().aspects.depth
+                        && image_view.subresource_range().aspects.stencil
+                    {
                         return Err(DescriptorSetUpdateError::ImageViewDepthAndStencil {
                             binding: write.binding(),
                             index: descriptor_range_start + index as u32,
@@ -818,7 +823,9 @@ pub(crate) fn check_descriptor_write<'a>(
                     }
 
                     // VUID-VkDescriptorImageInfo-imageView-01976
-                    if image_view.aspects().depth && image_view.aspects().stencil {
+                    if image_view.subresource_range().aspects.depth
+                        && image_view.subresource_range().aspects.stencil
+                    {
                         return Err(DescriptorSetUpdateError::ImageViewDepthAndStencil {
                             binding: write.binding(),
                             index: descriptor_range_start + index as u32,

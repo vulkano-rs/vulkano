@@ -39,7 +39,7 @@ use crate::{
     sync::{AccessFlags, PipelineMemoryAccess, PipelineStages},
     DeviceSize, VulkanObject,
 };
-use std::{borrow::Cow, error, fmt, mem::size_of, sync::Arc};
+use std::{borrow::Cow, error, fmt, mem::size_of, ops::Range, sync::Arc};
 
 /// # Commands to execute a bound pipeline.
 ///
@@ -482,7 +482,7 @@ fn check_descriptor_sets_validity<'a, P: Pipeline>(
             // - If the signedness of any read or sample operation does not match the signedness of
             //   the image’s format.
             if let Some(scalar_type) = reqs.image_scalar_type {
-                let aspects = image_view.aspects();
+                let aspects = image_view.subresource_range().aspects;
                 let view_scalar_type = ShaderScalarType::from(
                     if aspects.color || aspects.plane0 || aspects.plane1 || aspects.plane2 {
                         image_view.format().unwrap().type_color().unwrap()
@@ -2025,41 +2025,40 @@ impl SyncCommandBufferBuilder {
                 access
             });
 
-            let buffer_resource =
-                move |(memory, buffer): (PipelineMemoryAccess, Arc<dyn BufferAccess>)| {
-                    let range = 0..buffer.size(); // TODO:
-                    (
-                        format!("Buffer bound to set {} descriptor {}", set, binding).into(),
-                        Resource::Buffer {
-                            buffer,
-                            range,
-                            memory,
-                        },
-                    )
-                };
-            let image_resource =
-                move |(memory, image): (PipelineMemoryAccess, Arc<dyn ImageAccess>)| {
-                    let subresource_range = ImageSubresourceRange {
-                        // TODO:
-                        aspects: image.format().aspects(),
-                        mip_levels: image.current_mip_levels_access(),
-                        array_layers: image.current_array_layers_access(),
-                    };
-                    let layout = image
-                        .descriptor_layouts()
-                        .expect("descriptor_layouts must return Some when used in an image view")
-                        .layout_for(descriptor_type);
-                    (
-                        format!("Image bound to set {} descriptor {}", set, binding).into(),
-                        Resource::Image {
-                            image,
-                            subresource_range,
-                            memory,
-                            start_layout: layout,
-                            end_layout: layout,
-                        },
-                    )
-                };
+            let buffer_resource = move |(buffer, range, memory): (
+                Arc<dyn BufferAccess>,
+                Range<DeviceSize>,
+                PipelineMemoryAccess,
+            )| {
+                (
+                    format!("Buffer bound to set {} descriptor {}", set, binding).into(),
+                    Resource::Buffer {
+                        buffer,
+                        range,
+                        memory,
+                    },
+                )
+            };
+            let image_resource = move |(image, subresource_range, memory): (
+                Arc<dyn ImageAccess>,
+                ImageSubresourceRange,
+                PipelineMemoryAccess,
+            )| {
+                let layout = image
+                    .descriptor_layouts()
+                    .expect("descriptor_layouts must return Some when used in an image view")
+                    .layout_for(descriptor_type);
+                (
+                    format!("Image bound to set {} descriptor {}", set, binding).into(),
+                    Resource::Image {
+                        image,
+                        subresource_range,
+                        memory,
+                        start_layout: layout,
+                        end_layout: layout,
+                    },
+                )
+            };
 
             match state.descriptor_sets[&set]
                 .resources()
@@ -2072,7 +2071,13 @@ impl SyncCommandBufferBuilder {
                         access
                             .zip(elements)
                             .filter_map(|(access, element)| {
-                                element.as_ref().map(|buffer| (access, buffer.clone()))
+                                element.as_ref().map(|buffer| {
+                                    (
+                                        buffer.clone(),
+                                        0..buffer.size(), // TODO:
+                                        access,
+                                    )
+                                })
                             })
                             .map(buffer_resource),
                     );
@@ -2082,9 +2087,9 @@ impl SyncCommandBufferBuilder {
                         access
                             .zip(elements)
                             .filter_map(|(access, element)| {
-                                element
-                                    .as_ref()
-                                    .map(|buffer_view| (access, buffer_view.buffer()))
+                                element.as_ref().map(|buffer_view| {
+                                    (buffer_view.buffer(), buffer_view.range(), access)
+                                })
                             })
                             .map(buffer_resource),
                     );
@@ -2094,9 +2099,13 @@ impl SyncCommandBufferBuilder {
                         access
                             .zip(elements)
                             .filter_map(|(access, element)| {
-                                element
-                                    .as_ref()
-                                    .map(|image_view| (access, image_view.image()))
+                                element.as_ref().map(|image_view| {
+                                    (
+                                        image_view.image(),
+                                        image_view.subresource_range().clone(),
+                                        access,
+                                    )
+                                })
                             })
                             .map(image_resource),
                     );
@@ -2106,9 +2115,13 @@ impl SyncCommandBufferBuilder {
                         access
                             .zip(elements)
                             .filter_map(|(access, element)| {
-                                element
-                                    .as_ref()
-                                    .map(|(image_view, _)| (access, image_view.image()))
+                                element.as_ref().map(|(image_view, _)| {
+                                    (
+                                        image_view.image(),
+                                        image_view.subresource_range().clone(),
+                                        access,
+                                    )
+                                })
                             })
                             .map(image_resource),
                     );

@@ -107,9 +107,14 @@ pub struct SyncCommandBuffer {
     images2: HashMap<Arc<UnsafeImage>, RangeMap<DeviceSize, ImageFinalState>>,
 
     // Resources and their accesses. Used for executing secondary command buffers in a primary.
-    buffers: Vec<(Arc<dyn BufferAccess>, PipelineMemoryAccess)>,
+    buffers: Vec<(
+        Arc<dyn BufferAccess>,
+        Range<DeviceSize>,
+        PipelineMemoryAccess,
+    )>,
     images: Vec<(
         Arc<dyn ImageAccess>,
+        ImageSubresourceRange,
         PipelineMemoryAccess,
         ImageLayout,
         ImageLayout,
@@ -381,10 +386,17 @@ impl SyncCommandBuffer {
     }
 
     #[inline]
-    pub fn buffer(&self, index: usize) -> Option<(&Arc<dyn BufferAccess>, PipelineMemoryAccess)> {
+    pub fn buffer(
+        &self,
+        index: usize,
+    ) -> Option<(
+        &Arc<dyn BufferAccess>,
+        Range<DeviceSize>,
+        PipelineMemoryAccess,
+    )> {
         self.buffers
             .get(index)
-            .map(|(buffer, memory)| (buffer, *memory))
+            .map(|(buffer, range, memory)| (buffer, range.clone(), *memory))
     }
 
     #[inline]
@@ -398,14 +410,15 @@ impl SyncCommandBuffer {
         index: usize,
     ) -> Option<(
         &Arc<dyn ImageAccess>,
+        &ImageSubresourceRange,
         PipelineMemoryAccess,
         ImageLayout,
         ImageLayout,
     )> {
         self.images
             .get(index)
-            .map(|(image, memory, start_layout, end_layout)| {
-                (image, *memory, *start_layout, *end_layout)
+            .map(|(image, range, memory, start_layout, end_layout)| {
+                (image, range, *memory, *start_layout, *end_layout)
             })
     }
 }

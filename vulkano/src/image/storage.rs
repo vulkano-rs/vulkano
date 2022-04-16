@@ -32,7 +32,6 @@ use smallvec::SmallVec;
 use std::{
     fs::File,
     hash::{Hash, Hasher},
-    ops::Range,
     sync::Arc,
 };
 
@@ -282,16 +281,6 @@ where
             sampled_image: ImageLayout::General,
             input_attachment: ImageLayout::General,
         })
-    }
-
-    #[inline]
-    fn current_mip_levels_access(&self) -> Range<u32> {
-        0..self.mip_levels()
-    }
-
-    #[inline]
-    fn current_array_layers_access(&self) -> Range<u32> {
-        0..self.dimensions().array_layers()
     }
 }
 
