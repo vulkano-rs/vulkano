@@ -9,8 +9,14 @@
 - **Breaking** Removed the `try_gpu_lock`, `increase_gpu_lock` and `unlock` methods from the `BufferAccess` and `ImageAccess` traits. Locking is now implemented internally in `UnsafeBuffer` and `UnsafeImage`.
 - **Breaking** All `check_buffer_access` and `check_image_access` functions now take an `UnsafeBuffer`/`UnsafeImage` and a `Range<DeviceSize>`.
 - **Breaking** `UnsafeCommandBufferBuilder::pipeline_barrier` now takes a `DependencyInfo`. It will use `vkCmdPipelineBarrier2` if supported.
+- **Breaking** The debug command buffer commands have been renamed to match Vulkan. They now take a `DebugUtilsLabel` value.
+- **Breaking** `end_debug_utils_label` is now `unsafe`, as it requires validation checks that are not implemented yet.
+- **Breaking** `DebugCallback` is renamed to `DebugUtilsMessenger` to match Vulkan, and now takes a `DebugUtilsMessengerCreateInfo` to construct. It is now `unsafe` to create, because the the callback cannot call any Vulkan API functions, which Vulkano is unable to check.
 - `UnsafeCommandPoolCreateInfo` and `UnsafeCommandPoolCreationError` interfaces exposed.
 - Fixed compile error in Vulkano-win on Android.
+- Added `COVERAGE.md`, a document detailing how much of Vulkan is currently covered by Vulkano.
+- Added debug utils commands to `Queue`.
+- Added `Instance::with_debug_utils_messengers`, to provide creation info for messengers that should be used at instance creation and destruction time. This function is also `unsafe`.
 
 # Version 0.29.0 (2022-03-11)
 

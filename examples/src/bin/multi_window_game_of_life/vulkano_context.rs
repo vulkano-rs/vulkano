@@ -19,7 +19,10 @@ use vulkano::{
     },
     image::{view::ImageView, ImageUsage, StorageImage, SwapchainImage},
     instance::{
-        debug::{DebugCallback, MessageSeverity, MessageType},
+        debug::{
+            DebugUtilsMessageSeverity, DebugUtilsMessageType, DebugUtilsMessenger,
+            DebugUtilsMessengerCreateInfo,
+        },
         Instance, InstanceCreateInfo, InstanceExtensions,
     },
     swapchain::{
@@ -39,7 +42,7 @@ pub type DeviceImageView = Arc<ImageView<StorageImage>>;
 /// window handling and the context initiation.
 /// The purpose of this struct is to allow you to focus on the graphics keep your code much less verbose
 pub struct VulkanoContext {
-    _debug_callback: DebugCallback,
+    _debug_callback: DebugUtilsMessenger,
     instance: Arc<Instance>,
     device: Arc<Device>,
     graphics_queue: Arc<Queue>,
@@ -59,7 +62,7 @@ impl VulkanoContext {
         let is_debug = config.layers.iter().any(|layer| {
             layer == "VK_LAYER_LUNARG_standard_validation" || layer == "VK_LAYER_KHRONOS_validation"
         });
-        let debug_callback = create_vk_debug_callback(&instance, is_debug);
+        let debug_callback = create_vk_debug_callback(instance.clone(), is_debug);
         // Get desired device
         let physical_device = PhysicalDevice::enumerate(&instance)
             .min_by_key(|p| match p.properties().device_type {
@@ -277,50 +280,56 @@ pub fn create_vk_instance(
 }
 
 // Create vk debug call back (to exists outside renderer)
-pub fn create_vk_debug_callback(instance: &Arc<Instance>, is_debug: bool) -> DebugCallback {
+pub fn create_vk_debug_callback(instance: Arc<Instance>, is_debug: bool) -> DebugUtilsMessenger {
     // Create debug callback for printing vulkan errors and warnings. This will do nothing unless the layers are enabled
-    let severity = if is_debug {
-        MessageSeverity {
-            error: true,
-            warning: true,
-            information: true,
-            verbose: true,
-        }
-    } else {
-        MessageSeverity::none()
-    };
+    unsafe {
+        DebugUtilsMessenger::new(
+            instance,
+            DebugUtilsMessengerCreateInfo {
+                message_severity: if is_debug {
+                    DebugUtilsMessageSeverity {
+                        error: true,
+                        warning: true,
+                        information: true,
+                        verbose: true,
+                    }
+                } else {
+                    DebugUtilsMessageSeverity::none()
+                },
+                message_type: DebugUtilsMessageType::all(),
+                ..DebugUtilsMessengerCreateInfo::user_callback(Arc::new(|msg| {
+                    let severity = if msg.severity.error {
+                        "error"
+                    } else if msg.severity.warning {
+                        "warning"
+                    } else if msg.severity.information {
+                        "information"
+                    } else if msg.severity.verbose {
+                        "verbose"
+                    } else {
+                        panic!("no-impl");
+                    };
 
-    let ty = MessageType::all();
-    DebugCallback::new(instance, severity, ty, |msg| {
-        let severity = if msg.severity.error {
-            "error"
-        } else if msg.severity.warning {
-            "warning"
-        } else if msg.severity.information {
-            "information"
-        } else if msg.severity.verbose {
-            "verbose"
-        } else {
-            panic!("no-impl");
-        };
+                    let ty = if msg.ty.general {
+                        "general"
+                    } else if msg.ty.validation {
+                        "validation"
+                    } else if msg.ty.performance {
+                        "performance"
+                    } else {
+                        panic!("no-impl");
+                    };
 
-        let ty = if msg.ty.general {
-            "general"
-        } else if msg.ty.validation {
-            "validation"
-        } else if msg.ty.performance {
-            "performance"
-        } else {
-            panic!("no-impl");
-        };
-
-        println!(
-            "{} {} {}: {}",
-            msg.layer_prefix.unwrap_or("unknown"),
-            ty,
-            severity,
-            msg.description
-        );
-    })
-    .unwrap()
+                    println!(
+                        "{} {} {}: {}",
+                        msg.layer_prefix.unwrap_or("unknown"),
+                        ty,
+                        severity,
+                        msg.description
+                    );
+                }))
+            },
+        )
+        .unwrap()
+    }
 }

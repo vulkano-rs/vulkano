@@ -105,7 +105,7 @@ use crate::{
     check_errors,
     command_buffer::pool::StandardCommandPool,
     descriptor_set::pool::StdDescriptorPool,
-    instance::Instance,
+    instance::{debug::DebugUtilsLabel, Instance},
     memory::{pool::StdMemoryPool, ExternalMemoryHandleType},
     Error, OomError, SynchronizedVulkanObject, Version, VulkanObject,
 };
@@ -119,7 +119,7 @@ use smallvec::SmallVec;
 use std::{
     collections::{hash_map::Entry, HashMap},
     error,
-    ffi::{CStr, CString},
+    ffi::CString,
     fmt,
     fs::File,
     hash::{Hash, Hasher},
@@ -630,41 +630,33 @@ impl Device {
 
     /// Assigns a human-readable name to `object` for debugging purposes.
     ///
+    /// If `object_name` is `None`, a previously set object name is removed.
+    ///
     /// # Panics
-    /// * If `object` is not owned by this device.
-    pub fn set_object_name<T: VulkanObject + DeviceOwned>(
+    /// - If `object` is not owned by this device.
+    pub fn set_debug_utils_object_name<T: VulkanObject + DeviceOwned>(
         &self,
         object: &T,
-        name: &CStr,
+        object_name: Option<&str>,
     ) -> Result<(), OomError> {
         assert!(object.device().internal_object() == self.internal_object());
-        unsafe {
-            self.set_object_name_raw(T::Object::TYPE, object.internal_object().as_raw(), name)
-        }
-    }
 
-    /// Assigns a human-readable name to `object` for debugging purposes.
-    ///
-    /// # Safety
-    /// `object` must be a Vulkan handle owned by this device, and its type must be accurately described by `ty`.
-    pub unsafe fn set_object_name_raw(
-        &self,
-        ty: ash::vk::ObjectType,
-        object: u64,
-        name: &CStr,
-    ) -> Result<(), OomError> {
+        let object_name_vk = object_name.map(|object_name| CString::new(object_name).unwrap());
         let info = ash::vk::DebugUtilsObjectNameInfoEXT {
-            object_type: ty,
-            object_handle: object,
-            p_object_name: name.as_ptr(),
+            object_type: T::Object::TYPE,
+            object_handle: object.internal_object().as_raw(),
+            p_object_name: object_name_vk.map_or(ptr::null(), |object_name| object_name.as_ptr()),
             ..Default::default()
         };
-        check_errors(
-            self.instance
-                .fns()
-                .ext_debug_utils
-                .set_debug_utils_object_name_ext(self.handle, &info),
-        )?;
+
+        unsafe {
+            let fns = self.instance.fns();
+            check_errors(
+                fns.ext_debug_utils
+                    .set_debug_utils_object_name_ext(self.handle, &info),
+            )?;
+        }
+
         Ok(())
     }
 }
@@ -1007,6 +999,153 @@ impl Queue {
             Ok(())
         }
     }
+
+    /// Opens a queue debug label region.
+    ///
+    /// The [`ext_debug_utils`](crate::instance::InstanceExtensions::ext_debug_utils) must be
+    /// enabled on the instance.
+    #[inline]
+    pub fn begin_debug_utils_label(
+        &self,
+        mut label_info: DebugUtilsLabel,
+    ) -> Result<(), DebugUtilsError> {
+        self.validate_begin_debug_utils_label(&mut label_info)?;
+
+        let DebugUtilsLabel {
+            label_name,
+            color,
+            _ne: _,
+        } = label_info;
+
+        let label_name_vk = CString::new(label_name.as_str()).unwrap();
+        let label_info = ash::vk::DebugUtilsLabelEXT {
+            p_label_name: label_name_vk.as_ptr(),
+            color,
+            ..Default::default()
+        };
+
+        unsafe {
+            let fns = self.device.instance().fns();
+            let handle = self.handle.lock().unwrap();
+            fns.ext_debug_utils
+                .queue_begin_debug_utils_label_ext(*handle, &label_info);
+        }
+
+        Ok(())
+    }
+
+    fn validate_begin_debug_utils_label(
+        &self,
+        label_info: &mut DebugUtilsLabel,
+    ) -> Result<(), DebugUtilsError> {
+        if !self
+            .device()
+            .instance()
+            .enabled_extensions()
+            .ext_debug_utils
+        {
+            return Err(DebugUtilsError::ExtensionNotEnabled {
+                extension: "ext_debug_utils",
+                reason: "tried to submit a debug utils command",
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Closes a queue debug label region.
+    ///
+    /// The [`ext_debug_utils`](crate::instance::InstanceExtensions::ext_debug_utils) must be
+    /// enabled on the instance.
+    ///
+    /// # Safety
+    ///
+    /// - There must be an outstanding queue label region begun with `begin_debug_utils_label` in
+    ///   the queue.
+    #[inline]
+    pub unsafe fn end_debug_utils_label(&self) -> Result<(), DebugUtilsError> {
+        self.validate_end_debug_utils_label()?;
+
+        {
+            let fns = self.device.instance().fns();
+            let handle = self.handle.lock().unwrap();
+            fns.ext_debug_utils.queue_end_debug_utils_label_ext(*handle);
+        }
+
+        Ok(())
+    }
+
+    fn validate_end_debug_utils_label(&self) -> Result<(), DebugUtilsError> {
+        if !self
+            .device()
+            .instance()
+            .enabled_extensions()
+            .ext_debug_utils
+        {
+            return Err(DebugUtilsError::ExtensionNotEnabled {
+                extension: "ext_debug_utils",
+                reason: "tried to submit a debug utils command",
+            });
+        }
+
+        // VUID-vkQueueEndDebugUtilsLabelEXT-None-01911
+        // TODO: not checked, so unsafe for now
+
+        Ok(())
+    }
+
+    /// Inserts a queue debug label.
+    ///
+    /// The [`ext_debug_utils`](crate::instance::InstanceExtensions::ext_debug_utils) must be
+    /// enabled on the instance.
+    #[inline]
+    pub fn insert_debug_utils_label(
+        &mut self,
+        mut label_info: DebugUtilsLabel,
+    ) -> Result<(), DebugUtilsError> {
+        self.validate_insert_debug_utils_label(&mut label_info)?;
+
+        let DebugUtilsLabel {
+            label_name,
+            color,
+            _ne: _,
+        } = label_info;
+
+        let label_name_vk = CString::new(label_name.as_str()).unwrap();
+        let label_info = ash::vk::DebugUtilsLabelEXT {
+            p_label_name: label_name_vk.as_ptr(),
+            color,
+            ..Default::default()
+        };
+
+        unsafe {
+            let fns = self.device.instance().fns();
+            let handle = self.handle.lock().unwrap();
+            fns.ext_debug_utils
+                .queue_insert_debug_utils_label_ext(*handle, &label_info);
+        }
+
+        Ok(())
+    }
+
+    fn validate_insert_debug_utils_label(
+        &self,
+        label_info: &mut DebugUtilsLabel,
+    ) -> Result<(), DebugUtilsError> {
+        if !self
+            .device()
+            .instance()
+            .enabled_extensions()
+            .ext_debug_utils
+        {
+            return Err(DebugUtilsError::ExtensionNotEnabled {
+                extension: "ext_debug_utils",
+                reason: "tried to submit a debug utils command",
+            });
+        }
+
+        Ok(())
+    }
 }
 
 unsafe impl SynchronizedVulkanObject for Queue {
@@ -1038,6 +1177,28 @@ impl Hash for Queue {
         self.id.hash(state);
         self.family.hash(state);
         self.device.hash(state);
+    }
+}
+
+/// Error that can happen when submitting a debug utils command to a queue.
+#[derive(Clone, Debug)]
+pub enum DebugUtilsError {
+    ExtensionNotEnabled {
+        extension: &'static str,
+        reason: &'static str,
+    },
+}
+
+impl error::Error for DebugUtilsError {}
+
+impl fmt::Display for DebugUtilsError {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match self {
+            Self::ExtensionNotEnabled { extension, reason } => {
+                write!(f, "the extension {} must be enabled: {}", extension, reason)
+            }
+        }
     }
 }
 

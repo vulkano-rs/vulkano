@@ -51,33 +51,38 @@
 //! Once you have chosen a physical device, you can create a `Device` object from it. See the
 //! `device` module for more info.
 
-pub use self::extensions::InstanceExtensions;
-pub use self::layers::layers_list;
-pub use self::layers::LayerProperties;
-pub use self::layers::LayersListError;
-pub use self::loader::LoadingError;
-use crate::check_errors;
-use crate::device::physical::{init_physical_devices, PhysicalDeviceInfo};
-pub use crate::extensions::{
-    ExtensionRestriction, ExtensionRestrictionError, SupportedExtensionsError,
+use self::{
+    debug::{DebugUtilsMessengerCreateInfo, UserCallback},
+    loader::{FunctionPointers, Loader},
 };
-pub use crate::fns::InstanceFunctions;
-use crate::instance::loader::FunctionPointers;
-use crate::instance::loader::Loader;
-pub use crate::version::Version;
-use crate::Error;
-use crate::OomError;
-use crate::VulkanObject;
+pub use self::{
+    extensions::InstanceExtensions,
+    layers::{layers_list, LayerProperties, LayersListError},
+    loader::LoadingError,
+};
+use crate::{
+    check_errors,
+    device::physical::{init_physical_devices, PhysicalDeviceInfo},
+    instance::debug::{trampoline, DebugUtilsMessageSeverity, DebugUtilsMessageType},
+    Error, OomError, VulkanObject,
+};
+pub use crate::{
+    extensions::{ExtensionRestriction, ExtensionRestrictionError, SupportedExtensionsError},
+    fns::InstanceFunctions,
+    version::Version,
+};
 use smallvec::SmallVec;
-use std::error;
-use std::ffi::CString;
-use std::fmt;
-use std::hash::Hash;
-use std::hash::Hasher;
-use std::mem::MaybeUninit;
-use std::ops::Deref;
-use std::ptr;
-use std::sync::Arc;
+use std::{
+    error,
+    ffi::{c_void, CString},
+    fmt,
+    hash::{Hash, Hasher},
+    mem::MaybeUninit,
+    ops::Deref,
+    panic::{RefUnwindSafe, UnwindSafe},
+    ptr,
+    sync::Arc,
+};
 
 pub mod debug;
 pub(crate) mod extensions;
@@ -217,7 +222,6 @@ pub mod loader;
 /// # }
 /// ```
 // TODO: mention that extensions must be supported by layers as well
-#[derive(Debug)]
 pub struct Instance {
     handle: ash::vk::Instance,
     fns: InstanceFunctions,
@@ -228,11 +232,12 @@ pub struct Instance {
     enabled_layers: Vec<String>,
     function_pointers: OwnedOrRef<FunctionPointers<Box<dyn Loader>>>,
     max_api_version: Version,
+    user_callbacks: Vec<Box<UserCallback>>,
 }
 
 // TODO: fix the underlying cause instead
-impl ::std::panic::UnwindSafe for Instance {}
-impl ::std::panic::RefUnwindSafe for Instance {}
+impl UnwindSafe for Instance {}
+impl RefUnwindSafe for Instance {}
 
 impl Instance {
     /// Creates a new `Instance`.
@@ -243,6 +248,32 @@ impl Instance {
     ///   into a Vulkan version number.
     /// - Panics if `create_info.max_api_version` is not at least `V1_0`.
     pub fn new(create_info: InstanceCreateInfo) -> Result<Arc<Instance>, InstanceCreationError> {
+        unsafe { Self::with_debug_utils_messengers(create_info, []) }
+    }
+
+    /// Creates a new `Instance` with debug messengers to use during the creation and destruction
+    /// of the instance.
+    ///
+    /// The debug messengers are not used at any other time,
+    /// [`DebugUtilsMessenger`](crate::instance::debug::DebugUtilsMessenger) should be used for
+    /// that.
+    ///
+    /// If `debug_utils_messengers` is not empty, the `ext_debug_utils` extension must be set in
+    /// `enabled_extensions`.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the `message_severity` or `message_type` members of any element of
+    ///   `debug_utils_messengers` are empty.
+    ///
+    /// # Safety
+    ///
+    /// - The `user_callback` of each element of `debug_utils_messengers` must not make any calls
+    ///   to the Vulkan API.
+    pub unsafe fn with_debug_utils_messengers(
+        create_info: InstanceCreateInfo,
+        debug_utils_messengers: impl IntoIterator<Item = DebugUtilsMessengerCreateInfo>,
+    ) -> Result<Arc<Instance>, InstanceCreationError> {
         let InstanceCreateInfo {
             application_name,
             application_version,
@@ -318,7 +349,7 @@ impl Instance {
             ..Default::default()
         };
 
-        let create_info = ash::vk::InstanceCreateInfo {
+        let mut create_info = ash::vk::InstanceCreateInfo {
             flags: ash::vk::InstanceCreateFlags::empty(),
             p_application_info: &application_info,
             enabled_layer_count: enabled_layers_ptrs.len() as u32,
@@ -328,8 +359,62 @@ impl Instance {
             ..Default::default()
         };
 
+        // Handle debug messengers
+        let debug_utils_messengers = debug_utils_messengers.into_iter();
+        let mut debug_utils_messenger_create_infos =
+            Vec::with_capacity(debug_utils_messengers.size_hint().0);
+        let mut user_callbacks = Vec::with_capacity(debug_utils_messengers.size_hint().0);
+
+        for create_info in debug_utils_messengers {
+            let DebugUtilsMessengerCreateInfo {
+                message_type,
+                message_severity,
+                user_callback,
+                _ne: _,
+            } = create_info;
+
+            // VUID-VkInstanceCreateInfo-pNext-04926
+            if !enabled_extensions.ext_debug_utils {
+                return Err(InstanceCreationError::ExtensionNotEnabled {
+                    extension: "ext_debug_utils",
+                    reason: "debug_utils_messengers was not empty",
+                });
+            }
+
+            // VUID-VkDebugUtilsMessengerCreateInfoEXT-messageSeverity-requiredbitmask
+            assert!(message_severity != DebugUtilsMessageSeverity::none());
+
+            // VUID-VkDebugUtilsMessengerCreateInfoEXT-messageType-requiredbitmask
+            assert!(message_type != DebugUtilsMessageType::none());
+
+            // VUID-PFN_vkDebugUtilsMessengerCallbackEXT-None-04769
+            // Can't be checked, creation is unsafe.
+
+            let user_callback = Box::new(user_callback);
+            let create_info = ash::vk::DebugUtilsMessengerCreateInfoEXT {
+                flags: ash::vk::DebugUtilsMessengerCreateFlagsEXT::empty(),
+                message_severity: message_severity.into(),
+                message_type: message_type.into(),
+                pfn_user_callback: Some(trampoline),
+                p_user_data: &*user_callback as &Arc<_> as *const Arc<_> as *const c_void as *mut _,
+                ..Default::default()
+            };
+
+            debug_utils_messenger_create_infos.push(create_info);
+            user_callbacks.push(user_callback);
+        }
+
+        for i in 1..debug_utils_messenger_create_infos.len() {
+            debug_utils_messenger_create_infos[i - 1].p_next =
+                &debug_utils_messenger_create_infos[i] as *const _ as *const _;
+        }
+
+        if let Some(info) = debug_utils_messenger_create_infos.first() {
+            create_info.p_next = info as *const _ as *const _;
+        }
+
         // Creating the Vulkan instance.
-        let handle = unsafe {
+        let handle = {
             let mut output = MaybeUninit::uninit();
             let fns = function_pointers.fns();
             check_errors(
@@ -356,6 +441,7 @@ impl Instance {
             enabled_layers,
             function_pointers,
             max_api_version,
+            user_callbacks,
         };
 
         // Enumerating all physical devices.
@@ -430,6 +516,33 @@ impl Hash for Instance {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
+    }
+}
+
+impl fmt::Debug for Instance {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        let Self {
+            handle,
+            fns,
+            physical_device_infos,
+            api_version,
+            enabled_extensions,
+            enabled_layers,
+            function_pointers,
+            max_api_version,
+            user_callbacks: _,
+        } = self;
+
+        f.debug_struct("Instance")
+            .field("handle", handle)
+            .field("fns", fns)
+            .field("physical_device_infos", physical_device_infos)
+            .field("api_version", api_version)
+            .field("enabled_extensions", enabled_extensions)
+            .field("enabled_layers", enabled_layers)
+            .field("function_pointers", function_pointers)
+            .field("max_api_version", max_api_version)
+            .finish_non_exhaustive()
     }
 }
 
@@ -538,14 +651,18 @@ pub enum InstanceCreationError {
     IncompatibleDriver,
     /// A restriction for an extension was not met.
     ExtensionRestrictionNotMet(ExtensionRestrictionError),
+    ExtensionNotEnabled {
+        extension: &'static str,
+        reason: &'static str,
+    },
 }
 
 impl error::Error for InstanceCreationError {
     #[inline]
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
-            InstanceCreationError::LoadingError(ref err) => Some(err),
-            InstanceCreationError::OomError(ref err) => Some(err),
+            Self::LoadingError(ref err) => Some(err),
+            Self::OomError(ref err) => Some(err),
             _ => None,
         }
     }
@@ -555,30 +672,35 @@ impl fmt::Display for InstanceCreationError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match *self {
-            InstanceCreationError::LoadingError(_) => {
+            Self::LoadingError(_) => {
                 write!(fmt, "failed to load the Vulkan shared library")
             }
-            InstanceCreationError::OomError(_) => write!(fmt, "not enough memory available"),
-            InstanceCreationError::InitializationFailed => write!(fmt, "initialization failed"),
-            InstanceCreationError::LayerNotPresent => write!(fmt, "layer not present"),
-            InstanceCreationError::ExtensionNotPresent => write!(fmt, "extension not present"),
-            InstanceCreationError::IncompatibleDriver => write!(fmt, "incompatible driver"),
-            InstanceCreationError::ExtensionRestrictionNotMet(err) => err.fmt(fmt),
+            Self::OomError(_) => write!(fmt, "not enough memory available"),
+            Self::InitializationFailed => write!(fmt, "initialization failed"),
+            Self::LayerNotPresent => write!(fmt, "layer not present"),
+            Self::ExtensionNotPresent => write!(fmt, "extension not present"),
+            Self::IncompatibleDriver => write!(fmt, "incompatible driver"),
+            Self::ExtensionRestrictionNotMet(err) => err.fmt(fmt),
+            Self::ExtensionNotEnabled { extension, reason } => write!(
+                fmt,
+                "the extension {} must be enabled: {}",
+                extension, reason
+            ),
         }
     }
 }
 
 impl From<OomError> for InstanceCreationError {
     #[inline]
-    fn from(err: OomError) -> InstanceCreationError {
-        InstanceCreationError::OomError(err)
+    fn from(err: OomError) -> Self {
+        Self::OomError(err)
     }
 }
 
 impl From<LoadingError> for InstanceCreationError {
     #[inline]
-    fn from(err: LoadingError) -> InstanceCreationError {
-        InstanceCreationError::LoadingError(err)
+    fn from(err: LoadingError) -> Self {
+        Self::LoadingError(err)
     }
 }
 
@@ -591,14 +713,14 @@ impl From<ExtensionRestrictionError> for InstanceCreationError {
 
 impl From<Error> for InstanceCreationError {
     #[inline]
-    fn from(err: Error) -> InstanceCreationError {
+    fn from(err: Error) -> Self {
         match err {
-            err @ Error::OutOfHostMemory => InstanceCreationError::OomError(OomError::from(err)),
-            err @ Error::OutOfDeviceMemory => InstanceCreationError::OomError(OomError::from(err)),
-            Error::InitializationFailed => InstanceCreationError::InitializationFailed,
-            Error::LayerNotPresent => InstanceCreationError::LayerNotPresent,
-            Error::ExtensionNotPresent => InstanceCreationError::ExtensionNotPresent,
-            Error::IncompatibleDriver => InstanceCreationError::IncompatibleDriver,
+            err @ Error::OutOfHostMemory => Self::OomError(OomError::from(err)),
+            err @ Error::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
+            Error::InitializationFailed => Self::InitializationFailed,
+            Error::LayerNotPresent => Self::LayerNotPresent,
+            Error::ExtensionNotPresent => Self::ExtensionNotPresent,
+            Error::IncompatibleDriver => Self::IncompatibleDriver,
             _ => panic!("unexpected error: {:?}", err),
         }
     }

@@ -9,7 +9,6 @@
 
 use super::{
     commands::{
-        debug::CheckColorError,
         pipeline::{
             CheckDescriptorSetsValidityError, CheckDispatchError, CheckDynamicStateValidityError,
             CheckIndexBufferError, CheckIndirectBufferError, CheckPipelineError,
@@ -787,11 +786,6 @@ err_gen!(CopyQueryPoolResultsError {
     AutoCommandBufferBuilderContextError,
     CheckCopyQueryPoolResultsError,
     SyncCommandBufferBuilderError,
-});
-
-err_gen!(DebugMarkerError {
-    AutoCommandBufferBuilderContextError,
-    CheckColorError,
 });
 
 err_gen!(DispatchError {

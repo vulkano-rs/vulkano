@@ -77,7 +77,7 @@
 //! information.
 
 pub use self::commands::{
-    debug::CheckColorError,
+    debug::DebugUtilsError,
     image::{
         BlitImageInfo, ClearColorImageInfo, ClearDepthStencilImageInfo, ImageBlit, ImageResolve,
         ResolveImageInfo,
@@ -101,7 +101,7 @@ pub use self::{
     auto::{
         AutoCommandBufferBuilder, AutoCommandBufferBuilderContextError, BeginError,
         BeginQueryError, BeginRenderPassError, BuildError, CopyQueryPoolResultsError,
-        DebugMarkerError, DispatchError, DispatchIndirectError, DrawError, DrawIndexedError,
+        DispatchError, DispatchIndirectError, DrawError, DrawIndexedError,
         DrawIndexedIndirectError, DrawIndirectError, EndQueryError, ExecuteCommandsError,
         PrimaryAutoCommandBuffer, ResetQueryPoolError, SecondaryAutoCommandBuffer,
         WriteTimestampError,
