@@ -74,7 +74,7 @@ pub unsafe trait ImageAccess: Send + Sync {
         false
     }
 
-    unsafe fn initial_layout(&self) -> ImageLayout {
+    fn initial_layout(&self) -> ImageLayout {
         self.inner().image.initial_layout()
     }
 

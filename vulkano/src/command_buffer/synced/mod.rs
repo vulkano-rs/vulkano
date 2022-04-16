@@ -77,7 +77,7 @@ use super::{
 use crate::{
     buffer::{sys::UnsafeBuffer, BufferAccess},
     device::{Device, DeviceOwned, Queue},
-    image::{sys::UnsafeImage, ImageAccess, ImageLayout},
+    image::{sys::UnsafeImage, ImageAccess, ImageLayout, ImageSubresourceRange},
     sync::{
         AccessCheckError, AccessError, AccessFlags, GpuFuture, PipelineMemoryAccess, PipelineStages,
     },
@@ -475,9 +475,19 @@ struct ImageUse {
 
 /// Type of resource whose state is to be tracked.
 #[derive(Clone)]
-pub(super) enum KeyTy {
-    Buffer(Arc<dyn BufferAccess>),
-    Image(Arc<dyn ImageAccess>),
+pub(super) enum Resource {
+    Buffer {
+        buffer: Arc<dyn BufferAccess>,
+        range: Range<DeviceSize>,
+        memory: PipelineMemoryAccess,
+    },
+    Image {
+        image: Arc<dyn ImageAccess>,
+        subresource_range: ImageSubresourceRange,
+        memory: PipelineMemoryAccess,
+        start_layout: ImageLayout,
+        end_layout: ImageLayout,
+    },
 }
 
 // Trait for single commands within the list of commands.
@@ -499,7 +509,6 @@ impl std::fmt::Debug for dyn Command {
 #[cfg(test)]
 mod tests {
     use super::SyncCommandBufferBuilder;
-    use super::SyncCommandBufferBuilderError;
     use crate::buffer::BufferUsage;
     use crate::buffer::CpuAccessibleBuffer;
     use crate::buffer::ImmutableBuffer;
@@ -529,6 +538,7 @@ mod tests {
     fn basic_creation() {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
+
             let pool = Device::standard_command_pool(&device, queue.family());
             let pool_builder_alloc = pool
                 .allocate(CommandBufferLevel::Primary, 1)
@@ -536,16 +546,14 @@ mod tests {
                 .next()
                 .unwrap();
 
-            assert!(matches!(
-                SyncCommandBufferBuilder::new(
-                    &pool_builder_alloc.inner(),
-                    CommandBufferBeginInfo {
-                        usage: CommandBufferUsage::MultipleSubmit,
-                        ..Default::default()
-                    },
-                ),
-                Ok(_)
-            ));
+            SyncCommandBufferBuilder::new(
+                &pool_builder_alloc.inner(),
+                CommandBufferBeginInfo {
+                    usage: CommandBufferUsage::MultipleSubmit,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
         }
     }
 
@@ -612,7 +620,7 @@ mod tests {
                     .collect::<Vec<_>>();
 
                 // Ensure that the builder added a barrier between the two writes
-                assert_eq!(&names, &["vkCmdExecuteCommands", "vkCmdExecuteCommands"]);
+                assert_eq!(&names, &["execute_commands", "execute_commands"]);
                 assert_eq!(&primary.barriers, &[0, 1]);
             }
 
@@ -631,15 +639,7 @@ mod tests {
                 secondary.into_iter().for_each(|secondary| {
                     ec.add(secondary);
                 });
-
-                // The two writes can't be split up by a barrier because they are part of the same
-                // command. Therefore an error.
-                // TODO: Would be nice if SyncCommandBufferBuilder would split the commands
-                // automatically in order to insert a barrier.
-                assert!(matches!(
-                    ec.submit(),
-                    Err(SyncCommandBufferBuilderError::Conflict { .. })
-                ));
+                ec.submit().unwrap();
             }
         }
     }

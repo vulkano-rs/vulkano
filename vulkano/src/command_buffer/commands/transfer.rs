@@ -10,19 +10,22 @@
 use crate::{
     buffer::{BufferAccess, BufferContents, BufferInner, TypedBufferAccess},
     command_buffer::{
-        synced::{Command, KeyTy, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
+        synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder, CopyBufferError, CopyBufferImageError, CopyImageError,
         FillBufferError, UpdateBufferError,
     },
     device::{Device, DeviceOwned},
     format::{Format, NumericType},
-    image::{ImageAccess, ImageAspect, ImageAspects, ImageDimensions, ImageLayout, SampleCount},
+    image::{
+        ImageAccess, ImageAspect, ImageAspects, ImageDimensions, ImageLayout,
+        ImageSubresourceRange, SampleCount,
+    },
     sync::{AccessFlags, PipelineMemoryAccess, PipelineStages},
     DeviceSize, SafeDeref, VulkanObject,
 };
 use parking_lot::Mutex;
-use smallvec::SmallVec;
+use smallvec::{smallvec, SmallVec};
 use std::{cmp, error, fmt, mem::size_of_val, sync::Arc};
 
 /// # Commands to transfer data to a resource, either from the host or from another resource.
@@ -185,7 +188,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         unsafe {
             self.ensure_outside_render_pass()?;
             check_fill_buffer(self.device(), buffer.as_ref())?;
-            self.inner.fill_buffer(buffer, data);
+            self.inner.fill_buffer(buffer, data)?;
             Ok(self)
         }
     }
@@ -211,7 +214,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             let size_of_data = size_of_val(data.deref()) as DeviceSize;
             if buffer.size() >= size_of_data {
-                self.inner.update_buffer(buffer, data);
+                self.inner.update_buffer(buffer, data)?;
             } else {
                 unimplemented!() // TODO:
                                  //self.inner.update_buffer(buffer.slice(0 .. size_of_data), data);
@@ -1112,7 +1115,7 @@ impl SyncCommandBufferBuilder {
             R: IntoIterator<Item = (DeviceSize, DeviceSize, DeviceSize)> + Send + Sync,
         {
             fn name(&self) -> &'static str {
-                "vkCmdCopyBuffer"
+                "copy_buffer"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1124,15 +1127,14 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        let mut resources: SmallVec<[_; 2]> = SmallVec::new();
-
         // if its the same image in source and destination, we need to lock it once
-        if source.conflict_key() == destination.conflict_key() {
-            resources.push((
-                KeyTy::Buffer(source.clone()),
+        let resources: SmallVec<[_; 2]> = if source.conflict_key() == destination.conflict_key() {
+            smallvec![(
                 "source_and_destination".into(),
-                Some((
-                    PipelineMemoryAccess {
+                Resource::Buffer {
+                    buffer: source.clone(),
+                    range: 0..source.size(), // TODO:
+                    memory: PipelineMemoryAccess {
                         stages: PipelineStages {
                             transfer: true,
                             ..PipelineStages::none()
@@ -1144,17 +1146,16 @@ impl SyncCommandBufferBuilder {
                         },
                         exclusive: false,
                     },
-                    ImageLayout::Undefined,
-                    ImageLayout::Undefined,
-                )),
-            ));
+                },
+            )]
         } else {
-            resources.extend([
+            smallvec![
                 (
-                    KeyTy::Buffer(source.clone()),
                     "source".into(),
-                    Some((
-                        PipelineMemoryAccess {
+                    Resource::Buffer {
+                        buffer: source.clone(),
+                        range: 0..source.size(), // TODO:
+                        memory: PipelineMemoryAccess {
                             stages: PipelineStages {
                                 transfer: true,
                                 ..PipelineStages::none()
@@ -1165,15 +1166,14 @@ impl SyncCommandBufferBuilder {
                             },
                             exclusive: false,
                         },
-                        ImageLayout::Undefined,
-                        ImageLayout::Undefined,
-                    )),
+                    },
                 ),
                 (
-                    KeyTy::Buffer(destination.clone()),
                     "destination".into(),
-                    Some((
-                        PipelineMemoryAccess {
+                    Resource::Buffer {
+                        buffer: destination.clone(),
+                        range: 0..destination.size(), // TODO:
+                        memory: PipelineMemoryAccess {
                             stages: PipelineStages {
                                 transfer: true,
                                 ..PipelineStages::none()
@@ -1184,21 +1184,24 @@ impl SyncCommandBufferBuilder {
                             },
                             exclusive: true,
                         },
-                        ImageLayout::Undefined,
-                        ImageLayout::Undefined,
-                    )),
+                    },
                 ),
-            ]);
+            ]
+        };
+
+        for resource in &resources {
+            self.check_resource_conflicts(resource)?;
         }
 
-        self.append_command(
-            Cmd {
-                source,
-                destination,
-                regions: Mutex::new(Some(regions)),
-            },
-            resources,
-        )?;
+        self.commands.push(Box::new(Cmd {
+            source,
+            destination,
+            regions: Mutex::new(Some(regions)),
+        }));
+
+        for resource in resources {
+            self.add_resource(resource);
+        }
 
         Ok(())
     }
@@ -1230,7 +1233,7 @@ impl SyncCommandBufferBuilder {
             R: IntoIterator<Item = UnsafeCommandBufferBuilderBufferImageCopy> + Send + Sync,
         {
             fn name(&self) -> &'static str {
-                "vkCmdCopyBufferToImage"
+                "copy_buffer_to_image"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1243,86 +1246,36 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(
-            Cmd {
-                source: source.clone(),
-                destination: destination.clone(),
-                destination_layout,
-                regions: Mutex::new(Some(regions)),
-            },
-            [
-                (
-                    KeyTy::Buffer(source),
-                    "source".into(),
-                    Some((
-                        PipelineMemoryAccess {
-                            stages: PipelineStages {
-                                transfer: true,
-                                ..PipelineStages::none()
-                            },
-                            access: AccessFlags {
-                                transfer_read: true,
-                                ..AccessFlags::none()
-                            },
-                            exclusive: false,
+        let resources = [
+            (
+                "source".into(),
+                Resource::Buffer {
+                    buffer: source.clone(),
+                    range: 0..source.size(), // TODO:
+                    memory: PipelineMemoryAccess {
+                        stages: PipelineStages {
+                            transfer: true,
+                            ..PipelineStages::none()
                         },
-                        ImageLayout::Undefined,
-                        ImageLayout::Undefined,
-                    )),
-                ),
-                (
-                    KeyTy::Image(destination),
-                    "destination".into(),
-                    Some((
-                        PipelineMemoryAccess {
-                            stages: PipelineStages {
-                                transfer: true,
-                                ..PipelineStages::none()
-                            },
-                            access: AccessFlags {
-                                transfer_write: true,
-                                ..AccessFlags::none()
-                            },
-                            exclusive: true,
+                        access: AccessFlags {
+                            transfer_read: true,
+                            ..AccessFlags::none()
                         },
-                        destination_layout,
-                        destination_layout,
-                    )),
-                ),
-            ],
-        )?;
-
-        Ok(())
-    }
-
-    /// Calls `vkCmdFillBuffer` on the builder.
-    #[inline]
-    pub unsafe fn fill_buffer(&mut self, buffer: Arc<dyn BufferAccess>, data: u32) {
-        struct Cmd {
-            buffer: Arc<dyn BufferAccess>,
-            data: u32,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "vkCmdFillBuffer"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.fill_buffer(self.buffer.as_ref(), self.data);
-            }
-        }
-
-        self.append_command(
-            Cmd {
-                buffer: buffer.clone(),
-                data,
-            },
-            [(
-                KeyTy::Buffer(buffer),
+                        exclusive: false,
+                    },
+                },
+            ),
+            (
                 "destination".into(),
-                Some((
-                    PipelineMemoryAccess {
+                Resource::Image {
+                    image: destination.clone(),
+                    subresource_range: ImageSubresourceRange {
+                        // TODO:
+                        aspects: destination.format().aspects(),
+                        mip_levels: destination.current_mip_levels_access(),
+                        array_layers: destination.current_array_layers_access(),
+                    },
+                    memory: PipelineMemoryAccess {
                         stages: PipelineStages {
                             transfer: true,
                             ..PipelineStages::none()
@@ -1333,17 +1286,91 @@ impl SyncCommandBufferBuilder {
                         },
                         exclusive: true,
                     },
-                    ImageLayout::Undefined,
-                    ImageLayout::Undefined,
-                )),
-            )],
-        )
-        .unwrap();
+                    start_layout: destination_layout,
+                    end_layout: destination_layout,
+                },
+            ),
+        ];
+
+        for resource in &resources {
+            self.check_resource_conflicts(resource)?;
+        }
+
+        self.commands.push(Box::new(Cmd {
+            source,
+            destination,
+            destination_layout,
+            regions: Mutex::new(Some(regions)),
+        }));
+
+        for resource in resources {
+            self.add_resource(resource);
+        }
+
+        Ok(())
+    }
+
+    /// Calls `vkCmdFillBuffer` on the builder.
+    #[inline]
+    pub unsafe fn fill_buffer(
+        &mut self,
+        buffer: Arc<dyn BufferAccess>,
+        data: u32,
+    ) -> Result<(), SyncCommandBufferBuilderError> {
+        struct Cmd {
+            buffer: Arc<dyn BufferAccess>,
+            data: u32,
+        }
+
+        impl Command for Cmd {
+            fn name(&self) -> &'static str {
+                "fill_buffer"
+            }
+
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
+                out.fill_buffer(self.buffer.as_ref(), self.data);
+            }
+        }
+
+        let resources = [(
+            "destination".into(),
+            Resource::Buffer {
+                buffer: buffer.clone(),
+                range: 0..buffer.size(), // TODO:
+                memory: PipelineMemoryAccess {
+                    stages: PipelineStages {
+                        transfer: true,
+                        ..PipelineStages::none()
+                    },
+                    access: AccessFlags {
+                        transfer_write: true,
+                        ..AccessFlags::none()
+                    },
+                    exclusive: true,
+                },
+            },
+        )];
+
+        for resource in &resources {
+            self.check_resource_conflicts(resource)?;
+        }
+
+        self.commands.push(Box::new(Cmd { buffer, data }));
+
+        for resource in resources {
+            self.add_resource(resource);
+        }
+
+        Ok(())
     }
 
     /// Calls `vkCmdUpdateBuffer` on the builder.
     #[inline]
-    pub unsafe fn update_buffer<D, Dd>(&mut self, buffer: Arc<dyn BufferAccess>, data: Dd)
+    pub unsafe fn update_buffer<D, Dd>(
+        &mut self,
+        buffer: Arc<dyn BufferAccess>,
+        data: Dd,
+    ) -> Result<(), SyncCommandBufferBuilderError>
     where
         D: BufferContents + ?Sized,
         Dd: SafeDeref<Target = D> + Send + Sync + 'static,
@@ -1359,7 +1386,7 @@ impl SyncCommandBufferBuilder {
             Dd: SafeDeref<Target = D> + Send + Sync + 'static,
         {
             fn name(&self) -> &'static str {
-                "vkCmdUpdateBuffer"
+                "update_buffer"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1367,32 +1394,36 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(
-            Cmd {
+        let resources = [(
+            "destination".into(),
+            Resource::Buffer {
                 buffer: buffer.clone(),
-                data,
-            },
-            [(
-                KeyTy::Buffer(buffer),
-                "destination".into(),
-                Some((
-                    PipelineMemoryAccess {
-                        stages: PipelineStages {
-                            transfer: true,
-                            ..PipelineStages::none()
-                        },
-                        access: AccessFlags {
-                            transfer_write: true,
-                            ..AccessFlags::none()
-                        },
-                        exclusive: true,
+                range: 0..buffer.size(), // TODO:
+                memory: PipelineMemoryAccess {
+                    stages: PipelineStages {
+                        transfer: true,
+                        ..PipelineStages::none()
                     },
-                    ImageLayout::Undefined,
-                    ImageLayout::Undefined,
-                )),
-            )],
-        )
-        .unwrap();
+                    access: AccessFlags {
+                        transfer_write: true,
+                        ..AccessFlags::none()
+                    },
+                    exclusive: true,
+                },
+            },
+        )];
+
+        for resource in &resources {
+            self.check_resource_conflicts(resource)?;
+        }
+
+        self.commands.push(Box::new(Cmd { buffer, data }));
+
+        for resource in resources {
+            self.add_resource(resource);
+        }
+
+        Ok(())
     }
 
     /// Calls `vkCmdCopyImage` on the builder.
@@ -1424,7 +1455,7 @@ impl SyncCommandBufferBuilder {
             R: IntoIterator<Item = UnsafeCommandBufferBuilderImageCopy> + Send + Sync,
         {
             fn name(&self) -> &'static str {
-                "vkCmdCopyImage"
+                "copy_image"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1438,8 +1469,6 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        let mut resources: SmallVec<[_; 2]> = SmallVec::new();
-
         // if its the same image in source and destination, we need to lock it once
         let source_key = (
             source.conflict_key(),
@@ -1451,12 +1480,19 @@ impl SyncCommandBufferBuilder {
             destination.current_mip_levels_access(),
             destination.current_array_layers_access(),
         );
-        if source_key == destination_key {
-            resources.push((
-                KeyTy::Image(source.clone()),
+
+        let resources: SmallVec<[_; 2]> = if source_key == destination_key {
+            smallvec![(
                 "source_and_destination".into(),
-                Some((
-                    PipelineMemoryAccess {
+                Resource::Image {
+                    image: source.clone(),
+                    subresource_range: ImageSubresourceRange {
+                        // TODO:
+                        aspects: source.format().aspects(),
+                        mip_levels: source.current_mip_levels_access(),
+                        array_layers: source.current_array_layers_access(),
+                    },
+                    memory: PipelineMemoryAccess {
                         stages: PipelineStages {
                             transfer: true,
                             ..PipelineStages::none()
@@ -1468,18 +1504,23 @@ impl SyncCommandBufferBuilder {
                         },
                         exclusive: true,
                     },
-                    // TODO: should, we take the layout as parameter? if so, which? source or destination?
-                    ImageLayout::General,
-                    ImageLayout::General,
-                )),
-            ));
+                    start_layout: ImageLayout::General,
+                    end_layout: ImageLayout::General,
+                },
+            )]
         } else {
-            resources.extend([
+            smallvec![
                 (
-                    KeyTy::Image(source.clone()),
                     "source".into(),
-                    Some((
-                        PipelineMemoryAccess {
+                    Resource::Image {
+                        image: source.clone(),
+                        subresource_range: ImageSubresourceRange {
+                            // TODO:
+                            aspects: source.format().aspects(),
+                            mip_levels: source.current_mip_levels_access(),
+                            array_layers: source.current_array_layers_access(),
+                        },
+                        memory: PipelineMemoryAccess {
                             stages: PipelineStages {
                                 transfer: true,
                                 ..PipelineStages::none()
@@ -1490,15 +1531,21 @@ impl SyncCommandBufferBuilder {
                             },
                             exclusive: false,
                         },
-                        source_layout,
-                        source_layout,
-                    )),
+                        start_layout: source_layout,
+                        end_layout: source_layout,
+                    },
                 ),
                 (
-                    KeyTy::Image(destination.clone()),
                     "destination".into(),
-                    Some((
-                        PipelineMemoryAccess {
+                    Resource::Image {
+                        image: destination.clone(),
+                        subresource_range: ImageSubresourceRange {
+                            // TODO:
+                            aspects: destination.format().aspects(),
+                            mip_levels: destination.current_mip_levels_access(),
+                            array_layers: destination.current_array_layers_access(),
+                        },
+                        memory: PipelineMemoryAccess {
                             stages: PipelineStages {
                                 transfer: true,
                                 ..PipelineStages::none()
@@ -1509,23 +1556,28 @@ impl SyncCommandBufferBuilder {
                             },
                             exclusive: true,
                         },
-                        destination_layout,
-                        destination_layout,
-                    )),
+                        start_layout: destination_layout,
+                        end_layout: destination_layout,
+                    },
                 ),
-            ]);
+            ]
+        };
+
+        for resource in &resources {
+            self.check_resource_conflicts(resource)?;
         }
 
-        self.append_command(
-            Cmd {
-                source,
-                source_layout,
-                destination,
-                destination_layout,
-                regions: Mutex::new(Some(regions)),
-            },
-            resources,
-        )?;
+        self.commands.push(Box::new(Cmd {
+            source,
+            source_layout,
+            destination,
+            destination_layout,
+            regions: Mutex::new(Some(regions)),
+        }));
+
+        for resource in resources {
+            self.add_resource(resource);
+        }
 
         Ok(())
     }
@@ -1557,7 +1609,7 @@ impl SyncCommandBufferBuilder {
             R: IntoIterator<Item = UnsafeCommandBufferBuilderBufferImageCopy> + Send + Sync,
         {
             fn name(&self) -> &'static str {
-                "vkCmdCopyImageToBuffer"
+                "copy_image_to_buffer"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1570,54 +1622,66 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(
-            Cmd {
-                source: source.clone(),
-                destination: destination.clone(),
-                source_layout,
-                regions: Mutex::new(Some(regions)),
-            },
-            [
-                (
-                    KeyTy::Image(source),
-                    "source".into(),
-                    Some((
-                        PipelineMemoryAccess {
-                            stages: PipelineStages {
-                                transfer: true,
-                                ..PipelineStages::none()
-                            },
-                            access: AccessFlags {
-                                transfer_read: true,
-                                ..AccessFlags::none()
-                            },
-                            exclusive: false,
+        let resources = [
+            (
+                "source".into(),
+                Resource::Image {
+                    image: source.clone(),
+                    subresource_range: ImageSubresourceRange {
+                        // TODO:
+                        aspects: source.format().aspects(),
+                        mip_levels: source.current_mip_levels_access(),
+                        array_layers: source.current_array_layers_access(),
+                    },
+                    memory: PipelineMemoryAccess {
+                        stages: PipelineStages {
+                            transfer: true,
+                            ..PipelineStages::none()
                         },
-                        source_layout,
-                        source_layout,
-                    )),
-                ),
-                (
-                    KeyTy::Buffer(destination),
-                    "destination".into(),
-                    Some((
-                        PipelineMemoryAccess {
-                            stages: PipelineStages {
-                                transfer: true,
-                                ..PipelineStages::none()
-                            },
-                            access: AccessFlags {
-                                transfer_write: true,
-                                ..AccessFlags::none()
-                            },
-                            exclusive: true,
+                        access: AccessFlags {
+                            transfer_read: true,
+                            ..AccessFlags::none()
                         },
-                        ImageLayout::Undefined,
-                        ImageLayout::Undefined,
-                    )),
-                ),
-            ],
-        )?;
+                        exclusive: false,
+                    },
+                    start_layout: source_layout,
+                    end_layout: source_layout,
+                },
+            ),
+            (
+                "destination".into(),
+                Resource::Buffer {
+                    buffer: destination.clone(),
+                    range: 0..destination.size(), // TODO:
+                    memory: PipelineMemoryAccess {
+                        stages: PipelineStages {
+                            transfer: true,
+                            ..PipelineStages::none()
+                        },
+                        access: AccessFlags {
+                            transfer_write: true,
+                            ..AccessFlags::none()
+                        },
+                        exclusive: true,
+                    },
+                },
+            ),
+        ];
+
+        for resource in &resources {
+            self.check_resource_conflicts(resource)?;
+        }
+
+        self.commands.push(Box::new(Cmd {
+            source,
+            destination,
+            source_layout,
+            regions: Mutex::new(Some(regions)),
+        }));
+
+        for resource in resources {
+            self.add_resource(resource);
+        }
 
         Ok(())
     }

@@ -10,13 +10,13 @@
 use crate::{
     command_buffer::{
         pool::CommandPoolBuilderAlloc,
-        synced::{Command, KeyTy, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
+        synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder, AutoCommandBufferBuilderContextError, CommandBufferExecError,
         CommandBufferInheritanceRenderPassInfo, CommandBufferUsage, ExecuteCommandsError,
         PrimaryAutoCommandBuffer, SecondaryCommandBuffer, SubpassContents,
     },
-    image::ImageLayout,
+    image::ImageSubresourceRange,
     query::QueryType,
     SafeDeref, VulkanObject,
 };
@@ -232,7 +232,7 @@ impl<'a> SyncCommandBufferBuilderExecuteCommands<'a> {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdExecuteCommands"
+                "execute_commands"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -248,39 +248,54 @@ impl<'a> SyncCommandBufferBuilderExecuteCommands<'a> {
             let mut resources = Vec::new();
             for (cbuf_num, cbuf) in self.inner.iter().enumerate() {
                 for buf_num in 0..cbuf.num_buffers() {
+                    let (buffer, memory) = cbuf.buffer(buf_num).unwrap();
                     resources.push((
-                        KeyTy::Buffer(cbuf.buffer(buf_num).unwrap().0.clone()),
                         format!("Buffer bound to secondary command buffer {}", cbuf_num).into(),
-                        Some((
-                            cbuf.buffer(buf_num).unwrap().1,
-                            ImageLayout::Undefined,
-                            ImageLayout::Undefined,
-                        )),
+                        Resource::Buffer {
+                            buffer: buffer.clone(),
+                            range: 0..buffer.size(), // TODO:
+                            memory,
+                        },
                     ));
                 }
                 for img_num in 0..cbuf.num_images() {
-                    let (_, memory, start_layout, end_layout) = cbuf.image(img_num).unwrap();
+                    let (image, memory, start_layout, end_layout) = cbuf.image(img_num).unwrap();
                     resources.push((
-                        KeyTy::Image(cbuf.image(img_num).unwrap().0.clone()),
                         format!("Image bound to secondary command buffer {}", cbuf_num).into(),
-                        Some((memory, start_layout, end_layout)),
+                        Resource::Image {
+                            image: image.clone(),
+                            subresource_range: ImageSubresourceRange {
+                                // TODO:
+                                aspects: image.format().aspects(),
+                                mip_levels: image.current_mip_levels_access(),
+                                array_layers: image.current_array_layers_access(),
+                            },
+                            memory,
+                            start_layout,
+                            end_layout,
+                        },
                     ));
                 }
             }
             resources
         };
 
-        self.builder.append_command(
-            Cmd(self
-                .inner
-                .into_iter()
-                .map(|cbuf| {
-                    cbuf.lock_record()?;
-                    Ok(DropUnlock(cbuf))
-                })
-                .collect::<Result<Vec<_>, CommandBufferExecError>>()?),
-            resources,
-        )?;
+        for resource in &resources {
+            self.builder.check_resource_conflicts(resource)?;
+        }
+
+        self.builder.commands.push(Box::new(Cmd(self
+            .inner
+            .into_iter()
+            .map(|cbuf| {
+                cbuf.lock_record()?;
+                Ok(DropUnlock(cbuf))
+            })
+            .collect::<Result<Vec<_>, CommandBufferExecError>>()?)));
+
+        for resource in resources {
+            self.builder.add_resource(resource);
+        }
 
         Ok(())
     }

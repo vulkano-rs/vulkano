@@ -20,7 +20,7 @@ use std::{
 
 macro_rules! pipeline_stages {
     ($($elem:ident, $var:ident => $val:ident, $queue:expr;)+) => (
-        #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+        #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
         pub struct PipelineStages {
             $(
                 pub $elem: bool,
@@ -261,7 +261,7 @@ pipeline_stages! {
 
 macro_rules! access_flags {
     ($($elem:ident => $val:ident,)+) => (
-        #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+        #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
         #[allow(missing_docs)]
         pub struct AccessFlags {
             $(
@@ -363,7 +363,7 @@ access_flags! {
 }
 
 /// The full specification of memory access by the pipeline for a particular resource.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PipelineMemoryAccess {
     /// The pipeline stages the resource will be accessed in.
     pub stages: PipelineStages,
@@ -408,6 +408,14 @@ impl DependencyInfo {
         self.memory_barriers.is_empty()
             && self.buffer_memory_barriers.is_empty()
             && self.image_memory_barriers.is_empty()
+    }
+
+    /// Clears all barriers.
+    #[inline]
+    pub fn clear(&mut self) {
+        self.memory_barriers.clear();
+        self.buffer_memory_barriers.clear();
+        self.image_memory_barriers.clear();
     }
 }
 
