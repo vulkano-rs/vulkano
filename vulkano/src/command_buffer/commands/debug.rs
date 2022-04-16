@@ -7,107 +7,142 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::command_buffer::{
-    synced::{Command, SyncCommandBufferBuilder},
-    sys::UnsafeCommandBufferBuilder,
-    AutoCommandBufferBuilder, AutoCommandBufferBuilderContextError, DebugMarkerError,
+use crate::{
+    command_buffer::{
+        synced::{Command, SyncCommandBufferBuilder},
+        sys::UnsafeCommandBufferBuilder,
+        AutoCommandBufferBuilder,
+    },
+    device::DeviceOwned,
+    instance::debug::DebugUtilsLabel,
 };
-use std::{error, ffi::CStr, fmt};
+use std::{error, ffi::CString, fmt};
 
 /// # Commands for debugging.
-impl<L, P> AutoCommandBufferBuilder<L, P> {
-    /// Open a command buffer debug label region.
-    ///
-    /// Note: you need to enable `VK_EXT_debug_utils` extension when creating an instance.
-    #[inline]
-    pub fn debug_marker_begin(
-        &mut self,
-        name: &'static CStr,
-        color: [f32; 4],
-    ) -> Result<&mut Self, DebugMarkerError> {
-        if !self.queue_family().supports_graphics() && self.queue_family().supports_compute() {
-            return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
-        }
-
-        check_debug_marker_color(color)?;
-
-        unsafe {
-            self.inner.debug_marker_begin(name.into(), color);
-        }
-
-        Ok(self)
-    }
-
-    /// Close a command buffer label region.
-    ///
-    /// Note: you need to open a command buffer label region first with `debug_marker_begin`.
-    /// Note: you need to enable `VK_EXT_debug_utils` extension when creating an instance.
-    #[inline]
-    pub fn debug_marker_end(&mut self) -> Result<&mut Self, DebugMarkerError> {
-        if !self.queue_family().supports_graphics() && self.queue_family().supports_compute() {
-            return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
-        }
-
-        // TODO: validate that debug_marker_begin with same name was sent earlier
-
-        unsafe {
-            self.inner.debug_marker_end();
-        }
-
-        Ok(self)
-    }
-
-    /// Insert a label into a command buffer.
-    ///
-    /// Note: you need to enable `VK_EXT_debug_utils` extension when creating an instance.
-    #[inline]
-    pub fn debug_marker_insert(
-        &mut self,
-        name: &'static CStr,
-        color: [f32; 4],
-    ) -> Result<&mut Self, DebugMarkerError> {
-        if !self.queue_family().supports_graphics() && self.queue_family().supports_compute() {
-            return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
-        }
-
-        check_debug_marker_color(color)?;
-
-        unsafe {
-            self.inner.debug_marker_insert(name.into(), color);
-        }
-
-        Ok(self)
-    }
-}
-
-/// Checks whether the specified color is valid as debug marker color.
 ///
-/// The color parameter must contain RGBA values in order, in the range 0.0 to 1.0.
-fn check_debug_marker_color(color: [f32; 4]) -> Result<(), CheckColorError> {
-    // The values contain RGBA values in order, in the range 0.0 to 1.0.
-    if color.iter().any(|x| !(0f32..=1f32).contains(x)) {
-        return Err(CheckColorError);
+/// These commands all require the
+/// [`ext_debug_utils`](crate::instance::InstanceExtensions::ext_debug_utils) to be enabled on the
+/// instance.
+impl<L, P> AutoCommandBufferBuilder<L, P> {
+    /// Opens a command buffer debug label region.
+    #[inline]
+    pub fn begin_debug_utils_label(
+        &mut self,
+        mut label_info: DebugUtilsLabel,
+    ) -> Result<&mut Self, DebugUtilsError> {
+        self.validate_begin_debug_utils_label(&mut label_info)?;
+
+        unsafe {
+            self.inner.begin_debug_utils_label(label_info);
+        }
+
+        Ok(self)
     }
 
-    Ok(())
-}
+    fn validate_begin_debug_utils_label(
+        &self,
+        label_info: &mut DebugUtilsLabel,
+    ) -> Result<(), DebugUtilsError> {
+        if !self
+            .device()
+            .instance()
+            .enabled_extensions()
+            .ext_debug_utils
+        {
+            return Err(DebugUtilsError::ExtensionNotEnabled {
+                extension: "ext_debug_utils",
+                reason: "tried to record a debug utils command",
+            });
+        }
 
-/// Error that can happen from `check_debug_marker_color`.
-#[derive(Debug, Copy, Clone)]
-pub struct CheckColorError;
+        // VUID-vkCmdBeginDebugUtilsLabelEXT-commandBuffer-cmdpool
+        if !(self.queue_family().supports_graphics() || self.queue_family().supports_compute()) {
+            return Err(DebugUtilsError::NotSupportedByQueueFamily);
+        }
 
-impl error::Error for CheckColorError {}
+        Ok(())
+    }
 
-impl fmt::Display for CheckColorError {
+    /// Closes a command buffer debug label region.
+    ///
+    /// # Safety
+    ///
+    /// - When submitting the command buffer, there must be an outstanding command buffer label
+    ///   region begun with `begin_debug_utils_label` in the queue, either within this command
+    ///   buffer or a previously submitted one.
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                CheckColorError => "color parameter does contains values out of 0.0 to 1.0 range",
-            }
-        )
+    pub unsafe fn end_debug_utils_label(&mut self) -> Result<&mut Self, DebugUtilsError> {
+        self.validate_end_debug_utils_label()?;
+
+        self.inner.end_debug_utils_label();
+
+        Ok(self)
+    }
+
+    fn validate_end_debug_utils_label(&self) -> Result<(), DebugUtilsError> {
+        if !self
+            .device()
+            .instance()
+            .enabled_extensions()
+            .ext_debug_utils
+        {
+            return Err(DebugUtilsError::ExtensionNotEnabled {
+                extension: "ext_debug_utils",
+                reason: "tried to record a debug utils command",
+            });
+        }
+
+        // VUID-vkCmdEndDebugUtilsLabelEXT-commandBuffer-cmdpool
+        if !(self.queue_family().supports_graphics() || self.queue_family().supports_compute()) {
+            return Err(DebugUtilsError::NotSupportedByQueueFamily);
+        }
+
+        // VUID-vkCmdEndDebugUtilsLabelEXT-commandBuffer-01912
+        // TODO: not checked, so unsafe for now
+
+        // VUID-vkCmdEndDebugUtilsLabelEXT-commandBuffer-01913
+        // TODO: not checked, so unsafe for now
+
+        Ok(())
+    }
+
+    /// Inserts a command buffer debug label.
+    #[inline]
+    pub fn insert_debug_utils_label(
+        &mut self,
+        mut label_info: DebugUtilsLabel,
+    ) -> Result<&mut Self, DebugUtilsError> {
+        self.validate_insert_debug_utils_label(&mut label_info)?;
+
+        unsafe {
+            self.inner.insert_debug_utils_label(label_info);
+        }
+
+        Ok(self)
+    }
+
+    fn validate_insert_debug_utils_label(
+        &self,
+        label_info: &mut DebugUtilsLabel,
+    ) -> Result<(), DebugUtilsError> {
+        if !self
+            .device()
+            .instance()
+            .enabled_extensions()
+            .ext_debug_utils
+        {
+            return Err(DebugUtilsError::ExtensionNotEnabled {
+                extension: "ext_debug_utils",
+                reason: "tried to record a debug utils command",
+            });
+        }
+
+        // VUID-vkCmdInsertDebugUtilsLabelEXT-commandBuffer-cmdpool
+        if !(self.queue_family().supports_graphics() || self.queue_family().supports_compute()) {
+            return Err(DebugUtilsError::NotSupportedByQueueFamily);
+        }
+
+        Ok(())
     }
 }
 
@@ -118,23 +153,22 @@ impl SyncCommandBufferBuilder {
     /// The command pool that this command buffer was allocated from must support graphics or
     /// compute operations
     #[inline]
-    pub unsafe fn debug_marker_begin(&mut self, name: &'static CStr, color: [f32; 4]) {
+    pub unsafe fn begin_debug_utils_label(&mut self, label_info: DebugUtilsLabel) {
         struct Cmd {
-            name: &'static CStr,
-            color: [f32; 4],
+            label_info: DebugUtilsLabel,
         }
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "debug_marker_begin"
+                "begin_debug_utils_label"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.debug_marker_begin(self.name, self.color);
+                out.begin_debug_utils_label(&self.label_info);
             }
         }
 
-        self.commands.push(Box::new(Cmd { name, color }));
+        self.commands.push(Box::new(Cmd { label_info }));
     }
 
     /// Calls `vkCmdEndDebugUtilsLabelEXT` on the builder.
@@ -145,16 +179,16 @@ impl SyncCommandBufferBuilder {
     /// - There must be an outstanding `debug_marker_begin` command prior to the
     /// `debug_marker_end` on the queue.
     #[inline]
-    pub unsafe fn debug_marker_end(&mut self) {
+    pub unsafe fn end_debug_utils_label(&mut self) {
         struct Cmd {}
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "debug_marker_end"
+                "end_debug_utils_label"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.debug_marker_end();
+                out.end_debug_utils_label();
             }
         }
 
@@ -167,23 +201,22 @@ impl SyncCommandBufferBuilder {
     /// The command pool that this command buffer was allocated from must support graphics or
     /// compute operations
     #[inline]
-    pub unsafe fn debug_marker_insert(&mut self, name: &'static CStr, color: [f32; 4]) {
+    pub unsafe fn insert_debug_utils_label(&mut self, label_info: DebugUtilsLabel) {
         struct Cmd {
-            name: &'static CStr,
-            color: [f32; 4],
+            label_info: DebugUtilsLabel,
         }
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "debug_marker_insert"
+                "insert_debug_utils_label"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.debug_marker_insert(self.name, self.color);
+                out.insert_debug_utils_label(&self.label_info);
             }
         }
 
-        self.commands.push(Box::new(Cmd { name, color }));
+        self.commands.push(Box::new(Cmd { label_info }));
     }
 }
 
@@ -194,15 +227,23 @@ impl UnsafeCommandBufferBuilder {
     /// The command pool that this command buffer was allocated from must support graphics or
     /// compute operations
     #[inline]
-    pub unsafe fn debug_marker_begin(&mut self, name: &CStr, color: [f32; 4]) {
-        let fns = self.device.instance().fns();
-        let info = ash::vk::DebugUtilsLabelEXT {
-            p_label_name: name.as_ptr(),
+    pub unsafe fn begin_debug_utils_label(&mut self, label_info: &DebugUtilsLabel) {
+        let &DebugUtilsLabel {
+            ref label_name,
+            color,
+            _ne: _,
+        } = label_info;
+
+        let label_name_vk = CString::new(label_name.as_str()).unwrap();
+        let label_info = ash::vk::DebugUtilsLabelEXT {
+            p_label_name: label_name_vk.as_ptr(),
             color,
             ..Default::default()
         };
+
+        let fns = self.device.instance().fns();
         fns.ext_debug_utils
-            .cmd_begin_debug_utils_label_ext(self.handle, &info);
+            .cmd_begin_debug_utils_label_ext(self.handle, &label_info);
     }
 
     /// Calls `vkCmdEndDebugUtilsLabelEXT` on the builder.
@@ -211,7 +252,7 @@ impl UnsafeCommandBufferBuilder {
     /// There must be an outstanding `vkCmdBeginDebugUtilsLabelEXT` command prior to the
     /// `vkQueueEndDebugUtilsLabelEXT` on the queue tha `CommandBuffer` is submitted to.
     #[inline]
-    pub unsafe fn debug_marker_end(&mut self) {
+    pub unsafe fn end_debug_utils_label(&mut self) {
         let fns = self.device.instance().fns();
         fns.ext_debug_utils
             .cmd_end_debug_utils_label_ext(self.handle);
@@ -223,14 +264,50 @@ impl UnsafeCommandBufferBuilder {
     /// The command pool that this command buffer was allocated from must support graphics or
     /// compute operations
     #[inline]
-    pub unsafe fn debug_marker_insert(&mut self, name: &CStr, color: [f32; 4]) {
-        let fns = self.device.instance().fns();
-        let info = ash::vk::DebugUtilsLabelEXT {
-            p_label_name: name.as_ptr(),
+    pub unsafe fn insert_debug_utils_label(&mut self, label_info: &DebugUtilsLabel) {
+        let &DebugUtilsLabel {
+            ref label_name,
+            color,
+            _ne: _,
+        } = label_info;
+
+        let label_name_vk = CString::new(label_name.as_str()).unwrap();
+        let label_info = ash::vk::DebugUtilsLabelEXT {
+            p_label_name: label_name_vk.as_ptr(),
             color,
             ..Default::default()
         };
+
+        let fns = self.device.instance().fns();
         fns.ext_debug_utils
-            .cmd_insert_debug_utils_label_ext(self.handle, &info);
+            .cmd_insert_debug_utils_label_ext(self.handle, &label_info);
+    }
+}
+
+/// Error that can happen when recording a debug utils command.
+#[derive(Clone, Debug)]
+pub enum DebugUtilsError {
+    ExtensionNotEnabled {
+        extension: &'static str,
+        reason: &'static str,
+    },
+
+    /// The queue family doesn't allow this operation.
+    NotSupportedByQueueFamily,
+}
+
+impl error::Error for DebugUtilsError {}
+
+impl fmt::Display for DebugUtilsError {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match self {
+            Self::ExtensionNotEnabled { extension, reason } => {
+                write!(f, "the extension {} must be enabled: {}", extension, reason)
+            }
+            Self::NotSupportedByQueueFamily => {
+                write!(f, "the queue family doesn't allow this operation")
+            }
+        }
     }
 }

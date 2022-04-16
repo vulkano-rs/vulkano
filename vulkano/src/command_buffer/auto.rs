@@ -9,7 +9,6 @@
 
 use super::{
     commands::{
-        debug::CheckColorError,
         image::{CheckBlitImageError, CheckClearColorImageError, CheckClearDepthStencilImageError},
         pipeline::{
             CheckDescriptorSetsValidityError, CheckDispatchError, CheckDynamicStateValidityError,
@@ -834,11 +833,6 @@ err_gen!(FillBufferError {
     AutoCommandBufferBuilderContextError,
     CheckFillBufferError,
     SyncCommandBufferBuilderError,
-});
-
-err_gen!(DebugMarkerError {
-    AutoCommandBufferBuilderContextError,
-    CheckColorError,
 });
 
 err_gen!(DispatchError {

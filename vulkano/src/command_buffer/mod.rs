@@ -77,7 +77,7 @@
 //! information.
 
 pub use self::commands::{
-    debug::CheckColorError,
+    debug::DebugUtilsError,
     image::{CheckBlitImageError, CheckClearColorImageError, CheckClearDepthStencilImageError},
     pipeline::{
         CheckDescriptorSetsValidityError, CheckDispatchError, CheckDynamicStateValidityError,
@@ -98,7 +98,7 @@ pub use self::{
         AutoCommandBufferBuilder, AutoCommandBufferBuilderContextError, BeginError,
         BeginQueryError, BeginRenderPassError, BlitImageError, BuildError, ClearColorImageError,
         CopyBufferError, CopyBufferImageError, CopyImageError, CopyQueryPoolResultsError,
-        DebugMarkerError, DispatchError, DispatchIndirectError, DrawError, DrawIndexedError,
+        DispatchError, DispatchIndirectError, DrawError, DrawIndexedError,
         DrawIndexedIndirectError, DrawIndirectError, EndQueryError, ExecuteCommandsError,
         FillBufferError, PrimaryAutoCommandBuffer, ResetQueryPoolError, SecondaryAutoCommandBuffer,
         UpdateBufferError, WriteTimestampError,
