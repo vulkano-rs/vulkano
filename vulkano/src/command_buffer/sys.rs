@@ -8,14 +8,8 @@
 // according to those terms.
 
 pub use super::commands::{
-    bind_push::UnsafeCommandBufferBuilderBindVertexBuffer,
-    image::{
-        UnsafeCommandBufferBuilderColorImageClear,
-        UnsafeCommandBufferBuilderDepthStencilImageClear, UnsafeCommandBufferBuilderImageBlit,
-    },
-    render_pass::RenderPassBeginInfo,
+    bind_push::UnsafeCommandBufferBuilderBindVertexBuffer, render_pass::RenderPassBeginInfo,
     secondary::UnsafeCommandBufferBuilderExecuteCommands,
-    transfer::{UnsafeCommandBufferBuilderBufferImageCopy, UnsafeCommandBufferBuilderImageCopy},
 };
 use super::{
     pool::UnsafeCommandPoolAlloc, CommandBufferInheritanceInfo, CommandBufferLevel,

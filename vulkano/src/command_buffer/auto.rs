@@ -9,7 +9,6 @@
 
 use super::{
     commands::{
-        image::{CheckBlitImageError, CheckClearColorImageError, CheckClearDepthStencilImageError},
         pipeline::{
             CheckDescriptorSetsValidityError, CheckDispatchError, CheckDynamicStateValidityError,
             CheckIndexBufferError, CheckIndirectBufferError, CheckPipelineError,
@@ -18,10 +17,6 @@ use super::{
         query::{
             CheckBeginQueryError, CheckCopyQueryPoolResultsError, CheckEndQueryError,
             CheckResetQueryPoolError, CheckWriteTimestampError,
-        },
-        transfer::{
-            CheckCopyBufferError, CheckCopyBufferImageError, CheckCopyImageError,
-            CheckFillBufferError, CheckUpdateBufferError,
         },
     },
     pool::{
@@ -787,51 +782,9 @@ err_gen!(BeginRenderPassError {
     SyncCommandBufferBuilderError,
 });
 
-err_gen!(CopyImageError {
-    AutoCommandBufferBuilderContextError,
-    CheckCopyImageError,
-    SyncCommandBufferBuilderError,
-});
-
-err_gen!(BlitImageError {
-    AutoCommandBufferBuilderContextError,
-    CheckBlitImageError,
-    SyncCommandBufferBuilderError,
-});
-
-err_gen!(ClearColorImageError {
-    AutoCommandBufferBuilderContextError,
-    CheckClearColorImageError,
-    SyncCommandBufferBuilderError,
-});
-
-err_gen!(ClearDepthStencilImageError {
-    AutoCommandBufferBuilderContextError,
-    CheckClearDepthStencilImageError,
-    SyncCommandBufferBuilderError,
-});
-
-err_gen!(CopyBufferError {
-    AutoCommandBufferBuilderContextError,
-    CheckCopyBufferError,
-    SyncCommandBufferBuilderError,
-});
-
-err_gen!(CopyBufferImageError {
-    AutoCommandBufferBuilderContextError,
-    CheckCopyBufferImageError,
-    SyncCommandBufferBuilderError,
-});
-
 err_gen!(CopyQueryPoolResultsError {
     AutoCommandBufferBuilderContextError,
     CheckCopyQueryPoolResultsError,
-    SyncCommandBufferBuilderError,
-});
-
-err_gen!(FillBufferError {
-    AutoCommandBufferBuilderContextError,
-    CheckFillBufferError,
     SyncCommandBufferBuilderError,
 });
 
@@ -921,12 +874,6 @@ err_gen!(WriteTimestampError {
 err_gen!(ResetQueryPoolError {
     AutoCommandBufferBuilderContextError,
     CheckResetQueryPoolError,
-});
-
-err_gen!(UpdateBufferError {
-    AutoCommandBufferBuilderContextError,
-    CheckUpdateBufferError,
-    SyncCommandBufferBuilderError,
 });
 
 /// Errors that can happen when calling [`clear_attachments`](AutoCommandBufferBuilder::clear_attachments)
@@ -1097,6 +1044,7 @@ mod tests {
     use super::*;
     use crate::{
         buffer::{BufferUsage, CpuAccessibleBuffer},
+        command_buffer::{BufferCopy, CopyBufferInfoTyped, CopyError},
         device::{physical::PhysicalDevice, DeviceCreateInfo, QueueCreateInfo},
     };
 
@@ -1148,8 +1096,17 @@ mod tests {
         )
         .unwrap();
 
-        cbb.copy_buffer_dimensions(source.clone(), 0, destination.clone(), 1, 2)
-            .unwrap();
+        cbb.copy_buffer(CopyBufferInfoTyped {
+            regions: [BufferCopy {
+                src_offset: 0,
+                dst_offset: 1,
+                size: 2,
+                ..Default::default()
+            }]
+            .into(),
+            ..CopyBufferInfoTyped::buffers(source.clone(), destination.clone())
+        })
+        .unwrap();
 
         let cb = cbb.build().unwrap();
 
@@ -1256,7 +1213,16 @@ mod tests {
         .unwrap();
 
         builder
-            .copy_buffer_dimensions(source.clone(), 0, source.clone(), 2, 2)
+            .copy_buffer(CopyBufferInfoTyped {
+                regions: [BufferCopy {
+                    src_offset: 0,
+                    dst_offset: 2,
+                    size: 2,
+                    ..Default::default()
+                }]
+                .into(),
+                ..CopyBufferInfoTyped::buffers(source.clone(), source.clone())
+            })
             .unwrap();
 
         let cb = builder.build().unwrap();
@@ -1293,10 +1259,20 @@ mod tests {
         .unwrap();
 
         assert!(matches!(
-            builder.copy_buffer_dimensions(source.clone(), 0, source.clone(), 1, 2),
-            Err(CopyBufferError::CheckCopyBufferError(
-                CheckCopyBufferError::OverlappingRanges
-            ))
+            builder.copy_buffer(CopyBufferInfoTyped {
+                regions: [BufferCopy {
+                    src_offset: 0,
+                    dst_offset: 1,
+                    size: 2,
+                    ..Default::default()
+                }]
+                .into(),
+                ..CopyBufferInfoTyped::buffers(source.clone(), source.clone())
+            }),
+            Err(CopyError::OverlappingRegions {
+                src_region_index: 0,
+                dst_region_index: 0,
+            })
         ));
     }
 }

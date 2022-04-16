@@ -11,7 +11,12 @@ use super::{
     traits::{ImageClearValue, ImageContent},
     ImageAccess, ImageDescriptorLayouts, ImageInner, ImageLayout,
 };
-use crate::{format::ClearValue, swapchain::Swapchain, OomError};
+use crate::{
+    device::{Device, DeviceOwned},
+    format::ClearValue,
+    swapchain::Swapchain,
+    OomError,
+};
 use std::{
     hash::{Hash, Hasher},
     ops::Range,
@@ -76,6 +81,12 @@ impl<W> SwapchainImage<W> {
     }
 }
 
+unsafe impl<W> DeviceOwned for SwapchainImage<W> {
+    fn device(&self) -> &Arc<Device> {
+        self.swapchain.device()
+    }
+}
+
 unsafe impl<W> ImageAccess for SwapchainImage<W>
 where
     W: Send + Sync,
@@ -103,11 +114,6 @@ where
             sampled_image: ImageLayout::ShaderReadOnlyOptimal,
             input_attachment: ImageLayout::ShaderReadOnlyOptimal,
         })
-    }
-
-    #[inline]
-    fn conflict_key(&self) -> u64 {
-        self.my_image().image.key()
     }
 
     #[inline]

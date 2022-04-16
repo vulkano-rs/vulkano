@@ -688,7 +688,7 @@ impl<W> Swapchain<W> {
         self.images.get(offset).map(|i| ImageInner {
             image: &i.image,
             first_layer: 0,
-            num_layers: self.image_array_layers as usize,
+            num_layers: self.image_array_layers,
             first_mipmap_level: 0,
             num_mipmap_levels: 1,
         })

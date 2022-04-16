@@ -319,11 +319,6 @@ where
     fn size(&self) -> DeviceSize {
         self.inner.size()
     }
-
-    #[inline]
-    fn conflict_key(&self) -> (u64, u64) {
-        (self.inner.key(), 0)
-    }
 }
 
 impl<T, A> BufferAccessObject for Arc<DeviceLocalBuffer<T, A>>

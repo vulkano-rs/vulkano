@@ -14,7 +14,7 @@ use super::{
     ImageInner, ImageLayout, ImageUsage,
 };
 use crate::{
-    device::{physical::QueueFamily, Device},
+    device::{physical::QueueFamily, Device, DeviceOwned},
     format::{ClearValue, Format},
     image::sys::UnsafeImageCreateInfo,
     memory::{
@@ -79,8 +79,8 @@ impl StorageImage {
         }
 
         let usage = ImageUsage {
-            transfer_source: true,
-            transfer_destination: true,
+            transfer_src: true,
+            transfer_dst: true,
             sampled: true,
             storage: true,
             color_attachment: !is_depth,
@@ -240,6 +240,15 @@ impl StorageImage {
     }
 }
 
+unsafe impl<A> DeviceOwned for StorageImage<A>
+where
+    A: MemoryPool,
+{
+    fn device(&self) -> &Arc<Device> {
+        self.image.device()
+    }
+}
+
 unsafe impl<A> ImageAccess for StorageImage<A>
 where
     A: MemoryPool,
@@ -249,7 +258,7 @@ where
         ImageInner {
             image: &self.image,
             first_layer: 0,
-            num_layers: self.dimensions.array_layers() as usize,
+            num_layers: self.dimensions.array_layers(),
             first_mipmap_level: 0,
             num_mipmap_levels: 1,
         }
@@ -273,11 +282,6 @@ where
             sampled_image: ImageLayout::General,
             input_attachment: ImageLayout::General,
         })
-    }
-
-    #[inline]
-    fn conflict_key(&self) -> u64 {
-        self.image.key()
     }
 
     #[inline]

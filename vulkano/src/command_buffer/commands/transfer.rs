@@ -8,228 +8,172 @@
 // according to those terms.
 
 use crate::{
-    buffer::{BufferAccess, BufferContents, BufferInner, TypedBufferAccess},
+    buffer::{BufferAccess, BufferContents, TypedBufferAccess},
     command_buffer::{
         synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
-        AutoCommandBufferBuilder, CopyBufferError, CopyBufferImageError, CopyImageError,
-        FillBufferError, UpdateBufferError,
+        AutoCommandBufferBuilder, CopyError, CopyErrorResource,
     },
-    device::{Device, DeviceOwned},
-    format::{Format, NumericType},
+    device::DeviceOwned,
+    format::Format,
     image::{
-        ImageAccess, ImageAspect, ImageAspects, ImageDimensions, ImageLayout,
-        ImageSubresourceRange, SampleCount,
+        ImageAccess, ImageAspects, ImageLayout, ImageSubresourceLayers, ImageType, SampleCount,
+        SampleCounts,
     },
     sync::{AccessFlags, PipelineMemoryAccess, PipelineStages},
-    DeviceSize, SafeDeref, VulkanObject,
+    DeviceSize, SafeDeref, Version, VulkanObject,
 };
-use parking_lot::Mutex;
 use smallvec::{smallvec, SmallVec};
-use std::{cmp, error, fmt, mem::size_of_val, sync::Arc};
+use std::{
+    cmp::{max, min},
+    mem::{size_of, size_of_val},
+    sync::Arc,
+};
 
 /// # Commands to transfer data to a resource, either from the host or from another resource.
 ///
 /// These commands can be called on a transfer queue, in addition to a compute or graphics queue.
 impl<L, P> AutoCommandBufferBuilder<L, P> {
-    /// Adds a command that copies from a buffer to another.
+    /// Copies data from a buffer to another buffer.
     ///
-    /// This command will copy from the source to the destination. If their size is not equal, then
-    /// the amount of data copied is equal to the smallest of the two.
+    /// # Panics
+    ///
+    /// - Panics if `src_buffer` or `dst_buffer` were not created from the same device
+    ///   as `self`.
     #[inline]
-    pub fn copy_buffer<S, D, T>(
+    pub fn copy_buffer(
         &mut self,
-        source: Arc<S>,
-        destination: Arc<D>,
-    ) -> Result<&mut Self, CopyBufferError>
-    where
-        S: TypedBufferAccess<Content = T> + 'static,
-        D: TypedBufferAccess<Content = T> + 'static,
-        T: ?Sized,
-    {
-        unsafe {
-            self.ensure_outside_render_pass()?;
-            let copy_size = cmp::min(source.size(), destination.size());
-            check_copy_buffer(
-                self.device(),
-                source.as_ref(),
-                destination.as_ref(),
-                0,
-                0,
-                copy_size,
-            )?;
-            self.inner
-                .copy_buffer(source, destination, [(0, 0, copy_size)])?;
-            Ok(self)
-        }
-    }
-
-    /// Adds a command that copies a range from the source to the destination buffer.
-    /// Panics if out of bounds.
-    #[inline]
-    pub fn copy_buffer_dimensions<S, D, T>(
-        &mut self,
-        source: Arc<S>,
-        source_offset: DeviceSize,
-        destination: Arc<D>,
-        destination_offset: DeviceSize,
-        count: DeviceSize,
-    ) -> Result<&mut Self, CopyBufferError>
-    where
-        S: TypedBufferAccess<Content = [T]> + 'static,
-        D: TypedBufferAccess<Content = [T]> + 'static,
-    {
-        self.ensure_outside_render_pass()?;
-        let size = std::mem::size_of::<T>() as DeviceSize;
-
-        let source_offset = source_offset * size;
-        let destination_offset = destination_offset * size;
-        let copy_size = count * size;
-
-        check_copy_buffer(
-            self.device(),
-            source.as_ref(),
-            destination.as_ref(),
-            source_offset,
-            destination_offset,
-            copy_size,
-        )?;
+        copy_buffer_info: impl Into<CopyBufferInfo>,
+    ) -> Result<&mut Self, CopyError> {
+        let mut copy_buffer_info = copy_buffer_info.into();
+        self.validate_copy_buffer(&mut copy_buffer_info)?;
 
         unsafe {
-            self.inner.copy_buffer(
-                source,
-                destination,
-                [(source_offset, destination_offset, copy_size)],
-            )?;
+            self.inner.copy_buffer(copy_buffer_info)?;
         }
+
         Ok(self)
     }
 
-    /// Adds a command that copies from a buffer to an image.
-    pub fn copy_buffer_to_image(
-        &mut self,
-        source: Arc<dyn BufferAccess>,
-        destination: Arc<dyn ImageAccess>,
-    ) -> Result<&mut Self, CopyBufferImageError> {
-        self.ensure_outside_render_pass()?;
+    fn validate_copy_buffer(&self, copy_buffer_info: &mut CopyBufferInfo) -> Result<(), CopyError> {
+        let device = self.device();
 
-        let dims = destination.dimensions().width_height_depth();
-        self.copy_buffer_to_image_dimensions(source, destination, [0, 0, 0], dims, 0, 1, 0)
-    }
+        // VUID-vkCmdCopyBuffer2-renderpass
+        if self.render_pass_state.is_some() {
+            return Err(CopyError::ForbiddenInsideRenderPass);
+        }
 
-    /// Adds a command that copies from a buffer to an image.
-    pub fn copy_buffer_to_image_dimensions(
-        &mut self,
-        source: Arc<dyn BufferAccess>,
-        destination: Arc<dyn ImageAccess>,
-        offset: [u32; 3],
-        size: [u32; 3],
-        base_array_layer: u32,
-        layer_count: u32,
-        mip_level: u32,
-    ) -> Result<&mut Self, CopyBufferImageError> {
-        unsafe {
-            self.ensure_outside_render_pass()?;
+        // VUID-vkCmdCopyBuffer2-commandBuffer-cmdpool
+        if !(self.queue_family().explicitly_supports_transfers()
+            || self.queue_family().supports_graphics()
+            || self.queue_family().supports_compute())
+        {
+            return Err(CopyError::NotSupportedByQueueFamily);
+        }
 
-            check_copy_buffer_image(
-                self.device(),
-                source.as_ref(),
-                destination.as_ref(),
-                CheckCopyBufferImageTy::BufferToImage,
-                offset,
+        let CopyBufferInfo {
+            src_buffer,
+            dst_buffer,
+            regions,
+            _ne: _,
+        } = copy_buffer_info;
+
+        let src_buffer_inner = src_buffer.inner();
+        let dst_buffer_inner = dst_buffer.inner();
+
+        // VUID-VkCopyBufferInfo2-commonparent
+        assert_eq!(device, src_buffer.device());
+        assert_eq!(device, dst_buffer.device());
+
+        // VUID-VkCopyBufferInfo2-srcBuffer-00118
+        if !src_buffer.usage().transfer_src {
+            return Err(CopyError::MissingUsage {
+                resource: CopyErrorResource::Source,
+                usage: "transfer_src",
+            });
+        }
+
+        // VUID-VkCopyBufferInfo2-dstBuffer-00120
+        if !dst_buffer.usage().transfer_dst {
+            return Err(CopyError::MissingUsage {
+                resource: CopyErrorResource::Destination,
+                usage: "transfer_dst",
+            });
+        }
+
+        let same_buffer = src_buffer_inner.buffer == dst_buffer_inner.buffer;
+        let mut overlap_indices = None;
+
+        for (region_index, region) in regions.iter().enumerate() {
+            let &BufferCopy {
+                src_offset,
+                dst_offset,
                 size,
-                base_array_layer,
-                layer_count,
-                mip_level,
-            )?;
+                _ne: _,
+            } = region;
 
-            let copy = UnsafeCommandBufferBuilderBufferImageCopy {
-                buffer_offset: 0,
-                buffer_row_length: 0,
-                buffer_image_height: 0,
-                image_aspect: if destination.format().aspects().color {
-                    ImageAspect::Color
-                } else {
-                    unimplemented!()
-                },
-                image_mip_level: mip_level,
-                image_base_array_layer: base_array_layer,
-                image_layer_count: layer_count,
-                image_offset: [offset[0] as i32, offset[1] as i32, offset[2] as i32],
-                image_extent: size,
-            };
+            // VUID-VkBufferCopy2-size-01988
+            assert!(size != 0);
 
-            self.inner.copy_buffer_to_image(
-                source,
-                destination,
-                ImageLayout::TransferDstOptimal, // TODO: let choose layout
-                [copy],
-            )?;
-            Ok(self)
-        }
-    }
-
-    /// Adds a command that writes the content of a buffer.
-    ///
-    /// This function is similar to the `memset` function in C. The `data` parameter is a number
-    /// that will be repeatedly written through the entire buffer.
-    ///
-    /// > **Note**: This function is technically safe because buffers can only contain integers or
-    /// > floating point numbers, which are always valid whatever their memory representation is.
-    /// > But unless your buffer actually contains only 32-bits integers, you are encouraged to use
-    /// > this function only for zeroing the content of a buffer by passing `0` for the data.
-    // TODO: not safe because of signalling NaNs
-    #[inline]
-    pub fn fill_buffer(
-        &mut self,
-        buffer: Arc<dyn BufferAccess>,
-        data: u32,
-    ) -> Result<&mut Self, FillBufferError> {
-        unsafe {
-            self.ensure_outside_render_pass()?;
-            check_fill_buffer(self.device(), buffer.as_ref())?;
-            self.inner.fill_buffer(buffer, data)?;
-            Ok(self)
-        }
-    }
-
-    /// Adds a command that writes data to a buffer.
-    ///
-    /// If `data` is larger than the buffer, only the part of `data` that fits is written. If the
-    /// buffer is larger than `data`, only the start of the buffer is written.
-    #[inline]
-    pub fn update_buffer<B, D, Dd>(
-        &mut self,
-        buffer: Arc<B>,
-        data: Dd,
-    ) -> Result<&mut Self, UpdateBufferError>
-    where
-        B: TypedBufferAccess<Content = D> + 'static,
-        D: BufferContents + ?Sized,
-        Dd: SafeDeref<Target = D> + Send + Sync + 'static,
-    {
-        unsafe {
-            self.ensure_outside_render_pass()?;
-            check_update_buffer(self.device(), buffer.as_ref(), data.deref())?;
-
-            let size_of_data = size_of_val(data.deref()) as DeviceSize;
-            if buffer.size() >= size_of_data {
-                self.inner.update_buffer(buffer, data)?;
-            } else {
-                unimplemented!() // TODO:
-                                 //self.inner.update_buffer(buffer.slice(0 .. size_of_data), data);
+            // VUID-VkCopyBufferInfo2-srcOffset-00113
+            // VUID-VkCopyBufferInfo2-size-00115
+            if src_offset + size > src_buffer.size() {
+                return Err(CopyError::RegionOutOfBufferBounds {
+                    resource: CopyErrorResource::Source,
+                    region_index,
+                    offset_range_end: src_offset + size,
+                    buffer_size: src_buffer.size(),
+                });
             }
 
-            Ok(self)
+            // VUID-VkCopyBufferInfo2-dstOffset-00114
+            // VUID-VkCopyBufferInfo2-size-00116
+            if dst_offset + size > dst_buffer.size() {
+                return Err(CopyError::RegionOutOfBufferBounds {
+                    resource: CopyErrorResource::Destination,
+                    region_index,
+                    offset_range_end: dst_offset + size,
+                    buffer_size: dst_buffer.size(),
+                });
+            }
+
+            // VUID-VkCopyBufferInfo2-pRegions-00117
+            if same_buffer {
+                let src_region_index = region_index;
+                let src_range = src_buffer_inner.offset + src_offset
+                    ..src_buffer_inner.offset + src_offset + size;
+
+                for (dst_region_index, dst_region) in regions.iter().enumerate() {
+                    let &BufferCopy { dst_offset, .. } = dst_region;
+
+                    let dst_range = dst_buffer_inner.offset + dst_offset
+                        ..dst_buffer_inner.offset + dst_offset + size;
+
+                    if src_range.start >= dst_range.end || dst_range.start >= src_range.end {
+                        // The regions do not overlap
+                        continue;
+                    }
+
+                    overlap_indices = Some((src_region_index, dst_region_index));
+                }
+            }
         }
+
+        // VUID-VkCopyBufferInfo2-pRegions-00117
+        if let Some((src_region_index, dst_region_index)) = overlap_indices {
+            return Err(CopyError::OverlappingRegions {
+                src_region_index,
+                dst_region_index,
+            });
+        }
+
+        Ok(())
     }
 
-    /// Adds a command that copies an image to another.
+    /// Copies data from an image to another image.
     ///
-    /// Copy operations have several restrictions:
+    /// There are several restrictions:
     ///
-    /// - Copy operations are only allowed on queue families that support transfer, graphics, or
-    ///   compute operations.
     /// - The number of samples in the source and destination images must be equal.
     /// - The size of the uncompressed element format of the source image must be equal to the
     ///   compressed element format of the destination.
@@ -242,739 +186,1713 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// If `layer_count` is greater than 1, the copy will happen between each individual layer as
     /// if they were separate images.
     ///
-    /// # Panic
+    /// # Panics
     ///
-    /// - Panics if the source or the destination was not created with `device`.
-    ///
+    /// - Panics if `src_image` or `dst_image` were not created from the same device
+    ///   as `self`.
     pub fn copy_image(
         &mut self,
-        source: Arc<dyn ImageAccess>,
-        source_offset: [i32; 3],
-        source_base_array_layer: u32,
-        source_mip_level: u32,
-        destination: Arc<dyn ImageAccess>,
-        destination_offset: [i32; 3],
-        destination_base_array_layer: u32,
-        destination_mip_level: u32,
-        extent: [u32; 3],
-        layer_count: u32,
-    ) -> Result<&mut Self, CopyImageError> {
+        mut copy_image_info: CopyImageInfo,
+    ) -> Result<&mut Self, CopyError> {
+        self.validate_copy_image(&mut copy_image_info)?;
+
         unsafe {
-            self.ensure_outside_render_pass()?;
-
-            check_copy_image(
-                self.device(),
-                source.as_ref(),
-                source_offset,
-                source_base_array_layer,
-                source_mip_level,
-                destination.as_ref(),
-                destination_offset,
-                destination_base_array_layer,
-                destination_mip_level,
-                extent,
-                layer_count,
-            )?;
-
-            let source_aspects = source.format().aspects();
-            let destination_aspects = destination.format().aspects();
-            let copy = UnsafeCommandBufferBuilderImageCopy {
-                // TODO: Allowing choosing a subset of the image aspects, but note that if color
-                // is included, neither depth nor stencil may.
-                aspects: ImageAspects {
-                    color: source_aspects.color,
-                    depth: !source_aspects.color
-                        && source_aspects.depth
-                        && destination_aspects.depth,
-                    stencil: !source_aspects.color
-                        && source_aspects.stencil
-                        && destination_aspects.stencil,
-                    ..ImageAspects::none()
-                },
-                source_mip_level,
-                destination_mip_level,
-                source_base_array_layer,
-                destination_base_array_layer,
-                layer_count,
-                source_offset,
-                destination_offset,
-                extent,
-            };
-
-            // TODO: Allow choosing layouts, but note that only Transfer*Optimal and General are
-            // valid.
-            if source.conflict_key() == destination.conflict_key() {
-                // since we are copying from the same image, we must use the same layout
-                self.inner.copy_image(
-                    source,
-                    ImageLayout::General,
-                    destination,
-                    ImageLayout::General,
-                    [copy],
-                )?;
-            } else {
-                self.inner.copy_image(
-                    source,
-                    ImageLayout::TransferSrcOptimal,
-                    destination,
-                    ImageLayout::TransferDstOptimal,
-                    [copy],
-                )?;
-            }
-            Ok(self)
+            self.inner.copy_image(copy_image_info)?;
         }
+
+        Ok(self)
     }
 
-    /// Adds a command that copies from an image to a buffer.
-    // The data layout of the image on the gpu is opaque, as in, it is non of our business how the gpu stores the image.
-    // This does not matter since the act of copying the image into a buffer converts it to linear form.
-    pub fn copy_image_to_buffer(
-        &mut self,
-        source: Arc<dyn ImageAccess>,
-        destination: Arc<dyn BufferAccess>,
-    ) -> Result<&mut Self, CopyBufferImageError> {
-        self.ensure_outside_render_pass()?;
+    fn validate_copy_image(&self, copy_image_info: &mut CopyImageInfo) -> Result<(), CopyError> {
+        let device = self.device();
 
-        let dims = source.dimensions().width_height_depth();
-        self.copy_image_to_buffer_dimensions(source, destination, [0, 0, 0], dims, 0, 1, 0)
-    }
-
-    /// Adds a command that copies from an image to a buffer.
-    pub fn copy_image_to_buffer_dimensions(
-        &mut self,
-        source: Arc<dyn ImageAccess>,
-        destination: Arc<dyn BufferAccess>,
-        offset: [u32; 3],
-        size: [u32; 3],
-        base_array_layer: u32,
-        layer_count: u32,
-        mip_level: u32,
-    ) -> Result<&mut Self, CopyBufferImageError> {
-        unsafe {
-            self.ensure_outside_render_pass()?;
-
-            check_copy_buffer_image(
-                self.device(),
-                destination.as_ref(),
-                source.as_ref(),
-                CheckCopyBufferImageTy::ImageToBuffer,
-                offset,
-                size,
-                base_array_layer,
-                layer_count,
-                mip_level,
-            )?;
-
-            let source_aspects = source.format().aspects();
-            let copy = UnsafeCommandBufferBuilderBufferImageCopy {
-                buffer_offset: 0,
-                buffer_row_length: 0,
-                buffer_image_height: 0,
-                // TODO: Allow the user to choose aspect
-                image_aspect: if source_aspects.color {
-                    ImageAspect::Color
-                } else if source_aspects.depth {
-                    ImageAspect::Depth
-                } else if source_aspects.stencil {
-                    ImageAspect::Stencil
-                } else {
-                    unimplemented!()
-                },
-                image_mip_level: mip_level,
-                image_base_array_layer: base_array_layer,
-                image_layer_count: layer_count,
-                image_offset: [offset[0] as i32, offset[1] as i32, offset[2] as i32],
-                image_extent: size,
-            };
-
-            self.inner.copy_image_to_buffer(
-                source,
-                ImageLayout::TransferSrcOptimal,
-                destination, // TODO: let choose layout
-                [copy],
-            )?;
-            Ok(self)
+        // VUID-vkCmdCopyImage2-renderpass
+        if self.render_pass_state.is_some() {
+            return Err(CopyError::ForbiddenInsideRenderPass);
         }
-    }
-}
 
-/// Checks whether a copy buffer command is valid.
-///
-/// # Panic
-///
-/// - Panics if the source and destination were not created with `device`.
-///
-fn check_copy_buffer(
-    device: &Device,
-    source: &dyn BufferAccess,
-    destination: &dyn BufferAccess,
-    source_offset: DeviceSize,
-    destination_offset: DeviceSize,
-    size: DeviceSize,
-) -> Result<(), CheckCopyBufferError> {
-    assert_eq!(
-        source.inner().buffer.device().internal_object(),
-        device.internal_object()
-    );
-    assert_eq!(
-        destination.inner().buffer.device().internal_object(),
-        device.internal_object()
-    );
-
-    if !source.inner().buffer.usage().transfer_source {
-        return Err(CheckCopyBufferError::SourceMissingTransferUsage);
-    }
-
-    if !destination.inner().buffer.usage().transfer_destination {
-        return Err(CheckCopyBufferError::DestinationMissingTransferUsage);
-    }
-
-    if source_offset + size > source.size() {
-        return Err(CheckCopyBufferError::SourceOutOfBounds);
-    }
-
-    if destination_offset + size > destination.size() {
-        return Err(CheckCopyBufferError::DestinationOutOfBounds);
-    }
-
-    if source.conflict_key() == destination.conflict_key()
-        && is_overlapping_ranges(source_offset, size, destination_offset, size)
-    {
-        return Err(CheckCopyBufferError::OverlappingRanges);
-    }
-
-    Ok(())
-}
-
-/// Error that can happen from `check_copy_buffer`.
-#[derive(Debug, Copy, Clone)]
-pub enum CheckCopyBufferError {
-    /// The source buffer is missing the transfer source usage.
-    SourceMissingTransferUsage,
-    /// The destination buffer is missing the transfer destination usage.
-    DestinationMissingTransferUsage,
-    /// The source and destination ranges are overlapping.
-    OverlappingRanges,
-    /// The source range is out of bounds.
-    SourceOutOfBounds,
-    /// The destination range is out of bounds.
-    DestinationOutOfBounds,
-}
-
-impl error::Error for CheckCopyBufferError {}
-
-impl fmt::Display for CheckCopyBufferError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                CheckCopyBufferError::SourceMissingTransferUsage => {
-                    "the source buffer is missing the transfer source usage"
-                }
-                CheckCopyBufferError::DestinationMissingTransferUsage => {
-                    "the destination buffer is missing the transfer destination usage"
-                }
-                CheckCopyBufferError::OverlappingRanges =>
-                    "the source and destination ranges are overlapping",
-                CheckCopyBufferError::SourceOutOfBounds => "the source range is out of bounds",
-                CheckCopyBufferError::DestinationOutOfBounds => {
-                    "the destination range is out of bounds"
-                }
-            }
-        )
-    }
-}
-
-/// Checks whether a fill buffer command is valid.
-///
-/// # Panic
-///
-/// - Panics if the buffer not created with `device`.
-///
-fn check_fill_buffer<B>(device: &Device, buffer: &B) -> Result<(), CheckFillBufferError>
-where
-    B: ?Sized + BufferAccess,
-{
-    assert_eq!(
-        buffer.inner().buffer.device().internal_object(),
-        device.internal_object()
-    );
-
-    if !buffer.inner().buffer.usage().transfer_destination {
-        return Err(CheckFillBufferError::BufferMissingUsage);
-    }
-
-    if buffer.inner().offset % 4 != 0 {
-        return Err(CheckFillBufferError::WrongAlignment);
-    }
-
-    Ok(())
-}
-
-/// Error that can happen when attempting to add a `fill_buffer` command.
-#[derive(Debug, Copy, Clone)]
-pub enum CheckFillBufferError {
-    /// The "transfer destination" usage must be enabled on the buffer.
-    BufferMissingUsage,
-    /// The data or size must be 4-bytes aligned.
-    WrongAlignment,
-}
-
-impl error::Error for CheckFillBufferError {}
-
-impl fmt::Display for CheckFillBufferError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                CheckFillBufferError::BufferMissingUsage => {
-                    "the transfer destination usage must be enabled on the buffer"
-                }
-                CheckFillBufferError::WrongAlignment =>
-                    "the offset or size are not aligned to 4 bytes",
-            }
-        )
-    }
-}
-
-/// Checks whether an update buffer command is valid.
-///
-/// # Panic
-///
-/// - Panics if the buffer not created with `device`.
-///
-fn check_update_buffer<D>(
-    device: &Device,
-    buffer: &dyn BufferAccess,
-    data: &D,
-) -> Result<(), CheckUpdateBufferError>
-where
-    D: ?Sized,
-{
-    assert_eq!(
-        buffer.inner().buffer.device().internal_object(),
-        device.internal_object()
-    );
-
-    if !buffer.inner().buffer.usage().transfer_destination {
-        return Err(CheckUpdateBufferError::BufferMissingUsage);
-    }
-
-    if buffer.inner().offset % 4 != 0 {
-        return Err(CheckUpdateBufferError::WrongAlignment);
-    }
-
-    let size = buffer.size().min(size_of_val(data) as DeviceSize);
-
-    if size % 4 != 0 {
-        return Err(CheckUpdateBufferError::WrongAlignment);
-    }
-
-    if size > 65536 {
-        return Err(CheckUpdateBufferError::DataTooLarge);
-    }
-
-    Ok(())
-}
-
-/// Error that can happen when attempting to add an `update_buffer` command.
-#[derive(Debug, Copy, Clone)]
-pub enum CheckUpdateBufferError {
-    /// The "transfer destination" usage must be enabled on the buffer.
-    BufferMissingUsage,
-    /// The data or size must be 4-bytes aligned.
-    WrongAlignment,
-    /// The data must not be larger than 64k bytes.
-    DataTooLarge,
-}
-
-impl error::Error for CheckUpdateBufferError {}
-
-impl fmt::Display for CheckUpdateBufferError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                CheckUpdateBufferError::BufferMissingUsage => {
-                    "the transfer destination usage must be enabled on the buffer"
-                }
-                CheckUpdateBufferError::WrongAlignment => {
-                    "the offset or size are not aligned to 4 bytes"
-                }
-                CheckUpdateBufferError::DataTooLarge => "data is too large",
-            }
-        )
-    }
-}
-
-/// Checks whether a copy image command is valid.
-///
-/// Note that this doesn't check whether `layer_count` is equal to 0. TODO: change that?
-///
-/// # Panic
-///
-/// - Panics if the source or the destination was not created with `device`.
-///
-fn check_copy_image<S, D>(
-    device: &Device,
-    source: &S,
-    source_offset: [i32; 3],
-    source_base_array_layer: u32,
-    source_mip_level: u32,
-    destination: &D,
-    destination_offset: [i32; 3],
-    destination_base_array_layer: u32,
-    destination_mip_level: u32,
-    extent: [u32; 3],
-    layer_count: u32,
-) -> Result<(), CheckCopyImageError>
-where
-    S: ?Sized + ImageAccess,
-    D: ?Sized + ImageAccess,
-{
-    let source_inner = source.inner();
-    let destination_inner = destination.inner();
-
-    assert_eq!(
-        source_inner.image.device().internal_object(),
-        device.internal_object()
-    );
-    assert_eq!(
-        destination_inner.image.device().internal_object(),
-        device.internal_object()
-    );
-
-    if !source_inner.image.usage().transfer_source {
-        return Err(CheckCopyImageError::MissingTransferSourceUsage);
-    }
-
-    if !destination_inner.image.usage().transfer_destination {
-        return Err(CheckCopyImageError::MissingTransferDestinationUsage);
-    }
-
-    if source.samples() != destination.samples() {
-        return Err(CheckCopyImageError::SampleCountMismatch);
-    }
-
-    if let (Some(source_type), Some(destination_type)) = (
-        source.format().type_color(),
-        destination.format().type_color(),
-    ) {
-        // TODO: The correct check here is that the uncompressed element size of the source is
-        // equal to the compressed element size of the destination.  However, format doesn't
-        // currently expose this information, so to be safe, we simply disallow compressed formats.
-        if source.format().compression().is_some()
-            || destination.format().compression().is_some()
-            || (source.format().block_size() != destination.format().block_size())
+        // VUID-vkCmdCopyImage2-commandBuffer-cmdpool
+        if !(self.queue_family().explicitly_supports_transfers()
+            || self.queue_family().supports_graphics()
+            || self.queue_family().supports_compute())
         {
-            return Err(CheckCopyImageError::SizeIncompatibleFormatTypes {
-                source_type,
-                destination_type,
+            return Err(CopyError::NotSupportedByQueueFamily);
+        }
+
+        let &mut CopyImageInfo {
+            ref src_image,
+            src_image_layout,
+            ref dst_image,
+            dst_image_layout,
+            ref regions,
+            _ne: _,
+        } = copy_image_info;
+
+        // VUID-VkCopyImageInfo2-commonparent
+        assert_eq!(device, src_image.device());
+        assert_eq!(device, dst_image.device());
+
+        let copy_2d_3d_supported =
+            device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1;
+        let src_image_inner = src_image.inner();
+        let dst_image_inner = dst_image.inner();
+        let mut src_image_aspects = src_image.format().aspects();
+        let mut dst_image_aspects = dst_image.format().aspects();
+
+        // VUID-VkCopyImageInfo2-aspect-06662
+        if !src_image.usage().transfer_src {
+            return Err(CopyError::MissingUsage {
+                resource: CopyErrorResource::Source,
+                usage: "transfer_src",
             });
         }
-    } else {
-        if source.format() != destination.format() {
-            return Err(CheckCopyImageError::DepthStencilFormatMismatch);
+
+        // VUID-VkCopyImageInfo2-aspect-06663
+        if !dst_image.usage().transfer_dst {
+            return Err(CopyError::MissingUsage {
+                resource: CopyErrorResource::Destination,
+                usage: "transfer_dst",
+            });
         }
-    }
 
-    let source_dimensions = match source.dimensions().mip_level_dimensions(source_mip_level) {
-        Some(d) => d,
-        None => return Err(CheckCopyImageError::SourceCoordinatesOutOfRange),
-    };
-
-    let destination_dimensions = match destination
-        .dimensions()
-        .mip_level_dimensions(destination_mip_level)
-    {
-        Some(d) => d,
-        None => return Err(CheckCopyImageError::DestinationCoordinatesOutOfRange),
-    };
-
-    if source_base_array_layer + layer_count > source_dimensions.array_layers() {
-        return Err(CheckCopyImageError::SourceCoordinatesOutOfRange);
-    }
-
-    if destination_base_array_layer + layer_count > destination_dimensions.array_layers() {
-        return Err(CheckCopyImageError::DestinationCoordinatesOutOfRange);
-    }
-
-    if source_offset[0] < 0 || source_offset[0] as u32 + extent[0] > source_dimensions.width() {
-        return Err(CheckCopyImageError::SourceCoordinatesOutOfRange);
-    }
-
-    if source_offset[1] < 0 || source_offset[1] as u32 + extent[1] > source_dimensions.height() {
-        return Err(CheckCopyImageError::SourceCoordinatesOutOfRange);
-    }
-
-    if source_offset[2] < 0 || source_offset[2] as u32 + extent[2] > source_dimensions.depth() {
-        return Err(CheckCopyImageError::SourceCoordinatesOutOfRange);
-    }
-
-    if destination_offset[0] < 0
-        || destination_offset[0] as u32 + extent[0] > destination_dimensions.width()
-    {
-        return Err(CheckCopyImageError::DestinationCoordinatesOutOfRange);
-    }
-
-    if destination_offset[1] < 0
-        || destination_offset[1] as u32 + extent[1] > destination_dimensions.height()
-    {
-        return Err(CheckCopyImageError::DestinationCoordinatesOutOfRange);
-    }
-
-    if destination_offset[2] < 0
-        || destination_offset[2] as u32 + extent[2] > destination_dimensions.depth()
-    {
-        return Err(CheckCopyImageError::DestinationCoordinatesOutOfRange);
-    }
-
-    match source_dimensions {
-        ImageDimensions::Dim1d { .. } => {
-            if source_offset[1] != 0 || extent[1] != 1 {
-                return Err(CheckCopyImageError::IncompatibleRangeForImageType);
+        if device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1 {
+            // VUID-VkCopyImageInfo2-srcImage-01995
+            if !src_image.format_features().transfer_src {
+                return Err(CopyError::MissingFormatFeature {
+                    resource: CopyErrorResource::Source,
+                    format_feature: "transfer_src",
+                });
             }
-            if source_offset[2] != 0 || extent[2] != 1 {
-                return Err(CheckCopyImageError::IncompatibleRangeForImageType);
+
+            // VUID-VkCopyImageInfo2-dstImage-01996
+            if !dst_image.format_features().transfer_dst {
+                return Err(CopyError::MissingFormatFeature {
+                    resource: CopyErrorResource::Destination,
+                    format_feature: "transfer_dst",
+                });
             }
         }
-        ImageDimensions::Dim2d { .. } => {
-            if source_offset[2] != 0 || extent[2] != 1 {
-                return Err(CheckCopyImageError::IncompatibleRangeForImageType);
+
+        // VUID-VkCopyImageInfo2-srcImage-00136
+        if src_image.samples() != dst_image.samples() {
+            return Err(CopyError::SampleCountMismatch {
+                src_sample_count: src_image.samples(),
+                dst_sample_count: dst_image.samples(),
+            });
+        }
+
+        if !(src_image_aspects.color || dst_image_aspects.color) {
+            // VUID-VkCopyImageInfo2-srcImage-01548
+            if src_image.format() != dst_image.format() {
+                return Err(CopyError::FormatsMismatch {
+                    src_format: src_image.format(),
+                    dst_format: dst_image.format(),
+                });
             }
         }
-        ImageDimensions::Dim3d { .. } => {}
+
+        // VUID-VkCopyImageInfo2-srcImageLayout-01917
+        if !matches!(
+            src_image_layout,
+            ImageLayout::TransferSrcOptimal | ImageLayout::General
+        ) {
+            return Err(CopyError::ImageLayoutInvalid {
+                resource: CopyErrorResource::Source,
+                image_layout: src_image_layout,
+            });
+        }
+
+        // VUID-VkCopyImageInfo2-dstImageLayout-01395
+        if !matches!(
+            dst_image_layout,
+            ImageLayout::TransferDstOptimal | ImageLayout::General
+        ) {
+            return Err(CopyError::ImageLayoutInvalid {
+                resource: CopyErrorResource::Destination,
+                image_layout: dst_image_layout,
+            });
+        }
+
+        let extent_alignment = match self.queue_family().min_image_transfer_granularity() {
+            [0, 0, 0] => None,
+            min_image_transfer_granularity => {
+                let granularity = move |block_extent: [u32; 3], is_multi_plane: bool| {
+                    if is_multi_plane {
+                        // Assume planes always have 1x1 blocks
+                        min_image_transfer_granularity
+                    } else {
+                        // "The value returned in minImageTransferGranularity has a unit of
+                        // compressed texel blocks for images having a block-compressed format, and
+                        // a unit of texels otherwise."
+                        [
+                            min_image_transfer_granularity[0] * block_extent[0],
+                            min_image_transfer_granularity[1] * block_extent[1],
+                            min_image_transfer_granularity[2] * block_extent[2],
+                        ]
+                    }
+                };
+
+                Some((
+                    granularity(src_image.format().block_extent(), src_image_aspects.plane0),
+                    granularity(dst_image.format().block_extent(), dst_image_aspects.plane0),
+                ))
+            }
+        };
+
+        if src_image_aspects.plane0 {
+            // VUID-VkCopyImageInfo2-srcImage-01552
+            // VUID-VkCopyImageInfo2-srcImage-01553
+            src_image_aspects.color = false;
+        }
+
+        if dst_image_aspects.plane0 {
+            // VUID-VkCopyImageInfo2-dstImage-01554
+            // VUID-VkCopyImageInfo2-dstImage-01555
+            dst_image_aspects.color = false;
+        }
+
+        let same_image = src_image_inner.image == dst_image_inner.image;
+        let mut overlap_subresource_indices = None;
+        let mut overlap_extent_indices = None;
+
+        for (region_index, region) in regions.iter().enumerate() {
+            let &ImageCopy {
+                ref src_subresource,
+                src_offset,
+                ref dst_subresource,
+                dst_offset,
+                extent,
+                _ne,
+            } = region;
+
+            let check_subresource = |resource: CopyErrorResource,
+                                     image: &dyn ImageAccess,
+                                     image_aspects: &ImageAspects,
+                                     subresource: &ImageSubresourceLayers|
+             -> Result<_, CopyError> {
+                // VUID-VkCopyImageInfo2-srcSubresource-01696
+                // VUID-VkCopyImageInfo2-dstSubresource-01697
+                if subresource.mip_level >= image.mip_levels() {
+                    return Err(CopyError::MipLevelsOutOfRange {
+                        resource,
+                        region_index,
+                        mip_levels_range_end: subresource.mip_level + 1,
+                        image_mip_levels: image.mip_levels(),
+                    });
+                }
+
+                // VUID-VkImageSubresourceLayers-layerCount-01700
+                assert!(!subresource.array_layers.is_empty());
+
+                // VUID-VkCopyImageInfo2-srcSubresource-01698
+                // VUID-VkCopyImageInfo2-dstSubresource-01699
+                // VUID-VkCopyImageInfo2-srcImage-04443
+                // VUID-VkCopyImageInfo2-dstImage-04444
+                if subresource.array_layers.end > image.dimensions().array_layers() {
+                    return Err(CopyError::ArrayLayersOutOfRange {
+                        resource,
+                        region_index,
+                        array_layers_range_end: subresource.array_layers.end,
+                        image_array_layers: image.dimensions().array_layers(),
+                    });
+                }
+
+                // VUID-VkImageSubresourceLayers-aspectMask-requiredbitmask
+                assert!(subresource.aspects != ImageAspects::none());
+
+                // VUID-VkCopyImageInfo2-aspectMask-00142
+                // VUID-VkCopyImageInfo2-aspectMask-00143
+                if !image_aspects.contains(&subresource.aspects) {
+                    return Err(CopyError::AspectsNotAllowed {
+                        resource,
+                        region_index,
+                        aspects: subresource.aspects,
+                        allowed_aspects: *image_aspects,
+                    });
+                }
+
+                let (subresource_format, subresource_extent) = if image_aspects.plane0 {
+                    // VUID-VkCopyImageInfo2-srcImage-01552
+                    // VUID-VkCopyImageInfo2-srcImage-01553
+                    // VUID-VkCopyImageInfo2-dstImage-01554
+                    // VUID-VkCopyImageInfo2-dstImage-01555
+                    if subresource.aspects.iter().count() != 1 {
+                        return Err(CopyError::MultipleAspectsNotAllowed {
+                            resource,
+                            region_index,
+                            aspects: subresource.aspects,
+                        });
+                    }
+
+                    if subresource.aspects.plane0 {
+                        (
+                            image.format().planes()[0],
+                            image.dimensions().width_height_depth(),
+                        )
+                    } else if subresource.aspects.plane1 {
+                        (
+                            image.format().planes()[1],
+                            image
+                                .format()
+                                .ycbcr_chroma_sampling()
+                                .unwrap()
+                                .subsampled_extent(image.dimensions().width_height_depth()),
+                        )
+                    } else {
+                        (
+                            image.format().planes()[2],
+                            image
+                                .format()
+                                .ycbcr_chroma_sampling()
+                                .unwrap()
+                                .subsampled_extent(image.dimensions().width_height_depth()),
+                        )
+                    }
+                } else {
+                    (
+                        image.format(),
+                        image
+                            .dimensions()
+                            .mip_level_dimensions(subresource.mip_level)
+                            .unwrap()
+                            .width_height_depth(),
+                    )
+                };
+
+                Ok((subresource_format, subresource_extent))
+            };
+
+            let (src_subresource_format, src_subresource_extent) = check_subresource(
+                CopyErrorResource::Source,
+                src_image,
+                &src_image_aspects,
+                src_subresource,
+            )?;
+            let (dst_subresource_format, dst_subresource_extent) = check_subresource(
+                CopyErrorResource::Destination,
+                dst_image,
+                &dst_image_aspects,
+                dst_subresource,
+            )?;
+
+            if !(src_image_aspects.plane0 || dst_image_aspects.plane0) {
+                // VUID-VkCopyImageInfo2-srcImage-01551
+                if src_subresource.aspects != dst_subresource.aspects {
+                    return Err(CopyError::AspectsMismatch {
+                        region_index,
+                        src_aspects: src_subresource.aspects,
+                        dst_aspects: dst_subresource.aspects,
+                    });
+                }
+            }
+
+            // VUID-VkCopyImageInfo2-srcImage-01548
+            // VUID-VkCopyImageInfo2-None-01549
+            // Color formats must be size-compatible.
+            if src_subresource_format.block_size() != dst_subresource_format.block_size() {
+                return Err(CopyError::FormatsNotCompatible {
+                    src_format: src_subresource_format,
+                    dst_format: dst_subresource_format,
+                });
+            }
+
+            // TODO:
+            // "When copying between compressed and uncompressed formats the extent members
+            // represent the texel dimensions of the source image and not the destination."
+            let mut src_extent = extent;
+            let mut dst_extent = extent;
+            let src_layer_count =
+                src_subresource.array_layers.end - src_subresource.array_layers.start;
+            let dst_layer_count =
+                dst_subresource.array_layers.end - dst_subresource.array_layers.start;
+
+            if copy_2d_3d_supported {
+                match (
+                    src_image.dimensions().image_type(),
+                    dst_image.dimensions().image_type(),
+                ) {
+                    (ImageType::Dim2d, ImageType::Dim3d) => {
+                        src_extent[2] = 1;
+
+                        // VUID-vkCmdCopyImage-srcImage-01791
+                        if dst_extent[2] != src_layer_count {
+                            return Err(CopyError::ArrayLayerCountMismatch {
+                                region_index,
+                                src_layer_count,
+                                dst_layer_count: dst_extent[2],
+                            });
+                        }
+                    }
+                    (ImageType::Dim3d, ImageType::Dim2d) => {
+                        dst_extent[2] = 1;
+
+                        // VUID-vkCmdCopyImage-dstImage-01792
+                        if src_extent[2] != dst_layer_count {
+                            return Err(CopyError::ArrayLayerCountMismatch {
+                                region_index,
+                                src_layer_count: src_extent[2],
+                                dst_layer_count,
+                            });
+                        }
+                    }
+                    _ => {
+                        // VUID-VkImageCopy2-extent-00140
+                        if src_layer_count != dst_layer_count {
+                            return Err(CopyError::ArrayLayerCountMismatch {
+                                region_index,
+                                src_layer_count,
+                                dst_layer_count,
+                            });
+                        }
+                    }
+                }
+            } else {
+                // VUID-VkImageCopy2-extent-00140
+                if src_layer_count != dst_layer_count {
+                    return Err(CopyError::ArrayLayerCountMismatch {
+                        region_index,
+                        src_layer_count,
+                        dst_layer_count,
+                    });
+                }
+            };
+
+            if let Some((src_extent_alignment, dst_extent_alignment)) = extent_alignment {
+                let check_offset_extent = |resource: CopyErrorResource,
+                                           extent_alignment: [u32; 3],
+                                           subresource_extent: [u32; 3],
+                                           offset: [u32; 3],
+                                           extent: [u32; 3]|
+                 -> Result<_, CopyError> {
+                    for i in 0..3 {
+                        // VUID-VkImageCopy2-extent-06668
+                        // VUID-VkImageCopy2-extent-06669
+                        // VUID-VkImageCopy2-extent-06670
+                        assert!(extent[i] != 0);
+
+                        // VUID-VkCopyImageInfo2-srcOffset-00144
+                        // VUID-VkCopyImageInfo2-srcOffset-00145
+                        // VUID-VkCopyImageInfo2-srcOffset-00147
+                        // VUID-VkCopyImageInfo2-dstOffset-00150
+                        // VUID-VkCopyImageInfo2-dstOffset-00151
+                        // VUID-VkCopyImageInfo2-dstOffset-00153
+                        if offset[i] + extent[i] > subresource_extent[i] {
+                            return Err(CopyError::RegionOutOfImageBounds {
+                                resource,
+                                region_index,
+                                offset_range_end: [
+                                    offset[0] + extent[0],
+                                    offset[1] + extent[1],
+                                    offset[2] + extent[2],
+                                ],
+                                subresource_extent,
+                            });
+                        }
+
+                        // VUID-VkCopyImageInfo2-srcImage-01727
+                        // VUID-VkCopyImageInfo2-dstImage-01731
+                        // VUID-VkCopyImageInfo2-srcOffset-01783
+                        // VUID-VkCopyImageInfo2-dstOffset-01784
+                        if offset[i] % extent_alignment[i] != 0 {
+                            return Err(CopyError::OffsetNotAlignedForImage {
+                                resource,
+                                region_index,
+                                offset,
+                                required_alignment: extent_alignment,
+                            });
+                        }
+
+                        // VUID-VkCopyImageInfo2-srcImage-01728
+                        // VUID-VkCopyImageInfo2-srcImage-01729
+                        // VUID-VkCopyImageInfo2-srcImage-01730
+                        // VUID-VkCopyImageInfo2-dstImage-01732
+                        // VUID-VkCopyImageInfo2-dstImage-01733
+                        // VUID-VkCopyImageInfo2-dstImage-01734
+                        if offset[i] + extent[i] != subresource_extent[i]
+                            && extent[i] % extent_alignment[i] != 0
+                        {
+                            return Err(CopyError::ExtentNotAlignedForImage {
+                                resource,
+                                region_index,
+                                extent,
+                                required_alignment: extent_alignment,
+                            });
+                        }
+                    }
+
+                    Ok(())
+                };
+
+                check_offset_extent(
+                    CopyErrorResource::Source,
+                    src_extent_alignment,
+                    src_subresource_extent,
+                    src_offset,
+                    src_extent,
+                )?;
+                check_offset_extent(
+                    CopyErrorResource::Destination,
+                    dst_extent_alignment,
+                    dst_subresource_extent,
+                    dst_offset,
+                    dst_extent,
+                )?;
+
+                // VUID-VkCopyImageInfo2-pRegions-00124
+                if same_image {
+                    let src_region_index = region_index;
+                    let src_subresource_axes = [
+                        src_image_inner.first_mipmap_level + src_subresource.mip_level
+                            ..src_image_inner.first_mipmap_level + src_subresource.mip_level + 1,
+                        src_image_inner.first_layer + src_subresource.array_layers.start
+                            ..src_image_inner.first_layer + src_subresource.array_layers.end,
+                    ];
+                    let src_extent_axes = [
+                        src_offset[0]..src_offset[0] + extent[0],
+                        src_offset[1]..src_offset[1] + extent[1],
+                        src_offset[2]..src_offset[2] + extent[2],
+                    ];
+
+                    for (dst_region_index, dst_region) in regions.iter().enumerate() {
+                        let &ImageCopy {
+                            ref dst_subresource,
+                            dst_offset,
+                            ..
+                        } = dst_region;
+
+                        // For a single-plane image, the aspects must always be identical anyway
+                        if src_image_aspects.plane0
+                            && src_subresource.aspects != dst_subresource.aspects
+                        {
+                            continue;
+                        }
+
+                        let dst_subresource_axes = [
+                            dst_image_inner.first_mipmap_level + dst_subresource.mip_level
+                                ..dst_image_inner.first_mipmap_level
+                                    + dst_subresource.mip_level
+                                    + 1,
+                            dst_image_inner.first_layer + src_subresource.array_layers.start
+                                ..dst_image_inner.first_layer + src_subresource.array_layers.end,
+                        ];
+
+                        if src_subresource_axes.iter().zip(dst_subresource_axes).any(
+                            |(src_range, dst_range)| {
+                                src_range.start >= dst_range.end || dst_range.start >= src_range.end
+                            },
+                        ) {
+                            continue;
+                        }
+
+                        // If the subresource axes all overlap, then the source and destination must
+                        // have the same layout.
+                        overlap_subresource_indices = Some((src_region_index, dst_region_index));
+
+                        let dst_extent_axes = [
+                            dst_offset[0]..dst_offset[0] + extent[0],
+                            dst_offset[1]..dst_offset[1] + extent[1],
+                            dst_offset[2]..dst_offset[2] + extent[2],
+                        ];
+
+                        // There is only overlap if all of the axes overlap.
+                        if src_extent_axes.iter().zip(dst_extent_axes).any(
+                            |(src_range, dst_range)| {
+                                src_range.start >= dst_range.end || dst_range.start >= src_range.end
+                            },
+                        ) {
+                            continue;
+                        }
+
+                        overlap_extent_indices = Some((src_region_index, dst_region_index));
+                    }
+                }
+            } else {
+                // If granularity is `None`, then we can only copy whole subresources.
+                let check_offset_extent = |resource: CopyErrorResource,
+                                           subresource_extent: [u32; 3],
+                                           offset: [u32; 3],
+                                           extent: [u32; 3]|
+                 -> Result<_, CopyError> {
+                    // VUID-VkCopyImageInfo2-srcImage-01727
+                    // VUID-VkCopyImageInfo2-dstImage-01731
+                    // VUID-vkCmdCopyImage-srcOffset-01783
+                    // VUID-vkCmdCopyImage-dstOffset-01784
+                    if offset != [0, 0, 0] {
+                        return Err(CopyError::OffsetNotAlignedForImage {
+                            resource,
+                            region_index,
+                            offset,
+                            required_alignment: subresource_extent,
+                        });
+                    }
+
+                    // VUID-VkCopyImageInfo2-srcImage-01728
+                    // VUID-VkCopyImageInfo2-srcImage-01729
+                    // VUID-VkCopyImageInfo2-srcImage-01730
+                    // VUID-VkCopyImageInfo2-dstImage-01732
+                    // VUID-VkCopyImageInfo2-dstImage-01733
+                    // VUID-VkCopyImageInfo2-dstImage-01734
+                    if extent != subresource_extent {
+                        return Err(CopyError::ExtentNotAlignedForImage {
+                            resource,
+                            region_index,
+                            extent,
+                            required_alignment: subresource_extent,
+                        });
+                    }
+
+                    Ok(())
+                };
+
+                check_offset_extent(
+                    CopyErrorResource::Source,
+                    src_subresource_extent,
+                    src_offset,
+                    src_extent,
+                )?;
+                check_offset_extent(
+                    CopyErrorResource::Destination,
+                    dst_subresource_extent,
+                    dst_offset,
+                    dst_extent,
+                )?;
+
+                // VUID-VkCopyImageInfo2-pRegions-00124
+                // A simpler version that assumes the region covers the full extent.
+                if same_image {
+                    let src_region_index = region_index;
+                    let src_axes = [
+                        src_image_inner.first_mipmap_level + src_subresource.mip_level
+                            ..src_image_inner.first_mipmap_level + src_subresource.mip_level + 1,
+                        src_image_inner.first_layer + src_subresource.array_layers.start
+                            ..src_image_inner.first_layer + src_subresource.array_layers.end,
+                    ];
+
+                    for (dst_region_index, dst_region) in regions.iter().enumerate() {
+                        let &ImageCopy {
+                            ref dst_subresource,
+                            dst_offset,
+                            ..
+                        } = dst_region;
+
+                        if src_image_aspects.plane0
+                            && src_subresource.aspects != dst_subresource.aspects
+                        {
+                            continue;
+                        }
+
+                        let dst_axes = [
+                            dst_image_inner.first_mipmap_level + dst_subresource.mip_level
+                                ..dst_image_inner.first_mipmap_level
+                                    + dst_subresource.mip_level
+                                    + 1,
+                            dst_image_inner.first_layer + src_subresource.array_layers.start
+                                ..dst_image_inner.first_layer + src_subresource.array_layers.end,
+                        ];
+
+                        // There is only overlap if all of the axes overlap.
+                        if src_axes.iter().zip(dst_axes).any(|(src_range, dst_range)| {
+                            src_range.start >= dst_range.end || dst_range.start >= src_range.end
+                        }) {
+                            continue;
+                        }
+
+                        overlap_extent_indices = Some((src_region_index, dst_region_index));
+                    }
+                }
+            }
+        }
+
+        // VUID-VkCopyImageInfo2-pRegions-00124
+        if let Some((src_region_index, dst_region_index)) = overlap_extent_indices {
+            return Err(CopyError::OverlappingRegions {
+                src_region_index,
+                dst_region_index,
+            });
+        }
+
+        // VUID-VkCopyImageInfo2-srcImageLayout-00128
+        // VUID-VkCopyImageInfo2-dstImageLayout-00133
+        if let Some((src_region_index, dst_region_index)) = overlap_subresource_indices {
+            if src_image_layout != dst_image_layout {
+                return Err(CopyError::OverlappingSubresourcesLayoutMismatch {
+                    src_region_index,
+                    dst_region_index,
+                    src_image_layout,
+                    dst_image_layout,
+                });
+            }
+        }
+
+        Ok(())
     }
 
-    match destination_dimensions {
-        ImageDimensions::Dim1d { .. } => {
-            if destination_offset[1] != 0 || extent[1] != 1 {
-                return Err(CheckCopyImageError::IncompatibleRangeForImageType);
-            }
-            if destination_offset[2] != 0 || extent[2] != 1 {
-                return Err(CheckCopyImageError::IncompatibleRangeForImageType);
-            }
+    /// Copies from a buffer to an image.
+    pub fn copy_buffer_to_image(
+        &mut self,
+        mut copy_buffer_to_image_info: CopyBufferToImageInfo,
+    ) -> Result<&mut Self, CopyError> {
+        self.validate_copy_buffer_to_image(&mut copy_buffer_to_image_info)?;
+
+        unsafe {
+            self.inner.copy_buffer_to_image(copy_buffer_to_image_info)?;
         }
-        ImageDimensions::Dim2d { .. } => {
-            if destination_offset[2] != 0 || extent[2] != 1 {
-                return Err(CheckCopyImageError::IncompatibleRangeForImageType);
-            }
-        }
-        ImageDimensions::Dim3d { .. } => {}
+
+        Ok(self)
     }
 
-    if source.conflict_key() == destination.conflict_key() {
-        if source_mip_level == destination_mip_level
-            && is_overlapping_ranges(
-                source_base_array_layer as u64,
-                layer_count as u64,
-                destination_base_array_layer as u64,
-                layer_count as u64,
-            )
-            // since both images are the same, we can use any dimensions type
-            && is_overlapping_regions(source_offset, extent, destination_offset, extent, source_dimensions)
+    fn validate_copy_buffer_to_image(
+        &self,
+        copy_buffer_to_image_info: &mut CopyBufferToImageInfo,
+    ) -> Result<(), CopyError> {
+        let device = self.device();
+
+        // VUID-vkCmdCopyBufferToImage2-renderpass
+        if self.render_pass_state.is_some() {
+            return Err(CopyError::ForbiddenInsideRenderPass);
+        }
+
+        // VUID-vkCmdCopyBufferToImage2-commandBuffer-cmdpool
+        if !(self.queue_family().explicitly_supports_transfers()
+            || self.queue_family().supports_graphics()
+            || self.queue_family().supports_compute())
         {
-            return Err(CheckCopyImageError::OverlappingRegions);
+            return Err(CopyError::NotSupportedByQueueFamily);
         }
+
+        let &mut CopyBufferToImageInfo {
+            src_buffer: ref buffer,
+            dst_image: ref image,
+            dst_image_layout: image_layout,
+            ref regions,
+            _ne: _,
+        } = copy_buffer_to_image_info;
+
+        // VUID-VkCopyBufferToImageInfo2-commonparent
+        assert_eq!(device, buffer.device());
+        assert_eq!(device, image.device());
+
+        let buffer_inner = buffer.inner();
+        let mut image_aspects = image.format().aspects();
+
+        // VUID-VkCopyBufferToImageInfo2-commandBuffer-04477
+        if !self.queue_family().supports_graphics() && !image_aspects.color {
+            return Err(CopyError::DepthStencilNotSupportedByQueueFamily);
+        }
+
+        // VUID-VkCopyBufferToImageInfo2-srcBuffer-00174
+        if !buffer.usage().transfer_src {
+            return Err(CopyError::MissingUsage {
+                resource: CopyErrorResource::Source,
+                usage: "transfer_src",
+            });
+        }
+
+        // VUID-VkCopyBufferToImageInfo2-dstImage-00177
+        if !image.usage().transfer_dst {
+            return Err(CopyError::MissingUsage {
+                resource: CopyErrorResource::Destination,
+                usage: "transfer_dst",
+            });
+        }
+
+        if device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1 {
+            // VUID-VkCopyBufferToImageInfo2-dstImage-01997
+            if !image.format_features().transfer_dst {
+                return Err(CopyError::MissingFormatFeature {
+                    resource: CopyErrorResource::Destination,
+                    format_feature: "transfer_dst",
+                });
+            }
+        }
+
+        // VUID-VkCopyBufferToImageInfo2-dstImage-00179
+        if image.samples() != SampleCount::Sample1 {
+            return Err(CopyError::SampleCountInvalid {
+                resource: CopyErrorResource::Destination,
+                sample_count: image.samples(),
+                allowed_sample_counts: SampleCounts {
+                    sample1: true,
+                    sample2: false,
+                    sample4: false,
+                    sample8: false,
+                    sample16: false,
+                    sample32: false,
+                    sample64: false,
+                },
+            });
+        }
+
+        // VUID-VkCopyBufferToImageInfo2-dstImageLayout-01396
+        if !matches!(
+            image_layout,
+            ImageLayout::TransferDstOptimal | ImageLayout::General
+        ) {
+            return Err(CopyError::ImageLayoutInvalid {
+                resource: CopyErrorResource::Destination,
+                image_layout,
+            });
+        }
+
+        let extent_alignment = match self.queue_family().min_image_transfer_granularity() {
+            [0, 0, 0] => None,
+            min_image_transfer_granularity => {
+                let granularity = move |block_extent: [u32; 3], is_multi_plane: bool| {
+                    if is_multi_plane {
+                        // Assume planes always have 1x1 blocks
+                        min_image_transfer_granularity
+                    } else {
+                        // "The value returned in minImageTransferGranularity has a unit of
+                        // compressed texel blocks for images having a block-compressed format, and
+                        // a unit of texels otherwise."
+                        [
+                            min_image_transfer_granularity[0] * block_extent[0],
+                            min_image_transfer_granularity[1] * block_extent[1],
+                            min_image_transfer_granularity[2] * block_extent[2],
+                        ]
+                    }
+                };
+
+                Some(granularity(
+                    image.format().block_extent(),
+                    image_aspects.plane0,
+                ))
+            }
+        };
+
+        if image_aspects.plane0 {
+            // VUID-VkCopyBufferToImageInfo2-aspectMask-01560
+            image_aspects.color = false;
+        }
+
+        for (region_index, region) in regions.iter().enumerate() {
+            let &BufferImageCopy {
+                buffer_offset,
+                buffer_row_length,
+                buffer_image_height,
+                ref image_subresource,
+                image_offset,
+                image_extent,
+                _ne: _,
+            } = region;
+
+            // VUID-VkCopyBufferToImageInfo2-imageSubresource-01701
+            if image_subresource.mip_level >= image.mip_levels() {
+                return Err(CopyError::MipLevelsOutOfRange {
+                    resource: CopyErrorResource::Destination,
+                    region_index,
+                    mip_levels_range_end: image_subresource.mip_level + 1,
+                    image_mip_levels: image.mip_levels(),
+                });
+            }
+
+            // VUID-VkImageSubresourceLayers-layerCount-01700
+            // VUID-VkCopyBufferToImageInfo2-baseArrayLayer-00213
+            assert!(!image_subresource.array_layers.is_empty());
+
+            // VUID-VkCopyBufferToImageInfo2-imageSubresource-01702
+            // VUID-VkCopyBufferToImageInfo2-baseArrayLayer-00213
+            if image_subresource.array_layers.end > image.dimensions().array_layers() {
+                return Err(CopyError::ArrayLayersOutOfRange {
+                    resource: CopyErrorResource::Destination,
+                    region_index,
+                    array_layers_range_end: image_subresource.array_layers.end,
+                    image_array_layers: image.dimensions().array_layers(),
+                });
+            }
+
+            // VUID-VkImageSubresourceLayers-aspectMask-requiredbitmask
+            assert!(image_subresource.aspects != ImageAspects::none());
+
+            // VUID-VkCopyBufferToImageInfo2-aspectMask-00211
+            if !image_aspects.contains(&image_subresource.aspects) {
+                return Err(CopyError::AspectsNotAllowed {
+                    resource: CopyErrorResource::Destination,
+                    region_index,
+                    aspects: image_subresource.aspects,
+                    allowed_aspects: image_aspects,
+                });
+            }
+
+            // VUID-VkBufferImageCopy2-aspectMask-00212
+            // VUID-VkCopyBufferToImageInfo2-aspectMask-01560
+            if image_subresource.aspects.iter().count() != 1 {
+                return Err(CopyError::MultipleAspectsNotAllowed {
+                    resource: CopyErrorResource::Destination,
+                    region_index,
+                    aspects: image_subresource.aspects,
+                });
+            }
+
+            let (image_subresource_format, image_subresource_extent) = if image_aspects.plane0 {
+                if image_subresource.aspects.plane0 {
+                    (
+                        image.format().planes()[0],
+                        image.dimensions().width_height_depth(),
+                    )
+                } else if image_subresource.aspects.plane1 {
+                    (
+                        image.format().planes()[1],
+                        image
+                            .format()
+                            .ycbcr_chroma_sampling()
+                            .unwrap()
+                            .subsampled_extent(image.dimensions().width_height_depth()),
+                    )
+                } else {
+                    (
+                        image.format().planes()[2],
+                        image
+                            .format()
+                            .ycbcr_chroma_sampling()
+                            .unwrap()
+                            .subsampled_extent(image.dimensions().width_height_depth()),
+                    )
+                }
+            } else {
+                (
+                    image.format(),
+                    image
+                        .dimensions()
+                        .mip_level_dimensions(image_subresource.mip_level)
+                        .unwrap()
+                        .width_height_depth(),
+                )
+            };
+
+            if let Some(extent_alignment) = extent_alignment {
+                for i in 0..3 {
+                    // VUID-VkBufferImageCopy2-imageExtent-06659
+                    // VUID-VkBufferImageCopy2-imageExtent-06660
+                    // VUID-VkBufferImageCopy2-imageExtent-06661
+                    assert!(image_extent[i] != 0);
+
+                    // VUID-VkCopyBufferToImageInfo2-pRegions-06223
+                    // VUID-VkCopyBufferToImageInfo2-pRegions-06224
+                    // VUID-VkCopyBufferToImageInfo2-imageOffset-00200
+                    if image_offset[i] + image_extent[i] > image_subresource_extent[i] {
+                        return Err(CopyError::RegionOutOfImageBounds {
+                            resource: CopyErrorResource::Destination,
+                            region_index,
+                            offset_range_end: [
+                                image_offset[0] + image_extent[0],
+                                image_offset[1] + image_extent[1],
+                                image_offset[2] + image_extent[2],
+                            ],
+                            subresource_extent: image_subresource_extent,
+                        });
+                    }
+
+                    // VUID-VkCopyBufferToImageInfo2-imageOffset-01793
+                    // VUID-VkCopyBufferToImageInfo2-imageOffset-00205
+                    if image_offset[i] % extent_alignment[i] != 0 {
+                        return Err(CopyError::OffsetNotAlignedForImage {
+                            resource: CopyErrorResource::Destination,
+                            region_index,
+                            offset: image_offset,
+                            required_alignment: extent_alignment,
+                        });
+                    }
+
+                    // VUID-VkCopyBufferToImageInfo2-imageOffset-01793
+                    // VUID-VkCopyBufferToImageInfo2-imageExtent-00207
+                    // VUID-VkCopyBufferToImageInfo2-imageExtent-00208
+                    // VUID-VkCopyBufferToImageInfo2-imageExtent-00209
+                    if image_offset[i] + image_extent[i] != image_subresource_extent[i]
+                        && image_extent[i] % extent_alignment[i] != 0
+                    {
+                        return Err(CopyError::ExtentNotAlignedForImage {
+                            resource: CopyErrorResource::Destination,
+                            region_index,
+                            extent: image_extent,
+                            required_alignment: extent_alignment,
+                        });
+                    }
+                }
+            } else {
+                // If granularity is `None`, then we can only copy whole subresources.
+
+                // VUID-VkCopyBufferToImageInfo2-imageOffset-01793
+                if image_offset != [0, 0, 0] {
+                    return Err(CopyError::OffsetNotAlignedForImage {
+                        resource: CopyErrorResource::Destination,
+                        region_index,
+                        offset: image_offset,
+                        required_alignment: image_subresource_extent,
+                    });
+                }
+
+                // VUID-VkCopyBufferToImageInfo2-imageOffset-01793
+                if image_extent != image_subresource_extent {
+                    return Err(CopyError::ExtentNotAlignedForImage {
+                        resource: CopyErrorResource::Destination,
+                        region_index,
+                        extent: image_extent,
+                        required_alignment: image_subresource_extent,
+                    });
+                }
+            }
+
+            // VUID-VkBufferImageCopy2-bufferRowLength-00195
+            if !(buffer_row_length == 0 || buffer_row_length >= image_extent[0]) {
+                return Err(CopyError::BufferRowLengthTooSmall {
+                    resource: CopyErrorResource::Source,
+                    region_index,
+                    row_length: buffer_row_length,
+                    min: image_extent[0],
+                });
+            }
+
+            // VUID-VkBufferImageCopy2-bufferImageHeight-00196
+            if !(buffer_image_height == 0 || buffer_image_height >= image_extent[1]) {
+                return Err(CopyError::BufferImageHeightTooSmall {
+                    resource: CopyErrorResource::Source,
+                    region_index,
+                    image_height: buffer_image_height,
+                    min: image_extent[1],
+                });
+            }
+
+            let image_subresource_block_extent = image_subresource_format.block_extent();
+
+            // VUID-VkCopyBufferToImageInfo2-bufferRowLength-00203
+            if buffer_row_length % image_subresource_block_extent[0] != 0 {
+                return Err(CopyError::BufferRowLengthNotAligned {
+                    resource: CopyErrorResource::Source,
+                    region_index,
+                    row_length: buffer_row_length,
+                    required_alignment: image_subresource_block_extent[0],
+                });
+            }
+
+            // VUID-VkCopyBufferToImageInfo2-bufferImageHeight-00204
+            if buffer_image_height % image_subresource_block_extent[1] != 0 {
+                return Err(CopyError::BufferImageHeightNotAligned {
+                    resource: CopyErrorResource::Source,
+                    region_index,
+                    image_height: buffer_image_height,
+                    required_alignment: image_subresource_block_extent[1],
+                });
+            }
+
+            // https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkBufferImageCopy.html#_description
+            let image_subresource_block_size = if image_subresource.aspects.stencil {
+                1
+            } else if image_subresource.aspects.depth {
+                match image_subresource_format {
+                    Format::D16_UNORM | Format::D16_UNORM_S8_UINT => 2,
+                    Format::D32_SFLOAT
+                    | Format::D32_SFLOAT_S8_UINT
+                    | Format::X8_D24_UNORM_PACK32
+                    | Format::D24_UNORM_S8_UINT => 4,
+                    _ => unreachable!(),
+                }
+            } else {
+                image_subresource_format.block_size().unwrap()
+            };
+
+            // VUID-VkCopyBufferToImageInfo2-pRegions-04725
+            // VUID-VkCopyBufferToImageInfo2-pRegions-04726
+            if (buffer_row_length / image_subresource_block_extent[0]) as DeviceSize
+                * image_subresource_block_size
+                > 0x7FFFFFFF
+            {
+                return Err(CopyError::BufferRowLengthTooLarge {
+                    resource: CopyErrorResource::Source,
+                    region_index,
+                    buffer_row_length,
+                });
+            }
+
+            let buffer_offset_alignment = if image_aspects.depth || image_aspects.stencil {
+                4
+            } else {
+                let mut buffer_offset_alignment = image_subresource_block_size;
+
+                // VUID-VkCopyBufferToImageInfo2-commandBuffer-04052
+                // Make the alignment a multiple of 4.
+                if !(self.queue_family().supports_graphics()
+                    || self.queue_family().supports_compute())
+                {
+                    if buffer_offset_alignment % 2 != 0 {
+                        buffer_offset_alignment *= 2;
+                    }
+
+                    if buffer_offset_alignment % 4 != 0 {
+                        buffer_offset_alignment *= 2;
+                    }
+                }
+
+                buffer_offset_alignment
+            };
+
+            // VUID-VkCopyBufferToImageInfo2-bufferOffset-00206
+            // VUID-VkCopyBufferToImageInfo2-bufferOffset-01558
+            // VUID-VkCopyBufferToImageInfo2-bufferOffset-01559
+            // VUID-VkCopyBufferToImageInfo2-srcImage-04053
+            if (buffer_inner.offset + buffer_offset) % buffer_offset_alignment != 0 {
+                return Err(CopyError::OffsetNotAlignedForBuffer {
+                    resource: CopyErrorResource::Source,
+                    region_index,
+                    offset: buffer_inner.offset + buffer_offset,
+                    required_alignment: buffer_offset_alignment,
+                });
+            }
+
+            let buffer_copy_size = region.buffer_copy_size(image_subresource_format);
+
+            // VUID-VkCopyBufferToImageInfo2-pRegions-00171
+            if buffer_offset + buffer_copy_size > buffer.size() {
+                return Err(CopyError::RegionOutOfBufferBounds {
+                    resource: CopyErrorResource::Source,
+                    region_index,
+                    offset_range_end: buffer_offset + buffer_copy_size,
+                    buffer_size: buffer.size(),
+                });
+            }
+        }
+
+        // VUID-VkCopyBufferToImageInfo2-pRegions-00173
+        // Can't occur as long as memory aliasing isn't allowed.
+
+        Ok(())
     }
 
-    Ok(())
-}
+    /// Copies from an image to a buffer.
+    pub fn copy_image_to_buffer(
+        &mut self,
+        mut copy_image_to_buffer_info: CopyImageToBufferInfo,
+    ) -> Result<&mut Self, CopyError> {
+        self.validate_copy_image_to_buffer(&mut copy_image_to_buffer_info)?;
 
-/// Error that can happen from `check_copy_image`.
-#[derive(Debug, Copy, Clone)]
-pub enum CheckCopyImageError {
-    /// The source is missing the transfer source usage.
-    MissingTransferSourceUsage,
-    /// The destination is missing the transfer destination usage.
-    MissingTransferDestinationUsage,
-    /// The number of samples in the source and destination do not match.
-    SampleCountMismatch,
-    /// The format of the source and destination must be equal when copying depth/stencil images.
-    DepthStencilFormatMismatch,
-    /// The types of the source format and the destination format aren't size-compatible.
-    SizeIncompatibleFormatTypes {
-        source_type: NumericType,
-        destination_type: NumericType,
-    },
-    /// The offsets, array layers and/or mipmap levels are out of range in the source image.
-    SourceCoordinatesOutOfRange,
-    /// The offsets, array layers and/or mipmap levels are out of range in the destination image.
-    DestinationCoordinatesOutOfRange,
-    /// The offsets or extent are incompatible with the image type.
-    IncompatibleRangeForImageType,
-    /// The source and destination regions are overlapping.
-    OverlappingRegions,
-}
+        unsafe {
+            self.inner.copy_image_to_buffer(copy_image_to_buffer_info)?;
+        }
 
-impl error::Error for CheckCopyImageError {}
+        Ok(self)
+    }
 
-impl fmt::Display for CheckCopyImageError {
+    fn validate_copy_image_to_buffer(
+        &self,
+        copy_image_to_buffer_info: &mut CopyImageToBufferInfo,
+    ) -> Result<(), CopyError> {
+        let device = self.device();
+
+        // VUID-vkCmdCopyImageToBuffer2-renderpass
+        if self.render_pass_state.is_some() {
+            return Err(CopyError::ForbiddenInsideRenderPass);
+        }
+
+        // VUID-vkCmdCopyImageToBuffer2-commandBuffer-cmdpool
+        if !(self.queue_family().explicitly_supports_transfers()
+            || self.queue_family().supports_graphics()
+            || self.queue_family().supports_compute())
+        {
+            return Err(CopyError::NotSupportedByQueueFamily);
+        }
+
+        let &mut CopyImageToBufferInfo {
+            src_image: ref image,
+            src_image_layout: image_layout,
+            dst_buffer: ref buffer,
+            ref regions,
+            _ne: _,
+        } = copy_image_to_buffer_info;
+
+        // VUID-VkCopyImageToBufferInfo2-commonparent
+        assert_eq!(device, buffer.device());
+        assert_eq!(device, image.device());
+
+        let buffer_inner = buffer.inner();
+        let mut image_aspects = image.format().aspects();
+
+        // VUID-VkCopyImageToBufferInfo2-srcImage-00186
+        if !image.usage().transfer_src {
+            return Err(CopyError::MissingUsage {
+                resource: CopyErrorResource::Source,
+                usage: "transfer_src",
+            });
+        }
+
+        // VUID-VkCopyImageToBufferInfo2-dstBuffer-00191
+        if !buffer.usage().transfer_dst {
+            return Err(CopyError::MissingUsage {
+                resource: CopyErrorResource::Destination,
+                usage: "transfer_dst",
+            });
+        }
+
+        if device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1 {
+            // VUID-VkCopyImageToBufferInfo2-srcImage-01998
+            if !image.format_features().transfer_src {
+                return Err(CopyError::MissingFormatFeature {
+                    resource: CopyErrorResource::Source,
+                    format_feature: "transfer_src",
+                });
+            }
+        }
+
+        // VUID-VkCopyImageToBufferInfo2-srcImage-00188
+        if image.samples() != SampleCount::Sample1 {
+            return Err(CopyError::SampleCountInvalid {
+                resource: CopyErrorResource::Source,
+                sample_count: image.samples(),
+                allowed_sample_counts: SampleCounts {
+                    sample1: true,
+                    sample2: false,
+                    sample4: false,
+                    sample8: false,
+                    sample16: false,
+                    sample32: false,
+                    sample64: false,
+                },
+            });
+        }
+
+        // VUID-VkCopyImageToBufferInfo2-srcImageLayout-01397
+        if !matches!(
+            image_layout,
+            ImageLayout::TransferSrcOptimal | ImageLayout::General
+        ) {
+            return Err(CopyError::ImageLayoutInvalid {
+                resource: CopyErrorResource::Source,
+                image_layout,
+            });
+        }
+
+        let extent_alignment = match self.queue_family().min_image_transfer_granularity() {
+            [0, 0, 0] => None,
+            min_image_transfer_granularity => {
+                let granularity = move |block_extent: [u32; 3], is_multi_plane: bool| {
+                    if is_multi_plane {
+                        // Assume planes always have 1x1 blocks
+                        min_image_transfer_granularity
+                    } else {
+                        // "The value returned in minImageTransferGranularity has a unit of
+                        // compressed texel blocks for images having a block-compressed format, and
+                        // a unit of texels otherwise."
+                        [
+                            min_image_transfer_granularity[0] * block_extent[0],
+                            min_image_transfer_granularity[1] * block_extent[1],
+                            min_image_transfer_granularity[2] * block_extent[2],
+                        ]
+                    }
+                };
+
+                Some(granularity(
+                    image.format().block_extent(),
+                    image_aspects.plane0,
+                ))
+            }
+        };
+
+        if image_aspects.plane0 {
+            // VUID-VkCopyImageToBufferInfo2-aspectMask-01560
+            image_aspects.color = false;
+        }
+
+        for (region_index, region) in regions.iter().enumerate() {
+            let &BufferImageCopy {
+                buffer_offset,
+                buffer_row_length,
+                buffer_image_height,
+                ref image_subresource,
+                image_offset,
+                image_extent,
+                _ne: _,
+            } = region;
+
+            // VUID-VkCopyImageToBufferInfo2-imageSubresource-01703
+            if image_subresource.mip_level >= image.mip_levels() {
+                return Err(CopyError::MipLevelsOutOfRange {
+                    resource: CopyErrorResource::Source,
+                    region_index,
+                    mip_levels_range_end: image_subresource.mip_level + 1,
+                    image_mip_levels: image.mip_levels(),
+                });
+            }
+
+            // VUID-VkImageSubresourceLayers-layerCount-01700
+            assert!(!image_subresource.array_layers.is_empty());
+
+            // VUID-VkCopyImageToBufferInfo2-imageSubresource-01704
+            // VUID-VkCopyImageToBufferInfo2-baseArrayLayer-00213
+            if image_subresource.array_layers.end > image.dimensions().array_layers() {
+                return Err(CopyError::ArrayLayersOutOfRange {
+                    resource: CopyErrorResource::Source,
+                    region_index,
+                    array_layers_range_end: image_subresource.array_layers.end,
+                    image_array_layers: image.dimensions().array_layers(),
+                });
+            }
+
+            // VUID-VkImageSubresourceLayers-aspectMask-requiredbitmask
+            assert!(image_subresource.aspects != ImageAspects::none());
+
+            // VUID-VkCopyImageToBufferInfo2-aspectMask-00211
+            if !image_aspects.contains(&image_subresource.aspects) {
+                return Err(CopyError::AspectsNotAllowed {
+                    resource: CopyErrorResource::Source,
+                    region_index,
+                    aspects: image_subresource.aspects,
+                    allowed_aspects: image_aspects,
+                });
+            }
+
+            // VUID-VkBufferImageCopy2-aspectMask-00212
+            if image_subresource.aspects.iter().count() != 1 {
+                return Err(CopyError::MultipleAspectsNotAllowed {
+                    resource: CopyErrorResource::Source,
+                    region_index,
+                    aspects: image_subresource.aspects,
+                });
+            }
+
+            let (image_subresource_format, image_subresource_extent) = if image_aspects.plane0 {
+                if image_subresource.aspects.plane0 {
+                    (
+                        image.format().planes()[0],
+                        image.dimensions().width_height_depth(),
+                    )
+                } else if image_subresource.aspects.plane1 {
+                    (
+                        image.format().planes()[1],
+                        image
+                            .format()
+                            .ycbcr_chroma_sampling()
+                            .unwrap()
+                            .subsampled_extent(image.dimensions().width_height_depth()),
+                    )
+                } else {
+                    (
+                        image.format().planes()[2],
+                        image
+                            .format()
+                            .ycbcr_chroma_sampling()
+                            .unwrap()
+                            .subsampled_extent(image.dimensions().width_height_depth()),
+                    )
+                }
+            } else {
+                (
+                    image.format(),
+                    image
+                        .dimensions()
+                        .mip_level_dimensions(image_subresource.mip_level)
+                        .unwrap()
+                        .width_height_depth(),
+                )
+            };
+
+            if let Some(extent_alignment) = extent_alignment {
+                for i in 0..3 {
+                    // VUID-VkBufferImageCopy2-imageExtent-06659
+                    // VUID-VkBufferImageCopy2-imageExtent-06660
+                    // VUID-VkBufferImageCopy2-imageExtent-06661
+                    assert!(image_extent[i] != 0);
+
+                    // VUID-VkCopyImageToBufferInfo2-imageOffset-00197
+                    // VUID-VkCopyImageToBufferInfo2-imageOffset-00198
+                    // VUID-VkCopyImageToBufferInfo2-imageOffset-00200
+                    if image_offset[i] + image_extent[i] > image_subresource_extent[i] {
+                        return Err(CopyError::RegionOutOfImageBounds {
+                            resource: CopyErrorResource::Source,
+                            region_index,
+                            offset_range_end: [
+                                image_offset[0] + image_extent[0],
+                                image_offset[1] + image_extent[1],
+                                image_offset[2] + image_extent[2],
+                            ],
+                            subresource_extent: image_subresource_extent,
+                        });
+                    }
+
+                    // VUID-VkCopyImageToBufferInfo2-imageOffset-01794
+                    // VUID-VkCopyImageToBufferInfo2-imageOffset-00205
+                    if image_offset[i] % extent_alignment[i] != 0 {
+                        return Err(CopyError::OffsetNotAlignedForImage {
+                            resource: CopyErrorResource::Source,
+                            region_index,
+                            offset: image_offset,
+                            required_alignment: extent_alignment,
+                        });
+                    }
+
+                    // VUID-VkCopyImageToBufferInfo2-imageOffset-01794
+                    // VUID-VkCopyImageToBufferInfo2-imageExtent-00207
+                    // VUID-VkCopyImageToBufferInfo2-imageExtent-00208
+                    // VUID-VkCopyImageToBufferInfo2-imageExtent-00209
+                    if image_offset[i] + image_extent[i] != image_subresource_extent[i]
+                        && image_extent[i] % extent_alignment[i] != 0
+                    {
+                        return Err(CopyError::ExtentNotAlignedForImage {
+                            resource: CopyErrorResource::Source,
+                            region_index,
+                            extent: image_extent,
+                            required_alignment: extent_alignment,
+                        });
+                    }
+                }
+            } else {
+                // If granularity is `None`, then we can only copy whole subresources.
+
+                // VUID-VkCopyBufferToImageInfo2-imageOffset-01793
+                if image_offset != [0, 0, 0] {
+                    return Err(CopyError::OffsetNotAlignedForImage {
+                        resource: CopyErrorResource::Source,
+                        region_index,
+                        offset: image_offset,
+                        required_alignment: image_subresource_extent,
+                    });
+                }
+
+                // VUID-VkCopyBufferToImageInfo2-imageOffset-01793
+                if image_extent != image_subresource_extent {
+                    return Err(CopyError::ExtentNotAlignedForImage {
+                        resource: CopyErrorResource::Source,
+                        region_index,
+                        extent: image_extent,
+                        required_alignment: image_subresource_extent,
+                    });
+                }
+            }
+
+            // VUID-VkBufferImageCopy2-bufferRowLength-00195
+            if !(buffer_row_length == 0 || buffer_row_length >= image_extent[0]) {
+                return Err(CopyError::BufferRowLengthTooSmall {
+                    resource: CopyErrorResource::Destination,
+                    region_index,
+                    row_length: buffer_row_length,
+                    min: image_extent[0],
+                });
+            }
+
+            // VUID-VkBufferImageCopy2-bufferImageHeight-00196
+            if !(buffer_image_height == 0 || buffer_image_height >= image_extent[1]) {
+                return Err(CopyError::BufferImageHeightTooSmall {
+                    resource: CopyErrorResource::Destination,
+                    region_index,
+                    image_height: buffer_image_height,
+                    min: image_extent[1],
+                });
+            }
+
+            let image_subresource_block_extent = image_subresource_format.block_extent();
+
+            // VUID-VkCopyImageToBufferInfo2-bufferRowLength-00203
+            if buffer_row_length % image_subresource_block_extent[0] != 0 {
+                return Err(CopyError::BufferRowLengthNotAligned {
+                    resource: CopyErrorResource::Destination,
+                    region_index,
+                    row_length: buffer_row_length,
+                    required_alignment: image_subresource_block_extent[0],
+                });
+            }
+
+            // VUID-VkCopyImageToBufferInfo2-bufferImageHeight-00204
+            if buffer_image_height % image_subresource_block_extent[1] != 0 {
+                return Err(CopyError::BufferImageHeightNotAligned {
+                    resource: CopyErrorResource::Destination,
+                    region_index,
+                    image_height: buffer_image_height,
+                    required_alignment: image_subresource_block_extent[1],
+                });
+            }
+
+            // https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkBufferImageCopy.html#_description
+            let image_subresource_block_size = if image_subresource.aspects.stencil {
+                1
+            } else if image_subresource.aspects.depth {
+                match image_subresource_format {
+                    Format::D16_UNORM | Format::D16_UNORM_S8_UINT => 2,
+                    Format::D32_SFLOAT
+                    | Format::D32_SFLOAT_S8_UINT
+                    | Format::X8_D24_UNORM_PACK32
+                    | Format::D24_UNORM_S8_UINT => 4,
+                    _ => unreachable!(),
+                }
+            } else {
+                image_subresource_format.block_size().unwrap()
+            };
+
+            // VUID-VkCopyImageToBufferInfo2-pRegions-04725
+            // VUID-VkCopyImageToBufferInfo2-pRegions-04726
+            if (buffer_row_length / image_subresource_block_extent[0]) as DeviceSize
+                * image_subresource_block_size
+                > 0x7FFFFFFF
+            {
+                return Err(CopyError::BufferRowLengthTooLarge {
+                    resource: CopyErrorResource::Destination,
+                    region_index,
+                    buffer_row_length,
+                });
+            }
+
+            let buffer_offset_alignment = if image_aspects.depth || image_aspects.stencil {
+                4
+            } else {
+                let mut buffer_offset_alignment = image_subresource_block_size;
+
+                // VUID-VkCopyImageToBufferInfo2-commandBuffer-04052
+                // Make the alignment a multiple of 4.
+                if !(self.queue_family().supports_graphics()
+                    || self.queue_family().supports_compute())
+                {
+                    if buffer_offset_alignment % 2 != 0 {
+                        buffer_offset_alignment *= 2;
+                    }
+
+                    if buffer_offset_alignment % 4 != 0 {
+                        buffer_offset_alignment *= 2;
+                    }
+                }
+
+                buffer_offset_alignment
+            };
+
+            // VUID-VkCopyImageToBufferInfo2-bufferOffset-01558
+            // VUID-VkCopyImageToBufferInfo2-bufferOffset-01559
+            // VUID-VkCopyImageToBufferInfo2-bufferOffset-00206
+            // VUID-VkCopyImageToBufferInfo2-srcImage-04053
+            if (buffer_inner.offset + buffer_offset) % buffer_offset_alignment != 0 {
+                return Err(CopyError::OffsetNotAlignedForBuffer {
+                    resource: CopyErrorResource::Destination,
+                    region_index,
+                    offset: buffer_inner.offset + buffer_offset,
+                    required_alignment: buffer_offset_alignment,
+                });
+            }
+
+            let buffer_copy_size = region.buffer_copy_size(image_subresource_format);
+
+            // VUID-VkCopyImageToBufferInfo2-pRegions-00183
+            if buffer_offset + buffer_copy_size > buffer.size() {
+                return Err(CopyError::RegionOutOfBufferBounds {
+                    resource: CopyErrorResource::Destination,
+                    region_index,
+                    offset_range_end: buffer_offset + buffer_copy_size,
+                    buffer_size: buffer.size(),
+                });
+            }
+        }
+
+        // VUID-VkCopyImageToBufferInfo2-pRegions-00184
+        // Can't occur as long as memory aliasing isn't allowed.
+
+        Ok(())
+    }
+
+    /// Fills a region of a buffer with repeated copies of a value.
+    ///
+    /// This function is similar to the `memset` function in C. The `data` parameter is a number
+    /// that will be repeatedly written through the entire buffer.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `dst_buffer` was not created from the same device as `self`.
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                CheckCopyImageError::MissingTransferSourceUsage => {
-                    "the source is missing the transfer source usage"
-                }
-                CheckCopyImageError::MissingTransferDestinationUsage => {
-                    "the destination is missing the transfer destination usage"
-                }
-                CheckCopyImageError::SampleCountMismatch => {
-                    "the number of samples in the source and destination do not match"
-                }
-                CheckCopyImageError::DepthStencilFormatMismatch => {
-                    "the format of the source and destination must be equal when copying \
-                 depth/stencil images"
-                }
-                CheckCopyImageError::SizeIncompatibleFormatTypes { .. } => {
-                    "the types of the source format and the destination format aren't size-compatible"
-                }
-                CheckCopyImageError::SourceCoordinatesOutOfRange => {
-                    "the offsets, array layers and/or mipmap levels are out of range in the source \
-                 image"
-                }
-                CheckCopyImageError::DestinationCoordinatesOutOfRange => {
-                    "the offsets, array layers and/or mipmap levels are out of range in the \
-                 destination image"
-                }
-                CheckCopyImageError::IncompatibleRangeForImageType => {
-                    "the offsets or extent are incompatible with the image type"
-                }
-                CheckCopyImageError::OverlappingRegions => {
-                    "the source and destination regions are overlapping"
-                }
-            }
-        )
+    pub fn fill_buffer(
+        &mut self,
+        mut fill_buffer_info: FillBufferInfo,
+    ) -> Result<&mut Self, CopyError> {
+        self.validate_fill_buffer(&mut fill_buffer_info)?;
+
+        unsafe {
+            self.inner.fill_buffer(fill_buffer_info)?;
+        }
+
+        Ok(self)
     }
-}
 
-/// Type of operation to check.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CheckCopyBufferImageTy {
-    BufferToImage,
-    ImageToBuffer,
-}
+    fn validate_fill_buffer(&self, fill_buffer_info: &mut FillBufferInfo) -> Result<(), CopyError> {
+        let device = self.device();
 
-/// Checks whether a copy buffer-image command is valid. Can check both buffer-to-image copies and
-/// image-to-buffer copies.
-///
-/// # Panic
-///
-/// - Panics if the buffer and image were not created with `device`.
-///
-fn check_copy_buffer_image(
-    device: &Device,
-    buffer: &dyn BufferAccess,
-    image: &dyn ImageAccess,
-    ty: CheckCopyBufferImageTy,
-    image_offset: [u32; 3],
-    image_size: [u32; 3],
-    image_first_layer: u32,
-    image_num_layers: u32,
-    image_mipmap: u32,
-) -> Result<(), CheckCopyBufferImageError> {
-    let buffer_inner = buffer.inner();
-    let image_inner = image.inner();
+        // VUID-vkCmdFillBuffer-renderpass
+        if self.render_pass_state.is_some() {
+            return Err(CopyError::ForbiddenInsideRenderPass);
+        }
 
-    assert_eq!(
-        buffer_inner.buffer.device().internal_object(),
-        device.internal_object()
-    );
-    assert_eq!(
-        image_inner.image.device().internal_object(),
-        device.internal_object()
-    );
-
-    match ty {
-        CheckCopyBufferImageTy::BufferToImage => {
-            if !buffer_inner.buffer.usage().transfer_source {
-                return Err(CheckCopyBufferImageError::SourceMissingTransferUsage);
+        if device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1 {
+            // VUID-vkCmdFillBuffer-commandBuffer-cmdpool
+            if !(self.queue_family().explicitly_supports_transfers()
+                || self.queue_family().supports_graphics()
+                || self.queue_family().supports_compute())
+            {
+                return Err(CopyError::NotSupportedByQueueFamily);
             }
-            if !image_inner.image.usage().transfer_destination {
-                return Err(CheckCopyBufferImageError::DestinationMissingTransferUsage);
+        } else {
+            // VUID-vkCmdFillBuffer-commandBuffer-00030
+            if !(self.queue_family().supports_graphics() || self.queue_family().supports_compute())
+            {
+                return Err(CopyError::NotSupportedByQueueFamily);
             }
         }
-        CheckCopyBufferImageTy::ImageToBuffer => {
-            if !image_inner.image.usage().transfer_source {
-                return Err(CheckCopyBufferImageError::SourceMissingTransferUsage);
-            }
-            if !buffer_inner.buffer.usage().transfer_destination {
-                return Err(CheckCopyBufferImageError::DestinationMissingTransferUsage);
-            }
+
+        let &mut FillBufferInfo {
+            data,
+            ref dst_buffer,
+            dst_offset,
+            size,
+            _ne: _,
+        } = fill_buffer_info;
+
+        let dst_buffer_inner = dst_buffer.inner();
+
+        // VUID-vkCmdFillBuffer-commonparent
+        assert_eq!(device, dst_buffer.device());
+
+        // VUID-vkCmdFillBuffer-size-00026
+        assert!(size != 0);
+
+        // VUID-vkCmdFillBuffer-dstBuffer-00029
+        if !dst_buffer.usage().transfer_dst {
+            return Err(CopyError::MissingUsage {
+                resource: CopyErrorResource::Destination,
+                usage: "transfer_dst",
+            });
         }
-    }
 
-    if image.samples() != SampleCount::Sample1 {
-        return Err(CheckCopyBufferImageError::UnexpectedMultisampled);
-    }
-
-    let image_dimensions = match image.dimensions().mip_level_dimensions(image_mipmap) {
-        Some(d) => d,
-        None => return Err(CheckCopyBufferImageError::ImageCoordinatesOutOfRange),
-    };
-
-    if image_first_layer + image_num_layers > image_dimensions.array_layers() {
-        return Err(CheckCopyBufferImageError::ImageCoordinatesOutOfRange);
-    }
-
-    if image_offset[0] + image_size[0] > image_dimensions.width() {
-        return Err(CheckCopyBufferImageError::ImageCoordinatesOutOfRange);
-    }
-
-    if image_offset[1] + image_size[1] > image_dimensions.height() {
-        return Err(CheckCopyBufferImageError::ImageCoordinatesOutOfRange);
-    }
-
-    if image_offset[2] + image_size[2] > image_dimensions.depth() {
-        return Err(CheckCopyBufferImageError::ImageCoordinatesOutOfRange);
-    }
-
-    match image.dimensions() {
-        ImageDimensions::Dim1d { .. } => {
-            // VUID-vkCmdCopyBufferToImage-srcImage-00199
-            if image_offset[1] != 0 || image_size[1] != 1 {
-                return Err(CheckCopyBufferImageError::ImageCoordinatesOutOfRange);
-            }
-
-            // VUID-vkCmdCopyBufferToImage-srcImage-00201
-            if image_offset[2] != 0 || image_size[2] != 1 {
-                return Err(CheckCopyBufferImageError::ImageCoordinatesOutOfRange);
-            }
+        // VUID-vkCmdFillBuffer-dstOffset-00024
+        // VUID-vkCmdFillBuffer-size-00027
+        if dst_offset + size > dst_buffer.size() {
+            return Err(CopyError::RegionOutOfBufferBounds {
+                resource: CopyErrorResource::Destination,
+                region_index: 0,
+                offset_range_end: dst_offset + size,
+                buffer_size: dst_buffer.size(),
+            });
         }
-        ImageDimensions::Dim2d { .. } => {
-            // VUID-vkCmdCopyBufferToImage-srcImage-00201
-            if image_offset[2] != 0 || image_size[2] != 1 {
-                return Err(CheckCopyBufferImageError::ImageCoordinatesOutOfRange);
-            }
+
+        // VUID-vkCmdFillBuffer-dstOffset-00025
+        if (dst_buffer_inner.offset + dst_offset) % 4 != 0 {
+            return Err(CopyError::OffsetNotAlignedForBuffer {
+                resource: CopyErrorResource::Destination,
+                region_index: 0,
+                offset: dst_buffer_inner.offset + dst_offset,
+                required_alignment: 4,
+            });
         }
-        ImageDimensions::Dim3d { .. } => {
-            // VUID-vkCmdCopyBufferToImage-baseArrayLayer-00213
-            if image_first_layer != 0 || image_num_layers != 1 {
-                return Err(CheckCopyBufferImageError::ImageCoordinatesOutOfRange);
-            }
+
+        // VUID-vkCmdFillBuffer-size-00028
+        if size % 4 != 0 {
+            return Err(CopyError::SizeNotAlignedForBuffer {
+                resource: CopyErrorResource::Destination,
+                region_index: 0,
+                size,
+                required_alignment: 4,
+            });
         }
+
+        Ok(())
     }
 
-    let required_size = required_size_for_format(image.format(), image_size, image_num_layers);
-    if required_size > buffer.size() {
-        return Err(CheckCopyBufferImageError::BufferTooSmall {
-            required_size,
-            actual_size: buffer.size(),
-        });
+    /// Writes data to a region of a buffer.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `dst_buffer` was not created from the same device as `self`.
+    #[inline]
+    pub fn update_buffer<B, D, Dd>(
+        &mut self,
+        data: Dd,
+        dst_buffer: Arc<B>,
+        dst_offset: DeviceSize,
+    ) -> Result<&mut Self, CopyError>
+    where
+        B: TypedBufferAccess<Content = D> + 'static,
+        D: BufferContents + ?Sized,
+        Dd: SafeDeref<Target = D> + Send + Sync + 'static,
+    {
+        self.validate_update_buffer(data.deref(), &dst_buffer, dst_offset)?;
+
+        unsafe {
+            self.inner.update_buffer(data, dst_buffer, dst_offset)?;
+        }
+
+        Ok(self)
     }
 
-    // TODO: check memory overlap?
+    fn validate_update_buffer<D>(
+        &self,
+        data: &D,
+        dst_buffer: &dyn BufferAccess,
+        dst_offset: DeviceSize,
+    ) -> Result<(), CopyError>
+    where
+        D: ?Sized,
+    {
+        let device = self.device();
 
-    Ok(())
+        // VUID-vkCmdUpdateBuffer-renderpass
+        if self.render_pass_state.is_some() {
+            return Err(CopyError::ForbiddenInsideRenderPass);
+        }
+
+        // VUID-vkCmdUpdateBuffer-commandBuffer-cmdpool
+        if !(self.queue_family().explicitly_supports_transfers()
+            || self.queue_family().supports_graphics()
+            || self.queue_family().supports_compute())
+        {
+            return Err(CopyError::NotSupportedByQueueFamily);
+        }
+
+        let dst_buffer_inner = dst_buffer.inner();
+
+        // VUID-vkCmdUpdateBuffer-commonparent
+        assert_eq!(device, dst_buffer.device());
+
+        // VUID-vkCmdUpdateBuffer-dataSize-arraylength
+        assert!(size_of_val(data) != 0);
+
+        // VUID-vkCmdUpdateBuffer-dstBuffer-00034
+        if !dst_buffer.usage().transfer_dst {
+            return Err(CopyError::MissingUsage {
+                resource: CopyErrorResource::Destination,
+                usage: "transfer_dst",
+            });
+        }
+
+        // VUID-vkCmdUpdateBuffer-dstOffset-00032
+        // VUID-vkCmdUpdateBuffer-dataSize-00033
+        if dst_offset + size_of_val(data) as DeviceSize > dst_buffer.size() {
+            return Err(CopyError::RegionOutOfBufferBounds {
+                resource: CopyErrorResource::Destination,
+                region_index: 0,
+                offset_range_end: dst_offset + size_of_val(data) as DeviceSize,
+                buffer_size: dst_buffer.size(),
+            });
+        }
+
+        // VUID-vkCmdUpdateBuffer-dstOffset-00036
+        if (dst_buffer_inner.offset + dst_offset) % 4 != 0 {
+            return Err(CopyError::OffsetNotAlignedForBuffer {
+                resource: CopyErrorResource::Destination,
+                region_index: 0,
+                offset: dst_buffer_inner.offset + dst_offset,
+                required_alignment: 4,
+            });
+        }
+
+        // VUID-vkCmdUpdateBuffer-dataSize-00037
+        if size_of_val(data) > 65536 {
+            return Err(CopyError::DataTooLarge {
+                size: size_of_val(data) as DeviceSize,
+                max: 65536,
+            });
+        }
+
+        // VUID-vkCmdUpdateBuffer-dataSize-00038
+        if size_of_val(data) % 4 != 0 {
+            return Err(CopyError::SizeNotAlignedForBuffer {
+                resource: CopyErrorResource::Destination,
+                region_index: 0,
+                size: size_of_val(data) as DeviceSize,
+                required_alignment: 4,
+            });
+        }
+
+        Ok(())
+    }
 }
 
 /// Computes the minimum required len in elements for buffer with image data in specified
@@ -996,428 +1914,93 @@ fn required_size_for_format(format: Format, extent: [u32; 3], layer_count: u32) 
     num_blocks * block_size
 }
 
-/// Error that can happen from `check_copy_buffer_image`.
-#[derive(Debug, Copy, Clone)]
-pub enum CheckCopyBufferImageError {
-    /// The source buffer or image is missing the transfer source usage.
-    SourceMissingTransferUsage,
-    /// The destination buffer or image is missing the transfer destination usage.
-    DestinationMissingTransferUsage,
-    /// The source and destination are overlapping.
-    OverlappingRanges,
-    /// The image must not be multisampled.
-    UnexpectedMultisampled,
-    /// The image coordinates are out of range.
-    ImageCoordinatesOutOfRange,
-    /// The buffer is too small for the copy operation.
-    BufferTooSmall {
-        /// Required size of the buffer.
-        required_size: DeviceSize,
-        /// Actual size of the buffer.
-        actual_size: DeviceSize,
-    },
-}
-
-impl error::Error for CheckCopyBufferImageError {}
-
-impl fmt::Display for CheckCopyBufferImageError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                CheckCopyBufferImageError::SourceMissingTransferUsage => {
-                    "the source buffer is missing the transfer source usage"
-                }
-                CheckCopyBufferImageError::DestinationMissingTransferUsage => {
-                    "the destination buffer is missing the transfer destination usage"
-                }
-                CheckCopyBufferImageError::OverlappingRanges => {
-                    "the source and destination are overlapping"
-                }
-                CheckCopyBufferImageError::UnexpectedMultisampled => {
-                    "the image must not be multisampled"
-                }
-                CheckCopyBufferImageError::ImageCoordinatesOutOfRange => {
-                    "the image coordinates are out of range"
-                }
-                CheckCopyBufferImageError::BufferTooSmall { .. } => {
-                    "the buffer is too small for the copy operation"
-                }
-            }
-        )
-    }
-}
-
-/// Checks whether the range `source`..`source + size` is overlapping with the range `destination`..`destination + size`.
-/// TODO: add unit tests
-pub(super) fn is_overlapping_ranges(
-    source: u64,
-    source_size: u64,
-    destination: u64,
-    destination_size: u64,
-) -> bool {
-    (destination < source + source_size) && (source < destination + destination_size)
-}
-
-/// Checks whether there is an overlap between the source and destination regions.
-/// The `image_dim` is used to determine the number of dimentions and not the image size.
-/// TODO: add unit tests
-pub(super) fn is_overlapping_regions(
-    source_offset: [i32; 3],
-    source_extent: [u32; 3],
-    destination_offset: [i32; 3],
-    destination_extent: [u32; 3],
-    image_dim: ImageDimensions,
-) -> bool {
-    let dim = match image_dim {
-        ImageDimensions::Dim1d { .. } => 1,
-        ImageDimensions::Dim2d { .. } => 2,
-        ImageDimensions::Dim3d { .. } => 3,
-    };
-    let mut result = true;
-    // for 1d, it will check x only, for 2d x and y, and so on...
-    for i in 0..dim {
-        result &= is_overlapping_ranges(
-            source_offset[i] as u64,
-            source_extent[i] as u64,
-            destination_offset[i] as u64,
-            destination_extent[i] as u64,
-        );
-    }
-    result
-}
-
 impl SyncCommandBufferBuilder {
     /// Calls `vkCmdCopyBuffer` on the builder.
     ///
     /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
     /// usage of the command anyway.
     #[inline]
-    pub unsafe fn copy_buffer<R>(
+    pub unsafe fn copy_buffer(
         &mut self,
-        source: Arc<dyn BufferAccess>,
-        destination: Arc<dyn BufferAccess>,
-        regions: R,
-    ) -> Result<(), SyncCommandBufferBuilderError>
-    where
-        R: IntoIterator<Item = (DeviceSize, DeviceSize, DeviceSize)> + Send + Sync + 'static,
-    {
-        struct Cmd<R> {
-            source: Arc<dyn BufferAccess>,
-            destination: Arc<dyn BufferAccess>,
-            regions: Mutex<Option<R>>,
+        copy_buffer_info: CopyBufferInfo,
+    ) -> Result<(), SyncCommandBufferBuilderError> {
+        struct Cmd {
+            copy_buffer_info: CopyBufferInfo,
         }
 
-        impl<R> Command for Cmd<R>
-        where
-            R: IntoIterator<Item = (DeviceSize, DeviceSize, DeviceSize)> + Send + Sync,
-        {
+        impl Command for Cmd {
             fn name(&self) -> &'static str {
                 "copy_buffer"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.copy_buffer(
-                    self.source.as_ref(),
-                    self.destination.as_ref(),
-                    self.regions.lock().take().unwrap(),
-                );
+                out.copy_buffer(&self.copy_buffer_info);
             }
         }
 
-        // if its the same image in source and destination, we need to lock it once
-        let resources: SmallVec<[_; 2]> = if source.conflict_key() == destination.conflict_key() {
-            smallvec![(
-                "source_and_destination".into(),
-                Resource::Buffer {
-                    buffer: source.clone(),
-                    range: 0..source.size(), // TODO:
-                    memory: PipelineMemoryAccess {
-                        stages: PipelineStages {
-                            transfer: true,
-                            ..PipelineStages::none()
-                        },
-                        access: AccessFlags {
-                            transfer_read: true,
-                            transfer_write: true,
-                            ..AccessFlags::none()
-                        },
-                        exclusive: false,
-                    },
-                },
-            )]
-        } else {
-            smallvec![
-                (
-                    "source".into(),
-                    Resource::Buffer {
-                        buffer: source.clone(),
-                        range: 0..source.size(), // TODO:
-                        memory: PipelineMemoryAccess {
-                            stages: PipelineStages {
-                                transfer: true,
-                                ..PipelineStages::none()
+        let CopyBufferInfo {
+            src_buffer,
+            dst_buffer,
+            regions,
+            _ne: _,
+        } = &copy_buffer_info;
+
+        let resources: SmallVec<[_; 8]> = regions
+            .iter()
+            .flat_map(|region| {
+                let &BufferCopy {
+                    src_offset,
+                    dst_offset,
+                    size,
+                    _ne: _,
+                } = region;
+
+                [
+                    (
+                        "src_buffer".into(),
+                        Resource::Buffer {
+                            buffer: src_buffer.clone(),
+                            range: src_offset..src_offset + size,
+                            memory: PipelineMemoryAccess {
+                                stages: PipelineStages {
+                                    transfer: true,
+                                    ..PipelineStages::none()
+                                },
+                                access: AccessFlags {
+                                    transfer_read: true,
+                                    ..AccessFlags::none()
+                                },
+                                exclusive: false,
                             },
-                            access: AccessFlags {
-                                transfer_read: true,
-                                ..AccessFlags::none()
-                            },
-                            exclusive: false,
                         },
-                    },
-                ),
-                (
-                    "destination".into(),
-                    Resource::Buffer {
-                        buffer: destination.clone(),
-                        range: 0..destination.size(), // TODO:
-                        memory: PipelineMemoryAccess {
-                            stages: PipelineStages {
-                                transfer: true,
-                                ..PipelineStages::none()
+                    ),
+                    (
+                        "dst_buffer".into(),
+                        Resource::Buffer {
+                            buffer: dst_buffer.clone(),
+                            range: dst_offset..dst_offset + size,
+                            memory: PipelineMemoryAccess {
+                                stages: PipelineStages {
+                                    transfer: true,
+                                    ..PipelineStages::none()
+                                },
+                                access: AccessFlags {
+                                    transfer_write: true,
+                                    ..AccessFlags::none()
+                                },
+                                exclusive: true,
                             },
-                            access: AccessFlags {
-                                transfer_write: true,
-                                ..AccessFlags::none()
-                            },
-                            exclusive: true,
                         },
-                    },
-                ),
-            ]
-        };
+                    ),
+                ]
+            })
+            .collect();
 
         for resource in &resources {
             self.check_resource_conflicts(resource)?;
         }
 
-        self.commands.push(Box::new(Cmd {
-            source,
-            destination,
-            regions: Mutex::new(Some(regions)),
-        }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
-
-        Ok(())
-    }
-
-    /// Calls `vkCmdCopyBufferToImage` on the builder.
-    ///
-    /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
-    /// usage of the command anyway.
-    #[inline]
-    pub unsafe fn copy_buffer_to_image<R>(
-        &mut self,
-        source: Arc<dyn BufferAccess>,
-        destination: Arc<dyn ImageAccess>,
-        destination_layout: ImageLayout,
-        regions: R,
-    ) -> Result<(), SyncCommandBufferBuilderError>
-    where
-        R: IntoIterator<Item = UnsafeCommandBufferBuilderBufferImageCopy> + Send + Sync + 'static,
-    {
-        struct Cmd<R> {
-            source: Arc<dyn BufferAccess>,
-            destination: Arc<dyn ImageAccess>,
-            destination_layout: ImageLayout,
-            regions: Mutex<Option<R>>,
-        }
-
-        impl<R> Command for Cmd<R>
-        where
-            R: IntoIterator<Item = UnsafeCommandBufferBuilderBufferImageCopy> + Send + Sync,
-        {
-            fn name(&self) -> &'static str {
-                "copy_buffer_to_image"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.copy_buffer_to_image(
-                    self.source.as_ref(),
-                    self.destination.as_ref(),
-                    self.destination_layout,
-                    self.regions.lock().take().unwrap(),
-                );
-            }
-        }
-
-        let resources = [
-            (
-                "source".into(),
-                Resource::Buffer {
-                    buffer: source.clone(),
-                    range: 0..source.size(), // TODO:
-                    memory: PipelineMemoryAccess {
-                        stages: PipelineStages {
-                            transfer: true,
-                            ..PipelineStages::none()
-                        },
-                        access: AccessFlags {
-                            transfer_read: true,
-                            ..AccessFlags::none()
-                        },
-                        exclusive: false,
-                    },
-                },
-            ),
-            (
-                "destination".into(),
-                Resource::Image {
-                    image: destination.clone(),
-                    subresource_range: ImageSubresourceRange {
-                        // TODO:
-                        aspects: destination.format().aspects(),
-                        mip_levels: destination.current_mip_levels_access(),
-                        array_layers: destination.current_array_layers_access(),
-                    },
-                    memory: PipelineMemoryAccess {
-                        stages: PipelineStages {
-                            transfer: true,
-                            ..PipelineStages::none()
-                        },
-                        access: AccessFlags {
-                            transfer_write: true,
-                            ..AccessFlags::none()
-                        },
-                        exclusive: true,
-                    },
-                    start_layout: destination_layout,
-                    end_layout: destination_layout,
-                },
-            ),
-        ];
-
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd {
-            source,
-            destination,
-            destination_layout,
-            regions: Mutex::new(Some(regions)),
-        }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
-
-        Ok(())
-    }
-
-    /// Calls `vkCmdFillBuffer` on the builder.
-    #[inline]
-    pub unsafe fn fill_buffer(
-        &mut self,
-        buffer: Arc<dyn BufferAccess>,
-        data: u32,
-    ) -> Result<(), SyncCommandBufferBuilderError> {
-        struct Cmd {
-            buffer: Arc<dyn BufferAccess>,
-            data: u32,
-        }
-
-        impl Command for Cmd {
-            fn name(&self) -> &'static str {
-                "fill_buffer"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.fill_buffer(self.buffer.as_ref(), self.data);
-            }
-        }
-
-        let resources = [(
-            "destination".into(),
-            Resource::Buffer {
-                buffer: buffer.clone(),
-                range: 0..buffer.size(), // TODO:
-                memory: PipelineMemoryAccess {
-                    stages: PipelineStages {
-                        transfer: true,
-                        ..PipelineStages::none()
-                    },
-                    access: AccessFlags {
-                        transfer_write: true,
-                        ..AccessFlags::none()
-                    },
-                    exclusive: true,
-                },
-            },
-        )];
-
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd { buffer, data }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
-
-        Ok(())
-    }
-
-    /// Calls `vkCmdUpdateBuffer` on the builder.
-    #[inline]
-    pub unsafe fn update_buffer<D, Dd>(
-        &mut self,
-        buffer: Arc<dyn BufferAccess>,
-        data: Dd,
-    ) -> Result<(), SyncCommandBufferBuilderError>
-    where
-        D: BufferContents + ?Sized,
-        Dd: SafeDeref<Target = D> + Send + Sync + 'static,
-    {
-        struct Cmd<Dd> {
-            buffer: Arc<dyn BufferAccess>,
-            data: Dd,
-        }
-
-        impl<D, Dd> Command for Cmd<Dd>
-        where
-            D: BufferContents + ?Sized,
-            Dd: SafeDeref<Target = D> + Send + Sync + 'static,
-        {
-            fn name(&self) -> &'static str {
-                "update_buffer"
-            }
-
-            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.update_buffer(self.buffer.as_ref(), self.data.deref());
-            }
-        }
-
-        let resources = [(
-            "destination".into(),
-            Resource::Buffer {
-                buffer: buffer.clone(),
-                range: 0..buffer.size(), // TODO:
-                memory: PipelineMemoryAccess {
-                    stages: PipelineStages {
-                        transfer: true,
-                        ..PipelineStages::none()
-                    },
-                    access: AccessFlags {
-                        transfer_write: true,
-                        ..AccessFlags::none()
-                    },
-                    exclusive: true,
-                },
-            },
-        )];
-
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd { buffer, data }));
+        self.commands.push(Box::new(Cmd { copy_buffer_info }));
 
         for resource in resources {
             self.add_resource(resource);
@@ -1431,148 +2014,197 @@ impl SyncCommandBufferBuilder {
     /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
     /// usage of the command anyway.
     #[inline]
-    pub unsafe fn copy_image<R>(
+    pub unsafe fn copy_image(
         &mut self,
-        source: Arc<dyn ImageAccess>,
-        source_layout: ImageLayout,
-        destination: Arc<dyn ImageAccess>,
-        destination_layout: ImageLayout,
-        regions: R,
-    ) -> Result<(), SyncCommandBufferBuilderError>
-    where
-        R: IntoIterator<Item = UnsafeCommandBufferBuilderImageCopy> + Send + Sync + 'static,
-    {
-        struct Cmd<R> {
-            source: Arc<dyn ImageAccess>,
-            source_layout: ImageLayout,
-            destination: Arc<dyn ImageAccess>,
-            destination_layout: ImageLayout,
-            regions: Mutex<Option<R>>,
+        copy_image_info: CopyImageInfo,
+    ) -> Result<(), SyncCommandBufferBuilderError> {
+        struct Cmd {
+            copy_image_info: CopyImageInfo,
         }
 
-        impl<R> Command for Cmd<R>
-        where
-            R: IntoIterator<Item = UnsafeCommandBufferBuilderImageCopy> + Send + Sync,
-        {
+        impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "copy_image"
+                "copy_buffer_to_image"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.copy_image(
-                    self.source.as_ref(),
-                    self.source_layout,
-                    self.destination.as_ref(),
-                    self.destination_layout,
-                    self.regions.lock().take().unwrap(),
-                );
+                out.copy_image(&self.copy_image_info);
             }
         }
 
-        // if its the same image in source and destination, we need to lock it once
-        let source_key = (
-            source.conflict_key(),
-            source.current_mip_levels_access(),
-            source.current_array_layers_access(),
-        );
-        let destination_key = (
-            destination.conflict_key(),
-            destination.current_mip_levels_access(),
-            destination.current_array_layers_access(),
-        );
+        let &CopyImageInfo {
+            ref src_image,
+            src_image_layout,
+            ref dst_image,
+            dst_image_layout,
+            ref regions,
+            _ne: _,
+        } = &copy_image_info;
 
-        let resources: SmallVec<[_; 2]> = if source_key == destination_key {
-            smallvec![(
-                "source_and_destination".into(),
-                Resource::Image {
-                    image: source.clone(),
-                    subresource_range: ImageSubresourceRange {
-                        // TODO:
-                        aspects: source.format().aspects(),
-                        mip_levels: source.current_mip_levels_access(),
-                        array_layers: source.current_array_layers_access(),
-                    },
-                    memory: PipelineMemoryAccess {
-                        stages: PipelineStages {
-                            transfer: true,
-                            ..PipelineStages::none()
-                        },
-                        access: AccessFlags {
-                            transfer_read: true,
-                            transfer_write: true,
-                            ..AccessFlags::none()
-                        },
-                        exclusive: true,
-                    },
-                    start_layout: ImageLayout::General,
-                    end_layout: ImageLayout::General,
-                },
-            )]
-        } else {
-            smallvec![
-                (
-                    "source".into(),
-                    Resource::Image {
-                        image: source.clone(),
-                        subresource_range: ImageSubresourceRange {
-                            // TODO:
-                            aspects: source.format().aspects(),
-                            mip_levels: source.current_mip_levels_access(),
-                            array_layers: source.current_array_layers_access(),
-                        },
-                        memory: PipelineMemoryAccess {
-                            stages: PipelineStages {
-                                transfer: true,
-                                ..PipelineStages::none()
+        let resources: SmallVec<[_; 8]> = regions
+            .iter()
+            .flat_map(|region| {
+                let &ImageCopy {
+                    ref src_subresource,
+                    src_offset,
+                    ref dst_subresource,
+                    dst_offset,
+                    extent,
+                    _ne: _,
+                } = region;
+
+                [
+                    (
+                        "src_image".into(),
+                        Resource::Image {
+                            image: src_image.clone(),
+                            subresource_range: src_subresource.clone().into(),
+                            memory: PipelineMemoryAccess {
+                                stages: PipelineStages {
+                                    transfer: true,
+                                    ..PipelineStages::none()
+                                },
+                                access: AccessFlags {
+                                    transfer_read: true,
+                                    ..AccessFlags::none()
+                                },
+                                exclusive: false,
                             },
-                            access: AccessFlags {
-                                transfer_read: true,
-                                ..AccessFlags::none()
-                            },
-                            exclusive: false,
+                            start_layout: src_image_layout,
+                            end_layout: src_image_layout,
                         },
-                        start_layout: source_layout,
-                        end_layout: source_layout,
-                    },
-                ),
-                (
-                    "destination".into(),
-                    Resource::Image {
-                        image: destination.clone(),
-                        subresource_range: ImageSubresourceRange {
-                            // TODO:
-                            aspects: destination.format().aspects(),
-                            mip_levels: destination.current_mip_levels_access(),
-                            array_layers: destination.current_array_layers_access(),
-                        },
-                        memory: PipelineMemoryAccess {
-                            stages: PipelineStages {
-                                transfer: true,
-                                ..PipelineStages::none()
+                    ),
+                    (
+                        "dst_image".into(),
+                        Resource::Image {
+                            image: dst_image.clone(),
+                            subresource_range: dst_subresource.clone().into(),
+                            memory: PipelineMemoryAccess {
+                                stages: PipelineStages {
+                                    transfer: true,
+                                    ..PipelineStages::none()
+                                },
+                                access: AccessFlags {
+                                    transfer_write: true,
+                                    ..AccessFlags::none()
+                                },
+                                exclusive: true,
                             },
-                            access: AccessFlags {
-                                transfer_write: true,
-                                ..AccessFlags::none()
-                            },
-                            exclusive: true,
+                            start_layout: dst_image_layout,
+                            end_layout: dst_image_layout,
                         },
-                        start_layout: destination_layout,
-                        end_layout: destination_layout,
-                    },
-                ),
-            ]
-        };
+                    ),
+                ]
+            })
+            .collect();
+
+        for resource in &resources {
+            self.check_resource_conflicts(resource)?;
+        }
+
+        self.commands.push(Box::new(Cmd { copy_image_info }));
+
+        for resource in resources {
+            self.add_resource(resource);
+        }
+
+        Ok(())
+    }
+
+    /// Calls `vkCmdCopyBufferToImage` on the builder.
+    ///
+    /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
+    /// usage of the command anyway.
+    #[inline]
+    pub unsafe fn copy_buffer_to_image(
+        &mut self,
+        copy_buffer_to_image_info: CopyBufferToImageInfo,
+    ) -> Result<(), SyncCommandBufferBuilderError> {
+        struct Cmd {
+            copy_buffer_to_image_info: CopyBufferToImageInfo,
+        }
+
+        impl Command for Cmd {
+            fn name(&self) -> &'static str {
+                "copy_buffer_to_image"
+            }
+
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
+                out.copy_buffer_to_image(&self.copy_buffer_to_image_info);
+            }
+        }
+
+        let &CopyBufferToImageInfo {
+            ref src_buffer,
+            ref dst_image,
+            dst_image_layout,
+            ref regions,
+            _ne: _,
+        } = &copy_buffer_to_image_info;
+
+        let resources: SmallVec<[_; 8]> = regions
+            .iter()
+            .flat_map(|region| {
+                let &BufferImageCopy {
+                    buffer_offset,
+                    buffer_row_length,
+                    buffer_image_height,
+                    ref image_subresource,
+                    image_offset,
+                    image_extent,
+                    _ne: _,
+                } = region;
+
+                [
+                    (
+                        "src_buffer".into(),
+                        Resource::Buffer {
+                            buffer: src_buffer.clone(),
+                            range: buffer_offset
+                                ..buffer_offset + region.buffer_copy_size(dst_image.format()),
+                            memory: PipelineMemoryAccess {
+                                stages: PipelineStages {
+                                    transfer: true,
+                                    ..PipelineStages::none()
+                                },
+                                access: AccessFlags {
+                                    transfer_read: true,
+                                    ..AccessFlags::none()
+                                },
+                                exclusive: false,
+                            },
+                        },
+                    ),
+                    (
+                        "dst_image".into(),
+                        Resource::Image {
+                            image: dst_image.clone(),
+                            subresource_range: image_subresource.clone().into(),
+                            memory: PipelineMemoryAccess {
+                                stages: PipelineStages {
+                                    transfer: true,
+                                    ..PipelineStages::none()
+                                },
+                                access: AccessFlags {
+                                    transfer_write: true,
+                                    ..AccessFlags::none()
+                                },
+                                exclusive: true,
+                            },
+                            start_layout: dst_image_layout,
+                            end_layout: dst_image_layout,
+                        },
+                    ),
+                ]
+            })
+            .collect();
 
         for resource in &resources {
             self.check_resource_conflicts(resource)?;
         }
 
         self.commands.push(Box::new(Cmd {
-            source,
-            source_layout,
-            destination,
-            destination_layout,
-            regions: Mutex::new(Some(regions)),
+            copy_buffer_to_image_info,
         }));
 
         for resource in resources {
@@ -1587,96 +2219,223 @@ impl SyncCommandBufferBuilder {
     /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
     /// usage of the command anyway.
     #[inline]
-    pub unsafe fn copy_image_to_buffer<R>(
+    pub unsafe fn copy_image_to_buffer(
         &mut self,
-        source: Arc<dyn ImageAccess>,
-        source_layout: ImageLayout,
-        destination: Arc<dyn BufferAccess>,
-        regions: R,
-    ) -> Result<(), SyncCommandBufferBuilderError>
-    where
-        R: IntoIterator<Item = UnsafeCommandBufferBuilderBufferImageCopy> + Send + Sync + 'static,
-    {
-        struct Cmd<R> {
-            source: Arc<dyn ImageAccess>,
-            source_layout: ImageLayout,
-            destination: Arc<dyn BufferAccess>,
-            regions: Mutex<Option<R>>,
+        copy_image_to_buffer_info: CopyImageToBufferInfo,
+    ) -> Result<(), SyncCommandBufferBuilderError> {
+        struct Cmd {
+            copy_image_to_buffer_info: CopyImageToBufferInfo,
         }
 
-        impl<R> Command for Cmd<R>
-        where
-            R: IntoIterator<Item = UnsafeCommandBufferBuilderBufferImageCopy> + Send + Sync,
-        {
+        impl Command for Cmd {
             fn name(&self) -> &'static str {
                 "copy_image_to_buffer"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.copy_image_to_buffer(
-                    self.source.as_ref(),
-                    self.source_layout,
-                    self.destination.as_ref(),
-                    self.regions.lock().take().unwrap(),
-                );
+                out.copy_image_to_buffer(&self.copy_image_to_buffer_info);
             }
         }
 
-        let resources = [
-            (
-                "source".into(),
-                Resource::Image {
-                    image: source.clone(),
-                    subresource_range: ImageSubresourceRange {
-                        // TODO:
-                        aspects: source.format().aspects(),
-                        mip_levels: source.current_mip_levels_access(),
-                        array_layers: source.current_array_layers_access(),
-                    },
-                    memory: PipelineMemoryAccess {
-                        stages: PipelineStages {
-                            transfer: true,
-                            ..PipelineStages::none()
+        let &CopyImageToBufferInfo {
+            ref src_image,
+            src_image_layout,
+            ref dst_buffer,
+            ref regions,
+            _ne: _,
+        } = &copy_image_to_buffer_info;
+
+        let resources: SmallVec<[_; 8]> = regions
+            .iter()
+            .flat_map(|region| {
+                let &BufferImageCopy {
+                    buffer_offset,
+                    buffer_row_length,
+                    buffer_image_height,
+                    ref image_subresource,
+                    image_offset,
+                    image_extent,
+                    _ne: _,
+                } = region;
+
+                [
+                    (
+                        "src_image".into(),
+                        Resource::Image {
+                            image: src_image.clone(),
+                            subresource_range: image_subresource.clone().into(),
+                            memory: PipelineMemoryAccess {
+                                stages: PipelineStages {
+                                    transfer: true,
+                                    ..PipelineStages::none()
+                                },
+                                access: AccessFlags {
+                                    transfer_read: true,
+                                    ..AccessFlags::none()
+                                },
+                                exclusive: false,
+                            },
+                            start_layout: src_image_layout,
+                            end_layout: src_image_layout,
                         },
-                        access: AccessFlags {
-                            transfer_read: true,
-                            ..AccessFlags::none()
+                    ),
+                    (
+                        "dst_buffer".into(),
+                        Resource::Buffer {
+                            buffer: dst_buffer.clone(),
+                            range: buffer_offset
+                                ..buffer_offset + region.buffer_copy_size(src_image.format()),
+                            memory: PipelineMemoryAccess {
+                                stages: PipelineStages {
+                                    transfer: true,
+                                    ..PipelineStages::none()
+                                },
+                                access: AccessFlags {
+                                    transfer_write: true,
+                                    ..AccessFlags::none()
+                                },
+                                exclusive: true,
+                            },
                         },
-                        exclusive: false,
-                    },
-                    start_layout: source_layout,
-                    end_layout: source_layout,
-                },
-            ),
-            (
-                "destination".into(),
-                Resource::Buffer {
-                    buffer: destination.clone(),
-                    range: 0..destination.size(), // TODO:
-                    memory: PipelineMemoryAccess {
-                        stages: PipelineStages {
-                            transfer: true,
-                            ..PipelineStages::none()
-                        },
-                        access: AccessFlags {
-                            transfer_write: true,
-                            ..AccessFlags::none()
-                        },
-                        exclusive: true,
-                    },
-                },
-            ),
-        ];
+                    ),
+                ]
+            })
+            .collect();
 
         for resource in &resources {
             self.check_resource_conflicts(resource)?;
         }
 
         self.commands.push(Box::new(Cmd {
-            source,
-            destination,
-            source_layout,
-            regions: Mutex::new(Some(regions)),
+            copy_image_to_buffer_info,
+        }));
+
+        for resource in resources {
+            self.add_resource(resource);
+        }
+
+        Ok(())
+    }
+
+    /// Calls `vkCmdFillBuffer` on the builder.
+    #[inline]
+    pub unsafe fn fill_buffer(
+        &mut self,
+        fill_buffer_info: FillBufferInfo,
+    ) -> Result<(), SyncCommandBufferBuilderError> {
+        struct Cmd {
+            fill_buffer_info: FillBufferInfo,
+        }
+
+        impl Command for Cmd {
+            fn name(&self) -> &'static str {
+                "fill_buffer"
+            }
+
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
+                out.fill_buffer(&self.fill_buffer_info);
+            }
+        }
+
+        let &FillBufferInfo {
+            data,
+            ref dst_buffer,
+            dst_offset,
+            size,
+            _ne: _,
+        } = &fill_buffer_info;
+
+        let resources = [(
+            "dst_buffer".into(),
+            Resource::Buffer {
+                buffer: dst_buffer.clone(),
+                range: dst_offset..dst_offset + size,
+                memory: PipelineMemoryAccess {
+                    stages: PipelineStages {
+                        transfer: true,
+                        ..PipelineStages::none()
+                    },
+                    access: AccessFlags {
+                        transfer_write: true,
+                        ..AccessFlags::none()
+                    },
+                    exclusive: true,
+                },
+            },
+        )];
+
+        for resource in &resources {
+            self.check_resource_conflicts(resource)?;
+        }
+
+        self.commands.push(Box::new(Cmd { fill_buffer_info }));
+
+        for resource in resources {
+            self.add_resource(resource);
+        }
+
+        Ok(())
+    }
+
+    /// Calls `vkCmdUpdateBuffer` on the builder.
+    #[inline]
+    pub unsafe fn update_buffer<D, Dd>(
+        &mut self,
+        data: Dd,
+        dst_buffer: Arc<dyn BufferAccess>,
+        dst_offset: DeviceSize,
+    ) -> Result<(), SyncCommandBufferBuilderError>
+    where
+        D: BufferContents + ?Sized,
+        Dd: SafeDeref<Target = D> + Send + Sync + 'static,
+    {
+        struct Cmd<Dd> {
+            data: Dd,
+            dst_buffer: Arc<dyn BufferAccess>,
+            dst_offset: DeviceSize,
+        }
+
+        impl<D, Dd> Command for Cmd<Dd>
+        where
+            D: BufferContents + ?Sized,
+            Dd: SafeDeref<Target = D> + Send + Sync + 'static,
+        {
+            fn name(&self) -> &'static str {
+                "update_buffer"
+            }
+
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
+                out.update_buffer(self.data.deref(), self.dst_buffer.as_ref(), self.dst_offset);
+            }
+        }
+
+        let resources = [(
+            "dst_buffer".into(),
+            Resource::Buffer {
+                buffer: dst_buffer.clone(),
+                range: dst_offset..dst_offset + size_of_val(data.deref()) as DeviceSize,
+                memory: PipelineMemoryAccess {
+                    stages: PipelineStages {
+                        transfer: true,
+                        ..PipelineStages::none()
+                    },
+                    access: AccessFlags {
+                        transfer_write: true,
+                        ..AccessFlags::none()
+                    },
+                    exclusive: true,
+                },
+            },
+        )];
+
+        for resource in &resources {
+            self.check_resource_conflicts(resource)?;
+        }
+
+        self.commands.push(Box::new(Cmd {
+            data,
+            dst_buffer,
+            dst_offset,
         }));
 
         for resource in resources {
@@ -1693,43 +2452,231 @@ impl UnsafeCommandBufferBuilder {
     /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
     /// usage of the command anyway.
     #[inline]
-    pub unsafe fn copy_buffer(
-        &mut self,
-        source: &dyn BufferAccess,
-        destination: &dyn BufferAccess,
-        regions: impl IntoIterator<Item = (DeviceSize, DeviceSize, DeviceSize)>,
-    ) {
-        // TODO: debug assert that there's no overlap in the destinations?
-
-        let source = source.inner();
-        debug_assert!(source.offset < source.buffer.size());
-        debug_assert!(source.buffer.usage().transfer_source);
-
-        let destination = destination.inner();
-        debug_assert!(destination.offset < destination.buffer.size());
-        debug_assert!(destination.buffer.usage().transfer_destination);
-
-        let regions: SmallVec<[_; 8]> = regions
-            .into_iter()
-            .map(|(sr, de, sz)| ash::vk::BufferCopy {
-                src_offset: sr + source.offset,
-                dst_offset: de + destination.offset,
-                size: sz,
-            })
-            .collect();
+    pub unsafe fn copy_buffer(&mut self, copy_buffer_info: &CopyBufferInfo) {
+        let CopyBufferInfo {
+            src_buffer,
+            dst_buffer,
+            regions,
+            _ne: _,
+        } = copy_buffer_info;
 
         if regions.is_empty() {
             return;
         }
 
+        let src_buffer_inner = src_buffer.inner();
+        let dst_buffer_inner = dst_buffer.inner();
+
         let fns = self.device.fns();
-        fns.v1_0.cmd_copy_buffer(
-            self.handle,
-            source.buffer.internal_object(),
-            destination.buffer.internal_object(),
-            regions.len() as u32,
-            regions.as_ptr(),
-        );
+
+        if self.device.api_version() >= Version::V1_3
+            || self.device.enabled_extensions().khr_copy_commands2
+        {
+            let regions: SmallVec<[_; 8]> = regions
+                .iter()
+                .map(|region| {
+                    let &BufferCopy {
+                        src_offset,
+                        dst_offset,
+                        size,
+                        _ne,
+                    } = region;
+
+                    ash::vk::BufferCopy2 {
+                        src_offset: src_offset + src_buffer_inner.offset,
+                        dst_offset: dst_offset + dst_buffer_inner.offset,
+                        size,
+                        ..Default::default()
+                    }
+                })
+                .collect();
+
+            let copy_buffer_info = ash::vk::CopyBufferInfo2 {
+                src_buffer: src_buffer_inner.buffer.internal_object(),
+                dst_buffer: dst_buffer_inner.buffer.internal_object(),
+                region_count: regions.len() as u32,
+                p_regions: regions.as_ptr(),
+                ..Default::default()
+            };
+
+            if self.device.api_version() >= Version::V1_3 {
+                fns.v1_3.cmd_copy_buffer2(self.handle, &copy_buffer_info);
+            } else {
+                fns.khr_copy_commands2
+                    .cmd_copy_buffer2_khr(self.handle, &copy_buffer_info);
+            }
+        } else {
+            let regions: SmallVec<[_; 8]> = regions
+                .iter()
+                .map(|region| {
+                    let &BufferCopy {
+                        src_offset,
+                        dst_offset,
+                        size,
+                        _ne,
+                    } = region;
+
+                    ash::vk::BufferCopy {
+                        src_offset: src_offset + src_buffer_inner.offset,
+                        dst_offset: dst_offset + dst_buffer_inner.offset,
+                        size,
+                    }
+                })
+                .collect();
+
+            fns.v1_0.cmd_copy_buffer(
+                self.handle,
+                src_buffer_inner.buffer.internal_object(),
+                dst_buffer_inner.buffer.internal_object(),
+                regions.len() as u32,
+                regions.as_ptr(),
+            );
+        }
+    }
+
+    /// Calls `vkCmdCopyImage` on the builder.
+    ///
+    /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
+    /// usage of the command anyway.
+    #[inline]
+    pub unsafe fn copy_image(&mut self, copy_image_info: &CopyImageInfo) {
+        let &CopyImageInfo {
+            ref src_image,
+            src_image_layout,
+            ref dst_image,
+            dst_image_layout,
+            ref regions,
+            _ne: _,
+        } = copy_image_info;
+
+        if regions.is_empty() {
+            return;
+        }
+
+        let src_image_inner = src_image.inner();
+        let dst_image_inner = dst_image.inner();
+
+        let fns = self.device.fns();
+
+        if self.device.api_version() >= Version::V1_3
+            || self.device.enabled_extensions().khr_copy_commands2
+        {
+            let regions: SmallVec<[_; 8]> = regions
+                .into_iter()
+                .map(|region| {
+                    let &ImageCopy {
+                        ref src_subresource,
+                        src_offset,
+                        ref dst_subresource,
+                        dst_offset,
+                        extent,
+                        _ne: _,
+                    } = region;
+
+                    let mut src_subresource = src_subresource.clone();
+                    src_subresource.array_layers.start += src_image_inner.first_layer;
+                    src_subresource.array_layers.end += src_image_inner.first_layer;
+                    src_subresource.mip_level += src_image_inner.first_mipmap_level;
+
+                    let mut dst_subresource = dst_subresource.clone();
+                    dst_subresource.array_layers.start += dst_image_inner.first_layer;
+                    dst_subresource.array_layers.end += dst_image_inner.first_layer;
+                    dst_subresource.mip_level += dst_image_inner.first_mipmap_level;
+
+                    ash::vk::ImageCopy2 {
+                        src_subresource: src_subresource.into(),
+                        src_offset: ash::vk::Offset3D {
+                            x: src_offset[0] as i32,
+                            y: src_offset[1] as i32,
+                            z: src_offset[2] as i32,
+                        },
+                        dst_subresource: dst_subresource.into(),
+                        dst_offset: ash::vk::Offset3D {
+                            x: dst_offset[0] as i32,
+                            y: dst_offset[1] as i32,
+                            z: dst_offset[2] as i32,
+                        },
+                        extent: ash::vk::Extent3D {
+                            width: extent[0],
+                            height: extent[1],
+                            depth: extent[2],
+                        },
+                        ..Default::default()
+                    }
+                })
+                .collect();
+
+            let copy_image_info = ash::vk::CopyImageInfo2 {
+                src_image: src_image_inner.image.internal_object(),
+                src_image_layout: src_image_layout.into(),
+                dst_image: dst_image_inner.image.internal_object(),
+                dst_image_layout: dst_image_layout.into(),
+                region_count: regions.len() as u32,
+                p_regions: regions.as_ptr(),
+                ..Default::default()
+            };
+
+            if self.device.api_version() >= Version::V1_3 {
+                fns.v1_3.cmd_copy_image2(self.handle, &copy_image_info);
+            } else {
+                fns.khr_copy_commands2
+                    .cmd_copy_image2_khr(self.handle, &copy_image_info);
+            }
+        } else {
+            let regions: SmallVec<[_; 8]> = regions
+                .into_iter()
+                .map(|region| {
+                    let &ImageCopy {
+                        ref src_subresource,
+                        src_offset,
+                        ref dst_subresource,
+                        dst_offset,
+                        extent,
+                        _ne: _,
+                    } = region;
+
+                    let mut src_subresource = src_subresource.clone();
+                    src_subresource.array_layers.start += src_image_inner.first_layer;
+                    src_subresource.array_layers.end += src_image_inner.first_layer;
+                    src_subresource.mip_level += src_image_inner.first_mipmap_level;
+
+                    let mut dst_subresource = dst_subresource.clone();
+                    dst_subresource.array_layers.start += dst_image_inner.first_layer;
+                    dst_subresource.array_layers.end += dst_image_inner.first_layer;
+                    dst_subresource.mip_level += dst_image_inner.first_mipmap_level;
+
+                    ash::vk::ImageCopy {
+                        src_subresource: src_subresource.into(),
+                        src_offset: ash::vk::Offset3D {
+                            x: src_offset[0] as i32,
+                            y: src_offset[1] as i32,
+                            z: src_offset[2] as i32,
+                        },
+                        dst_subresource: dst_subresource.into(),
+                        dst_offset: ash::vk::Offset3D {
+                            x: dst_offset[0] as i32,
+                            y: dst_offset[1] as i32,
+                            z: dst_offset[2] as i32,
+                        },
+                        extent: ash::vk::Extent3D {
+                            width: extent[0],
+                            height: extent[1],
+                            depth: extent[2],
+                        },
+                    }
+                })
+                .collect();
+
+            fns.v1_0.cmd_copy_image(
+                self.handle,
+                src_image_inner.image.internal_object(),
+                src_image_layout.into(),
+                dst_image_inner.image.internal_object(),
+                dst_image_layout.into(),
+                regions.len() as u32,
+                regions.as_ptr(),
+            );
+        }
     }
 
     /// Calls `vkCmdCopyBufferToImage` on the builder.
@@ -1739,230 +2686,129 @@ impl UnsafeCommandBufferBuilder {
     #[inline]
     pub unsafe fn copy_buffer_to_image(
         &mut self,
-        source: &dyn BufferAccess,
-        destination: &dyn ImageAccess,
-        destination_layout: ImageLayout,
-        regions: impl IntoIterator<Item = UnsafeCommandBufferBuilderBufferImageCopy>,
+        copy_buffer_to_image_info: &CopyBufferToImageInfo,
     ) {
-        let source = source.inner();
-        debug_assert!(source.offset < source.buffer.size());
-        debug_assert!(source.buffer.usage().transfer_source);
-
-        debug_assert_eq!(destination.samples(), SampleCount::Sample1);
-        let destination = destination.inner();
-        debug_assert!(destination.image.usage().transfer_destination);
-        debug_assert!(
-            destination_layout == ImageLayout::General
-                || destination_layout == ImageLayout::TransferDstOptimal
-        );
-
-        let regions: SmallVec<[_; 8]> = regions
-            .into_iter()
-            .map(|copy| {
-                debug_assert!(copy.image_layer_count <= destination.num_layers as u32);
-                debug_assert!(copy.image_mip_level < destination.num_mipmap_levels as u32);
-
-                ash::vk::BufferImageCopy {
-                    buffer_offset: source.offset + copy.buffer_offset,
-                    buffer_row_length: copy.buffer_row_length,
-                    buffer_image_height: copy.buffer_image_height,
-                    image_subresource: ash::vk::ImageSubresourceLayers {
-                        aspect_mask: copy.image_aspect.into(),
-                        mip_level: copy.image_mip_level + destination.first_mipmap_level as u32,
-                        base_array_layer: copy.image_base_array_layer
-                            + destination.first_layer as u32,
-                        layer_count: copy.image_layer_count,
-                    },
-                    image_offset: ash::vk::Offset3D {
-                        x: copy.image_offset[0],
-                        y: copy.image_offset[1],
-                        z: copy.image_offset[2],
-                    },
-                    image_extent: ash::vk::Extent3D {
-                        width: copy.image_extent[0],
-                        height: copy.image_extent[1],
-                        depth: copy.image_extent[2],
-                    },
-                }
-            })
-            .collect();
+        let &CopyBufferToImageInfo {
+            ref src_buffer,
+            ref dst_image,
+            dst_image_layout,
+            ref regions,
+            _ne: _,
+        } = copy_buffer_to_image_info;
 
         if regions.is_empty() {
             return;
         }
 
-        let fns = self.device.fns();
-        fns.v1_0.cmd_copy_buffer_to_image(
-            self.handle,
-            source.buffer.internal_object(),
-            destination.image.internal_object(),
-            destination_layout.into(),
-            regions.len() as u32,
-            regions.as_ptr(),
-        );
-    }
+        let src_buffer_inner = src_buffer.inner();
+        let dst_image_inner = dst_image.inner();
 
-    /// Calls `vkCmdFillBuffer` on the builder.
-    #[inline]
-    pub unsafe fn fill_buffer(&mut self, buffer: &dyn BufferAccess, data: u32) {
         let fns = self.device.fns();
 
-        let size = buffer.size();
+        if self.device.api_version() >= Version::V1_3
+            || self.device.enabled_extensions().khr_copy_commands2
+        {
+            let regions: SmallVec<[_; 8]> = regions
+                .iter()
+                .map(|region| {
+                    let &BufferImageCopy {
+                        buffer_offset,
+                        buffer_row_length,
+                        buffer_image_height,
+                        ref image_subresource,
+                        image_offset,
+                        image_extent,
+                        _ne: _,
+                    } = region;
 
-        let (buffer_handle, offset) = {
-            let BufferInner {
-                buffer: buffer_inner,
-                offset,
-            } = buffer.inner();
-            debug_assert!(buffer_inner.usage().transfer_destination);
-            debug_assert_eq!(offset % 4, 0);
-            (buffer_inner.internal_object(), offset)
-        };
+                    let mut image_subresource = image_subresource.clone();
+                    image_subresource.array_layers.start += dst_image_inner.first_layer;
+                    image_subresource.array_layers.end += dst_image_inner.first_layer;
+                    image_subresource.mip_level += dst_image_inner.first_mipmap_level;
 
-        fns.v1_0
-            .cmd_fill_buffer(self.handle, buffer_handle, offset, size, data);
-    }
-
-    /// Calls `vkCmdUpdateBuffer` on the builder.
-    #[inline]
-    pub unsafe fn update_buffer<D>(&mut self, buffer: &dyn BufferAccess, data: &D)
-    where
-        D: BufferContents + ?Sized,
-    {
-        let fns = self.device.fns();
-
-        let size = buffer.size();
-        debug_assert_eq!(size % 4, 0);
-        debug_assert!(size <= 65536);
-        debug_assert!(size <= size_of_val(data) as DeviceSize);
-
-        let (buffer_handle, offset) = {
-            let BufferInner {
-                buffer: buffer_inner,
-                offset,
-            } = buffer.inner();
-            debug_assert!(buffer_inner.usage().transfer_destination);
-            debug_assert_eq!(offset % 4, 0);
-            (buffer_inner.internal_object(), offset)
-        };
-
-        fns.v1_0.cmd_update_buffer(
-            self.handle,
-            buffer_handle,
-            offset,
-            size,
-            data.as_bytes().as_ptr() as *const _,
-        );
-    }
-
-    /// Calls `vkCmdCopyImage` on the builder.
-    ///
-    /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
-    /// usage of the command anyway.
-    #[inline]
-    pub unsafe fn copy_image(
-        &mut self,
-        source: &dyn ImageAccess,
-        source_layout: ImageLayout,
-        destination: &dyn ImageAccess,
-        destination_layout: ImageLayout,
-        regions: impl IntoIterator<Item = UnsafeCommandBufferBuilderImageCopy>,
-    ) {
-        // TODO: The correct check here is that the uncompressed element size of the source is
-        // equal to the compressed element size of the destination.
-        debug_assert!(
-            source.format().compression().is_some()
-                || destination.format().compression().is_some()
-                || source.format().block_size() == destination.format().block_size()
-        );
-
-        // Depth/Stencil formats are required to match exactly.
-        let source_aspects = source.format().aspects();
-        debug_assert!(
-            !source_aspects.depth && !source_aspects.stencil
-                || source.format() == destination.format()
-        );
-
-        debug_assert_eq!(source.samples(), destination.samples());
-        let source = source.inner();
-        debug_assert!(source.image.usage().transfer_source);
-        debug_assert!(
-            source_layout == ImageLayout::General
-                || source_layout == ImageLayout::TransferSrcOptimal
-        );
-
-        let destination = destination.inner();
-        debug_assert!(destination.image.usage().transfer_destination);
-        debug_assert!(
-            destination_layout == ImageLayout::General
-                || destination_layout == ImageLayout::TransferDstOptimal
-        );
-
-        let regions: SmallVec<[_; 8]> = regions
-            .into_iter()
-            .filter_map(|copy| {
-                // TODO: not everything is checked here
-                debug_assert!(
-                    copy.source_base_array_layer + copy.layer_count <= source.num_layers as u32
-                );
-                debug_assert!(
-                    copy.destination_base_array_layer + copy.layer_count
-                        <= destination.num_layers as u32
-                );
-                debug_assert!(copy.source_mip_level < destination.num_mipmap_levels as u32);
-                debug_assert!(copy.destination_mip_level < destination.num_mipmap_levels as u32);
-
-                if copy.layer_count == 0 {
-                    return None;
-                }
-
-                Some(ash::vk::ImageCopy {
-                    src_subresource: ash::vk::ImageSubresourceLayers {
-                        aspect_mask: copy.aspects.into(),
-                        mip_level: copy.source_mip_level,
-                        base_array_layer: copy.source_base_array_layer + source.first_layer as u32,
-                        layer_count: copy.layer_count,
-                    },
-                    src_offset: ash::vk::Offset3D {
-                        x: copy.source_offset[0],
-                        y: copy.source_offset[1],
-                        z: copy.source_offset[2],
-                    },
-                    dst_subresource: ash::vk::ImageSubresourceLayers {
-                        aspect_mask: copy.aspects.into(),
-                        mip_level: copy.destination_mip_level,
-                        base_array_layer: copy.destination_base_array_layer
-                            + destination.first_layer as u32,
-                        layer_count: copy.layer_count,
-                    },
-                    dst_offset: ash::vk::Offset3D {
-                        x: copy.destination_offset[0],
-                        y: copy.destination_offset[1],
-                        z: copy.destination_offset[2],
-                    },
-                    extent: ash::vk::Extent3D {
-                        width: copy.extent[0],
-                        height: copy.extent[1],
-                        depth: copy.extent[2],
-                    },
+                    ash::vk::BufferImageCopy2 {
+                        buffer_offset: buffer_offset + src_buffer_inner.offset,
+                        buffer_row_length,
+                        buffer_image_height,
+                        image_subresource: image_subresource.into(),
+                        image_offset: ash::vk::Offset3D {
+                            x: image_offset[0] as i32,
+                            y: image_offset[1] as i32,
+                            z: image_offset[2] as i32,
+                        },
+                        image_extent: ash::vk::Extent3D {
+                            width: image_extent[0],
+                            height: image_extent[1],
+                            depth: image_extent[2],
+                        },
+                        ..Default::default()
+                    }
                 })
-            })
-            .collect();
+                .collect();
 
-        if regions.is_empty() {
-            return;
+            let copy_buffer_to_image_info = ash::vk::CopyBufferToImageInfo2 {
+                src_buffer: src_buffer_inner.buffer.internal_object(),
+                dst_image: dst_image_inner.image.internal_object(),
+                dst_image_layout: dst_image_layout.into(),
+                region_count: regions.len() as u32,
+                p_regions: regions.as_ptr(),
+                ..Default::default()
+            };
+
+            if self.device.api_version() >= Version::V1_3 {
+                fns.v1_3
+                    .cmd_copy_buffer_to_image2(self.handle, &copy_buffer_to_image_info);
+            } else {
+                fns.khr_copy_commands2
+                    .cmd_copy_buffer_to_image2_khr(self.handle, &copy_buffer_to_image_info);
+            }
+        } else {
+            let regions: SmallVec<[_; 8]> = regions
+                .iter()
+                .map(|region| {
+                    let &BufferImageCopy {
+                        buffer_offset,
+                        buffer_row_length,
+                        buffer_image_height,
+                        ref image_subresource,
+                        image_offset,
+                        image_extent,
+                        _ne: _,
+                    } = region;
+
+                    let mut image_subresource = image_subresource.clone();
+                    image_subresource.array_layers.start += dst_image_inner.first_layer;
+                    image_subresource.array_layers.end += dst_image_inner.first_layer;
+                    image_subresource.mip_level += dst_image_inner.first_mipmap_level;
+
+                    ash::vk::BufferImageCopy {
+                        buffer_offset: buffer_offset + src_buffer_inner.offset,
+                        buffer_row_length,
+                        buffer_image_height,
+                        image_subresource: image_subresource.into(),
+                        image_offset: ash::vk::Offset3D {
+                            x: image_offset[0] as i32,
+                            y: image_offset[1] as i32,
+                            z: image_offset[2] as i32,
+                        },
+                        image_extent: ash::vk::Extent3D {
+                            width: image_extent[0],
+                            height: image_extent[1],
+                            depth: image_extent[2],
+                        },
+                    }
+                })
+                .collect();
+
+            fns.v1_0.cmd_copy_buffer_to_image(
+                self.handle,
+                src_buffer_inner.buffer.internal_object(),
+                dst_image_inner.image.internal_object(),
+                dst_image_layout.into(),
+                regions.len() as u32,
+                regions.as_ptr(),
+            );
         }
-
-        let fns = self.device.fns();
-        fns.v1_0.cmd_copy_image(
-            self.handle,
-            source.image.internal_object(),
-            source_layout.into(),
-            destination.image.internal_object(),
-            destination_layout.into(),
-            regions.len() as u32,
-            regions.as_ptr(),
-        );
     }
 
     /// Calls `vkCmdCopyImageToBuffer` on the builder.
@@ -1972,102 +2818,753 @@ impl UnsafeCommandBufferBuilder {
     #[inline]
     pub unsafe fn copy_image_to_buffer(
         &mut self,
-        source: &dyn ImageAccess,
-        source_layout: ImageLayout,
-        destination: &dyn BufferAccess,
-        regions: impl IntoIterator<Item = UnsafeCommandBufferBuilderBufferImageCopy>,
+        copy_image_to_buffer_info: &CopyImageToBufferInfo,
     ) {
-        debug_assert_eq!(source.samples(), SampleCount::Sample1);
-        let source = source.inner();
-        debug_assert!(source.image.usage().transfer_source);
-        debug_assert!(
-            source_layout == ImageLayout::General
-                || source_layout == ImageLayout::TransferSrcOptimal
-        );
-
-        let destination = destination.inner();
-        debug_assert!(destination.offset < destination.buffer.size());
-        debug_assert!(destination.buffer.usage().transfer_destination);
-
-        let regions: SmallVec<[_; 8]> = regions
-            .into_iter()
-            .map(|copy| {
-                debug_assert!(copy.image_layer_count <= source.num_layers as u32);
-                debug_assert!(copy.image_mip_level < source.num_mipmap_levels as u32);
-
-                ash::vk::BufferImageCopy {
-                    buffer_offset: destination.offset + copy.buffer_offset,
-                    buffer_row_length: copy.buffer_row_length,
-                    buffer_image_height: copy.buffer_image_height,
-                    image_subresource: ash::vk::ImageSubresourceLayers {
-                        aspect_mask: copy.image_aspect.into(),
-                        mip_level: copy.image_mip_level + source.first_mipmap_level as u32,
-                        base_array_layer: copy.image_base_array_layer + source.first_layer as u32,
-                        layer_count: copy.image_layer_count,
-                    },
-                    image_offset: ash::vk::Offset3D {
-                        x: copy.image_offset[0],
-                        y: copy.image_offset[1],
-                        z: copy.image_offset[2],
-                    },
-                    image_extent: ash::vk::Extent3D {
-                        width: copy.image_extent[0],
-                        height: copy.image_extent[1],
-                        depth: copy.image_extent[2],
-                    },
-                }
-            })
-            .collect();
+        let &CopyImageToBufferInfo {
+            ref src_image,
+            src_image_layout,
+            ref dst_buffer,
+            ref regions,
+            _ne: _,
+        } = copy_image_to_buffer_info;
 
         if regions.is_empty() {
             return;
         }
 
+        let src_image_inner = src_image.inner();
+        let dst_buffer_inner = dst_buffer.inner();
+
         let fns = self.device.fns();
-        fns.v1_0.cmd_copy_image_to_buffer(
+
+        if self.device.api_version() >= Version::V1_3
+            || self.device.enabled_extensions().khr_copy_commands2
+        {
+            let regions: SmallVec<[_; 8]> = regions
+                .iter()
+                .map(|region| {
+                    let &BufferImageCopy {
+                        buffer_offset,
+                        buffer_row_length,
+                        buffer_image_height,
+                        ref image_subresource,
+                        image_offset,
+                        image_extent,
+                        _ne: _,
+                    } = region;
+
+                    let mut image_subresource = image_subresource.clone();
+                    image_subresource.array_layers.start += src_image_inner.first_layer;
+                    image_subresource.array_layers.end += src_image_inner.first_layer;
+                    image_subresource.mip_level += src_image_inner.first_mipmap_level;
+
+                    ash::vk::BufferImageCopy2 {
+                        buffer_offset: buffer_offset + dst_buffer_inner.offset,
+                        buffer_row_length,
+                        buffer_image_height,
+                        image_subresource: image_subresource.into(),
+                        image_offset: ash::vk::Offset3D {
+                            x: image_offset[0] as i32,
+                            y: image_offset[1] as i32,
+                            z: image_offset[2] as i32,
+                        },
+                        image_extent: ash::vk::Extent3D {
+                            width: image_extent[0],
+                            height: image_extent[1],
+                            depth: image_extent[2],
+                        },
+                        ..Default::default()
+                    }
+                })
+                .collect();
+
+            let copy_image_to_buffer_info = ash::vk::CopyImageToBufferInfo2 {
+                src_image: src_image_inner.image.internal_object(),
+                src_image_layout: src_image_layout.into(),
+                dst_buffer: dst_buffer_inner.buffer.internal_object(),
+                region_count: regions.len() as u32,
+                p_regions: regions.as_ptr(),
+                ..Default::default()
+            };
+
+            if self.device.api_version() >= Version::V1_3 {
+                fns.v1_3
+                    .cmd_copy_image_to_buffer2(self.handle, &copy_image_to_buffer_info);
+            } else {
+                fns.khr_copy_commands2
+                    .cmd_copy_image_to_buffer2_khr(self.handle, &copy_image_to_buffer_info);
+            }
+        } else {
+            let regions: SmallVec<[_; 8]> = regions
+                .iter()
+                .map(|region| {
+                    let &BufferImageCopy {
+                        buffer_offset,
+                        buffer_row_length,
+                        buffer_image_height,
+                        ref image_subresource,
+                        image_offset,
+                        image_extent,
+                        _ne: _,
+                    } = region;
+                    let mut image_subresource = image_subresource.clone();
+                    image_subresource.array_layers.start += src_image_inner.first_layer;
+                    image_subresource.array_layers.end += src_image_inner.first_layer;
+                    image_subresource.mip_level += src_image_inner.first_mipmap_level;
+
+                    ash::vk::BufferImageCopy {
+                        buffer_offset: buffer_offset + dst_buffer_inner.offset,
+                        buffer_row_length,
+                        buffer_image_height,
+                        image_subresource: image_subresource.into(),
+                        image_offset: ash::vk::Offset3D {
+                            x: image_offset[0] as i32,
+                            y: image_offset[1] as i32,
+                            z: image_offset[2] as i32,
+                        },
+                        image_extent: ash::vk::Extent3D {
+                            width: image_extent[0],
+                            height: image_extent[1],
+                            depth: image_extent[2],
+                        },
+                    }
+                })
+                .collect();
+
+            fns.v1_0.cmd_copy_image_to_buffer(
+                self.handle,
+                src_image_inner.image.internal_object(),
+                src_image_layout.into(),
+                dst_buffer_inner.buffer.internal_object(),
+                regions.len() as u32,
+                regions.as_ptr(),
+            );
+        }
+    }
+
+    /// Calls `vkCmdFillBuffer` on the builder.
+    #[inline]
+    pub unsafe fn fill_buffer(&mut self, fill_buffer_info: &FillBufferInfo) {
+        let &FillBufferInfo {
+            data,
+            ref dst_buffer,
+            dst_offset,
+            size,
+            _ne: _,
+        } = fill_buffer_info;
+
+        let dst_buffer_inner = dst_buffer.inner();
+
+        let fns = self.device.fns();
+        fns.v1_0.cmd_fill_buffer(
             self.handle,
-            source.image.internal_object(),
-            source_layout.into(),
-            destination.buffer.internal_object(),
-            regions.len() as u32,
-            regions.as_ptr(),
+            dst_buffer_inner.buffer.internal_object(),
+            dst_offset,
+            size,
+            data,
+        );
+    }
+
+    /// Calls `vkCmdUpdateBuffer` on the builder.
+    #[inline]
+    pub unsafe fn update_buffer<D>(
+        &mut self,
+        data: &D,
+        dst_buffer: &dyn BufferAccess,
+        dst_offset: DeviceSize,
+    ) where
+        D: BufferContents + ?Sized,
+    {
+        let dst_buffer_inner = dst_buffer.inner();
+
+        let fns = self.device.fns();
+        fns.v1_0.cmd_update_buffer(
+            self.handle,
+            dst_buffer_inner.buffer.internal_object(),
+            dst_buffer_inner.offset + dst_offset,
+            size_of_val(data) as DeviceSize,
+            data.as_bytes().as_ptr() as *const _,
         );
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct UnsafeCommandBufferBuilderBufferImageCopy {
-    pub buffer_offset: DeviceSize,
-    pub buffer_row_length: u32,
-    pub buffer_image_height: u32,
-    pub image_aspect: ImageAspect,
-    pub image_mip_level: u32,
-    pub image_base_array_layer: u32,
-    pub image_layer_count: u32,
-    pub image_offset: [i32; 3],
-    pub image_extent: [u32; 3],
+/// Parameters to copy data from a buffer to another buffer.
+///
+/// The fields of `regions` represent bytes.
+#[derive(Clone, Debug)]
+pub struct CopyBufferInfo {
+    /// The buffer to copy from.
+    ///
+    /// There is no default value.
+    pub src_buffer: Arc<dyn BufferAccess>,
+
+    /// The buffer to copy to.
+    ///
+    /// There is no default value.
+    pub dst_buffer: Arc<dyn BufferAccess>,
+
+    /// The regions of both buffers to copy between, specified in bytes.
+    ///
+    /// The default value is a single region, with zero offsets and a `size` equal to the smallest
+    /// of the two buffers.
+    pub regions: SmallVec<[BufferCopy; 1]>,
+
+    pub _ne: crate::NonExhaustive,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct UnsafeCommandBufferBuilderImageCopy {
-    pub aspects: ImageAspects,
-    pub source_mip_level: u32,
-    pub destination_mip_level: u32,
-    pub source_base_array_layer: u32,
-    pub destination_base_array_layer: u32,
-    pub layer_count: u32,
-    pub source_offset: [i32; 3],
-    pub destination_offset: [i32; 3],
+impl CopyBufferInfo {
+    /// Returns a `CopyBufferInfo` with the specified `src_buffer` and `dst_buffer`.
+    #[inline]
+    pub fn buffers(src_buffer: Arc<dyn BufferAccess>, dst_buffer: Arc<dyn BufferAccess>) -> Self {
+        let region = BufferCopy {
+            src_offset: 0,
+            dst_offset: 0,
+            size: min(src_buffer.size(), dst_buffer.size()),
+            ..Default::default()
+        };
+
+        Self {
+            src_buffer,
+            dst_buffer,
+            regions: smallvec![region],
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+/// Parameters to copy data from a buffer to another buffer, with type information.
+///
+/// The fields of `regions` represent elements of `T`.
+#[derive(Clone, Debug)]
+pub struct CopyBufferInfoTyped<S, D, T>
+where
+    S: TypedBufferAccess<Content = [T]>,
+    D: TypedBufferAccess<Content = [T]>,
+{
+    /// The buffer to copy from.
+    ///
+    /// There is no default value.
+    pub src_buffer: Arc<S>,
+
+    /// The buffer to copy to.
+    ///
+    /// There is no default value.
+    pub dst_buffer: Arc<D>,
+
+    /// The regions of both buffers to copy between, specified in elements of `T`.
+    ///
+    /// The default value is a single region, with zero offsets and a `size` equal to the smallest
+    /// of the two buffers.
+    pub regions: SmallVec<[BufferCopy; 1]>,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl<S, D, T> CopyBufferInfoTyped<S, D, T>
+where
+    S: TypedBufferAccess<Content = [T]>,
+    D: TypedBufferAccess<Content = [T]>,
+{
+    /// Returns a `CopyBufferInfoTyped` with the specified `src_buffer` and `dst_buffer`.
+    #[inline]
+    pub fn buffers(src_buffer: Arc<S>, dst_buffer: Arc<D>) -> Self {
+        let region = BufferCopy {
+            size: min(src_buffer.len(), dst_buffer.len()),
+            ..Default::default()
+        };
+
+        Self {
+            src_buffer,
+            dst_buffer,
+            regions: smallvec![region],
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+impl<S, D, T> From<CopyBufferInfoTyped<S, D, T>> for CopyBufferInfo
+where
+    S: TypedBufferAccess<Content = [T]> + 'static,
+    D: TypedBufferAccess<Content = [T]> + 'static,
+{
+    #[inline]
+    fn from(typed: CopyBufferInfoTyped<S, D, T>) -> Self {
+        let CopyBufferInfoTyped {
+            src_buffer,
+            dst_buffer,
+            mut regions,
+            _ne: _,
+        } = typed;
+
+        for region in &mut regions {
+            region.src_offset *= size_of::<T>() as DeviceSize;
+            region.dst_offset *= size_of::<T>() as DeviceSize;
+            region.size *= size_of::<T>() as DeviceSize;
+        }
+
+        Self {
+            src_buffer,
+            dst_buffer,
+            regions,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+/// A region of data to copy between buffers.
+#[derive(Clone, Debug)]
+pub struct BufferCopy {
+    /// The offset in bytes or elements from the start of `src_buffer` that copying will
+    /// start from.
+    ///
+    /// The default value is `0`.
+    pub src_offset: DeviceSize,
+
+    /// The offset in bytes or elements from the start of `dst_buffer` that copying will
+    /// start from.
+    ///
+    /// The default value is `0`.
+    pub dst_offset: DeviceSize,
+
+    /// The number of bytes or elements to copy.
+    ///
+    /// The default value is `0`, which must be overridden.
+    pub size: DeviceSize,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for BufferCopy {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            src_offset: 0,
+            dst_offset: 0,
+            size: 0,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+/// Parameters to copy data from an image to another image.
+#[derive(Clone, Debug)]
+pub struct CopyImageInfo {
+    /// The image to copy from.
+    ///
+    /// There is no default value.
+    pub src_image: Arc<dyn ImageAccess>,
+
+    /// The layout used for `src_image` during the copy operation.
+    ///
+    /// The following layouts are allowed:
+    /// - [`ImageLayout::TransferSrcOptimal`]
+    /// - [`ImageLayout::General`]
+    ///
+    /// The default value is [`ImageLayout::TransferSrcOptimal`].
+    pub src_image_layout: ImageLayout,
+
+    /// The image to copy to.
+    ///
+    /// There is no default value.
+    pub dst_image: Arc<dyn ImageAccess>,
+
+    /// The layout used for `dst_image` during the copy operation.
+    ///
+    /// The following layouts are allowed:
+    /// - [`ImageLayout::TransferDstOptimal`]
+    /// - [`ImageLayout::General`]
+    ///
+    /// The default value is [`ImageLayout::TransferDstOptimal`].
+    pub dst_image_layout: ImageLayout,
+
+    /// The regions of both images to copy between.
+    ///
+    /// The default value is a single region, covering the first mip level, and the smallest of the
+    /// array layers and extent of the two images. All aspects of each image are selected, or
+    /// `plane0` if the image is multi-planar.
+    pub regions: SmallVec<[ImageCopy; 1]>,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl CopyImageInfo {
+    /// Returns a `CopyImageInfo` with the specified `src_image` and `dst_image`.
+    #[inline]
+    pub fn images(src_image: Arc<dyn ImageAccess>, dst_image: Arc<dyn ImageAccess>) -> Self {
+        let min_array_layers = src_image
+            .dimensions()
+            .array_layers()
+            .min(dst_image.dimensions().array_layers());
+        let region = ImageCopy {
+            src_subresource: ImageSubresourceLayers {
+                array_layers: 0..min_array_layers,
+                ..src_image.subresource_layers()
+            },
+            dst_subresource: ImageSubresourceLayers {
+                array_layers: 0..min_array_layers,
+                ..dst_image.subresource_layers()
+            },
+            extent: {
+                let src_extent = src_image.dimensions().width_height_depth();
+                let dst_extent = dst_image.dimensions().width_height_depth();
+
+                [
+                    src_extent[0].min(dst_extent[0]),
+                    src_extent[1].min(dst_extent[1]),
+                    src_extent[2].min(dst_extent[2]),
+                ]
+            },
+            ..Default::default()
+        };
+
+        Self {
+            src_image,
+            src_image_layout: ImageLayout::TransferSrcOptimal,
+            dst_image,
+            dst_image_layout: ImageLayout::TransferDstOptimal,
+            regions: smallvec![region],
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+/// A region of data to copy between images.
+#[derive(Clone, Debug)]
+pub struct ImageCopy {
+    /// The subresource of `src_image` to copy from.
+    ///
+    /// The default value is empty, which must be overridden.
+    pub src_subresource: ImageSubresourceLayers,
+
+    /// The offset from the zero coordinate of `src_image` that copying will start from.
+    ///
+    /// The default value is `[0; 3]`.
+    pub src_offset: [u32; 3],
+
+    /// The subresource of `dst_image` to copy to.
+    ///
+    /// The default value is empty, which must be overridden.
+    pub dst_subresource: ImageSubresourceLayers,
+
+    /// The offset from the zero coordinate of `dst_image` that copying will start from.
+    ///
+    /// The default value is `[0; 3]`.
+    pub dst_offset: [u32; 3],
+
+    /// The extent of texels to copy.
+    ///
+    /// The default value is `[0; 3]`, which must be overridden.
     pub extent: [u32; 3],
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for ImageCopy {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            src_subresource: ImageSubresourceLayers {
+                aspects: ImageAspects::none(),
+                mip_level: 0,
+                array_layers: 0..0,
+            },
+            src_offset: [0; 3],
+            dst_subresource: ImageSubresourceLayers {
+                aspects: ImageAspects::none(),
+                mip_level: 0,
+                array_layers: 0..0,
+            },
+            dst_offset: [0; 3],
+            extent: [0; 3],
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+/// Parameters to copy data from a buffer to an image.
+#[derive(Clone, Debug)]
+pub struct CopyBufferToImageInfo {
+    /// The buffer to copy from.
+    ///
+    /// There is no default value.
+    pub src_buffer: Arc<dyn BufferAccess>,
+
+    /// The image to copy to.
+    ///
+    /// There is no default value.
+    pub dst_image: Arc<dyn ImageAccess>,
+
+    /// The layout used for `dst_image` during the copy operation.
+    ///
+    /// The following layouts are allowed:
+    /// - [`ImageLayout::TransferDstOptimal`]
+    /// - [`ImageLayout::General`]
+    ///
+    /// The default value is [`ImageLayout::TransferDstOptimal`].
+    pub dst_image_layout: ImageLayout,
+
+    /// The regions of the buffer and image to copy between.
+    ///
+    /// The default value is a single region, covering all of the buffer and the first mip level of
+    /// the image. All aspects of the image are selected, or `plane0` if the image is multi-planar.
+    pub regions: SmallVec<[BufferImageCopy; 1]>,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl CopyBufferToImageInfo {
+    /// Returns a `CopyBufferToImageInfo` with the specified `src_buffer` and
+    /// `dst_image`.
+    #[inline]
+    pub fn buffer_image(
+        src_buffer: Arc<dyn BufferAccess>,
+        dst_image: Arc<dyn ImageAccess>,
+    ) -> Self {
+        let region = BufferImageCopy {
+            image_subresource: dst_image.subresource_layers(),
+            image_extent: dst_image.dimensions().width_height_depth(),
+            ..Default::default()
+        };
+
+        Self {
+            src_buffer,
+            dst_image,
+            dst_image_layout: ImageLayout::TransferDstOptimal,
+            regions: smallvec![region],
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+/// Parameters to copy data from an image to a buffer.
+#[derive(Clone, Debug)]
+pub struct CopyImageToBufferInfo {
+    /// The image to copy from.
+    ///
+    /// There is no default value.
+    pub src_image: Arc<dyn ImageAccess>,
+
+    /// The layout used for `src_image` during the copy operation.
+    ///
+    /// The following layouts are allowed:
+    /// - [`ImageLayout::TransferSrcOptimal`]
+    /// - [`ImageLayout::General`]
+    ///
+    /// The default value is [`ImageLayout::TransferSrcOptimal`].
+    pub src_image_layout: ImageLayout,
+
+    /// The buffer to copy to.
+    ///
+    /// There is no default value.
+    pub dst_buffer: Arc<dyn BufferAccess>,
+
+    /// The regions of the image and buffer to copy between.
+    ///
+    /// The default value is a single region, covering all of the buffer and the first mip level of
+    /// the image. All aspects of the image are selected, or `plane0` if the image is multi-planar.
+    pub regions: SmallVec<[BufferImageCopy; 1]>,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl CopyImageToBufferInfo {
+    /// Returns a `CopyImageToBufferInfo` with the specified `src_image` and
+    /// `dst_buffer`.
+    #[inline]
+    pub fn image_buffer(
+        src_image: Arc<dyn ImageAccess>,
+        dst_buffer: Arc<dyn BufferAccess>,
+    ) -> Self {
+        let region = BufferImageCopy {
+            image_subresource: src_image.subresource_layers(),
+            image_extent: src_image.dimensions().width_height_depth(),
+            ..Default::default()
+        };
+
+        Self {
+            src_image,
+            src_image_layout: ImageLayout::TransferSrcOptimal,
+            dst_buffer,
+            regions: smallvec![region],
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+/// A region of data to copy between a buffer and an image.
+#[derive(Clone, Debug)]
+pub struct BufferImageCopy {
+    /// The offset in bytes from the start of the buffer that copying will start from.
+    ///
+    /// The default value is `0`.
+    pub buffer_offset: DeviceSize,
+
+    /// The number of texels between successive rows of image data in the buffer.
+    ///
+    /// If set to `0`, the width of the image is used.
+    ///
+    /// The default value is `0`.
+    pub buffer_row_length: u32,
+
+    /// The number of rows between successive depth slices of image data in the buffer.
+    ///
+    /// If set to `0`, the height of the image is used.
+    ///
+    /// The default value is `0`.
+    pub buffer_image_height: u32,
+
+    /// The subresource of the image to copy from/to.
+    ///
+    /// The default value is empty, which must be overridden.
+    pub image_subresource: ImageSubresourceLayers,
+
+    /// The offset from the zero coordinate of the image that copying will start from.
+    ///
+    /// The default value is `[0; 3]`.
+    pub image_offset: [u32; 3],
+
+    /// The extent of texels in the image to copy.
+    ///
+    /// The default value is `[0; 3]`, which must be overridden.
+    pub image_extent: [u32; 3],
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for BufferImageCopy {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            buffer_offset: 0,
+            buffer_row_length: 0,
+            buffer_image_height: 0,
+            image_subresource: ImageSubresourceLayers {
+                aspects: ImageAspects::none(),
+                mip_level: 0,
+                array_layers: 0..0,
+            },
+            image_offset: [0; 3],
+            image_extent: [0; 3],
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+impl BufferImageCopy {
+    // Following
+    // https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap20.html#copies-buffers-images-addressing
+    pub(crate) fn buffer_copy_size(&self, format: Format) -> DeviceSize {
+        let &BufferImageCopy {
+            buffer_offset: _,
+            mut buffer_row_length,
+            mut buffer_image_height,
+            ref image_subresource,
+            image_offset: _,
+            mut image_extent,
+            _ne: _,
+        } = self;
+
+        if buffer_row_length == 0 {
+            buffer_row_length = image_extent[0];
+        }
+
+        if buffer_image_height == 0 {
+            buffer_image_height = image_extent[1];
+        }
+
+        // Scale down from texels to texel blocks, rounding up if needed.
+        let block_extent = format.block_extent();
+        buffer_row_length = (buffer_row_length + block_extent[0] - 1) / block_extent[0];
+        buffer_image_height = (buffer_image_height + block_extent[1] - 1) / block_extent[1];
+
+        for i in 0..3 {
+            image_extent[i] = (image_extent[i] + block_extent[i] - 1) / block_extent[i];
+        }
+
+        // Only one of these is greater than 1, take the greater number.
+        image_extent[2] = max(
+            image_extent[2],
+            image_subresource.array_layers.end - image_subresource.array_layers.start,
+        );
+
+        let blocks_to_last_slice = (image_extent[2] as DeviceSize - 1)
+            * buffer_image_height as DeviceSize
+            * buffer_row_length as DeviceSize;
+        let blocks_to_last_row =
+            (image_extent[1] as DeviceSize - 1) * buffer_row_length as DeviceSize;
+        let num_blocks = blocks_to_last_slice + blocks_to_last_row + image_extent[0] as DeviceSize;
+
+        // https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkBufferImageCopy.html#_description
+        let block_size = if image_subresource.aspects.stencil {
+            1
+        } else if image_subresource.aspects.depth {
+            match format {
+                Format::D16_UNORM | Format::D16_UNORM_S8_UINT => 2,
+                Format::D32_SFLOAT
+                | Format::D32_SFLOAT_S8_UINT
+                | Format::X8_D24_UNORM_PACK32
+                | Format::D24_UNORM_S8_UINT => 4,
+                _ => unreachable!(),
+            }
+        } else {
+            format.block_size().unwrap()
+        };
+
+        num_blocks * block_size
+    }
+}
+
+/// Parameters to fill a region of a buffer with repeated copies of a value.
+#[derive(Clone, Debug)]
+pub struct FillBufferInfo {
+    /// The data to fill with.
+    ///
+    /// The default value is `0`.
+    pub data: u32,
+
+    /// The buffer to fill.
+    ///
+    /// There is no default value.
+    pub dst_buffer: Arc<dyn BufferAccess>,
+
+    /// The offset in bytes from the start of `dst_buffer` that filling will start from.
+    ///
+    /// This must be a multiple of 4.
+    ///
+    /// The default value is `0`.
+    pub dst_offset: DeviceSize,
+
+    /// The number of bytes to fill.
+    ///
+    /// This must be a multiple of 4.
+    ///
+    /// The default value is the size of `dst_buffer`,
+    /// rounded down to the nearest multiple of 4.
+    pub size: DeviceSize,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl FillBufferInfo {
+    /// Returns a `FillBufferInfo` with the specified `dst_buffer`.
+    #[inline]
+    pub fn dst_buffer(dst_buffer: Arc<dyn BufferAccess>) -> Self {
+        let size = dst_buffer.size() & !3;
+
+        Self {
+            data: 0,
+            dst_buffer,
+            dst_offset: 0,
+            size,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        buffer::{BufferUsage, CpuAccessibleBuffer},
-        format::Format,
-    };
+    use crate::format::Format;
 
     #[test]
     fn test_required_len_for_format() {
@@ -2105,33 +3602,5 @@ mod tests {
             required_size_for_format(Format::ASTC_12x12_SRGB_BLOCK, [512, 512, 1], 1),
             29584
         );
-    }
-
-    #[test]
-    fn missing_usage() {
-        let (device, queue) = gfx_dev_and_queue!();
-        let buffer = CpuAccessibleBuffer::from_data(
-            device.clone(),
-            BufferUsage::vertex_buffer(),
-            false,
-            0u32,
-        )
-        .unwrap();
-
-        match check_fill_buffer(&device, buffer.as_ref()) {
-            Err(CheckFillBufferError::BufferMissingUsage) => (),
-            _ => panic!(),
-        }
-    }
-
-    #[test]
-    fn wrong_device() {
-        let (dev1, queue) = gfx_dev_and_queue!();
-        let (dev2, _) = gfx_dev_and_queue!();
-        let buffer = CpuAccessibleBuffer::from_data(dev1, BufferUsage::all(), false, 0u32).unwrap();
-
-        assert_should_panic!({
-            let _ = check_fill_buffer(&dev2, buffer.as_ref());
-        });
     }
 }

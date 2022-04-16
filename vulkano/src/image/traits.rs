@@ -7,26 +7,44 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{sys::UnsafeImage, ImageDescriptorLayouts, ImageDimensions, ImageLayout, SampleCount};
+use super::{
+    sys::UnsafeImage, ImageDescriptorLayouts, ImageDimensions, ImageLayout, ImageSubresourceLayers,
+    ImageSubresourceRange, ImageUsage, SampleCount,
+};
 use crate::{
+    device::{Device, DeviceOwned},
     format::{ClearValue, Format, FormatFeatures},
     SafeDeref,
 };
 use std::{
+    fmt,
     hash::{Hash, Hasher},
     ops::Range,
     sync::Arc,
 };
 
 /// Trait for types that represent the way a GPU can access an image.
-pub unsafe trait ImageAccess: Send + Sync {
+pub unsafe trait ImageAccess: DeviceOwned + Send + Sync {
     /// Returns the inner unsafe image object used by this image.
     fn inner(&self) -> ImageInner;
+
+    /// Returns the dimensions of the image.
+    #[inline]
+    fn dimensions(&self) -> ImageDimensions {
+        // TODO: not necessarily correct because of the new inner() design?
+        self.inner().image.dimensions()
+    }
 
     /// Returns the format of this image.
     #[inline]
     fn format(&self) -> Format {
         self.inner().image.format().unwrap()
+    }
+
+    /// Returns the features supported by the image's format.
+    #[inline]
+    fn format_features(&self) -> &FormatFeatures {
+        self.inner().image.format_features()
     }
 
     /// Returns the number of mipmap levels of this image.
@@ -42,17 +60,24 @@ pub unsafe trait ImageAccess: Send + Sync {
         self.inner().image.samples()
     }
 
-    /// Returns the dimensions of the image.
+    /// Returns the usage the image was created with.
     #[inline]
-    fn dimensions(&self) -> ImageDimensions {
-        // TODO: not necessarily correct because of the new inner() design?
-        self.inner().image.dimensions()
+    fn usage(&self) -> &ImageUsage {
+        self.inner().image.usage()
     }
 
-    /// Returns the features supported by the image's format.
+    /// Returns an `ImageSubresourceLayers` covering the first mip level of the image. All aspects
+    /// of the image are selected, or `plane0` if the image is multi-planar.
     #[inline]
-    fn format_features(&self) -> &FormatFeatures {
-        self.inner().image.format_features()
+    fn subresource_layers(&self) -> ImageSubresourceLayers {
+        self.inner().image.subresource_layers()
+    }
+
+    /// Returns an `ImageSubresourceRange` covering the whole image. If the image is multi-planar,
+    /// only the `color` aspect is selected.
+    #[inline]
+    fn subresource_range(&self) -> ImageSubresourceRange {
+        self.inner().image.subresource_range()
     }
 
     /// When images are created their memory layout is initially `Undefined` or `Preinitialized`.
@@ -120,18 +145,6 @@ pub unsafe trait ImageAccess: Send + Sync {
     /// This must return `Some` if the image is to be used to create an image view.
     fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts>;
 
-    /// Returns a key that uniquely identifies the memory content of the image.
-    /// Two ranges that potentially overlap in memory must return the same key.
-    ///
-    /// The key is shared amongst all buffers and images, which means that you can make several
-    /// different image objects share the same memory, or make some image objects share memory
-    /// with buffers, as long as they return the same key.
-    ///
-    /// Since it is possible to accidentally return the same key for memory ranges that don't
-    /// overlap, the `conflicts_image` or `conflicts_buffer` function should always be called to
-    /// verify whether they actually overlap.
-    fn conflict_key(&self) -> u64;
-
     /// Returns the current mip level that is accessed by the gpu
     fn current_mip_levels_access(&self) -> Range<u32>;
 
@@ -146,16 +159,24 @@ pub struct ImageInner<'a> {
     pub image: &'a Arc<UnsafeImage>,
 
     /// The first layer of `image` to consider.
-    pub first_layer: usize,
+    pub first_layer: u32,
 
     /// The number of layers of `image` to consider.
-    pub num_layers: usize,
+    pub num_layers: u32,
 
     /// The first mipmap level of `image` to consider.
-    pub first_mipmap_level: usize,
+    pub first_mipmap_level: u32,
 
     /// The number of mipmap levels of `image` to consider.
-    pub num_mipmap_levels: usize,
+    pub num_mipmap_levels: u32,
+}
+
+impl fmt::Debug for dyn ImageAccess {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("dyn ImageAccess")
+            .field("inner", &self.inner())
+            .finish()
+    }
 }
 
 impl PartialEq for dyn ImageAccess {
@@ -180,6 +201,15 @@ impl Hash for dyn ImageAccess {
 pub struct ImageAccessFromUndefinedLayout<I> {
     image: I,
     preinitialized: bool,
+}
+
+unsafe impl<I> DeviceOwned for ImageAccessFromUndefinedLayout<I>
+where
+    I: ImageAccess,
+{
+    fn device(&self) -> &Arc<Device> {
+        self.image.device()
+    }
 }
 
 unsafe impl<I> ImageAccess for ImageAccessFromUndefinedLayout<I>
@@ -208,11 +238,6 @@ where
     #[inline]
     fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
         self.image.descriptor_layouts()
-    }
-
-    #[inline]
-    fn conflict_key(&self) -> u64 {
-        self.image.conflict_key()
     }
 
     fn current_mip_levels_access(&self) -> Range<u32> {
@@ -281,11 +306,6 @@ where
     #[inline]
     fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
         (**self).descriptor_layouts()
-    }
-
-    #[inline]
-    fn conflict_key(&self) -> u64 {
-        (**self).conflict_key()
     }
 
     #[inline]

@@ -453,7 +453,7 @@ where
         query_pool.device().internal_object(),
     );
 
-    if !buffer_inner.buffer.usage().transfer_destination {
+    if !buffer_inner.buffer.usage().transfer_dst {
         return Err(CheckCopyQueryPoolResultsError::DestinationMissingTransferUsage);
     }
 
@@ -816,7 +816,7 @@ impl UnsafeCommandBufferBuilder {
         let destination = destination.inner();
         let range = queries.range();
         debug_assert!(destination.offset < destination.buffer.size());
-        debug_assert!(destination.buffer.usage().transfer_destination);
+        debug_assert!(destination.buffer.usage().transfer_dst);
         debug_assert!(destination.offset % size_of::<T>() as DeviceSize == 0);
         debug_assert!(stride % size_of::<T>() as DeviceSize == 0);
 

@@ -99,8 +99,8 @@ mod linux {
             Format::R16G16B16A16_UNORM,
             ImageUsage {
                 sampled: true,
-                transfer_source: true,
-                transfer_destination: true,
+                transfer_src: true,
+                transfer_dst: true,
                 ..ImageUsage::none()
             },
             ImageCreateFlags {

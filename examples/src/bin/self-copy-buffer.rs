@@ -12,7 +12,9 @@
 
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
-    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage},
+    command_buffer::{
+        AutoCommandBufferBuilder, BufferCopy, CommandBufferUsage, CopyBufferInfoTyped,
+    },
     descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
@@ -104,8 +106,8 @@ fn main() {
             device.clone(),
             BufferUsage {
                 storage_buffer: true,
-                transfer_source: true,
-                transfer_destination: true,
+                transfer_src: true,
+                transfer_dst: true,
                 ..BufferUsage::none()
             },
             false,
@@ -129,13 +131,16 @@ fn main() {
     .unwrap();
     builder
         // copy from the first half to the second half (inside the same buffer) before we run the computation
-        .copy_buffer_dimensions(
-            data_buffer.clone(),
-            0,
-            data_buffer.clone(),
-            65536 / 2,
-            65536 / 2,
-        )
+        .copy_buffer(CopyBufferInfoTyped {
+            regions: [BufferCopy {
+                src_offset: 0,
+                dst_offset: 65536 / 2,
+                size: 65536 / 2,
+                ..Default::default()
+            }]
+            .into(),
+            ..CopyBufferInfoTyped::buffers(data_buffer.clone(), data_buffer.clone())
+        })
         .unwrap()
         .bind_pipeline_compute(pipeline.clone())
         .bind_descriptor_sets(

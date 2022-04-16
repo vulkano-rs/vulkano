@@ -331,10 +331,10 @@ impl UnsafeBuffer {
         self.size
     }
 
-    /// Returns the buffer the image was created with.
+    /// Returns the usage the buffer was created with.
     #[inline]
-    pub fn usage(&self) -> BufferUsage {
-        self.usage
+    pub fn usage(&self) -> &BufferUsage {
+        &self.usage
     }
 
     /// Returns a key unique to each `UnsafeBuffer`. Can be used for the `conflicts_key` method.
