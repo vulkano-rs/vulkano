@@ -12,11 +12,18 @@
 - **Breaking** The debug command buffer commands have been renamed to match Vulkan. They now take a `DebugUtilsLabel` value.
 - **Breaking** `end_debug_utils_label` is now `unsafe`, as it requires validation checks that are not implemented yet.
 - **Breaking** `DebugCallback` is renamed to `DebugUtilsMessenger` to match Vulkan, and now takes a `DebugUtilsMessengerCreateInfo` to construct. It is now `unsafe` to create, because the the callback cannot call any Vulkan API functions, which Vulkano is unable to check.
+- **Breaking** The copy, blit, clear, fill and update commands are completely rewritten, and now use `Info` structs to specify the parameters. They now allow you to specify multiple regions at once to copy, give you fill control over the image subresources, and also let you select image layouts.
+- **Breaking** The `transfer_source` and `transfer_destination` fields of `BufferUsage` and `ImageUsage` are renamed to `transfer_src` and `transfer_dst` to match Vulkan.
+- **Breaking** `SubImage` has been removed.
+- **Breaking** The `conflict_key` method on the `BufferAccess` and `ImageAccess` traits is removed.
 - `UnsafeCommandPoolCreateInfo` and `UnsafeCommandPoolCreationError` interfaces exposed.
 - Fixed compile error in Vulkano-win on Android.
 - Added `COVERAGE.md`, a document detailing how much of Vulkan is currently covered by Vulkano.
 - Added debug utils commands to `Queue`.
 - Added `Instance::with_debug_utils_messengers`, to provide creation info for messengers that should be used at instance creation and destruction time. This function is also `unsafe`.
+- Added `subresource_layers` and `subresource_range` methods to `UnsafeImage` and `ImageAccess` to easily generate these types from an image.
+- Added support for the `khr_copy_commands2` device extension.
+- Added the `resolve_image` command buffer command.
 
 # Version 0.29.0 (2022-03-11)
 
