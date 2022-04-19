@@ -294,7 +294,10 @@ pub fn create_vk_debug_callback(instance: Arc<Instance>, is_debug: bool) -> Debu
                         verbose: true,
                     }
                 } else {
-                    DebugUtilsMessageSeverity::none()
+                    DebugUtilsMessageSeverity {
+                        error: true,
+                        ..DebugUtilsMessageSeverity::none()
+                    }
                 },
                 message_type: DebugUtilsMessageType::all(),
                 ..DebugUtilsMessengerCreateInfo::user_callback(Arc::new(|msg| {
