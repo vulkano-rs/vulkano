@@ -8,7 +8,7 @@
 // according to those terms.
 
 pub use super::commands::{
-    bind_push::UnsafeCommandBufferBuilderBindVertexBuffer, render_pass::RenderPassBeginInfo,
+    bind_push::UnsafeCommandBufferBuilderBindVertexBuffer,
     secondary::UnsafeCommandBufferBuilderExecuteCommands,
 };
 use super::{

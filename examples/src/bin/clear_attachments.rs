@@ -9,17 +9,15 @@
 
 use std::sync::Arc;
 use vulkano::{
-    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents},
+    command_buffer::{
+        AutoCommandBufferBuilder, ClearAttachment, ClearRect, CommandBufferUsage,
+        RenderPassBeginInfo, SubpassContents,
+    },
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
         Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
     },
-    format::ClearValue,
-    image::{
-        attachment::{ClearAttachment, ClearRect},
-        view::ImageView,
-        ImageUsage, SwapchainImage,
-    },
+    image::{view::ImageView, ImageUsage, SwapchainImage},
     instance::{Instance, InstanceCreateInfo},
     pipeline::{graphics::viewport::ViewportState, GraphicsPipeline},
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
@@ -230,7 +228,6 @@ fn main() {
                 recreate_swapchain = true;
             }
 
-            let clear_values = vec![[0.0, 0.0, 1.0, 1.0].into()];
             let mut builder = AutoCommandBufferBuilder::primary(
                 device.clone(),
                 queue.family(),
@@ -239,9 +236,11 @@ fn main() {
             .unwrap();
             builder
                 .begin_render_pass(
-                    framebuffers[image_num].clone(),
+                    RenderPassBeginInfo {
+                        clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into())],
+                        ..RenderPassBeginInfo::framebuffer(framebuffers[image_num].clone())
+                    },
                     SubpassContents::Inline,
-                    clear_values,
                 )
                 .unwrap()
                 .bind_pipeline_graphics(pipeline.clone())
@@ -249,32 +248,29 @@ fn main() {
                 // Note that the ClearRect offsets and extents are not affected by the viewport,
                 // they are directly applied to the rendering image
                 .clear_attachments(
-                    [ClearAttachment::Color(
-                        ClearValue::Float([1.0, 0.0, 0.0, 1.0]),
-                        0,
-                    )],
+                    [ClearAttachment::Color {
+                        color_attachment: 0,
+                        clear_value: [1.0, 0.0, 0.0, 1.0].into(),
+                    }],
                     [
                         // Fixed offset and extent
                         ClearRect {
-                            rect_offset: [0, 0],
-                            rect_extent: [100, 100],
-                            base_array_layer: 0,
-                            layer_count: 1,
+                            offset: [0, 0],
+                            extent: [100, 100],
+                            array_layers: 0..1,
                         },
                         // Fixed offset
                         // Relative extent
                         ClearRect {
-                            rect_offset: [100, 150],
-                            rect_extent: [width / 4, height / 4],
-                            base_array_layer: 0,
-                            layer_count: 1,
+                            offset: [100, 150],
+                            extent: [width / 4, height / 4],
+                            array_layers: 0..1,
                         },
                         // Relative offset and extent
                         ClearRect {
-                            rect_offset: [width / 2, height / 2],
-                            rect_extent: [width / 3, height / 5],
-                            base_array_layer: 0,
-                            layer_count: 1,
+                            offset: [width / 2, height / 2],
+                            extent: [width / 3, height / 5],
+                            array_layers: 0..1,
                         },
                     ],
                 )

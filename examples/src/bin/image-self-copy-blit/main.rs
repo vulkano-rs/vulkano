@@ -14,7 +14,7 @@ use vulkano::{
     command_buffer::{
         AutoCommandBufferBuilder, BlitImageInfo, BufferImageCopy, ClearColorImageInfo,
         CommandBufferUsage, CopyBufferToImageInfo, CopyImageInfo, ImageBlit, ImageCopy,
-        PrimaryCommandBuffer, SubpassContents,
+        PrimaryCommandBuffer, RenderPassBeginInfo, SubpassContents,
     },
     descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
     device::{
@@ -378,7 +378,6 @@ fn main() {
                 recreate_swapchain = true;
             }
 
-            let clear_values = vec![[0.0, 0.0, 1.0, 1.0].into()];
             let mut builder = AutoCommandBufferBuilder::primary(
                 device.clone(),
                 queue.family(),
@@ -387,9 +386,11 @@ fn main() {
             .unwrap();
             builder
                 .begin_render_pass(
-                    framebuffers[image_num].clone(),
+                    RenderPassBeginInfo {
+                        clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into())],
+                        ..RenderPassBeginInfo::framebuffer(framebuffers[image_num].clone())
+                    },
                     SubpassContents::Inline,
-                    clear_values,
                 )
                 .unwrap()
                 .set_viewport(0, [viewport.clone()])

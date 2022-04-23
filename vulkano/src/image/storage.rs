@@ -8,14 +8,12 @@
 // according to those terms.
 
 use super::{
-    sys::UnsafeImage,
-    traits::{ImageClearValue, ImageContent},
-    ImageAccess, ImageCreateFlags, ImageCreationError, ImageDescriptorLayouts, ImageDimensions,
-    ImageInner, ImageLayout, ImageUsage,
+    sys::UnsafeImage, traits::ImageContent, ImageAccess, ImageCreateFlags, ImageCreationError,
+    ImageDescriptorLayouts, ImageDimensions, ImageInner, ImageLayout, ImageUsage,
 };
 use crate::{
     device::{physical::QueueFamily, Device, DeviceOwned},
-    format::{ClearValue, Format},
+    format::Format,
     image::sys::UnsafeImageCreateInfo,
     memory::{
         pool::{
@@ -281,16 +279,6 @@ where
             sampled_image: ImageLayout::General,
             input_attachment: ImageLayout::General,
         })
-    }
-}
-
-unsafe impl<A> ImageClearValue<ClearValue> for StorageImage<A>
-where
-    A: MemoryPool,
-{
-    #[inline]
-    fn decode(&self, value: ClearValue) -> Option<ClearValue> {
-        Some(self.format.decode_clear_value(value))
     }
 }
 

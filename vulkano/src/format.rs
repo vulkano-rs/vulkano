@@ -159,41 +159,6 @@ impl Format {
                 | Format::R8_UINT
         )
     }
-
-    #[inline]
-    pub fn decode_clear_value(&self, value: ClearValue) -> ClearValue {
-        let aspects = self.aspects();
-
-        if aspects.depth && aspects.stencil {
-            assert!(matches!(value, ClearValue::DepthStencil(_)));
-        } else if aspects.depth {
-            assert!(matches!(value, ClearValue::Depth(_)));
-        } else if aspects.stencil {
-            assert!(matches!(value, ClearValue::Stencil(_)));
-        } else if let Some(numeric_type) = self.type_color() {
-            match numeric_type {
-                NumericType::SFLOAT
-                | NumericType::UFLOAT
-                | NumericType::SNORM
-                | NumericType::UNORM
-                | NumericType::SSCALED
-                | NumericType::USCALED
-                | NumericType::SRGB => {
-                    assert!(matches!(value, ClearValue::Float(_)));
-                }
-                NumericType::SINT => {
-                    assert!(matches!(value, ClearValue::Int(_)));
-                }
-                NumericType::UINT => {
-                    assert!(matches!(value, ClearValue::Uint(_)));
-                }
-            }
-        } else {
-            panic!("Shouldn't happen!");
-        }
-
-        value
-    }
 }
 
 impl From<Format> for ash::vk::Format {
@@ -421,23 +386,65 @@ pub(crate) enum FormatCompatibilityInner {
 }
 
 /// Describes a uniform value that will be used to fill an image.
-// TODO: should have the same layout as `vk::ClearValue` for performance
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ClearValue {
-    /// Entry for attachments that aren't cleared.
-    None,
     /// Value for floating-point attachments, including `UNORM`, `SNORM`, `SFLOAT`.
     Float([f32; 4]),
+
     /// Value for integer attachments, including `SINT`.
     Int([i32; 4]),
+
     /// Value for unsigned integer attachments, including `UINT`.
     Uint([u32; 4]),
+
     /// Value for depth attachments.
     Depth(f32),
+
     /// Value for stencil attachments.
     Stencil(u32),
+
     /// Value for depth and stencil attachments.
     DepthStencil((f32, u32)),
+}
+
+impl From<ClearValue> for ash::vk::ClearValue {
+    #[inline]
+    fn from(val: ClearValue) -> Self {
+        match val {
+            ClearValue::Float(val) => Self {
+                color: ash::vk::ClearColorValue { float32: val },
+            },
+            ClearValue::Int(val) => Self {
+                color: ash::vk::ClearColorValue { int32: val },
+            },
+            ClearValue::Uint(val) => Self {
+                color: ash::vk::ClearColorValue { uint32: val },
+            },
+            ClearValue::Depth(depth) => Self {
+                depth_stencil: ash::vk::ClearDepthStencilValue { depth, stencil: 0 },
+            },
+            ClearValue::Stencil(stencil) => Self {
+                depth_stencil: ash::vk::ClearDepthStencilValue {
+                    depth: 0.0,
+                    stencil,
+                },
+            },
+            ClearValue::DepthStencil((depth, stencil)) => Self {
+                depth_stencil: ash::vk::ClearDepthStencilValue { depth, stencil },
+            },
+        }
+    }
+}
+
+impl From<ClearColorValue> for ClearValue {
+    #[inline]
+    fn from(val: ClearColorValue) -> Self {
+        match val {
+            ClearColorValue::Float(val) => Self::Float(val),
+            ClearColorValue::Int(val) => Self::Int(val),
+            ClearColorValue::Uint(val) => Self::Uint(val),
+        }
+    }
 }
 
 impl From<[f32; 1]> for ClearValue {

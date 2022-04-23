@@ -15,7 +15,9 @@ use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
 use vulkano::{
     buffer::{BufferAccess, BufferUsage, CpuAccessibleBuffer},
-    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents},
+    command_buffer::{
+        AutoCommandBufferBuilder, CommandBufferUsage, RenderPassBeginInfo, SubpassContents,
+    },
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
         Device, DeviceCreateInfo, DeviceExtensions, DeviceOwned, QueueCreateInfo,
@@ -342,8 +344,6 @@ fn main() {
                 recreate_swapchain = true;
             }
 
-            let clear_values = vec![[0.0, 0.0, 1.0, 1.0].into(), 1.0.into()];
-
             let mut builder = AutoCommandBufferBuilder::primary(
                 device.clone(),
                 queue.family(),
@@ -361,9 +361,11 @@ fn main() {
                     .set_viewport(0, [viewport.clone()])
                     .bind_pipeline_graphics(pipeline.clone())
                     .begin_render_pass(
-                        framebuffers[image_num].clone(),
+                        RenderPassBeginInfo {
+                            clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into()), Some(1.0.into())],
+                            ..RenderPassBeginInfo::framebuffer(framebuffers[image_num].clone())
+                        },
                         SubpassContents::Inline,
-                        clear_values,
                     )
                     .unwrap()
                     // Begin query 0, then draw the red triangle.

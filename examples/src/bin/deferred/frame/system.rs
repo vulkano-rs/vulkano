@@ -17,7 +17,7 @@ use std::sync::Arc;
 use vulkano::{
     command_buffer::{
         AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer,
-        SecondaryCommandBuffer, SubpassContents,
+        RenderPassBeginInfo, SecondaryCommandBuffer, SubpassContents,
     },
     device::Queue,
     format::Format,
@@ -300,14 +300,16 @@ impl FrameSystem {
         .unwrap();
         command_buffer_builder
             .begin_render_pass(
-                framebuffer.clone(),
+                RenderPassBeginInfo {
+                    clear_values: vec![
+                        Some([0.0, 0.0, 0.0, 0.0].into()),
+                        Some([0.0, 0.0, 0.0, 0.0].into()),
+                        Some([0.0, 0.0, 0.0, 0.0].into()),
+                        Some(1.0f32.into()),
+                    ],
+                    ..RenderPassBeginInfo::framebuffer(framebuffer.clone())
+                },
                 SubpassContents::SecondaryCommandBuffers,
-                vec![
-                    [0.0, 0.0, 0.0, 0.0].into(),
-                    [0.0, 0.0, 0.0, 0.0].into(),
-                    [0.0, 0.0, 0.0, 0.0].into(),
-                    1.0f32.into(),
-                ],
             )
             .unwrap();
 

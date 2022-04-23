@@ -37,6 +37,7 @@ use crate::{
     sync::{AccessFlags, PipelineStages},
     Version, VulkanObject,
 };
+use std::cmp::max;
 use std::{
     hash::{Hash, Hasher},
     mem::MaybeUninit,
@@ -243,22 +244,195 @@ impl RenderPass {
     }
 
     /// Returns `true` if this render pass is compatible with the other render pass,
-    /// as defined in the `Render Pass Compatibility` section of the Vulkan specs.
-    // TODO: return proper error
+    /// as defined in the [`Render Pass Compatibility` section of the Vulkan specs](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap8.html#renderpass-compatibility).
     pub fn is_compatible_with(&self, other: &RenderPass) -> bool {
-        if self.attachments().len() != other.attachments().len() {
+        if self == other {
+            return true;
+        }
+
+        let Self {
+            handle: _,
+            device: _,
+            attachments: attachments1,
+            subpasses: subpasses1,
+            dependencies: dependencies1,
+            correlated_view_masks: correlated_view_masks1,
+            granularity: _,
+            views_used: _,
+        } = self;
+        let Self {
+            handle: _,
+            device: _,
+            attachments: attachments2,
+            subpasses: subpasses2,
+            dependencies: dependencies2,
+            correlated_view_masks: correlated_view_masks2,
+            granularity: _,
+            views_used: _,
+        } = other;
+
+        if attachments1.len() != attachments2.len() {
             return false;
         }
 
-        for (my_atch, other_atch) in self.attachments.iter().zip(other.attachments.iter()) {
-            if !my_atch.is_compatible_with(&other_atch) {
-                return false;
-            }
+        if !attachments1
+            .iter()
+            .zip(attachments2)
+            .all(|(attachment_desc1, attachment_desc2)| {
+                let AttachmentDescription {
+                    format: format1,
+                    samples: samples1,
+                    load_op: _,
+                    store_op: _,
+                    stencil_load_op: _,
+                    stencil_store_op: _,
+                    initial_layout: _,
+                    final_layout: _,
+                    _ne: _,
+                } = attachment_desc1;
+                let AttachmentDescription {
+                    format: format2,
+                    samples: samples2,
+                    load_op: _,
+                    store_op: _,
+                    stencil_load_op: _,
+                    stencil_store_op: _,
+                    initial_layout: _,
+                    final_layout: _,
+                    _ne: _,
+                } = attachment_desc2;
+
+                format1 == format2 && samples1 == samples2
+            })
+        {
+            return false;
         }
 
-        return true;
+        let are_atch_refs_compatible = |atch_ref1, atch_ref2| match (atch_ref1, atch_ref2) {
+            (None, None) => true,
+            (Some(atch_ref1), Some(atch_ref2)) => {
+                let &AttachmentReference {
+                    attachment: attachment1,
+                    layout: _,
+                    aspects: aspects1,
+                    _ne: _,
+                } = atch_ref1;
+                let AttachmentDescription {
+                    format: format1,
+                    samples: samples1,
+                    load_op: _,
+                    store_op: _,
+                    stencil_load_op: _,
+                    stencil_store_op: _,
+                    initial_layout: _,
+                    final_layout: _,
+                    _ne: _,
+                } = &attachments1[attachment1 as usize];
 
-        // FIXME: finish
+                let &AttachmentReference {
+                    attachment: attachment2,
+                    layout: _,
+                    aspects: aspects2,
+                    _ne: _,
+                } = atch_ref2;
+                let AttachmentDescription {
+                    format: format2,
+                    samples: samples2,
+                    load_op: _,
+                    store_op: _,
+                    stencil_load_op: _,
+                    stencil_store_op: _,
+                    initial_layout: _,
+                    final_layout: _,
+                    _ne: _,
+                } = &attachments2[attachment2 as usize];
+
+                format1 == format2 && samples1 == samples2 && aspects1 == aspects2
+            }
+            _ => false,
+        };
+
+        if subpasses1.len() != subpasses2.len() {
+            return false;
+        }
+
+        if !(subpasses1.iter())
+            .zip(subpasses2.iter())
+            .all(|(subpass1, subpass2)| {
+                let &SubpassDescription {
+                    view_mask: view_mask1,
+                    input_attachments: ref input_attachments1,
+                    color_attachments: ref color_attachments1,
+                    resolve_attachments: ref resolve_attachments1,
+                    depth_stencil_attachment: ref depth_stencil_attachment1,
+                    preserve_attachments: _,
+                    _ne: _,
+                } = subpass1;
+                let &SubpassDescription {
+                    view_mask: view_mask2,
+                    input_attachments: ref input_attachments2,
+                    color_attachments: ref color_attachments2,
+                    resolve_attachments: ref resolve_attachments2,
+                    depth_stencil_attachment: ref depth_stencil_attachment2,
+                    preserve_attachments: _,
+                    _ne: _,
+                } = subpass2;
+
+                if !(0..max(input_attachments1.len(), input_attachments2.len())).all(|i| {
+                    are_atch_refs_compatible(
+                        input_attachments1.get(i).and_then(|x| x.as_ref()),
+                        input_attachments2.get(i).and_then(|x| x.as_ref()),
+                    )
+                }) {
+                    return false;
+                }
+
+                if !(0..max(color_attachments1.len(), color_attachments2.len())).all(|i| {
+                    are_atch_refs_compatible(
+                        color_attachments1.get(i).and_then(|x| x.as_ref()),
+                        color_attachments2.get(i).and_then(|x| x.as_ref()),
+                    )
+                }) {
+                    return false;
+                }
+
+                if subpasses1.len() > 1
+                    && !(0..max(resolve_attachments1.len(), resolve_attachments2.len())).all(|i| {
+                        are_atch_refs_compatible(
+                            resolve_attachments1.get(i).and_then(|x| x.as_ref()),
+                            resolve_attachments2.get(i).and_then(|x| x.as_ref()),
+                        )
+                    })
+                {
+                    return false;
+                }
+
+                if !are_atch_refs_compatible(
+                    depth_stencil_attachment1.as_ref(),
+                    depth_stencil_attachment2.as_ref(),
+                ) {
+                    return false;
+                }
+
+                if view_mask1 != view_mask2 {
+                    return false;
+                }
+
+                true
+            })
+        {
+            return false;
+        }
+
+        if dependencies1 != dependencies2 {
+            return false;
+        }
+
+        if correlated_view_masks1 != correlated_view_masks2 {
+            return false;
+        }
+
+        true
     }
 
     /// Returns `true` if the subpass of this description is compatible with the shader's fragment
@@ -384,6 +558,18 @@ impl Subpass {
         }
     }
 
+    /// Returns the render pass of this subpass.
+    #[inline]
+    pub fn render_pass(&self) -> &Arc<RenderPass> {
+        &self.render_pass
+    }
+
+    /// Returns the index of this subpass within the renderpass.
+    #[inline]
+    pub fn index(&self) -> u32 {
+        self.subpass_id
+    }
+
     /// Returns the subpass description for this subpass.
     #[inline]
     pub fn subpass_desc(&self) -> &SubpassDescription {
@@ -391,23 +577,22 @@ impl Subpass {
     }
 
     /// Returns whether this subpass is the last one in the render pass. If `true` is returned,
-    /// `next_subpass` will return `None`.
+    /// calling `next_subpass` will panic.
     #[inline]
     pub fn is_last_subpass(&self) -> bool {
         self.subpass_id as usize == self.render_pass.subpasses().len() - 1
     }
 
-    /// Tries to advance to the next subpass after this one, and returns `true` if successful.
+    /// Advances to the next subpass after this one.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if there are no more render passes.
     #[inline]
-    pub fn try_next_subpass(&mut self) -> bool {
+    pub fn next_subpass(&mut self) {
         let next_id = self.subpass_id + 1;
-
-        if (next_id as usize) < self.render_pass.subpasses().len() {
-            self.subpass_id = next_id;
-            true
-        } else {
-            false
-        }
+        assert!((next_id as usize) < self.render_pass.subpasses().len());
+        self.subpass_id = next_id;
     }
 
     #[inline]
@@ -490,30 +675,6 @@ impl Subpass {
             .map_or(false, |f| f.aspects().stencil)
     }
 
-    /// Returns true if the subpass has any depth/stencil attachment.
-    #[inline]
-    pub fn has_depth_stencil_attachment(&self) -> bool {
-        let subpass_desc = self.subpass_desc();
-        match &subpass_desc.depth_stencil_attachment {
-            Some(atch_ref) => true,
-            None => false,
-        }
-    }
-
-    /// Returns true if the subpass has any color or depth/stencil attachment.
-    #[inline]
-    pub fn has_color_or_depth_stencil_attachment(&self) -> bool {
-        if self.num_color_attachments() >= 1 {
-            return true;
-        }
-
-        let subpass_desc = self.subpass_desc();
-        match &subpass_desc.depth_stencil_attachment {
-            Some(atch_ref) => true,
-            None => false,
-        }
-    }
-
     /// Returns the number of samples in the color and/or depth/stencil attachments. Returns `None`
     /// if there is no such attachment in this subpass.
     #[inline]
@@ -533,18 +694,6 @@ impl Subpass {
             })
             .next()
             .map(|atch_desc| atch_desc.samples)
-    }
-
-    /// Returns the render pass of this subpass.
-    #[inline]
-    pub fn render_pass(&self) -> &Arc<RenderPass> {
-        &self.render_pass
-    }
-
-    /// Returns the index of this subpass within the renderpass.
-    #[inline]
-    pub fn index(&self) -> u32 {
-        self.subpass_id
     }
 
     /// Returns `true` if this subpass is compatible with the fragment output definition.
@@ -679,15 +828,6 @@ impl Default for AttachmentDescription {
             final_layout: ImageLayout::Undefined,
             _ne: crate::NonExhaustive(()),
         }
-    }
-}
-
-impl AttachmentDescription {
-    /// Returns true if this attachment is compatible with another attachment, as defined in the
-    /// `Render Pass Compatibility` section of the Vulkan specs.
-    #[inline]
-    pub fn is_compatible_with(&self, other: &AttachmentDescription) -> bool {
-        self.format == other.format && self.samples == other.samples
     }
 }
 
@@ -847,7 +987,7 @@ impl Default for AttachmentReference {
 /// the render pass instance began (for `source_subpass`), or on commands that will be submitted
 /// after the render pass instance ends (for `destination_subpass`). The values must not both be
 /// `None`.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SubpassDependency {
     /// The index of the subpass that writes the data that `destination_subpass` is going to use.
     ///

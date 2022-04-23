@@ -7,32 +7,23 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::pipeline::CheckPipelineError;
 use crate::{
     command_buffer::{
-        auto::{ClearAttachmentsError, RenderPassState},
+        auto::RenderPassState,
         pool::CommandPoolBuilderAlloc,
-        synced::{
-            Command, CommandBufferState, Resource, SyncCommandBufferBuilder,
-            SyncCommandBufferBuilderError,
-        },
+        synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
-        AutoCommandBufferBuilder, AutoCommandBufferBuilderContextError, BeginRenderPassError,
-        PrimaryAutoCommandBuffer, SubpassContents,
+        AutoCommandBufferBuilder, PrimaryAutoCommandBuffer, SubpassContents,
     },
-    format::{ClearValue, NumericType},
-    image::{
-        attachment::{ClearAttachment, ClearRect},
-        ImageAspects,
-    },
-    pipeline::GraphicsPipeline,
-    render_pass::{Framebuffer, LoadOp},
+    device::DeviceOwned,
+    format::{ClearColorValue, ClearValue, Format, NumericType},
+    image::ImageLayout,
+    render_pass::{AttachmentDescription, Framebuffer, LoadOp, RenderPass, SubpassDescription},
     sync::{AccessFlags, PipelineMemoryAccess, PipelineStages},
     Version, VulkanObject,
 };
-use parking_lot::Mutex;
 use smallvec::SmallVec;
-use std::sync::Arc;
+use std::{error, fmt, ops::Range, sync::Arc};
 
 /// # Commands for render passes.
 ///
@@ -41,223 +32,445 @@ impl<P> AutoCommandBufferBuilder<PrimaryAutoCommandBuffer<P::Alloc>, P>
 where
     P: CommandPoolBuilderAlloc,
 {
-    /// Adds a command that enters a render pass.
+    /// Begins a render pass using a render pass object and framebuffer.
     ///
-    /// If `contents` is `SubpassContents::SecondaryCommandBuffers`, then you will only be able to
-    /// add secondary command buffers while you're inside the first subpass of the render pass.
-    /// If it is `SubpassContents::Inline`, you will only be able to add inline draw commands and
-    /// not secondary command buffers.
+    /// You must call this before you can record draw commands.
     ///
-    /// C must contain exactly one clear value for each attachment in the framebuffer.
-    ///
-    /// You must call this before you can add draw commands.
+    /// `contents` specifies what kinds of commands will be recorded in the render pass, either
+    /// draw commands or executions of secondary command buffers.
     #[inline]
-    pub fn begin_render_pass<I>(
+    pub fn begin_render_pass(
         &mut self,
-        framebuffer: Arc<Framebuffer>,
+        mut render_pass_begin_info: RenderPassBeginInfo,
         contents: SubpassContents,
-        clear_values: I,
-    ) -> Result<&mut Self, BeginRenderPassError>
-    where
-        I: IntoIterator<Item = ClearValue>,
-    {
+    ) -> Result<&mut Self, RenderPassError> {
+        self.validate_begin_render_pass(&mut render_pass_begin_info, contents)?;
+
         unsafe {
-            if !self.queue_family().supports_graphics() {
-                return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
-            }
-
-            self.ensure_outside_render_pass()?;
-
-            let clear_values: Vec<_> = framebuffer
-                .render_pass()
-                .convert_clear_values(clear_values)
-                .collect();
-            let mut clear_values_copy = clear_values.iter().enumerate(); // TODO: Proper errors for clear value errors instead of panics
-
-            for (atch_i, atch_desc) in framebuffer
-                .render_pass()
-                .attachments()
-                .into_iter()
-                .enumerate()
-            {
-                match clear_values_copy.next() {
-                    Some((clear_i, clear_value)) => {
-                        if atch_desc.load_op == LoadOp::Clear {
-                            let aspects = atch_desc
-                                .format
-                                .map_or(ImageAspects::none(), |f| f.aspects());
-
-                            if aspects.depth && aspects.stencil {
-                                assert!(
-                                    matches!(clear_value, ClearValue::DepthStencil(_)),
-                                    "Bad ClearValue! index: {}, attachment index: {}, expected: DepthStencil, got: {:?}",
-                                    clear_i,
-                                    atch_i,
-                                    clear_value,
-                                );
-                            } else if aspects.depth {
-                                assert!(
-                                    matches!(clear_value, ClearValue::Depth(_)),
-                                    "Bad ClearValue! index: {}, attachment index: {}, expected: Depth, got: {:?}",
-                                    clear_i,
-                                    atch_i,
-                                    clear_value,
-                                );
-                            } else if aspects.stencil {
-                                assert!(
-                                    matches!(clear_value, ClearValue::Stencil(_)),
-                                    "Bad ClearValue! index: {}, attachment index: {}, expected: Stencil, got: {:?}",
-                                    clear_i,
-                                    atch_i,
-                                    clear_value,
-                                );
-                            } else if let Some(numeric_type) =
-                                atch_desc.format.and_then(|f| f.type_color())
-                            {
-                                match numeric_type {
-                                    NumericType::SFLOAT
-                                    | NumericType::UFLOAT
-                                    | NumericType::SNORM
-                                    | NumericType::UNORM
-                                    | NumericType::SSCALED
-                                    | NumericType::USCALED
-                                    | NumericType::SRGB => {
-                                        assert!(
-                                            matches!(clear_value, ClearValue::Float(_)),
-                                            "Bad ClearValue! index: {}, attachment index: {}, expected: Float, got: {:?}",
-                                            clear_i,
-                                            atch_i,
-                                            clear_value,
-                                        );
-                                    }
-                                    NumericType::SINT => {
-                                        assert!(
-                                            matches!(clear_value, ClearValue::Int(_)),
-                                            "Bad ClearValue! index: {}, attachment index: {}, expected: Int, got: {:?}",
-                                            clear_i,
-                                            atch_i,
-                                            clear_value,
-                                        );
-                                    }
-                                    NumericType::UINT => {
-                                        assert!(
-                                            matches!(clear_value, ClearValue::Uint(_)),
-                                            "Bad ClearValue! index: {}, attachment index: {}, expected: Uint, got: {:?}",
-                                            clear_i,
-                                            atch_i,
-                                            clear_value,
-                                        );
-                                    }
-                                }
-                            } else {
-                                panic!("Shouldn't happen!");
-                            }
-                        } else {
-                            assert!(
-                                matches!(clear_value, ClearValue::None),
-                                "Bad ClearValue! index: {}, attachment index: {}, expected: None, got: {:?}",
-                                clear_i,
-                                atch_i,
-                                clear_value,
-                            );
-                        }
-                    }
-                    None => panic!("Not enough clear values"),
-                }
-            }
-
-            if clear_values_copy.count() != 0 {
-                panic!("Too many clear values")
-            }
+            let &RenderPassBeginInfo {
+                ref render_pass,
+                ref framebuffer,
+                render_area_offset,
+                render_area_extent,
+                clear_values: _,
+                _ne: _,
+            } = &render_pass_begin_info;
 
             let render_pass_state = RenderPassState {
-                subpass: framebuffer.render_pass().clone().first_subpass(),
-                extent: framebuffer.extent(),
-                attached_layers_ranges: framebuffer.attached_layers_ranges(),
+                subpass: render_pass.clone().first_subpass(),
+                render_area_offset,
+                render_area_extent,
                 contents,
-                framebuffer: framebuffer.internal_object(),
+                framebuffer: Some(framebuffer.clone()),
             };
 
-            self.inner.begin_render_pass(
-                RenderPassBeginInfo {
-                    clear_values,
-                    ..RenderPassBeginInfo::framebuffer(framebuffer)
-                },
-                contents,
-            )?;
+            self.inner
+                .begin_render_pass(render_pass_begin_info, contents)?;
 
             self.render_pass_state = Some(render_pass_state);
             Ok(self)
         }
     }
 
-    /// Adds a command that ends the current render pass.
-    ///
-    /// This must be called after you went through all the subpasses and before you can build
-    /// the command buffer or add further commands.
-    #[inline]
-    pub fn end_render_pass(&mut self) -> Result<&mut Self, AutoCommandBufferBuilderContextError> {
-        unsafe {
-            if let Some(render_pass_state) = self.render_pass_state.as_ref() {
-                if !render_pass_state.subpass.is_last_subpass() {
-                    return Err(AutoCommandBufferBuilderContextError::NumSubpassesMismatch {
-                        actual: render_pass_state.subpass.render_pass().subpasses().len() as u32,
-                        current: render_pass_state.subpass.index(),
-                    });
-                }
-            } else {
-                return Err(AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass);
-            }
+    fn validate_begin_render_pass(
+        &self,
+        render_pass_begin_info: &mut RenderPassBeginInfo,
+        contents: SubpassContents,
+    ) -> Result<(), RenderPassError> {
+        let device = self.device();
 
-            if self.query_state.values().any(|state| state.in_subpass) {
-                return Err(AutoCommandBufferBuilderContextError::QueryIsActive);
-            }
-
-            debug_assert!(self.queue_family().supports_graphics());
-
-            self.inner.end_render_pass();
-            self.render_pass_state = None;
-            Ok(self)
+        // VUID-vkCmdBeginRenderPass2-commandBuffer-cmdpool
+        if !self.queue_family().supports_graphics() {
+            return Err(RenderPassError::NotSupportedByQueueFamily);
         }
+
+        // VUID-vkCmdBeginRenderPass2-renderpass
+        if self.render_pass_state.is_some() {
+            return Err(RenderPassError::ForbiddenInsideRenderPass);
+        }
+
+        let &mut RenderPassBeginInfo {
+            ref render_pass,
+            ref framebuffer,
+            render_area_offset,
+            render_area_extent,
+            ref clear_values,
+            _ne: _,
+        } = render_pass_begin_info;
+
+        // VUID-VkRenderPassBeginInfo-commonparent
+        // VUID-vkCmdBeginRenderPass2-framebuffer-02779
+        assert_eq!(device, framebuffer.device());
+
+        // VUID-VkRenderPassBeginInfo-renderPass-00904
+        if !render_pass.is_compatible_with(framebuffer.render_pass()) {
+            return Err(RenderPassError::FramebufferNotCompatible);
+        }
+
+        for i in 0..2 {
+            // VUID-VkRenderPassBeginInfo-pNext-02852
+            // VUID-VkRenderPassBeginInfo-pNext-02853
+            if render_area_offset[i] + render_area_extent[i] > framebuffer.extent()[i] {
+                return Err(RenderPassError::RenderAreaOutOfBounds);
+            }
+        }
+
+        for (attachment_index, (attachment_desc, image_view)) in render_pass
+            .attachments()
+            .iter()
+            .zip(framebuffer.attachments())
+            .enumerate()
+        {
+            let attachment_index = attachment_index as u32;
+            let &AttachmentDescription {
+                initial_layout,
+                final_layout,
+                ..
+            } = attachment_desc;
+
+            for layout in [initial_layout, final_layout] {
+                match layout {
+                    ImageLayout::ColorAttachmentOptimal => {
+                        // VUID-vkCmdBeginRenderPass2-initialLayout-03094
+                        if !image_view.usage().color_attachment {
+                            return Err(RenderPassError::AttachmentImageMissingUsage {
+                                attachment_index,
+                                usage: "color_attachment",
+                            });
+                        }
+                    }
+                    ImageLayout::DepthStencilAttachmentOptimal
+                    | ImageLayout::DepthStencilReadOnlyOptimal => {
+                        // VUID-vkCmdBeginRenderPass2-initialLayout-03096
+                        if !image_view.usage().depth_stencil_attachment {
+                            return Err(RenderPassError::AttachmentImageMissingUsage {
+                                attachment_index,
+                                usage: "depth_stencil_attachment",
+                            });
+                        }
+                    }
+                    ImageLayout::ShaderReadOnlyOptimal => {
+                        // VUID-vkCmdBeginRenderPass2-initialLayout-03097
+                        if !(image_view.usage().sampled || image_view.usage().input_attachment) {
+                            return Err(RenderPassError::AttachmentImageMissingUsage {
+                                attachment_index,
+                                usage: "sampled or input_attachment",
+                            });
+                        }
+                    }
+                    ImageLayout::TransferSrcOptimal => {
+                        // VUID-vkCmdBeginRenderPass2-initialLayout-03098
+                        if !image_view.usage().transfer_src {
+                            return Err(RenderPassError::AttachmentImageMissingUsage {
+                                attachment_index,
+                                usage: "transfer_src",
+                            });
+                        }
+                    }
+                    ImageLayout::TransferDstOptimal => {
+                        // VUID-vkCmdBeginRenderPass2-initialLayout-03099
+                        if !image_view.usage().transfer_dst {
+                            return Err(RenderPassError::AttachmentImageMissingUsage {
+                                attachment_index,
+                                usage: "transfer_dst",
+                            });
+                        }
+                    }
+                    _ => (),
+                }
+            }
+        }
+
+        for subpass_desc in render_pass.subpasses() {
+            let &SubpassDescription {
+                view_mask: _,
+                ref input_attachments,
+                ref color_attachments,
+                ref resolve_attachments,
+                ref depth_stencil_attachment,
+                preserve_attachments: _,
+                _ne: _,
+            } = subpass_desc;
+
+            for atch_ref in (input_attachments.iter())
+                .chain(color_attachments)
+                .chain(resolve_attachments)
+                .chain([depth_stencil_attachment])
+                .flatten()
+            {
+                let image_view = &framebuffer.attachments()[atch_ref.attachment as usize];
+
+                match atch_ref.layout {
+                    ImageLayout::ColorAttachmentOptimal => {
+                        // VUID-vkCmdBeginRenderPass2-initialLayout-03094
+                        if !image_view.usage().color_attachment {
+                            return Err(RenderPassError::AttachmentImageMissingUsage {
+                                attachment_index: atch_ref.attachment,
+                                usage: "color_attachment",
+                            });
+                        }
+                    }
+                    ImageLayout::DepthStencilAttachmentOptimal
+                    | ImageLayout::DepthStencilReadOnlyOptimal => {
+                        // VUID-vkCmdBeginRenderPass2-initialLayout-03096
+                        if !image_view.usage().depth_stencil_attachment {
+                            return Err(RenderPassError::AttachmentImageMissingUsage {
+                                attachment_index: atch_ref.attachment,
+                                usage: "depth_stencil_attachment",
+                            });
+                        }
+                    }
+                    ImageLayout::ShaderReadOnlyOptimal => {
+                        // VUID-vkCmdBeginRenderPass2-initialLayout-03097
+                        if !(image_view.usage().sampled || image_view.usage().input_attachment) {
+                            return Err(RenderPassError::AttachmentImageMissingUsage {
+                                attachment_index: atch_ref.attachment,
+                                usage: "sampled or input_attachment",
+                            });
+                        }
+                    }
+                    ImageLayout::TransferSrcOptimal => {
+                        // VUID-vkCmdBeginRenderPass2-initialLayout-03098
+                        if !image_view.usage().transfer_src {
+                            return Err(RenderPassError::AttachmentImageMissingUsage {
+                                attachment_index: atch_ref.attachment,
+                                usage: "transfer_src",
+                            });
+                        }
+                    }
+                    ImageLayout::TransferDstOptimal => {
+                        // VUID-vkCmdBeginRenderPass2-initialLayout-03099
+                        if !image_view.usage().transfer_dst {
+                            return Err(RenderPassError::AttachmentImageMissingUsage {
+                                attachment_index: atch_ref.attachment,
+                                usage: "transfer_dst",
+                            });
+                        }
+                    }
+                    _ => (),
+                }
+            }
+        }
+
+        // VUID-VkRenderPassBeginInfo-clearValueCount-00902
+        if clear_values.len() < render_pass.attachments().len() {
+            return Err(RenderPassError::ClearValueMissing {
+                attachment_index: clear_values.len() as u32,
+            });
+        }
+
+        // VUID-VkRenderPassBeginInfo-clearValueCount-04962
+        for (attachment_index, (attachment_desc, &clear_value)) in render_pass
+            .attachments()
+            .iter()
+            .zip(clear_values)
+            .enumerate()
+        {
+            let attachment_index = attachment_index as u32;
+            let attachment_format = attachment_desc.format.unwrap();
+
+            if attachment_desc.load_op == LoadOp::Clear
+                || attachment_desc.stencil_load_op == LoadOp::Clear
+            {
+                let clear_value = match clear_value {
+                    Some(x) => x,
+                    None => return Err(RenderPassError::ClearValueMissing { attachment_index }),
+                };
+
+                if let (Some(numeric_type), LoadOp::Clear) =
+                    (attachment_format.type_color(), attachment_desc.load_op)
+                {
+                    match numeric_type {
+                        NumericType::SFLOAT
+                        | NumericType::UFLOAT
+                        | NumericType::SNORM
+                        | NumericType::UNORM
+                        | NumericType::SSCALED
+                        | NumericType::USCALED
+                        | NumericType::SRGB => {
+                            if !matches!(clear_value, ClearValue::Float(_)) {
+                                return Err(RenderPassError::ClearValueNotCompatible {
+                                    clear_value,
+                                    attachment_index,
+                                    attachment_format,
+                                });
+                            }
+                        }
+                        NumericType::SINT => {
+                            if !matches!(clear_value, ClearValue::Int(_)) {
+                                return Err(RenderPassError::ClearValueNotCompatible {
+                                    clear_value,
+                                    attachment_index,
+                                    attachment_format,
+                                });
+                            }
+                        }
+                        NumericType::UINT => {
+                            if !matches!(clear_value, ClearValue::Uint(_)) {
+                                return Err(RenderPassError::ClearValueNotCompatible {
+                                    clear_value,
+                                    attachment_index,
+                                    attachment_format,
+                                });
+                            }
+                        }
+                    }
+                } else {
+                    let attachment_aspects = attachment_format.aspects();
+                    let need_depth =
+                        attachment_aspects.depth && attachment_desc.load_op == LoadOp::Clear;
+                    let need_stencil = attachment_aspects.stencil
+                        && attachment_desc.stencil_load_op == LoadOp::Clear;
+
+                    if need_depth && need_stencil {
+                        if !matches!(clear_value, ClearValue::DepthStencil(_)) {
+                            return Err(RenderPassError::ClearValueNotCompatible {
+                                clear_value,
+                                attachment_index,
+                                attachment_format,
+                            });
+                        }
+                    } else if need_depth {
+                        if !matches!(clear_value, ClearValue::Depth(_)) {
+                            return Err(RenderPassError::ClearValueNotCompatible {
+                                clear_value,
+                                attachment_index,
+                                attachment_format,
+                            });
+                        }
+                    } else if need_stencil {
+                        if !matches!(clear_value, ClearValue::Stencil(_)) {
+                            return Err(RenderPassError::ClearValueNotCompatible {
+                                clear_value,
+                                attachment_index,
+                                attachment_format,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // VUID-vkCmdBeginRenderPass2-initialLayout-03100
+        // If the initialLayout member of any of the VkAttachmentDescription structures specified when creating the render pass specified in the renderPass member of pRenderPassBegin is not VK_IMAGE_LAYOUT_UNDEFINED, then
+        // each such initialLayout must be equal to the current layout of the corresponding attachment image subresource of the framebuffer specified in the framebuffer member of pRenderPassBegin
+
+        // VUID-vkCmdBeginRenderPass2-srcStageMask-06453
+        // TODO:
+
+        // VUID-vkCmdBeginRenderPass2-dstStageMask-06454
+        // TODO:
+
+        // VUID-vkCmdBeginRenderPass2-framebuffer-02533
+        // For any attachment in framebuffer that is used by renderPass and is bound to memory locations that are also bound to another attachment used by renderPass, and if at least one of those uses causes either
+        // attachment to be written to, both attachments must have had the VK_ATTACHMENT_DESCRIPTION_MAY_ALIAS_BIT set
+
+        Ok(())
     }
 
-    /// Adds a command that jumps to the next subpass of the current render pass.
+    /// Advances to the next subpass of the render pass previously begun with `begin_render_pass`.
     #[inline]
     pub fn next_subpass(
         &mut self,
         contents: SubpassContents,
-    ) -> Result<&mut Self, AutoCommandBufferBuilderContextError> {
+    ) -> Result<&mut Self, RenderPassError> {
+        self.validate_next_subpass(contents)?;
+
         unsafe {
             if let Some(render_pass_state) = self.render_pass_state.as_mut() {
-                if render_pass_state.subpass.try_next_subpass() {
-                    render_pass_state.contents = contents;
-                } else {
-                    return Err(AutoCommandBufferBuilderContextError::NumSubpassesMismatch {
-                        actual: render_pass_state.subpass.render_pass().subpasses().len() as u32,
-                        current: render_pass_state.subpass.index(),
-                    });
-                }
+                render_pass_state.subpass.next_subpass();
+                render_pass_state.contents = contents;
 
                 if render_pass_state.subpass.render_pass().views_used() != 0 {
-                    // When multiview is enabled, at the beginning of each subpass all non-render pass state is undefined
+                    // When multiview is enabled, at the beginning of each subpass, all
+                    // non-render pass state is undefined.
                     self.inner.reset_state();
                 }
-            } else {
-                return Err(AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass);
             }
-
-            if self.query_state.values().any(|state| state.in_subpass) {
-                return Err(AutoCommandBufferBuilderContextError::QueryIsActive);
-            }
-
-            debug_assert!(self.queue_family().supports_graphics());
 
             self.inner.next_subpass(contents);
-            Ok(self)
         }
+
+        Ok(self)
     }
 
-    /// Adds a command that clears specific regions of specific attachments of the framebuffer.
+    fn validate_next_subpass(&self, contents: SubpassContents) -> Result<(), RenderPassError> {
+        // VUID-vkCmdNextSubpass2-renderpass
+        let render_pass_state = self
+            .render_pass_state
+            .as_ref()
+            .ok_or_else(|| RenderPassError::ForbiddenOutsideRenderPass)?;
+
+        // VUID-vkCmdNextSubpass2-None-03102
+        if render_pass_state.subpass.is_last_subpass() {
+            return Err(RenderPassError::NoSubpassesRemaining {
+                current_subpass: render_pass_state.subpass.index(),
+            });
+        }
+
+        // VUID?
+        if self.query_state.values().any(|state| state.in_subpass) {
+            return Err(RenderPassError::QueryIsActive);
+        }
+
+        // VUID-vkCmdNextSubpass2-commandBuffer-cmdpool
+        debug_assert!(self.queue_family().supports_graphics());
+
+        // VUID-vkCmdNextSubpass2-bufferlevel
+        // Ensured by the type of the impl block
+
+        Ok(())
+    }
+
+    /// Ends the render pass previously begun with `begin_render_pass`.
+    ///
+    /// This must be called after you went through all the subpasses.
+    #[inline]
+    pub fn end_render_pass(&mut self) -> Result<&mut Self, RenderPassError> {
+        self.validate_end_render_pass()?;
+
+        unsafe {
+            self.inner.end_render_pass();
+            self.render_pass_state = None;
+        }
+
+        Ok(self)
+    }
+
+    fn validate_end_render_pass(&self) -> Result<(), RenderPassError> {
+        // VUID-vkCmdEndRenderPass2-renderpass
+        let render_pass_state = self
+            .render_pass_state
+            .as_ref()
+            .ok_or_else(|| RenderPassError::ForbiddenOutsideRenderPass)?;
+
+        // VUID-vkCmdEndRenderPass2-None-03103
+        if !render_pass_state.subpass.is_last_subpass() {
+            return Err(RenderPassError::SubpassesRemaining {
+                current_subpass: render_pass_state.subpass.index(),
+                remaining_subpasses: render_pass_state.subpass.render_pass().subpasses().len()
+                    as u32
+                    - render_pass_state.subpass.index(),
+            });
+        }
+
+        // VUID?
+        if self.query_state.values().any(|state| state.in_subpass) {
+            return Err(RenderPassError::QueryIsActive);
+        }
+
+        // VUID-vkCmdEndRenderPass2-commandBuffer-cmdpool
+        debug_assert!(self.queue_family().supports_graphics());
+
+        // VUID-vkCmdEndRenderPass2-bufferlevel
+        // Ensured by the type of the impl block
+
+        Ok(())
+    }
+}
+
+impl<L, P> AutoCommandBufferBuilder<L, P> {
+    /// Clears specific regions of specific attachments of the framebuffer.
     ///
     /// `attachments` specify the types of attachments and their clear values.
     /// `rects` specify the regions to clear.
@@ -269,74 +482,15 @@ where
     /// then `ClearRect.base_array_layer` must be zero and `ClearRect.layer_count` must be one.
     ///
     /// The rectangle area must be inside the render area ranges.
-    pub fn clear_attachments<A, R>(
+    pub fn clear_attachments(
         &mut self,
-        attachments: A,
-        rects: R,
-    ) -> Result<&mut Self, ClearAttachmentsError>
-    where
-        A: IntoIterator<Item = ClearAttachment>,
-        R: IntoIterator<Item = ClearRect>,
-    {
-        let pipeline = check_pipeline_graphics(self.state())?;
-        self.ensure_inside_render_pass_inline(pipeline)?;
-
-        let render_pass_state = self.render_pass_state.as_ref().unwrap();
-        let subpass = &render_pass_state.subpass;
-        let has_depth_stencil_attachment = subpass.has_depth_stencil_attachment();
-        let num_color_attachments = subpass.num_color_attachments();
-        let attached_layers_ranges = &render_pass_state.attached_layers_ranges;
-
+        attachments: impl IntoIterator<Item = ClearAttachment>,
+        rects: impl IntoIterator<Item = ClearRect>,
+    ) -> Result<&mut Self, RenderPassError> {
         let attachments: SmallVec<[ClearAttachment; 3]> = attachments.into_iter().collect();
         let rects: SmallVec<[ClearRect; 4]> = rects.into_iter().collect();
 
-        for attachment in &attachments {
-            match attachment {
-                ClearAttachment::Color(_, color_attachment) => {
-                    if *color_attachment >= num_color_attachments as u32 {
-                        return Err(ClearAttachmentsError::InvalidColorAttachmentIndex(
-                            *color_attachment,
-                        ));
-                    }
-                }
-                ClearAttachment::Depth(_)
-                | ClearAttachment::Stencil(_)
-                | ClearAttachment::DepthStencil(_) => {
-                    if !has_depth_stencil_attachment {
-                        return Err(ClearAttachmentsError::DepthStencilAttachmentNotPresent);
-                    }
-                }
-            }
-        }
-
-        for rect in &rects {
-            if rect.rect_extent[0] == 0 || rect.rect_extent[1] == 0 {
-                return Err(ClearAttachmentsError::ZeroRectExtent);
-            }
-            if rect.rect_offset[0] + rect.rect_extent[0] > render_pass_state.extent[0]
-                || rect.rect_offset[1] + rect.rect_extent[1] > render_pass_state.extent[1]
-            {
-                return Err(ClearAttachmentsError::RectOutOfBounds);
-            }
-
-            if rect.layer_count == 0 {
-                return Err(ClearAttachmentsError::ZeroLayerCount);
-            }
-            if subpass.render_pass().views_used() != 0
-                && (rect.base_array_layer != 0 || rect.layer_count != 1)
-            {
-                return Err(ClearAttachmentsError::InvalidMultiviewLayerRange);
-            }
-
-            // make sure rect's layers is inside attached layers ranges
-            for range in attached_layers_ranges {
-                if rect.base_array_layer < range.start
-                    || rect.base_array_layer + rect.layer_count > range.end
-                {
-                    return Err(ClearAttachmentsError::LayersOutOfBounds);
-                }
-            }
-        }
+        self.validate_clear_attachments(&attachments, &rects)?;
 
         unsafe {
             self.inner.clear_attachments(attachments, rects);
@@ -344,17 +498,189 @@ where
 
         Ok(self)
     }
-}
 
-fn check_pipeline_graphics(
-    current_state: CommandBufferState,
-) -> Result<&GraphicsPipeline, CheckPipelineError> {
-    let pipeline = match current_state.pipeline_graphics() {
-        Some(x) => x,
-        None => return Err(CheckPipelineError::PipelineNotBound),
-    };
+    fn validate_clear_attachments(
+        &self,
+        attachments: &[ClearAttachment],
+        rects: &[ClearRect],
+    ) -> Result<(), RenderPassError> {
+        // VUID-vkCmdClearAttachments-renderpass
+        let render_pass_state = self
+            .render_pass_state
+            .as_ref()
+            .ok_or(RenderPassError::ForbiddenOutsideRenderPass)?;
 
-    Ok(pipeline)
+        if render_pass_state.contents != SubpassContents::Inline {
+            return Err(RenderPassError::ForbiddenWithSubpassContents {
+                subpass_contents: render_pass_state.contents,
+            });
+        }
+
+        let subpass_desc = render_pass_state.subpass.subpass_desc();
+        let render_pass = render_pass_state.subpass.render_pass();
+        let is_multiview = render_pass.views_used() != 0;
+
+        for attachment in attachments {
+            match attachment {
+                &ClearAttachment::Color {
+                    color_attachment,
+                    clear_value,
+                } => {
+                    // VUID-vkCmdClearAttachments-aspectMask-02501
+                    let atch_ref = match subpass_desc
+                        .color_attachments
+                        .get(color_attachment as usize)
+                    {
+                        Some(x) => x.as_ref(),
+                        None => {
+                            return Err(RenderPassError::ColorAttachmentIndexOutOfRange {
+                                color_attachment_index: color_attachment,
+                                num_color_attachments: subpass_desc.color_attachments.len() as u32,
+                            });
+                        }
+                    };
+
+                    if let Some(atch_ref) = atch_ref {
+                        let attachment_desc =
+                            render_pass.attachments()[atch_ref.attachment as usize];
+
+                        if let Some(numeric_type) = attachment_desc.format.unwrap().type_color() {
+                            match numeric_type {
+                                NumericType::SFLOAT
+                                | NumericType::UFLOAT
+                                | NumericType::SNORM
+                                | NumericType::UNORM
+                                | NumericType::SSCALED
+                                | NumericType::USCALED
+                                | NumericType::SRGB => {
+                                    if !matches!(clear_value, ClearColorValue::Float(_)) {
+                                        return Err(RenderPassError::ClearValueNotCompatible {
+                                            clear_value: clear_value.into(),
+                                            attachment_index: atch_ref.attachment,
+                                            attachment_format: attachment_desc.format.unwrap(),
+                                        });
+                                    }
+                                }
+                                NumericType::SINT => {
+                                    if !matches!(clear_value, ClearColorValue::Int(_)) {
+                                        return Err(RenderPassError::ClearValueNotCompatible {
+                                            clear_value: clear_value.into(),
+                                            attachment_index: atch_ref.attachment,
+                                            attachment_format: attachment_desc.format.unwrap(),
+                                        });
+                                    }
+                                }
+                                NumericType::UINT => {
+                                    if !matches!(clear_value, ClearColorValue::Uint(_)) {
+                                        return Err(RenderPassError::ClearValueNotCompatible {
+                                            clear_value: clear_value.into(),
+                                            attachment_index: atch_ref.attachment,
+                                            attachment_format: attachment_desc.format.unwrap(),
+                                        });
+                                    }
+                                }
+                            }
+                        } else {
+                            unreachable!()
+                        }
+                    }
+                }
+                ClearAttachment::Depth(_)
+                | ClearAttachment::Stencil(_)
+                | ClearAttachment::DepthStencil(_) => {
+                    if let Some(atch_ref) = &subpass_desc.depth_stencil_attachment {
+                        let attachment_desc =
+                            render_pass.attachments()[atch_ref.attachment as usize];
+                        let aspects = attachment_desc.format.unwrap().aspects();
+
+                        match attachment {
+                            &ClearAttachment::Depth(val) => {
+                                // VUID-vkCmdClearAttachments-aspectMask-02502
+                                if !aspects.depth {
+                                    return Err(RenderPassError::ClearValueNotCompatible {
+                                        clear_value: val.into(),
+                                        attachment_index: atch_ref.attachment,
+                                        attachment_format: attachment_desc.format.unwrap(),
+                                    });
+                                }
+                            }
+                            &ClearAttachment::Stencil(val) => {
+                                // VUID-vkCmdClearAttachments-aspectMask-02503
+                                if !aspects.stencil {
+                                    return Err(RenderPassError::ClearValueNotCompatible {
+                                        clear_value: val.into(),
+                                        attachment_index: atch_ref.attachment,
+                                        attachment_format: attachment_desc.format.unwrap(),
+                                    });
+                                }
+                            }
+                            &ClearAttachment::DepthStencil(val) => {
+                                // VUID-vkCmdClearAttachments-aspectMask-02502
+                                // VUID-vkCmdClearAttachments-aspectMask-02503
+                                if !(aspects.depth && aspects.stencil) {
+                                    return Err(RenderPassError::ClearValueNotCompatible {
+                                        clear_value: val.into(),
+                                        attachment_index: atch_ref.attachment,
+                                        attachment_format: attachment_desc.format.unwrap(),
+                                    });
+                                }
+                            }
+                            _ => unreachable!(),
+                        }
+                    }
+                }
+            }
+        }
+
+        for (rect_index, rect) in rects.iter().enumerate() {
+            for i in 0..2 {
+                // VUID-vkCmdClearAttachments-rect-02682
+                // VUID-vkCmdClearAttachments-rect-02683
+                if rect.extent[i] == 0 {
+                    return Err(RenderPassError::RectExtentZero { rect_index });
+                }
+
+                // VUID-vkCmdClearAttachments-pRects-00016
+                // TODO: This check will always pass in secondary command buffers because of how
+                // it's set in `with_level`.
+                // It needs to be checked during `execute_commands` instead.
+                if rect.offset[i] < render_pass_state.render_area_offset[i]
+                    || rect.offset[i] + rect.extent[i]
+                        > render_pass_state.render_area_offset[i]
+                            + render_pass_state.render_area_extent[i]
+                {
+                    return Err(RenderPassError::RectOutOfBounds { rect_index });
+                }
+            }
+
+            // VUID-vkCmdClearAttachments-layerCount-01934
+            if rect.array_layers.is_empty() {
+                return Err(RenderPassError::RectArrayLayersEmpty { rect_index });
+            }
+
+            // TODO: This can't be checked for secondary command buffers if they didn't provide
+            // a framebuffer with their inheritance info.
+            // It needs to be checked during `execute_commands` instead.
+            if let Some(framebuffer) = &render_pass_state.framebuffer {
+                // VUID-vkCmdClearAttachments-pRects-00017
+                for range in framebuffer.attached_layers_ranges() {
+                    if rect.array_layers.start < range.start || rect.array_layers.end > range.end {
+                        return Err(RenderPassError::RectArrayLayersOutOfBounds { rect_index });
+                    }
+                }
+            }
+
+            // VUID-vkCmdClearAttachments-baseArrayLayer-00018
+            if is_multiview && rect.array_layers != (0..1) {
+                return Err(RenderPassError::MultiviewRectArrayLayersInvalid { rect_index });
+            }
+        }
+
+        // VUID-vkCmdClearAttachments-commandBuffer-cmdpool
+        debug_assert!(self.queue_family().supports_graphics());
+
+        Ok(())
+    }
 }
 
 impl SyncCommandBufferBuilder {
@@ -369,7 +695,7 @@ impl SyncCommandBufferBuilder {
         subpass_contents: SubpassContents,
     ) -> Result<(), SyncCommandBufferBuilderError> {
         struct Cmd {
-            render_pass_begin_info: Mutex<RenderPassBeginInfo>,
+            render_pass_begin_info: RenderPassBeginInfo,
             subpass_contents: SubpassContents,
         }
 
@@ -379,30 +705,25 @@ impl SyncCommandBufferBuilder {
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                let mut render_pass_begin_info = self.render_pass_begin_info.lock();
-                let clear_values = std::mem::take(&mut render_pass_begin_info.clear_values);
-
-                out.begin_render_pass(
-                    RenderPassBeginInfo {
-                        framebuffer: render_pass_begin_info.framebuffer.clone(),
-                        render_area_offset: render_pass_begin_info.render_area_offset,
-                        render_area_extent: render_pass_begin_info.render_area_extent,
-                        clear_values,
-                        _ne: crate::NonExhaustive(()),
-                    },
-                    self.subpass_contents,
-                );
+                out.begin_render_pass(&self.render_pass_begin_info, self.subpass_contents);
             }
         }
 
-        let resources = render_pass_begin_info
-            .framebuffer
-            .render_pass()
+        let &RenderPassBeginInfo {
+            ref render_pass,
+            ref framebuffer,
+            render_area_offset,
+            render_area_extent,
+            ref clear_values,
+            _ne: _,
+        } = &render_pass_begin_info;
+
+        let resources = render_pass
             .attachments()
             .iter()
             .enumerate()
             .map(|(num, desc)| {
-                let image_view = &render_pass_begin_info.framebuffer.attachments()[num];
+                let image_view = &framebuffer.attachments()[num];
 
                 (
                     format!("attachment {}", num).into(),
@@ -436,7 +757,7 @@ impl SyncCommandBufferBuilder {
         }
 
         self.commands.push(Box::new(Cmd {
-            render_pass_begin_info: Mutex::new(render_pass_begin_info),
+            render_pass_begin_info,
             subpass_contents,
         }));
 
@@ -493,14 +814,14 @@ impl SyncCommandBufferBuilder {
     ///
     /// Does nothing if the list of attachments or the list of rects is empty, as it would be a
     /// no-op and isn't a valid usage of the command anyway.
-    pub unsafe fn clear_attachments<A, R>(&mut self, attachments: A, rects: R)
-    where
-        A: IntoIterator<Item = ClearAttachment>,
-        R: IntoIterator<Item = ClearRect>,
-    {
+    pub unsafe fn clear_attachments(
+        &mut self,
+        attachments: impl IntoIterator<Item = ClearAttachment>,
+        rects: impl IntoIterator<Item = ClearRect>,
+    ) {
         struct Cmd {
-            attachments: Mutex<SmallVec<[ClearAttachment; 3]>>,
-            rects: Mutex<SmallVec<[ClearRect; 4]>>,
+            attachments: SmallVec<[ClearAttachment; 3]>,
+            rects: SmallVec<[ClearRect; 4]>,
         }
 
         impl Command for Cmd {
@@ -509,19 +830,13 @@ impl SyncCommandBufferBuilder {
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.clear_attachments(
-                    self.attachments.lock().drain(..),
-                    self.rects.lock().drain(..),
-                );
+                out.clear_attachments(self.attachments.iter().copied(), self.rects.iter().cloned());
             }
         }
         let attachments: SmallVec<[_; 3]> = attachments.into_iter().collect();
         let rects: SmallVec<[_; 4]> = rects.into_iter().collect();
 
-        self.commands.push(Box::new(Cmd {
-            attachments: Mutex::new(attachments),
-            rects: Mutex::new(rects),
-        }));
+        self.commands.push(Box::new(Cmd { attachments, rects }));
     }
 }
 
@@ -530,57 +845,26 @@ impl UnsafeCommandBufferBuilder {
     #[inline]
     pub unsafe fn begin_render_pass(
         &mut self,
-        render_pass_begin_info: RenderPassBeginInfo,
+        render_pass_begin_info: &RenderPassBeginInfo,
         subpass_contents: SubpassContents,
     ) {
-        let RenderPassBeginInfo {
-            framebuffer,
+        let &RenderPassBeginInfo {
+            ref render_pass,
+            ref framebuffer,
             render_area_offset,
             render_area_extent,
-            clear_values,
+            ref clear_values,
             _ne: _,
         } = render_pass_begin_info;
 
-        debug_assert!(
-            render_area_offset[0] + render_area_extent[0] <= framebuffer.extent()[0]
-                && render_area_offset[1] + render_area_extent[1] <= framebuffer.extent()[1]
-        );
-
         let clear_values_vk: SmallVec<[_; 4]> = clear_values
             .into_iter()
-            .map(|clear_value| match clear_value {
-                ClearValue::None => ash::vk::ClearValue {
-                    color: ash::vk::ClearColorValue { float32: [0.0; 4] },
-                },
-                ClearValue::Float(val) => ash::vk::ClearValue {
-                    color: ash::vk::ClearColorValue { float32: val },
-                },
-                ClearValue::Int(val) => ash::vk::ClearValue {
-                    color: ash::vk::ClearColorValue { int32: val },
-                },
-                ClearValue::Uint(val) => ash::vk::ClearValue {
-                    color: ash::vk::ClearColorValue { uint32: val },
-                },
-                ClearValue::Depth(val) => ash::vk::ClearValue {
-                    depth_stencil: ash::vk::ClearDepthStencilValue {
-                        depth: val,
-                        stencil: 0,
-                    },
-                },
-                ClearValue::Stencil(val) => ash::vk::ClearValue {
-                    depth_stencil: ash::vk::ClearDepthStencilValue {
-                        depth: 0.0,
-                        stencil: val,
-                    },
-                },
-                ClearValue::DepthStencil((depth, stencil)) => ash::vk::ClearValue {
-                    depth_stencil: ash::vk::ClearDepthStencilValue { depth, stencil },
-                },
-            })
+            .copied()
+            .map(|clear_value| clear_value.map(Into::into).unwrap_or_default())
             .collect();
 
         let render_pass_begin_info = ash::vk::RenderPassBeginInfo {
-            render_pass: framebuffer.render_pass().internal_object(),
+            render_pass: render_pass.internal_object(),
             framebuffer: framebuffer.internal_object(),
             render_area: ash::vk::Rect2D {
                 offset: ash::vk::Offset2D {
@@ -694,7 +978,7 @@ impl UnsafeCommandBufferBuilder {
     /// Does nothing if the list of attachments or the list of rects is empty, as it would be a
     /// no-op and isn't a valid usage of the command anyway.
     #[inline]
-    pub unsafe fn clear_attachments(
+    pub unsafe fn clear_attachments<'a>(
         &mut self,
         attachments: impl IntoIterator<Item = ClearAttachment>,
         rects: impl IntoIterator<Item = ClearRect>,
@@ -702,25 +986,19 @@ impl UnsafeCommandBufferBuilder {
         let attachments: SmallVec<[_; 3]> = attachments.into_iter().map(|v| v.into()).collect();
         let rects: SmallVec<[_; 4]> = rects
             .into_iter()
-            .filter_map(|rect| {
-                if rect.layer_count == 0 {
-                    return None;
-                }
-
-                Some(ash::vk::ClearRect {
-                    rect: ash::vk::Rect2D {
-                        offset: ash::vk::Offset2D {
-                            x: rect.rect_offset[0] as i32,
-                            y: rect.rect_offset[1] as i32,
-                        },
-                        extent: ash::vk::Extent2D {
-                            width: rect.rect_extent[0],
-                            height: rect.rect_extent[1],
-                        },
+            .map(|rect| ash::vk::ClearRect {
+                rect: ash::vk::Rect2D {
+                    offset: ash::vk::Offset2D {
+                        x: rect.offset[0] as i32,
+                        y: rect.offset[1] as i32,
                     },
-                    base_array_layer: rect.base_array_layer,
-                    layer_count: rect.layer_count,
-                })
+                    extent: ash::vk::Extent2D {
+                        width: rect.extent[0],
+                        height: rect.extent[1],
+                    },
+                },
+                base_array_layer: rect.array_layers.start,
+                layer_count: rect.array_layers.end - rect.array_layers.start,
             })
             .collect();
 
@@ -739,13 +1017,235 @@ impl UnsafeCommandBufferBuilder {
     }
 }
 
+/// Error that can happen when recording a render pass command.
+#[derive(Clone, Debug)]
+pub enum RenderPassError {
+    SyncCommandBufferBuilderError(SyncCommandBufferBuilderError),
+
+    /// A framebuffer image did not have the required usage enabled.
+    AttachmentImageMissingUsage {
+        attachment_index: u32,
+        usage: &'static str,
+    },
+
+    /// A clear value for a render pass attachment is missing.
+    ClearValueMissing {
+        attachment_index: u32,
+    },
+
+    /// A clear value provided for a render pass attachment is not compatible with the attachment's
+    /// format.
+    ClearValueNotCompatible {
+        clear_value: ClearValue,
+        attachment_index: u32,
+        attachment_format: Format,
+    },
+
+    /// An attachment clear value specifies a `color_attachment` index that is not less than the
+    /// number of color attachments in the subpass.
+    ColorAttachmentIndexOutOfRange {
+        color_attachment_index: u32,
+        num_color_attachments: u32,
+    },
+
+    /// Operation forbidden inside a render pass.
+    ForbiddenInsideRenderPass,
+
+    /// Operation forbidden outside a render pass.
+    ForbiddenOutsideRenderPass,
+
+    /// Operation forbidden inside a render subpass with the specified contents.
+    ForbiddenWithSubpassContents {
+        subpass_contents: SubpassContents,
+    },
+
+    /// The framebuffer is not compatible with the render pass.
+    FramebufferNotCompatible,
+
+    /// The render pass uses multiview, and in a clear rectangle, `array_layers` was not `0..1`.
+    MultiviewRectArrayLayersInvalid {
+        rect_index: usize,
+    },
+
+    /// Tried to advance to the next subpass, but there are no subpasses remaining in the render
+    /// pass.
+    NoSubpassesRemaining {
+        current_subpass: u32,
+    },
+
+    /// The queue family doesn't allow this operation.
+    NotSupportedByQueueFamily,
+
+    /// A query is active that conflicts with the current operation.
+    QueryIsActive,
+
+    /// A clear rectangle's `array_layers` is empty.
+    RectArrayLayersEmpty {
+        rect_index: usize,
+    },
+
+    /// A clear rectangle's `array_layers` is outside the range of layers of the attachments.
+    RectArrayLayersOutOfBounds {
+        rect_index: usize,
+    },
+
+    /// A clear rectangle's `extent` is zero.
+    RectExtentZero {
+        rect_index: usize,
+    },
+
+    /// A clear rectangle's `offset` and `extent` are outside the render area of the render pass
+    /// instance.
+    RectOutOfBounds {
+        rect_index: usize,
+    },
+
+    /// The render area's `offset` and `extent` are outside the extent of the framebuffer.
+    RenderAreaOutOfBounds,
+
+    /// Tried to end a render pass with subpasses still remaining in the render pass.
+    SubpassesRemaining {
+        current_subpass: u32,
+        remaining_subpasses: u32,
+    },
+}
+
+impl error::Error for RenderPassError {
+    #[inline]
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            Self::SyncCommandBufferBuilderError(err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for RenderPassError {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match self {
+            Self::SyncCommandBufferBuilderError(_) => write!(f, "a SyncCommandBufferBuilderError"),
+
+            Self::AttachmentImageMissingUsage { attachment_index, usage } => write!(
+                f,
+                "the framebuffer image attached to attachment index {} did not have the required usage {} enabled",
+                attachment_index, usage,
+            ),
+            Self::ClearValueMissing {
+                attachment_index,
+            } => write!(
+                f,
+                "a clear value for render pass attachment {} is missing",
+                attachment_index,
+            ),
+            Self::ClearValueNotCompatible {
+                clear_value,
+                attachment_index,
+                attachment_format,
+            } => write!(
+                f,
+                "a clear value ({:?}) provided for render pass attachment {} is not compatible with the attachment's format ({:?})",
+                clear_value, attachment_index, attachment_format,
+            ),
+            Self::ColorAttachmentIndexOutOfRange {
+                color_attachment_index,
+                num_color_attachments,
+            } => write!(
+                f,
+                "an attachment clear value specifies a `color_attachment` index {} that is not less than the number of color attachments in the subpass ({})",
+                color_attachment_index, num_color_attachments,
+            ),
+            Self::ForbiddenInsideRenderPass => {
+                write!(f, "operation forbidden inside a render pass")
+            }
+            Self::ForbiddenOutsideRenderPass => {
+                write!(f, "operation forbidden outside a render pass")
+            }
+            Self::ForbiddenWithSubpassContents { subpass_contents } => write!(
+                f,
+                "operation forbidden inside a render subpass with contents {:?}",
+                subpass_contents,
+            ),
+            Self::FramebufferNotCompatible => write!(
+                f,
+                "the framebuffer is not compatible with the render pass",
+            ),
+            Self::MultiviewRectArrayLayersInvalid { rect_index } => write!(
+                f,
+                "the render pass uses multiview, and in clear rectangle index {}, `array_layers` was not `0..1`",
+                rect_index,
+            ),
+            Self::NoSubpassesRemaining {
+                current_subpass,
+            } => write!(
+                f,
+                "tried to advance to the next subpass after subpass {}, but there are no subpasses remaining in the render pass",
+                current_subpass,
+            ),
+            Self::NotSupportedByQueueFamily => {
+                write!(f, "the queue family doesn't allow this operation")
+            }
+            Self::QueryIsActive => write!(
+                f,
+                "a query is active that conflicts with the current operation"
+            ),
+            Self::RectArrayLayersEmpty { rect_index } => write!(
+                f,
+                "clear rectangle index {} `array_layers` is empty",
+                rect_index,
+            ),
+            Self::RectArrayLayersOutOfBounds { rect_index } => write!(
+                f,
+                "clear rectangle index {} `array_layers` is outside the range of layers of the attachments",
+                rect_index,
+            ),
+            Self::RectExtentZero { rect_index } => write!(
+                f,
+                "clear rectangle index {} `extent` is zero",
+                rect_index,
+            ),
+            Self::RectOutOfBounds { rect_index } => write!(
+                f,
+                "clear rectangle index {} `offset` and `extent` are outside the render area of the render pass instance",
+                rect_index,
+            ),
+            Self::RenderAreaOutOfBounds => write!(
+                f,
+                "the render area's `offset` and `extent` are outside the extent of the framebuffer",
+            ),
+            Self::SubpassesRemaining {
+                current_subpass,
+                remaining_subpasses,
+            } => write!(
+                f,
+                "tried to end a render pass at subpass {}, with {} subpasses still remaining in the render pass",
+                current_subpass, remaining_subpasses,
+            ),
+        }
+    }
+}
+
+impl From<SyncCommandBufferBuilderError> for RenderPassError {
+    #[inline]
+    fn from(err: SyncCommandBufferBuilderError) -> Self {
+        Self::SyncCommandBufferBuilderError(err)
+    }
+}
+
 /// Parameters to begin a new render pass.
 #[derive(Clone, Debug)]
 pub struct RenderPassBeginInfo {
+    /// The render pass to begin.
+    ///
+    /// If this is not the render pass that `framebuffer` was created with, it must be compatible
+    /// with that render pass.
+    ///
+    /// The default value is the render pass of `framebuffer`.
+    pub render_pass: Arc<RenderPass>,
+
     /// The framebuffer to use for rendering.
     ///
     /// There is no default value.
-    // TODO: allow passing a different render pass
     pub framebuffer: Arc<Framebuffer>,
 
     /// The offset from the top left corner of the framebuffer that will be rendered to.
@@ -760,13 +1260,15 @@ pub struct RenderPassBeginInfo {
     /// The default value is [`framebuffer.extent()`].
     pub render_area_extent: [u32; 2],
 
-    /// The clear values that should be used for the attachments in the framebuffer.
+    /// Provides, for each attachment in `render_pass` that has a load operation of
+    /// [`LoadOp::Clear`], the clear values that should be used for the attachments in the
+    /// framebuffer. There must be exactly [`framebuffer.attachments().len()`] elements provided,
+    /// and each one must match the attachment format.
     ///
-    /// There must be exactly [`framebuffer.attachments().len()`] elements provided, and each one
-    /// must match the attachment format.
+    /// To skip over an attachment whose load operation is something else, provide `None`.
     ///
     /// The default value is empty, which must be overridden if the framebuffer has attachments.
-    pub clear_values: Vec<ClearValue>,
+    pub clear_values: Vec<Option<ClearValue>>,
 
     pub _ne: crate::NonExhaustive,
 }
@@ -777,6 +1279,7 @@ impl RenderPassBeginInfo {
         let render_area_extent = framebuffer.extent();
 
         Self {
+            render_pass: framebuffer.render_pass().clone(),
             framebuffer,
             render_area_offset: [0, 0],
             render_area_extent,
@@ -784,4 +1287,77 @@ impl RenderPassBeginInfo {
             _ne: crate::NonExhaustive(()),
         }
     }
+}
+
+/// Clear attachment type, used in [`clear_attachments`](crate::command_buffer::AutoCommandBufferBuilder::clear_attachments) command.
+#[derive(Clone, Copy, Debug)]
+pub enum ClearAttachment {
+    /// Clear the color attachment at the specified index, with the specified clear value.
+    Color {
+        color_attachment: u32,
+        clear_value: ClearColorValue,
+    },
+
+    /// Clear the depth attachment with the specified depth value.
+    Depth(f32),
+
+    /// Clear the stencil attachment with the specified stencil value.
+    Stencil(u32),
+
+    /// Clear the depth and stencil attachments with the specified depth and stencil values.
+    DepthStencil((f32, u32)),
+}
+
+impl From<ClearAttachment> for ash::vk::ClearAttachment {
+    fn from(v: ClearAttachment) -> Self {
+        match v {
+            ClearAttachment::Color {
+                color_attachment,
+                clear_value,
+            } => ash::vk::ClearAttachment {
+                aspect_mask: ash::vk::ImageAspectFlags::COLOR,
+                color_attachment,
+                clear_value: ash::vk::ClearValue {
+                    color: clear_value.into(),
+                },
+            },
+            ClearAttachment::Depth(depth) => ash::vk::ClearAttachment {
+                aspect_mask: ash::vk::ImageAspectFlags::DEPTH,
+                color_attachment: 0,
+                clear_value: ash::vk::ClearValue {
+                    depth_stencil: ash::vk::ClearDepthStencilValue { depth, stencil: 0 },
+                },
+            },
+            ClearAttachment::Stencil(stencil) => ash::vk::ClearAttachment {
+                aspect_mask: ash::vk::ImageAspectFlags::STENCIL,
+                color_attachment: 0,
+                clear_value: ash::vk::ClearValue {
+                    depth_stencil: ash::vk::ClearDepthStencilValue {
+                        depth: 0.0,
+                        stencil,
+                    },
+                },
+            },
+            ClearAttachment::DepthStencil((depth, stencil)) => ash::vk::ClearAttachment {
+                aspect_mask: ash::vk::ImageAspectFlags::DEPTH | ash::vk::ImageAspectFlags::STENCIL,
+                color_attachment: 0,
+                clear_value: ash::vk::ClearValue {
+                    depth_stencil: ash::vk::ClearDepthStencilValue { depth, stencil },
+                },
+            },
+        }
+    }
+}
+
+/// Specifies the clear region for the [`clear_attachments`](crate::command_buffer::AutoCommandBufferBuilder::clear_attachments) command.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ClearRect {
+    /// The rectangle offset.
+    pub offset: [u32; 2],
+
+    /// The width and height of the rectangle.
+    pub extent: [u32; 2],
+
+    /// The range of array layers to be cleared.
+    pub array_layers: Range<u32>,
 }

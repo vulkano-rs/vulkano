@@ -7,13 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{
-    traits::{ImageClearValue, ImageContent},
-    ImageAccess, ImageDescriptorLayouts, ImageInner, ImageLayout,
-};
+use super::{traits::ImageContent, ImageAccess, ImageDescriptorLayouts, ImageInner, ImageLayout};
 use crate::{
     device::{Device, DeviceOwned},
-    format::ClearValue,
     swapchain::Swapchain,
     OomError,
 };
@@ -123,16 +119,6 @@ where
     #[inline]
     fn is_layout_initialized(&self) -> bool {
         self.is_layout_initialized()
-    }
-}
-
-unsafe impl<W> ImageClearValue<ClearValue> for SwapchainImage<W>
-where
-    W: Send + Sync,
-{
-    #[inline]
-    fn decode(&self, value: ClearValue) -> Option<ClearValue> {
-        Some(self.swapchain.image_format().decode_clear_value(value))
     }
 }
 
