@@ -16,6 +16,9 @@
 - **Breaking** The `transfer_source` and `transfer_destination` fields of `BufferUsage` and `ImageUsage` are renamed to `transfer_src` and `transfer_dst` to match Vulkan.
 - **Breaking** `SubImage` has been removed.
 - **Breaking** The `conflict_key` method on the `BufferAccess` and `ImageAccess` traits is removed.
+- **Breaking** `ImageViewCreateInfo` now has a single `subresource_range` field instead of separate fields for aspect, mip levels and array layers.
+- **Breaking** The `aspects`, `mip_levels` and `array_layers` methods of `ImageViewAbstract` are removed, and replaced with a single `subresource_range` method.
+- **Breaking** The `current_mip_levels_access` and `current_array_layers_access` methods of `ImageAccess` are removed.
 - `UnsafeCommandPoolCreateInfo` and `UnsafeCommandPoolCreationError` interfaces exposed.
 - Fixed compile error in Vulkano-win on Android.
 - Added `COVERAGE.md`, a document detailing how much of Vulkan is currently covered by Vulkano.
@@ -24,6 +27,7 @@
 - Added `subresource_layers` and `subresource_range` methods to `UnsafeImage` and `ImageAccess` to easily generate these types from an image.
 - Added support for the `khr_copy_commands2` device extension.
 - Added the `resolve_image` command buffer command.
+- `BufferViewAbstract` now has a `range` method that returns the byte range of the underlying buffer that the view covers.
 
 # Version 0.29.0 (2022-03-11)
 
