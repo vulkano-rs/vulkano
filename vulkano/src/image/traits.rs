@@ -13,7 +13,7 @@ use super::{
 };
 use crate::{
     device::{Device, DeviceOwned},
-    format::{ClearValue, Format, FormatFeatures},
+    format::{Format, FormatFeatures},
     SafeDeref,
 };
 use std::{
@@ -313,13 +313,6 @@ where
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
     }
-}
-
-/// Extension trait for images. Checks whether the value `T` can be used as a clear value for the
-/// given image.
-// TODO: isn't that for image views instead?
-pub unsafe trait ImageClearValue<T>: ImageAccess {
-    fn decode(&self, value: T) -> Option<ClearValue>;
 }
 
 pub unsafe trait ImageContent<P>: ImageAccess {

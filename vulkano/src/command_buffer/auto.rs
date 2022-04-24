@@ -38,11 +38,10 @@ use crate::{
     image::{sys::UnsafeImage, ImageAccess, ImageLayout, ImageSubresourceRange},
     pipeline::GraphicsPipeline,
     query::{QueryControlFlags, QueryPipelineStatisticFlags, QueryType},
-    render_pass::Subpass,
+    render_pass::{Framebuffer, Subpass},
     sync::{AccessCheckError, AccessFlags, GpuFuture, PipelineMemoryAccess, PipelineStages},
     DeviceSize, OomError,
 };
-use smallvec::SmallVec;
 use std::{
     collections::HashMap,
     error, fmt,
@@ -85,9 +84,9 @@ pub struct AutoCommandBufferBuilder<L, P = StandardCommandPoolBuilder> {
 pub(super) struct RenderPassState {
     pub(super) subpass: Subpass,
     pub(super) contents: SubpassContents,
-    pub(super) attached_layers_ranges: SmallVec<[Range<u32>; 4]>,
-    pub(super) extent: [u32; 2],
-    pub(super) framebuffer: ash::vk::Framebuffer, // Always null for secondary command buffers
+    pub(super) render_area_offset: [u32; 2],
+    pub(super) render_area_extent: [u32; 2],
+    pub(super) framebuffer: Option<Arc<Framebuffer>>, // In a secondary command buffer, this is only known if provided with the inheritance info.
 }
 
 // The state of an active query.
@@ -286,15 +285,22 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
                 |CommandBufferInheritanceRenderPassInfo {
                      subpass,
                      framebuffer,
-                 }| RenderPassState {
-                    subpass: subpass.clone(),
-                    contents: SubpassContents::Inline,
-                    extent: framebuffer.as_ref().map(|f| f.extent()).unwrap_or_default(),
-                    attached_layers_ranges: framebuffer
+                 }| {
+                    // In a secondary command buffer, we don't know the render area yet, so use a
+                    // dummy value.
+                    let render_area_offset = [0, 0];
+                    let render_area_extent = framebuffer
                         .as_ref()
-                        .map(|f| f.attached_layers_ranges())
-                        .unwrap_or_default(),
-                    framebuffer: ash::vk::Framebuffer::null(), // Only needed for primary command buffers
+                        .map(|f| f.extent())
+                        .unwrap_or([u32::MAX, u32::MAX]);
+
+                    RenderPassState {
+                        subpass: subpass.clone(),
+                        contents: SubpassContents::Inline,
+                        render_area_offset,
+                        render_area_extent,
+                        framebuffer: framebuffer.clone(),
+                    }
                 },
             );
 
@@ -785,11 +791,6 @@ err_gen!(BuildError {
     OomError,
 });
 
-err_gen!(BeginRenderPassError {
-    AutoCommandBufferBuilderContextError,
-    SyncCommandBufferBuilderError,
-});
-
 err_gen!(CopyQueryPoolResultsError {
     AutoCommandBufferBuilderContextError,
     CheckCopyQueryPoolResultsError,
@@ -883,80 +884,6 @@ err_gen!(ResetQueryPoolError {
     AutoCommandBufferBuilderContextError,
     CheckResetQueryPoolError,
 });
-
-/// Errors that can happen when calling [`clear_attachments`](AutoCommandBufferBuilder::clear_attachments)
-#[derive(Debug, Copy, Clone)]
-pub enum ClearAttachmentsError {
-    /// AutoCommandBufferBuilderContextError
-    AutoCommandBufferBuilderContextError(AutoCommandBufferBuilderContextError),
-    /// CheckPipelineError
-    CheckPipelineError(CheckPipelineError),
-
-    /// The index of the color attachment is not present
-    InvalidColorAttachmentIndex(u32),
-    /// There is no depth/stencil attachment present
-    DepthStencilAttachmentNotPresent,
-    /// The clear rect cannot have extent of `0`
-    ZeroRectExtent,
-    /// The layer count cannot be `0`
-    ZeroLayerCount,
-    /// The clear rect region must be inside the render area of the render pass
-    RectOutOfBounds,
-    /// The clear rect's layers must be inside the layers ranges for all the attachments
-    LayersOutOfBounds,
-    /// If the render pass instance this is recorded in uses multiview,
-    /// then `ClearRect.base_array_layer` must be zero and `ClearRect.layer_count` must be one
-    InvalidMultiviewLayerRange,
-}
-
-impl error::Error for ClearAttachmentsError {}
-
-impl fmt::Display for ClearAttachmentsError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match *self {
-            ClearAttachmentsError::AutoCommandBufferBuilderContextError(e) => write!(fmt, "{}", e)?,
-            ClearAttachmentsError::CheckPipelineError(e) => write!(fmt, "{}", e)?,
-            ClearAttachmentsError::InvalidColorAttachmentIndex(index) => {
-                write!(fmt, "Color attachment {} is not present", index)?
-            }
-            ClearAttachmentsError::DepthStencilAttachmentNotPresent => {
-                write!(fmt, "There is no depth/stencil attachment present")?
-            }
-            ClearAttachmentsError::ZeroRectExtent => {
-                write!(fmt, "The clear rect cannot have extent of 0")?
-            }
-            ClearAttachmentsError::ZeroLayerCount => write!(fmt, "The layer count cannot be 0")?,
-            ClearAttachmentsError::RectOutOfBounds => write!(
-                fmt,
-                "The clear rect region must be inside the render area of the render pass"
-            )?,
-            ClearAttachmentsError::LayersOutOfBounds => write!(
-                fmt,
-                "The clear rect's layers must be inside the layers ranges for all the attachments"
-            )?,
-            ClearAttachmentsError::InvalidMultiviewLayerRange => write!(
-                fmt,
-                "If the render pass instance this is recorded in uses multiview, then `ClearRect.base_array_layer` must be zero and `ClearRect.layer_count` must be one" 
-            )?,
-        }
-        Ok(())
-    }
-}
-
-impl From<AutoCommandBufferBuilderContextError> for ClearAttachmentsError {
-    #[inline]
-    fn from(err: AutoCommandBufferBuilderContextError) -> ClearAttachmentsError {
-        ClearAttachmentsError::AutoCommandBufferBuilderContextError(err)
-    }
-}
-
-impl From<CheckPipelineError> for ClearAttachmentsError {
-    #[inline]
-    fn from(err: CheckPipelineError) -> ClearAttachmentsError {
-        ClearAttachmentsError::CheckPipelineError(err)
-    }
-}
 
 #[derive(Debug, Copy, Clone)]
 pub enum AutoCommandBufferBuilderContextError {

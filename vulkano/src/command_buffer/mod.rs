@@ -91,6 +91,7 @@ pub use self::commands::{
         CheckBeginQueryError, CheckCopyQueryPoolResultsError, CheckEndQueryError,
         CheckResetQueryPoolError, CheckWriteTimestampError,
     },
+    render_pass::{ClearAttachment, ClearRect, RenderPassBeginInfo, RenderPassError},
     transfer::{
         BufferCopy, BufferImageCopy, CopyBufferInfo, CopyBufferInfoTyped, CopyBufferToImageInfo,
         CopyImageInfo, CopyImageToBufferInfo, FillBufferInfo, ImageCopy,
@@ -100,11 +101,10 @@ pub use self::commands::{
 pub use self::{
     auto::{
         AutoCommandBufferBuilder, AutoCommandBufferBuilderContextError, BeginError,
-        BeginQueryError, BeginRenderPassError, BuildError, CopyQueryPoolResultsError,
-        DispatchError, DispatchIndirectError, DrawError, DrawIndexedError,
-        DrawIndexedIndirectError, DrawIndirectError, EndQueryError, ExecuteCommandsError,
-        PrimaryAutoCommandBuffer, ResetQueryPoolError, SecondaryAutoCommandBuffer,
-        WriteTimestampError,
+        BeginQueryError, BuildError, CopyQueryPoolResultsError, DispatchError,
+        DispatchIndirectError, DrawError, DrawIndexedError, DrawIndexedIndirectError,
+        DrawIndirectError, EndQueryError, ExecuteCommandsError, PrimaryAutoCommandBuffer,
+        ResetQueryPoolError, SecondaryAutoCommandBuffer, WriteTimestampError,
     },
     traits::{
         CommandBufferExecError, CommandBufferExecFuture, PrimaryCommandBuffer,

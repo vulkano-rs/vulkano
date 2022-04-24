@@ -76,41 +76,28 @@ impl RenderPass {
                     .potential_format_features(),
             );
 
-            if aspects.color {
-                // VUID-VkAttachmentDescription2-format-03294
-                if matches!(
-                    initial_layout,
+            for layout in [initial_layout, final_layout] {
+                match layout {
+                    ImageLayout::ColorAttachmentOptimal => {
+                        // VUID-VkAttachmentDescription2-format-03295
+                        // VUID-VkAttachmentDescription2-format-03297
+                        if aspects.depth || aspects.stencil {
+                            return Err(RenderPassCreationError::AttachmentLayoutInvalid {
+                                attachment: atch_num,
+                            });
+                        }
+                    }
                     ImageLayout::DepthStencilAttachmentOptimal
-                        | ImageLayout::DepthStencilReadOnlyOptimal
-                ) {
-                    return Err(RenderPassCreationError::AttachmentLayoutInvalid {
-                        attachment: atch_num,
-                    });
-                }
-
-                // VUID-VkAttachmentDescription2-format-03296
-                if matches!(
-                    final_layout,
-                    ImageLayout::DepthStencilAttachmentOptimal
-                        | ImageLayout::DepthStencilReadOnlyOptimal
-                ) {
-                    return Err(RenderPassCreationError::AttachmentLayoutInvalid {
-                        attachment: atch_num,
-                    });
-                }
-            } else if aspects.depth || aspects.stencil {
-                // VUID-VkAttachmentDescription2-format-03295
-                if matches!(initial_layout, ImageLayout::ColorAttachmentOptimal) {
-                    return Err(RenderPassCreationError::AttachmentLayoutInvalid {
-                        attachment: atch_num,
-                    });
-                }
-
-                // VUID-VkAttachmentDescription2-format-03297
-                if matches!(final_layout, ImageLayout::ColorAttachmentOptimal) {
-                    return Err(RenderPassCreationError::AttachmentLayoutInvalid {
-                        attachment: atch_num,
-                    });
+                    | ImageLayout::DepthStencilReadOnlyOptimal => {
+                        // VUID-VkAttachmentDescription2-format-03294
+                        // VUID-VkAttachmentDescription2-format-03296
+                        if aspects.color {
+                            return Err(RenderPassCreationError::AttachmentLayoutInvalid {
+                                attachment: atch_num,
+                            });
+                        }
+                    }
+                    _ => (),
                 }
             }
         }

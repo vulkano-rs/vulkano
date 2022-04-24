@@ -29,7 +29,8 @@ use std::sync::Arc;
 use vulkano::{
     buffer::{BufferUsage, CpuBufferPool},
     command_buffer::{
-        AutoCommandBufferBuilder, CommandBufferUsage, DrawIndirectCommand, SubpassContents,
+        AutoCommandBufferBuilder, CommandBufferUsage, DrawIndirectCommand, RenderPassBeginInfo,
+        SubpassContents,
     },
     descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
     device::{
@@ -332,8 +333,6 @@ fn main() {
                     recreate_swapchain = true;
                 }
 
-                let clear_values = vec![[0.0, 0.0, 1.0, 1.0].into()];
-
                 // Allocate a GPU buffer to hold the arguments for this frames draw call. The compute
                 // shader will only update vertex_count, so set the other parameters correctly here.
                 let indirect_commands = [DrawIndirectCommand {
@@ -381,9 +380,11 @@ fn main() {
                     .dispatch([1, 1, 1])
                     .unwrap()
                     .begin_render_pass(
-                        framebuffers[image_num].clone(),
+                        RenderPassBeginInfo {
+                            clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into())],
+                            ..RenderPassBeginInfo::framebuffer(framebuffers[image_num].clone())
+                        },
                         SubpassContents::Inline,
-                        clear_values,
                     )
                     .unwrap()
                     // The indirect draw call is placed in the command buffer with a reference to the GPU buffer that will

@@ -170,7 +170,7 @@ where
         // Framebuffer, if present on the secondary command buffer, must be the
         // same as the one in the current render pass.
         if let Some(framebuffer) = &render_pass.framebuffer {
-            if framebuffer.internal_object() != render_pass_state.framebuffer {
+            if Some(framebuffer) != render_pass_state.framebuffer.as_ref() {
                 return Err(AutoCommandBufferBuilderContextError::IncompatibleFramebuffer);
             }
         }

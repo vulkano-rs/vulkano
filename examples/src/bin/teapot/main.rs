@@ -12,7 +12,9 @@ use examples::{Normal, Vertex, INDICES, NORMALS, VERTICES};
 use std::{sync::Arc, time::Instant};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, TypedBufferAccess},
-    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents},
+    command_buffer::{
+        AutoCommandBufferBuilder, CommandBufferUsage, RenderPassBeginInfo, SubpassContents,
+    },
     descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
@@ -274,9 +276,14 @@ fn main() {
                 .unwrap();
                 builder
                     .begin_render_pass(
-                        framebuffers[image_num].clone(),
+                        RenderPassBeginInfo {
+                            clear_values: vec![
+                                Some([0.0, 0.0, 1.0, 1.0].into()),
+                                Some(1f32.into()),
+                            ],
+                            ..RenderPassBeginInfo::framebuffer(framebuffers[image_num].clone())
+                        },
                         SubpassContents::Inline,
-                        vec![[0.0, 0.0, 1.0, 1.0].into(), 1f32.into()],
                     )
                     .unwrap()
                     .bind_pipeline_graphics(pipeline.clone())

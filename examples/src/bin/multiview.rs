@@ -19,7 +19,7 @@ use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
     command_buffer::{
         AutoCommandBufferBuilder, BufferImageCopy, CommandBufferUsage, CopyImageToBufferInfo,
-        SubpassContents,
+        RenderPassBeginInfo, SubpassContents,
     },
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
@@ -260,8 +260,6 @@ fn main() {
         .build(device.clone())
         .unwrap();
 
-    let clear_values = vec![[0.0, 0.0, 1.0, 1.0].into()];
-
     let create_buffer = || {
         CpuAccessibleBuffer::from_iter(
             device.clone(),
@@ -285,7 +283,13 @@ fn main() {
     // drawing commands are broadcast to each view in the view mask of the active renderpass
     // which means only a single draw call is needed to draw to multiple layers of the framebuffer
     builder
-        .begin_render_pass(framebuffer.clone(), SubpassContents::Inline, clear_values)
+        .begin_render_pass(
+            RenderPassBeginInfo {
+                clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into())],
+                ..RenderPassBeginInfo::framebuffer(framebuffer.clone())
+            },
+            SubpassContents::Inline,
+        )
         .unwrap()
         .bind_pipeline_graphics(pipeline.clone())
         .bind_vertex_buffers(0, vertex_buffer.clone())
