@@ -373,16 +373,6 @@ where
             input_attachment: self.layout,
         })
     }
-
-    #[inline]
-    fn current_mip_levels_access(&self) -> Range<u32> {
-        0..self.mip_levels()
-    }
-
-    #[inline]
-    fn current_array_layers_access(&self) -> Range<u32> {
-        0..self.dimensions().array_layers()
-    }
 }
 
 unsafe impl<P, A> ImageContent<P> for ImmutableImage<A>
@@ -452,16 +442,6 @@ where
     #[inline]
     fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
         None
-    }
-
-    #[inline]
-    fn current_mip_levels_access(&self) -> Range<u32> {
-        self.mip_levels_access.clone()
-    }
-
-    #[inline]
-    fn current_array_layers_access(&self) -> Range<u32> {
-        self.array_layers_access.clone()
     }
 }
 

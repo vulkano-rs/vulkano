@@ -8,8 +8,8 @@
 // according to those terms.
 
 use super::{
-    sys::UnsafeImage, ImageDescriptorLayouts, ImageDimensions, ImageLayout, ImageSubresourceLayers,
-    ImageSubresourceRange, ImageUsage, SampleCount,
+    sys::UnsafeImage, ImageAspects, ImageDescriptorLayouts, ImageDimensions, ImageLayout,
+    ImageSubresourceLayers, ImageSubresourceRange, ImageUsage, SampleCount,
 };
 use crate::{
     device::{Device, DeviceOwned},
@@ -19,7 +19,6 @@ use crate::{
 use std::{
     fmt,
     hash::{Hash, Hasher},
-    ops::Range,
     sync::Arc,
 };
 
@@ -31,8 +30,41 @@ pub unsafe trait ImageAccess: DeviceOwned + Send + Sync {
     /// Returns the dimensions of the image.
     #[inline]
     fn dimensions(&self) -> ImageDimensions {
-        // TODO: not necessarily correct because of the new inner() design?
-        self.inner().image.dimensions()
+        let inner = self.inner();
+
+        match self
+            .inner()
+            .image
+            .dimensions()
+            .mip_level_dimensions(inner.first_mipmap_level)
+            .unwrap()
+        {
+            ImageDimensions::Dim1d {
+                width,
+                array_layers: _,
+            } => ImageDimensions::Dim1d {
+                width,
+                array_layers: inner.num_layers,
+            },
+            ImageDimensions::Dim2d {
+                width,
+                height,
+                array_layers: _,
+            } => ImageDimensions::Dim2d {
+                width,
+                height,
+                array_layers: inner.num_layers,
+            },
+            ImageDimensions::Dim3d {
+                width,
+                height,
+                depth,
+            } => ImageDimensions::Dim3d {
+                width,
+                height,
+                depth,
+            },
+        }
     }
 
     /// Returns the format of this image.
@@ -50,8 +82,7 @@ pub unsafe trait ImageAccess: DeviceOwned + Send + Sync {
     /// Returns the number of mipmap levels of this image.
     #[inline]
     fn mip_levels(&self) -> u32 {
-        // TODO: not necessarily correct because of the new inner() design?
-        self.inner().image.mip_levels()
+        self.inner().num_mipmap_levels
     }
 
     /// Returns the number of samples of this image.
@@ -70,14 +101,38 @@ pub unsafe trait ImageAccess: DeviceOwned + Send + Sync {
     /// of the image are selected, or `plane0` if the image is multi-planar.
     #[inline]
     fn subresource_layers(&self) -> ImageSubresourceLayers {
-        self.inner().image.subresource_layers()
+        ImageSubresourceLayers {
+            aspects: {
+                let aspects = self.format().aspects();
+
+                if aspects.plane0 {
+                    ImageAspects {
+                        plane0: true,
+                        ..ImageAspects::none()
+                    }
+                } else {
+                    aspects
+                }
+            },
+            mip_level: 0,
+            array_layers: 0..self.dimensions().array_layers(),
+        }
     }
 
     /// Returns an `ImageSubresourceRange` covering the whole image. If the image is multi-planar,
     /// only the `color` aspect is selected.
     #[inline]
     fn subresource_range(&self) -> ImageSubresourceRange {
-        self.inner().image.subresource_range()
+        ImageSubresourceRange {
+            aspects: ImageAspects {
+                plane0: false,
+                plane1: false,
+                plane2: false,
+                ..self.format().aspects()
+            },
+            mip_levels: 0..self.mip_levels(),
+            array_layers: 0..self.dimensions().array_layers(),
+        }
     }
 
     /// When images are created their memory layout is initially `Undefined` or `Preinitialized`.
@@ -93,12 +148,15 @@ pub unsafe trait ImageAccess: DeviceOwned + Send + Sync {
     /// `Preinitialized` state, this may result in the vulkan implementation attempting to use
     /// an image in an invalid layout. The same problem must be considered by the implementer
     /// of the method.
+    #[inline]
     unsafe fn layout_initialized(&self) {}
 
+    #[inline]
     fn is_layout_initialized(&self) -> bool {
         false
     }
 
+    #[inline]
     fn initial_layout(&self) -> ImageLayout {
         self.inner().image.initial_layout()
     }
@@ -144,12 +202,6 @@ pub unsafe trait ImageAccess: DeviceOwned + Send + Sync {
     ///
     /// This must return `Some` if the image is to be used to create an image view.
     fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts>;
-
-    /// Returns the current mip level that is accessed by the gpu
-    fn current_mip_levels_access(&self) -> Range<u32>;
-
-    /// Returns the current array layer that is accessed by the gpu
-    fn current_array_layers_access(&self) -> Range<u32>;
 }
 
 /// Inner information about an image.
@@ -239,14 +291,6 @@ where
     fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
         self.image.descriptor_layouts()
     }
-
-    fn current_mip_levels_access(&self) -> Range<u32> {
-        self.image.current_mip_levels_access()
-    }
-
-    fn current_array_layers_access(&self) -> Range<u32> {
-        self.image.current_array_layers_access()
-    }
 }
 
 impl<I> PartialEq for ImageAccessFromUndefinedLayout<I>
@@ -316,13 +360,5 @@ where
     #[inline]
     fn is_layout_initialized(&self) -> bool {
         (**self).is_layout_initialized()
-    }
-
-    fn current_mip_levels_access(&self) -> Range<u32> {
-        (**self).current_mip_levels_access()
-    }
-
-    fn current_array_layers_access(&self) -> Range<u32> {
-        (**self).current_array_layers_access()
     }
 }

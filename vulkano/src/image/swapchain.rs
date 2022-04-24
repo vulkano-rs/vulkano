@@ -19,7 +19,6 @@ use crate::{
 };
 use std::{
     hash::{Hash, Hasher},
-    ops::Range,
     sync::Arc,
 };
 
@@ -36,7 +35,7 @@ use std::{
 /// method on the swapchain), which will have the effect of showing the content of the image to
 /// the screen. Once an image has been presented, it can no longer be used unless it is acquired
 /// again.
-// TODO: #[derive(Debug)]
+#[derive(Debug)]
 pub struct SwapchainImage<W> {
     swapchain: Arc<Swapchain<W>>,
     image_offset: usize,
@@ -124,16 +123,6 @@ where
     #[inline]
     fn is_layout_initialized(&self) -> bool {
         self.is_layout_initialized()
-    }
-
-    #[inline]
-    fn current_mip_levels_access(&self) -> Range<u32> {
-        0..self.mip_levels()
-    }
-
-    #[inline]
-    fn current_array_layers_access(&self) -> Range<u32> {
-        0..1
     }
 }
 

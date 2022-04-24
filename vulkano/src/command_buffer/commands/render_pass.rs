@@ -23,7 +23,7 @@ use crate::{
     format::{ClearValue, NumericType},
     image::{
         attachment::{ClearAttachment, ClearRect},
-        ImageAspects, ImageSubresourceRange,
+        ImageAspects,
     },
     pipeline::GraphicsPipeline,
     render_pass::{Framebuffer, LoadOp},
@@ -402,19 +402,13 @@ impl SyncCommandBufferBuilder {
             .iter()
             .enumerate()
             .map(|(num, desc)| {
-                let image = render_pass_begin_info.framebuffer.attachments()[num].image();
-                let subresource_range = ImageSubresourceRange {
-                    // TODO:
-                    aspects: image.format().aspects(),
-                    mip_levels: image.current_mip_levels_access(),
-                    array_layers: image.current_array_layers_access(),
-                };
+                let image_view = &render_pass_begin_info.framebuffer.attachments()[num];
 
                 (
                     format!("attachment {}", num).into(),
                     Resource::Image {
-                        image,
-                        subresource_range,
+                        image: image_view.image(),
+                        subresource_range: image_view.subresource_range().clone(),
                         memory: PipelineMemoryAccess {
                             stages: PipelineStages {
                                 all_commands: true,
