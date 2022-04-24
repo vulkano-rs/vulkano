@@ -19,6 +19,10 @@
 - **Breaking** `ImageViewCreateInfo` now has a single `subresource_range` field instead of separate fields for aspect, mip levels and array layers.
 - **Breaking** The `aspects`, `mip_levels` and `array_layers` methods of `ImageViewAbstract` are removed, and replaced with a single `subresource_range` method.
 - **Breaking** The `current_mip_levels_access` and `current_array_layers_access` methods of `ImageAccess` are removed.
+- **Breaking** `begin_render_pass` now takes a `RenderPassBeginInfo` struct.
+- **Breaking** `ClearRect` now has a single `Range<u32>` for array layers.
+- **Breaking** The fields of `ClearAttachment::Color` are now named.
+- **Breaking** The `ImageClearValue` trait is removed.
 - `UnsafeCommandPoolCreateInfo` and `UnsafeCommandPoolCreationError` interfaces exposed.
 - Fixed compile error in Vulkano-win on Android.
 - Added `COVERAGE.md`, a document detailing how much of Vulkan is currently covered by Vulkano.
