@@ -1611,6 +1611,10 @@ fn check_dispatch(device: &Device, dimensions: [u32; 3]) -> Result<(), CheckDisp
         });
     }
 
+    if dimensions.contains(&0) {
+        return Err(CheckDispatchError::ZeroLengthDimensions);
+    }
+
     Ok(())
 }
 
@@ -1624,6 +1628,9 @@ pub enum CheckDispatchError {
         /// The actual supported dimensions.
         max_supported: [u32; 3],
     },
+
+    /// At least one of the requested dimensions were zero.
+    ZeroLengthDimensions,
 }
 
 impl error::Error for CheckDispatchError {}
@@ -1637,6 +1644,9 @@ impl fmt::Display for CheckDispatchError {
             match *self {
                 CheckDispatchError::UnsupportedDimensions { .. } => {
                     "the dimensions are too large for the device's limits"
+                }
+                CheckDispatchError::ZeroLengthDimensions => {
+                    "at least one of the requested dimensions were zero"
                 }
             }
         )
@@ -2362,6 +2372,18 @@ mod tests {
             Err(CheckDispatchError::UnsupportedDimensions { requested, .. }) => {
                 assert_eq!(requested, attempted);
             }
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn zero_dimension_checked() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let attempted = [128, 1, 0];
+
+        match check_dispatch(&device, attempted) {
+            Err(CheckDispatchError::ZeroLengthDimensions) => {}
             _ => panic!(),
         }
     }
