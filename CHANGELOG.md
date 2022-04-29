@@ -32,6 +32,7 @@
 - Added support for the `khr_copy_commands2` device extension.
 - Added the `resolve_image` command buffer command.
 - `BufferViewAbstract` now has a `range` method that returns the byte range of the underlying buffer that the view covers.
+- Added new enum value `CheckDispatchError::ZeroLengthDimensions` to be returned when `dispatch()` is called with dimension(s) of length zero.
 
 # Version 0.29.0 (2022-03-11)
 
