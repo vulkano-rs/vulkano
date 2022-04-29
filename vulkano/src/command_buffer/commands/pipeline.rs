@@ -1629,7 +1629,7 @@ pub enum CheckDispatchError {
         max_supported: [u32; 3],
     },
 
-    /// At least one of the dimensions requested were zero.
+    /// At least one of the requested dimensions were zero.
     ZeroLengthDimensions,
 }
 
@@ -1646,7 +1646,7 @@ impl fmt::Display for CheckDispatchError {
                     "the dimensions are too large for the device's limits"
                 }
                 CheckDispatchError::ZeroLengthDimensions => {
-                    "at least one of the dimensions requested were 0"
+                    "at least one of the requested dimensions were zero"
                 }
             }
         )
@@ -2381,16 +2381,6 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let attempted = [128, 1, 0];
-
-        // Just in case the device is some kind of software implementation.
-        if device
-            .physical_device()
-            .properties()
-            .max_compute_work_group_count
-            == attempted
-        {
-            return;
-        }
 
         match check_dispatch(&device, attempted) {
             Err(CheckDispatchError::ZeroLengthDimensions) => {}
