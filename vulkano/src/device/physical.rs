@@ -1195,7 +1195,6 @@ impl<'a> PhysicalDevice<'a> {
                             surface_format2s.as_mut_ptr(),
                         ),
                 )?;
-                surface_format2s.set_len(num as usize);
             }
 
             Ok(surface_format2s
