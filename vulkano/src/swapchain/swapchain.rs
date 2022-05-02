@@ -1804,6 +1804,7 @@ where
             // If `flushed` already contains `true`, then `build_submission` will return `Empty`.
 
             let build_submission_result = self.build_submission();
+            self.flushed.store(true, Ordering::SeqCst);
 
             if let &Err(FlushError::FullScreenExclusiveLost) = &build_submission_result {
                 self.swapchain
@@ -1827,7 +1828,6 @@ where
                 _ => unreachable!(),
             }
 
-            self.flushed.store(true, Ordering::SeqCst);
             Ok(())
         }
     }
@@ -1905,18 +1905,16 @@ where
 {
     fn drop(&mut self) {
         unsafe {
+            if !*self.flushed.get_mut() {
+                // Flushing may fail, that's okay. We will still wait for the queue later, so any
+                // previous futures that were flushed correctly will still be waited upon.
+                self.flush().ok();
+            }
+
             if !*self.finished.get_mut() {
-                match self.flush() {
-                    Ok(()) => {
-                        // Block until the queue finished.
-                        self.queue().unwrap().wait().unwrap();
-                        self.previous.signal_finished();
-                    }
-                    Err(_) => {
-                        // In case of error we simply do nothing, as there's nothing to do
-                        // anyway.
-                    }
-                }
+                // Block until the queue finished.
+                self.queue().unwrap().wait().unwrap();
+                self.previous.signal_finished();
             }
         }
     }
