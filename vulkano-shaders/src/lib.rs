@@ -396,7 +396,14 @@ impl Parse for MacroInput {
                         "tess_ctrl" => ShaderKind::TessControl,
                         "tess_eval" => ShaderKind::TessEvaluation,
                         "compute" => ShaderKind::Compute,
-                        _ => panic!("Unexpected shader type, valid values: vertex, fragment, geometry, tess_ctrl, tess_eval, compute")
+                        "raygen" => ShaderKind::RayGeneration,
+                        "anyhit" => ShaderKind::AnyHit,
+                        "closesthit" => ShaderKind::ClosestHit,
+                        "miss" => ShaderKind::Miss,
+                        "intersection" => ShaderKind::Intersection,
+                        "callable" => ShaderKind::Callable,
+                        _ => panic!(concat!("Unexpected shader type, valid values: vertex, fragment, geometry, tess_ctrl, ",
+											"tess_eval, compute, raygen, anyhit, closesthit, miss, intersection, callable"))
                     };
 
                     output.0 = Some(ty);
