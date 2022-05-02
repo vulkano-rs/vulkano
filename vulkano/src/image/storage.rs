@@ -8,14 +8,12 @@
 // according to those terms.
 
 use super::{
-    sys::UnsafeImage,
-    traits::{ImageClearValue, ImageContent},
-    ImageAccess, ImageCreateFlags, ImageCreationError, ImageDescriptorLayouts, ImageDimensions,
-    ImageInner, ImageLayout, ImageUsage,
+    sys::UnsafeImage, traits::ImageContent, ImageAccess, ImageCreateFlags, ImageCreationError,
+    ImageDescriptorLayouts, ImageDimensions, ImageInner, ImageLayout, ImageUsage,
 };
 use crate::{
-    device::{physical::QueueFamily, Device},
-    format::{ClearValue, Format},
+    device::{physical::QueueFamily, Device, DeviceOwned},
+    format::Format,
     image::sys::UnsafeImageCreateInfo,
     memory::{
         pool::{
@@ -32,7 +30,6 @@ use smallvec::SmallVec;
 use std::{
     fs::File,
     hash::{Hash, Hasher},
-    ops::Range,
     sync::Arc,
 };
 
@@ -79,8 +76,8 @@ impl StorageImage {
         }
 
         let usage = ImageUsage {
-            transfer_source: true,
-            transfer_destination: true,
+            transfer_src: true,
+            transfer_dst: true,
             sampled: true,
             storage: true,
             color_attachment: !is_depth,
@@ -240,6 +237,15 @@ impl StorageImage {
     }
 }
 
+unsafe impl<A> DeviceOwned for StorageImage<A>
+where
+    A: MemoryPool,
+{
+    fn device(&self) -> &Arc<Device> {
+        self.image.device()
+    }
+}
+
 unsafe impl<A> ImageAccess for StorageImage<A>
 where
     A: MemoryPool,
@@ -249,7 +255,7 @@ where
         ImageInner {
             image: &self.image,
             first_layer: 0,
-            num_layers: self.dimensions.array_layers() as usize,
+            num_layers: self.dimensions.array_layers(),
             first_mipmap_level: 0,
             num_mipmap_levels: 1,
         }
@@ -273,31 +279,6 @@ where
             sampled_image: ImageLayout::General,
             input_attachment: ImageLayout::General,
         })
-    }
-
-    #[inline]
-    fn conflict_key(&self) -> u64 {
-        self.image.key()
-    }
-
-    #[inline]
-    fn current_mip_levels_access(&self) -> Range<u32> {
-        0..self.mip_levels()
-    }
-
-    #[inline]
-    fn current_array_layers_access(&self) -> Range<u32> {
-        0..self.dimensions().array_layers()
-    }
-}
-
-unsafe impl<A> ImageClearValue<ClearValue> for StorageImage<A>
-where
-    A: MemoryPool,
-{
-    #[inline]
-    fn decode(&self, value: ClearValue) -> Option<ClearValue> {
-        Some(self.format.decode_clear_value(value))
     }
 }
 

@@ -555,6 +555,36 @@ impl ImageDimensions {
     }
 }
 
+/// One or more subresources of an image, spanning a single mip level, that should be accessed by a
+/// command.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ImageSubresourceLayers {
+    /// Selects the aspects that will be included.
+    ///
+    /// The value must not be empty, and must not include any of the `memory_plane` aspects.
+    /// The `color` aspect cannot be selected together any of with the `plane` aspects.
+    pub aspects: ImageAspects,
+
+    /// Selects mip level that will be included.
+    pub mip_level: u32,
+
+    /// Selects the range of array layers that will be included.
+    ///
+    /// The range must not be empty.
+    pub array_layers: Range<u32>,
+}
+
+impl From<ImageSubresourceLayers> for ash::vk::ImageSubresourceLayers {
+    fn from(val: ImageSubresourceLayers) -> Self {
+        Self {
+            aspect_mask: val.aspects.into(),
+            mip_level: val.mip_level,
+            base_array_layer: val.array_layers.start,
+            layer_count: val.array_layers.end - val.array_layers.start,
+        }
+    }
+}
+
 /// One or more subresources of an image that should be accessed by a command.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ImageSubresourceRange {
@@ -576,6 +606,7 @@ pub struct ImageSubresourceRange {
 }
 
 impl From<ImageSubresourceRange> for ash::vk::ImageSubresourceRange {
+    #[inline]
     fn from(val: ImageSubresourceRange) -> Self {
         Self {
             aspect_mask: val.aspects.into(),
@@ -583,6 +614,17 @@ impl From<ImageSubresourceRange> for ash::vk::ImageSubresourceRange {
             level_count: val.mip_levels.end - val.mip_levels.start,
             base_array_layer: val.array_layers.start,
             layer_count: val.array_layers.end - val.array_layers.start,
+        }
+    }
+}
+
+impl From<ImageSubresourceLayers> for ImageSubresourceRange {
+    #[inline]
+    fn from(val: ImageSubresourceLayers) -> Self {
+        Self {
+            aspects: val.aspects,
+            mip_levels: val.mip_level..val.mip_level + 1,
+            array_layers: val.array_layers,
         }
     }
 }

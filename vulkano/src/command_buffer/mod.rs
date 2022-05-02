@@ -77,8 +77,11 @@
 //! information.
 
 pub use self::commands::{
-    debug::CheckColorError,
-    image::{CheckClearColorImageError, CheckClearDepthStencilImageError, CheckBlitImageError},
+    debug::DebugUtilsError,
+    image::{
+        BlitImageInfo, ClearColorImageInfo, ClearDepthStencilImageInfo, ImageBlit, ImageResolve,
+        ResolveImageInfo,
+    },
     pipeline::{
         CheckDescriptorSetsValidityError, CheckDispatchError, CheckDynamicStateValidityError,
         CheckIndexBufferError, CheckIndirectBufferError, CheckPipelineError,
@@ -88,20 +91,20 @@ pub use self::commands::{
         CheckBeginQueryError, CheckCopyQueryPoolResultsError, CheckEndQueryError,
         CheckResetQueryPoolError, CheckWriteTimestampError,
     },
+    render_pass::{ClearAttachment, ClearRect, RenderPassBeginInfo, RenderPassError},
     transfer::{
-        CheckCopyBufferError, CheckCopyBufferImageError, CheckCopyImageError,
-        CheckFillBufferError, CheckUpdateBufferError,
+        BufferCopy, BufferImageCopy, CopyBufferInfo, CopyBufferInfoTyped, CopyBufferToImageInfo,
+        CopyImageInfo, CopyImageToBufferInfo, FillBufferInfo, ImageCopy,
     },
+    CopyError, CopyErrorResource,
 };
 pub use self::{
     auto::{
         AutoCommandBufferBuilder, AutoCommandBufferBuilderContextError, BeginError,
-        BeginQueryError, BeginRenderPassError, BlitImageError, BuildError, ClearColorImageError,
-        CopyBufferError, CopyBufferImageError, CopyImageError, CopyQueryPoolResultsError,
-        DebugMarkerError, DispatchError, DispatchIndirectError, DrawError, DrawIndexedError,
-        DrawIndexedIndirectError, DrawIndirectError, EndQueryError, ExecuteCommandsError,
-        FillBufferError, PrimaryAutoCommandBuffer, ResetQueryPoolError, SecondaryAutoCommandBuffer,
-        UpdateBufferError, WriteTimestampError,
+        BeginQueryError, BuildError, CopyQueryPoolResultsError, DispatchError,
+        DispatchIndirectError, DrawError, DrawIndexedError, DrawIndexedIndirectError,
+        DrawIndirectError, EndQueryError, ExecuteCommandsError, PrimaryAutoCommandBuffer,
+        ResetQueryPoolError, SecondaryAutoCommandBuffer, WriteTimestampError,
     },
     traits::{
         CommandBufferExecError, CommandBufferExecFuture, PrimaryCommandBuffer,

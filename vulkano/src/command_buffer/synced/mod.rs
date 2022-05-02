@@ -77,7 +77,7 @@ use super::{
 use crate::{
     buffer::{sys::UnsafeBuffer, BufferAccess},
     device::{Device, DeviceOwned, Queue},
-    image::{sys::UnsafeImage, ImageAccess, ImageLayout},
+    image::{sys::UnsafeImage, ImageAccess, ImageLayout, ImageSubresourceRange},
     sync::{
         AccessCheckError, AccessError, AccessFlags, GpuFuture, PipelineMemoryAccess, PipelineStages,
     },
@@ -107,9 +107,14 @@ pub struct SyncCommandBuffer {
     images2: HashMap<Arc<UnsafeImage>, RangeMap<DeviceSize, ImageFinalState>>,
 
     // Resources and their accesses. Used for executing secondary command buffers in a primary.
-    buffers: Vec<(Arc<dyn BufferAccess>, PipelineMemoryAccess)>,
+    buffers: Vec<(
+        Arc<dyn BufferAccess>,
+        Range<DeviceSize>,
+        PipelineMemoryAccess,
+    )>,
     images: Vec<(
         Arc<dyn ImageAccess>,
+        ImageSubresourceRange,
         PipelineMemoryAccess,
         ImageLayout,
         ImageLayout,
@@ -381,10 +386,17 @@ impl SyncCommandBuffer {
     }
 
     #[inline]
-    pub fn buffer(&self, index: usize) -> Option<(&Arc<dyn BufferAccess>, PipelineMemoryAccess)> {
+    pub fn buffer(
+        &self,
+        index: usize,
+    ) -> Option<(
+        &Arc<dyn BufferAccess>,
+        Range<DeviceSize>,
+        PipelineMemoryAccess,
+    )> {
         self.buffers
             .get(index)
-            .map(|(buffer, memory)| (buffer, *memory))
+            .map(|(buffer, range, memory)| (buffer, range.clone(), *memory))
     }
 
     #[inline]
@@ -398,14 +410,15 @@ impl SyncCommandBuffer {
         index: usize,
     ) -> Option<(
         &Arc<dyn ImageAccess>,
+        &ImageSubresourceRange,
         PipelineMemoryAccess,
         ImageLayout,
         ImageLayout,
     )> {
         self.images
             .get(index)
-            .map(|(image, memory, start_layout, end_layout)| {
-                (image, *memory, *start_layout, *end_layout)
+            .map(|(image, range, memory, start_layout, end_layout)| {
+                (image, range, *memory, *start_layout, *end_layout)
             })
     }
 }
@@ -475,9 +488,19 @@ struct ImageUse {
 
 /// Type of resource whose state is to be tracked.
 #[derive(Clone)]
-pub(super) enum KeyTy {
-    Buffer(Arc<dyn BufferAccess>),
-    Image(Arc<dyn ImageAccess>),
+pub(super) enum Resource {
+    Buffer {
+        buffer: Arc<dyn BufferAccess>,
+        range: Range<DeviceSize>,
+        memory: PipelineMemoryAccess,
+    },
+    Image {
+        image: Arc<dyn ImageAccess>,
+        subresource_range: ImageSubresourceRange,
+        memory: PipelineMemoryAccess,
+        start_layout: ImageLayout,
+        end_layout: ImageLayout,
+    },
 }
 
 // Trait for single commands within the list of commands.
@@ -498,37 +521,31 @@ impl std::fmt::Debug for dyn Command {
 
 #[cfg(test)]
 mod tests {
-    use super::SyncCommandBufferBuilder;
-    use super::SyncCommandBufferBuilderError;
-    use crate::buffer::BufferUsage;
-    use crate::buffer::CpuAccessibleBuffer;
-    use crate::buffer::ImmutableBuffer;
-    use crate::command_buffer::pool::CommandPool;
-    use crate::command_buffer::pool::CommandPoolBuilderAlloc;
-    use crate::command_buffer::sys::CommandBufferBeginInfo;
-    use crate::command_buffer::AutoCommandBufferBuilder;
-    use crate::command_buffer::CommandBufferLevel;
-    use crate::command_buffer::CommandBufferUsage;
-    use crate::descriptor_set::layout::DescriptorSetLayout;
-    use crate::descriptor_set::layout::DescriptorSetLayoutBinding;
-    use crate::descriptor_set::layout::DescriptorSetLayoutCreateInfo;
-    use crate::descriptor_set::layout::DescriptorType;
-    use crate::descriptor_set::PersistentDescriptorSet;
-    use crate::descriptor_set::WriteDescriptorSet;
-    use crate::device::Device;
-    use crate::pipeline::layout::PipelineLayout;
-    use crate::pipeline::layout::PipelineLayoutCreateInfo;
-    use crate::pipeline::PipelineBindPoint;
-    use crate::sampler::Sampler;
-    use crate::sampler::SamplerCreateInfo;
-    use crate::shader::ShaderStages;
-    use crate::sync::GpuFuture;
-    use std::sync::Arc;
+    use super::*;
+    use crate::{
+        buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
+        command_buffer::{
+            pool::{CommandPool, CommandPoolBuilderAlloc},
+            sys::CommandBufferBeginInfo,
+            AutoCommandBufferBuilder, CommandBufferLevel, CommandBufferUsage, FillBufferInfo,
+        },
+        descriptor_set::{
+            layout::{
+                DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
+                DescriptorType,
+            },
+            PersistentDescriptorSet, WriteDescriptorSet,
+        },
+        pipeline::{layout::PipelineLayoutCreateInfo, PipelineBindPoint, PipelineLayout},
+        sampler::{Sampler, SamplerCreateInfo},
+        shader::ShaderStages,
+    };
 
     #[test]
     fn basic_creation() {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
+
             let pool = Device::standard_command_pool(&device, queue.family());
             let pool_builder_alloc = pool
                 .allocate(CommandBufferLevel::Primary, 1)
@@ -536,16 +553,14 @@ mod tests {
                 .next()
                 .unwrap();
 
-            assert!(matches!(
-                SyncCommandBufferBuilder::new(
-                    &pool_builder_alloc.inner(),
-                    CommandBufferBeginInfo {
-                        usage: CommandBufferUsage::MultipleSubmit,
-                        ..Default::default()
-                    },
-                ),
-                Ok(_)
-            ));
+            SyncCommandBufferBuilder::new(
+                &pool_builder_alloc.inner(),
+                CommandBufferBeginInfo {
+                    usage: CommandBufferUsage::MultipleSubmit,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
         }
     }
 
@@ -555,12 +570,9 @@ mod tests {
             let (device, queue) = gfx_dev_and_queue!();
 
             // Create a tiny test buffer
-            let (buf, future) = ImmutableBuffer::from_data(
-                0u32,
-                BufferUsage::transfer_destination(),
-                queue.clone(),
-            )
-            .unwrap();
+            let (buf, future) =
+                ImmutableBuffer::from_data(0u32, BufferUsage::transfer_dst(), queue.clone())
+                    .unwrap();
             future
                 .then_signal_fence_and_flush()
                 .unwrap()
@@ -576,7 +588,12 @@ mod tests {
                         CommandBufferUsage::SimultaneousUse,
                     )
                     .unwrap();
-                    builder.fill_buffer(buf.clone(), 42u32).unwrap();
+                    builder
+                        .fill_buffer(FillBufferInfo {
+                            data: 42u32,
+                            ..FillBufferInfo::dst_buffer(buf.clone())
+                        })
+                        .unwrap();
                     Arc::new(builder.build().unwrap())
                 })
                 .collect::<Vec<_>>();
@@ -612,7 +629,7 @@ mod tests {
                     .collect::<Vec<_>>();
 
                 // Ensure that the builder added a barrier between the two writes
-                assert_eq!(&names, &["vkCmdExecuteCommands", "vkCmdExecuteCommands"]);
+                assert_eq!(&names, &["execute_commands", "execute_commands"]);
                 assert_eq!(&primary.barriers, &[0, 1]);
             }
 
@@ -631,15 +648,7 @@ mod tests {
                 secondary.into_iter().for_each(|secondary| {
                     ec.add(secondary);
                 });
-
-                // The two writes can't be split up by a barrier because they are part of the same
-                // command. Therefore an error.
-                // TODO: Would be nice if SyncCommandBufferBuilder would split the commands
-                // automatically in order to insert a barrier.
-                assert!(matches!(
-                    ec.submit(),
-                    Err(SyncCommandBufferBuilderError::Conflict { .. })
-                ));
+                ec.submit().unwrap();
             }
         }
     }

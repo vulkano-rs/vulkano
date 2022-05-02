@@ -81,7 +81,7 @@ use std::{
 ///         .unwrap()
 ///         // For the sake of the example we just call `update_buffer` on the buffer, even though
 ///         // it is pointless to do that.
-///         .update_buffer(sub_buffer.clone(), &[0.2, 0.3, 0.4, 0.5])
+///         .update_buffer(&[0.2, 0.3, 0.4, 0.5], sub_buffer.clone(), 0)
 ///         .unwrap()
 ///         .build().unwrap()
 ///         .execute(queue.clone())
@@ -217,7 +217,7 @@ where
     /// - Panics if `T` has zero size.
     #[inline]
     pub fn upload(device: Arc<Device>) -> CpuBufferPool<T> {
-        CpuBufferPool::new(device, BufferUsage::transfer_source())
+        CpuBufferPool::new(device, BufferUsage::transfer_src())
     }
 
     /// Builds a `CpuBufferPool` meant for simple downloads.
@@ -230,7 +230,7 @@ where
     /// - Panics if `T` has zero size.
     #[inline]
     pub fn download(device: Arc<Device>) -> CpuBufferPool<T> {
-        CpuBufferPool::new(device, BufferUsage::transfer_destination())
+        CpuBufferPool::new(device, BufferUsage::transfer_dst())
     }
 
     /// Builds a `CpuBufferPool` meant for usage as a uniform buffer.
@@ -675,19 +675,6 @@ where
     fn size(&self) -> DeviceSize {
         self.requested_len * size_of::<T>() as DeviceSize
     }
-
-    #[inline]
-    fn conflict_key(&self) -> (u64, u64) {
-        (
-            self.buffer.inner.key(),
-            // ensure the special cased empty buffers don't collide with a regular buffer starting at 0
-            if self.requested_len == 0 {
-                u64::MAX
-            } else {
-                self.index
-            },
-        )
-    }
 }
 
 impl<T, A> BufferAccessObject for Arc<CpuBufferPoolChunk<T, A>>
@@ -806,11 +793,6 @@ where
     #[inline]
     fn size(&self) -> DeviceSize {
         self.chunk.size()
-    }
-
-    #[inline]
-    fn conflict_key(&self) -> (u64, u64) {
-        self.chunk.conflict_key()
     }
 }
 

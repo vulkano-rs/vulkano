@@ -8,14 +8,12 @@
 // according to those terms.
 
 use super::{
-    sys::UnsafeImage,
-    traits::{ImageClearValue, ImageContent},
-    ImageAccess, ImageCreationError, ImageDescriptorLayouts, ImageInner, ImageLayout, ImageUsage,
-    SampleCount,
+    sys::UnsafeImage, traits::ImageContent, ImageAccess, ImageCreationError,
+    ImageDescriptorLayouts, ImageInner, ImageLayout, ImageUsage, SampleCount,
 };
 use crate::{
-    device::Device,
-    format::{ClearValue, Format},
+    device::{Device, DeviceOwned},
+    format::Format,
     image::{sys::UnsafeImageCreateInfo, ImageDimensions},
     memory::{
         pool::{
@@ -30,7 +28,6 @@ use crate::{
 use std::{
     fs::File,
     hash::{Hash, Hasher},
-    ops::Range,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc,
@@ -561,7 +558,7 @@ where
         ImageInner {
             image: &self.image,
             first_layer: 0,
-            num_layers: self.image.dimensions().array_layers() as usize,
+            num_layers: self.image.dimensions().array_layers(),
             first_mipmap_level: 0,
             num_mipmap_levels: 1,
         }
@@ -588,11 +585,6 @@ where
     }
 
     #[inline]
-    fn conflict_key(&self) -> u64 {
-        self.image.key()
-    }
-
-    #[inline]
     unsafe fn layout_initialized(&self) {
         self.initialized.store(true, Ordering::SeqCst);
     }
@@ -601,25 +593,11 @@ where
     fn is_layout_initialized(&self) -> bool {
         self.initialized.load(Ordering::SeqCst)
     }
-
-    #[inline]
-    fn current_mip_levels_access(&self) -> Range<u32> {
-        0..self.mip_levels()
-    }
-
-    #[inline]
-    fn current_array_layers_access(&self) -> Range<u32> {
-        0..self.dimensions().array_layers()
-    }
 }
 
-unsafe impl<A> ImageClearValue<ClearValue> for AttachmentImage<A>
-where
-    A: MemoryPoolAlloc,
-{
-    #[inline]
-    fn decode(&self, value: ClearValue) -> Option<ClearValue> {
-        Some(self.format.decode_clear_value(value))
+unsafe impl<A> DeviceOwned for AttachmentImage<A> {
+    fn device(&self) -> &Arc<Device> {
+        self.image.device()
     }
 }
 
@@ -653,74 +631,6 @@ where
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
     }
-}
-
-/// Clear attachment type, used in [`clear_attachments`](crate::command_buffer::AutoCommandBufferBuilder::clear_attachments) command.
-pub enum ClearAttachment {
-    /// Clear the color attachment at the specified index, with the specified clear value.
-    Color(ClearValue, u32),
-    /// Clear the depth attachment with the speficied depth value.
-    Depth(f32),
-    /// Clear the stencil attachment with the speficied stencil value.
-    Stencil(u32),
-    /// Clear the depth and stencil attachments with the speficied depth and stencil values.
-    DepthStencil((f32, u32)),
-}
-
-impl From<ClearAttachment> for ash::vk::ClearAttachment {
-    fn from(v: ClearAttachment) -> Self {
-        match v {
-            ClearAttachment::Color(clear_value, color_attachment) => ash::vk::ClearAttachment {
-                aspect_mask: ash::vk::ImageAspectFlags::COLOR,
-                color_attachment,
-                clear_value: ash::vk::ClearValue {
-                    color: match clear_value {
-                        ClearValue::Float(val) => ash::vk::ClearColorValue { float32: val },
-                        ClearValue::Int(val) => ash::vk::ClearColorValue { int32: val },
-                        ClearValue::Uint(val) => ash::vk::ClearColorValue { uint32: val },
-                        _ => ash::vk::ClearColorValue { float32: [0.0; 4] },
-                    },
-                },
-            },
-            ClearAttachment::Depth(depth) => ash::vk::ClearAttachment {
-                aspect_mask: ash::vk::ImageAspectFlags::DEPTH,
-                color_attachment: 0,
-                clear_value: ash::vk::ClearValue {
-                    depth_stencil: ash::vk::ClearDepthStencilValue { depth, stencil: 0 },
-                },
-            },
-            ClearAttachment::Stencil(stencil) => ash::vk::ClearAttachment {
-                aspect_mask: ash::vk::ImageAspectFlags::STENCIL,
-                color_attachment: 0,
-                clear_value: ash::vk::ClearValue {
-                    depth_stencil: ash::vk::ClearDepthStencilValue {
-                        depth: 0.0,
-                        stencil,
-                    },
-                },
-            },
-            ClearAttachment::DepthStencil((depth, stencil)) => ash::vk::ClearAttachment {
-                aspect_mask: ash::vk::ImageAspectFlags::DEPTH | ash::vk::ImageAspectFlags::STENCIL,
-                color_attachment: 0,
-                clear_value: ash::vk::ClearValue {
-                    depth_stencil: ash::vk::ClearDepthStencilValue { depth, stencil },
-                },
-            },
-        }
-    }
-}
-
-/// Specifies the clear region for the [`clear_attachments`](crate::command_buffer::AutoCommandBufferBuilder::clear_attachments) command.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ClearRect {
-    /// The rectangle offset.
-    pub rect_offset: [u32; 2],
-    /// The width and height of the rectangle.
-    pub rect_extent: [u32; 2],
-    /// The first layer to be cleared.
-    pub base_array_layer: u32,
-    /// The number of layers to be cleared.
-    pub layer_count: u32,
 }
 
 #[cfg(test)]

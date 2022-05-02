@@ -22,7 +22,9 @@ use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
-    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents},
+    command_buffer::{
+        AutoCommandBufferBuilder, CommandBufferUsage, RenderPassBeginInfo, SubpassContents,
+    },
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
         Device, DeviceCreateInfo, DeviceExtensions, Features, QueueCreateInfo,
@@ -387,9 +389,11 @@ fn main() {
             .unwrap();
             builder
                 .begin_render_pass(
-                    framebuffers[image_num].clone(),
+                    RenderPassBeginInfo {
+                        clear_values: vec![Some([0.0, 0.0, 0.0, 1.0].into())],
+                        ..RenderPassBeginInfo::framebuffer(framebuffers[image_num].clone())
+                    },
                     SubpassContents::Inline,
-                    vec![[0.0, 0.0, 0.0, 1.0].into()],
                 )
                 .unwrap()
                 .set_viewport(0, [viewport.clone()])

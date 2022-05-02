@@ -33,7 +33,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdSetEvent"
+                "set_event"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -41,7 +41,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { event, stages }, []).unwrap();
+        self.commands.push(Box::new(Cmd { event, stages }));
     }
 
     /// Calls `vkCmdResetEvent` on the builder.
@@ -54,7 +54,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdResetEvent"
+                "reset_event"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -62,13 +62,13 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { event, stages }, []).unwrap();
+        self.commands.push(Box::new(Cmd { event, stages }));
     }
 }
 
 impl UnsafeCommandBufferBuilder {
     #[inline]
-    pub unsafe fn pipeline_barrier(&mut self, dependency_info: DependencyInfo) {
+    pub unsafe fn pipeline_barrier(&mut self, dependency_info: &DependencyInfo) {
         if dependency_info.is_empty() {
             return;
         }
@@ -86,7 +86,7 @@ impl UnsafeCommandBufferBuilder {
             let memory_barriers: SmallVec<[_; 2]> = memory_barriers
                 .into_iter()
                 .map(|barrier| {
-                    let MemoryBarrier {
+                    let &MemoryBarrier {
                         source_stages,
                         source_access,
                         destination_stages,
@@ -112,14 +112,14 @@ impl UnsafeCommandBufferBuilder {
             let buffer_memory_barriers: SmallVec<[_; 8]> = buffer_memory_barriers
                 .into_iter()
                 .map(|barrier| {
-                    let BufferMemoryBarrier {
+                    let &BufferMemoryBarrier {
                         source_stages,
                         source_access,
                         destination_stages,
                         destination_access,
                         queue_family_transfer,
-                        buffer,
-                        range,
+                        ref buffer,
+                        ref range,
                         _ne: _,
                     } = barrier;
 
@@ -154,7 +154,7 @@ impl UnsafeCommandBufferBuilder {
             let image_memory_barriers: SmallVec<[_; 8]> = image_memory_barriers
                 .into_iter()
                 .map(|barrier| {
-                    let ImageMemoryBarrier {
+                    let &ImageMemoryBarrier {
                         source_stages,
                         source_access,
                         destination_stages,
@@ -162,8 +162,8 @@ impl UnsafeCommandBufferBuilder {
                         old_layout,
                         new_layout,
                         queue_family_transfer,
-                        image,
-                        subresource_range,
+                        ref image,
+                        ref subresource_range,
                         _ne: _,
                     } = barrier;
 
@@ -203,7 +203,7 @@ impl UnsafeCommandBufferBuilder {
                                 transfer.destination_index
                             }),
                         image: image.internal_object(),
-                        subresource_range: subresource_range.into(),
+                        subresource_range: subresource_range.clone().into(),
                         ..Default::default()
                     }
                 })
@@ -236,7 +236,7 @@ impl UnsafeCommandBufferBuilder {
             let memory_barriers: SmallVec<[_; 2]> = memory_barriers
                 .into_iter()
                 .map(|barrier| {
-                    let MemoryBarrier {
+                    let &MemoryBarrier {
                         source_stages,
                         source_access,
                         destination_stages,
@@ -263,14 +263,14 @@ impl UnsafeCommandBufferBuilder {
             let buffer_memory_barriers: SmallVec<[_; 8]> = buffer_memory_barriers
                 .into_iter()
                 .map(|barrier| {
-                    let BufferMemoryBarrier {
+                    let &BufferMemoryBarrier {
                         source_stages,
                         source_access,
                         destination_stages,
                         destination_access,
                         queue_family_transfer,
-                        buffer,
-                        range,
+                        ref buffer,
+                        ref range,
                         _ne: _,
                     } = barrier;
 
@@ -306,7 +306,7 @@ impl UnsafeCommandBufferBuilder {
             let image_memory_barriers: SmallVec<[_; 8]> = image_memory_barriers
                 .into_iter()
                 .map(|barrier| {
-                    let ImageMemoryBarrier {
+                    let &ImageMemoryBarrier {
                         source_stages,
                         source_access,
                         destination_stages,
@@ -314,8 +314,8 @@ impl UnsafeCommandBufferBuilder {
                         old_layout,
                         new_layout,
                         queue_family_transfer,
-                        image,
-                        subresource_range,
+                        ref image,
+                        ref subresource_range,
                         _ne: _,
                     } = barrier;
 
@@ -356,14 +356,23 @@ impl UnsafeCommandBufferBuilder {
                                 transfer.destination_index
                             }),
                         image: image.internal_object(),
-                        subresource_range: subresource_range.into(),
+                        subresource_range: subresource_range.clone().into(),
                         ..Default::default()
                     }
                 })
                 .collect();
 
-            debug_assert!(!src_stage_mask.is_empty());
-            debug_assert!(!dst_stage_mask.is_empty());
+            if src_stage_mask.is_empty() {
+                // "VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT is [...] equivalent to
+                // VK_PIPELINE_STAGE_2_NONE in the first scope."
+                src_stage_mask |= ash::vk::PipelineStageFlags::TOP_OF_PIPE;
+            }
+
+            if dst_stage_mask.is_empty() {
+                // "VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT is [...] equivalent to
+                // VK_PIPELINE_STAGE_2_NONE in the second scope."
+                dst_stage_mask |= ash::vk::PipelineStageFlags::BOTTOM_OF_PIPE;
+            }
 
             let fns = self.device.fns();
             fns.v1_0.cmd_pipeline_barrier(

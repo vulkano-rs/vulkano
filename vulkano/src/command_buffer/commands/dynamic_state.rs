@@ -1095,7 +1095,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdSetBlendConstants"
+                "set_blend_constants"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1103,7 +1103,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { constants }, []).unwrap();
+        self.commands.push(Box::new(Cmd { constants }));
         self.current_state.blend_constants = Some(constants);
     }
 
@@ -1124,7 +1124,7 @@ impl SyncCommandBufferBuilder {
             I: IntoIterator<Item = bool> + Send + Sync,
         {
             fn name(&self) -> &'static str {
-                "vkCmdSetColorWriteEnableEXT"
+                "set_color_write_enable"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1134,13 +1134,9 @@ impl SyncCommandBufferBuilder {
 
         let enables: SmallVec<[bool; 4]> = enables.into_iter().collect();
         self.current_state.color_write_enable = Some(enables.clone());
-        self.append_command(
-            Cmd {
-                enables: Mutex::new(Some(enables)),
-            },
-            [],
-        )
-        .unwrap();
+        self.commands.push(Box::new(Cmd {
+            enables: Mutex::new(Some(enables)),
+        }));
     }
 
     /// Calls `vkCmdSetCullModeEXT` on the builder.
@@ -1152,7 +1148,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdSetCullModeEXT"
+                "set_cull_mode"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1160,7 +1156,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { cull_mode }, []).unwrap();
+        self.commands.push(Box::new(Cmd { cull_mode }));
         self.current_state.cull_mode = Some(cull_mode);
     }
 
@@ -1175,7 +1171,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdSetDepthBias"
+                "set_depth_bias"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1183,15 +1179,11 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(
-            Cmd {
-                constant_factor,
-                clamp,
-                slope_factor,
-            },
-            [],
-        )
-        .unwrap();
+        self.commands.push(Box::new(Cmd {
+            constant_factor,
+            clamp,
+            slope_factor,
+        }));
         self.current_state.depth_bias = Some(DepthBias {
             constant_factor,
             clamp,
@@ -1208,7 +1200,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdSetDepthBiasEnableEXT"
+                "set_depth_bias_enable"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1216,7 +1208,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { enable }, []).unwrap();
+        self.commands.push(Box::new(Cmd { enable }));
         self.current_state.depth_bias_enable = Some(enable);
     }
 
@@ -1230,7 +1222,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdSetDepthBounds"
+                "set_depth_bounds"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1238,7 +1230,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { min, max }, []).unwrap();
+        self.commands.push(Box::new(Cmd { min, max }));
         self.current_state.depth_bounds = Some((min, max));
     }
 
@@ -1251,7 +1243,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdSetDepthBoundsTestEnableEXT"
+                "set_depth_bounds_test_enable"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1259,7 +1251,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { enable }, []).unwrap();
+        self.commands.push(Box::new(Cmd { enable }));
         self.current_state.depth_bounds_test_enable = Some(enable);
     }
 
@@ -1272,7 +1264,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdSetDepthCompareOpEXT"
+                "set_depth_compare_op"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1280,7 +1272,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { compare_op }, []).unwrap();
+        self.commands.push(Box::new(Cmd { compare_op }));
         self.current_state.depth_compare_op = Some(compare_op);
     }
 
@@ -1293,7 +1285,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdSetDepthTestEnableEXT"
+                "set_depth_test_enable"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1301,7 +1293,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { enable }, []).unwrap();
+        self.commands.push(Box::new(Cmd { enable }));
         self.current_state.depth_test_enable = Some(enable);
     }
 
@@ -1314,7 +1306,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdSetDepthWriteEnableEXT"
+                "set_depth_write_enable"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1322,7 +1314,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { enable }, []).unwrap();
+        self.commands.push(Box::new(Cmd { enable }));
         self.current_state.depth_write_enable = Some(enable);
     }
 
@@ -1341,7 +1333,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdSetRectangle"
+                "set_discard_rectangle"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1358,14 +1350,10 @@ impl SyncCommandBufferBuilder {
                 .insert(num, rectangle.clone());
         }
 
-        self.append_command(
-            Cmd {
-                first_rectangle,
-                rectangles: Mutex::new(rectangles),
-            },
-            [],
-        )
-        .unwrap();
+        self.commands.push(Box::new(Cmd {
+            first_rectangle,
+            rectangles: Mutex::new(rectangles),
+        }));
     }
 
     /// Calls `vkCmdSetFrontFaceEXT` on the builder.
@@ -1377,7 +1365,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdSetFrontFaceEXT"
+                "set_front_face"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1385,7 +1373,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { face }, []).unwrap();
+        self.commands.push(Box::new(Cmd { face }));
         self.current_state.front_face = Some(face);
     }
 
@@ -1399,7 +1387,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdSetLineStippleEXT"
+                "set_line_stipple"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1407,7 +1395,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { factor, pattern }, []).unwrap();
+        self.commands.push(Box::new(Cmd { factor, pattern }));
         self.current_state.line_stipple = Some(LineStipple { factor, pattern });
     }
 
@@ -1420,7 +1408,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdSetLineWidth"
+                "set_line_width"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1428,7 +1416,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { line_width }, []).unwrap();
+        self.commands.push(Box::new(Cmd { line_width }));
         self.current_state.line_width = Some(line_width);
     }
 
@@ -1441,7 +1429,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdSetLogicOpEXT"
+                "set_logic_op"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1449,7 +1437,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { logic_op }, []).unwrap();
+        self.commands.push(Box::new(Cmd { logic_op }));
         self.current_state.logic_op = Some(logic_op);
     }
 
@@ -1462,7 +1450,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdSetPatchControlPointsEXT"
+                "set_patch_control_points"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1470,7 +1458,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { num }, []).unwrap();
+        self.commands.push(Box::new(Cmd { num }));
         self.current_state.patch_control_points = Some(num);
     }
 
@@ -1483,7 +1471,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdSetPrimitiveRestartEnableEXT"
+                "set_primitive_restart_enable"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1491,7 +1479,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { enable }, []).unwrap();
+        self.commands.push(Box::new(Cmd { enable }));
         self.current_state.primitive_restart_enable = Some(enable);
     }
 
@@ -1504,7 +1492,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdSetPrimitiveTopologyEXT"
+                "set_primitive_topology"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1512,7 +1500,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { topology }, []).unwrap();
+        self.commands.push(Box::new(Cmd { topology }));
         self.current_state.primitive_topology = Some(topology);
     }
 
@@ -1525,7 +1513,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdSetRasterizerDiscardEnableEXT"
+                "set_rasterizer_discard_enable"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1533,7 +1521,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { enable }, []).unwrap();
+        self.commands.push(Box::new(Cmd { enable }));
         self.current_state.rasterizer_discard_enable = Some(enable);
     }
 
@@ -1547,7 +1535,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdSetStencilCompareMask"
+                "set_stencil_compare_mask"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1555,14 +1543,10 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(
-            Cmd {
-                faces,
-                compare_mask,
-            },
-            [],
-        )
-        .unwrap();
+        self.commands.push(Box::new(Cmd {
+            faces,
+            compare_mask,
+        }));
 
         let faces = ash::vk::StencilFaceFlags::from(faces);
 
@@ -1595,7 +1579,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdSetStencilOpEXT"
+                "set_stencil_op"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1609,17 +1593,13 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(
-            Cmd {
-                faces,
-                fail_op,
-                pass_op,
-                depth_fail_op,
-                compare_op,
-            },
-            [],
-        )
-        .unwrap();
+        self.commands.push(Box::new(Cmd {
+            faces,
+            fail_op,
+            pass_op,
+            depth_fail_op,
+            compare_op,
+        }));
 
         let faces = ash::vk::StencilFaceFlags::from(faces);
 
@@ -1652,7 +1632,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdSetStencilReference"
+                "set_stencil_reference"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1660,7 +1640,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { faces, reference }, []).unwrap();
+        self.commands.push(Box::new(Cmd { faces, reference }));
 
         let faces = ash::vk::StencilFaceFlags::from(faces);
 
@@ -1682,7 +1662,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdSetStencilTestEnableEXT"
+                "set_stencil_test_enable"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1690,7 +1670,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { enable }, []).unwrap();
+        self.commands.push(Box::new(Cmd { enable }));
         self.current_state.stencil_test_enable = Some(enable);
     }
 
@@ -1704,7 +1684,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdSetStencilWriteMask"
+                "set_stencil_write_mask"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1712,7 +1692,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { faces, write_mask }, []).unwrap();
+        self.commands.push(Box::new(Cmd { faces, write_mask }));
 
         let faces = ash::vk::StencilFaceFlags::from(faces);
 
@@ -1740,7 +1720,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdSetScissor"
+                "set_scissor"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1755,14 +1735,10 @@ impl SyncCommandBufferBuilder {
             self.current_state.scissor.insert(num, scissor.clone());
         }
 
-        self.append_command(
-            Cmd {
-                first_scissor,
-                scissors: Mutex::new(scissors),
-            },
-            [],
-        )
-        .unwrap();
+        self.commands.push(Box::new(Cmd {
+            first_scissor,
+            scissors: Mutex::new(scissors),
+        }));
     }
 
     /// Calls `vkCmdSetScissorWithCountEXT` on the builder.
@@ -1779,7 +1755,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdSetScissorWithCountEXT"
+                "set_scissor_with_count"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1789,13 +1765,9 @@ impl SyncCommandBufferBuilder {
 
         let scissors: SmallVec<[Scissor; 2]> = scissors.into_iter().collect();
         self.current_state.scissor_with_count = Some(scissors.clone());
-        self.append_command(
-            Cmd {
-                scissors: Mutex::new(scissors),
-            },
-            [],
-        )
-        .unwrap();
+        self.commands.push(Box::new(Cmd {
+            scissors: Mutex::new(scissors),
+        }));
     }
 
     /// Calls `vkCmdSetViewport` on the builder.
@@ -1813,7 +1785,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdSetViewport"
+                "set_viewport"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1828,14 +1800,10 @@ impl SyncCommandBufferBuilder {
             self.current_state.viewport.insert(num, viewport.clone());
         }
 
-        self.append_command(
-            Cmd {
-                first_viewport,
-                viewports: Mutex::new(viewports),
-            },
-            [],
-        )
-        .unwrap();
+        self.commands.push(Box::new(Cmd {
+            first_viewport,
+            viewports: Mutex::new(viewports),
+        }));
     }
 
     /// Calls `vkCmdSetViewportWithCountEXT` on the builder.
@@ -1852,7 +1820,7 @@ impl SyncCommandBufferBuilder {
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
-                "vkCmdSetViewportWithCountEXT"
+                "set_viewport_with_count"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1862,13 +1830,9 @@ impl SyncCommandBufferBuilder {
 
         let viewports: SmallVec<[Viewport; 2]> = viewports.into_iter().collect();
         self.current_state.viewport_with_count = Some(viewports.clone());
-        self.append_command(
-            Cmd {
-                viewports: Mutex::new(viewports),
-            },
-            [],
-        )
-        .unwrap();
+        self.commands.push(Box::new(Cmd {
+            viewports: Mutex::new(viewports),
+        }));
     }
 }
 

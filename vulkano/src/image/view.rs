@@ -13,27 +13,25 @@
 //! an image and describes how the GPU should interpret the data. It is needed when an image is
 //! to be used in a shader descriptor or as a framebuffer attachment.
 
-use super::ImageFormatInfo;
-use crate::device::{Device, DeviceOwned};
-use crate::format::{ChromaSampling, Format, FormatFeatures};
-use crate::image::{
-    ImageAccess, ImageAspects, ImageDimensions, ImageTiling, ImageType, ImageUsage, SampleCount,
+use super::{ImageAccess, ImageDimensions, ImageFormatInfo, ImageSubresourceRange, ImageUsage};
+use crate::{
+    check_errors,
+    device::{Device, DeviceOwned},
+    format::{ChromaSampling, Format, FormatFeatures},
+    image::{ImageAspects, ImageTiling, ImageType, SampleCount},
+    sampler::{ycbcr::SamplerYcbcrConversion, ComponentMapping},
+    Error, OomError, VulkanObject,
 };
-use crate::sampler::ycbcr::SamplerYcbcrConversion;
-use crate::sampler::ComponentMapping;
-use crate::OomError;
-use crate::VulkanObject;
-use crate::{check_errors, Error};
-use std::error;
-use std::fmt;
-use std::fmt::Debug;
-use std::hash::{Hash, Hasher};
-use std::mem::MaybeUninit;
-use std::ops::Range;
-use std::ptr;
-use std::sync::Arc;
+use std::{
+    error, fmt,
+    hash::{Hash, Hasher},
+    mem::MaybeUninit,
+    ptr,
+    sync::Arc,
+};
 
 /// A wrapper around an image that makes it available to shaders or framebuffers.
+#[derive(Debug)]
 pub struct ImageView<I>
 where
     I: ImageAccess + ?Sized,
@@ -41,13 +39,11 @@ where
     handle: ash::vk::ImageView,
     image: Arc<I>,
 
-    array_layers: Range<u32>,
-    aspects: ImageAspects,
     component_mapping: ComponentMapping,
     format: Option<Format>,
     format_features: FormatFeatures,
-    mip_levels: Range<u32>,
     sampler_ycbcr_conversion: Option<Arc<SamplerYcbcrConversion>>,
+    subresource_range: ImageSubresourceRange,
     usage: ImageUsage,
     view_type: ImageViewType,
 
@@ -73,16 +69,14 @@ where
         image: Arc<I>,
         mut create_info: ImageViewCreateInfo,
     ) -> Result<Arc<ImageView<I>>, ImageViewCreationError> {
-        let (format_features, usage) = Self::validate(&image, &mut create_info)?;
-        let handle = unsafe { Self::create(&image, &create_info)? };
+        let (format_features, usage) = Self::validate_create(&image, &mut create_info)?;
+        let handle = unsafe { Self::record_create(&image, &create_info)? };
 
         let ImageViewCreateInfo {
             view_type,
             format,
             component_mapping,
-            aspects,
-            array_layers,
-            mip_levels,
+            subresource_range,
             sampler_ycbcr_conversion,
             _ne: _,
         } = create_info;
@@ -118,9 +112,7 @@ where
             format,
             format_features,
             component_mapping,
-            aspects,
-            array_layers,
-            mip_levels,
+            subresource_range,
             usage,
             sampler_ycbcr_conversion,
 
@@ -129,7 +121,7 @@ where
         }))
     }
 
-    fn validate(
+    fn validate_create(
         image: &I,
         create_info: &mut ImageViewCreateInfo,
     ) -> Result<(FormatFeatures, ImageUsage), ImageViewCreationError> {
@@ -137,17 +129,15 @@ where
             view_type,
             format,
             component_mapping,
-            aspects,
-            ref array_layers,
-            ref mip_levels,
+            ref subresource_range,
             ref sampler_ycbcr_conversion,
             _ne: _,
         } = create_info;
 
         let format = format.unwrap();
         let image_inner = image.inner().image;
-        let level_count = mip_levels.end - mip_levels.start;
-        let layer_count = array_layers.end - array_layers.start;
+        let level_count = subresource_range.mip_levels.end - subresource_range.mip_levels.start;
+        let layer_count = subresource_range.array_layers.end - subresource_range.array_layers.start;
 
         assert!(level_count != 0);
         assert!(layer_count != 0);
@@ -164,7 +154,7 @@ where
                 memory_plane0,
                 memory_plane1,
                 memory_plane2,
-            } = aspects;
+            } = subresource_range.aspects;
 
             assert!(!(metadata || memory_plane0 || memory_plane1 || memory_plane2));
             assert!({
@@ -223,9 +213,14 @@ where
         };
 
         // No VUID apparently, but this seems like something we want to check?
-        if !image_inner.format().unwrap().aspects().contains(&aspects) {
+        if !image_inner
+            .format()
+            .unwrap()
+            .aspects()
+            .contains(&subresource_range.aspects)
+        {
             return Err(ImageViewCreationError::ImageAspectsNotCompatible {
-                aspects,
+                aspects: subresource_range.aspects,
                 image_aspects: image_inner.format().unwrap().aspects(),
             });
         }
@@ -266,9 +261,9 @@ where
         }
 
         // VUID-VkImageViewCreateInfo-subresourceRange-01718
-        if mip_levels.end > image_inner.mip_levels() {
+        if subresource_range.mip_levels.end > image_inner.mip_levels() {
             return Err(ImageViewCreationError::MipLevelsOutOfRange {
-                range_end: mip_levels.end,
+                range_end: subresource_range.mip_levels.end,
                 max: image_inner.mip_levels(),
             });
         }
@@ -293,21 +288,21 @@ where
             // higher.
             let max = image_inner
                 .dimensions()
-                .mip_level_dimensions(mip_levels.start)
+                .mip_level_dimensions(subresource_range.mip_levels.start)
                 .unwrap()
                 .depth();
-            if array_layers.end > max {
+            if subresource_range.array_layers.end > max {
                 return Err(ImageViewCreationError::ArrayLayersOutOfRange {
-                    range_end: array_layers.end,
+                    range_end: subresource_range.array_layers.end,
                     max,
                 });
             }
         } else {
             // VUID-VkImageViewCreateInfo-image-01482
             // VUID-VkImageViewCreateInfo-subresourceRange-01483
-            if array_layers.end > image_inner.dimensions().array_layers() {
+            if subresource_range.array_layers.end > image_inner.dimensions().array_layers() {
                 return Err(ImageViewCreationError::ArrayLayersOutOfRange {
-                    range_end: array_layers.end,
+                    range_end: subresource_range.array_layers.end,
                     max: image_inner.dimensions().array_layers(),
                 });
             }
@@ -401,13 +396,13 @@ where
 
         if image_inner.mutable_format()
             && !image_inner.format().unwrap().planes().is_empty()
-            && !aspects.color
+            && !subresource_range.aspects.color
         {
-            let plane = if aspects.plane0 {
+            let plane = if subresource_range.aspects.plane0 {
                 0
-            } else if aspects.plane1 {
+            } else if subresource_range.aspects.plane1 {
                 1
-            } else if aspects.plane2 {
+            } else if subresource_range.aspects.plane2 {
                 2
             } else {
                 unreachable!()
@@ -488,7 +483,7 @@ where
         Ok((format_features, usage))
     }
 
-    unsafe fn create(
+    unsafe fn record_create(
         image: &I,
         create_info: &ImageViewCreateInfo,
     ) -> Result<ash::vk::ImageView, ImageViewCreationError> {
@@ -496,9 +491,7 @@ where
             view_type,
             format,
             component_mapping,
-            aspects,
-            ref array_layers,
-            ref mip_levels,
+            ref subresource_range,
             ref sampler_ycbcr_conversion,
             _ne: _,
         } = create_info;
@@ -511,13 +504,7 @@ where
             view_type: view_type.into(),
             format: format.unwrap().into(),
             components: component_mapping.into(),
-            subresource_range: ash::vk::ImageSubresourceRange {
-                aspect_mask: aspects.into(),
-                base_mip_level: mip_levels.start,
-                level_count: mip_levels.end - mip_levels.start,
-                base_array_layer: array_layers.start,
-                layer_count: array_layers.end - array_layers.start,
-            },
+            subresource_range: subresource_range.clone().into(),
             ..Default::default()
         };
 
@@ -551,7 +538,7 @@ where
     }
 
     /// Creates a default `ImageView`. Equivalent to
-    /// `ImageView::new_default(image, ImageViewCreateInfo::from_image(image))`.
+    /// `ImageView::new(image, ImageViewCreateInfo::from_image(image))`.
     #[inline]
     pub fn new_default(image: Arc<I>) -> Result<Arc<ImageView<I>>, ImageViewCreationError> {
         let create_info = ImageViewCreateInfo::from_image(&image);
@@ -562,6 +549,21 @@ where
     #[inline]
     pub fn image(&self) -> &Arc<I> {
         &self.image
+    }
+}
+
+impl<I> Drop for ImageView<I>
+where
+    I: ImageAccess + ?Sized,
+{
+    #[inline]
+    fn drop(&mut self) {
+        unsafe {
+            let device = self.device();
+            let fns = device.fns();
+            fns.v1_0
+                .destroy_image_view(device.internal_object(), self.handle, ptr::null());
+        }
     }
 }
 
@@ -584,31 +586,6 @@ where
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.image.inner().image.device()
-    }
-}
-
-impl<I> fmt::Debug for ImageView<I>
-where
-    I: ImageAccess + ?Sized,
-{
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "<Vulkan image view {:?}>", self.handle)
-    }
-}
-
-impl<I> Drop for ImageView<I>
-where
-    I: ImageAccess + ?Sized,
-{
-    #[inline]
-    fn drop(&mut self) {
-        unsafe {
-            let device = self.device();
-            let fns = device.fns();
-            fns.v1_0
-                .destroy_image_view(device.internal_object(), self.handle, ptr::null());
-        }
     }
 }
 
@@ -659,20 +636,10 @@ pub struct ImageViewCreateInfo {
     /// The default value is [`ComponentMapping::identity()`].
     pub component_mapping: ComponentMapping,
 
-    /// The aspects of the image that the view should cover.
+    /// The subresource range of the image that the view should cover.
     ///
-    /// The default value is [`ImageAspects::none()`], which must be overridden.
-    pub aspects: ImageAspects,
-
-    /// The range of array layers of the image that the view should cover.
-    ///
-    /// The default value is `0..1`.
-    pub array_layers: Range<u32>,
-
-    /// The range of mipmap levels of the image that the view should cover.
-    ///
-    /// The default value is `0..1`.
-    pub mip_levels: Range<u32>,
+    /// The default value is empty, which must be overridden.
+    pub subresource_range: ImageSubresourceRange,
 
     /// The sampler YCbCr conversion to be used with the image view.
     ///
@@ -696,9 +663,11 @@ impl Default for ImageViewCreateInfo {
             view_type: ImageViewType::Dim2d,
             format: None,
             component_mapping: ComponentMapping::identity(),
-            aspects: ImageAspects::none(),
-            array_layers: 0..1,
-            mip_levels: 0..1,
+            subresource_range: ImageSubresourceRange {
+                aspects: ImageAspects::none(),
+                array_layers: 0..0,
+                mip_levels: 0..0,
+            },
             sampler_ycbcr_conversion: None,
             _ne: crate::NonExhaustive(()),
         }
@@ -707,8 +676,8 @@ impl Default for ImageViewCreateInfo {
 
 impl ImageViewCreateInfo {
     /// Returns an `ImageViewCreateInfo` with the `view_type` determined from the image type and
-    /// array layers, `aspects` determined from the image format, and `array_layers` and
-    /// `mip_levels` covering the whole image.
+    /// array layers, and `subresource_range` determined from the image format and covering the
+    /// whole image.
     pub fn from_image<I>(image: &I) -> Self
     where
         I: ImageAccess + ?Sized,
@@ -726,25 +695,7 @@ impl ImageViewCreateInfo {
                 ImageDimensions::Dim3d { .. } => ImageViewType::Dim3d,
             },
             format: Some(image.format()),
-            aspects: {
-                let aspects = image.format().aspects();
-                if aspects.depth || aspects.stencil {
-                    debug_assert!(!aspects.color);
-                    ImageAspects {
-                        depth: aspects.depth,
-                        stencil: aspects.stencil,
-                        ..Default::default()
-                    }
-                } else {
-                    debug_assert!(aspects.color);
-                    ImageAspects {
-                        color: true,
-                        ..Default::default()
-                    }
-                }
-            },
-            array_layers: 0..image.dimensions().array_layers(),
-            mip_levels: 0..image.mip_levels(),
+            subresource_range: image.subresource_range(),
             ..Default::default()
         }
     }
@@ -1026,16 +977,10 @@ impl From<ImageViewType> for ash::vk::ImageViewType {
 
 /// Trait for types that represent the GPU can access an image view.
 pub unsafe trait ImageViewAbstract:
-    VulkanObject<Object = ash::vk::ImageView> + DeviceOwned + Debug + Send + Sync
+    VulkanObject<Object = ash::vk::ImageView> + DeviceOwned + fmt::Debug + Send + Sync
 {
     /// Returns the wrapped image that this image view was created from.
     fn image(&self) -> Arc<dyn ImageAccess>;
-
-    /// Returns the range of array layers of the wrapped image that this view exposes.
-    fn array_layers(&self) -> Range<u32>;
-
-    /// Returns the aspects of the wrapped image that this view exposes.
-    fn aspects(&self) -> &ImageAspects;
 
     /// Returns the component mapping of this view.
     fn component_mapping(&self) -> ComponentMapping;
@@ -1056,11 +1001,11 @@ pub unsafe trait ImageViewAbstract:
     /// Returns the features supported by the image view's format.
     fn format_features(&self) -> &FormatFeatures;
 
-    /// Returns the range of mip levels of the wrapped image that this view exposes.
-    fn mip_levels(&self) -> Range<u32>;
-
     /// Returns the sampler YCbCr conversion that this image view was created with, if any.
     fn sampler_ycbcr_conversion(&self) -> Option<&Arc<SamplerYcbcrConversion>>;
+
+    /// Returns the subresource range of the wrapped image that this view exposes.
+    fn subresource_range(&self) -> &ImageSubresourceRange;
 
     /// Returns the usage of the image view.
     fn usage(&self) -> &ImageUsage;
@@ -1071,21 +1016,11 @@ pub unsafe trait ImageViewAbstract:
 
 unsafe impl<I> ImageViewAbstract for ImageView<I>
 where
-    I: ImageAccess + 'static,
+    I: ImageAccess + fmt::Debug + 'static,
 {
     #[inline]
     fn image(&self) -> Arc<dyn ImageAccess> {
         self.image.clone()
-    }
-
-    #[inline]
-    fn array_layers(&self) -> Range<u32> {
-        self.array_layers.clone()
-    }
-
-    #[inline]
-    fn aspects(&self) -> &ImageAspects {
-        &self.aspects
     }
 
     #[inline]
@@ -1114,13 +1049,13 @@ where
     }
 
     #[inline]
-    fn mip_levels(&self) -> Range<u32> {
-        self.mip_levels.clone()
+    fn sampler_ycbcr_conversion(&self) -> Option<&Arc<SamplerYcbcrConversion>> {
+        self.sampler_ycbcr_conversion.as_ref()
     }
 
     #[inline]
-    fn sampler_ycbcr_conversion(&self) -> Option<&Arc<SamplerYcbcrConversion>> {
-        self.sampler_ycbcr_conversion.as_ref()
+    fn subresource_range(&self) -> &ImageSubresourceRange {
+        &self.subresource_range
     }
 
     #[inline]
@@ -1141,16 +1076,6 @@ unsafe impl ImageViewAbstract for ImageView<dyn ImageAccess> {
     }
 
     #[inline]
-    fn array_layers(&self) -> Range<u32> {
-        self.array_layers.clone()
-    }
-
-    #[inline]
-    fn aspects(&self) -> &ImageAspects {
-        &self.aspects
-    }
-
-    #[inline]
     fn component_mapping(&self) -> ComponentMapping {
         self.component_mapping
     }
@@ -1176,13 +1101,13 @@ unsafe impl ImageViewAbstract for ImageView<dyn ImageAccess> {
     }
 
     #[inline]
-    fn mip_levels(&self) -> Range<u32> {
-        self.mip_levels.clone()
+    fn sampler_ycbcr_conversion(&self) -> Option<&Arc<SamplerYcbcrConversion>> {
+        self.sampler_ycbcr_conversion.as_ref()
     }
 
     #[inline]
-    fn sampler_ycbcr_conversion(&self) -> Option<&Arc<SamplerYcbcrConversion>> {
-        self.sampler_ycbcr_conversion.as_ref()
+    fn subresource_range(&self) -> &ImageSubresourceRange {
+        &self.subresource_range
     }
 
     #[inline]

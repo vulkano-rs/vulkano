@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::sync::Arc;
 use vulkano::{
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
@@ -15,7 +16,10 @@ use vulkano::{
     format::Format,
     image::{ImageDimensions, ImmutableImage, MipmapsCount},
     instance::{
-        debug::{DebugCallback, MessageSeverity, MessageType},
+        debug::{
+            DebugUtilsMessageSeverity, DebugUtilsMessageType, DebugUtilsMessenger,
+            DebugUtilsMessengerCreateInfo,
+        },
         layers_list, Instance, InstanceCreateInfo, InstanceExtensions,
     },
 };
@@ -71,49 +75,53 @@ fn main() {
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     // Note: If you let this debug_callback binding fall out of scope then the callback will stop providing events
-    // Note: There is a helper method too: DebugCallback::errors_and_warnings(&instance, |msg| {...
 
-    let severity = MessageSeverity {
-        error: true,
-        warning: true,
-        information: true,
-        verbose: true,
+    let _debug_callback = unsafe {
+        DebugUtilsMessenger::new(
+            instance.clone(),
+            DebugUtilsMessengerCreateInfo {
+                message_severity: DebugUtilsMessageSeverity {
+                    error: true,
+                    warning: true,
+                    information: true,
+                    verbose: true,
+                },
+                message_type: DebugUtilsMessageType::all(),
+                ..DebugUtilsMessengerCreateInfo::user_callback(Arc::new(|msg| {
+                    let severity = if msg.severity.error {
+                        "error"
+                    } else if msg.severity.warning {
+                        "warning"
+                    } else if msg.severity.information {
+                        "information"
+                    } else if msg.severity.verbose {
+                        "verbose"
+                    } else {
+                        panic!("no-impl");
+                    };
+
+                    let ty = if msg.ty.general {
+                        "general"
+                    } else if msg.ty.validation {
+                        "validation"
+                    } else if msg.ty.performance {
+                        "performance"
+                    } else {
+                        panic!("no-impl");
+                    };
+
+                    println!(
+                        "{} {} {}: {}",
+                        msg.layer_prefix.unwrap_or("unknown"),
+                        ty,
+                        severity,
+                        msg.description
+                    );
+                }))
+            },
+        )
+        .ok()
     };
-
-    let ty = MessageType::all();
-
-    let _debug_callback = DebugCallback::new(&instance, severity, ty, |msg| {
-        let severity = if msg.severity.error {
-            "error"
-        } else if msg.severity.warning {
-            "warning"
-        } else if msg.severity.information {
-            "information"
-        } else if msg.severity.verbose {
-            "verbose"
-        } else {
-            panic!("no-impl");
-        };
-
-        let ty = if msg.ty.general {
-            "general"
-        } else if msg.ty.validation {
-            "validation"
-        } else if msg.ty.performance {
-            "performance"
-        } else {
-            panic!("no-impl");
-        };
-
-        println!(
-            "{} {} {}: {}",
-            msg.layer_prefix.unwrap_or("unknown"),
-            ty,
-            severity,
-            msg.description
-        );
-    })
-    .ok();
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Create Vulkan objects in the same way as the other examples                                               //

@@ -19,10 +19,10 @@ use std::ops::BitOr;
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct ImageUsage {
     /// Can be used as a source for transfers. Includes blits.
-    pub transfer_source: bool,
+    pub transfer_src: bool,
 
     /// Can be used as a destination for transfers. Includes blits.
-    pub transfer_destination: bool,
+    pub transfer_dst: bool,
 
     /// Can be sampled from a shader.
     pub sampled: bool,
@@ -54,8 +54,8 @@ impl ImageUsage {
     #[inline]
     pub fn all() -> ImageUsage {
         ImageUsage {
-            transfer_source: true,
-            transfer_destination: true,
+            transfer_src: true,
+            transfer_dst: true,
             sampled: true,
             storage: true,
             color_attachment: true,
@@ -73,7 +73,7 @@ impl ImageUsage {
     /// use vulkano::image::ImageUsage as ImageUsage;
     ///
     /// let _usage = ImageUsage {
-    ///     transfer_destination: true,
+    ///     transfer_dst: true,
     ///     sampled: true,
     ///     .. ImageUsage::none()
     /// };
@@ -81,8 +81,8 @@ impl ImageUsage {
     #[inline]
     pub fn none() -> ImageUsage {
         ImageUsage {
-            transfer_source: false,
-            transfer_destination: false,
+            transfer_src: false,
+            transfer_dst: false,
             sampled: false,
             storage: false,
             color_attachment: false,
@@ -96,8 +96,8 @@ impl ImageUsage {
     #[inline]
     pub fn color_attachment() -> ImageUsage {
         ImageUsage {
-            transfer_source: false,
-            transfer_destination: false,
+            transfer_src: false,
+            transfer_dst: false,
             sampled: false,
             storage: false,
             color_attachment: true,
@@ -111,8 +111,8 @@ impl ImageUsage {
     #[inline]
     pub fn depth_stencil_attachment() -> ImageUsage {
         ImageUsage {
-            transfer_source: false,
-            transfer_destination: false,
+            transfer_src: false,
+            transfer_dst: false,
             sampled: false,
             storage: false,
             color_attachment: false,
@@ -126,8 +126,8 @@ impl ImageUsage {
     #[inline]
     pub fn transient_color_attachment() -> ImageUsage {
         ImageUsage {
-            transfer_source: false,
-            transfer_destination: false,
+            transfer_src: false,
+            transfer_dst: false,
             sampled: false,
             storage: false,
             color_attachment: true,
@@ -141,8 +141,8 @@ impl ImageUsage {
     #[inline]
     pub fn transient_depth_stencil_attachment() -> ImageUsage {
         ImageUsage {
-            transfer_source: false,
-            transfer_destination: false,
+            transfer_src: false,
+            transfer_dst: false,
             sampled: false,
             storage: false,
             color_attachment: false,
@@ -157,10 +157,10 @@ impl From<ImageUsage> for ash::vk::ImageUsageFlags {
     #[inline]
     fn from(val: ImageUsage) -> Self {
         let mut result = ash::vk::ImageUsageFlags::empty();
-        if val.transfer_source {
+        if val.transfer_src {
             result |= ash::vk::ImageUsageFlags::TRANSFER_SRC;
         }
-        if val.transfer_destination {
+        if val.transfer_dst {
             result |= ash::vk::ImageUsageFlags::TRANSFER_DST;
         }
         if val.sampled {
@@ -189,8 +189,8 @@ impl From<ash::vk::ImageUsageFlags> for ImageUsage {
     #[inline]
     fn from(val: ash::vk::ImageUsageFlags) -> ImageUsage {
         ImageUsage {
-            transfer_source: !(val & ash::vk::ImageUsageFlags::TRANSFER_SRC).is_empty(),
-            transfer_destination: !(val & ash::vk::ImageUsageFlags::TRANSFER_DST).is_empty(),
+            transfer_src: !(val & ash::vk::ImageUsageFlags::TRANSFER_SRC).is_empty(),
+            transfer_dst: !(val & ash::vk::ImageUsageFlags::TRANSFER_DST).is_empty(),
             sampled: !(val & ash::vk::ImageUsageFlags::SAMPLED).is_empty(),
             storage: !(val & ash::vk::ImageUsageFlags::STORAGE).is_empty(),
             color_attachment: !(val & ash::vk::ImageUsageFlags::COLOR_ATTACHMENT).is_empty(),
@@ -209,8 +209,8 @@ impl BitOr for ImageUsage {
     #[inline]
     fn bitor(self, rhs: Self) -> Self {
         ImageUsage {
-            transfer_source: self.transfer_source || rhs.transfer_source,
-            transfer_destination: self.transfer_destination || rhs.transfer_destination,
+            transfer_src: self.transfer_src || rhs.transfer_src,
+            transfer_dst: self.transfer_dst || rhs.transfer_dst,
             sampled: self.sampled || rhs.sampled,
             storage: self.storage || rhs.storage,
             color_attachment: self.color_attachment || rhs.color_attachment,

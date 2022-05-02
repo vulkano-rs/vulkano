@@ -17,8 +17,8 @@ use std::ops::BitOr;
 /// there is no restriction in the combination of BufferUsages that can be enabled.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct BufferUsage {
-    pub transfer_source: bool,
-    pub transfer_destination: bool,
+    pub transfer_src: bool,
+    pub transfer_dst: bool,
     pub uniform_texel_buffer: bool,
     pub storage_texel_buffer: bool,
     pub uniform_buffer: bool,
@@ -35,8 +35,8 @@ impl BufferUsage {
     #[inline]
     pub const fn none() -> BufferUsage {
         BufferUsage {
-            transfer_source: false,
-            transfer_destination: false,
+            transfer_src: false,
+            transfer_dst: false,
             uniform_texel_buffer: false,
             storage_texel_buffer: false,
             uniform_buffer: false,
@@ -53,8 +53,8 @@ impl BufferUsage {
     #[inline]
     pub const fn all() -> BufferUsage {
         BufferUsage {
-            transfer_source: true,
-            transfer_destination: true,
+            transfer_src: true,
+            transfer_dst: true,
             uniform_texel_buffer: true,
             storage_texel_buffer: true,
             uniform_buffer: true,
@@ -67,20 +67,20 @@ impl BufferUsage {
         }
     }
 
-    /// Builds a `BufferUsage` with `transfer_source` set to true and the rest to false.
+    /// Builds a `BufferUsage` with `transfer_src` set to true and the rest to false.
     #[inline]
-    pub const fn transfer_source() -> BufferUsage {
+    pub const fn transfer_src() -> BufferUsage {
         BufferUsage {
-            transfer_source: true,
+            transfer_src: true,
             ..BufferUsage::none()
         }
     }
 
-    /// Builds a `BufferUsage` with `transfer_destination` set to true and the rest to false.
+    /// Builds a `BufferUsage` with `transfer_dst` set to true and the rest to false.
     #[inline]
-    pub const fn transfer_destination() -> BufferUsage {
+    pub const fn transfer_dst() -> BufferUsage {
         BufferUsage {
-            transfer_destination: true,
+            transfer_dst: true,
             ..BufferUsage::none()
         }
     }
@@ -94,13 +94,13 @@ impl BufferUsage {
         }
     }
 
-    /// Builds a `BufferUsage` with `vertex_buffer` and `transfer_destination` set to true and the rest
+    /// Builds a `BufferUsage` with `vertex_buffer` and `transfer_dst` set to true and the rest
     /// to false.
     #[inline]
-    pub const fn vertex_buffer_transfer_destination() -> BufferUsage {
+    pub const fn vertex_buffer_transfer_dst() -> BufferUsage {
         BufferUsage {
             vertex_buffer: true,
-            transfer_destination: true,
+            transfer_dst: true,
             ..BufferUsage::none()
         }
     }
@@ -114,12 +114,12 @@ impl BufferUsage {
         }
     }
 
-    /// Builds a `BufferUsage` with `index_buffer` and `transfer_destination` set to true and the rest to false.
+    /// Builds a `BufferUsage` with `index_buffer` and `transfer_dst` set to true and the rest to false.
     #[inline]
-    pub const fn index_buffer_transfer_destination() -> BufferUsage {
+    pub const fn index_buffer_transfer_dst() -> BufferUsage {
         BufferUsage {
             index_buffer: true,
-            transfer_destination: true,
+            transfer_dst: true,
             ..BufferUsage::none()
         }
     }
@@ -142,13 +142,13 @@ impl BufferUsage {
         }
     }
 
-    /// Builds a `BufferUsage` with `uniform_buffer` and `transfer_destination` set to true and the rest
+    /// Builds a `BufferUsage` with `uniform_buffer` and `transfer_dst` set to true and the rest
     /// to false.
     #[inline]
-    pub const fn uniform_buffer_transfer_destination() -> BufferUsage {
+    pub const fn uniform_buffer_transfer_dst() -> BufferUsage {
         BufferUsage {
             uniform_buffer: true,
-            transfer_destination: true,
+            transfer_dst: true,
             ..BufferUsage::none()
         }
     }
@@ -162,13 +162,13 @@ impl BufferUsage {
         }
     }
 
-    /// Builds a `BufferUsage` with `indirect_buffer` and `transfer_destination` set to true and the rest
+    /// Builds a `BufferUsage` with `indirect_buffer` and `transfer_dst` set to true and the rest
     /// to false.
     #[inline]
-    pub const fn indirect_buffer_transfer_destination() -> BufferUsage {
+    pub const fn indirect_buffer_transfer_dst() -> BufferUsage {
         BufferUsage {
             indirect_buffer: true,
-            transfer_destination: true,
+            transfer_dst: true,
             ..BufferUsage::none()
         }
     }
@@ -186,10 +186,10 @@ impl BufferUsage {
 impl From<BufferUsage> for ash::vk::BufferUsageFlags {
     fn from(val: BufferUsage) -> Self {
         let mut result = ash::vk::BufferUsageFlags::empty();
-        if val.transfer_source {
+        if val.transfer_src {
             result |= ash::vk::BufferUsageFlags::TRANSFER_SRC;
         }
-        if val.transfer_destination {
+        if val.transfer_dst {
             result |= ash::vk::BufferUsageFlags::TRANSFER_DST;
         }
         if val.uniform_texel_buffer {
@@ -226,8 +226,8 @@ impl BitOr for BufferUsage {
     #[inline]
     fn bitor(self, rhs: Self) -> Self {
         BufferUsage {
-            transfer_source: self.transfer_source || rhs.transfer_source,
-            transfer_destination: self.transfer_destination || rhs.transfer_destination,
+            transfer_src: self.transfer_src || rhs.transfer_src,
+            transfer_dst: self.transfer_dst || rhs.transfer_dst,
             uniform_texel_buffer: self.uniform_texel_buffer || rhs.uniform_texel_buffer,
             storage_texel_buffer: self.storage_texel_buffer || rhs.storage_texel_buffer,
             uniform_buffer: self.uniform_buffer || rhs.uniform_buffer,

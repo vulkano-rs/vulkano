@@ -188,8 +188,8 @@ impl Framebuffer {
                 }
 
                 let image_view_extent = image_view.image().dimensions().width_height();
-                let image_view_array_layers =
-                    image_view.array_layers().end - attachments[0].array_layers().start;
+                let image_view_array_layers = image_view.subresource_range().array_layers.end
+                    - attachments[0].subresource_range().array_layers.start;
 
                 // VUID-VkFramebufferCreateInfo-renderPass-04536
                 if image_view_array_layers < render_pass.views_used() {
@@ -227,7 +227,10 @@ impl Framebuffer {
                 }
 
                 // VUID-VkFramebufferCreateInfo-pAttachments-00883
-                if image_view.mip_levels().end - image_view.mip_levels().start != 1 {
+                if image_view.subresource_range().mip_levels.end
+                    - image_view.subresource_range().mip_levels.start
+                    != 1
+                {
                     return Err(FramebufferCreationError::AttachmentMultipleMipLevels {
                         attachment: attachment_num,
                     });
@@ -357,7 +360,7 @@ impl Framebuffer {
     pub fn attached_layers_ranges(&self) -> SmallVec<[Range<u32>; 4]> {
         self.attachments
             .iter()
-            .map(|img| img.array_layers())
+            .map(|img| img.subresource_range().array_layers.clone())
             .collect()
     }
 }

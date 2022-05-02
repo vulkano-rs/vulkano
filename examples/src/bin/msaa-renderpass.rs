@@ -69,13 +69,14 @@ use std::{fs::File, io::BufWriter, path::Path};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
     command_buffer::{
-        AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBuffer, SubpassContents,
+        AutoCommandBufferBuilder, CommandBufferUsage, CopyImageToBufferInfo, PrimaryCommandBuffer,
+        RenderPassBeginInfo, SubpassContents,
     },
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
         Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
     },
-    format::{ClearValue, Format},
+    format::Format,
     image::{view::ImageView, AttachmentImage, ImageDimensions, SampleCount, StorageImage},
     impl_vertex,
     instance::{Instance, InstanceCreateInfo},
@@ -305,9 +306,11 @@ fn main() {
     .unwrap();
     builder
         .begin_render_pass(
-            framebuffer.clone(),
+            RenderPassBeginInfo {
+                clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into()), None],
+                ..RenderPassBeginInfo::framebuffer(framebuffer.clone())
+            },
             SubpassContents::Inline,
-            vec![[0.0, 0.0, 1.0, 1.0].into(), ClearValue::None],
         )
         .unwrap()
         .set_viewport(0, [viewport.clone()])
@@ -317,7 +320,10 @@ fn main() {
         .unwrap()
         .end_render_pass()
         .unwrap()
-        .copy_image_to_buffer(image.clone(), buf.clone())
+        .copy_image_to_buffer(CopyImageToBufferInfo::image_buffer(
+            image.clone(),
+            buf.clone(),
+        ))
         .unwrap();
     let command_buffer = builder.build().unwrap();
 

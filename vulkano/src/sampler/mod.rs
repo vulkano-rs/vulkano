@@ -447,7 +447,7 @@ impl Sampler {
             // The SPIR-V instruction is one of the OpImage*Dref* instructions, the image
             // view format is one of the depth/stencil formats, and the image view aspect
             // is not VK_IMAGE_ASPECT_DEPTH_BIT.
-            if !image_view.aspects().depth {
+            if !image_view.subresource_range().aspects.depth {
                 return Err(SamplerImageViewIncompatibleError::DepthComparisonWrongAspect);
             }
         } else {
@@ -486,7 +486,7 @@ impl Sampler {
         }
 
         if let Some(border_color) = self.border_color {
-            let aspects = image_view.aspects();
+            let aspects = image_view.subresource_range().aspects;
             let view_scalar_type = ShaderScalarType::from(
                 if aspects.color || aspects.plane0 || aspects.plane1 || aspects.plane2 {
                     image_view.format().unwrap().type_color().unwrap()
@@ -566,7 +566,10 @@ impl Sampler {
             }
 
             // The image view must have a single layer and a single mip level.
-            if image_view.mip_levels().end - image_view.mip_levels().start != 1 {
+            if image_view.subresource_range().mip_levels.end
+                - image_view.subresource_range().mip_levels.start
+                != 1
+            {
                 return Err(
                     SamplerImageViewIncompatibleError::UnnormalizedCoordinatesMultipleMipLevels,
                 );

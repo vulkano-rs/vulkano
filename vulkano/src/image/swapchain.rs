@@ -7,14 +7,14 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{
-    traits::{ImageClearValue, ImageContent},
-    ImageAccess, ImageDescriptorLayouts, ImageInner, ImageLayout,
+use super::{traits::ImageContent, ImageAccess, ImageDescriptorLayouts, ImageInner, ImageLayout};
+use crate::{
+    device::{Device, DeviceOwned},
+    swapchain::Swapchain,
+    OomError,
 };
-use crate::{format::ClearValue, swapchain::Swapchain, OomError};
 use std::{
     hash::{Hash, Hasher},
-    ops::Range,
     sync::Arc,
 };
 
@@ -31,7 +31,7 @@ use std::{
 /// method on the swapchain), which will have the effect of showing the content of the image to
 /// the screen. Once an image has been presented, it can no longer be used unless it is acquired
 /// again.
-// TODO: #[derive(Debug)]
+#[derive(Debug)]
 pub struct SwapchainImage<W> {
     swapchain: Arc<Swapchain<W>>,
     image_offset: usize,
@@ -76,6 +76,12 @@ impl<W> SwapchainImage<W> {
     }
 }
 
+unsafe impl<W> DeviceOwned for SwapchainImage<W> {
+    fn device(&self) -> &Arc<Device> {
+        self.swapchain.device()
+    }
+}
+
 unsafe impl<W> ImageAccess for SwapchainImage<W>
 where
     W: Send + Sync,
@@ -106,11 +112,6 @@ where
     }
 
     #[inline]
-    fn conflict_key(&self) -> u64 {
-        self.my_image().image.key()
-    }
-
-    #[inline]
     unsafe fn layout_initialized(&self) {
         self.layout_initialized();
     }
@@ -118,26 +119,6 @@ where
     #[inline]
     fn is_layout_initialized(&self) -> bool {
         self.is_layout_initialized()
-    }
-
-    #[inline]
-    fn current_mip_levels_access(&self) -> Range<u32> {
-        0..self.mip_levels()
-    }
-
-    #[inline]
-    fn current_array_layers_access(&self) -> Range<u32> {
-        0..1
-    }
-}
-
-unsafe impl<W> ImageClearValue<ClearValue> for SwapchainImage<W>
-where
-    W: Send + Sync,
-{
-    #[inline]
-    fn decode(&self, value: ClearValue) -> Option<ClearValue> {
-        Some(self.swapchain.image_format().decode_clear_value(value))
     }
 }
 

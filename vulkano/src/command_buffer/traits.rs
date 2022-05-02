@@ -15,7 +15,7 @@ use super::{
 use crate::{
     buffer::{sys::UnsafeBuffer, BufferAccess},
     device::{Device, DeviceOwned, Queue},
-    image::{sys::UnsafeImage, ImageAccess, ImageLayout},
+    image::{sys::UnsafeImage, ImageAccess, ImageLayout, ImageSubresourceRange},
     sync::{
         now, AccessCheckError, AccessError, AccessFlags, FlushError, GpuFuture, NowFuture,
         PipelineMemoryAccess, PipelineStages,
@@ -229,7 +229,14 @@ pub unsafe trait SecondaryCommandBuffer: DeviceOwned + Send + Sync {
     /// Returns the `index`th buffer of this command buffer, or `None` if out of range.
     ///
     /// The valid range is between 0 and `num_buffers()`.
-    fn buffer(&self, index: usize) -> Option<(&Arc<dyn BufferAccess>, PipelineMemoryAccess)>;
+    fn buffer(
+        &self,
+        index: usize,
+    ) -> Option<(
+        &Arc<dyn BufferAccess>,
+        Range<DeviceSize>,
+        PipelineMemoryAccess,
+    )>;
 
     /// Returns the number of images accessed by this command buffer.
     fn num_images(&self) -> usize;
@@ -242,6 +249,7 @@ pub unsafe trait SecondaryCommandBuffer: DeviceOwned + Send + Sync {
         index: usize,
     ) -> Option<(
         &Arc<dyn ImageAccess>,
+        &ImageSubresourceRange,
         PipelineMemoryAccess,
         ImageLayout,
         ImageLayout,
@@ -279,7 +287,14 @@ where
     }
 
     #[inline]
-    fn buffer(&self, index: usize) -> Option<(&Arc<dyn BufferAccess>, PipelineMemoryAccess)> {
+    fn buffer(
+        &self,
+        index: usize,
+    ) -> Option<(
+        &Arc<dyn BufferAccess>,
+        Range<DeviceSize>,
+        PipelineMemoryAccess,
+    )> {
         (**self).buffer(index)
     }
 
@@ -294,6 +309,7 @@ where
         index: usize,
     ) -> Option<(
         &Arc<dyn ImageAccess>,
+        &ImageSubresourceRange,
         PipelineMemoryAccess,
         ImageLayout,
         ImageLayout,

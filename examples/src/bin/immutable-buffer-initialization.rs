@@ -130,7 +130,7 @@ void main() {
         // We can use copy_buffer(), fill_buffer() and some other functions that copies data to
         // buffer also.
         builder
-            .update_buffer(immutable_data_buffer_init, &3u32)
+            .update_buffer(&3u32, immutable_data_buffer_init, 0)
             .unwrap();
 
         let command_buffer = builder.build().unwrap();

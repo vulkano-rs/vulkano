@@ -16,7 +16,7 @@ mod linux {
         buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
         command_buffer::{
             submit::SubmitCommandBufferBuilder, AutoCommandBufferBuilder, CommandBufferUsage,
-            SubpassContents,
+            RenderPassBeginInfo, SubpassContents,
         },
         descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
         device::{
@@ -26,7 +26,10 @@ mod linux {
         format::Format,
         image::{view::ImageView, ImageCreateFlags, ImageUsage, StorageImage, SwapchainImage},
         impl_vertex,
-        instance::{debug::DebugCallback, Instance, InstanceCreateInfo, InstanceExtensions},
+        instance::{
+            debug::{DebugUtilsMessenger, DebugUtilsMessengerCreateInfo},
+            Instance, InstanceCreateInfo, InstanceExtensions,
+        },
         pipeline::{
             graphics::{
                 color_blend::ColorBlendState,
@@ -96,8 +99,8 @@ mod linux {
             Format::R16G16B16A16_UNORM,
             ImageUsage {
                 sampled: true,
-                transfer_source: true,
-                transfer_destination: true,
+                transfer_src: true,
+                transfer_dst: true,
                 ..ImageUsage::none()
             },
             ImageCreateFlags {
@@ -293,7 +296,6 @@ mod linux {
                         recreate_swapchain = true;
                     }
 
-                    let clear_values = vec![[0.0, 0.0, 1.0, 1.0].into()];
                     let mut builder = AutoCommandBufferBuilder::primary(
                         device.clone(),
                         queue.family(),
@@ -302,9 +304,11 @@ mod linux {
                     .unwrap();
                     builder
                         .begin_render_pass(
-                            framebuffers[image_num].clone(),
+                            RenderPassBeginInfo {
+                                clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into())],
+                                ..RenderPassBeginInfo::framebuffer(framebuffers[image_num].clone())
+                            },
                             SubpassContents::Inline,
-                            clear_values,
                         )
                         .unwrap()
                         .set_viewport(0, [viewport.clone()])
@@ -391,16 +395,21 @@ mod linux {
         })
         .unwrap();
 
-        let _debug_callback = DebugCallback::errors_and_warnings(&instance, |msg| {
-            println!(
-                "{} {:?} {:?}: {}",
-                msg.layer_prefix.unwrap_or("unknown"),
-                msg.ty,
-                msg.severity,
-                msg.description
-            );
-        })
-        .unwrap();
+        let _debug_callback = unsafe {
+            DebugUtilsMessenger::new(
+                instance.clone(),
+                DebugUtilsMessengerCreateInfo::user_callback(Arc::new(|msg| {
+                    println!(
+                        "{} {:?} {:?}: {}",
+                        msg.layer_prefix.unwrap_or("unknown"),
+                        msg.ty,
+                        msg.severity,
+                        msg.description
+                    );
+                })),
+            )
+            .unwrap()
+        };
 
         let event_loop = EventLoop::new();
         let surface = WindowBuilder::new()

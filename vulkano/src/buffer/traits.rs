@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{sys::UnsafeBuffer, BufferContents, BufferSlice};
+use super::{sys::UnsafeBuffer, BufferContents, BufferSlice, BufferUsage};
 use crate::{device::DeviceOwned, DeviceSize, SafeDeref, VulkanObject};
 use std::{
     error, fmt,
@@ -27,6 +27,12 @@ pub unsafe trait BufferAccess: DeviceOwned + Send + Sync {
 
     /// Returns the size of the buffer in bytes.
     fn size(&self) -> DeviceSize;
+
+    /// Returns the usage the buffer was created with.
+    #[inline]
+    fn usage(&self) -> &BufferUsage {
+        self.inner().buffer.usage()
+    }
 
     /// Returns a `BufferSlice` covering the whole buffer.
     #[inline]
@@ -61,18 +67,6 @@ pub unsafe trait BufferAccess: DeviceOwned + Send + Sync {
     {
         BufferSlice::index(&self.into_buffer_slice(), index)
     }
-
-    /// Returns a key that uniquely identifies the buffer. Two buffers or images that potentially
-    /// overlap in memory must return the same key.
-    ///
-    /// The key is shared amongst all buffers and images, which means that you can make several
-    /// different buffer objects share the same memory, or make some buffer objects share memory
-    /// with images, as long as they return the same key.
-    ///
-    /// Since it is possible to accidentally return the same key for memory ranges that don't
-    /// overlap, the `conflicts_buffer` or `conflicts_image` function should always be called to
-    /// verify whether they actually overlap.
-    fn conflict_key(&self) -> (u64, u64);
 
     /// Gets the device address for this buffer.
     ///
@@ -148,11 +142,6 @@ where
     fn size(&self) -> DeviceSize {
         (**self).size()
     }
-
-    #[inline]
-    fn conflict_key(&self) -> (u64, u64) {
-        (**self).conflict_key()
-    }
 }
 
 /// Extension trait for `BufferAccess`. Indicates the type of the content of the buffer.
@@ -175,6 +164,14 @@ where
     T::Target: TypedBufferAccess,
 {
     type Content = <T::Target as TypedBufferAccess>::Content;
+}
+
+impl fmt::Debug for dyn BufferAccess {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("dyn BufferAccess")
+            .field("inner", &self.inner())
+            .finish()
+    }
 }
 
 impl PartialEq for dyn BufferAccess {

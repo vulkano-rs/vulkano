@@ -121,9 +121,13 @@ unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
     instance: Arc<Instance>,
     win: W,
 ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
-    use winit::platform::android::WindowExtAndroid;
-
-    Surface::from_android(instance, win.borrow().native_window(), win)
+    use raw_window_handle::HasRawWindowHandle;
+    use raw_window_handle::RawWindowHandle::AndroidNdk;
+    if let AndroidNdk(handle) = win.borrow().raw_window_handle() {
+        Surface::from_android(instance, handle.a_native_window, win)
+    } else {
+        unreachable!("This should be unreachable if the target is android");
+    }
 }
 
 #[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))]

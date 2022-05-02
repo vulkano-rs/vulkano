@@ -225,11 +225,6 @@ where
     fn size(&self) -> DeviceSize {
         self.size
     }
-
-    #[inline]
-    fn conflict_key(&self) -> (u64, u64) {
-        self.resource.conflict_key()
-    }
 }
 
 impl<T, B> BufferAccessObject for Arc<BufferSlice<T, B>>

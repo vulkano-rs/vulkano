@@ -42,22 +42,21 @@
 //! ).unwrap();
 //! ```
 
-use crate::buffer::{BufferAccess, BufferAccessObject, BufferInner};
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::format::Format;
-use crate::format::FormatFeatures;
-use crate::DeviceSize;
-use crate::Error;
-use crate::OomError;
-use crate::VulkanObject;
-use crate::{check_errors, Version};
-use std::error;
-use std::fmt;
-use std::hash::{Hash, Hasher};
-use std::mem::MaybeUninit;
-use std::ptr;
-use std::sync::Arc;
+use super::{BufferAccess, BufferAccessObject, BufferInner};
+use crate::{
+    check_errors,
+    device::{Device, DeviceOwned},
+    format::{Format, FormatFeatures},
+    DeviceSize, Error, OomError, Version, VulkanObject,
+};
+use std::{
+    error, fmt,
+    hash::{Hash, Hasher},
+    mem::MaybeUninit,
+    ops::Range,
+    ptr,
+    sync::Arc,
+};
 
 /// Represents a way for the GPU to interpret buffer data. See the documentation of the
 /// `view` module.
@@ -71,6 +70,7 @@ where
 
     format: Option<Format>,
     format_features: FormatFeatures,
+    range: Range<DeviceSize>,
 }
 
 impl<B> BufferView<B>
@@ -86,7 +86,7 @@ where
 
         let device = buffer.device();
         let properties = device.physical_device().properties();
-        let range = buffer.size();
+        let size = buffer.size();
         let BufferInner {
             buffer: inner_buffer,
             offset,
@@ -120,15 +120,15 @@ where
         let texels_per_block = format.texels_per_block();
 
         // VUID-VkBufferViewCreateInfo-range-00929
-        if range % block_size != 0 {
+        if size % block_size != 0 {
             return Err(BufferViewCreationError::RangeNotAligned {
-                range,
+                range: size,
                 required_alignment: block_size,
             });
         }
 
         // VUID-VkBufferViewCreateInfo-range-00930
-        if ((range / block_size) * texels_per_block as DeviceSize) as u32
+        if ((size / block_size) * texels_per_block as DeviceSize) as u32
             > properties.max_texel_buffer_elements
         {
             return Err(BufferViewCreationError::MaxTexelBufferElementsExceeded);
@@ -200,7 +200,7 @@ where
             buffer: inner_buffer.internal_object(),
             format: format.into(),
             offset,
-            range,
+            range: size,
             ..Default::default()
         };
 
@@ -222,6 +222,7 @@ where
 
             format: Some(format),
             format_features,
+            range: 0..size,
         }))
     }
 
@@ -411,6 +412,9 @@ pub unsafe trait BufferViewAbstract:
 
     /// Returns the features supported by the buffer view's format.
     fn format_features(&self) -> &FormatFeatures;
+
+    /// Returns the byte range of the wrapped buffer that this view exposes.
+    fn range(&self) -> Range<DeviceSize>;
 }
 
 unsafe impl<B> BufferViewAbstract for BufferView<B>
@@ -431,6 +435,11 @@ where
     #[inline]
     fn format_features(&self) -> &FormatFeatures {
         &self.format_features
+    }
+
+    #[inline]
+    fn range(&self) -> Range<DeviceSize> {
+        self.range.clone()
     }
 }
 

@@ -7,21 +7,65 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{sys::UnsafeImage, ImageDescriptorLayouts, ImageDimensions, ImageLayout, SampleCount};
+use super::{
+    sys::UnsafeImage, ImageAspects, ImageDescriptorLayouts, ImageDimensions, ImageLayout,
+    ImageSubresourceLayers, ImageSubresourceRange, ImageUsage, SampleCount,
+};
 use crate::{
-    format::{ClearValue, Format, FormatFeatures},
+    device::{Device, DeviceOwned},
+    format::{Format, FormatFeatures},
     SafeDeref,
 };
 use std::{
+    fmt,
     hash::{Hash, Hasher},
-    ops::Range,
     sync::Arc,
 };
 
 /// Trait for types that represent the way a GPU can access an image.
-pub unsafe trait ImageAccess: Send + Sync {
+pub unsafe trait ImageAccess: DeviceOwned + Send + Sync {
     /// Returns the inner unsafe image object used by this image.
     fn inner(&self) -> ImageInner;
+
+    /// Returns the dimensions of the image.
+    #[inline]
+    fn dimensions(&self) -> ImageDimensions {
+        let inner = self.inner();
+
+        match self
+            .inner()
+            .image
+            .dimensions()
+            .mip_level_dimensions(inner.first_mipmap_level)
+            .unwrap()
+        {
+            ImageDimensions::Dim1d {
+                width,
+                array_layers: _,
+            } => ImageDimensions::Dim1d {
+                width,
+                array_layers: inner.num_layers,
+            },
+            ImageDimensions::Dim2d {
+                width,
+                height,
+                array_layers: _,
+            } => ImageDimensions::Dim2d {
+                width,
+                height,
+                array_layers: inner.num_layers,
+            },
+            ImageDimensions::Dim3d {
+                width,
+                height,
+                depth,
+            } => ImageDimensions::Dim3d {
+                width,
+                height,
+                depth,
+            },
+        }
+    }
 
     /// Returns the format of this image.
     #[inline]
@@ -29,11 +73,16 @@ pub unsafe trait ImageAccess: Send + Sync {
         self.inner().image.format().unwrap()
     }
 
+    /// Returns the features supported by the image's format.
+    #[inline]
+    fn format_features(&self) -> &FormatFeatures {
+        self.inner().image.format_features()
+    }
+
     /// Returns the number of mipmap levels of this image.
     #[inline]
     fn mip_levels(&self) -> u32 {
-        // TODO: not necessarily correct because of the new inner() design?
-        self.inner().image.mip_levels()
+        self.inner().num_mipmap_levels
     }
 
     /// Returns the number of samples of this image.
@@ -42,17 +91,48 @@ pub unsafe trait ImageAccess: Send + Sync {
         self.inner().image.samples()
     }
 
-    /// Returns the dimensions of the image.
+    /// Returns the usage the image was created with.
     #[inline]
-    fn dimensions(&self) -> ImageDimensions {
-        // TODO: not necessarily correct because of the new inner() design?
-        self.inner().image.dimensions()
+    fn usage(&self) -> &ImageUsage {
+        self.inner().image.usage()
     }
 
-    /// Returns the features supported by the image's format.
+    /// Returns an `ImageSubresourceLayers` covering the first mip level of the image. All aspects
+    /// of the image are selected, or `plane0` if the image is multi-planar.
     #[inline]
-    fn format_features(&self) -> &FormatFeatures {
-        self.inner().image.format_features()
+    fn subresource_layers(&self) -> ImageSubresourceLayers {
+        ImageSubresourceLayers {
+            aspects: {
+                let aspects = self.format().aspects();
+
+                if aspects.plane0 {
+                    ImageAspects {
+                        plane0: true,
+                        ..ImageAspects::none()
+                    }
+                } else {
+                    aspects
+                }
+            },
+            mip_level: 0,
+            array_layers: 0..self.dimensions().array_layers(),
+        }
+    }
+
+    /// Returns an `ImageSubresourceRange` covering the whole image. If the image is multi-planar,
+    /// only the `color` aspect is selected.
+    #[inline]
+    fn subresource_range(&self) -> ImageSubresourceRange {
+        ImageSubresourceRange {
+            aspects: ImageAspects {
+                plane0: false,
+                plane1: false,
+                plane2: false,
+                ..self.format().aspects()
+            },
+            mip_levels: 0..self.mip_levels(),
+            array_layers: 0..self.dimensions().array_layers(),
+        }
     }
 
     /// When images are created their memory layout is initially `Undefined` or `Preinitialized`.
@@ -68,13 +148,16 @@ pub unsafe trait ImageAccess: Send + Sync {
     /// `Preinitialized` state, this may result in the vulkan implementation attempting to use
     /// an image in an invalid layout. The same problem must be considered by the implementer
     /// of the method.
+    #[inline]
     unsafe fn layout_initialized(&self) {}
 
+    #[inline]
     fn is_layout_initialized(&self) -> bool {
         false
     }
 
-    unsafe fn initial_layout(&self) -> ImageLayout {
+    #[inline]
+    fn initial_layout(&self) -> ImageLayout {
         self.inner().image.initial_layout()
     }
 
@@ -119,24 +202,6 @@ pub unsafe trait ImageAccess: Send + Sync {
     ///
     /// This must return `Some` if the image is to be used to create an image view.
     fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts>;
-
-    /// Returns a key that uniquely identifies the memory content of the image.
-    /// Two ranges that potentially overlap in memory must return the same key.
-    ///
-    /// The key is shared amongst all buffers and images, which means that you can make several
-    /// different image objects share the same memory, or make some image objects share memory
-    /// with buffers, as long as they return the same key.
-    ///
-    /// Since it is possible to accidentally return the same key for memory ranges that don't
-    /// overlap, the `conflicts_image` or `conflicts_buffer` function should always be called to
-    /// verify whether they actually overlap.
-    fn conflict_key(&self) -> u64;
-
-    /// Returns the current mip level that is accessed by the gpu
-    fn current_mip_levels_access(&self) -> Range<u32>;
-
-    /// Returns the current array layer that is accessed by the gpu
-    fn current_array_layers_access(&self) -> Range<u32>;
 }
 
 /// Inner information about an image.
@@ -146,16 +211,24 @@ pub struct ImageInner<'a> {
     pub image: &'a Arc<UnsafeImage>,
 
     /// The first layer of `image` to consider.
-    pub first_layer: usize,
+    pub first_layer: u32,
 
     /// The number of layers of `image` to consider.
-    pub num_layers: usize,
+    pub num_layers: u32,
 
     /// The first mipmap level of `image` to consider.
-    pub first_mipmap_level: usize,
+    pub first_mipmap_level: u32,
 
     /// The number of mipmap levels of `image` to consider.
-    pub num_mipmap_levels: usize,
+    pub num_mipmap_levels: u32,
+}
+
+impl fmt::Debug for dyn ImageAccess {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("dyn ImageAccess")
+            .field("inner", &self.inner())
+            .finish()
+    }
 }
 
 impl PartialEq for dyn ImageAccess {
@@ -180,6 +253,15 @@ impl Hash for dyn ImageAccess {
 pub struct ImageAccessFromUndefinedLayout<I> {
     image: I,
     preinitialized: bool,
+}
+
+unsafe impl<I> DeviceOwned for ImageAccessFromUndefinedLayout<I>
+where
+    I: ImageAccess,
+{
+    fn device(&self) -> &Arc<Device> {
+        self.image.device()
+    }
 }
 
 unsafe impl<I> ImageAccess for ImageAccessFromUndefinedLayout<I>
@@ -209,19 +291,6 @@ where
     fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
         self.image.descriptor_layouts()
     }
-
-    #[inline]
-    fn conflict_key(&self) -> u64 {
-        self.image.conflict_key()
-    }
-
-    fn current_mip_levels_access(&self) -> Range<u32> {
-        self.image.current_mip_levels_access()
-    }
-
-    fn current_array_layers_access(&self) -> Range<u32> {
-        self.image.current_array_layers_access()
-    }
 }
 
 impl<I> PartialEq for ImageAccessFromUndefinedLayout<I>
@@ -244,13 +313,6 @@ where
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
     }
-}
-
-/// Extension trait for images. Checks whether the value `T` can be used as a clear value for the
-/// given image.
-// TODO: isn't that for image views instead?
-pub unsafe trait ImageClearValue<T>: ImageAccess {
-    fn decode(&self, value: T) -> Option<ClearValue>;
 }
 
 pub unsafe trait ImageContent<P>: ImageAccess {
@@ -284,11 +346,6 @@ where
     }
 
     #[inline]
-    fn conflict_key(&self) -> u64 {
-        (**self).conflict_key()
-    }
-
-    #[inline]
     unsafe fn layout_initialized(&self) {
         (**self).layout_initialized();
     }
@@ -296,13 +353,5 @@ where
     #[inline]
     fn is_layout_initialized(&self) -> bool {
         (**self).is_layout_initialized()
-    }
-
-    fn current_mip_levels_access(&self) -> Range<u32> {
-        (**self).current_mip_levels_access()
-    }
-
-    fn current_array_layers_access(&self) -> Range<u32> {
-        (**self).current_array_layers_access()
     }
 }

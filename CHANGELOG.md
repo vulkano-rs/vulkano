@@ -9,7 +9,30 @@
 - **Breaking** Removed the `try_gpu_lock`, `increase_gpu_lock` and `unlock` methods from the `BufferAccess` and `ImageAccess` traits. Locking is now implemented internally in `UnsafeBuffer` and `UnsafeImage`.
 - **Breaking** All `check_buffer_access` and `check_image_access` functions now take an `UnsafeBuffer`/`UnsafeImage` and a `Range<DeviceSize>`.
 - **Breaking** `UnsafeCommandBufferBuilder::pipeline_barrier` now takes a `DependencyInfo`. It will use `vkCmdPipelineBarrier2` if supported.
+- **Breaking** The debug command buffer commands have been renamed to match Vulkan. They now take a `DebugUtilsLabel` value.
+- **Breaking** `end_debug_utils_label` is now `unsafe`, as it requires validation checks that are not implemented yet.
+- **Breaking** `DebugCallback` is renamed to `DebugUtilsMessenger` to match Vulkan, and now takes a `DebugUtilsMessengerCreateInfo` to construct. It is now `unsafe` to create, because the the callback cannot call any Vulkan API functions, which Vulkano is unable to check.
+- **Breaking** The copy, blit, clear, fill and update commands are completely rewritten, and now use `Info` structs to specify the parameters. They now allow you to specify multiple regions at once to copy, give you fill control over the image subresources, and also let you select image layouts.
+- **Breaking** The `transfer_source` and `transfer_destination` fields of `BufferUsage` and `ImageUsage` are renamed to `transfer_src` and `transfer_dst` to match Vulkan.
+- **Breaking** `SubImage` has been removed.
+- **Breaking** The `conflict_key` method on the `BufferAccess` and `ImageAccess` traits is removed.
+- **Breaking** `ImageViewCreateInfo` now has a single `subresource_range` field instead of separate fields for aspect, mip levels and array layers.
+- **Breaking** The `aspects`, `mip_levels` and `array_layers` methods of `ImageViewAbstract` are removed, and replaced with a single `subresource_range` method.
+- **Breaking** The `current_mip_levels_access` and `current_array_layers_access` methods of `ImageAccess` are removed.
+- **Breaking** `begin_render_pass` now takes a `RenderPassBeginInfo` struct.
+- **Breaking** `ClearRect` now has a single `Range<u32>` for array layers.
+- **Breaking** The fields of `ClearAttachment::Color` are now named.
+- **Breaking** The `ImageClearValue` trait is removed.
 - `UnsafeCommandPoolCreateInfo` and `UnsafeCommandPoolCreationError` interfaces exposed.
+- Fixed compile error in Vulkano-win on Android.
+- Added `COVERAGE.md`, a document detailing how much of Vulkan is currently covered by Vulkano.
+- Added debug utils commands to `Queue`.
+- Added `Instance::with_debug_utils_messengers`, to provide creation info for messengers that should be used at instance creation and destruction time. This function is also `unsafe`.
+- Added `subresource_layers` and `subresource_range` methods to `UnsafeImage` and `ImageAccess` to easily generate these types from an image.
+- Added support for the `khr_copy_commands2` device extension.
+- Added the `resolve_image` command buffer command.
+- `BufferViewAbstract` now has a `range` method that returns the byte range of the underlying buffer that the view covers.
+- Added new enum value `CheckDispatchError::ZeroLengthDimensions` to be returned when `dispatch()` is called with dimension(s) of length zero.
 
 # Version 0.29.0 (2022-03-11)
 
