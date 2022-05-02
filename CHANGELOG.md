@@ -34,6 +34,7 @@
 - `BufferViewAbstract` now has a `range` method that returns the byte range of the underlying buffer that the view covers.
 - Added new enum value `CheckDispatchError::ZeroLengthDimensions` to be returned when `dispatch()` is called with dimension(s) of length zero.
 - Vulkano-shaders now supports `raygen`, `anyhit`, `closesthit`, `miss`, `intersection` and `callable` shaders.
+- Fix PresentFuture flushing twice if `then_swapchain_present` fails.
 
 # Version 0.29.0 (2022-03-11)
 
