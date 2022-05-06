@@ -7,12 +7,13 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-/// Buffer whose content is read-written by the GPU only.
-///
-/// Each access from the CPU or from the GPU locks the whole buffer for either reading or writing.
-/// You can read the buffer multiple times simultaneously from multiple queues. Trying to read and
-/// write simultaneously, or write and write simultaneously will block with a semaphore.
-///
+//! Buffer whose content is read-written by the GPU only.
+//!
+//! Each access from the CPU or from the GPU locks the whole buffer for either reading or writing.
+//! You can read the buffer multiple times simultaneously from multiple queues. Trying to read and
+//! write simultaneously, or write and write simultaneously will block with a semaphore.
+//!
+
 use super::{
     sys::{UnsafeBuffer, UnsafeBufferCreateInfo},
     BufferAccess, BufferAccessObject, BufferContents, BufferCreationError, BufferInner,
