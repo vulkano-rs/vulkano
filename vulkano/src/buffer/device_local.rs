@@ -49,16 +49,27 @@ use std::{
 /// The `DeviceLocalBuffer` will be in device-local memory, unless the device doesn't provide any
 /// device-local memory.
 ///
+/// # Usage
+///
+/// Since a `DeviceLocalBuffer` can only be directly accessed by the GPU, data cannot be transfered between
+/// the host process and the buffer alone. One must use additional buffers which are accessible to the CPU as
+/// staging areas, then use command buffers to execute the necessary data transfers.
+///
+/// Despite this, if one knows in advance that a buffer will not need to be frequently accessed by the host,
+/// then there may be significant performance gains by using a `DeviceLocalBuffer` over a buffer type which
+/// allows host access.
+///
 /// # Example
+///
+/// The following example outlines the general strategy one may take when initializing a `DeviceLocalBuffer`.
 ///
 /// ```
 /// use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, DeviceLocalBuffer};
 /// use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferInfo};
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
 /// # let queue: std::sync::Arc<vulkano::device::Queue> = return;
-/// # let queue: std::sync::Arc<vulkano::device::Queue> = return;
 ///
-/// // Simple iterator to construct test data
+/// // Simple iterator to construct test data.
 /// let data = (0..10_000).map(|i| i as f32);
 ///
 /// // Create a CPU accessible buffer initialized with the data.
@@ -79,7 +90,7 @@ use std::{
 /// )
 /// .unwrap();
 ///
-/// // Create one-time command to copy between the buffers.
+/// // Create a one-time command to copy between the buffers.
 /// let mut cbb = AutoCommandBufferBuilder::primary(
 ///     device.clone(),
 ///     queue.family(),
@@ -93,7 +104,7 @@ use std::{
 /// .unwrap();
 /// let cb = cbb.build().unwrap();
 ///
-/// // Execute copy and wait for completion before proceeding.
+/// // Execute copy command and wait for completion before proceeding.
 /// cb.execute(queue.clone())
 /// .unwrap()
 /// .then_signal_fence_and_flush()
