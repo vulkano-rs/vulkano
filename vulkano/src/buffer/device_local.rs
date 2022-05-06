@@ -65,7 +65,8 @@ use std::{
 ///
 /// ```
 /// use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, DeviceLocalBuffer};
-/// use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferInfo};
+/// use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferInfo, PrimaryCommandBuffer};
+/// use vulkano::sync::GpuFuture;
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
 /// # let queue: std::sync::Arc<vulkano::device::Queue> = return;
 ///
