@@ -7,12 +7,12 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! Buffer whose content is read-written by the GPU only.
-//!
-//! Each access from the CPU or from the GPU locks the whole buffer for either reading or writing.
-//! You can read the buffer multiple times simultaneously from multiple queues. Trying to read and
-//! write simultaneously, or write and write simultaneously will block with a semaphore.
-
+/// Buffer whose content is read-written by the GPU only.
+///
+/// Each access from the CPU or from the GPU locks the whole buffer for either reading or writing.
+/// You can read the buffer multiple times simultaneously from multiple queues. Trying to read and
+/// write simultaneously, or write and write simultaneously will block with a semaphore.
+///
 use super::{
     sys::{UnsafeBuffer, UnsafeBufferCreateInfo},
     BufferAccess, BufferAccessObject, BufferContents, BufferCreationError, BufferInner,
@@ -48,6 +48,60 @@ use std::{
 ///
 /// The `DeviceLocalBuffer` will be in device-local memory, unless the device doesn't provide any
 /// device-local memory.
+///
+/// # Example
+///
+/// ```
+/// use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, DeviceLocalBuffer};
+/// use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferInfo};
+/// # let device: std::sync::Arc<vulkano::device::Device> = return;
+/// # let queue: std::sync::Arc<vulkano::device::Queue> = return;
+/// # let queue: std::sync::Arc<vulkano::device::Queue> = return;
+///
+/// // Simple iterator to construct test data
+/// let data = (0..10_000).map(|i| i as f32);
+///
+/// // Create a CPU accessible buffer initialized with the data.
+/// let temporary_accessible_buffer = CpuAccessibleBuffer::from_iter(
+///     device.clone(),
+///     BufferUsage::transfer_src(), // Specify this buffer will be used as a transfer source.
+///     false,
+///     data,
+/// )
+/// .unwrap();
+///
+/// // Create a buffer array on the GPU with enough space for `10_000` floats.
+/// let device_local_buffer = DeviceLocalBuffer::<[f32]>::array(
+///     device.clone(),
+///     10_000 as vulkano::DeviceSize,
+///     BufferUsage::storage_buffer() | BufferUsage::transfer_dst(), // Specify use as a storage buffer and transfer destination.
+///     device.active_queue_families(),
+/// )
+/// .unwrap();
+///
+/// // Create one-time command to copy between the buffers.
+/// let mut cbb = AutoCommandBufferBuilder::primary(
+///     device.clone(),
+///     queue.family(),
+///     CommandBufferUsage::OneTimeSubmit,
+/// )
+/// .unwrap();
+/// cbb.copy_buffer(CopyBufferInfo::buffers(
+///     temporary_accessible_buffer,
+///     device_local_buffer.clone(),
+/// ))
+/// .unwrap();
+/// let cb = cbb.build().unwrap();
+///
+/// // Execute copy and wait for completion before proceeding.
+/// cb.execute(queue.clone())
+/// .unwrap()
+/// .then_signal_fence_and_flush()
+/// .unwrap()
+/// .wait(None /* timeout */)
+/// .unwrap()
+/// ```
+///
 #[derive(Debug)]
 pub struct DeviceLocalBuffer<T, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>>
 where

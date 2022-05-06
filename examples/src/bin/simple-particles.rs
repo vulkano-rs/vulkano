@@ -390,7 +390,7 @@ fn main() {
     let graphics_pipeline = GraphicsPipeline::start()
         .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
         .vertex_shader(vs.entry_point("main").unwrap(), ())
-        .input_assembly_state(InputAssemblyState::new().topology(PrimitiveTopology::PointList))
+        .input_assembly_state(InputAssemblyState::new().topology(PrimitiveTopology::PointList)) // Vertices will be rendered as a list of points.
         .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([viewport]))
         .fragment_shader(fs.entry_point("main").unwrap(), ())
         .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
@@ -445,10 +445,9 @@ fn main() {
                     "Not handling sub-optimal swapchains in this sample code"
                 );
 
-                // If this image buffer already has a fence, wait for the fence to be completed, then cleanup.
-                // Usually the fence for this index will have completed by the time we are rendering it again.
+                // If this image buffer already has a future then attempt to cleanup fence resources.
+                // Usually the future for this index will have completed by the time we are rendering it again.
                 if let Some(image_fence) = &mut fences[image_index] {
-                    image_fence.wait(None).unwrap();
                     image_fence.cleanup_finished()
                 }
 
@@ -512,7 +511,6 @@ fn main() {
                     // Unknown failure.
                     Err(e) => panic!("Failed to flush future: {:?}", e),
                 };
-
                 previous_fence_index = image_index;
             }
             _ => (),
