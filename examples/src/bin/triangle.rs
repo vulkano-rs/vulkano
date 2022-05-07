@@ -416,6 +416,13 @@ fn main() {
                 recreate_swapchain = true;
             }
             Event::RedrawEventsCleared => {
+                // Do not draw frame when screen dimensions are zero.
+                // On Windows, this can occur from minimizing the application.
+                let dimensions = surface.window().inner_size();
+                if dimensions.width == 0 || dimensions.height == 0 {
+                    return;
+                }
+
                 // It is important to call this function from time to time, otherwise resources will keep
                 // accumulating and you will eventually reach an out of memory error.
                 // Calling this function polls various fences in order to determine what the GPU has
@@ -425,11 +432,11 @@ fn main() {
                 // Whenever the window resizes we need to recreate everything dependent on the window size.
                 // In this example that includes the swapchain, the framebuffers and the dynamic state viewport.
                 if recreate_swapchain {
-                    // Get the new dimensions of the window.
+                    // Use the new dimensions of the window.
 
                     let (new_swapchain, new_images) =
                         match swapchain.recreate(SwapchainCreateInfo {
-                            image_extent: surface.window().inner_size().into(),
+                            image_extent: dimensions.into(),
                             ..swapchain.create_info()
                         }) {
                             Ok(r) => r,

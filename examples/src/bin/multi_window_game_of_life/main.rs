@@ -197,6 +197,15 @@ fn compute_then_render(
     life_color: [f32; 4],
     dead_color: [f32; 4],
 ) {
+    // Skip this window when minimized
+    match vulkano_window.window_size() {
+        [w, h] => {
+            if w == 0 || h == 0 {
+                return;
+            }
+        }
+    }
+
     // Start frame
     let before_pipeline_future = match vulkano_window.start_frame() {
         Err(e) => {

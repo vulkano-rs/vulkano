@@ -392,8 +392,8 @@ impl<W> Swapchain<W> {
         }
 
         // VUID-VkSwapchainCreateInfoKHR-imageExtent-01689
-        // Shouldn't be possible with a properly behaving device
-        assert!(image_extent[0] != 0 || image_extent[1] != 0);
+        // On some platforms, dimensions of zero-length can occur by minimizing the surface.
+        if image_extent.contains(&0) { return Err(SwapchainCreationError::ImageExtentZeroLengthDimensions)}
 
         // VUID-VkSwapchainCreateInfoKHR-imageArrayLayers-01275
         if image_array_layers == 0
@@ -1056,6 +1056,11 @@ pub enum SwapchainCreationError {
         max_supported: [u32; 2],
     },
 
+    /// The provided `image_extent` contained at least one dimension of zero length.
+    /// This is prohibited by [VUID-VkSwapchainCreateInfoKHR-imageExtent-01689](https://khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkSwapchainCreateInfoKHR.html#VUID-VkSwapchainCreateInfoKHR-imageExtent-01689)
+    /// which requires both the width and height be non-zero.
+    ImageExtentZeroLengthDimensions, 
+
     /// The provided image parameters are not supported as queried from `image_format_properties`.
     ImageFormatPropertiesNotSupported,
 
@@ -1139,8 +1144,12 @@ impl fmt::Display for SwapchainCreationError {
             ),
             Self::ImageExtentNotSupported { provided, min_supported, max_supported } => write!(
                 fmt,
-                "the provided `min_image_count` ({:?}) is not within the range (min: {:?}, max: {:?}) supported by the surface for this device",
+                "the provided `image_extent` ({:?}) is not within the range (min: {:?}, max: {:?}) supported by the surface for this device",
                 provided, min_supported, max_supported,
+            ),
+            Self::ImageExtentZeroLengthDimensions => write!(
+                fmt,
+                "the provided `image_extent` contained at least one dimension of zero length",
             ),
             Self::ImageFormatPropertiesNotSupported => write!(
                 fmt,

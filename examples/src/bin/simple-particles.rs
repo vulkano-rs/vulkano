@@ -412,8 +412,8 @@ fn main() {
             }
             Event::RedrawEventsCleared => {
                 let dimensions = surface.window().inner_size();
-                if dimensions.width == 0 && dimensions.height == 0 {
-                    return; // On Windows, minimizing sets surface to 0x0. Do not draw frame.
+                if dimensions.width == 0 || dimensions.height == 0 {
+                    return;
                 }
 
                 // Update per-frame variables.
