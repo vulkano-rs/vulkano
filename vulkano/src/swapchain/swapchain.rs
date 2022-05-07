@@ -393,7 +393,9 @@ impl<W> Swapchain<W> {
 
         // VUID-VkSwapchainCreateInfoKHR-imageExtent-01689
         // On some platforms, dimensions of zero-length can occur by minimizing the surface.
-        if image_extent.contains(&0) { return Err(SwapchainCreationError::ImageExtentZeroLengthDimensions)}
+        if image_extent.contains(&0) {
+            return Err(SwapchainCreationError::ImageExtentZeroLengthDimensions);
+        }
 
         // VUID-VkSwapchainCreateInfoKHR-imageArrayLayers-01275
         if image_array_layers == 0
@@ -1059,7 +1061,10 @@ pub enum SwapchainCreationError {
     /// The provided `image_extent` contained at least one dimension of zero length.
     /// This is prohibited by [VUID-VkSwapchainCreateInfoKHR-imageExtent-01689](https://khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkSwapchainCreateInfoKHR.html#VUID-VkSwapchainCreateInfoKHR-imageExtent-01689)
     /// which requires both the width and height be non-zero.
-    ImageExtentZeroLengthDimensions, 
+    ///
+    /// This error is distinct from `ImageExtentNotSupported` because a surface's minimum supported
+    /// length may not enforce this rule.
+    ImageExtentZeroLengthDimensions,
 
     /// The provided image parameters are not supported as queried from `image_format_properties`.
     ImageFormatPropertiesNotSupported,
