@@ -63,6 +63,16 @@ fn main() {
         if !handle_events(&mut event_loop, &mut renderer, &mut app) {
             break;
         }
+
+        match renderer.window_size() {
+            [w, h] => {
+                // Skip this frame when minimized
+                if w == 0 || h == 0 {
+                    continue;
+                }
+            }
+        }
+
         app.update_state_after_inputs(&mut renderer);
         compute_then_render(&mut renderer, &mut app, render_target_id);
         app.reset_input_state();

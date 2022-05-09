@@ -352,11 +352,16 @@ fn main() {
                 ref mut previous_frame_end,
             } = window_surfaces.get_mut(&window_id).unwrap();
 
+            let dimensions = surface.window().inner_size();
+            if dimensions.width == 0 || dimensions.height == 0 {
+                return;
+            }
+
             previous_frame_end.as_mut().unwrap().cleanup_finished();
 
             if *recreate_swapchain {
                 let (new_swapchain, new_images) = match swapchain.recreate(SwapchainCreateInfo {
-                    image_extent: surface.window().inner_size().into(),
+                    image_extent: dimensions.into(),
                     ..swapchain.create_info()
                 }) {
                     Ok(r) => r,

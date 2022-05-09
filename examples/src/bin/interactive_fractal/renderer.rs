@@ -271,7 +271,6 @@ impl Renderer {
     }
 
     /// Winit window size
-    #[allow(unused)]
     pub fn window_size(&self) -> [u32; 2] {
         let size = self.window().inner_size();
         [size.width, size.height]
