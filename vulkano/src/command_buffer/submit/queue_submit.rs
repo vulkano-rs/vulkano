@@ -214,7 +214,7 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
                 ..Default::default()
             };
 
-            check_errors(fns.v1_0.queue_submit(*queue, 1, &batch, self.fence))?;
+            check_errors((fns.v1_0.queue_submit)(*queue, 1, &batch, self.fence))?;
             Ok(())
         }
     }

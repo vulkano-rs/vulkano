@@ -96,7 +96,7 @@ impl UnsafeDescriptorPool {
             unsafe {
                 let fns = device.fns();
                 let mut output = MaybeUninit::uninit();
-                check_errors(fns.v1_0.create_descriptor_pool(
+                check_errors((fns.v1_0.create_descriptor_pool)(
                     device.internal_object(),
                     &create_info,
                     ptr::null(),
@@ -208,7 +208,7 @@ impl UnsafeDescriptorPool {
             let mut output = Vec::with_capacity(layouts.len());
 
             let fns = self.device.fns();
-            let ret = fns.v1_0.allocate_descriptor_sets(
+            let ret = (fns.v1_0.allocate_descriptor_sets)(
                 self.device.internal_object(),
                 &infos,
                 output.as_mut_ptr(),
@@ -264,7 +264,7 @@ impl UnsafeDescriptorPool {
             .collect();
         if !sets.is_empty() {
             let fns = self.device.fns();
-            check_errors(fns.v1_0.free_descriptor_sets(
+            check_errors((fns.v1_0.free_descriptor_sets)(
                 self.device.internal_object(),
                 self.handle,
                 sets.len() as u32,
@@ -280,7 +280,7 @@ impl UnsafeDescriptorPool {
     /// This destroys all descriptor sets and empties the pool.
     pub unsafe fn reset(&mut self) -> Result<(), OomError> {
         let fns = self.device.fns();
-        check_errors(fns.v1_0.reset_descriptor_pool(
+        check_errors((fns.v1_0.reset_descriptor_pool)(
             self.device.internal_object(),
             self.handle,
             ash::vk::DescriptorPoolResetFlags::empty(),
@@ -294,7 +294,7 @@ impl Drop for UnsafeDescriptorPool {
     fn drop(&mut self) {
         unsafe {
             let fns = self.device.fns();
-            fns.v1_0.destroy_descriptor_pool(
+            (fns.v1_0.destroy_descriptor_pool)(
                 self.device.internal_object(),
                 self.handle,
                 ptr::null(),

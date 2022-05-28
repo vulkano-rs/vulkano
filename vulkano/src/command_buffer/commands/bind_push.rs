@@ -828,7 +828,7 @@ impl UnsafeCommandBufferBuilder {
         let num_bindings = sets.len() as u32;
         debug_assert!(first_set + num_bindings <= pipeline_layout.set_layouts().len() as u32);
 
-        fns.v1_0.cmd_bind_descriptor_sets(
+        (fns.v1_0.cmd_bind_descriptor_sets)(
             self.handle,
             pipeline_bind_point.into(),
             pipeline_layout.internal_object(),
@@ -849,7 +849,7 @@ impl UnsafeCommandBufferBuilder {
         debug_assert!(inner.offset < inner.buffer.size());
         debug_assert!(inner.buffer.usage().index_buffer);
 
-        fns.v1_0.cmd_bind_index_buffer(
+        (fns.v1_0.cmd_bind_index_buffer)(
             self.handle,
             inner.buffer.internal_object(),
             inner.offset,
@@ -861,7 +861,7 @@ impl UnsafeCommandBufferBuilder {
     #[inline]
     pub unsafe fn bind_pipeline_compute(&mut self, pipeline: &ComputePipeline) {
         let fns = self.device.fns();
-        fns.v1_0.cmd_bind_pipeline(
+        (fns.v1_0.cmd_bind_pipeline)(
             self.handle,
             ash::vk::PipelineBindPoint::COMPUTE,
             pipeline.internal_object(),
@@ -872,7 +872,7 @@ impl UnsafeCommandBufferBuilder {
     #[inline]
     pub unsafe fn bind_pipeline_graphics(&mut self, pipeline: &GraphicsPipeline) {
         let fns = self.device.fns();
-        fns.v1_0.cmd_bind_pipeline(
+        (fns.v1_0.cmd_bind_pipeline)(
             self.handle,
             ash::vk::PipelineBindPoint::GRAPHICS,
             pipeline.internal_object(),
@@ -909,7 +909,7 @@ impl UnsafeCommandBufferBuilder {
             first_binding + num_bindings <= max_bindings
         });
 
-        fns.v1_0.cmd_bind_vertex_buffers(
+        (fns.v1_0.cmd_bind_vertex_buffers)(
             self.handle,
             first_binding,
             num_bindings,
@@ -938,7 +938,7 @@ impl UnsafeCommandBufferBuilder {
         debug_assert_eq!(offset % 4, 0);
         debug_assert!(size_of_val(data) >= size as usize);
 
-        fns.v1_0.cmd_push_constants(
+        (fns.v1_0.cmd_push_constants)(
             self.handle,
             pipeline_layout.internal_object(),
             stages.into(),
@@ -1000,7 +1000,7 @@ impl UnsafeCommandBufferBuilder {
 
         let fns = self.device.fns();
 
-        fns.khr_push_descriptor.cmd_push_descriptor_set_khr(
+        (fns.khr_push_descriptor.cmd_push_descriptor_set_khr)(
             self.handle,
             pipeline_bind_point.into(),
             pipeline_layout.internal_object(),

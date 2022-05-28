@@ -16,12 +16,12 @@ build = "build.rs"
 [dependencies]
 # When updating Ash, also update vk.xml to the same Vulkan patch version that Ash uses.
 # All versions of vk.xml can be found at https://github.com/KhronosGroup/Vulkan-Headers/commits/main/registry/vk.xml.
-ash = "0.36"
+ash = "0.37"
 bytemuck = { version = "1.7", features = ["derive", "extern_crate_std", "min_const_generics"] }
 crossbeam-queue = "0.3"
 half = "1.8"
 lazy_static = "1.4"
-nalgebra = { version = "0.30.0", optional = true }
+nalgebra = { version = "0.31.0", optional = true }
 parking_lot = { version = "0.12", features = ["send_guard"] }
 rangemap = { git = "https://github.com/vulkano-rs/rangemap", branch = "range-split" }
 shared_library = "0.1"

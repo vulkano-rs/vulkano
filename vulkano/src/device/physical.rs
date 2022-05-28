@@ -43,14 +43,14 @@ pub(crate) fn init_physical_devices(
 
     let handles: Vec<ash::vk::PhysicalDevice> = unsafe {
         let mut num = 0;
-        check_errors(fns.v1_0.enumerate_physical_devices(
+        check_errors((fns.v1_0.enumerate_physical_devices)(
             instance.internal_object(),
             &mut num,
             ptr::null_mut(),
         ))?;
 
         let mut handles = Vec::with_capacity(num as usize);
-        check_errors(fns.v1_0.enumerate_physical_devices(
+        check_errors((fns.v1_0.enumerate_physical_devices)(
             instance.internal_object(),
             &mut num,
             handles.as_mut_ptr(),
@@ -65,15 +65,14 @@ pub(crate) fn init_physical_devices(
         .map(|(index, handle)| -> Result<_, InstanceCreationError> {
             let api_version = unsafe {
                 let mut output = MaybeUninit::uninit();
-                fns.v1_0
-                    .get_physical_device_properties(handle, output.as_mut_ptr());
+                (fns.v1_0.get_physical_device_properties)(handle, output.as_mut_ptr());
                 let api_version = Version::try_from(output.assume_init().api_version).unwrap();
                 std::cmp::min(instance.max_api_version(), api_version)
             };
 
             let extension_properties: Vec<ash::vk::ExtensionProperties> = unsafe {
                 let mut num = 0;
-                check_errors(fns.v1_0.enumerate_device_extension_properties(
+                check_errors((fns.v1_0.enumerate_device_extension_properties)(
                     handle,
                     ptr::null(),
                     &mut num,
@@ -81,7 +80,7 @@ pub(crate) fn init_physical_devices(
                 ))?;
 
                 let mut properties = Vec::with_capacity(num as usize);
-                check_errors(fns.v1_0.enumerate_device_extension_properties(
+                check_errors((fns.v1_0.enumerate_device_extension_properties)(
                     handle,
                     ptr::null(),
                     &mut num,
@@ -131,8 +130,7 @@ fn init_info(instance: &Instance, info: &mut PhysicalDeviceInfo) {
 
     info.supported_features = unsafe {
         let mut output = FeaturesFfi::default();
-        fns.v1_0
-            .get_physical_device_features(info.handle, &mut output.head_as_mut().features);
+        (fns.v1_0.get_physical_device_features)(info.handle, &mut output.head_as_mut().features);
         Features::from(&output)
     };
 
@@ -143,28 +141,29 @@ fn init_info(instance: &Instance, info: &mut PhysicalDeviceInfo) {
             &info.supported_extensions,
             instance.enabled_extensions(),
         );
-        fns.v1_0
-            .get_physical_device_properties(info.handle, &mut output.head_as_mut().properties);
+        (fns.v1_0.get_physical_device_properties)(
+            info.handle,
+            &mut output.head_as_mut().properties,
+        );
         Properties::from(&output)
     };
 
     info.memory_properties = unsafe {
         let mut output = MaybeUninit::uninit();
-        fns.v1_0
-            .get_physical_device_memory_properties(info.handle, output.as_mut_ptr());
+        (fns.v1_0.get_physical_device_memory_properties)(info.handle, output.as_mut_ptr());
         output.assume_init()
     };
 
     info.queue_families = unsafe {
         let mut num = 0;
-        fns.v1_0.get_physical_device_queue_family_properties(
+        (fns.v1_0.get_physical_device_queue_family_properties)(
             info.handle,
             &mut num,
             ptr::null_mut(),
         );
 
         let mut families = Vec::with_capacity(num as usize);
-        fns.v1_0.get_physical_device_queue_family_properties(
+        (fns.v1_0.get_physical_device_queue_family_properties)(
             info.handle,
             &mut num,
             families.as_mut_ptr(),
@@ -187,11 +186,10 @@ fn init_info2(instance: &Instance, info: &mut PhysicalDeviceInfo) {
         );
 
         if instance.api_version() >= Version::V1_1 {
-            fns.v1_1
-                .get_physical_device_features2(info.handle, output.head_as_mut());
+            (fns.v1_1.get_physical_device_features2)(info.handle, output.head_as_mut());
         } else {
-            fns.khr_get_physical_device_properties2
-                .get_physical_device_features2_khr(info.handle, output.head_as_mut());
+            (fns.khr_get_physical_device_properties2
+                .get_physical_device_features2_khr)(info.handle, output.head_as_mut());
         }
 
         Features::from(&output)
@@ -206,11 +204,10 @@ fn init_info2(instance: &Instance, info: &mut PhysicalDeviceInfo) {
         );
 
         if instance.api_version() >= Version::V1_1 {
-            fns.v1_1
-                .get_physical_device_properties2(info.handle, output.head_as_mut());
+            (fns.v1_1.get_physical_device_properties2)(info.handle, output.head_as_mut());
         } else {
-            fns.khr_get_physical_device_properties2
-                .get_physical_device_properties2_khr(info.handle, output.head_as_mut());
+            (fns.khr_get_physical_device_properties2
+                .get_physical_device_properties2_khr)(info.handle, output.head_as_mut());
         }
 
         Properties::from(&output)
@@ -220,11 +217,10 @@ fn init_info2(instance: &Instance, info: &mut PhysicalDeviceInfo) {
         let mut output = ash::vk::PhysicalDeviceMemoryProperties2KHR::default();
 
         if instance.api_version() >= Version::V1_1 {
-            fns.v1_1
-                .get_physical_device_memory_properties2(info.handle, &mut output);
+            (fns.v1_1.get_physical_device_memory_properties2)(info.handle, &mut output);
         } else {
-            fns.khr_get_physical_device_properties2
-                .get_physical_device_memory_properties2_khr(info.handle, &mut output);
+            (fns.khr_get_physical_device_properties2
+                .get_physical_device_memory_properties2_khr)(info.handle, &mut output);
         }
 
         output.memory_properties
@@ -234,35 +230,35 @@ fn init_info2(instance: &Instance, info: &mut PhysicalDeviceInfo) {
         let mut num = 0;
 
         if instance.api_version() >= Version::V1_1 {
-            fns.v1_1.get_physical_device_queue_family_properties2(
+            (fns.v1_1.get_physical_device_queue_family_properties2)(
                 info.handle,
                 &mut num,
                 ptr::null_mut(),
             );
         } else {
-            fns.khr_get_physical_device_properties2
-                .get_physical_device_queue_family_properties2_khr(
-                    info.handle,
-                    &mut num,
-                    ptr::null_mut(),
-                );
+            (fns.khr_get_physical_device_properties2
+                .get_physical_device_queue_family_properties2_khr)(
+                info.handle,
+                &mut num,
+                ptr::null_mut(),
+            );
         }
 
         let mut families = vec![ash::vk::QueueFamilyProperties2::default(); num as usize];
 
         if instance.api_version() >= Version::V1_1 {
-            fns.v1_1.get_physical_device_queue_family_properties2(
+            (fns.v1_1.get_physical_device_queue_family_properties2)(
                 info.handle,
                 &mut num,
                 families.as_mut_ptr(),
             );
         } else {
-            fns.khr_get_physical_device_properties2
-                .get_physical_device_queue_family_properties2_khr(
-                    info.handle,
-                    &mut num,
-                    families.as_mut_ptr(),
-                );
+            (fns.khr_get_physical_device_properties2
+                .get_physical_device_queue_family_properties2_khr)(
+                info.handle,
+                &mut num,
+                families.as_mut_ptr(),
+            );
         }
 
         families
@@ -465,18 +461,18 @@ impl<'a> PhysicalDevice<'a> {
             let fns = self.instance.fns();
 
             if self.instance.api_version() >= Version::V1_1 {
-                fns.v1_1.get_physical_device_external_buffer_properties(
+                (fns.v1_1.get_physical_device_external_buffer_properties)(
                     self.info.handle,
                     &external_buffer_info,
                     &mut external_buffer_properties,
                 )
             } else {
-                fns.khr_external_memory_capabilities
-                    .get_physical_device_external_buffer_properties_khr(
-                        self.info.handle,
-                        &external_buffer_info,
-                        &mut external_buffer_properties,
-                    );
+                (fns.khr_external_memory_capabilities
+                    .get_physical_device_external_buffer_properties_khr)(
+                    self.info.handle,
+                    &external_buffer_info,
+                    &mut external_buffer_properties,
+                );
             }
         }
 
@@ -507,7 +503,7 @@ impl<'a> PhysicalDevice<'a> {
             let fns = self.instance.fns();
 
             if self.api_version() >= Version::V1_1 {
-                fns.v1_1.get_physical_device_format_properties2(
+                (fns.v1_1.get_physical_device_format_properties2)(
                     self.info.handle,
                     format.into(),
                     &mut format_properties2,
@@ -517,14 +513,14 @@ impl<'a> PhysicalDevice<'a> {
                 .enabled_extensions()
                 .khr_get_physical_device_properties2
             {
-                fns.khr_get_physical_device_properties2
-                    .get_physical_device_format_properties2_khr(
-                        self.info.handle,
-                        format.into(),
-                        &mut format_properties2,
-                    );
+                (fns.khr_get_physical_device_properties2
+                    .get_physical_device_format_properties2_khr)(
+                    self.info.handle,
+                    format.into(),
+                    &mut format_properties2,
+                );
             } else {
-                fns.v1_0.get_physical_device_format_properties(
+                (fns.v1_0.get_physical_device_format_properties)(
                     self.internal_object(),
                     format.into(),
                     &mut format_properties2.format_properties,
@@ -595,18 +591,18 @@ impl<'a> PhysicalDevice<'a> {
             let fns = self.instance.fns();
 
             if self.instance.api_version() >= Version::V1_1 {
-                fns.v1_1.get_physical_device_external_semaphore_properties(
+                (fns.v1_1.get_physical_device_external_semaphore_properties)(
                     self.info.handle,
                     &external_semaphore_info,
                     &mut external_semaphore_properties,
                 )
             } else {
-                fns.khr_external_semaphore_capabilities
-                    .get_physical_device_external_semaphore_properties_khr(
-                        self.info.handle,
-                        &external_semaphore_info,
-                        &mut external_semaphore_properties,
-                    );
+                (fns.khr_external_semaphore_capabilities
+                    .get_physical_device_external_semaphore_properties_khr)(
+                    self.info.handle,
+                    &external_semaphore_info,
+                    &mut external_semaphore_properties,
+                );
             }
         }
 
@@ -741,7 +737,7 @@ impl<'a> PhysicalDevice<'a> {
             let fns = self.instance.fns();
 
             check_errors(if self.api_version() >= Version::V1_1 {
-                fns.v1_1.get_physical_device_image_format_properties2(
+                (fns.v1_1.get_physical_device_image_format_properties2)(
                     self.info.handle,
                     &format_info2.build(),
                     &mut image_format_properties2,
@@ -751,19 +747,19 @@ impl<'a> PhysicalDevice<'a> {
                 .enabled_extensions()
                 .khr_get_physical_device_properties2
             {
-                fns.khr_get_physical_device_properties2
-                    .get_physical_device_image_format_properties2_khr(
-                        self.info.handle,
-                        &format_info2.build(),
-                        &mut image_format_properties2,
-                    )
+                (fns.khr_get_physical_device_properties2
+                    .get_physical_device_image_format_properties2_khr)(
+                    self.info.handle,
+                    &format_info2.build(),
+                    &mut image_format_properties2,
+                )
             } else {
                 // Can't query this, return unsupported
                 if !format_info2.p_next.is_null() {
                     return Ok(None);
                 }
 
-                fns.v1_0.get_physical_device_image_format_properties(
+                (fns.v1_0.get_physical_device_image_format_properties)(
                     self.info.handle,
                     format_info2.format,
                     format_info2.ty,
@@ -985,23 +981,21 @@ impl<'a> PhysicalDevice<'a> {
                 .enabled_extensions()
                 .khr_get_surface_capabilities2
             {
-                check_errors(
-                    fns.khr_get_surface_capabilities2
-                        .get_physical_device_surface_capabilities2_khr(
-                            self.internal_object(),
-                            &surface_info2,
-                            &mut surface_capabilities2,
-                        ),
-                )?;
+                check_errors((fns
+                    .khr_get_surface_capabilities2
+                    .get_physical_device_surface_capabilities2_khr)(
+                    self.internal_object(),
+                    &surface_info2,
+                    &mut surface_capabilities2,
+                ))?;
             } else {
-                check_errors(
-                    fns.khr_surface
-                        .get_physical_device_surface_capabilities_khr(
-                            self.internal_object(),
-                            surface_info2.surface,
-                            &mut surface_capabilities2.surface_capabilities,
-                        ),
-                )?;
+                check_errors((fns
+                    .khr_surface
+                    .get_physical_device_surface_capabilities_khr)(
+                    self.internal_object(),
+                    surface_info2.surface,
+                    &mut surface_capabilities2.surface_capabilities,
+                ))?;
             };
         }
 
@@ -1175,26 +1169,24 @@ impl<'a> PhysicalDevice<'a> {
                 let fns = self.instance.fns();
 
                 let mut num = 0;
-                check_errors(
-                    fns.khr_get_surface_capabilities2
-                        .get_physical_device_surface_formats2_khr(
-                            self.internal_object(),
-                            &surface_info2,
-                            &mut num,
-                            ptr::null_mut(),
-                        ),
-                )?;
+                check_errors((fns
+                    .khr_get_surface_capabilities2
+                    .get_physical_device_surface_formats2_khr)(
+                    self.internal_object(),
+                    &surface_info2,
+                    &mut num,
+                    ptr::null_mut(),
+                ))?;
 
                 surface_format2s = vec![ash::vk::SurfaceFormat2KHR::default(); num as usize];
-                check_errors(
-                    fns.khr_get_surface_capabilities2
-                        .get_physical_device_surface_formats2_khr(
-                            self.internal_object(),
-                            &surface_info2,
-                            &mut num,
-                            surface_format2s.as_mut_ptr(),
-                        ),
-                )?;
+                check_errors((fns
+                    .khr_get_surface_capabilities2
+                    .get_physical_device_surface_formats2_khr)(
+                    self.internal_object(),
+                    &surface_info2,
+                    &mut num,
+                    surface_format2s.as_mut_ptr(),
+                ))?;
             }
 
             Ok(surface_format2s
@@ -1215,7 +1207,7 @@ impl<'a> PhysicalDevice<'a> {
                 let fns = self.instance.fns();
 
                 let mut num = 0;
-                check_errors(fns.khr_surface.get_physical_device_surface_formats_khr(
+                check_errors((fns.khr_surface.get_physical_device_surface_formats_khr)(
                     self.internal_object(),
                     surface.internal_object(),
                     &mut num,
@@ -1223,7 +1215,7 @@ impl<'a> PhysicalDevice<'a> {
                 ))?;
 
                 surface_formats = Vec::with_capacity(num as usize);
-                check_errors(fns.khr_surface.get_physical_device_surface_formats_khr(
+                check_errors((fns.khr_surface.get_physical_device_surface_formats_khr)(
                     self.internal_object(),
                     surface.internal_object(),
                     &mut num,
@@ -1260,26 +1252,24 @@ impl<'a> PhysicalDevice<'a> {
             let fns = self.instance.fns();
 
             let mut num = 0;
-            check_errors(
-                fns.khr_surface
-                    .get_physical_device_surface_present_modes_khr(
-                        self.internal_object(),
-                        surface.internal_object(),
-                        &mut num,
-                        ptr::null_mut(),
-                    ),
-            )?;
+            check_errors((fns
+                .khr_surface
+                .get_physical_device_surface_present_modes_khr)(
+                self.internal_object(),
+                surface.internal_object(),
+                &mut num,
+                ptr::null_mut(),
+            ))?;
 
             let mut modes = Vec::with_capacity(num as usize);
-            check_errors(
-                fns.khr_surface
-                    .get_physical_device_surface_present_modes_khr(
-                        self.internal_object(),
-                        surface.internal_object(),
-                        &mut num,
-                        modes.as_mut_ptr(),
-                    ),
-            )?;
+            check_errors((fns
+                .khr_surface
+                .get_physical_device_surface_present_modes_khr)(
+                self.internal_object(),
+                surface.internal_object(),
+                &mut num,
+                modes.as_mut_ptr(),
+            ))?;
             modes.set_len(num as usize);
             modes
         };
@@ -1581,7 +1571,7 @@ impl<'a> QueueFamily<'a> {
             let fns = self.physical_device.instance.fns();
 
             let mut output = MaybeUninit::uninit();
-            check_errors(fns.khr_surface.get_physical_device_surface_support_khr(
+            check_errors((fns.khr_surface.get_physical_device_surface_support_khr)(
                 self.physical_device.internal_object(),
                 self.id,
                 surface.internal_object(),

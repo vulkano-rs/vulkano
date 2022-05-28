@@ -95,7 +95,7 @@ impl Semaphore {
         let handle = unsafe {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors(fns.v1_0.create_semaphore(
+            check_errors((fns.v1_0.create_semaphore)(
                 device.internal_object(),
                 &create_info.build(),
                 ptr::null(),
@@ -174,7 +174,7 @@ impl Semaphore {
                 };
 
                 let mut output = MaybeUninit::uninit();
-                check_errors(fns.khr_external_semaphore_fd.get_semaphore_fd_khr(
+                check_errors((fns.khr_external_semaphore_fd.get_semaphore_fd_khr)(
                     self.device.internal_object(),
                     &info,
                     output.as_mut_ptr(),
@@ -196,8 +196,11 @@ impl Drop for Semaphore {
                 self.device.semaphore_pool().lock().unwrap().push(raw_sem);
             } else {
                 let fns = self.device.fns();
-                fns.v1_0
-                    .destroy_semaphore(self.device.internal_object(), self.handle, ptr::null());
+                (fns.v1_0.destroy_semaphore)(
+                    self.device.internal_object(),
+                    self.handle,
+                    ptr::null(),
+                );
             }
         }
     }

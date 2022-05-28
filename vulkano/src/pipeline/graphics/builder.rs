@@ -790,7 +790,7 @@ where
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(fns.v1_0.create_graphics_pipelines(
+            check_errors((fns.v1_0.create_graphics_pipelines)(
                 device.internal_object(),
                 cache_handle,
                 1,

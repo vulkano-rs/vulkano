@@ -207,7 +207,7 @@ where
         let handle = unsafe {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors(fns.v1_0.create_buffer_view(
+            check_errors((fns.v1_0.create_buffer_view)(
                 device.internal_object(),
                 &create_info,
                 ptr::null(),
@@ -241,7 +241,7 @@ where
     fn drop(&mut self) {
         unsafe {
             let fns = self.buffer.inner().buffer.device().fns();
-            fns.v1_0.destroy_buffer_view(
+            (fns.v1_0.destroy_buffer_view)(
                 self.buffer.inner().buffer.device().internal_object(),
                 self.handle,
                 ptr::null(),

@@ -177,7 +177,7 @@ impl<'a> SubmitPresentBuilder<'a> {
                 ..Default::default()
             };
 
-            check_errors(fns.khr_swapchain.queue_present_khr(*queue, &infos))?;
+            check_errors((fns.khr_swapchain.queue_present_khr)(*queue, &infos))?;
 
             for result in results {
                 check_errors(result)?;

@@ -43,7 +43,7 @@ impl Event {
         let handle = unsafe {
             let mut output = MaybeUninit::uninit();
             let fns = device.fns();
-            check_errors(fns.v1_0.create_event(
+            check_errors((fns.v1_0.create_event)(
                 device.internal_object(),
                 &create_info,
                 ptr::null(),
@@ -72,7 +72,7 @@ impl Event {
                 unsafe {
                     // Make sure the event isn't signaled
                     let fns = device.fns();
-                    check_errors(fns.v1_0.reset_event(device.internal_object(), handle))?;
+                    check_errors((fns.v1_0.reset_event)(device.internal_object(), handle))?;
                 }
                 Event {
                     handle,
@@ -97,8 +97,8 @@ impl Event {
         unsafe {
             let fns = self.device.fns();
             let result = check_errors(
-                fns.v1_0
-                    .get_event_status(self.device.internal_object(), self.handle),
+                (fns.v1_0
+                    .get_event_status)(self.device.internal_object(), self.handle),
             )?;
             match result {
                 Success::EventSet => Ok(true),
@@ -114,8 +114,8 @@ impl Event {
         unsafe {
             let fns = self.device.fns();
             check_errors(
-                fns.v1_0
-                    .set_event(self.device.internal_object(), self.handle),
+                (fns.v1_0
+                    .set_event)(self.device.internal_object(), self.handle),
             )?;
             Ok(())
         }
@@ -140,8 +140,8 @@ impl Event {
         unsafe {
             let fns = self.device.fns();
             check_errors(
-                fns.v1_0
-                    .reset_event(self.device.internal_object(), self.handle),
+                (fns.v1_0
+                    .reset_event)(self.device.internal_object(), self.handle),
             )?;
             Ok(())
         }
@@ -168,8 +168,8 @@ impl Drop for Event {
                 self.device.event_pool().lock().unwrap().push(raw_event);
             } else {
                 let fns = self.device.fns();
-                fns.v1_0
-                    .destroy_event(self.device.internal_object(), self.handle, ptr::null());
+                (fns.v1_0
+                    .destroy_event)(self.device.internal_object(), self.handle, ptr::null());
             }
         }
     }

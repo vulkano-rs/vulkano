@@ -417,10 +417,11 @@ impl Instance {
         let handle = {
             let mut output = MaybeUninit::uninit();
             let fns = function_pointers.fns();
-            check_errors(
-                fns.v1_0
-                    .create_instance(&create_info, ptr::null(), output.as_mut_ptr()),
-            )?;
+            check_errors((fns.v1_0.create_instance)(
+                &create_info,
+                ptr::null(),
+                output.as_mut_ptr(),
+            ))?;
             output.assume_init()
         };
 
@@ -488,8 +489,10 @@ impl Instance {
 impl Drop for Instance {
     #[inline]
     fn drop(&mut self) {
+        let fns = self.fns();
+
         unsafe {
-            self.fns.v1_0.destroy_instance(self.handle, ptr::null());
+            (fns.v1_0.destroy_instance)(self.handle, ptr::null());
         }
     }
 }

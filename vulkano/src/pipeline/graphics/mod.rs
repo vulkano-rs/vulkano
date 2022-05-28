@@ -285,8 +285,7 @@ impl Drop for GraphicsPipeline {
     fn drop(&mut self) {
         unsafe {
             let fns = self.device.fns();
-            fns.v1_0
-                .destroy_pipeline(self.device.internal_object(), self.handle, ptr::null());
+            (fns.v1_0.destroy_pipeline)(self.device.internal_object(), self.handle, ptr::null());
         }
     }
 }

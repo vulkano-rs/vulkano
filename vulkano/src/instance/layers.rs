@@ -57,14 +57,14 @@ where
 
         let mut num = 0;
         check_errors(
-            fns.v1_0
-                .enumerate_instance_layer_properties(&mut num, ptr::null_mut()),
+            (fns.v1_0
+                .enumerate_instance_layer_properties)(&mut num, ptr::null_mut()),
         )?;
 
         let mut layers: Vec<ash::vk::LayerProperties> = Vec::with_capacity(num as usize);
         check_errors({
-            fns.v1_0
-                .enumerate_instance_layer_properties(&mut num, layers.as_mut_ptr())
+            (fns.v1_0
+                .enumerate_instance_layer_properties)(&mut num, layers.as_mut_ptr())
         })?;
         layers.set_len(num as usize);
 

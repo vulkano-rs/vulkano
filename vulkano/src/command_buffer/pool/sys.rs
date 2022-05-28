@@ -128,7 +128,7 @@ impl UnsafeCommandPool {
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors(fns.v1_0.create_command_pool(
+            check_errors((fns.v1_0.create_command_pool)(
                 device.internal_object(),
                 &create_info,
                 ptr::null(),
@@ -156,7 +156,7 @@ impl UnsafeCommandPool {
         };
 
         let fns = self.device.fns();
-        check_errors(fns.v1_0.reset_command_pool(
+        check_errors((fns.v1_0.reset_command_pool)(
             self.device.internal_object(),
             self.handle,
             flags,
@@ -189,7 +189,7 @@ impl UnsafeCommandPool {
             unsafe {
                 let fns = self.device.fns();
                 let mut out = Vec::with_capacity(command_buffer_count as usize);
-                check_errors(fns.v1_0.allocate_command_buffers(
+                check_errors((fns.v1_0.allocate_command_buffers)(
                     self.device.internal_object(),
                     &allocate_info,
                     out.as_mut_ptr(),
@@ -224,7 +224,7 @@ impl UnsafeCommandPool {
         let command_buffers: SmallVec<[_; 4]> =
             command_buffers.into_iter().map(|cb| cb.handle).collect();
         let fns = self.device.fns();
-        fns.v1_0.free_command_buffers(
+        (fns.v1_0.free_command_buffers)(
             self.device.internal_object(),
             self.handle,
             command_buffers.len() as u32,
@@ -253,13 +253,13 @@ impl UnsafeCommandPool {
             let fns = self.device.fns();
 
             if self.device.api_version() >= Version::V1_1 {
-                fns.v1_1.trim_command_pool(
+                (fns.v1_1.trim_command_pool)(
                     self.device.internal_object(),
                     self.handle,
                     ash::vk::CommandPoolTrimFlags::empty(),
                 );
             } else {
-                fns.khr_maintenance1.trim_command_pool_khr(
+                (fns.khr_maintenance1.trim_command_pool_khr)(
                     self.device.internal_object(),
                     self.handle,
                     ash::vk::CommandPoolTrimFlagsKHR::empty(),
@@ -285,8 +285,11 @@ impl Drop for UnsafeCommandPool {
     fn drop(&mut self) {
         unsafe {
             let fns = self.device.fns();
-            fns.v1_0
-                .destroy_command_pool(self.device.internal_object(), self.handle, ptr::null());
+            (fns.v1_0.destroy_command_pool)(
+                self.device.internal_object(),
+                self.handle,
+                ptr::null(),
+            );
         }
     }
 }

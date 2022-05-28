@@ -312,7 +312,7 @@ impl Framebuffer {
         let handle = unsafe {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors(fns.v1_0.create_framebuffer(
+            check_errors((fns.v1_0.create_framebuffer)(
                 device.internal_object(),
                 &create_info,
                 ptr::null(),
@@ -370,8 +370,8 @@ impl Drop for Framebuffer {
     fn drop(&mut self) {
         unsafe {
             let fns = self.device().fns();
-            fns.v1_0
-                .destroy_framebuffer(self.device().internal_object(), self.handle, ptr::null());
+            (fns.v1_0
+                .destroy_framebuffer)(self.device().internal_object(), self.handle, ptr::null());
         }
     }
 }

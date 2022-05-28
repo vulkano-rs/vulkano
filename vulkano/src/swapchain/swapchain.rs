@@ -580,7 +580,7 @@ impl<W> Swapchain<W> {
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors(fns.khr_swapchain.create_swapchain_khr(
+            check_errors((fns.khr_swapchain.create_swapchain_khr)(
                 device.internal_object(),
                 &create_info,
                 ptr::null(),
@@ -592,7 +592,7 @@ impl<W> Swapchain<W> {
         let image_handles = {
             let fns = device.fns();
             let mut num = 0;
-            check_errors(fns.khr_swapchain.get_swapchain_images_khr(
+            check_errors((fns.khr_swapchain.get_swapchain_images_khr)(
                 device.internal_object(),
                 handle,
                 &mut num,
@@ -600,7 +600,7 @@ impl<W> Swapchain<W> {
             ))?;
 
             let mut images = Vec::with_capacity(num as usize);
-            check_errors(fns.khr_swapchain.get_swapchain_images_khr(
+            check_errors((fns.khr_swapchain.get_swapchain_images_khr)(
                 device.internal_object(),
                 handle,
                 &mut num,
@@ -772,15 +772,13 @@ impl<W> Swapchain<W> {
         }
 
         unsafe {
-            check_errors(
-                self.device
-                    .fns()
-                    .ext_full_screen_exclusive
-                    .acquire_full_screen_exclusive_mode_ext(
-                        self.device.internal_object(),
-                        self.handle,
-                    ),
-            )?;
+            let fns = self.device.fns();
+            check_errors((fns
+                .ext_full_screen_exclusive
+                .acquire_full_screen_exclusive_mode_ext)(
+                self.device.internal_object(),
+                self.handle,
+            ))?;
         }
 
         Ok(())
@@ -803,15 +801,13 @@ impl<W> Swapchain<W> {
         }
 
         unsafe {
-            check_errors(
-                self.device
-                    .fns()
-                    .ext_full_screen_exclusive
-                    .release_full_screen_exclusive_mode_ext(
-                        self.device.internal_object(),
-                        self.handle,
-                    ),
-            )?;
+            let fns = self.device.fns();
+            check_errors((fns
+                .ext_full_screen_exclusive
+                .release_full_screen_exclusive_mode_ext)(
+                self.device.internal_object(),
+                self.handle,
+            ))?;
         }
 
         Ok(())
@@ -855,7 +851,7 @@ impl<W> Drop for Swapchain<W> {
     fn drop(&mut self) {
         unsafe {
             let fns = self.device.fns();
-            fns.khr_swapchain.destroy_swapchain_khr(
+            (fns.khr_swapchain.destroy_swapchain_khr)(
                 self.device.internal_object(),
                 self.handle,
                 ptr::null(),
@@ -1964,20 +1960,18 @@ pub unsafe fn acquire_next_image_raw<W>(
     };
 
     let mut out = MaybeUninit::uninit();
-    let r = check_errors(
-        fns.khr_swapchain.acquire_next_image_khr(
-            swapchain.device.internal_object(),
-            swapchain.handle,
-            timeout_ns,
-            semaphore
-                .map(|s| s.internal_object())
-                .unwrap_or(ash::vk::Semaphore::null()),
-            fence
-                .map(|f| f.internal_object())
-                .unwrap_or(ash::vk::Fence::null()),
-            out.as_mut_ptr(),
-        ),
-    )?;
+    let r = check_errors((fns.khr_swapchain.acquire_next_image_khr)(
+        swapchain.device.internal_object(),
+        swapchain.handle,
+        timeout_ns,
+        semaphore
+            .map(|s| s.internal_object())
+            .unwrap_or(ash::vk::Semaphore::null()),
+        fence
+            .map(|f| f.internal_object())
+            .unwrap_or(ash::vk::Fence::null()),
+        out.as_mut_ptr(),
+    ))?;
 
     let out = out.assume_init();
     let (id, suboptimal) = match r {

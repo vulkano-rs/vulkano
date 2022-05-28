@@ -308,8 +308,11 @@ impl UnsafeCommandBufferBuilder {
         }
 
         let fns = self.device.fns();
-        fns.v1_0
-            .cmd_execute_commands(self.handle, cbs.raw_cbs.len() as u32, cbs.raw_cbs.as_ptr());
+        (fns.v1_0.cmd_execute_commands)(
+            self.handle,
+            cbs.raw_cbs.len() as u32,
+            cbs.raw_cbs.as_ptr(),
+        );
     }
 }
 

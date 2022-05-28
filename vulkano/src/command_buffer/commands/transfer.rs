@@ -2500,10 +2500,9 @@ impl UnsafeCommandBufferBuilder {
             };
 
             if self.device.api_version() >= Version::V1_3 {
-                fns.v1_3.cmd_copy_buffer2(self.handle, &copy_buffer_info);
+                (fns.v1_3.cmd_copy_buffer2)(self.handle, &copy_buffer_info);
             } else {
-                fns.khr_copy_commands2
-                    .cmd_copy_buffer2_khr(self.handle, &copy_buffer_info);
+                (fns.khr_copy_commands2.cmd_copy_buffer2_khr)(self.handle, &copy_buffer_info);
             }
         } else {
             let regions: SmallVec<[_; 8]> = regions
@@ -2524,7 +2523,7 @@ impl UnsafeCommandBufferBuilder {
                 })
                 .collect();
 
-            fns.v1_0.cmd_copy_buffer(
+            (fns.v1_0.cmd_copy_buffer)(
                 self.handle,
                 src_buffer_inner.buffer.internal_object(),
                 dst_buffer_inner.buffer.internal_object(),
@@ -2617,10 +2616,9 @@ impl UnsafeCommandBufferBuilder {
             };
 
             if self.device.api_version() >= Version::V1_3 {
-                fns.v1_3.cmd_copy_image2(self.handle, &copy_image_info);
+                (fns.v1_3.cmd_copy_image2)(self.handle, &copy_image_info);
             } else {
-                fns.khr_copy_commands2
-                    .cmd_copy_image2_khr(self.handle, &copy_image_info);
+                (fns.khr_copy_commands2.cmd_copy_image2_khr)(self.handle, &copy_image_info);
             }
         } else {
             let regions: SmallVec<[_; 8]> = regions
@@ -2667,7 +2665,7 @@ impl UnsafeCommandBufferBuilder {
                 })
                 .collect();
 
-            fns.v1_0.cmd_copy_image(
+            (fns.v1_0.cmd_copy_image)(
                 self.handle,
                 src_image_inner.image.internal_object(),
                 src_image_layout.into(),
@@ -2756,11 +2754,12 @@ impl UnsafeCommandBufferBuilder {
             };
 
             if self.device.api_version() >= Version::V1_3 {
-                fns.v1_3
-                    .cmd_copy_buffer_to_image2(self.handle, &copy_buffer_to_image_info);
+                (fns.v1_3.cmd_copy_buffer_to_image2)(self.handle, &copy_buffer_to_image_info);
             } else {
-                fns.khr_copy_commands2
-                    .cmd_copy_buffer_to_image2_khr(self.handle, &copy_buffer_to_image_info);
+                (fns.khr_copy_commands2.cmd_copy_buffer_to_image2_khr)(
+                    self.handle,
+                    &copy_buffer_to_image_info,
+                );
             }
         } else {
             let regions: SmallVec<[_; 8]> = regions
@@ -2800,7 +2799,7 @@ impl UnsafeCommandBufferBuilder {
                 })
                 .collect();
 
-            fns.v1_0.cmd_copy_buffer_to_image(
+            (fns.v1_0.cmd_copy_buffer_to_image)(
                 self.handle,
                 src_buffer_inner.buffer.internal_object(),
                 dst_image_inner.image.internal_object(),
@@ -2888,11 +2887,12 @@ impl UnsafeCommandBufferBuilder {
             };
 
             if self.device.api_version() >= Version::V1_3 {
-                fns.v1_3
-                    .cmd_copy_image_to_buffer2(self.handle, &copy_image_to_buffer_info);
+                (fns.v1_3.cmd_copy_image_to_buffer2)(self.handle, &copy_image_to_buffer_info);
             } else {
-                fns.khr_copy_commands2
-                    .cmd_copy_image_to_buffer2_khr(self.handle, &copy_image_to_buffer_info);
+                (fns.khr_copy_commands2.cmd_copy_image_to_buffer2_khr)(
+                    self.handle,
+                    &copy_image_to_buffer_info,
+                );
             }
         } else {
             let regions: SmallVec<[_; 8]> = regions
@@ -2931,7 +2931,7 @@ impl UnsafeCommandBufferBuilder {
                 })
                 .collect();
 
-            fns.v1_0.cmd_copy_image_to_buffer(
+            (fns.v1_0.cmd_copy_image_to_buffer)(
                 self.handle,
                 src_image_inner.image.internal_object(),
                 src_image_layout.into(),
@@ -2956,7 +2956,7 @@ impl UnsafeCommandBufferBuilder {
         let dst_buffer_inner = dst_buffer.inner();
 
         let fns = self.device.fns();
-        fns.v1_0.cmd_fill_buffer(
+        (fns.v1_0.cmd_fill_buffer)(
             self.handle,
             dst_buffer_inner.buffer.internal_object(),
             dst_offset,
@@ -2978,7 +2978,7 @@ impl UnsafeCommandBufferBuilder {
         let dst_buffer_inner = dst_buffer.inner();
 
         let fns = self.device.fns();
-        fns.v1_0.cmd_update_buffer(
+        (fns.v1_0.cmd_update_buffer)(
             self.handle,
             dst_buffer_inner.buffer.internal_object(),
             dst_buffer_inner.offset + dst_offset,

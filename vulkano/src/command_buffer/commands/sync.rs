@@ -223,11 +223,9 @@ impl UnsafeCommandBufferBuilder {
             let fns = self.device.fns();
 
             if self.device.api_version() >= Version::V1_3 {
-                fns.v1_3
-                    .cmd_pipeline_barrier2(self.handle, &dependency_info);
+                (fns.v1_3.cmd_pipeline_barrier2)(self.handle, &dependency_info);
             } else {
-                fns.khr_synchronization2
-                    .cmd_pipeline_barrier2_khr(self.handle, &dependency_info);
+                (fns.khr_synchronization2.cmd_pipeline_barrier2_khr)(self.handle, &dependency_info);
             }
         } else {
             let mut src_stage_mask = ash::vk::PipelineStageFlags::empty();
@@ -375,7 +373,7 @@ impl UnsafeCommandBufferBuilder {
             }
 
             let fns = self.device.fns();
-            fns.v1_0.cmd_pipeline_barrier(
+            (fns.v1_0.cmd_pipeline_barrier)(
                 self.handle,
                 src_stage_mask,
                 dst_stage_mask,
@@ -396,8 +394,7 @@ impl UnsafeCommandBufferBuilder {
         debug_assert!(!stages.host);
         debug_assert_ne!(stages, PipelineStages::none());
         let fns = self.device.fns();
-        fns.v1_0
-            .cmd_set_event(self.handle, event.internal_object(), stages.into());
+        (fns.v1_0.cmd_set_event)(self.handle, event.internal_object(), stages.into());
     }
 
     /// Calls `vkCmdResetEvent` on the builder.
@@ -408,7 +405,6 @@ impl UnsafeCommandBufferBuilder {
         debug_assert!(!stages.host);
         debug_assert_ne!(stages, PipelineStages::none());
 
-        fns.v1_0
-            .cmd_reset_event(self.handle, event.internal_object(), stages.into());
+        (fns.v1_0.cmd_reset_event)(self.handle, event.internal_object(), stages.into());
     }
 }

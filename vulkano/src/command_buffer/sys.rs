@@ -155,8 +155,8 @@ impl UnsafeCommandBufferBuilder {
             let fns = device.fns();
 
             check_errors(
-                fns.v1_0
-                    .begin_command_buffer(pool_alloc.internal_object(), &begin_info),
+                (fns.v1_0
+                    .begin_command_buffer)(pool_alloc.internal_object(), &begin_info),
             )?;
         }
 
@@ -172,7 +172,7 @@ impl UnsafeCommandBufferBuilder {
     pub fn build(self) -> Result<UnsafeCommandBuffer, OomError> {
         unsafe {
             let fns = self.device.fns();
-            check_errors(fns.v1_0.end_command_buffer(self.handle))?;
+            check_errors((fns.v1_0.end_command_buffer)(self.handle))?;
 
             Ok(UnsafeCommandBuffer {
                 command_buffer: self.handle,
