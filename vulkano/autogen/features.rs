@@ -281,10 +281,17 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
         /// let features_to_request = optimal_features.intersection(physical_device.supported_features());
         /// ```
         ///
-        #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+        #[derive(Clone, Debug, PartialEq, Eq, Hash)]
         pub struct Features {
             #(#struct_items)*
             pub _ne: crate::NonExhaustive,
+        }
+
+        impl Default for Features {
+            #[inline]
+            fn default() -> Self {
+                Self::none()
+            }
         }
 
         impl Features {

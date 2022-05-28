@@ -507,11 +507,22 @@ impl From<Error> for BufferCreationError {
 }
 
 /// The level of sparse binding that a buffer should be created with.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 pub struct SparseLevel {
     pub sparse_residency: bool,
     pub sparse_aliased: bool,
     pub _ne: crate::NonExhaustive,
+}
+
+impl Default for SparseLevel {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            sparse_residency: false,
+            sparse_aliased: false,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
 }
 
 impl SparseLevel {
