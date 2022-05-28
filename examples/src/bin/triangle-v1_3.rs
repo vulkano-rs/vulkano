@@ -15,17 +15,22 @@
 // This example assumes that you are already more or less familiar with graphics programming
 // and that you want to learn Vulkan. This means that for example it won't go into details about
 // what a vertex or a shader is.
+//
+// This version of the triangle example is written for Vulkan 1.3 and higher, using dynamic
+// rendering instead of render pass and framebuffer objects. If your device does not support
+// Vulkan 1.3, or if you want to see how to support older versions, see the original triangle
+// example.
 
 use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
     command_buffer::{
-        AutoCommandBufferBuilder, CommandBufferUsage, RenderPassBeginInfo, SubpassContents,
+        AutoCommandBufferBuilder, CommandBufferUsage, RenderingAttachmentInfo, RenderingInfo,
     },
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
-        Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+        Device, DeviceCreateInfo, DeviceExtensions, Features, QueueCreateInfo,
     },
     image::{view::ImageView, ImageAccess, ImageUsage, SwapchainImage},
     impl_vertex,
@@ -33,16 +38,18 @@ use vulkano::{
     pipeline::{
         graphics::{
             input_assembly::InputAssemblyState,
+            render_pass::PipelineRenderingCreateInfo,
             vertex_input::BuffersDefinition,
             viewport::{Viewport, ViewportState},
         },
         GraphicsPipeline,
     },
-    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
+    render_pass::{LoadOp, StoreOp},
     swapchain::{
         acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
     },
     sync::{self, FlushError, GpuFuture},
+    Version,
 };
 use vulkano_win::VkSurfaceBuild;
 use winit::{
@@ -94,6 +101,10 @@ fn main() {
     // We then choose which physical device to use. First, we enumerate all the available physical
     // devices, then apply filters to narrow them down to those that can support our needs.
     let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
+        .filter(|&p| {
+            // For this example, we require at least Vulkan 1.3.
+            p.api_version() >= Version::V1_3
+        })
         .filter(|&p| {
             // Some devices may not support the extensions or features that your application, or
             // report properties and limits that are not sufficient for your application. These
@@ -169,6 +180,15 @@ fn main() {
                 // going to enable.
                 .required_extensions()
                 .union(&device_extensions),
+
+            // In order to render with Vulkan 1.3's dynamic rendering, we need to enable it here.
+            // Otherwise, we are only allowed to render with a render pass object, as in the
+            // standard triangle example. The feature is required to be supported on Vulkan 1.3 and
+            // higher, so we don't need to check for support.
+            enabled_features: Features {
+                dynamic_rendering: true,
+                ..Features::none()
+            },
 
             // The list of queues that we are going to use. Here we only use one queue, from the
             // previously chosen queue family.
@@ -312,44 +332,19 @@ fn main() {
     // implicitly does a lot of computation whenever you draw. In Vulkan, you have to do all this
     // manually.
 
-    // The next step is to create a *render pass*, which is an object that describes where the
-    // output of the graphics pipeline will go. It describes the layout of the images
-    // where the colors, depth and/or stencil information will be written.
-    let render_pass = vulkano::single_pass_renderpass!(
-        device.clone(),
-        attachments: {
-            // `color` is a custom name we give to the first and only attachment.
-            color: {
-                // `load: Clear` means that we ask the GPU to clear the content of this
-                // attachment at the start of the drawing.
-                load: Clear,
-                // `store: Store` means that we ask the GPU to store the output of the draw
-                // in the actual image. We could also ask it to discard the result.
-                store: Store,
-                // `format: <ty>` indicates the type of the format of the image. This has to
-                // be one of the types of the `vulkano::format` module (or alternatively one
-                // of your structs that implements the `FormatDesc` trait). Here we use the
-                // same format as the swapchain.
-                format: swapchain.image_format(),
-                // TODO:
-                samples: 1,
-            }
-        },
-        pass: {
-            // We use the attachment named `color` as the one and only color attachment.
-            color: [color],
-            // No depth-stencil attachment is indicated with empty brackets.
-            depth_stencil: {}
-        }
-    )
-    .unwrap();
-
     // Before we draw we have to create what is called a pipeline. This is similar to an OpenGL
     // program, but much more specific.
     let pipeline = GraphicsPipeline::start()
-        // We have to indicate which subpass of which render pass this pipeline is going to be used
-        // in. The pipeline will only be usable from this particular subpass.
-        .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+        // We describe the formats of attachment images where the colors, depth and/or stencil
+        // information will be written. The pipeline will only be usable with this particular
+        // configuration of the attachment images.
+        .render_pass(PipelineRenderingCreateInfo {
+            // We specify a single color attachment that will be rendered to. When we begin
+            // rendering, we will specify a swapchain image to be used as this attachment, so here
+            // we set its format to be the same format as the swapchain.
+            color_attachment_formats: vec![Some(swapchain.image_format())],
+            ..Default::default()
+        })
         // We need to indicate the layout of the vertices.
         .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
         // The content of the vertex buffer describes a list of triangles.
@@ -373,12 +368,12 @@ fn main() {
         depth_range: 0.0..1.0,
     };
 
-    // The render pass we created above only describes the layout of our framebuffers. Before we
-    // can draw we also need to create the actual framebuffers.
+    // When creating the swapchain, we only created plain images. To use them as an attachment for
+    // rendering, we must wrap then in an image view.
     //
-    // Since we need to draw to multiple images, we are going to create a different framebuffer for
+    // Since we need to draw to multiple images, we are going to create a different image view for
     // each image.
-    let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
+    let mut attachment_image_views = window_size_dependent_setup(&images, &mut viewport);
 
     // Initialization is finally finished!
 
@@ -440,13 +435,10 @@ fn main() {
                         };
 
                     swapchain = new_swapchain;
-                    // Because framebuffers contains an Arc on the old swapchain, we need to
-                    // recreate framebuffers as well.
-                    framebuffers = window_size_dependent_setup(
-                        &new_images,
-                        render_pass.clone(),
-                        &mut viewport,
-                    );
+                    // Now that we have new swapchain images, we must create new image views from
+                    // them as well.
+                    attachment_image_views =
+                        window_size_dependent_setup(&new_images, &mut viewport);
                     recreate_swapchain = false;
                 }
 
@@ -491,23 +483,33 @@ fn main() {
                 .unwrap();
 
                 builder
-                    // Before we can draw, we have to *enter a render pass*.
-                    .begin_render_pass(
-                        RenderPassBeginInfo {
-                            // A list of values to clear the attachments with. This list contains
-                            // one item for each attachment in the render pass. In this case,
-                            // there is only one attachment, and we clear it with a blue color.
+                    // Before we can draw, we have to *enter a render pass*. We specify which
+                    // attachments we are going to use for rendering here, which needs to match
+                    // what was previously specified when creating the pipeline.
+                    .begin_rendering(RenderingInfo {
+                        // As before, we specify one color attachment, but now we specify
+                        // the image view to use as well as how it should be used.
+                        color_attachments: vec![Some(RenderingAttachmentInfo {
+                            // `Clear` means that we ask the GPU to clear the content of this
+                            // attachment at the start of rendering.
+                            load_op: LoadOp::Clear,
+                            // `Store` means that we ask the GPU to store the rendered output
+                            // in the attachment image. We could also ask it to discard the result.
+                            store_op: StoreOp::Store,
+                            // The value to clear the attachment with. Here we clear it with a
+                            // blue color.
                             //
-                            // Only attachments that have `LoadOp::Clear` are provided with clear
-                            // values, any others should use `ClearValue::None` as the clear value.
-                            clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into())],
-                            ..RenderPassBeginInfo::framebuffer(framebuffers[image_num].clone())
-                        },
-                        // The contents of the first (and only) subpass. This can be either
-                        // `Inline` or `SecondaryCommandBuffers`. The latter is a bit more advanced
-                        // and is not covered here.
-                        SubpassContents::Inline,
-                    )
+                            // Only attachments that have `LoadOp::Clear` are provided with
+                            // clear values, any others should use `None` as the clear value.
+                            clear_value: Some([0.0, 0.0, 1.0, 1.0].into()),
+                            ..RenderingAttachmentInfo::image_view(
+                                // We specify image view corresponding to the currently acquired
+                                // swapchain image, to use for this attachment.
+                                attachment_image_views[image_num].clone(),
+                            )
+                        })],
+                        ..Default::default()
+                    })
                     .unwrap()
                     // We are now inside the first subpass of the render pass. We add a draw command.
                     //
@@ -518,9 +520,8 @@ fn main() {
                     .bind_vertex_buffers(0, vertex_buffer.clone())
                     .draw(vertex_buffer.len() as u32, 1, 0, 0)
                     .unwrap()
-                    // We leave the render pass. Note that if we had multiple
-                    // subpasses we could have called `next_subpass` to jump to the next subpass.
-                    .end_render_pass()
+                    // We leave the render pass.
+                    .end_rendering()
                     .unwrap();
 
                 // Finish building the command buffer by calling `build`.
@@ -563,24 +564,13 @@ fn main() {
 /// This method is called once during initialization, then again whenever the window is resized
 fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage<Window>>],
-    render_pass: Arc<RenderPass>,
     viewport: &mut Viewport,
-) -> Vec<Arc<Framebuffer>> {
+) -> Vec<Arc<ImageView<SwapchainImage<Window>>>> {
     let dimensions = images[0].dimensions().width_height();
     viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
 
     images
         .iter()
-        .map(|image| {
-            let view = ImageView::new_default(image.clone()).unwrap();
-            Framebuffer::new(
-                render_pass.clone(),
-                FramebufferCreateInfo {
-                    attachments: vec![view],
-                    ..Default::default()
-                },
-            )
-            .unwrap()
-        })
+        .map(|image| ImageView::new_default(image.clone()).unwrap())
         .collect::<Vec<_>>()
 }

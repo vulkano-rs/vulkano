@@ -582,10 +582,11 @@ mod tests {
             // Two secondary command buffers that both write to the buffer
             let secondary = (0..2)
                 .map(|_| {
-                    let mut builder = AutoCommandBufferBuilder::secondary_compute(
+                    let mut builder = AutoCommandBufferBuilder::secondary(
                         device.clone(),
                         queue.family(),
                         CommandBufferUsage::SimultaneousUse,
+                        Default::default(),
                     )
                     .unwrap();
                     builder

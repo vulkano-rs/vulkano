@@ -9,17 +9,21 @@
 
 use crate::{
     command_buffer::{
+        auto::RenderPassStateType,
         pool::CommandPoolBuilderAlloc,
         synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
-        AutoCommandBufferBuilder, AutoCommandBufferBuilderContextError, CommandBufferExecError,
-        CommandBufferInheritanceRenderPassInfo, CommandBufferUsage, ExecuteCommandsError,
-        PrimaryAutoCommandBuffer, SecondaryCommandBuffer, SubpassContents,
+        AutoCommandBufferBuilder, CommandBufferExecError, CommandBufferInheritanceRenderPassType,
+        CommandBufferUsage, PrimaryAutoCommandBuffer, SecondaryCommandBuffer, SubpassContents,
     },
-    query::QueryType,
+    device::DeviceOwned,
+    format::Format,
+    image::SampleCount,
+    query::{QueryControlFlags, QueryPipelineStatisticFlags, QueryType},
     SafeDeref, VulkanObject,
 };
 use smallvec::SmallVec;
+use std::{error, fmt};
 
 /// # Commands to execute a secondary command buffer inside a primary command buffer.
 ///
@@ -41,20 +45,20 @@ where
     where
         C: SecondaryCommandBuffer + 'static,
     {
-        self.check_command_buffer(&command_buffer)?;
-        let secondary_usage = command_buffer.inner().usage();
+        self.validate_execute_commands(&command_buffer, 0)?;
 
         unsafe {
+            let secondary_usage = command_buffer.inner().usage();
             let mut builder = self.inner.execute_commands();
             builder.add(command_buffer);
             builder.submit()?;
+
+            // Secondary command buffer could leave the primary in any state.
+            self.inner.reset_state();
+
+            // If the secondary is non-concurrent or one-time use, that restricts the primary as well.
+            self.usage = std::cmp::min(self.usage, secondary_usage);
         }
-
-        // Secondary command buffer could leave the primary in any state.
-        self.inner.reset_state();
-
-        // If the secondary is non-concurrent or one-time use, that restricts the primary as well.
-        self.usage = std::cmp::min(self.usage, secondary_usage);
 
         Ok(self)
     }
@@ -72,108 +76,306 @@ where
     where
         C: SecondaryCommandBuffer + 'static,
     {
-        for command_buffer in &command_buffers {
-            self.check_command_buffer(command_buffer)?;
+        for (command_buffer_index, command_buffer) in command_buffers.iter().enumerate() {
+            self.validate_execute_commands(command_buffer, command_buffer_index as u32)?;
         }
 
-        let mut secondary_usage = CommandBufferUsage::SimultaneousUse; // Most permissive usage
         unsafe {
+            let mut secondary_usage = CommandBufferUsage::SimultaneousUse; // Most permissive usage
+
             let mut builder = self.inner.execute_commands();
             for command_buffer in command_buffers {
                 secondary_usage = std::cmp::min(secondary_usage, command_buffer.inner().usage());
                 builder.add(command_buffer);
             }
             builder.submit()?;
+
+            // Secondary command buffer could leave the primary in any state.
+            self.inner.reset_state();
+
+            // If the secondary is non-concurrent or one-time use, that restricts the primary as well.
+            self.usage = std::cmp::min(self.usage, secondary_usage);
         }
-
-        // Secondary command buffer could leave the primary in any state.
-        self.inner.reset_state();
-
-        // If the secondary is non-concurrent or one-time use, that restricts the primary as well.
-        self.usage = std::cmp::min(self.usage, secondary_usage);
 
         Ok(self)
     }
 
-    // Helper function for execute_commands
-    fn check_command_buffer<C>(
+    fn validate_execute_commands<C>(
         &self,
         command_buffer: &C,
-    ) -> Result<(), AutoCommandBufferBuilderContextError>
+        command_buffer_index: u32,
+    ) -> Result<(), ExecuteCommandsError>
     where
         C: SecondaryCommandBuffer + 'static,
     {
-        if let Some(render_pass) = &command_buffer.inheritance_info().render_pass {
-            self.ensure_inside_render_pass_secondary(render_pass)?;
+        // VUID-vkCmdExecuteCommands-commonparent
+        assert_eq!(self.device(), command_buffer.device());
+
+        // VUID-vkCmdExecuteCommands-commandBuffer-cmdpool
+        if !(self.queue_family().explicitly_supports_transfers()
+            || self.queue_family().supports_graphics()
+            || self.queue_family().supports_compute())
+        {
+            return Err(ExecuteCommandsError::NotSupportedByQueueFamily);
+        }
+
+        // TODO:
+        // VUID-vkCmdExecuteCommands-pCommandBuffers-00094
+
+        if let Some(render_pass_state) = &self.render_pass_state {
+            // VUID-vkCmdExecuteCommands-contents-06018
+            // VUID-vkCmdExecuteCommands-flags-06024
+            if render_pass_state.contents != SubpassContents::SecondaryCommandBuffers {
+                return Err(ExecuteCommandsError::ForbiddenWithSubpassContents {
+                    subpass_contents: render_pass_state.contents,
+                });
+            }
+
+            // VUID-vkCmdExecuteCommands-pCommandBuffers-00096
+            let inheritance_render_pass = command_buffer
+                .inheritance_info()
+                .render_pass
+                .as_ref()
+                .ok_or(ExecuteCommandsError::RenderPassInheritanceRequired {
+                    command_buffer_index,
+                })?;
+
+            match (&render_pass_state.render_pass, inheritance_render_pass) {
+                (
+                    RenderPassStateType::BeginRenderPass(state),
+                    CommandBufferInheritanceRenderPassType::BeginRenderPass(inheritance_info),
+                ) => {
+                    // VUID-vkCmdExecuteCommands-pBeginInfo-06020
+                    if !inheritance_info
+                        .subpass
+                        .render_pass()
+                        .is_compatible_with(state.subpass.render_pass())
+                    {
+                        return Err(ExecuteCommandsError::RenderPassNotCompatible {
+                            command_buffer_index,
+                        });
+                    }
+
+                    // VUID-vkCmdExecuteCommands-pCommandBuffers-06019
+                    if inheritance_info.subpass.index() != state.subpass.index() {
+                        return Err(ExecuteCommandsError::RenderPassSubpassMismatch {
+                            command_buffer_index,
+                            required_subpass: state.subpass.index(),
+                            inherited_subpass: inheritance_info.subpass.index(),
+                        });
+                    }
+
+                    // VUID-vkCmdExecuteCommands-pCommandBuffers-00099
+                    if let Some(framebuffer) = &inheritance_info.framebuffer {
+                        if framebuffer != &state.framebuffer {
+                            return Err(ExecuteCommandsError::RenderPassFramebufferMismatch {
+                                command_buffer_index,
+                            });
+                        }
+                    }
+                }
+                (
+                    RenderPassStateType::BeginRendering(state),
+                    CommandBufferInheritanceRenderPassType::BeginRendering(inheritance_info),
+                ) => {
+                    // VUID-vkCmdExecuteCommands-colorAttachmentCount-06027
+                    if inheritance_info.color_attachment_formats.len()
+                        != state.color_attachments.len()
+                    {
+                        return Err(
+                            ExecuteCommandsError::RenderPassColorAttachmentCountMismatch {
+                                command_buffer_index,
+                                required_count: state.color_attachments.len() as u32,
+                                inherited_count: inheritance_info.color_attachment_formats.len()
+                                    as u32,
+                            },
+                        );
+                    }
+
+                    for (color_attachment_index, image_view, format) in state
+                        .color_attachments
+                        .iter()
+                        .zip(inheritance_info.color_attachment_formats.iter().copied())
+                        .enumerate()
+                        .filter_map(|(i, (a, f))| a.as_ref().map(|a| (i as u32, &a.image_view, f)))
+                    {
+                        // VUID-vkCmdExecuteCommands-imageView-06028
+                        if Some(image_view.format().unwrap()) != format {
+                            return Err(
+                                ExecuteCommandsError::RenderPassColorAttachmentFormatMismatch {
+                                    command_buffer_index,
+                                    color_attachment_index,
+                                    required_format: image_view.format().unwrap(),
+                                    inherited_format: format,
+                                },
+                            );
+                        }
+
+                        // VUID-vkCmdExecuteCommands-pNext-06035
+                        if image_view.image().samples() != inheritance_info.rasterization_samples {
+                            return Err(
+                                ExecuteCommandsError::RenderPassColorAttachmentSamplesMismatch {
+                                    command_buffer_index,
+                                    color_attachment_index,
+                                    required_samples: image_view.image().samples(),
+                                    inherited_samples: inheritance_info.rasterization_samples,
+                                },
+                            );
+                        }
+                    }
+
+                    if let Some((image_view, format)) = state
+                        .depth_attachment
+                        .as_ref()
+                        .map(|a| (&a.image_view, inheritance_info.depth_attachment_format))
+                    {
+                        // VUID-vkCmdExecuteCommands-pDepthAttachment-06029
+                        if Some(image_view.format().unwrap()) != format {
+                            return Err(
+                                ExecuteCommandsError::RenderPassDepthAttachmentFormatMismatch {
+                                    command_buffer_index,
+                                    required_format: image_view.format().unwrap(),
+                                    inherited_format: format,
+                                },
+                            );
+                        }
+
+                        // VUID-vkCmdExecuteCommands-pNext-06036
+                        if image_view.image().samples() != inheritance_info.rasterization_samples {
+                            return Err(
+                                ExecuteCommandsError::RenderPassDepthAttachmentSamplesMismatch {
+                                    command_buffer_index,
+                                    required_samples: image_view.image().samples(),
+                                    inherited_samples: inheritance_info.rasterization_samples,
+                                },
+                            );
+                        }
+                    }
+
+                    if let Some((image_view, format)) = state
+                        .stencil_attachment
+                        .as_ref()
+                        .map(|a| (&a.image_view, inheritance_info.stencil_attachment_format))
+                    {
+                        // VUID-vkCmdExecuteCommands-pStencilAttachment-06030
+                        if Some(image_view.format().unwrap()) != format {
+                            return Err(
+                                ExecuteCommandsError::RenderPassStencilAttachmentFormatMismatch {
+                                    command_buffer_index,
+                                    required_format: image_view.format().unwrap(),
+                                    inherited_format: format,
+                                },
+                            );
+                        }
+
+                        // VUID-vkCmdExecuteCommands-pNext-06037
+                        if image_view.image().samples() != inheritance_info.rasterization_samples {
+                            return Err(
+                                ExecuteCommandsError::RenderPassStencilAttachmentSamplesMismatch {
+                                    command_buffer_index,
+                                    required_samples: image_view.image().samples(),
+                                    inherited_samples: inheritance_info.rasterization_samples,
+                                },
+                            );
+                        }
+                    }
+
+                    // VUID-vkCmdExecuteCommands-viewMask-06031
+                    if inheritance_info.view_mask != state.view_mask {
+                        return Err(ExecuteCommandsError::RenderPassViewMaskMismatch {
+                            command_buffer_index,
+                            required_view_mask: state.view_mask,
+                            inherited_view_mask: inheritance_info.view_mask,
+                        });
+                    }
+                }
+                (RenderPassStateType::Inherited, _) => unreachable!(),
+                _ => {
+                    // VUID-vkCmdExecuteCommands-pBeginInfo-06025
+                    return Err(ExecuteCommandsError::RenderPassTypeMismatch {
+                        command_buffer_index,
+                    });
+                }
+            }
+
+            // TODO:
+            // VUID-vkCmdExecuteCommands-commandBuffer-06533
+            // VUID-vkCmdExecuteCommands-commandBuffer-06534
+            // VUID-vkCmdExecuteCommands-pCommandBuffers-06535
+            // VUID-vkCmdExecuteCommands-pCommandBuffers-06536
         } else {
-            self.ensure_outside_render_pass()?;
+            // VUID-vkCmdExecuteCommands-pCommandBuffers-00100
+            if command_buffer.inheritance_info().render_pass.is_some() {
+                return Err(ExecuteCommandsError::RenderPassInheritanceForbidden {
+                    command_buffer_index,
+                });
+            }
+        }
+
+        // VUID-vkCmdExecuteCommands-commandBuffer-00101
+        if !self.query_state.is_empty() && !self.device().enabled_features().inherited_queries {
+            return Err(ExecuteCommandsError::FeatureNotEnabled {
+                feature: "inherited_queries",
+                reason: "a query was active when calling execute_commands",
+            });
         }
 
         for state in self.query_state.values() {
             match state.ty {
-                QueryType::Occlusion => match command_buffer.inheritance_info().occlusion_query {
-                    Some(inherited_flags) => {
-                        let inherited_flags = ash::vk::QueryControlFlags::from(inherited_flags);
-                        let state_flags = ash::vk::QueryControlFlags::from(state.flags);
+                QueryType::Occlusion => {
+                    // VUID-vkCmdExecuteCommands-commandBuffer-00102
+                    let inherited_flags = command_buffer
+                        .inheritance_info()
+                        .occlusion_query
+                        .ok_or_else(|| ExecuteCommandsError::OcclusionQueryInheritanceRequired {
+                            command_buffer_index,
+                        })?;
 
-                        if inherited_flags & state_flags != state_flags {
-                            return Err(AutoCommandBufferBuilderContextError::QueryNotInherited);
-                        }
-                    }
-                    None => return Err(AutoCommandBufferBuilderContextError::QueryNotInherited),
-                },
-                QueryType::PipelineStatistics(state_flags) => {
-                    let inherited_flags = command_buffer.inheritance_info().query_statistics_flags;
-                    let inherited_flags =
-                        ash::vk::QueryPipelineStatisticFlags::from(inherited_flags);
-                    let state_flags = ash::vk::QueryPipelineStatisticFlags::from(state_flags);
+                    let inherited_flags_vk = ash::vk::QueryControlFlags::from(inherited_flags);
+                    let state_flags_vk = ash::vk::QueryControlFlags::from(state.flags);
 
-                    if inherited_flags & state_flags != state_flags {
-                        return Err(AutoCommandBufferBuilderContextError::QueryNotInherited);
+                    // VUID-vkCmdExecuteCommands-commandBuffer-00103
+                    if inherited_flags_vk & state_flags_vk != state_flags_vk {
+                        return Err(ExecuteCommandsError::OcclusionQueryFlagsNotSuperset {
+                            command_buffer_index,
+                            required_flags: state.flags,
+                            inherited_flags,
+                        });
                     }
                 }
-                _ => (),
+                QueryType::PipelineStatistics(state_flags) => {
+                    let inherited_flags = command_buffer.inheritance_info().query_statistics_flags;
+                    let inherited_flags_vk =
+                        ash::vk::QueryPipelineStatisticFlags::from(inherited_flags);
+                    let state_flags_vk = ash::vk::QueryPipelineStatisticFlags::from(state_flags);
+
+                    // VUID-vkCmdExecuteCommands-commandBuffer-00104
+                    if inherited_flags_vk & state_flags_vk != state_flags_vk {
+                        return Err(
+                            ExecuteCommandsError::PipelineStatisticsQueryFlagsNotSuperset {
+                                command_buffer_index,
+                                required_flags: state_flags,
+                                inherited_flags,
+                            },
+                        );
+                    }
+                }
+                QueryType::Timestamp => (),
             }
         }
 
-        Ok(())
-    }
+        // TODO:
+        // VUID-vkCmdExecuteCommands-pCommandBuffers-00091
+        // VUID-vkCmdExecuteCommands-pCommandBuffers-00092
+        // VUID-vkCmdExecuteCommands-pCommandBuffers-00093
+        // VUID-vkCmdExecuteCommands-pCommandBuffers-00105
 
-    #[inline]
-    fn ensure_inside_render_pass_secondary(
-        &self,
-        render_pass: &CommandBufferInheritanceRenderPassInfo,
-    ) -> Result<(), AutoCommandBufferBuilderContextError> {
-        let render_pass_state = self
-            .render_pass_state
-            .as_ref()
-            .ok_or(AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass)?;
+        // VUID-vkCmdExecuteCommands-bufferlevel
+        // Ensured by the type of the impl block.
 
-        if render_pass_state.contents != SubpassContents::SecondaryCommandBuffers {
-            return Err(AutoCommandBufferBuilderContextError::WrongSubpassType);
-        }
-
-        // Subpasses must be the same.
-        if render_pass.subpass.index() != render_pass_state.subpass.index() {
-            return Err(AutoCommandBufferBuilderContextError::WrongSubpassIndex);
-        }
-
-        // Render passes must be compatible.
-        if !render_pass
-            .subpass
-            .render_pass()
-            .is_compatible_with(render_pass_state.subpass.render_pass())
-        {
-            return Err(AutoCommandBufferBuilderContextError::IncompatibleRenderPass);
-        }
-
-        // Framebuffer, if present on the secondary command buffer, must be the
-        // same as the one in the current render pass.
-        if let Some(framebuffer) = &render_pass.framebuffer {
-            if Some(framebuffer) != render_pass_state.framebuffer.as_ref() {
-                return Err(AutoCommandBufferBuilderContextError::IncompatibleFramebuffer);
-            }
-        }
+        // VUID-vkCmdExecuteCommands-pCommandBuffers-00088
+        // VUID-vkCmdExecuteCommands-pCommandBuffers-00089
+        // Ensured by the SecondaryCommandBuffer trait.
 
         Ok(())
     }
@@ -342,5 +544,346 @@ impl UnsafeCommandBufferBuilderExecuteCommands {
     #[inline]
     pub unsafe fn add_raw(&mut self, cb: ash::vk::CommandBuffer) {
         self.raw_cbs.push(cb);
+    }
+}
+
+/// Error that can happen when executing a secondary command buffer.
+#[derive(Clone, Debug)]
+pub enum ExecuteCommandsError {
+    SyncCommandBufferBuilderError(SyncCommandBufferBuilderError),
+
+    FeatureNotEnabled {
+        feature: &'static str,
+        reason: &'static str,
+    },
+
+    /// Operation forbidden inside a render subpass with the specified contents.
+    ForbiddenWithSubpassContents {
+        subpass_contents: SubpassContents,
+    },
+
+    /// The queue family doesn't allow this operation.
+    NotSupportedByQueueFamily,
+
+    /// A render pass is active, but a command buffer does not contain occlusion query inheritance
+    /// info.
+    OcclusionQueryInheritanceRequired {
+        command_buffer_index: u32,
+    },
+
+    /// The inherited occlusion query control flags of a command buffer are not a superset of the
+    /// currently active flags.
+    OcclusionQueryFlagsNotSuperset {
+        command_buffer_index: u32,
+        required_flags: QueryControlFlags,
+        inherited_flags: QueryControlFlags,
+    },
+
+    /// The inherited pipeline statistics query flags of a command buffer are not a superset of the
+    /// currently active flags.
+    PipelineStatisticsQueryFlagsNotSuperset {
+        command_buffer_index: u32,
+        required_flags: QueryPipelineStatisticFlags,
+        inherited_flags: QueryPipelineStatisticFlags,
+    },
+
+    /// The inherited color attachment count of a command buffer does not match the current
+    /// attachment count.
+    RenderPassColorAttachmentCountMismatch {
+        command_buffer_index: u32,
+        required_count: u32,
+        inherited_count: u32,
+    },
+
+    /// The inherited format of a color attachment of a command buffer does not match the current
+    /// attachment format.
+    RenderPassColorAttachmentFormatMismatch {
+        command_buffer_index: u32,
+        color_attachment_index: u32,
+        required_format: Format,
+        inherited_format: Option<Format>,
+    },
+
+    /// The inherited sample count of a color attachment of a command buffer does not match the
+    /// current attachment sample count.
+    RenderPassColorAttachmentSamplesMismatch {
+        command_buffer_index: u32,
+        color_attachment_index: u32,
+        required_samples: SampleCount,
+        inherited_samples: SampleCount,
+    },
+
+    /// The inherited format of the depth attachment of a command buffer does not match the current
+    /// attachment format.
+    RenderPassDepthAttachmentFormatMismatch {
+        command_buffer_index: u32,
+        required_format: Format,
+        inherited_format: Option<Format>,
+    },
+
+    /// The inherited sample count of the depth attachment of a command buffer does not match the
+    /// current attachment sample count.
+    RenderPassDepthAttachmentSamplesMismatch {
+        command_buffer_index: u32,
+        required_samples: SampleCount,
+        inherited_samples: SampleCount,
+    },
+
+    /// The inherited framebuffer of a command buffer does not match the current framebuffer.
+    RenderPassFramebufferMismatch {
+        command_buffer_index: u32,
+    },
+
+    /// A render pass is active, but a command buffer does not contain render pass inheritance info.
+    RenderPassInheritanceRequired {
+        command_buffer_index: u32,
+    },
+
+    /// A render pass is not active, but a command buffer contains render pass inheritance info.
+    RenderPassInheritanceForbidden {
+        command_buffer_index: u32,
+    },
+
+    /// The inherited render pass of a command buffer is not compatible with the current render
+    /// pass.
+    RenderPassNotCompatible {
+        command_buffer_index: u32,
+    },
+
+    /// The inherited format of the stencil attachment of a command buffer does not match the
+    /// current attachment format.
+    RenderPassStencilAttachmentFormatMismatch {
+        command_buffer_index: u32,
+        required_format: Format,
+        inherited_format: Option<Format>,
+    },
+
+    /// The inherited sample count of the stencil attachment of a command buffer does not match the
+    /// current attachment sample count.
+    RenderPassStencilAttachmentSamplesMismatch {
+        command_buffer_index: u32,
+        required_samples: SampleCount,
+        inherited_samples: SampleCount,
+    },
+
+    /// The inherited subpass index of a command buffer does not match the current subpass index.
+    RenderPassSubpassMismatch {
+        command_buffer_index: u32,
+        required_subpass: u32,
+        inherited_subpass: u32,
+    },
+
+    /// The inherited render pass of a command buffer is of the wrong type.
+    RenderPassTypeMismatch {
+        command_buffer_index: u32,
+    },
+
+    /// The inherited view mask of a command buffer does not match the current view mask.
+    RenderPassViewMaskMismatch {
+        command_buffer_index: u32,
+        required_view_mask: u32,
+        inherited_view_mask: u32,
+    },
+}
+
+impl error::Error for ExecuteCommandsError {
+    #[inline]
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            Self::SyncCommandBufferBuilderError(err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for ExecuteCommandsError {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match self {
+            Self::SyncCommandBufferBuilderError(_) => write!(f, "a SyncCommandBufferBuilderError"),
+
+            Self::FeatureNotEnabled { feature, reason } => {
+                write!(f, "the feature {} must be enabled: {}", feature, reason)
+            }
+
+            Self::ForbiddenWithSubpassContents { subpass_contents } => write!(
+                f,
+                "operation forbidden inside a render subpass with contents {:?}",
+                subpass_contents,
+            ),
+            Self::NotSupportedByQueueFamily => {
+                write!(f, "the queue family doesn't allow this operation")
+            }
+            Self::OcclusionQueryInheritanceRequired {
+                command_buffer_index,
+            } => write!(
+                f,
+                "a render pass is active, but command buffer {} does not contain occlusion query inheritance info",
+                command_buffer_index,
+            ),
+            Self::OcclusionQueryFlagsNotSuperset {
+                command_buffer_index,
+                required_flags,
+                inherited_flags,
+            } => write!(
+                f,
+                "the inherited occlusion query control flags ({:?}) of command buffer {} are not a superset of the currently active flags ({:?})",
+                inherited_flags, command_buffer_index, required_flags,
+            ),
+            Self::PipelineStatisticsQueryFlagsNotSuperset {
+                command_buffer_index,
+                required_flags,
+                inherited_flags,
+            } => write!(
+                f,
+                "the inherited pipeline statistics query flags ({:?}) of command buffer {} are not a superset of the currently active flags ({:?})",
+                inherited_flags, command_buffer_index, required_flags,
+            ),
+            Self::RenderPassColorAttachmentCountMismatch {
+                command_buffer_index,
+                required_count,
+                inherited_count,
+            } => write!(
+                f,
+                "the inherited color attachment count ({}) of command buffer {} does not match the current attachment count ({})",
+                inherited_count,
+                command_buffer_index,
+                required_count,
+            ),
+            Self::RenderPassColorAttachmentFormatMismatch {
+                command_buffer_index,
+                color_attachment_index,
+                required_format,
+                inherited_format,
+            } => write!(
+                f,
+                "the inherited format ({:?}) of color attachment {} of command buffer {} does not match the current attachment format ({:?})",
+                inherited_format,
+                color_attachment_index,
+                command_buffer_index,
+                required_format,
+            ),
+            Self::RenderPassColorAttachmentSamplesMismatch {
+                command_buffer_index,
+                color_attachment_index,
+                required_samples,
+                inherited_samples,
+            } => write!(
+                f,
+                "the inherited sample count ({:?}) of color attachment {} of command buffer {} does not match the current attachment sample count ({:?})",
+                inherited_samples,
+                color_attachment_index,
+                command_buffer_index,
+                required_samples,
+            ),
+            Self::RenderPassDepthAttachmentFormatMismatch {
+                command_buffer_index,
+                required_format,
+                inherited_format,
+            } => write!(
+                f,
+                "the inherited format ({:?}) of the depth attachment of command buffer {} does not match the current attachment format ({:?})",
+                inherited_format,
+                command_buffer_index,
+                required_format,
+            ),
+            Self::RenderPassDepthAttachmentSamplesMismatch {
+                command_buffer_index,
+                required_samples,
+                inherited_samples,
+            } => write!(
+                f,
+                "the inherited sample count ({:?}) of the depth attachment of command buffer {} does not match the current attachment sample count ({:?})",
+                inherited_samples,
+                command_buffer_index,
+                required_samples,
+            ),
+            Self::RenderPassFramebufferMismatch {
+                command_buffer_index,
+            } => write!(
+                f,
+                "the inherited framebuffer of command buffer {} does not match the current framebuffer",
+                command_buffer_index,
+            ),
+            Self::RenderPassInheritanceRequired {
+                command_buffer_index,
+            } => write!(
+                f,
+                "a render pass is active, but command buffer {} does not contain render pass inheritance info",
+                command_buffer_index,
+            ),
+            Self::RenderPassInheritanceForbidden {
+                command_buffer_index,
+            } => write!(
+                f,
+                "a render pass is not active, but command buffer {} contains render pass inheritance info",
+                command_buffer_index,
+            ),
+            Self::RenderPassNotCompatible {
+                command_buffer_index,
+            } => write!(
+                f,
+                "the inherited render pass of command buffer {} is not compatible with the current render pass",
+                command_buffer_index,
+            ),
+            Self::RenderPassStencilAttachmentFormatMismatch {
+                command_buffer_index,
+                required_format,
+                inherited_format,
+            } => write!(
+                f,
+                "the inherited format ({:?}) of the stencil attachment of command buffer {} does not match the current attachment format ({:?})",
+                inherited_format,
+                command_buffer_index,
+                required_format,
+            ),
+            Self::RenderPassStencilAttachmentSamplesMismatch {
+                command_buffer_index,
+                required_samples,
+                inherited_samples,
+            } => write!(
+                f,
+                "the inherited sample count ({:?}) of the stencil attachment of command buffer {} does not match the current attachment sample count ({:?})",
+                inherited_samples,
+                command_buffer_index,
+                required_samples,
+            ),
+            Self::RenderPassSubpassMismatch {
+                command_buffer_index,
+                required_subpass,
+                inherited_subpass,
+            } => write!(
+                f,
+                "the inherited subpass index ({}) of command buffer {} does not match the current subpass index ({})",
+                inherited_subpass,
+                command_buffer_index,
+                required_subpass,
+            ),
+            Self::RenderPassTypeMismatch {
+                command_buffer_index,
+            } => write!(
+                f,
+                "the inherited render pass of command buffer {} is of the wrong type",
+                command_buffer_index,
+            ),
+            Self::RenderPassViewMaskMismatch {
+                command_buffer_index,
+                required_view_mask,
+                inherited_view_mask,
+            } => write!(
+                f,
+                "the inherited view mask ({}) of command buffer {} does not match the current view mask ({})",
+                inherited_view_mask,
+                command_buffer_index,
+                required_view_mask,
+            ),
+        }
+    }
+}
+
+impl From<SyncCommandBufferBuilderError> for ExecuteCommandsError {
+    #[inline]
+    fn from(err: SyncCommandBufferBuilderError) -> Self {
+        Self::SyncCommandBufferBuilderError(err)
     }
 }

@@ -11,7 +11,10 @@ use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
-    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer},
+    command_buffer::{
+        AutoCommandBufferBuilder, CommandBufferInheritanceInfo, CommandBufferUsage,
+        SecondaryAutoCommandBuffer,
+    },
     device::Queue,
     impl_vertex,
     pipeline::{
@@ -29,6 +32,7 @@ use vulkano::{
 pub struct TriangleDrawSystem {
     gfx_queue: Arc<Queue>,
     vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
+    subpass: Subpass,
     pipeline: Arc<GraphicsPipeline>,
 }
 
@@ -67,7 +71,7 @@ impl TriangleDrawSystem {
                 .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
                 .fragment_shader(fs.entry_point("main").unwrap(), ())
                 .depth_stencil_state(DepthStencilState::simple_depth_test())
-                .render_pass(subpass)
+                .render_pass(subpass.clone())
                 .build(gfx_queue.device().clone())
                 .unwrap()
         };
@@ -75,17 +79,21 @@ impl TriangleDrawSystem {
         TriangleDrawSystem {
             gfx_queue,
             vertex_buffer,
+            subpass,
             pipeline,
         }
     }
 
     /// Builds a secondary command buffer that draws the triangle on the current subpass.
     pub fn draw(&self, viewport_dimensions: [u32; 2]) -> SecondaryAutoCommandBuffer {
-        let mut builder = AutoCommandBufferBuilder::secondary_graphics(
+        let mut builder = AutoCommandBufferBuilder::secondary(
             self.gfx_queue.device().clone(),
             self.gfx_queue.family(),
             CommandBufferUsage::MultipleSubmit,
-            self.pipeline.subpass().clone(),
+            CommandBufferInheritanceInfo {
+                render_pass: Some(self.subpass.clone().into()),
+                ..Default::default()
+            },
         )
         .unwrap();
         builder

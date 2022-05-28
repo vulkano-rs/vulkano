@@ -29,6 +29,7 @@ use crate::{
     pipeline::{
         graphics::{
             input_assembly::PrimitiveTopology,
+            render_pass::PipelineRenderPassType,
             vertex_input::{VertexInputRate, VertexInputState},
         },
         ComputePipeline, DynamicState, GraphicsPipeline, PartialStateMode, Pipeline,
@@ -1515,7 +1516,12 @@ fn check_vertex_buffers(
             }
         }
 
-        if pipeline.subpass().render_pass().views_used() != 0 {
+        let view_mask = match pipeline.render_pass() {
+            PipelineRenderPassType::BeginRenderPass(subpass) => subpass.render_pass().views_used(),
+            PipelineRenderPassType::BeginRendering(rendering_info) => rendering_info.view_mask,
+        };
+
+        if view_mask != 0 {
             let max_instance_index = pipeline
                 .device()
                 .physical_device()

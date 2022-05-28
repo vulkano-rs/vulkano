@@ -82,6 +82,7 @@ use vulkano::{
     instance::{Instance, InstanceCreateInfo},
     pipeline::{
         graphics::{
+            multisample::MultisampleState,
             vertex_input::BuffersDefinition,
             viewport::{Viewport, ViewportState},
         },
@@ -275,12 +276,17 @@ fn main() {
         CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, vertices)
             .unwrap();
 
+    let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
     let pipeline = GraphicsPipeline::start()
         .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
         .vertex_shader(vs.entry_point("main").unwrap(), ())
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
         .fragment_shader(fs.entry_point("main").unwrap(), ())
-        .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+        .multisample_state(MultisampleState {
+            rasterization_samples: subpass.num_samples().unwrap(),
+            ..Default::default()
+        })
+        .render_pass(subpass)
         .build(device.clone())
         .unwrap();
 

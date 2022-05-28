@@ -19,8 +19,7 @@ use vulkano::{
     },
     image::{view::ImageView, ImageUsage, SwapchainImage},
     instance::{Instance, InstanceCreateInfo},
-    pipeline::{graphics::viewport::ViewportState, GraphicsPipeline},
-    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
+    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass},
     swapchain::{
         acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
     },
@@ -118,37 +117,6 @@ fn main() {
         .unwrap()
     };
 
-    mod vs {
-        vulkano_shaders::shader! {
-            ty: "vertex",
-            src: "
-    			#version 450
-
-
-    			void main() {
-    			}
-    		"
-        }
-    }
-
-    mod fs {
-        vulkano_shaders::shader! {
-            ty: "fragment",
-            src: "
-    			#version 450
-
-    			layout(location = 0) out vec4 f_color;
-
-    			void main() {
-    				f_color = vec4(1.0, 0.0, 0.0, 1.0);
-    			}
-    		"
-        }
-    }
-
-    let vs = vs::load(device.clone()).unwrap();
-    let fs = fs::load(device.clone()).unwrap();
-
     let render_pass = vulkano::single_pass_renderpass!(device.clone(),
         attachments: {
             color: {
@@ -164,15 +132,6 @@ fn main() {
         }
     )
     .unwrap();
-
-    let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
-    let pipeline = GraphicsPipeline::start()
-        .vertex_shader(vs.entry_point("main").unwrap(), ())
-        .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-        .fragment_shader(fs.entry_point("main").unwrap(), ())
-        .render_pass(subpass)
-        .build(device.clone())
-        .unwrap();
 
     let mut width = swapchain.image_extent()[0];
     let mut height = swapchain.image_extent()[1];
@@ -243,7 +202,6 @@ fn main() {
                     SubpassContents::Inline,
                 )
                 .unwrap()
-                .bind_pipeline_graphics(pipeline.clone())
                 // Clear attachments with clear values and rects information, all the rects will be cleared by the same value
                 // Note that the ClearRect offsets and extents are not affected by the viewport,
                 // they are directly applied to the rendering image

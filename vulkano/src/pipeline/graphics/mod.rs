@@ -56,29 +56,27 @@
 //! constants, and setting any dynamic state that the pipeline may need. Then you issue a `draw`
 //! command.
 
-pub use self::builder::GraphicsPipelineBuilder;
-pub use self::creation_error::GraphicsPipelineCreationError;
-use crate::device::{Device, DeviceOwned};
-use crate::pipeline::graphics::color_blend::ColorBlendState;
-use crate::pipeline::graphics::depth_stencil::DepthStencilState;
-use crate::pipeline::graphics::discard_rectangle::DiscardRectangleState;
-use crate::pipeline::graphics::input_assembly::InputAssemblyState;
-use crate::pipeline::graphics::multisample::MultisampleState;
-use crate::pipeline::graphics::rasterization::RasterizationState;
-use crate::pipeline::graphics::tessellation::TessellationState;
-use crate::pipeline::graphics::vertex_input::VertexInputState;
-use crate::pipeline::graphics::viewport::ViewportState;
-use crate::pipeline::layout::PipelineLayout;
-use crate::pipeline::{DynamicState, Pipeline, PipelineBindPoint};
-use crate::render_pass::Subpass;
-use crate::shader::{DescriptorRequirements, ShaderStage};
-use crate::VulkanObject;
-use std::collections::HashMap;
-use std::fmt;
-use std::hash::Hash;
-use std::hash::Hasher;
-use std::ptr;
-use std::sync::Arc;
+pub use self::{builder::GraphicsPipelineBuilder, creation_error::GraphicsPipelineCreationError};
+use self::{
+    color_blend::ColorBlendState, depth_stencil::DepthStencilState,
+    discard_rectangle::DiscardRectangleState, input_assembly::InputAssemblyState,
+    multisample::MultisampleState, rasterization::RasterizationState,
+    render_pass::PipelineRenderPassType, tessellation::TessellationState,
+    vertex_input::VertexInputState, viewport::ViewportState,
+};
+use super::{DynamicState, Pipeline, PipelineBindPoint, PipelineLayout};
+use crate::{
+    device::{Device, DeviceOwned},
+    shader::{DescriptorRequirements, ShaderStage},
+    VulkanObject,
+};
+use std::{
+    collections::HashMap,
+    fmt,
+    hash::{Hash, Hasher},
+    ptr,
+    sync::Arc,
+};
 
 mod builder;
 pub mod color_blend;
@@ -88,6 +86,7 @@ pub mod discard_rectangle;
 pub mod input_assembly;
 pub mod multisample;
 pub mod rasterization;
+pub mod render_pass;
 pub mod tessellation;
 pub mod vertex_input;
 pub mod viewport;
@@ -102,7 +101,8 @@ pub struct GraphicsPipeline {
     handle: ash::vk::Pipeline,
     device: Arc<Device>,
     layout: Arc<PipelineLayout>,
-    subpass: Subpass,
+    render_pass: PipelineRenderPassType,
+
     // TODO: replace () with an object that describes the shaders in some way.
     shaders: HashMap<ShaderStage, ()>,
     descriptor_requirements: HashMap<(u32, u32), DescriptorRequirements>,
@@ -145,10 +145,10 @@ impl GraphicsPipeline {
         &self.device
     }
 
-    /// Returns the subpass this graphics pipeline is rendering to.
+    /// Returns the render pass this graphics pipeline is rendering to.
     #[inline]
-    pub fn subpass(&self) -> &Subpass {
-        &self.subpass
+    pub fn render_pass(&self) -> &PipelineRenderPassType {
+        &self.render_pass
     }
 
     /// Returns information about a particular shader.
