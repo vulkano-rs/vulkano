@@ -41,6 +41,7 @@
 - Added new enum value `SwapchainCreationError::ImageExtentZeroLengthDimensions` to be returned when at least one of the image extent's dimensions are zero.
 - Added support for dynamic rendering, and a `triangle-v1_3` example demonstrating how it's used.
 - Fixed a bug where `NonExhaustive` implemented the `Default` trait and was therefore still constructable by the user.
+- Updated ash to 0.37.0+1.3.209.
 
 # Version 0.29.0 (2022-03-11)
 
