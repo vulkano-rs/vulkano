@@ -11,12 +11,7 @@
 //!
 //! The discard rectangle test is similar to, but separate from the scissor test.
 
-use crate::device::Device;
-use crate::pipeline::graphics::viewport::Scissor;
-use crate::pipeline::graphics::GraphicsPipelineCreationError;
-use crate::pipeline::{DynamicState, PartialStateMode};
-use smallvec::SmallVec;
-use std::collections::HashMap;
+use crate::pipeline::{graphics::viewport::Scissor, PartialStateMode};
 
 /// The state in a graphics pipeline describing how the discard rectangle test should behave.
 #[derive(Clone, Debug)]
@@ -41,81 +36,6 @@ impl DiscardRectangleState {
             mode: DiscardRectangleMode::Exclusive,
             rectangles: PartialStateMode::Fixed(Vec::new()),
         }
-    }
-
-    pub(crate) fn to_vulkan_rectangles(
-        &self,
-        device: &Device,
-        dynamic_state_modes: &mut HashMap<DynamicState, bool>,
-    ) -> Result<SmallVec<[ash::vk::Rect2D; 2]>, GraphicsPipelineCreationError> {
-        Ok(match &self.rectangles {
-            PartialStateMode::Fixed(rectangles) => {
-                dynamic_state_modes.insert(DynamicState::DiscardRectangle, false);
-                rectangles.iter().map(|&rect| rect.into()).collect()
-            }
-            PartialStateMode::Dynamic(_) => {
-                dynamic_state_modes.insert(DynamicState::DiscardRectangle, true);
-                Default::default()
-            }
-        })
-    }
-
-    pub(crate) fn to_vulkan(
-        &self,
-        device: &Device,
-        dynamic_state_modes: &mut HashMap<DynamicState, bool>,
-        discard_rectangles: &[ash::vk::Rect2D],
-    ) -> Result<
-        Option<ash::vk::PipelineDiscardRectangleStateCreateInfoEXT>,
-        GraphicsPipelineCreationError,
-    > {
-        Ok(if device.enabled_extensions().ext_discard_rectangles {
-            if discard_rectangles.len()
-                > device
-                    .physical_device()
-                    .properties()
-                    .max_discard_rectangles
-                    .unwrap() as usize
-            {
-                return Err(
-                    GraphicsPipelineCreationError::MaxDiscardRectanglesExceeded {
-                        max: device
-                            .physical_device()
-                            .properties()
-                            .max_discard_rectangles
-                            .unwrap(),
-                        obtained: discard_rectangles.len() as u32,
-                    },
-                );
-            }
-
-            let discard_rectangle_count = match &self.rectangles {
-                PartialStateMode::Dynamic(count) => *count,
-                PartialStateMode::Fixed(_) => discard_rectangles.len() as u32,
-            };
-
-            Some(ash::vk::PipelineDiscardRectangleStateCreateInfoEXT {
-                flags: ash::vk::PipelineDiscardRectangleStateCreateFlagsEXT::empty(),
-                discard_rectangle_mode: self.mode.into(),
-                discard_rectangle_count,
-                p_discard_rectangles: discard_rectangles.as_ptr(),
-                ..Default::default()
-            })
-        } else {
-            let error = match &self.rectangles {
-                PartialStateMode::Dynamic(_) => true,
-                PartialStateMode::Fixed(rectangles) => !rectangles.is_empty(),
-            };
-
-            if error {
-                return Err(GraphicsPipelineCreationError::ExtensionNotEnabled {
-                    extension: "ext_discard_rectangles",
-                    reason: "DiscardRectangleState::rectangles was not Fixed with an empty list",
-                });
-            }
-
-            None
-        })
     }
 }
 

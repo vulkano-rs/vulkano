@@ -29,15 +29,16 @@ use super::{
     },
     sys::{CommandBufferBeginInfo, UnsafeCommandBuffer},
     CommandBufferExecError, CommandBufferInheritanceInfo, CommandBufferInheritanceRenderPassInfo,
-    CommandBufferLevel, CommandBufferUsage, PrimaryCommandBuffer, SecondaryCommandBuffer,
-    SubpassContents,
+    CommandBufferInheritanceRenderPassType, CommandBufferLevel, CommandBufferUsage,
+    PrimaryCommandBuffer, RenderingAttachmentInfo, SecondaryCommandBuffer, SubpassContents,
 };
 use crate::{
     buffer::{sys::UnsafeBuffer, BufferAccess},
+    command_buffer::CommandBufferInheritanceRenderingInfo,
     device::{physical::QueueFamily, Device, DeviceOwned, Queue},
     image::{sys::UnsafeImage, ImageAccess, ImageLayout, ImageSubresourceRange},
-    pipeline::GraphicsPipeline,
-    query::{QueryControlFlags, QueryPipelineStatisticFlags, QueryType},
+    pipeline::{graphics::render_pass::PipelineRenderPassType, GraphicsPipeline},
+    query::{QueryControlFlags, QueryType},
     render_pass::{Framebuffer, Subpass},
     sync::{AccessCheckError, AccessFlags, GpuFuture, PipelineMemoryAccess, PipelineStages},
     DeviceSize, OomError,
@@ -66,7 +67,7 @@ pub struct AutoCommandBufferBuilder<L, P = StandardCommandPoolBuilder> {
 
     // The inheritance for secondary command buffers.
     // Must be `None` in a primary command buffer and `Some` in a secondary command buffer.
-    inheritance_info: Option<CommandBufferInheritanceInfo>,
+    pub(super) inheritance_info: Option<CommandBufferInheritanceInfo>,
 
     // Usage flags passed when creating the command buffer.
     pub(super) usage: CommandBufferUsage,
@@ -82,11 +83,42 @@ pub struct AutoCommandBufferBuilder<L, P = StandardCommandPoolBuilder> {
 
 // The state of the current render pass, specifying the pass, subpass index and its intended contents.
 pub(super) struct RenderPassState {
-    pub(super) subpass: Subpass,
     pub(super) contents: SubpassContents,
     pub(super) render_area_offset: [u32; 2],
     pub(super) render_area_extent: [u32; 2],
-    pub(super) framebuffer: Option<Arc<Framebuffer>>, // In a secondary command buffer, this is only known if provided with the inheritance info.
+    pub(super) render_pass: RenderPassStateType,
+}
+
+pub(super) enum RenderPassStateType {
+    BeginRenderPass(BeginRenderPassState),
+    BeginRendering(BeginRenderingState),
+    Inherited,
+}
+
+impl From<BeginRenderPassState> for RenderPassStateType {
+    #[inline]
+    fn from(val: BeginRenderPassState) -> Self {
+        Self::BeginRenderPass(val)
+    }
+}
+
+impl From<BeginRenderingState> for RenderPassStateType {
+    #[inline]
+    fn from(val: BeginRenderingState) -> Self {
+        Self::BeginRendering(val)
+    }
+}
+
+pub(super) struct BeginRenderPassState {
+    pub(super) subpass: Subpass,
+    pub(super) framebuffer: Arc<Framebuffer>,
+}
+
+pub(super) struct BeginRenderingState {
+    pub(super) view_mask: u32,
+    pub(super) color_attachments: Vec<Option<RenderingAttachmentInfo>>,
+    pub(super) depth_attachment: Option<RenderingAttachmentInfo>,
+    pub(super) stencil_attachment: Option<RenderingAttachmentInfo>,
 }
 
 // The state of an active query.
@@ -99,7 +131,7 @@ pub(super) struct QueryState {
 }
 
 impl AutoCommandBufferBuilder<PrimaryAutoCommandBuffer, StandardCommandPoolBuilder> {
-    /// Starts building a primary command buffer.
+    /// Starts recording a primary command buffer.
     #[inline]
     pub fn primary(
         device: Arc<Device>,
@@ -107,16 +139,17 @@ impl AutoCommandBufferBuilder<PrimaryAutoCommandBuffer, StandardCommandPoolBuild
         usage: CommandBufferUsage,
     ) -> Result<
         AutoCommandBufferBuilder<PrimaryAutoCommandBuffer, StandardCommandPoolBuilder>,
-        OomError,
+        CommandBufferBeginError,
     > {
         unsafe {
-            AutoCommandBufferBuilder::with_level(
+            AutoCommandBufferBuilder::begin(
                 device,
                 queue_family,
                 CommandBufferLevel::Primary,
                 CommandBufferBeginInfo {
                     usage,
-                    ..Default::default()
+                    inheritance_info: None,
+                    _ne: crate::NonExhaustive(()),
                 },
             )
         }
@@ -124,141 +157,26 @@ impl AutoCommandBufferBuilder<PrimaryAutoCommandBuffer, StandardCommandPoolBuild
 }
 
 impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder> {
-    /// Starts building a secondary compute command buffer.
+    /// Starts recording a secondary command buffer.
     #[inline]
-    pub fn secondary_compute(
+    pub fn secondary(
         device: Arc<Device>,
         queue_family: QueueFamily,
         usage: CommandBufferUsage,
+        inheritance_info: CommandBufferInheritanceInfo,
     ) -> Result<
         AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
-        OomError,
+        CommandBufferBeginError,
     > {
         unsafe {
-            Ok(AutoCommandBufferBuilder::with_level(
+            Ok(AutoCommandBufferBuilder::begin(
                 device,
                 queue_family,
                 CommandBufferLevel::Secondary,
                 CommandBufferBeginInfo {
                     usage,
-                    inheritance_info: Some(CommandBufferInheritanceInfo::default()),
-                    ..Default::default()
-                },
-            )?)
-        }
-    }
-
-    /// Same as `secondary_compute`, but allows specifying how queries are being inherited.
-    #[inline]
-    pub fn secondary_compute_inherit_queries(
-        device: Arc<Device>,
-        queue_family: QueueFamily,
-        usage: CommandBufferUsage,
-        occlusion_query: Option<QueryControlFlags>,
-        query_statistics_flags: QueryPipelineStatisticFlags,
-    ) -> Result<
-        AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
-        BeginError,
-    > {
-        if occlusion_query.is_some() && !device.enabled_features().inherited_queries {
-            return Err(BeginError::InheritedQueriesFeatureNotEnabled);
-        }
-
-        if query_statistics_flags.count() > 0
-            && !device.enabled_features().pipeline_statistics_query
-        {
-            return Err(BeginError::PipelineStatisticsQueryFeatureNotEnabled);
-        }
-
-        unsafe {
-            Ok(AutoCommandBufferBuilder::with_level(
-                device,
-                queue_family,
-                CommandBufferLevel::Secondary,
-                CommandBufferBeginInfo {
-                    usage,
-                    inheritance_info: Some(CommandBufferInheritanceInfo {
-                        occlusion_query,
-                        query_statistics_flags,
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                },
-            )?)
-        }
-    }
-
-    /// Starts building a secondary graphics command buffer.
-    #[inline]
-    pub fn secondary_graphics(
-        device: Arc<Device>,
-        queue_family: QueueFamily,
-        usage: CommandBufferUsage,
-        subpass: Subpass,
-    ) -> Result<
-        AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
-        OomError,
-    > {
-        unsafe {
-            Ok(AutoCommandBufferBuilder::with_level(
-                device,
-                queue_family,
-                CommandBufferLevel::Secondary,
-                CommandBufferBeginInfo {
-                    usage,
-                    inheritance_info: Some(CommandBufferInheritanceInfo {
-                        render_pass: Some(CommandBufferInheritanceRenderPassInfo {
-                            subpass,
-                            framebuffer: None,
-                        }),
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                },
-            )?)
-        }
-    }
-
-    /// Same as `secondary_graphics`, but allows specifying how queries are being inherited.
-    #[inline]
-    pub fn secondary_graphics_inherit_queries(
-        device: Arc<Device>,
-        queue_family: QueueFamily,
-        usage: CommandBufferUsage,
-        subpass: Subpass,
-        occlusion_query: Option<QueryControlFlags>,
-        query_statistics_flags: QueryPipelineStatisticFlags,
-    ) -> Result<
-        AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
-        BeginError,
-    > {
-        if occlusion_query.is_some() && !device.enabled_features().inherited_queries {
-            return Err(BeginError::InheritedQueriesFeatureNotEnabled);
-        }
-
-        if query_statistics_flags.count() > 0
-            && !device.enabled_features().pipeline_statistics_query
-        {
-            return Err(BeginError::PipelineStatisticsQueryFeatureNotEnabled);
-        }
-
-        unsafe {
-            Ok(AutoCommandBufferBuilder::with_level(
-                device,
-                queue_family,
-                CommandBufferLevel::Secondary,
-                CommandBufferBeginInfo {
-                    usage,
-                    inheritance_info: Some(CommandBufferInheritanceInfo {
-                        render_pass: Some(CommandBufferInheritanceRenderPassInfo {
-                            subpass,
-                            framebuffer: None,
-                        }),
-                        occlusion_query,
-                        query_statistics_flags,
-                        ..Default::default()
-                    }),
-                    ..Default::default()
+                    inheritance_info: Some(inheritance_info),
+                    _ne: crate::NonExhaustive(()),
                 },
             )?)
         }
@@ -269,43 +187,59 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
     // Actual constructor. Private.
     //
     // `begin_info.inheritance_info` must match `level`.
-    unsafe fn with_level(
+    unsafe fn begin(
         device: Arc<Device>,
         queue_family: QueueFamily,
         level: CommandBufferLevel,
         begin_info: CommandBufferBeginInfo,
-    ) -> Result<AutoCommandBufferBuilder<L, StandardCommandPoolBuilder>, OomError> {
-        let usage = begin_info.usage;
-        let inheritance_info = begin_info.inheritance_info.clone();
-        let render_pass_state = begin_info
-            .inheritance_info
-            .as_ref()
-            .and_then(|inheritance_info| inheritance_info.render_pass.as_ref())
-            .map(
-                |CommandBufferInheritanceRenderPassInfo {
-                     subpass,
-                     framebuffer,
-                 }| {
-                    // In a secondary command buffer, we don't know the render area yet, so use a
-                    // dummy value.
-                    let render_area_offset = [0, 0];
-                    let render_area_extent = framebuffer
-                        .as_ref()
-                        .map(|f| f.extent())
-                        .unwrap_or([u32::MAX, u32::MAX]);
+    ) -> Result<AutoCommandBufferBuilder<L, StandardCommandPoolBuilder>, CommandBufferBeginError>
+    {
+        Self::validate_begin(&device, &queue_family, level, &begin_info)?;
 
-                    RenderPassState {
-                        subpass: subpass.clone(),
-                        contents: SubpassContents::Inline,
-                        render_area_offset,
-                        render_area_extent,
-                        framebuffer: framebuffer.clone(),
-                    }
-                },
-            );
+        let &CommandBufferBeginInfo {
+            usage,
+            ref inheritance_info,
+            _ne: _,
+        } = &begin_info;
 
-        let pool = Device::standard_command_pool(&device, queue_family);
-        let pool_builder_alloc = pool
+        let inheritance_info = inheritance_info.clone();
+        let mut render_pass_state = None;
+
+        if let Some(inheritance_info) = &inheritance_info {
+            let &CommandBufferInheritanceInfo {
+                ref render_pass,
+                occlusion_query,
+                query_statistics_flags,
+                _ne: _,
+            } = inheritance_info;
+
+            if let Some(render_pass) = render_pass {
+                // In a secondary command buffer, we don't know the render area yet, so use a
+                // dummy value.
+                let render_area_offset = [0, 0];
+                let mut render_area_extent = [u32::MAX, u32::MAX];
+
+                if let CommandBufferInheritanceRenderPassType::BeginRenderPass(
+                    CommandBufferInheritanceRenderPassInfo {
+                        framebuffer: Some(framebuffer),
+                        ..
+                    },
+                ) = render_pass
+                {
+                    // Still not exact, but it's a better upper bound.
+                    render_area_extent = framebuffer.extent();
+                }
+
+                render_pass_state = Some(RenderPassState {
+                    contents: SubpassContents::Inline,
+                    render_area_offset,
+                    render_area_extent,
+                    render_pass: RenderPassStateType::Inherited,
+                });
+            }
+        }
+
+        let pool_builder_alloc = Device::standard_command_pool(&device, queue_family)
             .allocate(level, 1)?
             .next()
             .expect("Requested one command buffer from the command pool, but got zero.");
@@ -322,19 +256,235 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
             _data: PhantomData,
         })
     }
+
+    fn validate_begin(
+        device: &Device,
+        queue_family: &QueueFamily,
+        level: CommandBufferLevel,
+        begin_info: &CommandBufferBeginInfo,
+    ) -> Result<(), CommandBufferBeginError> {
+        let physical_device = device.physical_device();
+        let properties = physical_device.properties();
+
+        let &CommandBufferBeginInfo {
+            usage,
+            ref inheritance_info,
+            _ne: _,
+        } = &begin_info;
+
+        if let Some(inheritance_info) = &inheritance_info {
+            debug_assert!(level == CommandBufferLevel::Secondary);
+
+            let &CommandBufferInheritanceInfo {
+                ref render_pass,
+                occlusion_query,
+                query_statistics_flags,
+                _ne: _,
+            } = inheritance_info;
+
+            if let Some(render_pass) = render_pass {
+                // VUID-VkCommandBufferBeginInfo-flags-06000
+                // VUID-VkCommandBufferBeginInfo-flags-06002
+                // Ensured by the definition of the `CommandBufferInheritanceRenderPassType` enum.
+
+                match render_pass {
+                    CommandBufferInheritanceRenderPassType::BeginRenderPass(render_pass_info) => {
+                        let &CommandBufferInheritanceRenderPassInfo {
+                            ref subpass,
+                            ref framebuffer,
+                        } = render_pass_info;
+
+                        // VUID-VkCommandBufferInheritanceInfo-commonparent
+                        assert_eq!(device, subpass.render_pass().device().as_ref());
+
+                        // VUID-VkCommandBufferBeginInfo-flags-06001
+                        // Ensured by how the `Subpass` type is constructed.
+
+                        if let Some(framebuffer) = framebuffer {
+                            // VUID-VkCommandBufferInheritanceInfo-commonparent
+                            assert_eq!(device, framebuffer.device().as_ref());
+
+                            // VUID-VkCommandBufferBeginInfo-flags-00055
+                            if !framebuffer
+                                .render_pass()
+                                .is_compatible_with(subpass.render_pass())
+                            {
+                                return Err(CommandBufferBeginError::FramebufferNotCompatible);
+                            }
+                        }
+                    }
+                    CommandBufferInheritanceRenderPassType::BeginRendering(rendering_info) => {
+                        let &CommandBufferInheritanceRenderingInfo {
+                            view_mask,
+                            ref color_attachment_formats,
+                            depth_attachment_format,
+                            stencil_attachment_format,
+                            rasterization_samples,
+                        } = rendering_info;
+
+                        // VUID-VkCommandBufferInheritanceRenderingInfo-multiview-06008
+                        if view_mask != 0 && !device.enabled_features().multiview {
+                            return Err(CommandBufferBeginError::FeatureNotEnabled {
+                                feature: "multiview",
+                                reason: "view_mask is not 0",
+                            });
+                        }
+
+                        let view_count = u32::BITS - view_mask.leading_zeros();
+
+                        // VUID-VkCommandBufferInheritanceRenderingInfo-viewMask-06009
+                        if view_count > properties.max_multiview_view_count.unwrap_or(0) {
+                            return Err(CommandBufferBeginError::MaxMultiviewViewCountExceeded {
+                                view_count,
+                                max: properties.max_multiview_view_count.unwrap_or(0),
+                            });
+                        }
+
+                        for (attachment_index, format) in color_attachment_formats
+                            .iter()
+                            .enumerate()
+                            .flat_map(|(i, f)| f.map(|f| (i, f)))
+                        {
+                            let attachment_index = attachment_index as u32;
+
+                            // VUID-VkCommandBufferInheritanceRenderingInfo-pColorAttachmentFormats-06006
+                            if !physical_device
+                                .format_properties(format)
+                                .potential_format_features()
+                                .color_attachment
+                            {
+                                return Err(
+                                    CommandBufferBeginError::ColorAttachmentFormatUsageNotSupported {
+                                        attachment_index,
+                                    },
+                                );
+                            }
+                        }
+
+                        if let Some(format) = depth_attachment_format {
+                            // VUID-VkCommandBufferInheritanceRenderingInfo-depthAttachmentFormat-06540
+                            if !format.aspects().depth {
+                                return Err(
+                                    CommandBufferBeginError::DepthAttachmentFormatUsageNotSupported,
+                                );
+                            }
+
+                            // VUID-VkCommandBufferInheritanceRenderingInfo-depthAttachmentFormat-06007
+                            if !physical_device
+                                .format_properties(format)
+                                .potential_format_features()
+                                .depth_stencil_attachment
+                            {
+                                return Err(
+                                    CommandBufferBeginError::DepthAttachmentFormatUsageNotSupported,
+                                );
+                            }
+                        }
+
+                        if let Some(format) = stencil_attachment_format {
+                            // VUID-VkCommandBufferInheritanceRenderingInfo-stencilAttachmentFormat-06541
+                            if !format.aspects().stencil {
+                                return Err(
+                                    CommandBufferBeginError::StencilAttachmentFormatUsageNotSupported,
+                                );
+                            }
+
+                            // VUID-VkCommandBufferInheritanceRenderingInfo-stencilAttachmentFormat-06199
+                            if !physical_device
+                                .format_properties(format)
+                                .potential_format_features()
+                                .depth_stencil_attachment
+                            {
+                                return Err(
+                                    CommandBufferBeginError::StencilAttachmentFormatUsageNotSupported,
+                                );
+                            }
+                        }
+
+                        if let (Some(depth_format), Some(stencil_format)) =
+                            (depth_attachment_format, stencil_attachment_format)
+                        {
+                            // VUID-VkCommandBufferInheritanceRenderingInfo-depthAttachmentFormat-06200
+                            if depth_format != stencil_format {
+                                return Err(
+                                    CommandBufferBeginError::DepthStencilAttachmentFormatMismatch,
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+
+            if let Some(control_flags) = occlusion_query {
+                // VUID-VkCommandBufferInheritanceInfo-occlusionQueryEnable-00056
+                // VUID-VkCommandBufferInheritanceInfo-queryFlags-02788
+                if !device.enabled_features().inherited_queries {
+                    return Err(CommandBufferBeginError::FeatureNotEnabled {
+                        feature: "inherited_queries",
+                        reason: "occlusion queries were enabled",
+                    });
+                }
+
+                // VUID-vkBeginCommandBuffer-commandBuffer-00052
+                if control_flags.precise && !device.enabled_features().occlusion_query_precise {
+                    return Err(CommandBufferBeginError::FeatureNotEnabled {
+                        feature: "occlusion_query_precise",
+                        reason: "occlusion_query.precise was set",
+                    });
+                }
+            }
+
+            // VUID-VkCommandBufferInheritanceInfo-pipelineStatistics-00058
+            if query_statistics_flags.count() > 0
+                && !device.enabled_features().pipeline_statistics_query
+            {
+                return Err(CommandBufferBeginError::FeatureNotEnabled {
+                    feature: "pipeline_statistics_query",
+                    reason: "one or more statistics flags were enabled",
+                });
+            }
+        } else {
+            debug_assert!(level == CommandBufferLevel::Primary);
+
+            // VUID-vkBeginCommandBuffer-commandBuffer-02840
+            // Ensured by the definition of the `CommandBufferUsage` enum.
+        }
+
+        Ok(())
+    }
 }
 
+/// Error that can happen when beginning recording of a command buffer.
 #[derive(Clone, Copy, Debug)]
-pub enum BeginError {
-    /// Occlusion query inheritance was requested, but the `inherited_queries` feature was not enabled.
-    InheritedQueriesFeatureNotEnabled,
+pub enum CommandBufferBeginError {
     /// Not enough memory.
     OomError(OomError),
-    /// Pipeline statistics query inheritance was requested, but the `pipeline_statistics_query` feature was not enabled.
-    PipelineStatisticsQueryFeatureNotEnabled,
+
+    FeatureNotEnabled {
+        feature: &'static str,
+        reason: &'static str,
+    },
+
+    /// A color attachment has a format that does not support that usage.
+    ColorAttachmentFormatUsageNotSupported { attachment_index: u32 },
+
+    /// The depth attachment has a format that does not support that usage.
+    DepthAttachmentFormatUsageNotSupported,
+
+    /// The depth and stencil attachments have different formats.
+    DepthStencilAttachmentFormatMismatch,
+
+    /// The framebuffer is not compatible with the render pass.
+    FramebufferNotCompatible,
+
+    /// The `max_multiview_view_count` limit has been exceeded.
+    MaxMultiviewViewCountExceeded { view_count: u32, max: u32 },
+
+    /// The stencil attachment has a format that does not support that usage.
+    StencilAttachmentFormatUsageNotSupported,
 }
 
-impl error::Error for BeginError {
+impl error::Error for CommandBufferBeginError {
     #[inline]
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
@@ -344,28 +494,44 @@ impl error::Error for BeginError {
     }
 }
 
-impl fmt::Display for BeginError {
+impl fmt::Display for CommandBufferBeginError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                Self::InheritedQueriesFeatureNotEnabled => {
-                    "occlusion query inheritance was requested but the corresponding feature \
-                 wasn't enabled"
-                }
-                Self::OomError(_) => "not enough memory available",
-                Self::PipelineStatisticsQueryFeatureNotEnabled => {
-                    "pipeline statistics query inheritance was requested but the corresponding \
-                 feature wasn't enabled"
-                }
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match *self {
+            Self::OomError(_) => write!(f, "not enough memory available"),
+
+            Self::FeatureNotEnabled { feature, reason } => {
+                write!(f, "the feature {} must be enabled: {}", feature, reason)
             }
-        )
+
+            Self::ColorAttachmentFormatUsageNotSupported { attachment_index } => write!(
+                f,
+                "color attachment {} has a format that does not support that usage",
+                attachment_index,
+            ),
+            Self::DepthAttachmentFormatUsageNotSupported => write!(
+                f,
+                "the depth attachment has a format that does not support that usage",
+            ),
+            Self::DepthStencilAttachmentFormatMismatch => write!(
+                f,
+                "the depth and stencil attachments have different formats",
+            ),
+            Self::FramebufferNotCompatible => {
+                write!(f, "the framebuffer is not compatible with the render pass",)
+            }
+            Self::MaxMultiviewViewCountExceeded { .. } => {
+                write!(f, "the `max_multiview_view_count` limit has been exceeded",)
+            }
+            Self::StencilAttachmentFormatUsageNotSupported => write!(
+                f,
+                "the stencil attachment has a format that does not support that usage",
+            ),
+        }
     }
 }
 
-impl From<OomError> for BeginError {
+impl From<OomError> for CommandBufferBeginError {
     #[inline]
     fn from(err: OomError) -> Self {
         Self::OomError(err)
@@ -462,18 +628,76 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             return Err(AutoCommandBufferBuilderContextError::WrongSubpassType);
         }
 
-        // Subpasses must be the same.
-        if pipeline.subpass().index() != render_pass_state.subpass.index() {
-            return Err(AutoCommandBufferBuilderContextError::WrongSubpassIndex);
-        }
+        match &render_pass_state.render_pass {
+            RenderPassStateType::BeginRenderPass(state) => {
+                let pipeline_subpass = match pipeline.render_pass() {
+                    PipelineRenderPassType::BeginRenderPass(subpass) => subpass,
+                    PipelineRenderPassType::BeginRendering(_) => todo!(),
+                };
 
-        // Render passes must be compatible.
-        if !pipeline
-            .subpass()
-            .render_pass()
-            .is_compatible_with(&render_pass_state.subpass.render_pass())
-        {
-            return Err(AutoCommandBufferBuilderContextError::IncompatibleRenderPass);
+                // Subpasses must be the same.
+                if pipeline_subpass.index() != state.subpass.index() {
+                    return Err(AutoCommandBufferBuilderContextError::WrongSubpassIndex);
+                }
+
+                // Render passes must be compatible.
+                if !pipeline_subpass
+                    .render_pass()
+                    .is_compatible_with(&state.subpass.render_pass())
+                {
+                    return Err(AutoCommandBufferBuilderContextError::IncompatibleRenderPass);
+                }
+            }
+            RenderPassStateType::BeginRendering(state) => {
+                let pipeline_rendering_info = match pipeline.render_pass() {
+                    PipelineRenderPassType::BeginRenderPass(_) => todo!(),
+                    PipelineRenderPassType::BeginRendering(rendering_info) => rendering_info,
+                };
+
+                // TODO: checks
+            }
+            RenderPassStateType::Inherited => {
+                match self
+                    .inheritance_info
+                    .as_ref()
+                    .unwrap()
+                    .render_pass
+                    .as_ref()
+                    .unwrap()
+                {
+                    CommandBufferInheritanceRenderPassType::BeginRenderPass(info) => {
+                        let pipeline_subpass = match pipeline.render_pass() {
+                            PipelineRenderPassType::BeginRenderPass(subpass) => subpass,
+                            PipelineRenderPassType::BeginRendering(_) => todo!(),
+                        };
+
+                        // Subpasses must be the same.
+                        if pipeline_subpass.index() != info.subpass.index() {
+                            return Err(AutoCommandBufferBuilderContextError::WrongSubpassIndex);
+                        }
+
+                        // Render passes must be compatible.
+                        if !pipeline_subpass
+                            .render_pass()
+                            .is_compatible_with(&info.subpass.render_pass())
+                        {
+                            return Err(
+                                AutoCommandBufferBuilderContextError::IncompatibleRenderPass,
+                            );
+                        }
+                    }
+                    CommandBufferInheritanceRenderPassType::BeginRendering(_) => {
+                        let pipeline_rendering_info = match pipeline.render_pass() {
+                            PipelineRenderPassType::BeginRenderPass(_) => todo!(),
+                            PipelineRenderPassType::BeginRendering(rendering_info) => {
+                                rendering_info
+                            }
+                        };
+
+                        // TODO: checks
+                    }
+                }
+            }
         }
 
         Ok(())
@@ -860,11 +1084,6 @@ err_gen!(DrawIndexedIndirectError {
     SyncCommandBufferBuilderError,
 });
 
-err_gen!(ExecuteCommandsError {
-    AutoCommandBufferBuilderContextError,
-    SyncCommandBufferBuilderError,
-});
-
 err_gen!(BeginQueryError {
     AutoCommandBufferBuilderContextError,
     CheckBeginQueryError,
@@ -979,7 +1198,7 @@ mod tests {
     use super::*;
     use crate::{
         buffer::{BufferUsage, CpuAccessibleBuffer},
-        command_buffer::{BufferCopy, CopyBufferInfoTyped, CopyError},
+        command_buffer::{BufferCopy, CopyBufferInfoTyped, CopyError, ExecuteCommandsError},
         device::{physical::PhysicalDevice, DeviceCreateInfo, QueueCreateInfo},
     };
 
@@ -1062,10 +1281,11 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
 
         // Make a secondary CB that doesn't support simultaneous use.
-        let builder = AutoCommandBufferBuilder::secondary_compute(
+        let builder = AutoCommandBufferBuilder::secondary(
             device.clone(),
             queue.family(),
             CommandBufferUsage::MultipleSubmit,
+            Default::default(),
         )
         .unwrap();
         let secondary = Arc::new(builder.build().unwrap());

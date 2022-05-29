@@ -12,7 +12,10 @@ use cgmath::Vector3;
 use std::sync::Arc;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
-    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer},
+    command_buffer::{
+        AutoCommandBufferBuilder, CommandBufferInheritanceInfo, CommandBufferUsage,
+        SecondaryAutoCommandBuffer,
+    },
     descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
     device::Queue,
     image::ImageViewAbstract,
@@ -33,6 +36,7 @@ use vulkano::{
 pub struct DirectionalLightingSystem {
     gfx_queue: Arc<Queue>,
     vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
+    subpass: Subpass,
     pipeline: Arc<GraphicsPipeline>,
 }
 
@@ -82,7 +86,7 @@ impl DirectionalLightingSystem {
                         alpha_destination: BlendFactor::One,
                     },
                 ))
-                .render_pass(subpass)
+                .render_pass(subpass.clone())
                 .build(gfx_queue.device().clone())
                 .unwrap()
         };
@@ -90,6 +94,7 @@ impl DirectionalLightingSystem {
         DirectionalLightingSystem {
             gfx_queue,
             vertex_buffer,
+            subpass,
             pipeline,
         }
     }
@@ -142,11 +147,14 @@ impl DirectionalLightingSystem {
             depth_range: 0.0..1.0,
         };
 
-        let mut builder = AutoCommandBufferBuilder::secondary_graphics(
+        let mut builder = AutoCommandBufferBuilder::secondary(
             self.gfx_queue.device().clone(),
             self.gfx_queue.family(),
             CommandBufferUsage::MultipleSubmit,
-            self.pipeline.subpass().clone(),
+            CommandBufferInheritanceInfo {
+                render_pass: Some(self.subpass.clone().into()),
+                ..Default::default()
+            },
         )
         .unwrap();
         builder

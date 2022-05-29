@@ -9,21 +9,25 @@
 
 use crate::{
     command_buffer::{
-        auto::RenderPassState,
+        auto::{BeginRenderPassState, BeginRenderingState, RenderPassState, RenderPassStateType},
         pool::CommandPoolBuilderAlloc,
         synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
-        AutoCommandBufferBuilder, PrimaryAutoCommandBuffer, SubpassContents,
+        AutoCommandBufferBuilder, CommandBufferInheritanceRenderPassType, PrimaryAutoCommandBuffer,
+        SubpassContents,
     },
     device::DeviceOwned,
     format::{ClearColorValue, ClearValue, Format, NumericType},
-    image::ImageLayout,
-    render_pass::{AttachmentDescription, Framebuffer, LoadOp, RenderPass, SubpassDescription},
+    image::{ImageLayout, ImageViewAbstract, SampleCount},
+    render_pass::{
+        AttachmentDescription, Framebuffer, LoadOp, RenderPass, ResolveMode, StoreOp,
+        SubpassDescription,
+    },
     sync::{AccessFlags, PipelineMemoryAccess, PipelineStages},
     Version, VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{error, fmt, ops::Range, sync::Arc};
+use std::{cmp::min, error, fmt, ops::Range, sync::Arc};
 
 /// # Commands for render passes.
 ///
@@ -34,7 +38,7 @@ where
 {
     /// Begins a render pass using a render pass object and framebuffer.
     ///
-    /// You must call this before you can record draw commands.
+    /// You must call this or `begin_rendering` before you can record draw commands.
     ///
     /// `contents` specifies what kinds of commands will be recorded in the render pass, either
     /// draw commands or executions of secondary command buffers.
@@ -56,12 +60,17 @@ where
                 _ne: _,
             } = &render_pass_begin_info;
 
+            let subpass = render_pass.clone().first_subpass();
+
             let render_pass_state = RenderPassState {
-                subpass: render_pass.clone().first_subpass(),
+                contents,
                 render_area_offset,
                 render_area_extent,
-                contents,
-                framebuffer: Some(framebuffer.clone()),
+                render_pass: BeginRenderPassState {
+                    subpass,
+                    framebuffer: framebuffer.clone(),
+                }
+                .into(),
             };
 
             self.inner
@@ -377,15 +386,19 @@ where
         self.validate_next_subpass(contents)?;
 
         unsafe {
-            if let Some(render_pass_state) = self.render_pass_state.as_mut() {
-                render_pass_state.subpass.next_subpass();
-                render_pass_state.contents = contents;
+            let render_pass_state = self.render_pass_state.as_mut().unwrap();
+            let begin_render_pass_state = match &mut render_pass_state.render_pass {
+                RenderPassStateType::BeginRenderPass(x) => x,
+                _ => unreachable!(),
+            };
 
-                if render_pass_state.subpass.render_pass().views_used() != 0 {
-                    // When multiview is enabled, at the beginning of each subpass, all
-                    // non-render pass state is undefined.
-                    self.inner.reset_state();
-                }
+            begin_render_pass_state.subpass.next_subpass();
+            render_pass_state.contents = contents;
+
+            if begin_render_pass_state.subpass.render_pass().views_used() != 0 {
+                // When multiview is enabled, at the beginning of each subpass, all
+                // non-render pass state is undefined.
+                self.inner.reset_state();
             }
 
             self.inner.next_subpass(contents);
@@ -401,10 +414,18 @@ where
             .as_ref()
             .ok_or_else(|| RenderPassError::ForbiddenOutsideRenderPass)?;
 
+        let begin_render_pass_state = match &render_pass_state.render_pass {
+            RenderPassStateType::BeginRenderPass(state) => state,
+            RenderPassStateType::BeginRendering(_) => {
+                return Err(RenderPassError::ForbiddenWithBeginRendering)
+            }
+            RenderPassStateType::Inherited => unreachable!("This function is only callable on a primary command buffer, so there should be no inheritance"),
+        };
+
         // VUID-vkCmdNextSubpass2-None-03102
-        if render_pass_state.subpass.is_last_subpass() {
+        if begin_render_pass_state.subpass.is_last_subpass() {
             return Err(RenderPassError::NoSubpassesRemaining {
-                current_subpass: render_pass_state.subpass.index(),
+                current_subpass: begin_render_pass_state.subpass.index(),
             });
         }
 
@@ -444,13 +465,24 @@ where
             .as_ref()
             .ok_or_else(|| RenderPassError::ForbiddenOutsideRenderPass)?;
 
+        let begin_render_pass_state = match &render_pass_state.render_pass {
+            RenderPassStateType::BeginRenderPass(state) => state,
+            RenderPassStateType::BeginRendering(_) => {
+                return Err(RenderPassError::ForbiddenWithBeginRendering)
+            }
+            RenderPassStateType::Inherited => unreachable!("This function is only callable on a primary command buffer, so there should be no inheritance"),
+        };
+
         // VUID-vkCmdEndRenderPass2-None-03103
-        if !render_pass_state.subpass.is_last_subpass() {
+        if !begin_render_pass_state.subpass.is_last_subpass() {
             return Err(RenderPassError::SubpassesRemaining {
-                current_subpass: render_pass_state.subpass.index(),
-                remaining_subpasses: render_pass_state.subpass.render_pass().subpasses().len()
-                    as u32
-                    - render_pass_state.subpass.index(),
+                current_subpass: begin_render_pass_state.subpass.index(),
+                remaining_subpasses: begin_render_pass_state
+                    .subpass
+                    .render_pass()
+                    .subpasses()
+                    .len() as u32
+                    - begin_render_pass_state.subpass.index(),
             });
         }
 
@@ -470,6 +502,653 @@ where
 }
 
 impl<L, P> AutoCommandBufferBuilder<L, P> {
+    /// Begins a render pass without a render pass object or framebuffer.
+    ///
+    /// You must call this or `begin_render_pass` before you can record draw commands.
+    pub fn begin_rendering(
+        &mut self,
+        mut rendering_info: RenderingInfo,
+    ) -> Result<&mut Self, RenderPassError> {
+        {
+            let &mut RenderingInfo {
+                render_area_offset,
+                ref mut render_area_extent,
+                ref mut layer_count,
+                view_mask,
+                ref color_attachments,
+                ref depth_attachment,
+                ref stencil_attachment,
+                contents,
+                _ne: _,
+            } = &mut rendering_info;
+
+            let auto_extent = render_area_extent[0] == 0 || render_area_extent[1] == 0;
+            let auto_layers = *layer_count == 0;
+
+            // Set the values based on the attachment sizes.
+            if auto_extent || auto_layers {
+                if auto_extent {
+                    *render_area_extent = [u32::MAX, u32::MAX];
+                }
+
+                if auto_layers {
+                    if view_mask != 0 {
+                        *layer_count = 1;
+                    } else {
+                        *layer_count = u32::MAX;
+                    }
+                }
+
+                for image_view in (color_attachments.iter().flatten())
+                    .chain(depth_attachment.iter())
+                    .chain(stencil_attachment.iter())
+                    .flat_map(|attachment_info| {
+                        Some(&attachment_info.image_view).into_iter().chain(
+                            attachment_info
+                                .resolve_info
+                                .as_ref()
+                                .map(|resolve_info| &resolve_info.image_view),
+                        )
+                    })
+                {
+                    if auto_extent {
+                        let extent = image_view.dimensions().width_height();
+
+                        for i in 0..2 {
+                            render_area_extent[i] = min(render_area_extent[i], extent[i]);
+                        }
+                    }
+
+                    if auto_layers {
+                        let subresource_range = image_view.subresource_range();
+                        let array_layers = subresource_range.array_layers.end
+                            - subresource_range.array_layers.start;
+
+                        *layer_count = min(*layer_count, array_layers);
+                    }
+                }
+
+                if auto_extent {
+                    if *render_area_extent == [u32::MAX, u32::MAX] {
+                        return Err(RenderPassError::AutoExtentAttachmentsEmpty);
+                    }
+
+                    // Subtract the offset from the calculated max extent.
+                    // If there is an underflow, then the offset is too large, and validation should
+                    // catch that later.
+                    for i in 0..2 {
+                        render_area_extent[i] = render_area_extent[i]
+                            .checked_sub(render_area_offset[i])
+                            .unwrap_or(1);
+                    }
+                }
+
+                if auto_layers {
+                    if *layer_count == u32::MAX {
+                        return Err(RenderPassError::AutoLayersAttachmentsEmpty);
+                    }
+                }
+            }
+        }
+
+        self.validate_begin_rendering(&mut rendering_info)?;
+
+        unsafe {
+            let &RenderingInfo {
+                render_area_offset,
+                render_area_extent,
+                layer_count,
+                view_mask,
+                ref color_attachments,
+                ref depth_attachment,
+                ref stencil_attachment,
+                contents,
+                _ne: _,
+            } = &rendering_info;
+
+            let render_pass_state = RenderPassState {
+                contents,
+                render_area_offset,
+                render_area_extent,
+                render_pass: BeginRenderingState {
+                    view_mask,
+                    color_attachments: color_attachments.clone(),
+                    depth_attachment: depth_attachment.clone(),
+                    stencil_attachment: stencil_attachment.clone(),
+                }
+                .into(),
+            };
+
+            self.inner.begin_rendering(rendering_info)?;
+
+            self.render_pass_state = Some(render_pass_state);
+        }
+
+        Ok(self)
+    }
+
+    fn validate_begin_rendering(
+        &self,
+        rendering_info: &mut RenderingInfo,
+    ) -> Result<(), RenderPassError> {
+        let device = self.device();
+        let properties = device.physical_device().properties();
+
+        // VUID-vkCmdBeginRendering-dynamicRendering-06446
+        if !device.enabled_features().dynamic_rendering {
+            return Err(RenderPassError::FeatureNotEnabled {
+                feature: "dynamic_rendering",
+                reason: "called begin_rendering",
+            });
+        }
+
+        // VUID-vkCmdBeginRendering-commandBuffer-cmdpool
+        if !self.queue_family().supports_graphics() {
+            return Err(RenderPassError::NotSupportedByQueueFamily);
+        }
+
+        // VUID-vkCmdBeginRendering-renderpass
+        if self.render_pass_state.is_some() {
+            return Err(RenderPassError::ForbiddenInsideRenderPass);
+        }
+
+        let &mut RenderingInfo {
+            render_area_offset,
+            render_area_extent,
+            layer_count,
+            view_mask,
+            ref color_attachments,
+            ref depth_attachment,
+            ref stencil_attachment,
+            contents,
+            _ne: _,
+        } = rendering_info;
+
+        // VUID-vkCmdBeginRendering-commandBuffer-06068
+        if self.inheritance_info.is_some() && contents == SubpassContents::SecondaryCommandBuffers {
+            return Err(RenderPassError::ContentsForbiddenInSecondaryCommandBuffer);
+        }
+
+        // No VUID, but for sanity it makes sense to treat this the same as in framebuffers.
+        if view_mask != 0 && layer_count != 1 {
+            return Err(RenderPassError::MultiviewLayersInvalid);
+        }
+
+        // VUID-VkRenderingInfo-multiview-06127
+        if view_mask != 0 && !device.enabled_features().multiview {
+            return Err(RenderPassError::FeatureNotEnabled {
+                feature: "multiview",
+                reason: "view_mask is not 0",
+            });
+        }
+
+        let view_count = u32::BITS - view_mask.leading_zeros();
+
+        // VUID-VkRenderingInfo-viewMask-06128
+        if view_count > properties.max_multiview_view_count.unwrap_or(0) {
+            return Err(RenderPassError::MaxMultiviewViewCountExceeded {
+                view_count,
+                max: properties.max_multiview_view_count.unwrap_or(0),
+            });
+        }
+
+        let mut samples = None;
+
+        // VUID-VkRenderingInfo-colorAttachmentCount-06106
+        if color_attachments.len() > properties.max_color_attachments as usize {
+            return Err(RenderPassError::MaxColorAttachmentsExceeded {
+                color_attachment_count: color_attachments.len() as u32,
+                max: properties.max_color_attachments,
+            });
+        }
+
+        for (attachment_index, attachment_info) in
+            color_attachments
+                .iter()
+                .enumerate()
+                .filter_map(|(index, attachment_info)| {
+                    attachment_info
+                        .as_ref()
+                        .map(|attachment_info| (index, attachment_info))
+                })
+        {
+            let attachment_index = attachment_index as u32;
+            let &RenderingAttachmentInfo {
+                ref image_view,
+                image_layout,
+                ref resolve_info,
+                load_op,
+                store_op,
+                clear_value,
+                _ne: _,
+            } = attachment_info;
+
+            // VUID-VkRenderingInfo-colorAttachmentCount-06087
+            if !image_view.usage().color_attachment {
+                return Err(RenderPassError::ColorAttachmentMissingUsage { attachment_index });
+            }
+
+            let image = image_view.image();
+            let image_extent = image.dimensions().width_height_depth();
+
+            for i in 0..2 {
+                // VUID-VkRenderingInfo-pNext-06079
+                // VUID-VkRenderingInfo-pNext-06080
+                if render_area_offset[i] + render_area_extent[i] > image_extent[i] {
+                    return Err(RenderPassError::RenderAreaOutOfBounds);
+                }
+            }
+
+            // VUID-VkRenderingInfo-imageView-06070
+            match samples {
+                Some(samples) if samples == image.samples() => (),
+                Some(samples) => {
+                    return Err(RenderPassError::ColorAttachmentSamplesMismatch {
+                        attachment_index,
+                    });
+                }
+                None => samples = Some(image.samples()),
+            }
+
+            // VUID-VkRenderingAttachmentInfo-imageView-06135
+            // VUID-VkRenderingAttachmentInfo-imageView-06145
+            // VUID-VkRenderingInfo-colorAttachmentCount-06090
+            if matches!(
+                image_layout,
+                ImageLayout::Undefined
+                    | ImageLayout::ShaderReadOnlyOptimal
+                    | ImageLayout::TransferSrcOptimal
+                    | ImageLayout::TransferDstOptimal
+                    | ImageLayout::Preinitialized
+                    | ImageLayout::PresentSrc
+                    | ImageLayout::DepthStencilAttachmentOptimal
+                    | ImageLayout::DepthStencilReadOnlyOptimal
+            ) {
+                return Err(RenderPassError::ColorAttachmentLayoutInvalid { attachment_index });
+            }
+
+            if let Some(resolve_info) = resolve_info {
+                let &RenderingAttachmentResolveInfo {
+                    mode,
+                    image_view: ref resolve_image_view,
+                    image_layout: resolve_image_layout,
+                } = resolve_info;
+
+                let resolve_image = resolve_image_view.image();
+
+                match image_view.format().unwrap().type_color() {
+                    Some(
+                        NumericType::SFLOAT
+                        | NumericType::UFLOAT
+                        | NumericType::SNORM
+                        | NumericType::UNORM
+                        | NumericType::SSCALED
+                        | NumericType::USCALED
+                        | NumericType::SRGB,
+                    ) => {
+                        // VUID-VkRenderingAttachmentInfo-imageView-06129
+                        if mode != ResolveMode::Average {
+                            return Err(RenderPassError::ColorAttachmentResolveModeNotSupported {
+                                attachment_index,
+                            });
+                        }
+                    }
+                    Some(NumericType::SINT | NumericType::UINT) => {
+                        // VUID-VkRenderingAttachmentInfo-imageView-06130
+                        if mode != ResolveMode::SampleZero {
+                            return Err(RenderPassError::ColorAttachmentResolveModeNotSupported {
+                                attachment_index,
+                            });
+                        }
+                    }
+                    None => (),
+                }
+
+                // VUID-VkRenderingAttachmentInfo-imageView-06132
+                if image.samples() == SampleCount::Sample1 {
+                    return Err(RenderPassError::ColorAttachmentWithResolveNotMultisampled {
+                        attachment_index,
+                    });
+                }
+
+                // VUID-VkRenderingAttachmentInfo-imageView-06133
+                if resolve_image.samples() != SampleCount::Sample1 {
+                    return Err(RenderPassError::ColorAttachmentResolveMultisampled {
+                        attachment_index,
+                    });
+                }
+
+                // VUID-VkRenderingAttachmentInfo-imageView-06134
+                if image_view.format() != resolve_image_view.format() {
+                    return Err(RenderPassError::ColorAttachmentResolveFormatMismatch {
+                        attachment_index,
+                    });
+                }
+
+                // VUID-VkRenderingAttachmentInfo-imageView-06136
+                // VUID-VkRenderingAttachmentInfo-imageView-06146
+                // VUID-VkRenderingInfo-colorAttachmentCount-06091
+                if matches!(
+                    resolve_image_layout,
+                    ImageLayout::Undefined
+                        | ImageLayout::ShaderReadOnlyOptimal
+                        | ImageLayout::TransferSrcOptimal
+                        | ImageLayout::TransferDstOptimal
+                        | ImageLayout::Preinitialized
+                        | ImageLayout::PresentSrc
+                        | ImageLayout::DepthStencilAttachmentOptimal
+                        | ImageLayout::DepthStencilReadOnlyOptimal
+                ) {
+                    return Err(RenderPassError::ColorAttachmentResolveLayoutInvalid {
+                        attachment_index,
+                    });
+                }
+            }
+        }
+
+        if let Some(attachment_info) = depth_attachment {
+            let &RenderingAttachmentInfo {
+                ref image_view,
+                image_layout,
+                ref resolve_info,
+                load_op,
+                store_op,
+                clear_value,
+                _ne: _,
+            } = attachment_info;
+
+            let image_aspects = image_view.format().unwrap().aspects();
+
+            // VUID-VkRenderingInfo-pDepthAttachment-06547
+            if !image_aspects.depth {
+                return Err(RenderPassError::DepthAttachmentFormatUsageNotSupported);
+            }
+
+            // VUID-VkRenderingInfo-pDepthAttachment-06088
+            if !image_view.usage().depth_stencil_attachment {
+                return Err(RenderPassError::DepthAttachmentMissingUsage);
+            }
+
+            let image = image_view.image();
+            let image_extent = image.dimensions().width_height_depth();
+
+            for i in 0..2 {
+                // VUID-VkRenderingInfo-pNext-06079
+                // VUID-VkRenderingInfo-pNext-06080
+                if render_area_offset[i] + render_area_extent[i] > image_extent[i] {
+                    return Err(RenderPassError::RenderAreaOutOfBounds);
+                }
+            }
+
+            // VUID-VkRenderingInfo-imageView-06070
+            match samples {
+                Some(samples) if samples == image.samples() => (),
+                Some(samples) => {
+                    return Err(RenderPassError::DepthAttachmentSamplesMismatch);
+                }
+                None => samples = Some(image.samples()),
+            }
+
+            // VUID-VkRenderingAttachmentInfo-imageView-06135
+            // VUID-VkRenderingAttachmentInfo-imageView-06145
+            // VUID-VkRenderingInfo-pDepthAttachment-06092
+            if matches!(
+                image_layout,
+                ImageLayout::Undefined
+                    | ImageLayout::ShaderReadOnlyOptimal
+                    | ImageLayout::TransferSrcOptimal
+                    | ImageLayout::TransferDstOptimal
+                    | ImageLayout::Preinitialized
+                    | ImageLayout::PresentSrc
+                    | ImageLayout::ColorAttachmentOptimal
+            ) {
+                return Err(RenderPassError::DepthAttachmentLayoutInvalid);
+            }
+
+            if let Some(resolve_info) = resolve_info {
+                let &RenderingAttachmentResolveInfo {
+                    mode,
+                    image_view: ref resolve_image_view,
+                    image_layout: resolve_image_layout,
+                } = resolve_info;
+
+                // VUID-VkRenderingInfo-pDepthAttachment-06102
+                if !properties
+                    .supported_depth_resolve_modes
+                    .map_or(false, |modes| modes.contains(mode))
+                {
+                    return Err(RenderPassError::DepthAttachmentResolveModeNotSupported);
+                }
+
+                let resolve_image = resolve_image_view.image();
+
+                // VUID-VkRenderingAttachmentInfo-imageView-06132
+                if image.samples() == SampleCount::Sample1 {
+                    return Err(RenderPassError::DepthAttachmentWithResolveNotMultisampled);
+                }
+
+                // VUID-VkRenderingAttachmentInfo-imageView-06133
+                if resolve_image.samples() != SampleCount::Sample1 {
+                    return Err(RenderPassError::DepthAttachmentResolveMultisampled);
+                }
+
+                // VUID-VkRenderingAttachmentInfo-imageView-06134
+                if image_view.format() != resolve_image_view.format() {
+                    return Err(RenderPassError::DepthAttachmentResolveFormatMismatch);
+                }
+
+                // VUID-VkRenderingAttachmentInfo-imageView-06136
+                // VUID-VkRenderingAttachmentInfo-imageView-06146
+                // VUID-VkRenderingInfo-pDepthAttachment-06093
+                if matches!(
+                    resolve_image_layout,
+                    ImageLayout::Undefined
+                        | ImageLayout::DepthStencilReadOnlyOptimal
+                        | ImageLayout::ShaderReadOnlyOptimal
+                        | ImageLayout::TransferSrcOptimal
+                        | ImageLayout::TransferDstOptimal
+                        | ImageLayout::Preinitialized
+                        | ImageLayout::PresentSrc
+                        | ImageLayout::ColorAttachmentOptimal
+                ) {
+                    return Err(RenderPassError::DepthAttachmentResolveLayoutInvalid);
+                }
+            }
+        }
+
+        if let Some(attachment_info) = stencil_attachment {
+            let &RenderingAttachmentInfo {
+                ref image_view,
+                image_layout,
+                ref resolve_info,
+                load_op,
+                store_op,
+                clear_value,
+                _ne: _,
+            } = attachment_info;
+
+            let image_aspects = image_view.format().unwrap().aspects();
+
+            // VUID-VkRenderingInfo-pStencilAttachment-06548
+            if !image_aspects.stencil {
+                return Err(RenderPassError::StencilAttachmentFormatUsageNotSupported);
+            }
+
+            // VUID-VkRenderingInfo-pStencilAttachment-06089
+            if !image_view.usage().depth_stencil_attachment {
+                return Err(RenderPassError::StencilAttachmentMissingUsage);
+            }
+
+            let image = image_view.image();
+            let image_extent = image.dimensions().width_height_depth();
+
+            for i in 0..2 {
+                // VUID-VkRenderingInfo-pNext-06079
+                // VUID-VkRenderingInfo-pNext-06080
+                if render_area_offset[i] + render_area_extent[i] > image_extent[i] {
+                    return Err(RenderPassError::RenderAreaOutOfBounds);
+                }
+            }
+
+            // VUID-VkRenderingInfo-imageView-06070
+            match samples {
+                Some(samples) if samples == image.samples() => (),
+                Some(samples) => {
+                    return Err(RenderPassError::StencilAttachmentSamplesMismatch);
+                }
+                None => (),
+            }
+
+            // VUID-VkRenderingAttachmentInfo-imageView-06135
+            // VUID-VkRenderingAttachmentInfo-imageView-06145
+            // VUID-VkRenderingInfo-pStencilAttachment-06094
+            if matches!(
+                image_layout,
+                ImageLayout::Undefined
+                    | ImageLayout::ShaderReadOnlyOptimal
+                    | ImageLayout::TransferSrcOptimal
+                    | ImageLayout::TransferDstOptimal
+                    | ImageLayout::Preinitialized
+                    | ImageLayout::PresentSrc
+                    | ImageLayout::ColorAttachmentOptimal
+            ) {
+                return Err(RenderPassError::StencilAttachmentLayoutInvalid);
+            }
+
+            if let Some(resolve_info) = resolve_info {
+                let &RenderingAttachmentResolveInfo {
+                    mode,
+                    image_view: ref resolve_image_view,
+                    image_layout: resolve_image_layout,
+                } = resolve_info;
+
+                // VUID-VkRenderingInfo-pStencilAttachment-06103
+                if !properties
+                    .supported_stencil_resolve_modes
+                    .map_or(false, |modes| modes.contains(mode))
+                {
+                    return Err(RenderPassError::StencilAttachmentResolveModeNotSupported);
+                }
+
+                let resolve_image = resolve_image_view.image();
+
+                // VUID-VkRenderingAttachmentInfo-imageView-06132
+                if image.samples() == SampleCount::Sample1 {
+                    return Err(RenderPassError::StencilAttachmentWithResolveNotMultisampled);
+                }
+
+                // VUID-VkRenderingAttachmentInfo-imageView-06133
+                if resolve_image.samples() != SampleCount::Sample1 {
+                    return Err(RenderPassError::StencilAttachmentResolveMultisampled);
+                }
+
+                // VUID-VkRenderingAttachmentInfo-imageView-06134
+                if image_view.format() != resolve_image_view.format() {
+                    return Err(RenderPassError::StencilAttachmentResolveFormatMismatch);
+                }
+
+                // VUID-VkRenderingAttachmentInfo-imageView-06136
+                // VUID-VkRenderingAttachmentInfo-imageView-06146
+                // VUID-VkRenderingInfo-pStencilAttachment-06095
+                if matches!(
+                    resolve_image_layout,
+                    ImageLayout::Undefined
+                        | ImageLayout::DepthStencilReadOnlyOptimal
+                        | ImageLayout::ShaderReadOnlyOptimal
+                        | ImageLayout::TransferSrcOptimal
+                        | ImageLayout::TransferDstOptimal
+                        | ImageLayout::Preinitialized
+                        | ImageLayout::PresentSrc
+                        | ImageLayout::ColorAttachmentOptimal
+                ) {
+                    return Err(RenderPassError::StencilAttachmentResolveLayoutInvalid);
+                }
+            }
+        }
+
+        if let (Some(depth_attachment_info), Some(stencil_attachment_info)) =
+            (depth_attachment, stencil_attachment)
+        {
+            // VUID-VkRenderingInfo-pDepthAttachment-06085
+            if &depth_attachment_info.image_view != &stencil_attachment_info.image_view {
+                return Err(RenderPassError::DepthStencilAttachmentImageViewMismatch);
+            }
+
+            match (
+                &depth_attachment_info.resolve_info,
+                &stencil_attachment_info.resolve_info,
+            ) {
+                (None, None) => (),
+                (None, Some(_)) | (Some(_), None) => {
+                    // VUID-VkRenderingInfo-pDepthAttachment-06104
+                    if !properties.independent_resolve_none.unwrap_or(false) {
+                        return Err(
+                            RenderPassError::DepthStencilAttachmentResolveModesNotSupported,
+                        );
+                    }
+                }
+                (Some(depth_resolve_info), Some(stencil_resolve_info)) => {
+                    // VUID-VkRenderingInfo-pDepthAttachment-06105
+                    if !properties.independent_resolve.unwrap_or(false)
+                        && depth_resolve_info.mode != stencil_resolve_info.mode
+                    {
+                        return Err(
+                            RenderPassError::DepthStencilAttachmentResolveModesNotSupported,
+                        );
+                    }
+
+                    // VUID-VkRenderingInfo-pDepthAttachment-06086
+                    if &depth_resolve_info.image_view != &stencil_resolve_info.image_view {
+                        return Err(
+                            RenderPassError::DepthStencilAttachmentResolveImageViewMismatch,
+                        );
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Ends the render pass previously begun with `begin_rendering`.
+    pub fn end_rendering(&mut self) -> Result<&mut Self, RenderPassError> {
+        self.validate_end_rendering()?;
+
+        unsafe {
+            self.inner.end_rendering();
+            self.render_pass_state = None;
+        }
+
+        Ok(self)
+    }
+
+    fn validate_end_rendering(&self) -> Result<(), RenderPassError> {
+        let device = self.device();
+
+        // VUID-vkCmdEndRendering-renderpass
+        let render_pass_state = self
+            .render_pass_state
+            .as_ref()
+            .ok_or_else(|| RenderPassError::ForbiddenOutsideRenderPass)?;
+
+        // VUID-vkCmdEndRendering-None-06161
+        // VUID-vkCmdEndRendering-commandBuffer-06162
+        match &render_pass_state.render_pass {
+            RenderPassStateType::BeginRenderPass(_) => {
+                return Err(RenderPassError::ForbiddenWithBeginRenderPass)
+            }
+            RenderPassStateType::BeginRendering(_) => (),
+            RenderPassStateType::Inherited => {
+                return Err(RenderPassError::ForbiddenWithInheritedRenderPass)
+            }
+        }
+
+        // VUID-vkCmdEndRendering-commandBuffer-cmdpool
+        debug_assert!(self.queue_family().supports_graphics());
+
+        Ok(())
+    }
+
     /// Clears specific regions of specific attachments of the framebuffer.
     ///
     /// `attachments` specify the types of attachments and their clear values.
@@ -516,117 +1195,266 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             });
         }
 
-        let subpass_desc = render_pass_state.subpass.subpass_desc();
-        let render_pass = render_pass_state.subpass.render_pass();
-        let is_multiview = render_pass.views_used() != 0;
+        //let subpass_desc = begin_render_pass_state.subpass.subpass_desc();
+        //let render_pass = begin_render_pass_state.subpass.render_pass();
+        let is_multiview = match &render_pass_state.render_pass {
+            RenderPassStateType::BeginRenderPass(state) => {
+                state.subpass.render_pass().views_used() != 0
+            }
+            RenderPassStateType::BeginRendering(state) => state.view_mask != 0,
+            RenderPassStateType::Inherited => match self
+                .inheritance_info
+                .as_ref()
+                .unwrap()
+                .render_pass
+                .as_ref()
+                .unwrap()
+            {
+                CommandBufferInheritanceRenderPassType::BeginRenderPass(info) => {
+                    info.subpass.render_pass().views_used() != 0
+                }
+                CommandBufferInheritanceRenderPassType::BeginRendering(info) => info.view_mask != 0,
+            },
+        };
 
-        for attachment in attachments {
-            match attachment {
-                &ClearAttachment::Color {
+        let mut layer_count = u32::MAX;
+
+        for &clear_attachment in attachments {
+            match clear_attachment {
+                ClearAttachment::Color {
                     color_attachment,
                     clear_value,
                 } => {
-                    // VUID-vkCmdClearAttachments-aspectMask-02501
-                    let atch_ref = match subpass_desc
-                        .color_attachments
-                        .get(color_attachment as usize)
-                    {
-                        Some(x) => x.as_ref(),
-                        None => {
-                            return Err(RenderPassError::ColorAttachmentIndexOutOfRange {
+                    let attachment_format = match &render_pass_state.render_pass {
+                        RenderPassStateType::BeginRenderPass(state) => {
+                            let color_attachments = &state.subpass.subpass_desc().color_attachments;
+                            let atch_ref = color_attachments
+                                .get(color_attachment as usize)
+                                .ok_or_else(|| RenderPassError::ColorAttachmentIndexOutOfRange {
+                                    color_attachment_index: color_attachment,
+                                    num_color_attachments: color_attachments.len() as u32,
+                                })?;
+
+                            atch_ref.as_ref().map(|atch_ref| {
+                                let image_view =
+                                    &state.framebuffer.attachments()[atch_ref.attachment as usize];
+                                let array_layers = &image_view.subresource_range().array_layers;
+                                layer_count =
+                                    min(layer_count, array_layers.end - array_layers.start);
+
+                                state.subpass.render_pass().attachments()
+                                    [atch_ref.attachment as usize]
+                                    .format
+                                    .unwrap()
+                            })
+                        }
+                        RenderPassStateType::BeginRendering(state) => state
+                            .color_attachments
+                            .get(color_attachment as usize)
+                            .ok_or_else(|| RenderPassError::ColorAttachmentIndexOutOfRange {
                                 color_attachment_index: color_attachment,
-                                num_color_attachments: subpass_desc.color_attachments.len() as u32,
-                            });
+                                num_color_attachments: state.color_attachments.len() as u32,
+                            })?
+                            .as_ref()
+                            .and_then(|attachment_info| {
+                                let image_view = &attachment_info.image_view;
+                                let array_layers = &image_view.subresource_range().array_layers;
+                                layer_count =
+                                    min(layer_count, array_layers.end - array_layers.start);
+
+                                attachment_info.image_view.format()
+                            }),
+                        RenderPassStateType::Inherited => {
+                            match self
+                                .inheritance_info
+                                .as_ref()
+                                .unwrap()
+                                .render_pass
+                                .as_ref()
+                                .unwrap()
+                            {
+                                CommandBufferInheritanceRenderPassType::BeginRenderPass(info) => {
+                                    let color_attachments =
+                                        &info.subpass.subpass_desc().color_attachments;
+                                    let atch_ref = color_attachments
+                                        .get(color_attachment as usize)
+                                        .ok_or_else(|| {
+                                            RenderPassError::ColorAttachmentIndexOutOfRange {
+                                                color_attachment_index: color_attachment,
+                                                num_color_attachments: color_attachments.len()
+                                                    as u32,
+                                            }
+                                        })?;
+
+                                    atch_ref.as_ref().map(|atch_ref| {
+                                        // Only know the layer count if a framebuffer was given.
+                                        if let Some(framebuffer) = &info.framebuffer {
+                                            let image_view = &framebuffer.attachments()
+                                                [atch_ref.attachment as usize];
+                                            let array_layers =
+                                                &image_view.subresource_range().array_layers;
+                                            layer_count = min(
+                                                layer_count,
+                                                array_layers.end - array_layers.start,
+                                            );
+                                        }
+
+                                        info.subpass.render_pass().attachments()
+                                            [atch_ref.attachment as usize]
+                                            .format
+                                            .unwrap()
+                                    })
+                                }
+                                CommandBufferInheritanceRenderPassType::BeginRendering(info) => {
+                                    *info
+                                        .color_attachment_formats
+                                        .get(color_attachment as usize)
+                                        .ok_or_else(|| {
+                                            RenderPassError::ColorAttachmentIndexOutOfRange {
+                                                color_attachment_index: color_attachment,
+                                                num_color_attachments: info
+                                                    .color_attachment_formats
+                                                    .len()
+                                                    as u32,
+                                            }
+                                        })?
+                                    // Don't know the layer count.
+                                }
+                            }
                         }
                     };
 
-                    if let Some(atch_ref) = atch_ref {
-                        let attachment_desc =
-                            render_pass.attachments()[atch_ref.attachment as usize];
-
-                        if let Some(numeric_type) = attachment_desc.format.unwrap().type_color() {
-                            match numeric_type {
+                    // VUID-vkCmdClearAttachments-aspectMask-02501
+                    if !attachment_format.map_or(false, |format| {
+                        matches!(
+                            (clear_value, format.type_color().unwrap()),
+                            (
+                                ClearColorValue::Float(_),
                                 NumericType::SFLOAT
-                                | NumericType::UFLOAT
-                                | NumericType::SNORM
-                                | NumericType::UNORM
-                                | NumericType::SSCALED
-                                | NumericType::USCALED
-                                | NumericType::SRGB => {
-                                    if !matches!(clear_value, ClearColorValue::Float(_)) {
-                                        return Err(RenderPassError::ClearValueNotCompatible {
-                                            clear_value: clear_value.into(),
-                                            attachment_index: atch_ref.attachment,
-                                            attachment_format: attachment_desc.format.unwrap(),
-                                        });
-                                    }
-                                }
-                                NumericType::SINT => {
-                                    if !matches!(clear_value, ClearColorValue::Int(_)) {
-                                        return Err(RenderPassError::ClearValueNotCompatible {
-                                            clear_value: clear_value.into(),
-                                            attachment_index: atch_ref.attachment,
-                                            attachment_format: attachment_desc.format.unwrap(),
-                                        });
-                                    }
-                                }
-                                NumericType::UINT => {
-                                    if !matches!(clear_value, ClearColorValue::Uint(_)) {
-                                        return Err(RenderPassError::ClearValueNotCompatible {
-                                            clear_value: clear_value.into(),
-                                            attachment_index: atch_ref.attachment,
-                                            attachment_format: attachment_desc.format.unwrap(),
-                                        });
-                                    }
-                                }
-                            }
-                        } else {
-                            unreachable!()
-                        }
+                                    | NumericType::UFLOAT
+                                    | NumericType::SNORM
+                                    | NumericType::UNORM
+                                    | NumericType::SSCALED
+                                    | NumericType::USCALED
+                                    | NumericType::SRGB
+                            ) | (ClearColorValue::Int(_), NumericType::SINT)
+                                | (ClearColorValue::Uint(_), NumericType::UINT)
+                        )
+                    }) {
+                        return Err(RenderPassError::ClearAttachmentNotCompatible {
+                            clear_attachment,
+                            attachment_format,
+                        });
                     }
                 }
                 ClearAttachment::Depth(_)
                 | ClearAttachment::Stencil(_)
                 | ClearAttachment::DepthStencil(_) => {
-                    if let Some(atch_ref) = &subpass_desc.depth_stencil_attachment {
-                        let attachment_desc =
-                            render_pass.attachments()[atch_ref.attachment as usize];
-                        let aspects = attachment_desc.format.unwrap().aspects();
+                    let (depth_format, stencil_format) = match &render_pass_state.render_pass {
+                        RenderPassStateType::BeginRenderPass(state) => state
+                            .subpass
+                            .subpass_desc()
+                            .depth_stencil_attachment
+                            .as_ref()
+                            .map_or((None, None), |atch_ref| {
+                                let image_view =
+                                    &state.framebuffer.attachments()[atch_ref.attachment as usize];
+                                let array_layers = &image_view.subresource_range().array_layers;
+                                layer_count =
+                                    min(layer_count, array_layers.end - array_layers.start);
 
-                        match attachment {
-                            &ClearAttachment::Depth(val) => {
-                                // VUID-vkCmdClearAttachments-aspectMask-02502
-                                if !aspects.depth {
-                                    return Err(RenderPassError::ClearValueNotCompatible {
-                                        clear_value: val.into(),
-                                        attachment_index: atch_ref.attachment,
-                                        attachment_format: attachment_desc.format.unwrap(),
-                                    });
-                                }
+                                let format = state.subpass.render_pass().attachments()
+                                    [atch_ref.attachment as usize]
+                                    .format
+                                    .unwrap();
+                                (Some(format), Some(format))
+                            }),
+                        RenderPassStateType::BeginRendering(state) => {
+                            if let Some(image_view) = state
+                                .depth_attachment
+                                .as_ref()
+                                .or(state.stencil_attachment.as_ref())
+                                .map(|attachment_info| &attachment_info.image_view)
+                            {
+                                let array_layers = &image_view.subresource_range().array_layers;
+                                layer_count =
+                                    min(layer_count, array_layers.end - array_layers.start);
                             }
-                            &ClearAttachment::Stencil(val) => {
-                                // VUID-vkCmdClearAttachments-aspectMask-02503
-                                if !aspects.stencil {
-                                    return Err(RenderPassError::ClearValueNotCompatible {
-                                        clear_value: val.into(),
-                                        attachment_index: atch_ref.attachment,
-                                        attachment_format: attachment_desc.format.unwrap(),
-                                    });
-                                }
-                            }
-                            &ClearAttachment::DepthStencil(val) => {
-                                // VUID-vkCmdClearAttachments-aspectMask-02502
-                                // VUID-vkCmdClearAttachments-aspectMask-02503
-                                if !(aspects.depth && aspects.stencil) {
-                                    return Err(RenderPassError::ClearValueNotCompatible {
-                                        clear_value: val.into(),
-                                        attachment_index: atch_ref.attachment,
-                                        attachment_format: attachment_desc.format.unwrap(),
-                                    });
-                                }
-                            }
-                            _ => unreachable!(),
+
+                            (
+                                state.depth_attachment.as_ref().map(|attachment_info| {
+                                    attachment_info.image_view.format().unwrap()
+                                }),
+                                state.stencil_attachment.as_ref().map(|attachment_info| {
+                                    attachment_info.image_view.format().unwrap()
+                                }),
+                            )
                         }
+                        RenderPassStateType::Inherited => {
+                            match self
+                                .inheritance_info
+                                .as_ref()
+                                .unwrap()
+                                .render_pass
+                                .as_ref()
+                                .unwrap()
+                            {
+                                CommandBufferInheritanceRenderPassType::BeginRenderPass(info) => {
+                                    info.subpass
+                                        .subpass_desc()
+                                        .depth_stencil_attachment
+                                        .as_ref()
+                                        .map_or((None, None), |atch_ref| {
+                                            // Only know the layer count if a framebuffer was given.
+                                            if let Some(framebuffer) = &info.framebuffer {
+                                                let image_view = &framebuffer.attachments()
+                                                    [atch_ref.attachment as usize];
+                                                let array_layers =
+                                                    &image_view.subresource_range().array_layers;
+                                                layer_count = min(
+                                                    layer_count,
+                                                    array_layers.end - array_layers.start,
+                                                );
+                                            }
+
+                                            let format = info.subpass.render_pass().attachments()
+                                                [atch_ref.attachment as usize]
+                                                .format
+                                                .unwrap();
+                                            (Some(format), Some(format))
+                                        })
+                                }
+                                CommandBufferInheritanceRenderPassType::BeginRendering(info) => {
+                                    // Don't know the layer count.
+
+                                    (info.depth_attachment_format, info.stencil_attachment_format)
+                                }
+                            }
+                        }
+                    };
+
+                    // VUID-vkCmdClearAttachments-aspectMask-02502
+                    if matches!(
+                        clear_attachment,
+                        ClearAttachment::Depth(_) | ClearAttachment::DepthStencil(_)
+                    ) && !depth_format.map_or(false, |format| format.aspects().depth)
+                    {
+                        return Err(RenderPassError::ClearAttachmentNotCompatible {
+                            clear_attachment,
+                            attachment_format: None,
+                        });
+                    }
+
+                    // VUID-vkCmdClearAttachments-aspectMask-02503
+                    if matches!(
+                        clear_attachment,
+                        ClearAttachment::Stencil(_) | ClearAttachment::DepthStencil(_)
+                    ) && !stencil_format.map_or(false, |format| format.aspects().stencil)
+                    {
+                        return Err(RenderPassError::ClearAttachmentNotCompatible {
+                            clear_attachment,
+                            attachment_format: None,
+                        });
                     }
                 }
             }
@@ -658,16 +1486,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 return Err(RenderPassError::RectArrayLayersEmpty { rect_index });
             }
 
-            // TODO: This can't be checked for secondary command buffers if they didn't provide
-            // a framebuffer with their inheritance info.
-            // It needs to be checked during `execute_commands` instead.
-            if let Some(framebuffer) = &render_pass_state.framebuffer {
-                // VUID-vkCmdClearAttachments-pRects-00017
-                for range in framebuffer.attached_layers_ranges() {
-                    if rect.array_layers.start < range.start || rect.array_layers.end > range.end {
-                        return Err(RenderPassError::RectArrayLayersOutOfBounds { rect_index });
-                    }
-                }
+            // VUID-vkCmdClearAttachments-pRects-00017
+            if rect.array_layers.end > layer_count {
+                return Err(RenderPassError::RectArrayLayersOutOfBounds { rect_index });
             }
 
             // VUID-vkCmdClearAttachments-baseArrayLayer-00018
@@ -684,7 +1505,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 }
 
 impl SyncCommandBufferBuilder {
-    /// Calls `vkBeginRenderPass` on the builder.
+    /// Calls `vkCmdBeginRenderPass` on the builder.
     // TODO: it shouldn't be possible to get an error if the framebuffer checked conflicts already
     // TODO: after begin_render_pass has been called, flushing should be forbidden and an error
     //       returned if conflict
@@ -802,6 +1623,284 @@ impl SyncCommandBufferBuilder {
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.end_render_pass();
+            }
+        }
+
+        self.commands.push(Box::new(Cmd));
+        debug_assert!(self.latest_render_pass_enter.is_some());
+        self.latest_render_pass_enter = None;
+    }
+
+    /// Calls `vkCmdBeginRendering` on the builder.
+    #[inline]
+    pub unsafe fn begin_rendering(
+        &mut self,
+        rendering_info: RenderingInfo,
+    ) -> Result<(), SyncCommandBufferBuilderError> {
+        struct Cmd {
+            rendering_info: RenderingInfo,
+        }
+
+        impl Command for Cmd {
+            fn name(&self) -> &'static str {
+                "begin_rendering"
+            }
+
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
+                out.begin_rendering(&self.rendering_info);
+            }
+        }
+
+        let &RenderingInfo {
+            render_area_offset,
+            render_area_extent,
+            layer_count,
+            view_mask,
+            ref color_attachments,
+            ref depth_attachment,
+            ref stencil_attachment,
+            contents,
+            _ne,
+        } = &rendering_info;
+
+        let resources = (color_attachments
+            .iter()
+            .enumerate()
+            .filter_map(|(index, attachment_info)| {
+                attachment_info
+                    .as_ref()
+                    .map(|attachment_info| (index, attachment_info))
+            })
+            .flat_map(|(index, attachment_info)| {
+                let &RenderingAttachmentInfo {
+                    ref image_view,
+                    image_layout,
+                    resolve_info: ref resolve,
+                    load_op,
+                    store_op,
+                    clear_value,
+                    _ne: _,
+                } = attachment_info;
+
+                [
+                    Some((
+                        format!("color attachment {}", index).into(),
+                        Resource::Image {
+                            image: image_view.image(),
+                            subresource_range: image_view.subresource_range().clone(),
+                            memory: PipelineMemoryAccess {
+                                stages: PipelineStages {
+                                    all_commands: true,
+                                    ..PipelineStages::none()
+                                }, // TODO: wrong!
+                                access: AccessFlags {
+                                    color_attachment_read: true,
+                                    color_attachment_write: true,
+                                    ..AccessFlags::none()
+                                }, // TODO: suboptimal
+                                exclusive: true, // TODO: suboptimal
+                            },
+                            start_layout: image_layout,
+                            end_layout: image_layout,
+                        },
+                    )),
+                    attachment_info.resolve_info.as_ref().map(|resolve_info| {
+                        let &RenderingAttachmentResolveInfo {
+                            mode,
+                            ref image_view,
+                            image_layout,
+                        } = resolve_info;
+
+                        (
+                            format!("color resolve attachment {}", index).into(),
+                            Resource::Image {
+                                image: resolve_info.image_view.image(),
+                                subresource_range: resolve_info
+                                    .image_view
+                                    .subresource_range()
+                                    .clone(),
+                                memory: PipelineMemoryAccess {
+                                    stages: PipelineStages {
+                                        all_commands: true,
+                                        ..PipelineStages::none()
+                                    }, // TODO: wrong!
+                                    access: AccessFlags {
+                                        color_attachment_read: true,
+                                        color_attachment_write: true,
+                                        ..AccessFlags::none()
+                                    }, // TODO: suboptimal
+                                    exclusive: true, // TODO: suboptimal
+                                },
+                                start_layout: resolve_info.image_layout,
+                                end_layout: resolve_info.image_layout,
+                            },
+                        )
+                    }),
+                ]
+                .into_iter()
+                .flatten()
+            }))
+        .chain(depth_attachment.iter().flat_map(|attachment_info| {
+            let &RenderingAttachmentInfo {
+                ref image_view,
+                image_layout,
+                resolve_info: ref resolve,
+                load_op,
+                store_op,
+                clear_value,
+                _ne: _,
+            } = attachment_info;
+
+            [
+                Some((
+                    "depth attachment".into(),
+                    Resource::Image {
+                        image: image_view.image(),
+                        subresource_range: image_view.subresource_range().clone(),
+                        memory: PipelineMemoryAccess {
+                            stages: PipelineStages {
+                                all_commands: true,
+                                ..PipelineStages::none()
+                            }, // TODO: wrong!
+                            access: AccessFlags {
+                                depth_stencil_attachment_read: true,
+                                depth_stencil_attachment_write: true,
+                                ..AccessFlags::none()
+                            }, // TODO: suboptimal
+                            exclusive: true, // TODO: suboptimal
+                        },
+                        start_layout: image_layout,
+                        end_layout: image_layout,
+                    },
+                )),
+                attachment_info.resolve_info.as_ref().map(|resolve_info| {
+                    let &RenderingAttachmentResolveInfo {
+                        mode,
+                        ref image_view,
+                        image_layout,
+                    } = resolve_info;
+
+                    (
+                        "depth resolve attachment".into(),
+                        Resource::Image {
+                            image: resolve_info.image_view.image(),
+                            subresource_range: resolve_info.image_view.subresource_range().clone(),
+                            memory: PipelineMemoryAccess {
+                                stages: PipelineStages {
+                                    all_commands: true,
+                                    ..PipelineStages::none()
+                                }, // TODO: wrong!
+                                access: AccessFlags {
+                                    depth_stencil_attachment_read: true,
+                                    depth_stencil_attachment_write: true,
+                                    ..AccessFlags::none()
+                                }, // TODO: suboptimal
+                                exclusive: true, // TODO: suboptimal
+                            },
+                            start_layout: resolve_info.image_layout,
+                            end_layout: resolve_info.image_layout,
+                        },
+                    )
+                }),
+            ]
+            .into_iter()
+            .flatten()
+        }))
+        .chain(stencil_attachment.iter().flat_map(|attachment_info| {
+            let &RenderingAttachmentInfo {
+                ref image_view,
+                image_layout,
+                resolve_info: ref resolve,
+                load_op,
+                store_op,
+                clear_value,
+                _ne: _,
+            } = attachment_info;
+
+            [
+                Some((
+                    "stencil attachment".into(),
+                    Resource::Image {
+                        image: image_view.image(),
+                        subresource_range: image_view.subresource_range().clone(),
+                        memory: PipelineMemoryAccess {
+                            stages: PipelineStages {
+                                all_commands: true,
+                                ..PipelineStages::none()
+                            }, // TODO: wrong!
+                            access: AccessFlags {
+                                depth_stencil_attachment_read: true,
+                                depth_stencil_attachment_write: true,
+                                ..AccessFlags::none()
+                            }, // TODO: suboptimal
+                            exclusive: true, // TODO: suboptimal
+                        },
+                        start_layout: image_layout,
+                        end_layout: image_layout,
+                    },
+                )),
+                attachment_info.resolve_info.as_ref().map(|resolve_info| {
+                    let &RenderingAttachmentResolveInfo {
+                        mode,
+                        ref image_view,
+                        image_layout,
+                    } = resolve_info;
+
+                    (
+                        "stencil resolve attachment".into(),
+                        Resource::Image {
+                            image: resolve_info.image_view.image(),
+                            subresource_range: resolve_info.image_view.subresource_range().clone(),
+                            memory: PipelineMemoryAccess {
+                                stages: PipelineStages {
+                                    all_commands: true,
+                                    ..PipelineStages::none()
+                                }, // TODO: wrong!
+                                access: AccessFlags {
+                                    depth_stencil_attachment_read: true,
+                                    depth_stencil_attachment_write: true,
+                                    ..AccessFlags::none()
+                                }, // TODO: suboptimal
+                                exclusive: true, // TODO: suboptimal
+                            },
+                            start_layout: resolve_info.image_layout,
+                            end_layout: resolve_info.image_layout,
+                        },
+                    )
+                }),
+            ]
+            .into_iter()
+            .flatten()
+        }))
+        .collect::<Vec<_>>();
+
+        for resource in &resources {
+            self.check_resource_conflicts(resource)?;
+        }
+
+        self.commands.push(Box::new(Cmd { rendering_info }));
+
+        for resource in resources {
+            self.add_resource(resource);
+        }
+
+        self.latest_render_pass_enter = Some(self.commands.len() - 1);
+
+        Ok(())
+    }
+
+    /// Calls `vkCmdEndRendering` on the builder.
+    #[inline]
+    pub unsafe fn end_rendering(&mut self) {
+        struct Cmd;
+
+        impl Command for Cmd {
+            fn name(&self) -> &'static str {
+                "end_rendering"
+            }
+
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
+                out.end_rendering();
             }
         }
 
@@ -973,6 +2072,121 @@ impl UnsafeCommandBufferBuilder {
         }
     }
 
+    /// Calls `vkCmdBeginRendering` on the builder.
+    pub unsafe fn begin_rendering(&mut self, rendering_info: &RenderingInfo) {
+        let &RenderingInfo {
+            render_area_offset,
+            render_area_extent,
+            layer_count,
+            view_mask,
+            ref color_attachments,
+            ref depth_attachment,
+            ref stencil_attachment,
+            contents,
+            _ne: _,
+        } = rendering_info;
+
+        let map_attachment_info = |attachment_info: &Option<_>| {
+            if let Some(attachment_info) = attachment_info {
+                let &RenderingAttachmentInfo {
+                    ref image_view,
+                    image_layout,
+                    resolve_info: ref resolve,
+                    load_op,
+                    store_op,
+                    clear_value,
+                    _ne: _,
+                } = attachment_info;
+
+                let (resolve_mode, resolve_image_view, resolve_image_layout) =
+                    if let Some(resolve) = resolve {
+                        let &RenderingAttachmentResolveInfo {
+                            mode,
+                            ref image_view,
+                            image_layout,
+                        } = resolve;
+
+                        (
+                            mode.into(),
+                            image_view.internal_object(),
+                            image_layout.into(),
+                        )
+                    } else {
+                        (
+                            ash::vk::ResolveModeFlags::NONE,
+                            Default::default(),
+                            Default::default(),
+                        )
+                    };
+
+                ash::vk::RenderingAttachmentInfo {
+                    image_view: image_view.internal_object(),
+                    image_layout: image_layout.into(),
+                    resolve_mode,
+                    resolve_image_view,
+                    resolve_image_layout,
+                    load_op: load_op.into(),
+                    store_op: store_op.into(),
+                    clear_value: clear_value.map_or_else(Default::default, Into::into),
+                    ..Default::default()
+                }
+            } else {
+                ash::vk::RenderingAttachmentInfo {
+                    image_view: ash::vk::ImageView::null(),
+                    ..Default::default()
+                }
+            }
+        };
+
+        let color_attachments: SmallVec<[_; 2]> =
+            color_attachments.iter().map(map_attachment_info).collect();
+        let depth_attachment = map_attachment_info(depth_attachment);
+        let stencil_attachment = map_attachment_info(stencil_attachment);
+
+        let rendering_info = ash::vk::RenderingInfo {
+            flags: contents.into(),
+            render_area: ash::vk::Rect2D {
+                offset: ash::vk::Offset2D {
+                    x: render_area_offset[0] as i32,
+                    y: render_area_offset[1] as i32,
+                },
+                extent: ash::vk::Extent2D {
+                    width: render_area_extent[0],
+                    height: render_area_extent[1],
+                },
+            },
+            layer_count,
+            view_mask,
+            color_attachment_count: color_attachments.len() as u32,
+            p_color_attachments: color_attachments.as_ptr(),
+            p_depth_attachment: &depth_attachment,
+            p_stencil_attachment: &stencil_attachment,
+            ..Default::default()
+        };
+
+        let fns = self.device.fns();
+
+        if self.device.api_version() >= Version::V1_3 {
+            fns.v1_3.cmd_begin_rendering(self.handle, &rendering_info);
+        } else {
+            debug_assert!(self.device.enabled_extensions().khr_dynamic_rendering);
+            fns.khr_dynamic_rendering
+                .cmd_begin_rendering_khr(self.handle, &rendering_info);
+        }
+    }
+
+    /// Calls `vkCmdEndRendering` on the builder.
+    pub unsafe fn end_rendering(&mut self) {
+        let fns = self.device.fns();
+
+        if self.device.api_version() >= Version::V1_3 {
+            fns.v1_3.cmd_end_rendering(self.handle);
+        } else {
+            debug_assert!(self.device.enabled_extensions().khr_dynamic_rendering);
+            fns.khr_dynamic_rendering.cmd_end_rendering_khr(self.handle);
+        }
+    }
+
     /// Calls `vkCmdClearAttachments` on the builder.
     ///
     /// Does nothing if the list of attachments or the list of rects is empty, as it would be a
@@ -1014,221 +2228,6 @@ impl UnsafeCommandBufferBuilder {
             rects.len() as u32,
             rects.as_ptr(),
         );
-    }
-}
-
-/// Error that can happen when recording a render pass command.
-#[derive(Clone, Debug)]
-pub enum RenderPassError {
-    SyncCommandBufferBuilderError(SyncCommandBufferBuilderError),
-
-    /// A framebuffer image did not have the required usage enabled.
-    AttachmentImageMissingUsage {
-        attachment_index: u32,
-        usage: &'static str,
-    },
-
-    /// A clear value for a render pass attachment is missing.
-    ClearValueMissing {
-        attachment_index: u32,
-    },
-
-    /// A clear value provided for a render pass attachment is not compatible with the attachment's
-    /// format.
-    ClearValueNotCompatible {
-        clear_value: ClearValue,
-        attachment_index: u32,
-        attachment_format: Format,
-    },
-
-    /// An attachment clear value specifies a `color_attachment` index that is not less than the
-    /// number of color attachments in the subpass.
-    ColorAttachmentIndexOutOfRange {
-        color_attachment_index: u32,
-        num_color_attachments: u32,
-    },
-
-    /// Operation forbidden inside a render pass.
-    ForbiddenInsideRenderPass,
-
-    /// Operation forbidden outside a render pass.
-    ForbiddenOutsideRenderPass,
-
-    /// Operation forbidden inside a render subpass with the specified contents.
-    ForbiddenWithSubpassContents {
-        subpass_contents: SubpassContents,
-    },
-
-    /// The framebuffer is not compatible with the render pass.
-    FramebufferNotCompatible,
-
-    /// The render pass uses multiview, and in a clear rectangle, `array_layers` was not `0..1`.
-    MultiviewRectArrayLayersInvalid {
-        rect_index: usize,
-    },
-
-    /// Tried to advance to the next subpass, but there are no subpasses remaining in the render
-    /// pass.
-    NoSubpassesRemaining {
-        current_subpass: u32,
-    },
-
-    /// The queue family doesn't allow this operation.
-    NotSupportedByQueueFamily,
-
-    /// A query is active that conflicts with the current operation.
-    QueryIsActive,
-
-    /// A clear rectangle's `array_layers` is empty.
-    RectArrayLayersEmpty {
-        rect_index: usize,
-    },
-
-    /// A clear rectangle's `array_layers` is outside the range of layers of the attachments.
-    RectArrayLayersOutOfBounds {
-        rect_index: usize,
-    },
-
-    /// A clear rectangle's `extent` is zero.
-    RectExtentZero {
-        rect_index: usize,
-    },
-
-    /// A clear rectangle's `offset` and `extent` are outside the render area of the render pass
-    /// instance.
-    RectOutOfBounds {
-        rect_index: usize,
-    },
-
-    /// The render area's `offset` and `extent` are outside the extent of the framebuffer.
-    RenderAreaOutOfBounds,
-
-    /// Tried to end a render pass with subpasses still remaining in the render pass.
-    SubpassesRemaining {
-        current_subpass: u32,
-        remaining_subpasses: u32,
-    },
-}
-
-impl error::Error for RenderPassError {
-    #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match self {
-            Self::SyncCommandBufferBuilderError(err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl fmt::Display for RenderPassError {
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match self {
-            Self::SyncCommandBufferBuilderError(_) => write!(f, "a SyncCommandBufferBuilderError"),
-
-            Self::AttachmentImageMissingUsage { attachment_index, usage } => write!(
-                f,
-                "the framebuffer image attached to attachment index {} did not have the required usage {} enabled",
-                attachment_index, usage,
-            ),
-            Self::ClearValueMissing {
-                attachment_index,
-            } => write!(
-                f,
-                "a clear value for render pass attachment {} is missing",
-                attachment_index,
-            ),
-            Self::ClearValueNotCompatible {
-                clear_value,
-                attachment_index,
-                attachment_format,
-            } => write!(
-                f,
-                "a clear value ({:?}) provided for render pass attachment {} is not compatible with the attachment's format ({:?})",
-                clear_value, attachment_index, attachment_format,
-            ),
-            Self::ColorAttachmentIndexOutOfRange {
-                color_attachment_index,
-                num_color_attachments,
-            } => write!(
-                f,
-                "an attachment clear value specifies a `color_attachment` index {} that is not less than the number of color attachments in the subpass ({})",
-                color_attachment_index, num_color_attachments,
-            ),
-            Self::ForbiddenInsideRenderPass => {
-                write!(f, "operation forbidden inside a render pass")
-            }
-            Self::ForbiddenOutsideRenderPass => {
-                write!(f, "operation forbidden outside a render pass")
-            }
-            Self::ForbiddenWithSubpassContents { subpass_contents } => write!(
-                f,
-                "operation forbidden inside a render subpass with contents {:?}",
-                subpass_contents,
-            ),
-            Self::FramebufferNotCompatible => write!(
-                f,
-                "the framebuffer is not compatible with the render pass",
-            ),
-            Self::MultiviewRectArrayLayersInvalid { rect_index } => write!(
-                f,
-                "the render pass uses multiview, and in clear rectangle index {}, `array_layers` was not `0..1`",
-                rect_index,
-            ),
-            Self::NoSubpassesRemaining {
-                current_subpass,
-            } => write!(
-                f,
-                "tried to advance to the next subpass after subpass {}, but there are no subpasses remaining in the render pass",
-                current_subpass,
-            ),
-            Self::NotSupportedByQueueFamily => {
-                write!(f, "the queue family doesn't allow this operation")
-            }
-            Self::QueryIsActive => write!(
-                f,
-                "a query is active that conflicts with the current operation"
-            ),
-            Self::RectArrayLayersEmpty { rect_index } => write!(
-                f,
-                "clear rectangle index {} `array_layers` is empty",
-                rect_index,
-            ),
-            Self::RectArrayLayersOutOfBounds { rect_index } => write!(
-                f,
-                "clear rectangle index {} `array_layers` is outside the range of layers of the attachments",
-                rect_index,
-            ),
-            Self::RectExtentZero { rect_index } => write!(
-                f,
-                "clear rectangle index {} `extent` is zero",
-                rect_index,
-            ),
-            Self::RectOutOfBounds { rect_index } => write!(
-                f,
-                "clear rectangle index {} `offset` and `extent` are outside the render area of the render pass instance",
-                rect_index,
-            ),
-            Self::RenderAreaOutOfBounds => write!(
-                f,
-                "the render area's `offset` and `extent` are outside the extent of the framebuffer",
-            ),
-            Self::SubpassesRemaining {
-                current_subpass,
-                remaining_subpasses,
-            } => write!(
-                f,
-                "tried to end a render pass at subpass {}, with {} subpasses still remaining in the render pass",
-                current_subpass, remaining_subpasses,
-            ),
-        }
-    }
-}
-
-impl From<SyncCommandBufferBuilderError> for RenderPassError {
-    #[inline]
-    fn from(err: SyncCommandBufferBuilderError) -> Self {
-        Self::SyncCommandBufferBuilderError(err)
     }
 }
 
@@ -1285,6 +2284,206 @@ impl RenderPassBeginInfo {
             render_area_extent,
             clear_values: Vec::new(),
             _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+/// Parameters to begin rendering.
+#[derive(Clone, Debug)]
+pub struct RenderingInfo {
+    /// The offset from the top left corner of the attachments that will be rendered to.
+    ///
+    /// This value must be smaller than the smallest width and height of the attachment images.
+    ///
+    /// The default value is `[0, 0]`.
+    pub render_area_offset: [u32; 2],
+
+    /// The size of the area that will be rendered to.
+    ///
+    /// This value plus `render_area_offset` must be no larger than the smallest width and height
+    /// of the attachment images.
+    /// If one of the elements is set to 0, the extent will be calculated automatically from the
+    /// extents of the attachment images to be the largest allowed. At least one attachment image
+    /// must be specified in that case.
+    ///
+    /// The default value is `[0, 0]`.
+    pub render_area_extent: [u32; 2],
+
+    /// The number of layers of the attachments that will be rendered to.
+    ///
+    /// This must be no larger than the smallest number of array layers of the attachment images.
+    /// If set to 0, the number of layers will be calculated automatically from the
+    /// layer ranges of the attachment images to be the largest allowed. At least one attachment
+    /// image must be specified in that case.
+    ///
+    /// If the render pass uses multiview (`view_mask` is not 0), then this value must be 0 or 1.
+    ///
+    /// The default value is `0`.
+    pub layer_count: u32,
+
+    /// If not `0`, enables multiview rendering, and specifies the view indices that are rendered
+    /// to. The value is a bitmask, so that that for example `0b11` will draw to the first two
+    /// views and `0b101` will draw to the first and third view.
+    ///
+    /// If set to a nonzero value, the [`multiview`](crate::device::Features::multiview) feature
+    /// must be enabled on the device.
+    ///
+    /// The default value is `0`.
+    pub view_mask: u32,
+
+    /// The color attachments to use for rendering.
+    ///
+    /// The number of color attachments must be less than the
+    /// [`max_color_attachments`](crate::device::Properties::max_color_attachments) limit of the
+    /// physical device. All color attachments must have the same `samples` value.
+    ///
+    /// The default value is empty.
+    pub color_attachments: Vec<Option<RenderingAttachmentInfo>>,
+
+    /// The depth attachment to use for rendering.
+    ///
+    /// If set to `Some`, the image view must have the same `samples` value as those in
+    /// `color_attachments`.
+    ///
+    /// The default value is `None`.
+    pub depth_attachment: Option<RenderingAttachmentInfo>,
+
+    /// The stencil attachment to use for rendering.
+    ///
+    /// If set to `Some`, the image view must have the same `samples` value as those in
+    /// `color_attachments`.
+    ///
+    /// The default value is `None`.
+    pub stencil_attachment: Option<RenderingAttachmentInfo>,
+
+    /// What kinds of commands will be recorded in the render pass: either inline draw commands, or
+    /// executions of secondary command buffers.
+    ///
+    /// If recorded in a secondary command buffer, this must be [`SubpassContents::Inline`].
+    ///
+    /// The default value is [`SubpassContents::Inline`].
+    pub contents: SubpassContents,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for RenderingInfo {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            render_area_offset: [0, 0],
+            render_area_extent: [0, 0],
+            layer_count: 0,
+            view_mask: 0,
+            color_attachments: Vec::new(),
+            depth_attachment: None,
+            stencil_attachment: None,
+            contents: SubpassContents::Inline,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+/// Parameters to specify properties of an attachment.
+#[derive(Clone, Debug)]
+pub struct RenderingAttachmentInfo {
+    /// The image view to use as the attachment.
+    ///
+    /// There is no default value.
+    pub image_view: Arc<dyn ImageViewAbstract>,
+
+    /// The image layout that `image_view` should be in during the resolve operation.
+    ///
+    /// The default value is [`ImageLayout::ColorAttachmentOptimal`] if `image_view` has a color
+    /// format, [`ImageLayout::DepthStencilAttachmentOptimal`] if `image_view` has a depth/stencil
+    /// format.
+    pub image_layout: ImageLayout,
+
+    /// The resolve operation that should be performed at the end of rendering.
+    ///
+    /// The default value is `None`.
+    pub resolve_info: Option<RenderingAttachmentResolveInfo>,
+
+    /// What the implementation should do with the attachment at the start of rendering.
+    ///
+    /// The default value is [`LoadOp::DontCare`].
+    pub load_op: LoadOp,
+
+    /// What the implementation should do with the attachment at the end of rendering.
+    ///
+    /// The default value is [`StoreOp::DontCare`].
+    pub store_op: StoreOp,
+
+    /// If `load_op` is [`LoadOp::Clear`], specifies the clear value that should be used for the
+    /// attachment.
+    ///
+    /// If `load_op` is something else, provide `None`.
+    ///
+    /// The default value is `None`.
+    pub clear_value: Option<ClearValue>,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl RenderingAttachmentInfo {
+    /// Returns a `RenderingAttachmentInfo` with the specified `image_view`.
+    #[inline]
+    pub fn image_view(image_view: Arc<dyn ImageViewAbstract>) -> Self {
+        let aspects = image_view.format().unwrap().aspects();
+        let image_layout = if aspects.depth || aspects.stencil {
+            ImageLayout::DepthStencilAttachmentOptimal
+        } else {
+            ImageLayout::ColorAttachmentOptimal
+        };
+
+        Self {
+            image_view,
+            image_layout,
+            resolve_info: None,
+            load_op: LoadOp::DontCare,
+            store_op: StoreOp::DontCare,
+            clear_value: None,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+/// Parameters to specify the resolve behavior of an attachment.
+#[derive(Clone, Debug)]
+pub struct RenderingAttachmentResolveInfo {
+    /// How the resolve operation should be performed.
+    ///
+    /// The default value is [`ResolveMode::Average`].
+    pub mode: ResolveMode,
+
+    /// The image view that the result of the resolve operation should be written to.
+    ///
+    /// There is no default value.
+    pub image_view: Arc<dyn ImageViewAbstract>,
+
+    /// The image layout that `image_view` should be in during the resolve operation.
+    ///
+    /// The default value is [`ImageLayout::ColorAttachmentOptimal`] if `image_view` has a color
+    /// format, [`ImageLayout::DepthStencilAttachmentOptimal`] if `image_view` has a depth/stencil
+    /// format.
+    pub image_layout: ImageLayout,
+}
+
+impl RenderingAttachmentResolveInfo {
+    /// Returns a `RenderingAttachmentResolveInfo` with the specified `image_view`.
+    #[inline]
+    pub fn image_view(image_view: Arc<dyn ImageViewAbstract>) -> Self {
+        let aspects = image_view.format().unwrap().aspects();
+        let image_layout = if aspects.depth || aspects.stencil {
+            ImageLayout::DepthStencilAttachmentOptimal
+        } else {
+            ImageLayout::ColorAttachmentOptimal
+        };
+
+        Self {
+            mode: ResolveMode::Average,
+            image_view,
+            image_layout,
         }
     }
 }
@@ -1360,4 +2559,565 @@ pub struct ClearRect {
 
     /// The range of array layers to be cleared.
     pub array_layers: Range<u32>,
+}
+
+/// Error that can happen when recording a render pass command.
+#[derive(Clone, Debug)]
+pub enum RenderPassError {
+    SyncCommandBufferBuilderError(SyncCommandBufferBuilderError),
+
+    FeatureNotEnabled {
+        feature: &'static str,
+        reason: &'static str,
+    },
+
+    /// A framebuffer image did not have the required usage enabled.
+    AttachmentImageMissingUsage {
+        attachment_index: u32,
+        usage: &'static str,
+    },
+
+    /// One of the elements of `render_pass_extent` is zero, but no attachment images were given to
+    /// calculate the extent from.
+    AutoExtentAttachmentsEmpty,
+
+    /// `layer_count` is zero, but no attachment images were given to calculate the number of layers
+    /// from.
+    AutoLayersAttachmentsEmpty,
+
+    /// A clear attachment value is not compatible with the attachment's format.
+    ClearAttachmentNotCompatible {
+        clear_attachment: ClearAttachment,
+        attachment_format: Option<Format>,
+    },
+
+    /// A clear value for a render pass attachment is missing.
+    ClearValueMissing {
+        attachment_index: u32,
+    },
+
+    /// A clear value provided for a render pass attachment is not compatible with the attachment's
+    /// format.
+    ClearValueNotCompatible {
+        clear_value: ClearValue,
+        attachment_index: u32,
+        attachment_format: Format,
+    },
+
+    /// An attachment clear value specifies a `color_attachment` index that is not less than the
+    /// number of color attachments in the subpass.
+    ColorAttachmentIndexOutOfRange {
+        color_attachment_index: u32,
+        num_color_attachments: u32,
+    },
+
+    /// A color attachment has a layout that is not supported.
+    ColorAttachmentLayoutInvalid {
+        attachment_index: u32,
+    },
+
+    /// A color attachment is missing the `color_attachment` usage.
+    ColorAttachmentMissingUsage {
+        attachment_index: u32,
+    },
+
+    /// A color resolve attachment has a `format` value different from the corresponding color
+    /// attachment.
+    ColorAttachmentResolveFormatMismatch {
+        attachment_index: u32,
+    },
+
+    /// A color resolve attachment has a layout that is not supported.
+    ColorAttachmentResolveLayoutInvalid {
+        attachment_index: u32,
+    },
+
+    /// A color resolve attachment has a resolve mode that is not supported.
+    ColorAttachmentResolveModeNotSupported {
+        attachment_index: u32,
+    },
+
+    /// A color resolve attachment has a `samples` value other than [`SampleCount::Sample1`].
+    ColorAttachmentResolveMultisampled {
+        attachment_index: u32,
+    },
+
+    /// A color attachment has a `samples` value that is different from the first
+    /// color attachment.
+    ColorAttachmentSamplesMismatch {
+        attachment_index: u32,
+    },
+
+    /// A color attachment with a resolve attachment has a `samples` value of
+    /// [`SampleCount::Sample1`].
+    ColorAttachmentWithResolveNotMultisampled {
+        attachment_index: u32,
+    },
+
+    /// The contents `SubpassContents::SecondaryCommandBuffers` is not allowed inside a secondary command buffer.
+    ContentsForbiddenInSecondaryCommandBuffer,
+
+    /// The depth attachment has a format that does not support that usage.
+    DepthAttachmentFormatUsageNotSupported,
+
+    /// The depth attachment has a layout that is not supported.
+    DepthAttachmentLayoutInvalid,
+
+    /// The depth attachment is missing the `depth_stencil_attachment` usage.
+    DepthAttachmentMissingUsage,
+
+    /// The depth resolve attachment has a `format` value different from the corresponding depth
+    /// attachment.
+    DepthAttachmentResolveFormatMismatch,
+
+    /// The depth resolve attachment has a layout that is not supported.
+    DepthAttachmentResolveLayoutInvalid,
+
+    /// The depth resolve attachment has a resolve mode that is not supported.
+    DepthAttachmentResolveModeNotSupported,
+
+    /// The depth resolve attachment has a `samples` value other than [`SampleCount::Sample1`].
+    DepthAttachmentResolveMultisampled,
+
+    /// The depth attachment has a `samples` value that is different from the first
+    /// color attachment.
+    DepthAttachmentSamplesMismatch,
+
+    /// The depth attachment has a resolve attachment and has a `samples` value of
+    /// [`SampleCount::Sample1`].
+    DepthAttachmentWithResolveNotMultisampled,
+
+    /// The depth and stencil attachments have different image views.
+    DepthStencilAttachmentImageViewMismatch,
+
+    /// The depth and stencil resolve attachments have different image views.
+    DepthStencilAttachmentResolveImageViewMismatch,
+
+    /// The combination of depth and stencil resolve modes is not supported by the device.
+    DepthStencilAttachmentResolveModesNotSupported,
+
+    /// Operation forbidden inside a render pass.
+    ForbiddenInsideRenderPass,
+
+    /// Operation forbidden outside a render pass.
+    ForbiddenOutsideRenderPass,
+
+    /// Operation forbidden inside a render pass instance that was begun with `begin_rendering`.
+    ForbiddenWithBeginRendering,
+
+    /// Operation forbidden inside a render pass instance that was begun with `begin_render_pass`.
+    ForbiddenWithBeginRenderPass,
+
+    /// Operation forbidden inside a render pass instance that is inherited by a secondary command
+    /// buffer.
+    ForbiddenWithInheritedRenderPass,
+
+    /// Operation forbidden inside a render subpass with the specified contents.
+    ForbiddenWithSubpassContents {
+        subpass_contents: SubpassContents,
+    },
+
+    /// The framebuffer is not compatible with the render pass.
+    FramebufferNotCompatible,
+
+    /// The `max_color_attachments` limit has been exceeded.
+    MaxColorAttachmentsExceeded {
+        color_attachment_count: u32,
+        max: u32,
+    },
+
+    /// The `max_multiview_view_count` limit has been exceeded.
+    MaxMultiviewViewCountExceeded {
+        view_count: u32,
+        max: u32,
+    },
+
+    /// The render pass uses multiview, but `layer_count` was not 0 or 1.
+    MultiviewLayersInvalid,
+
+    /// The render pass uses multiview, and in a clear rectangle, `array_layers` was not `0..1`.
+    MultiviewRectArrayLayersInvalid {
+        rect_index: usize,
+    },
+
+    /// Tried to advance to the next subpass, but there are no subpasses remaining in the render
+    /// pass.
+    NoSubpassesRemaining {
+        current_subpass: u32,
+    },
+
+    /// The queue family doesn't allow this operation.
+    NotSupportedByQueueFamily,
+
+    /// A query is active that conflicts with the current operation.
+    QueryIsActive,
+
+    /// A clear rectangle's `array_layers` is empty.
+    RectArrayLayersEmpty {
+        rect_index: usize,
+    },
+
+    /// A clear rectangle's `array_layers` is outside the range of layers of the attachments.
+    RectArrayLayersOutOfBounds {
+        rect_index: usize,
+    },
+
+    /// A clear rectangle's `extent` is zero.
+    RectExtentZero {
+        rect_index: usize,
+    },
+
+    /// A clear rectangle's `offset` and `extent` are outside the render area of the render pass
+    /// instance.
+    RectOutOfBounds {
+        rect_index: usize,
+    },
+
+    /// The render area's `offset` and `extent` are outside the extent of the framebuffer.
+    RenderAreaOutOfBounds,
+
+    /// The stencil attachment has a format that does not support that usage.
+    StencilAttachmentFormatUsageNotSupported,
+
+    /// The stencil attachment has a layout that is not supported.
+    StencilAttachmentLayoutInvalid,
+
+    /// The stencil attachment is missing the `depth_stencil_attachment` usage.
+    StencilAttachmentMissingUsage,
+
+    /// The stencil resolve attachment has a `format` value different from the corresponding stencil
+    /// attachment.
+    StencilAttachmentResolveFormatMismatch,
+
+    /// The stencil resolve attachment has a layout that is not supported.
+    StencilAttachmentResolveLayoutInvalid,
+
+    /// The stencil resolve attachment has a resolve mode that is not supported.
+    StencilAttachmentResolveModeNotSupported,
+
+    /// The stencil resolve attachment has a `samples` value other than [`SampleCount::Sample1`].
+    StencilAttachmentResolveMultisampled,
+
+    /// The stencil attachment has a `samples` value that is different from the first
+    /// color attachment or the depth attachment.
+    StencilAttachmentSamplesMismatch,
+
+    /// The stencil attachment has a resolve attachment and has a `samples` value of
+    /// [`SampleCount::Sample1`].
+    StencilAttachmentWithResolveNotMultisampled,
+
+    /// Tried to end a render pass with subpasses still remaining in the render pass.
+    SubpassesRemaining {
+        current_subpass: u32,
+        remaining_subpasses: u32,
+    },
+}
+
+impl error::Error for RenderPassError {
+    #[inline]
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            Self::SyncCommandBufferBuilderError(err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for RenderPassError {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match self {
+            Self::SyncCommandBufferBuilderError(_) => write!(f, "a SyncCommandBufferBuilderError"),
+
+            Self::FeatureNotEnabled { feature, reason } => {
+                write!(f, "the feature {} must be enabled: {}", feature, reason)
+            }
+
+            Self::AttachmentImageMissingUsage { attachment_index, usage } => write!(
+                f,
+                "the framebuffer image attached to attachment index {} did not have the required usage {} enabled",
+                attachment_index, usage,
+            ),
+            Self::AutoExtentAttachmentsEmpty => write!(
+                f,
+                "one of the elements of `render_pass_extent` is zero, but no attachment images were given to calculate the extent from",
+            ),
+            Self::AutoLayersAttachmentsEmpty => write!(
+                f,
+                "`layer_count` is zero, but no attachment images were given to calculate the number of layers from",
+            ),
+            Self::ClearAttachmentNotCompatible {
+                clear_attachment,
+                attachment_format,
+            } => write!(
+                f,
+                "a clear attachment value ({:?}) is not compatible with the attachment's format ({:?})",
+                clear_attachment,
+                attachment_format,
+            ),
+            Self::ClearValueMissing {
+                attachment_index,
+            } => write!(
+                f,
+                "a clear value for render pass attachment {} is missing",
+                attachment_index,
+            ),
+            Self::ClearValueNotCompatible {
+                clear_value,
+                attachment_index,
+                attachment_format,
+            } => write!(
+                f,
+                "a clear value ({:?}) provided for render pass attachment {} is not compatible with the attachment's format ({:?})",
+                clear_value, attachment_index, attachment_format,
+            ),
+            Self::ColorAttachmentIndexOutOfRange {
+                color_attachment_index,
+                num_color_attachments,
+            } => write!(
+                f,
+                "an attachment clear value specifies a `color_attachment` index {} that is not less than the number of color attachments in the subpass ({})",
+                color_attachment_index, num_color_attachments,
+            ),
+            Self::ColorAttachmentLayoutInvalid {
+                attachment_index,
+            } => write!(
+                f,
+                "color attachment {} has a layout that is not supported",
+                attachment_index,
+            ),
+            Self::ColorAttachmentMissingUsage {
+                attachment_index,
+            } => write!(
+                f,
+                "color attachment {} is missing the `color_attachment` usage",
+                attachment_index,
+            ),
+            Self::ColorAttachmentResolveFormatMismatch {
+                attachment_index,
+            } => write!(
+                f,
+                "color attachment {} has a `format` value different from the corresponding color attachment",
+                attachment_index,
+            ),
+            Self::ColorAttachmentResolveLayoutInvalid {
+                attachment_index,
+            } => write!(
+                f,
+                "color resolve attachment {} has a layout that is not supported",
+                attachment_index,
+            ),
+            Self::ColorAttachmentResolveModeNotSupported {
+                attachment_index,
+            } => write!(
+                f,
+                "color resolve attachment {} has a resolve mode that is not supported",
+                attachment_index,
+            ),
+            Self::ColorAttachmentResolveMultisampled {
+                attachment_index,
+            } => write!(
+                f,
+                "color resolve attachment {} has a `samples` value other than `SampleCount::Sample1`",
+                attachment_index,
+            ),
+            Self::ColorAttachmentSamplesMismatch {
+                attachment_index,
+            } => write!(
+                f,
+                "color attachment {} has a `samples` value that is different from the first color attachment",
+                attachment_index,
+            ),
+            Self::ColorAttachmentWithResolveNotMultisampled {
+                attachment_index,
+            } => write!(
+                f,
+                "color attachment {} with a resolve attachment has a `samples` value of `SampleCount::Sample1`",
+                attachment_index,
+            ),
+            Self::ContentsForbiddenInSecondaryCommandBuffer => write!(
+                f,
+                "the contents `SubpassContents::SecondaryCommandBuffers` is not allowed inside a secondary command buffer",
+            ),
+            Self::DepthAttachmentFormatUsageNotSupported => write!(
+                f,
+                "the depth attachment has a format that does not support that usage",
+            ),
+            Self::DepthAttachmentLayoutInvalid => write!(
+                f,
+                "the depth attachment has a layout that is not supported",
+            ),
+            Self::DepthAttachmentMissingUsage => write!(
+                f,
+                "the depth attachment is missing the `depth_stencil_attachment` usage",
+            ),
+            Self::DepthAttachmentResolveFormatMismatch => write!(
+                f,
+                "the depth resolve attachment has a `format` value different from the corresponding depth attachment",
+            ),
+            Self::DepthAttachmentResolveLayoutInvalid => write!(
+                f,
+                "the depth resolve attachment has a layout that is not supported",
+            ),
+            Self::DepthAttachmentResolveModeNotSupported => write!(
+                f,
+                "the depth resolve attachment has a resolve mode that is not supported",
+            ),
+            Self::DepthAttachmentResolveMultisampled => write!(
+                f,
+                "the depth resolve attachment has a `samples` value other than `SampleCount::Sample1`",
+            ),
+            Self::DepthAttachmentSamplesMismatch => write!(
+                f,
+                "the depth attachment has a `samples` value that is different from the first color attachment",
+            ),
+            Self::DepthAttachmentWithResolveNotMultisampled => write!(
+                f,
+                "the depth attachment has a resolve attachment and has a `samples` value of `SampleCount::Sample1`",
+            ),
+            Self::DepthStencilAttachmentImageViewMismatch => write!(
+                f,
+                "the depth and stencil attachments have different image views",
+            ),
+            Self::DepthStencilAttachmentResolveImageViewMismatch => write!(
+                f,
+                "the depth and stencil resolve attachments have different image views",
+            ),
+            Self::DepthStencilAttachmentResolveModesNotSupported => write!(
+                f,
+                "the combination of depth and stencil resolve modes is not supported by the device",
+            ),
+            Self::ForbiddenInsideRenderPass => {
+                write!(f, "operation forbidden inside a render pass")
+            }
+            Self::ForbiddenOutsideRenderPass => {
+                write!(f, "operation forbidden outside a render pass")
+            }
+            Self::ForbiddenWithBeginRendering => write!(
+                f,
+                "operation forbidden inside a render pass instance that was begun with `begin_rendering`",
+            ),
+            Self::ForbiddenWithBeginRenderPass => write!(
+                f,
+                "operation forbidden inside a render pass instance that was begun with `begin_render_pass`",
+            ),
+            Self::ForbiddenWithInheritedRenderPass => write!(
+                f,
+                "operation forbidden inside a render pass instance that is inherited by a secondary command buffer",
+            ),
+            Self::ForbiddenWithSubpassContents { subpass_contents } => write!(
+                f,
+                "operation forbidden inside a render subpass with contents {:?}",
+                subpass_contents,
+            ),
+            Self::FramebufferNotCompatible => write!(
+                f,
+                "the framebuffer is not compatible with the render pass",
+            ),
+            Self::MaxColorAttachmentsExceeded { .. } => {
+                write!(f, "the `max_color_attachments` limit has been exceeded",)
+            }
+            Self::MaxMultiviewViewCountExceeded { .. } => {
+                write!(f, "the `max_multiview_view_count` limit has been exceeded",)
+            },
+            Self::MultiviewLayersInvalid => write!(
+                f,
+                "the render pass uses multiview, but `layer_count` was not 0 or 1",
+            ),
+            Self::MultiviewRectArrayLayersInvalid { rect_index } => write!(
+                f,
+                "the render pass uses multiview, and in clear rectangle index {}, `array_layers` was not `0..1`",
+                rect_index,
+            ),
+            Self::NoSubpassesRemaining {
+                current_subpass,
+            } => write!(
+                f,
+                "tried to advance to the next subpass after subpass {}, but there are no subpasses remaining in the render pass",
+                current_subpass,
+            ),
+            Self::NotSupportedByQueueFamily => {
+                write!(f, "the queue family doesn't allow this operation")
+            }
+            Self::QueryIsActive => write!(
+                f,
+                "a query is active that conflicts with the current operation"
+            ),
+            Self::RectArrayLayersEmpty { rect_index } => write!(
+                f,
+                "clear rectangle index {} `array_layers` is empty",
+                rect_index,
+            ),
+            Self::RectArrayLayersOutOfBounds { rect_index } => write!(
+                f,
+                "clear rectangle index {} `array_layers` is outside the range of layers of the attachments",
+                rect_index,
+            ),
+            Self::RectExtentZero { rect_index } => write!(
+                f,
+                "clear rectangle index {} `extent` is zero",
+                rect_index,
+            ),
+            Self::RectOutOfBounds { rect_index } => write!(
+                f,
+                "clear rectangle index {} `offset` and `extent` are outside the render area of the render pass instance",
+                rect_index,
+            ),
+            Self::RenderAreaOutOfBounds => write!(
+                f,
+                "the render area's `offset` and `extent` are outside the extent of the framebuffer",
+            ),
+            Self::StencilAttachmentFormatUsageNotSupported => write!(
+                f,
+                "the stencil attachment has a format that does not support that usage",
+            ),
+            Self::StencilAttachmentLayoutInvalid => write!(
+                f,
+                "the stencil attachment has a layout that is not supported",
+            ),
+            Self::StencilAttachmentMissingUsage => write!(
+                f,
+                "the stencil attachment is missing the `depth_stencil_attachment` usage",
+            ),
+            Self::StencilAttachmentResolveFormatMismatch => write!(
+                f,
+                "the stencil resolve attachment has a `format` value different from the corresponding stencil attachment",
+            ),
+            Self::StencilAttachmentResolveLayoutInvalid => write!(
+                f,
+                "the stencil resolve attachment has a layout that is not supported",
+            ),
+            Self::StencilAttachmentResolveModeNotSupported => write!(
+                f,
+                "the stencil resolve attachment has a resolve mode that is not supported",
+            ),
+            Self::StencilAttachmentResolveMultisampled => write!(
+                f,
+                "the stencil resolve attachment has a `samples` value other than `SampleCount::Sample1`",
+            ),
+            Self::StencilAttachmentSamplesMismatch => write!(
+                f,
+                "the stencil attachment has a `samples` value that is different from the first color attachment",
+            ),
+            Self::StencilAttachmentWithResolveNotMultisampled => write!(
+                f,
+                "the stencil attachment has a resolve attachment and has a `samples` value of `SampleCount::Sample1`",
+            ),
+            Self::SubpassesRemaining {
+                current_subpass,
+                remaining_subpasses,
+            } => write!(
+                f,
+                "tried to end a render pass at subpass {}, with {} subpasses still remaining in the render pass",
+                current_subpass, remaining_subpasses,
+            ),
+        }
+    }
+}
+
+impl From<SyncCommandBufferBuilderError> for RenderPassError {
+    #[inline]
+    fn from(err: SyncCommandBufferBuilderError) -> Self {
+        Self::SyncCommandBufferBuilderError(err)
+    }
 }

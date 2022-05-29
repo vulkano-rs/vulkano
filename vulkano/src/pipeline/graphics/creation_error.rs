@@ -7,18 +7,15 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::descriptor_set::layout::DescriptorSetLayoutCreationError;
-use crate::format::Format;
-use crate::format::NumericType;
-use crate::pipeline::graphics::vertex_input::IncompatibleVertexDefinitionError;
-use crate::pipeline::layout::PipelineLayoutCreationError;
-use crate::pipeline::layout::PipelineLayoutSupersetError;
-use crate::shader::ShaderInterfaceMismatchError;
-use crate::Error;
-use crate::OomError;
-use std::error;
-use std::fmt;
-use std::u32;
+use super::vertex_input::IncompatibleVertexDefinitionError;
+use crate::{
+    descriptor_set::layout::DescriptorSetLayoutCreationError,
+    format::{Format, NumericType},
+    pipeline::layout::{PipelineLayoutCreationError, PipelineLayoutSupersetError},
+    shader::ShaderInterfaceMismatchError,
+    Error, OomError,
+};
+use std::{error, fmt};
 
 /// Error that can happen when creating a graphics pipeline.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -34,6 +31,18 @@ pub enum GraphicsPipelineCreationError {
         feature: &'static str,
         reason: &'static str,
     },
+
+    /// A color attachment has a format that does not support blending.
+    ColorAttachmentFormatBlendNotSupported { attachment_index: u32 },
+
+    /// A color attachment has a format that does not support that usage.
+    ColorAttachmentFormatUsageNotSupported { attachment_index: u32 },
+
+    /// The depth attachment has a format that does not support that usage.
+    DepthAttachmentFormatUsageNotSupported,
+
+    /// The depth and stencil attachments have different formats.
+    DepthStencilAttachmentFormatMismatch,
 
     /// The output of the fragment shader is not compatible with what the render pass subpass
     /// expects.
@@ -62,6 +71,9 @@ pub enum GraphicsPipelineCreationError {
         /// Value that was passed.
         obtained: u32,
     },
+
+    /// The `max_multiview_view_count` limit has been exceeded.
+    MaxMultiviewViewCountExceeded { view_count: u32, max: u32 },
 
     /// The maximum value for the instance rate divisor has been exceeded.
     MaxVertexAttribDivisorExceeded {
@@ -124,6 +136,10 @@ pub enum GraphicsPipelineCreationError {
     /// attachments in the subpass.
     MismatchBlendingAttachmentsCount,
 
+    /// The provided `rasterization_samples` does not match the number of samples of the render
+    /// subpass.
+    MultisampleRasterizationSamplesMismatch,
+
     /// The depth test requires a depth attachment but render pass has no depth attachment, or
     /// depth writing is enabled and the depth attachment is read-only.
     NoDepthAttachment,
@@ -143,6 +159,9 @@ pub enum GraphicsPipelineCreationError {
 
     /// The output interface of one shader and the input interface of the next shader do not match.
     ShaderStagesMismatch(ShaderInterfaceMismatchError),
+
+    /// The stencil attachment has a format that does not support that usage.
+    StencilAttachmentFormatUsageNotSupported,
 
     /// The [`strict_lines`](crate::device::Properties::strict_lines) device property was `false`.
     StrictLinesNotSupported,
@@ -196,110 +215,138 @@ impl error::Error for GraphicsPipelineCreationError {
 }
 
 impl fmt::Display for GraphicsPipelineCreationError {
-    // TODO: finish
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match *self {
             Self::ExtensionNotEnabled { extension, reason } => write!(
-                fmt,
+                f,
                 "the extension {} must be enabled: {}",
                 extension, reason
             ),
             Self::FeatureNotEnabled { feature, reason } => write!(
-                fmt,
+                f,
                 "the feature {} must be enabled: {}",
                 feature, reason
             ),
+            Self::ColorAttachmentFormatBlendNotSupported { attachment_index } => write!(
+                f,
+                "color attachment {} has a format that does not support blending",
+                attachment_index,
+            ),
+            Self::ColorAttachmentFormatUsageNotSupported { attachment_index } => write!(
+                f,
+                "color attachment {} has a format that does not support that usage",
+                attachment_index,
+            ),
+            Self::DepthAttachmentFormatUsageNotSupported => write!(
+                f,
+                "the depth attachment has a format that does not support that usage",
+            ),
+            Self::DepthStencilAttachmentFormatMismatch => write!(
+                f,
+                "the depth and stencil attachments have different formats",
+            ),
             Self::FragmentShaderRenderPassIncompatible => write!(
-                fmt,
+                f,
                 "the output of the fragment shader is not compatible with what the render pass subpass expects",
             ),
             Self::IncompatiblePipelineLayout(_) => write!(
-                fmt,
+                f,
                 "the pipeline layout is not compatible with what the shaders expect",
             ),
             Self::IncompatibleSpecializationConstants => write!(
-                fmt,
+                f,
                 "the provided specialization constants are not compatible with what the shader expects",
             ),
             Self::IncompatibleVertexDefinition(_) => write!(
-                fmt,
+                f,
                 "the vertex definition is not compatible with the input of the vertex shader",
             ),
             Self::InvalidPrimitiveTopology => write!(
-                fmt,
+                f,
                 "trying to use a patch list without a tessellation shader, or a non-patch-list with a tessellation shader",
             ),
             Self::InvalidNumPatchControlPoints => write!(
-                fmt,
+                f,
                 "patch_control_points was not greater than 0 and less than or equal to the max_tessellation_patch_size limit",
             ),
             Self::MaxDiscardRectanglesExceeded { .. } => write!(
-                fmt,
+                f,
                 "the maximum number of discard rectangles has been exceeded",
             ),
+            Self::MaxMultiviewViewCountExceeded { .. } => {
+                write!(f, "the `max_multiview_view_count` limit has been exceeded",)
+            },
             Self::MaxVertexAttribDivisorExceeded { .. } => write!(
-                fmt,
+                f,
                 "the maximum value for the instance rate divisor has been exceeded",
             ),
             Self::MaxVertexInputAttributesExceeded { .. } => write!(
-                fmt,
+                f,
                 "the maximum number of vertex attributes has been exceeded",
             ),
             Self::MaxVertexInputAttributeOffsetExceeded { .. } => write!(
-                fmt,
+                f,
                 "the maximum offset for a vertex attribute has been exceeded",
             ),
             Self::MaxVertexInputBindingsExceeded { .. } => write!(
-                fmt,
+                f,
                 "the maximum number of vertex sources has been exceeded",
             ),
             Self::MaxVertexInputBindingStrideExceeded { .. } => write!(
-                fmt,
+                f,
                 "the maximum stride value for vertex input (ie. the distance between two vertex elements) has been exceeded",
             ),
             Self::MaxViewportsExceeded { .. } => write!(
-                fmt,
+                f,
                 "the maximum number of viewports has been exceeded",
             ),
             Self::MaxViewportDimensionsExceeded => write!(
-                fmt,
+                f,
                 "the maximum dimensions of viewports has been exceeded",
             ),
             Self::MismatchBlendingAttachmentsCount => write!(
-                fmt,
+                f,
                 "the number of attachments specified in the blending does not match the number of attachments in the subpass",
             ),
+            Self::MultisampleRasterizationSamplesMismatch => write!(
+                f,
+                "the provided `rasterization_samples` does not match the number of samples of the render subpass",
+            ),
             Self::NoDepthAttachment => write!(
-                fmt,
+                f,
                 "the depth attachment of the render pass does not match the depth test",
             ),
             Self::NoStencilAttachment => write!(
-                fmt,
+                f,
                 "the stencil attachment of the render pass does not match the stencil test",
             ),
             Self::OomError(_) => write!(
-                fmt,
+                f,
                 "not enough memory available",
             ),
             Self::DescriptorSetLayoutCreationError(_) => write!(
-                fmt,
+                f,
                 "error while creating a descriptor set layout object",
             ),
             Self::PipelineLayoutCreationError(_) => write!(
-                fmt,
+                f,
                 "error while creating the pipeline layout object",
             ),
             Self::ShaderStagesMismatch(_) => write!(
-                fmt,
+                f,
                 "the output interface of one shader and the input interface of the next shader do not match",
             ),
+            Self::StencilAttachmentFormatUsageNotSupported => write!(
+                f,
+                "the stencil attachment has a format that does not support that usage",
+            ),
             Self::StrictLinesNotSupported => write!(
-                fmt,
+                f,
                 "the strict_lines device property was false",
             ),
             Self::TopologyNotMatchingGeometryShader => write!(
-                fmt,
+                f,
                 "the primitives topology does not match what the geometry shader expects",
             ),
             Self::VertexInputAttributeIncompatibleFormat {
@@ -307,35 +354,35 @@ impl fmt::Display for GraphicsPipelineCreationError {
                 shader_type,
                 attribute_type,
             } => write!(
-                fmt,
+                f,
                 "the type of the shader input variable at location {} ({:?}) is not compatible with the format of the corresponding vertex input attribute ({:?})",
                 location, shader_type, attribute_type,
             ),
             Self::VertexInputAttributeInvalidBinding { location, binding } => write!(
-                fmt,
+                f,
                 "the binding number {} specified by vertex input attribute location {} does not exist in the provided list of binding descriptions",
                 binding, location,
             ),
             Self::VertexInputAttributeMissing { location } => write!(
-                fmt,
+                f,
                 "the vertex shader expects an input variable at location {}, but no vertex input attribute exists for that location",
                 location,
             ),
             Self::VertexInputAttributeUnsupportedFormat { location, format } => write!(
-                fmt,
+                f,
                 "the format {:?} specified by vertex input attribute location {} is not supported for vertex buffers",
                 format, location,
             ),
             Self::ViewportBoundsExceeded => write!(
-                fmt,
+                f,
                 "the minimum or maximum bounds of viewports have been exceeded",
             ),
             Self::WrongShaderType => write!(
-                fmt,
+                f,
                 "the wrong type of shader has been passed",
             ),
             Self::WrongStencilState => write!(
-                fmt,
+                f,
                 "the requested stencil test is invalid",
             ),
         }

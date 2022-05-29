@@ -7,26 +7,23 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::check_errors;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::format::Format;
-use crate::image::view::ImageViewAbstract;
-use crate::image::view::ImageViewType;
-use crate::image::ImageDimensions;
-use crate::image::SampleCount;
-use crate::render_pass::RenderPass;
-use crate::Error;
-use crate::OomError;
-use crate::VulkanObject;
+use super::RenderPass;
+use crate::{
+    check_errors,
+    device::{Device, DeviceOwned},
+    format::Format,
+    image::{view::ImageViewType, ImageDimensions, ImageViewAbstract, SampleCount},
+    Error, OomError, VulkanObject,
+};
 use smallvec::SmallVec;
-use std::error;
-use std::fmt;
-use std::hash::{Hash, Hasher};
-use std::mem::MaybeUninit;
-use std::ops::Range;
-use std::ptr;
-use std::sync::Arc;
+use std::{
+    error, fmt,
+    hash::{Hash, Hasher},
+    mem::MaybeUninit,
+    ops::Range,
+    ptr,
+    sync::Arc,
+};
 
 /// The image views that are attached to a render pass during drawing.
 ///
@@ -189,7 +186,7 @@ impl Framebuffer {
 
                 let image_view_extent = image_view.image().dimensions().width_height();
                 let image_view_array_layers = image_view.subresource_range().array_layers.end
-                    - attachments[0].subresource_range().array_layers.start;
+                    - image_view.subresource_range().array_layers.start;
 
                 // VUID-VkFramebufferCreateInfo-renderPass-04536
                 if image_view_array_layers < render_pass.views_used() {

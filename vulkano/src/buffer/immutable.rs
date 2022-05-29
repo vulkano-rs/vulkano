@@ -25,8 +25,8 @@ use super::{
 use crate::{
     buffer::{sys::UnsafeBufferCreateInfo, BufferCreationError, TypedBufferAccess},
     command_buffer::{
-        AutoCommandBufferBuilder, CommandBufferExecFuture, CommandBufferUsage, CopyBufferInfo,
-        PrimaryAutoCommandBuffer, PrimaryCommandBuffer,
+        AutoCommandBufferBuilder, CommandBufferBeginError, CommandBufferExecFuture,
+        CommandBufferUsage, CopyBufferInfo, PrimaryAutoCommandBuffer, PrimaryCommandBuffer,
     },
     device::{physical::QueueFamily, Device, DeviceOwned, Queue},
     memory::{
@@ -37,10 +37,11 @@ use crate::{
         DedicatedAllocation, DeviceMemoryAllocationError, MemoryPool,
     },
     sync::{NowFuture, Sharing},
-    DeviceSize,
+    DeviceSize, OomError,
 };
 use smallvec::SmallVec;
 use std::{
+    error, fmt,
     hash::{Hash, Hasher},
     marker::PhantomData,
     mem::size_of,
@@ -85,7 +86,7 @@ where
         queue: Arc<Queue>,
     ) -> Result<
         (Arc<ImmutableBuffer<T>>, ImmutableBufferFromBufferFuture),
-        DeviceMemoryAllocationError,
+        ImmutableBufferCreationError,
     >
     where
         B: TypedBufferAccess<Content = T> + 'static,
@@ -147,7 +148,7 @@ where
         queue: Arc<Queue>,
     ) -> Result<
         (Arc<ImmutableBuffer<T>>, ImmutableBufferFromBufferFuture),
-        DeviceMemoryAllocationError,
+        ImmutableBufferCreationError,
     > {
         let source = CpuAccessibleBuffer::from_data(
             queue.device().clone(),
@@ -186,7 +187,7 @@ where
             Arc<ImmutableBuffer<T>>,
             Arc<ImmutableBufferInitialization<T>>,
         ),
-        DeviceMemoryAllocationError,
+        ImmutableBufferCreationError,
     > {
         ImmutableBuffer::raw(
             device.clone(),
@@ -211,7 +212,7 @@ where
         queue: Arc<Queue>,
     ) -> Result<
         (Arc<ImmutableBuffer<[T]>>, ImmutableBufferFromBufferFuture),
-        DeviceMemoryAllocationError,
+        ImmutableBufferCreationError,
     >
     where
         D: IntoIterator<Item = T>,
@@ -256,7 +257,7 @@ where
             Arc<ImmutableBuffer<[T]>>,
             Arc<ImmutableBufferInitialization<[T]>>,
         ),
-        DeviceMemoryAllocationError,
+        ImmutableBufferCreationError,
     > {
         ImmutableBuffer::raw(
             device.clone(),
@@ -300,7 +301,7 @@ where
             Arc<ImmutableBuffer<T>>,
             Arc<ImmutableBufferInitialization<T>>,
         ),
-        DeviceMemoryAllocationError,
+        ImmutableBufferCreationError,
     >
     where
         I: IntoIterator<Item = QueueFamily<'a>>,
@@ -321,7 +322,7 @@ where
             Arc<ImmutableBuffer<T>>,
             Arc<ImmutableBufferInitialization<T>>,
         ),
-        DeviceMemoryAllocationError,
+        ImmutableBufferCreationError,
     > {
         let buffer = match UnsafeBuffer::new(
             device.clone(),
@@ -337,7 +338,7 @@ where
             },
         ) {
             Ok(b) => b,
-            Err(BufferCreationError::AllocError(err)) => return Err(err),
+            Err(BufferCreationError::AllocError(err)) => return Err(err.into()),
             Err(_) => unreachable!(), // We don't use sparse binding, therefore the other
                                       // errors can't happen
         };
@@ -572,6 +573,53 @@ where
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
         self.size().hash(state);
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum ImmutableBufferCreationError {
+    DeviceMemoryAllocationError(DeviceMemoryAllocationError),
+    CommandBufferBeginError(CommandBufferBeginError),
+}
+
+impl error::Error for ImmutableBufferCreationError {
+    #[inline]
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            Self::DeviceMemoryAllocationError(err) => Some(err),
+            Self::CommandBufferBeginError(err) => Some(err),
+        }
+    }
+}
+
+impl fmt::Display for ImmutableBufferCreationError {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::DeviceMemoryAllocationError(err) => err.fmt(f),
+            Self::CommandBufferBeginError(err) => err.fmt(f),
+        }
+    }
+}
+
+impl From<DeviceMemoryAllocationError> for ImmutableBufferCreationError {
+    #[inline]
+    fn from(err: DeviceMemoryAllocationError) -> Self {
+        Self::DeviceMemoryAllocationError(err)
+    }
+}
+
+impl From<OomError> for ImmutableBufferCreationError {
+    #[inline]
+    fn from(err: OomError) -> Self {
+        Self::DeviceMemoryAllocationError(err.into())
+    }
+}
+
+impl From<CommandBufferBeginError> for ImmutableBufferCreationError {
+    #[inline]
+    fn from(err: CommandBufferBeginError) -> Self {
+        Self::CommandBufferBeginError(err)
     }
 }
 
