@@ -15,7 +15,7 @@ use std::ops::BitOr;
 ///
 /// Some methods are provided to build `BufferUsage` structs for some common situations. However
 /// there is no restriction in the combination of BufferUsages that can be enabled.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BufferUsage {
     pub transfer_src: bool,
     pub transfer_dst: bool,
@@ -28,6 +28,25 @@ pub struct BufferUsage {
     pub indirect_buffer: bool,
     pub device_address: bool,
     pub _ne: crate::NonExhaustive,
+}
+
+impl Default for BufferUsage {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            transfer_src: false,
+            transfer_dst: false,
+            uniform_texel_buffer: false,
+            storage_texel_buffer: false,
+            uniform_buffer: false,
+            storage_buffer: false,
+            index_buffer: false,
+            vertex_buffer: false,
+            indirect_buffer: false,
+            device_address: false,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
 }
 
 impl BufferUsage {

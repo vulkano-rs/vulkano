@@ -69,6 +69,12 @@ fn properties_output(members: &[PropertiesMember]) -> TokenStream {
         },
     );
 
+    let default_items = members.iter().map(|PropertiesMember { name, .. }| {
+        quote! {
+            #name: Default::default(),
+        }
+    });
+
     let from_items = members.iter().map(
         |PropertiesMember {
              name,
@@ -108,10 +114,19 @@ fn properties_output(members: &[PropertiesMember]) -> TokenStream {
         /// Depending on the highest version of Vulkan supported by the physical device, and the
         /// available extensions, not every property may be available. For that reason, some
         /// properties are wrapped in an `Option`.
-        #[derive(Clone, Debug, Default)]
+        #[derive(Clone, Debug)]
         pub struct Properties {
             #(#struct_items)*
             pub _ne: crate::NonExhaustive,
+        }
+
+        impl Default for Properties {
+            fn default() -> Self {
+                Properties {
+                    #(#default_items)*
+                    _ne: crate::NonExhaustive(()),
+                }
+            }
         }
 
         impl From<&PropertiesFfi> for Properties {
