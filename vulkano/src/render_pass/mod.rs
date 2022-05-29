@@ -151,7 +151,7 @@ impl RenderPass {
         let granularity = unsafe {
             let fns = device.fns();
             let mut out = MaybeUninit::uninit();
-            fns.v1_0.get_render_area_granularity(
+            (fns.v1_0.get_render_area_granularity)(
                 device.internal_object(),
                 handle,
                 out.as_mut_ptr(),
@@ -475,8 +475,7 @@ impl Drop for RenderPass {
     fn drop(&mut self) {
         unsafe {
             let fns = self.device.fns();
-            fns.v1_0
-                .destroy_render_pass(self.device.internal_object(), self.handle, ptr::null());
+            (fns.v1_0.destroy_render_pass)(self.device.internal_object(), self.handle, ptr::null());
         }
     }
 }

@@ -386,7 +386,7 @@ impl DeviceMemory {
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors(fns.v1_0.allocate_memory(
+            check_errors((fns.v1_0.allocate_memory)(
                 device.internal_object(),
                 &allocate_info.build(),
                 ptr::null(),
@@ -458,7 +458,7 @@ impl DeviceMemory {
                 };
 
                 let mut output = MaybeUninit::uninit();
-                check_errors(fns.khr_external_memory_fd.get_memory_fd_khr(
+                check_errors((fns.khr_external_memory_fd.get_memory_fd_khr)(
                     self.device.internal_object(),
                     &info,
                     output.as_mut_ptr(),
@@ -477,8 +477,7 @@ impl Drop for DeviceMemory {
     fn drop(&mut self) {
         unsafe {
             let fns = self.device.fns();
-            fns.v1_0
-                .free_memory(self.device.internal_object(), self.handle, ptr::null());
+            (fns.v1_0.free_memory)(self.device.internal_object(), self.handle, ptr::null());
             let mut allocation_count = self
                 .device
                 .allocation_count()
@@ -1158,7 +1157,7 @@ impl MappedDeviceMemory {
         let pointer = unsafe {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors(fns.v1_0.map_memory(
+            check_errors((fns.v1_0.map_memory)(
                 device.internal_object(),
                 memory.handle,
                 range.start,
@@ -1184,8 +1183,7 @@ impl MappedDeviceMemory {
         unsafe {
             let device = self.memory.device();
             let fns = device.fns();
-            fns.v1_0
-                .unmap_memory(device.internal_object(), self.memory.handle);
+            (fns.v1_0.unmap_memory)(device.internal_object(), self.memory.handle);
         }
 
         self.memory
@@ -1229,7 +1227,7 @@ impl MappedDeviceMemory {
         };
 
         let fns = self.memory.device().fns();
-        check_errors(fns.v1_0.invalidate_mapped_memory_ranges(
+        check_errors((fns.v1_0.invalidate_mapped_memory_ranges)(
             self.memory.device().internal_object(),
             1,
             &range,
@@ -1276,7 +1274,7 @@ impl MappedDeviceMemory {
         };
 
         let fns = self.device().fns();
-        check_errors(fns.v1_0.flush_mapped_memory_ranges(
+        check_errors((fns.v1_0.flush_mapped_memory_ranges)(
             self.memory.device().internal_object(),
             1,
             &range,

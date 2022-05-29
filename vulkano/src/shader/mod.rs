@@ -153,7 +153,7 @@ impl ShaderModule {
 
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors(fns.v1_0.create_shader_module(
+            check_errors((fns.v1_0.create_shader_module)(
                 device.internal_object(),
                 &infos,
                 ptr::null(),
@@ -267,8 +267,11 @@ impl Drop for ShaderModule {
     fn drop(&mut self) {
         unsafe {
             let fns = self.device.fns();
-            fns.v1_0
-                .destroy_shader_module(self.device.internal_object(), self.handle, ptr::null());
+            (fns.v1_0.destroy_shader_module)(
+                self.device.internal_object(),
+                self.handle,
+                ptr::null(),
+            );
         }
     }
 }

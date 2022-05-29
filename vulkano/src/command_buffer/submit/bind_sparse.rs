@@ -239,7 +239,7 @@ impl<'a> SubmitBindSparseBuilder<'a> {
             };
 
             // Finally executing the command.
-            check_errors(fns.v1_0.queue_bind_sparse(
+            check_errors((fns.v1_0.queue_bind_sparse)(
                 *queue,
                 bs_infos.len() as u32,
                 bs_infos.as_ptr(),

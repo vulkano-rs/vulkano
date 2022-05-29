@@ -84,7 +84,7 @@ impl QueryPool {
         let handle = unsafe {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors(fns.v1_0.create_query_pool(
+            check_errors((fns.v1_0.create_query_pool)(
                 device.internal_object(),
                 &create_info,
                 ptr::null(),
@@ -146,8 +146,7 @@ impl Drop for QueryPool {
     fn drop(&mut self) {
         unsafe {
             let fns = self.device.fns();
-            fns.v1_0
-                .destroy_query_pool(self.device.internal_object(), self.handle, ptr::null());
+            (fns.v1_0.destroy_query_pool)(self.device.internal_object(), self.handle, ptr::null());
         }
     }
 }
@@ -339,7 +338,7 @@ impl<'a> QueriesRange<'a> {
 
         let result = unsafe {
             let fns = self.pool.device.fns();
-            check_errors(fns.v1_0.get_query_pool_results(
+            check_errors((fns.v1_0.get_query_pool_results)(
                 self.pool.device.internal_object(),
                 self.pool.internal_object(),
                 self.range.start,

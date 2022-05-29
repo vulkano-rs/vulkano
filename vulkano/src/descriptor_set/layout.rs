@@ -303,7 +303,7 @@ impl DescriptorSetLayout {
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors(fns.v1_0.create_descriptor_set_layout(
+            check_errors((fns.v1_0.create_descriptor_set_layout)(
                 device.internal_object(),
                 &create_info,
                 ptr::null(),
@@ -371,7 +371,7 @@ impl Drop for DescriptorSetLayout {
     fn drop(&mut self) {
         unsafe {
             let fns = self.device.fns();
-            fns.v1_0.destroy_descriptor_set_layout(
+            (fns.v1_0.destroy_descriptor_set_layout)(
                 self.device.internal_object(),
                 self.handle,
                 ptr::null(),

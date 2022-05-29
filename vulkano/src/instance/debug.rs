@@ -151,7 +151,7 @@ impl DebugUtilsMessenger {
 
         let handle = {
             let mut output = MaybeUninit::uninit();
-            check_errors(fns.ext_debug_utils.create_debug_utils_messenger_ext(
+            check_errors((fns.ext_debug_utils.create_debug_utils_messenger_ext)(
                 instance.internal_object(),
                 &create_info,
                 ptr::null(),
@@ -169,7 +169,7 @@ impl Drop for DebugUtilsMessenger {
     fn drop(&mut self) {
         unsafe {
             let fns = self.instance.fns();
-            fns.ext_debug_utils.destroy_debug_utils_messenger_ext(
+            (fns.ext_debug_utils.destroy_debug_utils_messenger_ext)(
                 self.instance.internal_object(),
                 self.handle,
                 ptr::null(),

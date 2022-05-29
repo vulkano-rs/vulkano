@@ -821,7 +821,7 @@ impl UnsafeImage {
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors(fns.v1_0.create_image(
+            check_errors((fns.v1_0.create_image)(
                 device.internal_object(),
                 &create_info.build(),
                 ptr::null(),
@@ -931,21 +931,21 @@ impl UnsafeImage {
                     .khr_get_memory_requirements2
             {
                 if self.device.api_version() >= Version::V1_1 {
-                    fns.v1_1.get_image_memory_requirements2(
+                    (fns.v1_1.get_image_memory_requirements2)(
                         self.device.internal_object(),
                         &image_memory_requirements_info2,
                         &mut memory_requirements2,
                     );
                 } else {
-                    fns.khr_get_memory_requirements2
-                        .get_image_memory_requirements2_khr(
-                            self.device.internal_object(),
-                            &image_memory_requirements_info2,
-                            &mut memory_requirements2,
-                        );
+                    (fns.khr_get_memory_requirements2
+                        .get_image_memory_requirements2_khr)(
+                        self.device.internal_object(),
+                        &image_memory_requirements_info2,
+                        &mut memory_requirements2,
+                    );
                 }
             } else {
-                fns.v1_0.get_image_memory_requirements(
+                (fns.v1_0.get_image_memory_requirements)(
                     self.device.internal_object(),
                     self.handle,
                     &mut memory_requirements2.memory_requirements,
@@ -970,7 +970,7 @@ impl UnsafeImage {
         // We check for correctness in debug mode.
         debug_assert!({
             let mut mem_reqs = MaybeUninit::uninit();
-            fns.v1_0.get_image_memory_requirements(
+            (fns.v1_0.get_image_memory_requirements)(
                 self.device.internal_object(),
                 self.handle,
                 mem_reqs.as_mut_ptr(),
@@ -982,7 +982,7 @@ impl UnsafeImage {
                 && mem_reqs.memory_type_bits & (1 << memory.memory_type().id()) != 0
         });
 
-        check_errors(fns.v1_0.bind_image_memory(
+        check_errors((fns.v1_0.bind_image_memory)(
             self.device.internal_object(),
             self.handle,
             memory.internal_object(),
@@ -1311,7 +1311,7 @@ impl UnsafeImage {
         };
 
         let mut out = MaybeUninit::uninit();
-        fns.v1_0.get_image_subresource_layout(
+        (fns.v1_0.get_image_subresource_layout)(
             self.device.internal_object(),
             self.handle,
             &subresource,
@@ -1338,8 +1338,7 @@ impl Drop for UnsafeImage {
 
         unsafe {
             let fns = self.device.fns();
-            fns.v1_0
-                .destroy_image(self.device.internal_object(), self.handle, ptr::null());
+            (fns.v1_0.destroy_image)(self.device.internal_object(), self.handle, ptr::null());
         }
     }
 }

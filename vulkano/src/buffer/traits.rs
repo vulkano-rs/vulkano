@@ -94,10 +94,11 @@ pub unsafe trait BufferAccess: DeviceOwned + Send + Sync {
                 buffer: inner.buffer.internal_object(),
                 ..Default::default()
             };
-            let ptr = device
-                .fns()
-                .ext_buffer_device_address
-                .get_buffer_device_address_ext(device.internal_object(), &info);
+            let fns = device.fns();
+            let ptr = (fns.ext_buffer_device_address.get_buffer_device_address_ext)(
+                device.internal_object(),
+                &info,
+            );
 
             if ptr == 0 {
                 panic!("got null ptr from a valid GetBufferDeviceAddressEXT call");

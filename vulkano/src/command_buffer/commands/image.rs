@@ -1563,10 +1563,9 @@ impl UnsafeCommandBufferBuilder {
             };
 
             if self.device.api_version() >= Version::V1_3 {
-                fns.v1_3.cmd_blit_image2(self.handle, &blit_image_info);
+                (fns.v1_3.cmd_blit_image2)(self.handle, &blit_image_info);
             } else {
-                fns.khr_copy_commands2
-                    .cmd_blit_image2_khr(self.handle, &blit_image_info);
+                (fns.khr_copy_commands2.cmd_blit_image2_khr)(self.handle, &blit_image_info);
             }
         } else {
             let regions: SmallVec<[_; 8]> = regions
@@ -1621,7 +1620,7 @@ impl UnsafeCommandBufferBuilder {
                 })
                 .collect();
 
-            fns.v1_0.cmd_blit_image(
+            (fns.v1_0.cmd_blit_image)(
                 self.handle,
                 src_image_inner.image.internal_object(),
                 src_image_layout.into(),
@@ -1659,7 +1658,7 @@ impl UnsafeCommandBufferBuilder {
             .collect();
 
         let fns = self.device.fns();
-        fns.v1_0.cmd_clear_color_image(
+        (fns.v1_0.cmd_clear_color_image)(
             self.handle,
             image.inner().image.internal_object(),
             image_layout.into(),
@@ -1694,7 +1693,7 @@ impl UnsafeCommandBufferBuilder {
             .collect();
 
         let fns = self.device.fns();
-        fns.v1_0.cmd_clear_depth_stencil_image(
+        (fns.v1_0.cmd_clear_depth_stencil_image)(
             self.handle,
             image.inner().image.internal_object(),
             image_layout.into(),
@@ -1787,11 +1786,9 @@ impl UnsafeCommandBufferBuilder {
             };
 
             if self.device.api_version() >= Version::V1_3 {
-                fns.v1_3
-                    .cmd_resolve_image2(self.handle, &resolve_image_info);
+                (fns.v1_3.cmd_resolve_image2)(self.handle, &resolve_image_info);
             } else {
-                fns.khr_copy_commands2
-                    .cmd_resolve_image2_khr(self.handle, &resolve_image_info);
+                (fns.khr_copy_commands2.cmd_resolve_image2_khr)(self.handle, &resolve_image_info);
             }
         } else {
             let regions: SmallVec<[_; 8]> = regions
@@ -1838,7 +1835,7 @@ impl UnsafeCommandBufferBuilder {
                 })
                 .collect();
 
-            fns.v1_0.cmd_resolve_image(
+            (fns.v1_0.cmd_resolve_image)(
                 self.handle,
                 src_image_inner.image.internal_object(),
                 src_image_layout.into(),

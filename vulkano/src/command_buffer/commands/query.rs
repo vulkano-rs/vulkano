@@ -773,7 +773,7 @@ impl UnsafeCommandBufferBuilder {
         } else {
             ash::vk::QueryControlFlags::empty()
         };
-        fns.v1_0.cmd_begin_query(
+        (fns.v1_0.cmd_begin_query)(
             self.handle,
             query.pool().internal_object(),
             query.index(),
@@ -785,15 +785,14 @@ impl UnsafeCommandBufferBuilder {
     #[inline]
     pub unsafe fn end_query(&mut self, query: Query) {
         let fns = self.device.fns();
-        fns.v1_0
-            .cmd_end_query(self.handle, query.pool().internal_object(), query.index());
+        (fns.v1_0.cmd_end_query)(self.handle, query.pool().internal_object(), query.index());
     }
 
     /// Calls `vkCmdWriteTimestamp` on the builder.
     #[inline]
     pub unsafe fn write_timestamp(&mut self, query: Query, stage: PipelineStage) {
         let fns = self.device.fns();
-        fns.v1_0.cmd_write_timestamp(
+        (fns.v1_0.cmd_write_timestamp)(
             self.handle,
             stage.into(),
             query.pool().internal_object(),
@@ -821,7 +820,7 @@ impl UnsafeCommandBufferBuilder {
         debug_assert!(stride % size_of::<T>() as DeviceSize == 0);
 
         let fns = self.device.fns();
-        fns.v1_0.cmd_copy_query_pool_results(
+        (fns.v1_0.cmd_copy_query_pool_results)(
             self.handle,
             queries.pool().internal_object(),
             range.start,
@@ -838,7 +837,7 @@ impl UnsafeCommandBufferBuilder {
     pub unsafe fn reset_query_pool(&mut self, queries: QueriesRange) {
         let range = queries.range();
         let fns = self.device.fns();
-        fns.v1_0.cmd_reset_query_pool(
+        (fns.v1_0.cmd_reset_query_pool)(
             self.handle,
             queries.pool().internal_object(),
             range.start,

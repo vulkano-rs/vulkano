@@ -525,7 +525,7 @@ where
         let handle = {
             let fns = image_inner.device().fns();
             let mut output = MaybeUninit::uninit();
-            check_errors(fns.v1_0.create_image_view(
+            check_errors((fns.v1_0.create_image_view)(
                 image_inner.device().internal_object(),
                 &create_info,
                 ptr::null(),
@@ -561,8 +561,7 @@ where
         unsafe {
             let device = self.device();
             let fns = device.fns();
-            fns.v1_0
-                .destroy_image_view(device.internal_object(), self.handle, ptr::null());
+            (fns.v1_0.destroy_image_view)(device.internal_object(), self.handle, ptr::null());
         }
     }
 }

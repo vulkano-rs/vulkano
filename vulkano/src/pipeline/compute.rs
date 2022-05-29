@@ -205,7 +205,7 @@ impl ComputePipeline {
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(fns.v1_0.create_compute_pipelines(
+            check_errors((fns.v1_0.create_compute_pipelines)(
                 device.internal_object(),
                 cache_handle,
                 1,
@@ -307,8 +307,7 @@ impl Drop for ComputePipeline {
     fn drop(&mut self) {
         unsafe {
             let fns = self.device.fns();
-            fns.v1_0
-                .destroy_pipeline(self.device.internal_object(), self.handle, ptr::null());
+            (fns.v1_0.destroy_pipeline)(self.device.internal_object(), self.handle, ptr::null());
         }
     }
 }

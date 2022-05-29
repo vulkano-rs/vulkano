@@ -497,7 +497,7 @@ impl PipelineLayout {
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors(fns.v1_0.create_pipeline_layout(
+            check_errors((fns.v1_0.create_pipeline_layout)(
                 device.internal_object(),
                 &create_info,
                 ptr::null(),
@@ -623,7 +623,7 @@ impl Drop for PipelineLayout {
     fn drop(&mut self) {
         unsafe {
             let fns = self.device.fns();
-            fns.v1_0.destroy_pipeline_layout(
+            (fns.v1_0.destroy_pipeline_layout)(
                 self.device.internal_object(),
                 self.handle,
                 ptr::null(),

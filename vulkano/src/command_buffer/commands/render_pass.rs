@@ -1991,13 +1991,13 @@ impl UnsafeCommandBufferBuilder {
             || self.device.enabled_extensions().khr_create_renderpass2
         {
             if self.device.api_version() >= Version::V1_2 {
-                fns.v1_2.cmd_begin_render_pass2(
+                (fns.v1_2.cmd_begin_render_pass2)(
                     self.handle,
                     &render_pass_begin_info,
                     &subpass_begin_info,
                 );
             } else {
-                fns.khr_create_renderpass2.cmd_begin_render_pass2_khr(
+                (fns.khr_create_renderpass2.cmd_begin_render_pass2_khr)(
                     self.handle,
                     &render_pass_begin_info,
                     &subpass_begin_info,
@@ -2006,7 +2006,7 @@ impl UnsafeCommandBufferBuilder {
         } else {
             debug_assert!(subpass_begin_info.p_next.is_null());
 
-            fns.v1_0.cmd_begin_render_pass(
+            (fns.v1_0.cmd_begin_render_pass)(
                 self.handle,
                 &render_pass_begin_info,
                 subpass_begin_info.contents,
@@ -2030,10 +2030,9 @@ impl UnsafeCommandBufferBuilder {
             || self.device.enabled_extensions().khr_create_renderpass2
         {
             if self.device.api_version() >= Version::V1_2 {
-                fns.v1_2
-                    .cmd_next_subpass2(self.handle, &subpass_begin_info, &subpass_end_info);
+                (fns.v1_2.cmd_next_subpass2)(self.handle, &subpass_begin_info, &subpass_end_info);
             } else {
-                fns.khr_create_renderpass2.cmd_next_subpass2_khr(
+                (fns.khr_create_renderpass2.cmd_next_subpass2_khr)(
                     self.handle,
                     &subpass_begin_info,
                     &subpass_end_info,
@@ -2043,8 +2042,7 @@ impl UnsafeCommandBufferBuilder {
             debug_assert!(subpass_begin_info.p_next.is_null());
             debug_assert!(subpass_end_info.p_next.is_null());
 
-            fns.v1_0
-                .cmd_next_subpass(self.handle, subpass_begin_info.contents.into());
+            (fns.v1_0.cmd_next_subpass)(self.handle, subpass_begin_info.contents.into());
         }
     }
 
@@ -2059,16 +2057,17 @@ impl UnsafeCommandBufferBuilder {
             || self.device.enabled_extensions().khr_create_renderpass2
         {
             if self.device.api_version() >= Version::V1_2 {
-                fns.v1_2
-                    .cmd_end_render_pass2(self.handle, &subpass_end_info);
+                (fns.v1_2.cmd_end_render_pass2)(self.handle, &subpass_end_info);
             } else {
-                fns.khr_create_renderpass2
-                    .cmd_end_render_pass2_khr(self.handle, &subpass_end_info);
+                (fns.khr_create_renderpass2.cmd_end_render_pass2_khr)(
+                    self.handle,
+                    &subpass_end_info,
+                );
             }
         } else {
             debug_assert!(subpass_end_info.p_next.is_null());
 
-            fns.v1_0.cmd_end_render_pass(self.handle);
+            (fns.v1_0.cmd_end_render_pass)(self.handle);
         }
     }
 
@@ -2167,11 +2166,10 @@ impl UnsafeCommandBufferBuilder {
         let fns = self.device.fns();
 
         if self.device.api_version() >= Version::V1_3 {
-            fns.v1_3.cmd_begin_rendering(self.handle, &rendering_info);
+            (fns.v1_3.cmd_begin_rendering)(self.handle, &rendering_info);
         } else {
             debug_assert!(self.device.enabled_extensions().khr_dynamic_rendering);
-            fns.khr_dynamic_rendering
-                .cmd_begin_rendering_khr(self.handle, &rendering_info);
+            (fns.khr_dynamic_rendering.cmd_begin_rendering_khr)(self.handle, &rendering_info);
         }
     }
 
@@ -2180,10 +2178,10 @@ impl UnsafeCommandBufferBuilder {
         let fns = self.device.fns();
 
         if self.device.api_version() >= Version::V1_3 {
-            fns.v1_3.cmd_end_rendering(self.handle);
+            (fns.v1_3.cmd_end_rendering)(self.handle);
         } else {
             debug_assert!(self.device.enabled_extensions().khr_dynamic_rendering);
-            fns.khr_dynamic_rendering.cmd_end_rendering_khr(self.handle);
+            (fns.khr_dynamic_rendering.cmd_end_rendering_khr)(self.handle);
         }
     }
 
@@ -2221,7 +2219,7 @@ impl UnsafeCommandBufferBuilder {
         }
 
         let fns = self.device.fns();
-        fns.v1_0.cmd_clear_attachments(
+        (fns.v1_0.cmd_clear_attachments)(
             self.handle,
             attachments.len() as u32,
             attachments.as_ptr(),

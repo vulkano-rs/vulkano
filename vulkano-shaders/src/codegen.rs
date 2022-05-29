@@ -154,7 +154,7 @@ pub fn compile(
     spirv_version: Option<SpirvVersion>,
 ) -> Result<(CompilationArtifact, Vec<String>), String> {
     let includes_tracker = RefCell::new(Vec::new());
-    let mut compiler = Compiler::new().ok_or("failed to create GLSL compiler")?;
+    let compiler = Compiler::new().ok_or("failed to create GLSL compiler")?;
     let mut compile_options = CompileOptions::new().ok_or("failed to initialize compile option")?;
 
     compile_options.set_target_env(

@@ -213,7 +213,7 @@ impl DescriptorSetInner {
         unsafe {
             let fns = layout.device().fns();
 
-            fns.v1_0.update_descriptor_sets(
+            (fns.v1_0.update_descriptor_sets)(
                 layout.device().internal_object(),
                 write_descriptor_set.len() as u32,
                 write_descriptor_set.as_ptr(),

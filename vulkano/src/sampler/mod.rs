@@ -393,7 +393,7 @@ impl Sampler {
         let handle = unsafe {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors(fns.v1_0.create_sampler(
+            check_errors((fns.v1_0.create_sampler)(
                 device.internal_object(),
                 &create_info,
                 ptr::null(),
@@ -657,8 +657,7 @@ impl Drop for Sampler {
     fn drop(&mut self) {
         unsafe {
             let fns = self.device.fns();
-            fns.v1_0
-                .destroy_sampler(self.device.internal_object(), self.handle, ptr::null());
+            (fns.v1_0.destroy_sampler)(self.device.internal_object(), self.handle, ptr::null());
         }
     }
 }

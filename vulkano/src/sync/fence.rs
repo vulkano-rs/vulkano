@@ -64,7 +64,7 @@ impl Fence {
         let handle = unsafe {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors(fns.v1_0.create_fence(
+            check_errors((fns.v1_0.create_fence)(
                 device.internal_object(),
                 &create_info,
                 ptr::null(),
@@ -94,7 +94,11 @@ impl Fence {
                 unsafe {
                     // Make sure the fence isn't signaled
                     let fns = device.fns();
-                    check_errors(fns.v1_0.reset_fences(device.internal_object(), 1, &handle))?;
+                    check_errors((fns.v1_0.reset_fences)(
+                        device.internal_object(),
+                        1,
+                        &handle,
+                    ))?;
                 }
 
                 Fence {
@@ -124,10 +128,10 @@ impl Fence {
             }
 
             let fns = self.device.fns();
-            let result = check_errors(
-                fns.v1_0
-                    .get_fence_status(self.device.internal_object(), self.handle),
-            )?;
+            let result = check_errors((fns.v1_0.get_fence_status)(
+                self.device.internal_object(),
+                self.handle,
+            ))?;
             match result {
                 Success::Success => {
                     self.signaled.store(true, Ordering::Relaxed);
@@ -160,7 +164,7 @@ impl Fence {
             };
 
             let fns = self.device.fns();
-            let r = check_errors(fns.v1_0.wait_for_fences(
+            let r = check_errors((fns.v1_0.wait_for_fences)(
                 self.device.internal_object(),
                 1,
                 &self.handle,
@@ -223,7 +227,7 @@ impl Fence {
         let r = if let Some(device) = device {
             unsafe {
                 let fns = device.fns();
-                check_errors(fns.v1_0.wait_for_fences(
+                check_errors((fns.v1_0.wait_for_fences)(
                     device.internal_object(),
                     fences.len() as u32,
                     fences.as_ptr(),
@@ -249,10 +253,11 @@ impl Fence {
     pub fn reset(&mut self) -> Result<(), OomError> {
         unsafe {
             let fns = self.device.fns();
-            check_errors(
-                fns.v1_0
-                    .reset_fences(self.device.internal_object(), 1, &self.handle),
-            )?;
+            check_errors((fns.v1_0.reset_fences)(
+                self.device.internal_object(),
+                1,
+                &self.handle,
+            ))?;
             self.signaled.store(false, Ordering::Relaxed);
             Ok(())
         }
@@ -291,7 +296,7 @@ impl Fence {
         if let Some(device) = device {
             unsafe {
                 let fns = device.fns();
-                check_errors(fns.v1_0.reset_fences(
+                check_errors((fns.v1_0.reset_fences)(
                     device.internal_object(),
                     fences.len() as u32,
                     fences.as_ptr(),
@@ -311,8 +316,7 @@ impl Drop for Fence {
                 self.device.fence_pool().lock().unwrap().push(raw_fence);
             } else {
                 let fns = self.device.fns();
-                fns.v1_0
-                    .destroy_fence(self.device.internal_object(), self.handle, ptr::null());
+                (fns.v1_0.destroy_fence)(self.device.internal_object(), self.handle, ptr::null());
             }
         }
     }

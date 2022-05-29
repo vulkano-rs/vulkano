@@ -119,7 +119,7 @@ impl PipelineCache {
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(fns.v1_0.create_pipeline_cache(
+            check_errors((fns.v1_0.create_pipeline_cache)(
                 device.internal_object(),
                 &infos,
                 ptr::null(),
@@ -159,7 +159,7 @@ impl PipelineCache {
                 })
                 .collect::<Vec<_>>();
 
-            check_errors(fns.v1_0.merge_pipeline_caches(
+            check_errors((fns.v1_0.merge_pipeline_caches)(
                 self.device.internal_object(),
                 self.cache,
                 pipelines.len() as u32,
@@ -203,7 +203,7 @@ impl PipelineCache {
             let fns = self.device.fns();
 
             let mut num = 0;
-            check_errors(fns.v1_0.get_pipeline_cache_data(
+            check_errors((fns.v1_0.get_pipeline_cache_data)(
                 self.device.internal_object(),
                 self.cache,
                 &mut num,
@@ -211,7 +211,7 @@ impl PipelineCache {
             ))?;
 
             let mut data: Vec<u8> = Vec::with_capacity(num as usize);
-            check_errors(fns.v1_0.get_pipeline_cache_data(
+            check_errors((fns.v1_0.get_pipeline_cache_data)(
                 self.device.internal_object(),
                 self.cache,
                 &mut num,
@@ -238,8 +238,11 @@ impl Drop for PipelineCache {
     fn drop(&mut self) {
         unsafe {
             let fns = self.device.fns();
-            fns.v1_0
-                .destroy_pipeline_cache(self.device.internal_object(), self.cache, ptr::null());
+            (fns.v1_0.destroy_pipeline_cache)(
+                self.device.internal_object(),
+                self.cache,
+                ptr::null(),
+            );
         }
     }
 }

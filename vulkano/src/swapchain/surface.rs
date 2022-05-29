@@ -115,7 +115,7 @@ impl<W> Surface<W> {
         let handle = unsafe {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors(fns.khr_display.create_display_plane_surface_khr(
+            check_errors((fns.khr_display.create_display_plane_surface_khr)(
                 instance.internal_object(),
                 &create_info,
                 ptr::null(),
@@ -161,7 +161,7 @@ impl<W> Surface<W> {
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors(fns.khr_android_surface.create_android_surface_khr(
+            check_errors((fns.khr_android_surface.create_android_surface_khr)(
                 instance.internal_object(),
                 &create_info,
                 ptr::null(),
@@ -208,7 +208,7 @@ impl<W> Surface<W> {
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors(fns.mvk_ios_surface.create_ios_surface_mvk(
+            check_errors((fns.mvk_ios_surface.create_ios_surface_mvk)(
                 instance.internal_object(),
                 &create_info,
                 ptr::null(),
@@ -255,7 +255,7 @@ impl<W> Surface<W> {
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors(fns.mvk_macos_surface.create_mac_os_surface_mvk(
+            check_errors((fns.mvk_macos_surface.create_mac_os_surface_mvk)(
                 instance.internal_object(),
                 &create_info,
                 ptr::null(),
@@ -301,7 +301,7 @@ impl<W> Surface<W> {
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors(fns.ext_metal_surface.create_metal_surface_ext(
+            check_errors((fns.ext_metal_surface.create_metal_surface_ext)(
                 instance.internal_object(),
                 &create_info,
                 ptr::null(),
@@ -347,7 +347,7 @@ impl<W> Surface<W> {
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors(fns.nn_vi_surface.create_vi_surface_nn(
+            check_errors((fns.nn_vi_surface.create_vi_surface_nn)(
                 instance.internal_object(),
                 &create_info,
                 ptr::null(),
@@ -397,7 +397,7 @@ impl<W> Surface<W> {
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors(fns.khr_wayland_surface.create_wayland_surface_khr(
+            check_errors((fns.khr_wayland_surface.create_wayland_surface_khr)(
                 instance.internal_object(),
                 &create_info,
                 ptr::null(),
@@ -447,7 +447,7 @@ impl<W> Surface<W> {
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors(fns.khr_win32_surface.create_win32_surface_khr(
+            check_errors((fns.khr_win32_surface.create_win32_surface_khr)(
                 instance.internal_object(),
                 &create_info,
                 ptr::null(),
@@ -497,7 +497,7 @@ impl<W> Surface<W> {
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors(fns.khr_xcb_surface.create_xcb_surface_khr(
+            check_errors((fns.khr_xcb_surface.create_xcb_surface_khr)(
                 instance.internal_object(),
                 &create_info,
                 ptr::null(),
@@ -547,7 +547,7 @@ impl<W> Surface<W> {
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors(fns.khr_xlib_surface.create_xlib_surface_khr(
+            check_errors((fns.khr_xlib_surface.create_xlib_surface_khr)(
                 instance.internal_object(),
                 &create_info,
                 ptr::null(),
@@ -590,7 +590,7 @@ impl<W> Drop for Surface<W> {
     fn drop(&mut self) {
         unsafe {
             let fns = self.instance.fns();
-            fns.khr_surface.destroy_surface_khr(
+            (fns.khr_surface.destroy_surface_khr)(
                 self.instance.internal_object(),
                 self.handle,
                 ptr::null(),

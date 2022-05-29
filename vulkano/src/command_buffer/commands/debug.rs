@@ -242,8 +242,7 @@ impl UnsafeCommandBufferBuilder {
         };
 
         let fns = self.device.instance().fns();
-        fns.ext_debug_utils
-            .cmd_begin_debug_utils_label_ext(self.handle, &label_info);
+        (fns.ext_debug_utils.cmd_begin_debug_utils_label_ext)(self.handle, &label_info);
     }
 
     /// Calls `vkCmdEndDebugUtilsLabelEXT` on the builder.
@@ -254,8 +253,7 @@ impl UnsafeCommandBufferBuilder {
     #[inline]
     pub unsafe fn end_debug_utils_label(&mut self) {
         let fns = self.device.instance().fns();
-        fns.ext_debug_utils
-            .cmd_end_debug_utils_label_ext(self.handle);
+        (fns.ext_debug_utils.cmd_end_debug_utils_label_ext)(self.handle);
     }
 
     /// Calls `vkCmdInsertDebugUtilsLabelEXT` on the builder.
@@ -279,8 +277,7 @@ impl UnsafeCommandBufferBuilder {
         };
 
         let fns = self.device.instance().fns();
-        fns.ext_debug_utils
-            .cmd_insert_debug_utils_label_ext(self.handle, &label_info);
+        (fns.ext_debug_utils.cmd_insert_debug_utils_label_ext)(self.handle, &label_info);
     }
 }
 

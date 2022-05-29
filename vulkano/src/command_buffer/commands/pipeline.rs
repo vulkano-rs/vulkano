@@ -2239,7 +2239,7 @@ impl UnsafeCommandBufferBuilder {
         });
 
         let fns = self.device.fns();
-        fns.v1_0.cmd_dispatch(
+        (fns.v1_0.cmd_dispatch)(
             self.handle,
             group_counts[0],
             group_counts[1],
@@ -2257,8 +2257,7 @@ impl UnsafeCommandBufferBuilder {
         debug_assert!(inner.buffer.usage().indirect_buffer);
         debug_assert_eq!(inner.offset % 4, 0);
 
-        fns.v1_0
-            .cmd_dispatch_indirect(self.handle, inner.buffer.internal_object(), inner.offset);
+        (fns.v1_0.cmd_dispatch_indirect)(self.handle, inner.buffer.internal_object(), inner.offset);
     }
 
     /// Calls `vkCmdDraw` on the builder.
@@ -2271,7 +2270,7 @@ impl UnsafeCommandBufferBuilder {
         first_instance: u32,
     ) {
         let fns = self.device.fns();
-        fns.v1_0.cmd_draw(
+        (fns.v1_0.cmd_draw)(
             self.handle,
             vertex_count,
             instance_count,
@@ -2291,7 +2290,7 @@ impl UnsafeCommandBufferBuilder {
         first_instance: u32,
     ) {
         let fns = self.device.fns();
-        fns.v1_0.cmd_draw_indexed(
+        (fns.v1_0.cmd_draw_indexed)(
             self.handle,
             index_count,
             instance_count,
@@ -2321,7 +2320,7 @@ impl UnsafeCommandBufferBuilder {
         debug_assert!(inner.offset < inner.buffer.size());
         debug_assert!(inner.buffer.usage().indirect_buffer);
 
-        fns.v1_0.cmd_draw_indirect(
+        (fns.v1_0.cmd_draw_indirect)(
             self.handle,
             inner.buffer.internal_object(),
             inner.offset,
@@ -2344,7 +2343,7 @@ impl UnsafeCommandBufferBuilder {
         debug_assert!(inner.offset < inner.buffer.size());
         debug_assert!(inner.buffer.usage().indirect_buffer);
 
-        fns.v1_0.cmd_draw_indexed_indirect(
+        (fns.v1_0.cmd_draw_indexed_indirect)(
             self.handle,
             inner.buffer.internal_object(),
             inner.offset,

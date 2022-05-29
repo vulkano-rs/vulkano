@@ -170,7 +170,7 @@ use cocoa::{
     base::id as cocoa_id,
 };
 #[cfg(target_os = "macos")]
-use metal::CoreAnimationLayer;
+use metal::MetalLayer;
 #[cfg(target_os = "macos")]
 use objc::runtime::YES;
 #[cfg(target_os = "macos")]
@@ -183,7 +183,7 @@ unsafe fn set_ca_metal_layer_to_winit<W: SafeBorrow<Window>>(win: W) {
     use winit::platform::macos::WindowExtMacOS;
 
     let wnd: cocoa_id = mem::transmute(win.borrow().ns_window());
-    let layer = CoreAnimationLayer::new();
+    let layer = MetalLayer::new();
 
     layer.set_edge_antialiasing_mask(0);
     layer.set_presents_with_transaction(false);

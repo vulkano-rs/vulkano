@@ -61,14 +61,14 @@ impl InstanceExtensions {
 
         let properties: Vec<ash::vk::ExtensionProperties> = unsafe {
             let mut num = 0;
-            check_errors(fns.v1_0.enumerate_instance_extension_properties(
+            check_errors((fns.v1_0.enumerate_instance_extension_properties)(
                 ptr::null(),
                 &mut num,
                 ptr::null_mut(),
             ))?;
 
             let mut properties = Vec::with_capacity(num as usize);
-            check_errors(fns.v1_0.enumerate_instance_extension_properties(
+            check_errors((fns.v1_0.enumerate_instance_extension_properties)(
                 ptr::null(),
                 &mut num,
                 properties.as_mut_ptr(),

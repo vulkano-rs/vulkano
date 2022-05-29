@@ -56,6 +56,7 @@ branch of the member gitlab server.
         <tag name="GOOGLE"      author="Google LLC"                    contact="Jesse Hall @critsec"/>
         <tag name="QCOM"        author="Qualcomm Technologies, Inc."   contact="Jeff Leger @jackohounhd"/>
         <tag name="LUNARG"      author="LunarG, Inc."                  contact="Karen Ghavam @karenghavam-lunarg"/>
+        <tag name="NZXT"        author="NZXT Inc."                     contact="Jacob Kiesel @xaeroxe"/>
         <tag name="SAMSUNG"     author="Samsung Electronics Co., Ltd." contact="Alon Or-bach @alonorbach"/>
         <tag name="SEC"         author="Samsung Electronics Co., Ltd." contact="Alon Or-bach @alonorbach"/>
         <tag name="TIZEN"       author="Samsung Electronics Co., Ltd." contact="Alon Or-bach @alonorbach"/>
@@ -72,6 +73,7 @@ branch of the member gitlab server.
         <tag name="QNX"         author="BlackBerry Limited"            contact="Mike Gorchak @mgorchak-blackberry"/>
         <tag name="JUICE"       author="Juice Technologies, Inc."      contact="David McCloskey @damcclos, Dean Beeler @canadacow"/>
         <tag name="FB"          author="Facebook, Inc"                 contact="Artem Bolgar @artyom17"/>
+        <tag name="RASTERGRID"  author="RasterGrid Kft."               contact="Daniel Rakos @aqnuep1"/>
     </tags>
 
     <types comment="Vulkan type definitions">
@@ -157,7 +159,7 @@ branch of the member gitlab server.
         <type category="define" requires="VK_MAKE_API_VERSION">// Vulkan 1.3 version number
 #define <name>VK_API_VERSION_1_3</name> <type>VK_MAKE_API_VERSION</type>(0, 1, 3, 0)// Patch version should always be set to 0</type>
         <type category="define">// Version of this file
-#define <name>VK_HEADER_VERSION</name> 206</type>
+#define <name>VK_HEADER_VERSION</name> 209</type>
         <type category="define" requires="VK_HEADER_VERSION">// Complete version of this file
 #define <name>VK_HEADER_VERSION_COMPLETE</name> <type>VK_MAKE_API_VERSION</type>(0, 1, 3, VK_HEADER_VERSION)</type>
 
@@ -247,7 +249,7 @@ typedef void <name>CAMetalLayer</name>;
         <type requires="VkPipelineShaderStageCreateFlagBits" category="bitmask">typedef <type>VkFlags</type> <name>VkPipelineShaderStageCreateFlags</name>;</type>
         <type requires="VkDescriptorSetLayoutCreateFlagBits" category="bitmask">typedef <type>VkFlags</type> <name>VkDescriptorSetLayoutCreateFlags</name>;</type>
         <type                                             category="bitmask">typedef <type>VkFlags</type> <name>VkBufferViewCreateFlags</name>;</type>
-        <type                                             category="bitmask">typedef <type>VkFlags</type> <name>VkInstanceCreateFlags</name>;</type>
+        <type requires="VkInstanceCreateFlagBits"         category="bitmask">typedef <type>VkFlags</type> <name>VkInstanceCreateFlags</name>;</type>
         <type                                             category="bitmask">typedef <type>VkFlags</type> <name>VkDeviceCreateFlags</name>;</type>
         <type requires="VkDeviceQueueCreateFlagBits"      category="bitmask">typedef <type>VkFlags</type> <name>VkDeviceQueueCreateFlags</name>;</type>
         <type requires="VkQueueFlagBits"                  category="bitmask">typedef <type>VkFlags</type> <name>VkQueueFlags</name>;</type>
@@ -407,14 +409,11 @@ typedef void <name>CAMetalLayer</name>;
         <type requires="VkVideoCodingControlFlagBitsKHR"            category="bitmask">typedef <type>VkFlags</type> <name>VkVideoCodingControlFlagsKHR</name>;</type>
 
             <comment>Video Decode Core extension</comment>
+        <type requires="VkVideoDecodeCapabilityFlagBitsKHR"         category="bitmask">typedef <type>VkFlags</type> <name>VkVideoDecodeCapabilityFlagsKHR</name>;</type>
         <type requires="VkVideoDecodeFlagBitsKHR"                   category="bitmask">typedef <type>VkFlags</type> <name>VkVideoDecodeFlagsKHR</name>;</type>
 
             <comment>Video Decode H.264 extension</comment>
         <type requires="VkVideoDecodeH264PictureLayoutFlagBitsEXT"  category="bitmask">typedef <type>VkFlags</type> <name>VkVideoDecodeH264PictureLayoutFlagsEXT</name>;</type>
-        <type                                                       category="bitmask">typedef <type>VkFlags</type> <name>VkVideoDecodeH264CreateFlagsEXT</name>;</type>
-
-            <comment>Video Decode H.265 extension</comment>
-        <type                                                       category="bitmask">typedef <type>VkFlags</type> <name>VkVideoDecodeH265CreateFlagsEXT</name>;</type>
 
             <comment>Video Encode Core extension</comment>
         <type requires="VkVideoEncodeFlagBitsKHR"                   category="bitmask">typedef <type>VkFlags</type> <name>VkVideoEncodeFlagsKHR</name>;</type>
@@ -428,14 +427,12 @@ typedef void <name>CAMetalLayer</name>;
         <type requires="VkVideoEncodeH264CapabilityFlagBitsEXT"     category="bitmask">typedef <type>VkFlags</type> <name>VkVideoEncodeH264CapabilityFlagsEXT</name>;</type>
         <type requires="VkVideoEncodeH264InputModeFlagBitsEXT"      category="bitmask">typedef <type>VkFlags</type> <name>VkVideoEncodeH264InputModeFlagsEXT</name>;</type>
         <type requires="VkVideoEncodeH264OutputModeFlagBitsEXT"     category="bitmask">typedef <type>VkFlags</type> <name>VkVideoEncodeH264OutputModeFlagsEXT</name>;</type>
-        <type requires="VkVideoEncodeH264CreateFlagBitsEXT"         category="bitmask">typedef <type>VkFlags</type> <name>VkVideoEncodeH264CreateFlagsEXT</name>;</type>
         <type requires="VkVideoEncodeH264RateControlStructureFlagBitsEXT"    category="bitmask">typedef <type>VkFlags</type> <name>VkVideoEncodeH264RateControlStructureFlagsEXT</name>;</type>
 
             <comment>Video Encode H.265 extension</comment>
         <type requires="VkVideoEncodeH265CapabilityFlagBitsEXT"     category="bitmask">typedef <type>VkFlags</type> <name>VkVideoEncodeH265CapabilityFlagsEXT</name>;</type>
         <type requires="VkVideoEncodeH265InputModeFlagBitsEXT"      category="bitmask">typedef <type>VkFlags</type> <name>VkVideoEncodeH265InputModeFlagsEXT</name>;</type>
         <type requires="VkVideoEncodeH265OutputModeFlagBitsEXT"     category="bitmask">typedef <type>VkFlags</type> <name>VkVideoEncodeH265OutputModeFlagsEXT</name>;</type>
-        <type                                                       category="bitmask">typedef <type>VkFlags</type> <name>VkVideoEncodeH265CreateFlagsEXT</name>;</type>
         <type requires="VkVideoEncodeH265RateControlStructureFlagBitsEXT"    category="bitmask">typedef <type>VkFlags</type> <name>VkVideoEncodeH265RateControlStructureFlagsEXT</name>;</type>
         <type requires="VkVideoEncodeH265CtbSizeFlagBitsEXT"        category="bitmask">typedef <type>VkFlags</type> <name>VkVideoEncodeH265CtbSizeFlagsEXT</name>;</type>
         <type requires="VkVideoEncodeH265TransformBlockSizeFlagBitsEXT"        category="bitmask">typedef <type>VkFlags</type> <name>VkVideoEncodeH265TransformBlockSizeFlagsEXT</name>;</type>
@@ -746,6 +743,7 @@ typedef void <name>CAMetalLayer</name>;
         <type name="VkQueryResultStatusKHR" category="enum"/>
 
             <comment>Video Decode extensions</comment>
+        <type name="VkVideoDecodeCapabilityFlagBitsKHR" category="enum"/>
         <type name="VkVideoDecodeFlagBitsKHR" category="enum"/>
 
             <comment>Video H.264 Decode extensions</comment>
@@ -763,7 +761,6 @@ typedef void <name>CAMetalLayer</name>;
         <type name="VkVideoEncodeH264CapabilityFlagBitsEXT"     category="enum"/>
         <type name="VkVideoEncodeH264InputModeFlagBitsEXT"      category="enum"/>
         <type name="VkVideoEncodeH264OutputModeFlagBitsEXT"     category="enum"/>
-        <type name="VkVideoEncodeH264CreateFlagBitsEXT"         category="enum"/>
         <type name="VkVideoEncodeH264RateControlStructureFlagBitsEXT" category="enum"/>
 
            <comment>Video H.265 Encode extensions</comment>
@@ -1744,7 +1741,7 @@ typedef void <name>CAMetalLayer</name>;
             <member limittype="bitmask" optional="true"><type>VkSampleCountFlags</type>     <name>framebufferDepthSampleCounts</name><comment>supported depth sample counts for a framebuffer</comment></member>
             <member limittype="bitmask" optional="true"><type>VkSampleCountFlags</type>     <name>framebufferStencilSampleCounts</name><comment>supported stencil sample counts for a framebuffer</comment></member>
             <member limittype="bitmask" optional="true"><type>VkSampleCountFlags</type>     <name>framebufferNoAttachmentsSampleCounts</name><comment>supported sample counts for a subpass which uses no attachments</comment></member>
-            <member limittype="bitmask"><type>uint32_t</type>               <name>maxColorAttachments</name><comment>max number of color attachments per subpass</comment></member>
+            <member limittype="max"><type>uint32_t</type>               <name>maxColorAttachments</name><comment>max number of color attachments per subpass</comment></member>
             <member limittype="bitmask" optional="true"><type>VkSampleCountFlags</type>     <name>sampledImageColorSampleCounts</name><comment>supported color sample counts for a non-integer sampled image</comment></member>
             <member limittype="bitmask" optional="true"><type>VkSampleCountFlags</type>     <name>sampledImageIntegerSampleCounts</name><comment>supported sample counts for an integer image</comment></member>
             <member limittype="bitmask" optional="true"><type>VkSampleCountFlags</type>     <name>sampledImageDepthSampleCounts</name><comment>supported depth sample counts for a sampled image</comment></member>
@@ -3044,7 +3041,7 @@ typedef void <name>CAMetalLayer</name>;
             <member values="VK_STRUCTURE_TYPE_DEVICE_IMAGE_MEMORY_REQUIREMENTS"><type>VkStructureType</type> <name>sType</name></member>
             <member optional="true">const <type>void</type>*                                                          <name>pNext</name></member>
             <member>const <type>VkImageCreateInfo</type>*                                                             <name>pCreateInfo</name></member>
-            <member><type>VkImageAspectFlagBits</type>                                                                <name>planeAspect</name></member>
+            <member optional="true"><type>VkImageAspectFlagBits</type>                                                <name>planeAspect</name></member>
         </type>
         <type category="struct" name="VkDeviceImageMemoryRequirementsKHR" alias="VkDeviceImageMemoryRequirements"/>
         <type category="struct" name="VkMemoryRequirements2" returnedonly="true">
@@ -4287,7 +4284,7 @@ typedef void <name>CAMetalLayer</name>;
             <member values="VK_STRUCTURE_TYPE_DRM_FORMAT_MODIFIER_PROPERTIES_LIST_EXT"><type>VkStructureType</type> <name>sType</name></member>
             <member optional="true"><type>void</type>* <name>pNext</name></member>
             <member optional="true"><type>uint32_t</type> <name>drmFormatModifierCount</name></member>
-            <member optional="true,false" len="drmFormatModifierCount"><type>VkDrmFormatModifierPropertiesEXT</type>* <name>pDrmFormatModifierProperties</name></member>
+            <member optional="true" len="drmFormatModifierCount"><type>VkDrmFormatModifierPropertiesEXT</type>* <name>pDrmFormatModifierProperties</name></member>
         </type>
         <type category="struct" name="VkDrmFormatModifierPropertiesEXT" returnedonly="true">
             <member><type>uint64_t</type> <name>drmFormatModifier</name></member>
@@ -5593,7 +5590,7 @@ typedef void <name>CAMetalLayer</name>;
         <type category="struct" name="VkPhysicalDeviceFragmentShadingRateEnumsPropertiesNV" structextends="VkPhysicalDeviceProperties2">
             <member values="VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADING_RATE_ENUMS_PROPERTIES_NV"><type>VkStructureType</type> <name>sType</name></member>
             <member optional="true"><type>void</type>*                              <name>pNext</name></member>
-            <member limittype="bitmask"><type>VkSampleCountFlagBits</type>              <name>maxFragmentShadingRateInvocationCount</name></member>
+            <member limittype="max"><type>VkSampleCountFlagBits</type>              <name>maxFragmentShadingRateInvocationCount</name></member>
         </type>
         <type category="struct" name="VkPipelineFragmentShadingRateEnumStateCreateInfoNV" structextends="VkGraphicsPipelineCreateInfo">
             <member values="VK_STRUCTURE_TYPE_PIPELINE_FRAGMENT_SHADING_RATE_ENUM_STATE_CREATE_INFO_NV"><type>VkStructureType</type> <name>sType</name></member>
@@ -5780,7 +5777,7 @@ typedef void <name>CAMetalLayer</name>;
             <member values="VK_STRUCTURE_TYPE_VIDEO_PROFILES_KHR"><type>VkStructureType</type><name>sType</name></member>
             <member optional="true"><type>void</type>*                              <name>pNext</name></member>
             <member><type>uint32_t</type>                           <name>profileCount</name></member>
-            <member>const <type>VkVideoProfileKHR</type>*           <name>pProfiles</name></member>
+            <member len="profileCount">const <type>VkVideoProfileKHR</type>*           <name>pProfiles</name></member>
         </type>
         <type category="struct" name="VkPhysicalDeviceVideoFormatInfoKHR" returnedonly="true">
             <member values="VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VIDEO_FORMAT_INFO_KHR"><type>VkStructureType</type><name>sType</name></member>
@@ -5803,7 +5800,7 @@ typedef void <name>CAMetalLayer</name>;
         </type>
         <type category="struct" name="VkVideoCapabilitiesKHR" returnedonly="true">
             <member values="VK_STRUCTURE_TYPE_VIDEO_CAPABILITIES_KHR"><type>VkStructureType</type><name>sType</name></member>
-            <member optional="true"><type>void</type>*                            <name>pNext</name></member>
+            <member optional="true"><type>void</type>*            <name>pNext</name></member>
             <member><type>VkVideoCapabilityFlagsKHR</type>        <name>capabilityFlags</name></member>
             <member><type>VkDeviceSize</type>                     <name>minBitstreamBufferOffsetAlignment</name></member>
             <member><type>VkDeviceSize</type>                     <name>minBitstreamBufferSizeAlignment</name></member>
@@ -5812,6 +5809,7 @@ typedef void <name>CAMetalLayer</name>;
             <member><type>VkExtent2D</type>                       <name>maxExtent</name></member>
             <member><type>uint32_t</type>                         <name>maxReferencePicturesSlotsCount</name></member>
             <member><type>uint32_t</type>                         <name>maxReferencePicturesActiveCount</name></member>
+            <member><type>VkExtensionProperties</type>            <name>stdHeaderVersion</name></member>
         </type>
         <type category="struct" name="VkVideoGetMemoryPropertiesKHR">
             <member values="VK_STRUCTURE_TYPE_VIDEO_GET_MEMORY_PROPERTIES_KHR"><type>VkStructureType</type><name>sType</name></member>
@@ -5840,6 +5838,11 @@ typedef void <name>CAMetalLayer</name>;
             <member optional="true">const <type>void</type>*        <name>pNext</name></member>
             <member><type>int8_t</type>             <name>slotIndex</name><comment>The reference slot index</comment></member>
             <member>const <type>VkVideoPictureResourceKHR</type>* <name>pPictureResource</name><comment>The reference picture resource</comment></member>
+        </type>
+        <type category="struct" name="VkVideoDecodeCapabilitiesKHR" returnedonly="true" structextends="VkVideoCapabilitiesKHR">
+            <member values="VK_STRUCTURE_TYPE_VIDEO_DECODE_CAPABILITIES_KHR"><type>VkStructureType</type><name>sType</name></member>
+            <member optional="true"><type>void</type>*                                 <name>pNext</name></member>
+            <member noautovalidity="true"><type>VkVideoDecodeCapabilityFlagsKHR</type> <name>flags</name></member>
         </type>
         <type category="struct" name="VkVideoDecodeInfoKHR">
             <member values="VK_STRUCTURE_TYPE_VIDEO_DECODE_INFO_KHR"><type>VkStructureType</type><name>sType</name></member>
@@ -5889,18 +5892,11 @@ typedef void <name>CAMetalLayer</name>;
             <member><type>StdVideoH264ProfileIdc</type>                                       <name>stdProfileIdc</name></member>
             <member noautovalidity="true"><type>VkVideoDecodeH264PictureLayoutFlagsEXT</type> <name>pictureLayout</name></member>
         </type>
-        <type category="struct" name="VkVideoDecodeH264CapabilitiesEXT" returnedonly="true" structextends="VkVideoCapabilitiesKHR">
+        <type category="struct" name="VkVideoDecodeH264CapabilitiesEXT" returnedonly="true" structextends="VkVideoDecodeCapabilitiesKHR">
             <member values="VK_STRUCTURE_TYPE_VIDEO_DECODE_H264_CAPABILITIES_EXT"><type>VkStructureType</type><name>sType</name></member>
             <member optional="true"><type>void</type>*                            <name>pNext</name></member>
             <member><type>uint32_t</type>                         <name>maxLevel</name></member>
             <member><type>VkOffset2D</type>                       <name>fieldOffsetGranularity</name></member>
-            <member><type>VkExtensionProperties</type>            <name>stdExtensionVersion</name></member>
-        </type>
-        <type category="struct" name="VkVideoDecodeH264SessionCreateInfoEXT" structextends="VkVideoSessionCreateInfoKHR">
-            <member values="VK_STRUCTURE_TYPE_VIDEO_DECODE_H264_SESSION_CREATE_INFO_EXT"><type>VkStructureType</type><name>sType</name></member>
-            <member optional="true">const <type>void</type>*                      <name>pNext</name></member>
-            <member><type>VkVideoDecodeH264CreateFlagsEXT</type>  <name>flags</name></member>
-            <member>const <type>VkExtensionProperties</type>*     <name>pStdExtensionVersion</name></member>
         </type>
         <type requires="vk_video/vulkan_video_codec_h264std.h" name="StdVideoH264SequenceParameterSet"/>
         <type requires="vk_video/vulkan_video_codec_h264std.h" name="StdVideoH264PictureParameterSet"/>
@@ -5965,21 +5961,16 @@ typedef void <name>CAMetalLayer</name>;
             <member optional="true">const <type>void</type>*                    <name>pNext</name></member>
             <member><type>StdVideoH265ProfileIdc</type>         <name>stdProfileIdc</name></member>
         </type>
-        <type category="struct" name="VkVideoDecodeH265CapabilitiesEXT" returnedonly="true" structextends="VkVideoCapabilitiesKHR">
+        <type category="struct" name="VkVideoDecodeH265CapabilitiesEXT" returnedonly="true" structextends="VkVideoDecodeCapabilitiesKHR">
             <member values="VK_STRUCTURE_TYPE_VIDEO_DECODE_H265_CAPABILITIES_EXT"><type>VkStructureType</type><name>sType</name></member>
             <member optional="true"><type>void</type>*                            <name>pNext</name></member>
             <member><type>uint32_t</type>                         <name>maxLevel</name></member>
-            <member><type>VkExtensionProperties</type>            <name>stdExtensionVersion</name></member>
-        </type>
-        <type category="struct" name="VkVideoDecodeH265SessionCreateInfoEXT" structextends="VkVideoSessionCreateInfoKHR">
-            <member values="VK_STRUCTURE_TYPE_VIDEO_DECODE_H265_SESSION_CREATE_INFO_EXT"><type>VkStructureType</type><name>sType</name></member>
-            <member optional="true">const <type>void</type>*                      <name>pNext</name></member>
-            <member><type>VkVideoDecodeH265CreateFlagsEXT</type>  <name>flags</name></member>
-            <member>const <type>VkExtensionProperties</type>*     <name>pStdExtensionVersion</name></member>
         </type>
         <type category="struct" name="VkVideoDecodeH265SessionParametersAddInfoEXT" structextends="VkVideoSessionParametersUpdateInfoKHR">
             <member values="VK_STRUCTURE_TYPE_VIDEO_DECODE_H265_SESSION_PARAMETERS_ADD_INFO_EXT"><type>VkStructureType</type><name>sType</name></member>
-            <member optional="true">const <type>void</type>*                                                               <name>pNext</name></member>
+            <member optional="true">const <type>void</type>*                                               <name>pNext</name></member>
+            <member><type>uint32_t</type>                                                                  <name>vpsStdCount</name></member>
+            <member len="vpsStdCount" optional="true">const <type>StdVideoH265VideoParameterSet</type>*    <name>pVpsStd</name></member>
             <member><type>uint32_t</type>                                                                  <name>spsStdCount</name></member>
             <member len="spsStdCount" optional="true">const <type>StdVideoH265SequenceParameterSet</type>* <name>pSpsStd</name></member>
             <member><type>uint32_t</type>                                                                  <name>ppsStdCount</name></member>
@@ -5987,7 +5978,8 @@ typedef void <name>CAMetalLayer</name>;
         </type>
         <type category="struct" name="VkVideoDecodeH265SessionParametersCreateInfoEXT" structextends="VkVideoSessionParametersCreateInfoKHR">
             <member values="VK_STRUCTURE_TYPE_VIDEO_DECODE_H265_SESSION_PARAMETERS_CREATE_INFO_EXT"><type>VkStructureType</type><name>sType</name></member>
-            <member optional="true">const <type>void</type>*                                                         <name>pNext</name></member>
+            <member optional="true">const <type>void</type>*                                         <name>pNext</name></member>
+            <member><type>uint32_t</type>                                                            <name>maxVpsStdCount</name></member>
             <member><type>uint32_t</type>                                                            <name>maxSpsStdCount</name></member>
             <member><type>uint32_t</type>                                                            <name>maxPpsStdCount</name></member>
             <member optional="true">const <type>VkVideoDecodeH265SessionParametersAddInfoEXT</type>* <name>pParametersAddInfo</name></member>
@@ -6006,7 +5998,7 @@ typedef void <name>CAMetalLayer</name>;
         </type>
         <type category="struct" name="VkVideoSessionCreateInfoKHR">
             <member values="VK_STRUCTURE_TYPE_VIDEO_SESSION_CREATE_INFO_KHR"><type>VkStructureType</type><name>sType</name></member>
-            <member optional="true">const <type>void</type>*                                   <name>pNext</name></member>
+            <member optional="true">const <type>void</type>*                   <name>pNext</name></member>
             <member><type>uint32_t</type>                                      <name>queueFamilyIndex</name></member>
             <member optional="true"><type>VkVideoSessionCreateFlagsKHR</type>  <name>flags</name></member>
             <member>const <type>VkVideoProfileKHR</type>*                      <name>pVideoProfile</name></member>
@@ -6015,6 +6007,7 @@ typedef void <name>CAMetalLayer</name>;
             <member><type>VkFormat</type>                                      <name>referencePicturesFormat</name></member>
             <member><type>uint32_t</type>                                      <name>maxReferencePicturesSlotsCount</name></member>
             <member><type>uint32_t</type>                                      <name>maxReferencePicturesActiveCount</name></member>
+            <member>const <type>VkExtensionProperties</type>*                  <name>pStdHeaderVersion</name></member>
         </type>
         <type category="struct" name="VkVideoSessionParametersCreateInfoKHR">
             <member values="VK_STRUCTURE_TYPE_VIDEO_SESSION_PARAMETERS_CREATE_INFO_KHR"><type>VkStructureType</type><name>sType</name></member>
@@ -6103,14 +6096,6 @@ typedef void <name>CAMetalLayer</name>;
             <member><type>uint32_t</type>                              <name>maxBitsPerMbDenom</name></member>
             <member><type>uint32_t</type>                              <name>log2MaxMvLengthHorizontal</name></member>
             <member><type>uint32_t</type>                              <name>log2MaxMvLengthVertical</name></member>
-            <member><type>VkExtensionProperties</type>                 <name>stdExtensionVersion</name></member>
-        </type>
-        <type category="struct" name="VkVideoEncodeH264SessionCreateInfoEXT" structextends="VkVideoSessionCreateInfoKHR">
-            <member values="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H264_SESSION_CREATE_INFO_EXT"><type>VkStructureType</type><name>sType</name></member>
-            <member optional="true">const <type>void</type>*                     <name>pNext</name></member>
-            <member><type>VkVideoEncodeH264CreateFlagsEXT</type> <name>flags</name></member>
-            <member><type>VkExtent2D</type>                      <name>maxPictureSizeInMbs</name></member>
-            <member>const <type>VkExtensionProperties</type>*    <name>pStdExtensionVersion</name></member>
         </type>
         <type category="include" name="vk_video/vulkan_video_codec_h264std_encode.h">#include "vk_video/vulkan_video_codec_h264std_encode.h"</type>
         <type requires="vk_video/vulkan_video_codec_h264std_encode.h" name="StdVideoEncodeH264SliceHeader"/>
@@ -6236,13 +6221,6 @@ typedef void <name>CAMetalLayer</name>;
             <member><type>uint8_t</type>                               <name>maxDiffCuQpDeltaDepth</name></member>
             <member><type>uint8_t</type>                               <name>minMaxNumMergeCand</name></member>
             <member><type>uint8_t</type>                               <name>maxMaxNumMergeCand</name></member>
-            <member><type>VkExtensionProperties</type>                 <name>stdExtensionVersion</name></member>
-        </type>
-        <type category="struct" name="VkVideoEncodeH265SessionCreateInfoEXT" structextends="VkVideoSessionCreateInfoKHR">
-            <member values="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_SESSION_CREATE_INFO_EXT"><type>VkStructureType</type><name>sType</name></member>
-            <member optional="true">const <type>void</type>*      <name>pNext</name></member>
-            <member><type>VkVideoEncodeH265CreateFlagsEXT</type>  <name>flags</name></member>
-            <member>const <type>VkExtensionProperties</type>*     <name>pStdExtensionVersion</name></member>
         </type>
         <type category="include" name="vk_video/vulkan_video_codec_h265std_encode.h">#include "vk_video/vulkan_video_codec_h265std_encode.h"</type>
         <type requires="vk_video/vulkan_video_codec_h265std_encode.h" name="StdVideoEncodeH265PictureInfoFlags"/>
@@ -6628,7 +6606,7 @@ typedef void <name>CAMetalLayer</name>;
             <member values="VK_STRUCTURE_TYPE_DRM_FORMAT_MODIFIER_PROPERTIES_LIST_2_EXT"><type>VkStructureType</type> <name>sType</name></member>
             <member optional="true"><type>void</type>* <name>pNext</name></member>
             <member optional="true"><type>uint32_t</type> <name>drmFormatModifierCount</name></member>
-            <member optional="true,false" len="drmFormatModifierCount"><type>VkDrmFormatModifierProperties2EXT</type>* <name>pDrmFormatModifierProperties</name></member>
+            <member optional="true" len="drmFormatModifierCount"><type>VkDrmFormatModifierProperties2EXT</type>* <name>pDrmFormatModifierProperties</name></member>
         </type>
         <type category="struct" name="VkDrmFormatModifierProperties2EXT" returnedonly="true">
             <member><type>uint64_t</type> <name>drmFormatModifier</name></member>
@@ -6749,6 +6727,23 @@ typedef void <name>CAMetalLayer</name>;
             <member values="VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_LINEAR_COLOR_ATTACHMENT_FEATURES_NV"><type>VkStructureType</type> <name>sType</name></member>
             <member optional="true" noautovalidity="true"><type>void</type>*     <name>pNext</name></member>
             <member><type>VkBool32</type>                                        <name>linearColorAttachment</name></member>
+        </type>
+        <type category="struct" name="VkPhysicalDeviceDescriptorSetHostMappingFeaturesVALVE" structextends="VkPhysicalDeviceFeatures2,VkDeviceCreateInfo">
+            <member values="VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_SET_HOST_MAPPING_FEATURES_VALVE"><type>VkStructureType</type> <name>sType</name></member>
+            <member optional="true" noautovalidity="true"><type>void</type>*                                                           <name>pNext</name></member>
+            <member><type>VkBool32</type>                                                                                              <name>descriptorSetHostMapping</name></member>
+        </type>
+        <type category="struct" name="VkDescriptorSetBindingReferenceVALVE">
+            <member values="VK_STRUCTURE_TYPE_DESCRIPTOR_SET_BINDING_REFERENCE_VALVE"><type>VkStructureType</type> <name>sType</name></member>
+            <member optional="true">const <type>void</type>*                                                       <name>pNext</name></member>
+            <member><type>VkDescriptorSetLayout</type>                                                             <name>descriptorSetLayout</name></member>
+            <member><type>uint32_t</type>                                                                          <name>binding</name></member>
+        </type>
+        <type category="struct" name="VkDescriptorSetLayoutHostMappingInfoVALVE">
+            <member values="VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_HOST_MAPPING_INFO_VALVE"><type>VkStructureType</type> <name>sType</name></member>
+            <member optional="true"><type>void</type>*                                                                    <name>pNext</name></member>
+            <member><type>size_t</type>                                                                                   <name>descriptorOffset</name></member>
+            <member><type>uint32_t</type>                                                                                 <name>descriptorSize</name></member>
         </type>
     </types>
     <comment>Vulkan enumerant (token) definitions</comment>
@@ -8353,6 +8348,11 @@ typedef void <name>CAMetalLayer</name>;
         <enum value="0"     name="VK_QUERY_RESULT_STATUS_NOT_READY_KHR"/>
         <enum value="1"     name="VK_QUERY_RESULT_STATUS_COMPLETE_KHR"/>
     </enums>
+    <enums name="VkVideoDecodeCapabilityFlagBitsKHR" type="bitmask">
+        <enum value="0"     name="VK_VIDEO_DECODE_CAPABILITY_DEFAULT_KHR"/>
+        <enum bitpos="0"    name="VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_COINCIDE_BIT_KHR"/>
+        <enum bitpos="1"    name="VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_DISTINCT_BIT_KHR"/>
+    </enums>
     <enums name="VkVideoDecodeFlagBitsKHR" type="bitmask">
         <enum value="0"     name="VK_VIDEO_DECODE_DEFAULT_KHR"/>
         <enum bitpos="0"    name="VK_VIDEO_DECODE_RESERVED_0_BIT_KHR"/>
@@ -8408,10 +8408,6 @@ typedef void <name>CAMetalLayer</name>;
         <enum bitpos="0"      name="VK_VIDEO_ENCODE_H264_OUTPUT_MODE_FRAME_BIT_EXT"/>
         <enum bitpos="1"      name="VK_VIDEO_ENCODE_H264_OUTPUT_MODE_SLICE_BIT_EXT"/>
         <enum bitpos="2"      name="VK_VIDEO_ENCODE_H264_OUTPUT_MODE_NON_VCL_BIT_EXT"/>
-    </enums>
-    <enums name="VkVideoEncodeH264CreateFlagBitsEXT" type="bitmask">
-        <enum value="0"     name="VK_VIDEO_ENCODE_H264_CREATE_DEFAULT_EXT"/>
-        <enum bitpos="0"    name="VK_VIDEO_ENCODE_H264_CREATE_RESERVED_0_BIT_EXT"/>
     </enums>
     <enums name="VkVideoEncodeH264RateControlStructureFlagBitsEXT" type="bitmask">
         <enum value="0"       name="VK_VIDEO_ENCODE_H264_RATE_CONTROL_STRUCTURE_UNKNOWN_EXT"/>
@@ -8542,6 +8538,8 @@ typedef void <name>CAMetalLayer</name>;
         <enum bitpos="1"      name="VK_VIDEO_ENCODE_H265_TRANSFORM_BLOCK_SIZE_8_BIT_EXT"/>
         <enum bitpos="2"      name="VK_VIDEO_ENCODE_H265_TRANSFORM_BLOCK_SIZE_16_BIT_EXT"/>
         <enum bitpos="3"      name="VK_VIDEO_ENCODE_H265_TRANSFORM_BLOCK_SIZE_32_BIT_EXT"/>
+    </enums>
+    <enums name="VkInstanceCreateFlagBits" type="bitmask">
     </enums>
 
     <commands comment="Vulkan command definitions">
@@ -11699,6 +11697,18 @@ typedef void <name>CAMetalLayer</name>;
             <param externsync="true"><type>VkCommandBuffer</type>                   <name>commandBuffer</name></param>
         </command>
         <command name="vkCmdEndRenderingKHR" alias="vkCmdEndRendering"/>
+        <command>
+            <proto><type>void</type> <name>vkGetDescriptorSetLayoutHostMappingInfoVALVE</name></proto>
+            <param><type>VkDevice</type> <name>device</name></param>
+            <param>const <type>VkDescriptorSetBindingReferenceVALVE</type>* <name>pBindingReference</name></param>
+            <param><type>VkDescriptorSetLayoutHostMappingInfoVALVE</type>* <name>pHostMapping</name></param>
+        </command>
+        <command>
+            <proto><type>void</type> <name>vkGetDescriptorSetHostMappingVALVE</name></proto>
+            <param><type>VkDevice</type> <name>device</name></param>
+            <param><type>VkDescriptorSet</type> <name>descriptorSet</name></param>
+            <param><type>void</type>** <name>ppData</name></param>
+        </command>
     </commands>
 
     <feature api="vulkan" name="VK_VERSION_1_0" number="1.0" comment="Vulkan core API interface definitions">
@@ -11783,7 +11793,8 @@ typedef void <name>CAMetalLayer</name>;
             <type name="VkImageUsageFlagBits"/>
             <type name="VkImageUsageFlags"/>
             <type name="VkInstance"/>
-            <type name="VkInstanceCreateFlags" comment="Will add VkInstanceCreateFlagBits when bits are defined in the future"/>
+            <type name="VkInstanceCreateFlags"/>
+            <type name="VkInstanceCreateFlagBits"/>
             <type name="VkInstanceCreateInfo"/>
             <type name="VkInternalAllocationType"/>
             <type name="VkMemoryHeap"/>
@@ -13302,7 +13313,7 @@ typedef void <name>CAMetalLayer</name>;
         </extension>
         <extension name="VK_KHR_video_queue" number="24" type="device" requires="VK_KHR_get_physical_device_properties2,VK_KHR_sampler_ycbcr_conversion" author="KHR" contact="Tony Zlatinski @tzlatinski" provisional="true" platform="provisional" supported="vulkan">
             <require>
-                <enum value="2"                                         name="VK_KHR_VIDEO_QUEUE_SPEC_VERSION"/>
+                <enum value="3"                                         name="VK_KHR_VIDEO_QUEUE_SPEC_VERSION"/>
                 <enum value="&quot;VK_KHR_video_queue&quot;"            name="VK_KHR_VIDEO_QUEUE_EXTENSION_NAME"/>
                 <enum offset="0" extends="VkStructureType"              name="VK_STRUCTURE_TYPE_VIDEO_PROFILE_KHR" protect="VK_ENABLE_BETA_EXTENSIONS"/>
                 <enum offset="1" extends="VkStructureType"              name="VK_STRUCTURE_TYPE_VIDEO_CAPABILITIES_KHR" protect="VK_ENABLE_BETA_EXTENSIONS"/>
@@ -13385,9 +13396,10 @@ typedef void <name>CAMetalLayer</name>;
         </extension>
         <extension name="VK_KHR_video_decode_queue" number="25" type="device" requires="VK_KHR_video_queue,VK_KHR_synchronization2" author="KHR" contact="jake.beju@amd.com" provisional="true" platform="provisional" supported="vulkan">
             <require>
-                <enum value="2"                                         name="VK_KHR_VIDEO_DECODE_QUEUE_SPEC_VERSION"/>
+                <enum value="3"                                         name="VK_KHR_VIDEO_DECODE_QUEUE_SPEC_VERSION"/>
                 <enum value="&quot;VK_KHR_video_decode_queue&quot;"     name="VK_KHR_VIDEO_DECODE_QUEUE_EXTENSION_NAME"/>
                 <enum offset="0" extends="VkStructureType"              name="VK_STRUCTURE_TYPE_VIDEO_DECODE_INFO_KHR" protect="VK_ENABLE_BETA_EXTENSIONS"/>
+                <enum offset="1" extends="VkStructureType"              name="VK_STRUCTURE_TYPE_VIDEO_DECODE_CAPABILITIES_KHR" protect="VK_ENABLE_BETA_EXTENSIONS"/>
                 <enum bitpos="5" extends="VkQueueFlagBits"              name="VK_QUEUE_VIDEO_DECODE_BIT_KHR" protect="VK_ENABLE_BETA_EXTENSIONS"/>
                 <enum bitpos="26" extends="VkPipelineStageFlagBits2"    name="VK_PIPELINE_STAGE_2_VIDEO_DECODE_BIT_KHR" protect="VK_ENABLE_BETA_EXTENSIONS"/>
                 <enum bitpos="35" extends="VkAccessFlagBits2"           name="VK_ACCESS_2_VIDEO_DECODE_READ_BIT_KHR" protect="VK_ENABLE_BETA_EXTENSIONS" />
@@ -13402,6 +13414,10 @@ typedef void <name>CAMetalLayer</name>;
                 <enum offset="0" extends="VkImageLayout"                name="VK_IMAGE_LAYOUT_VIDEO_DECODE_DST_KHR" protect="VK_ENABLE_BETA_EXTENSIONS"/>
                 <enum offset="1" extends="VkImageLayout"                name="VK_IMAGE_LAYOUT_VIDEO_DECODE_SRC_KHR" protect="VK_ENABLE_BETA_EXTENSIONS"/>
                 <enum offset="2" extends="VkImageLayout"                name="VK_IMAGE_LAYOUT_VIDEO_DECODE_DPB_KHR" protect="VK_ENABLE_BETA_EXTENSIONS"/>
+
+                <type name="VkVideoDecodeCapabilityFlagBitsKHR"/>
+                <type name="VkVideoDecodeCapabilityFlagsKHR"/>
+                <type name="VkVideoDecodeCapabilitiesKHR"/>
 
                 <type name="VkVideoDecodeFlagBitsKHR"/>
                 <type name="VkVideoDecodeFlagsKHR"/>
@@ -13552,20 +13568,19 @@ typedef void <name>CAMetalLayer</name>;
         </extension>
         <extension name="VK_EXT_video_encode_h264" number="39" type="device" requires="VK_KHR_video_encode_queue" author="KHR" contact="Ahmed Abdelkhalek @aabdelkh" provisional="true" platform="provisional" supported="vulkan">
             <require>
-                <enum value="5"                                                 name="VK_EXT_VIDEO_ENCODE_H264_SPEC_VERSION"/>
+                <enum value="6"                                                 name="VK_EXT_VIDEO_ENCODE_H264_SPEC_VERSION"/>
                 <enum value="&quot;VK_EXT_video_encode_h264&quot;"              name="VK_EXT_VIDEO_ENCODE_H264_EXTENSION_NAME"/>
                 <enum offset="0" extends="VkStructureType"                      name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H264_CAPABILITIES_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="1" extends="VkStructureType"                      name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H264_SESSION_CREATE_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="2" extends="VkStructureType"                      name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H264_SESSION_PARAMETERS_CREATE_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="3" extends="VkStructureType"                      name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H264_SESSION_PARAMETERS_ADD_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="4" extends="VkStructureType"                      name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H264_VCL_FRAME_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="5" extends="VkStructureType"                      name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H264_DPB_SLOT_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="6" extends="VkStructureType"                      name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H264_NALU_SLICE_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="7" extends="VkStructureType"                      name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H264_EMIT_PICTURE_PARAMETERS_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="8" extends="VkStructureType"                      name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H264_PROFILE_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="9" extends="VkStructureType"                      name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H264_RATE_CONTROL_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="10" extends="VkStructureType"                     name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H264_RATE_CONTROL_LAYER_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="11" extends="VkStructureType"                     name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H264_REFERENCE_LISTS_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
+                <enum offset="1" extends="VkStructureType"                      name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H264_SESSION_PARAMETERS_CREATE_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
+                <enum offset="2" extends="VkStructureType"                      name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H264_SESSION_PARAMETERS_ADD_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
+                <enum offset="3" extends="VkStructureType"                      name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H264_VCL_FRAME_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
+                <enum offset="4" extends="VkStructureType"                      name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H264_DPB_SLOT_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
+                <enum offset="5" extends="VkStructureType"                      name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H264_NALU_SLICE_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
+                <enum offset="6" extends="VkStructureType"                      name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H264_EMIT_PICTURE_PARAMETERS_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
+                <enum offset="7" extends="VkStructureType"                      name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H264_PROFILE_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
+                <enum offset="8" extends="VkStructureType"                      name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H264_RATE_CONTROL_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
+                <enum offset="9" extends="VkStructureType"                     name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H264_RATE_CONTROL_LAYER_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
+                <enum offset="10" extends="VkStructureType"                     name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H264_REFERENCE_LISTS_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
                 <enum bitpos="16" extends="VkVideoCodecOperationFlagBitsKHR"    name="VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
 
                 <type name="VkVideoEncodeH264CapabilityFlagBitsEXT"/>
@@ -13574,10 +13589,7 @@ typedef void <name>CAMetalLayer</name>;
                 <type name="VkVideoEncodeH264InputModeFlagsEXT"/>
                 <type name="VkVideoEncodeH264OutputModeFlagBitsEXT"/>
                 <type name="VkVideoEncodeH264OutputModeFlagsEXT"/>
-                <type name="VkVideoEncodeH264CreateFlagBitsEXT"/>
-                <type name="VkVideoEncodeH264CreateFlagsEXT"/>
                 <type name="VkVideoEncodeH264CapabilitiesEXT"/>
-                <type name="VkVideoEncodeH264SessionCreateInfoEXT"/>
                 <type name="VkVideoEncodeH264SessionParametersCreateInfoEXT"/>
                 <type name="VkVideoEncodeH264SessionParametersAddInfoEXT"/>
                 <type name="VkVideoEncodeH264VclFrameInfoEXT"/>
@@ -13596,20 +13608,19 @@ typedef void <name>CAMetalLayer</name>;
         </extension>
         <extension name="VK_EXT_video_encode_h265" number="40" type="device" requires="VK_KHR_video_encode_queue" author="KHR" contact="Ahmed Abdelkhalek @aabdelkh" provisional="true" platform="provisional" supported="vulkan">
             <require>
-                <enum value="5"                                              name="VK_EXT_VIDEO_ENCODE_H265_SPEC_VERSION"/>
+                <enum value="6"                                              name="VK_EXT_VIDEO_ENCODE_H265_SPEC_VERSION"/>
                 <enum value="&quot;VK_EXT_video_encode_h265&quot;"           name="VK_EXT_VIDEO_ENCODE_H265_EXTENSION_NAME"/>
                 <enum offset="0" extends="VkStructureType"                   name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_CAPABILITIES_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="1" extends="VkStructureType"                   name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_SESSION_CREATE_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="2" extends="VkStructureType"                   name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_SESSION_PARAMETERS_CREATE_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="3" extends="VkStructureType"                   name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_SESSION_PARAMETERS_ADD_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="4" extends="VkStructureType"                   name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_VCL_FRAME_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="5" extends="VkStructureType"                   name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_DPB_SLOT_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="6" extends="VkStructureType"                   name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_NALU_SLICE_SEGMENT_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="7" extends="VkStructureType"                   name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_EMIT_PICTURE_PARAMETERS_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="8" extends="VkStructureType"                   name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_PROFILE_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="9" extends="VkStructureType"                   name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_REFERENCE_LISTS_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="10" extends="VkStructureType"                  name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_RATE_CONTROL_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="11" extends="VkStructureType"                  name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_RATE_CONTROL_LAYER_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
+                <enum offset="1" extends="VkStructureType"                   name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_SESSION_PARAMETERS_CREATE_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
+                <enum offset="2" extends="VkStructureType"                   name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_SESSION_PARAMETERS_ADD_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
+                <enum offset="3" extends="VkStructureType"                   name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_VCL_FRAME_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
+                <enum offset="4" extends="VkStructureType"                   name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_DPB_SLOT_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
+                <enum offset="5" extends="VkStructureType"                   name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_NALU_SLICE_SEGMENT_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
+                <enum offset="6" extends="VkStructureType"                   name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_EMIT_PICTURE_PARAMETERS_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
+                <enum offset="7" extends="VkStructureType"                   name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_PROFILE_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
+                <enum offset="8" extends="VkStructureType"                   name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_REFERENCE_LISTS_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
+                <enum offset="9" extends="VkStructureType"                  name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_RATE_CONTROL_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
+                <enum offset="10" extends="VkStructureType"                  name="VK_STRUCTURE_TYPE_VIDEO_ENCODE_H265_RATE_CONTROL_LAYER_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
                 <enum bitpos="17" extends="VkVideoCodecOperationFlagBitsKHR" name="VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
 
                 <type name="VkVideoEncodeH265CapabilityFlagBitsEXT"/>
@@ -13618,14 +13629,12 @@ typedef void <name>CAMetalLayer</name>;
                 <type name="VkVideoEncodeH265InputModeFlagsEXT"/>
                 <type name="VkVideoEncodeH265OutputModeFlagBitsEXT"/>
                 <type name="VkVideoEncodeH265OutputModeFlagsEXT"/>
-                <type name="VkVideoEncodeH265CreateFlagsEXT" comment="Will add VkVideoEncodeH265CreateFlagBitsEXT when bits are defined in the future"/>
 
                 <type name="VkVideoEncodeH265CtbSizeFlagBitsEXT"/>
                 <type name="VkVideoEncodeH265CtbSizeFlagsEXT"/>
                 <type name="VkVideoEncodeH265TransformBlockSizeFlagBitsEXT"/>
                 <type name="VkVideoEncodeH265TransformBlockSizeFlagsEXT"/>
                 <type name="VkVideoEncodeH265CapabilitiesEXT"/>
-                <type name="VkVideoEncodeH265SessionCreateInfoEXT"/>
                 <type name="VkVideoEncodeH265SessionParametersCreateInfoEXT"/>
                 <type name="VkVideoEncodeH265SessionParametersAddInfoEXT"/>
                 <type name="VkVideoEncodeH265VclFrameInfoEXT"/>
@@ -13644,23 +13653,20 @@ typedef void <name>CAMetalLayer</name>;
         </extension>
         <extension name="VK_EXT_video_decode_h264" number="41" type="device" requires="VK_KHR_video_decode_queue" author="KHR" contact="peter.fang@amd.com" provisional="true" platform="provisional" supported="vulkan">
             <require>
-                <enum value="3"                                              name="VK_EXT_VIDEO_DECODE_H264_SPEC_VERSION"/>
+                <enum value="4"                                              name="VK_EXT_VIDEO_DECODE_H264_SPEC_VERSION"/>
                 <enum value="&quot;VK_EXT_video_decode_h264&quot;"           name="VK_EXT_VIDEO_DECODE_H264_EXTENSION_NAME"/>
                 <enum offset="0" extends="VkStructureType"                   name="VK_STRUCTURE_TYPE_VIDEO_DECODE_H264_CAPABILITIES_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="1" extends="VkStructureType"                   name="VK_STRUCTURE_TYPE_VIDEO_DECODE_H264_SESSION_CREATE_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="2" extends="VkStructureType"                   name="VK_STRUCTURE_TYPE_VIDEO_DECODE_H264_PICTURE_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="3" extends="VkStructureType"                   name="VK_STRUCTURE_TYPE_VIDEO_DECODE_H264_MVC_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="4" extends="VkStructureType"                   name="VK_STRUCTURE_TYPE_VIDEO_DECODE_H264_PROFILE_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="5" extends="VkStructureType"                   name="VK_STRUCTURE_TYPE_VIDEO_DECODE_H264_SESSION_PARAMETERS_CREATE_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="6" extends="VkStructureType"                   name="VK_STRUCTURE_TYPE_VIDEO_DECODE_H264_SESSION_PARAMETERS_ADD_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="7" extends="VkStructureType"                   name="VK_STRUCTURE_TYPE_VIDEO_DECODE_H264_DPB_SLOT_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
+                <enum offset="1" extends="VkStructureType"                   name="VK_STRUCTURE_TYPE_VIDEO_DECODE_H264_PICTURE_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
+                <enum offset="2" extends="VkStructureType"                   name="VK_STRUCTURE_TYPE_VIDEO_DECODE_H264_MVC_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
+                <enum offset="3" extends="VkStructureType"                   name="VK_STRUCTURE_TYPE_VIDEO_DECODE_H264_PROFILE_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
+                <enum offset="4" extends="VkStructureType"                   name="VK_STRUCTURE_TYPE_VIDEO_DECODE_H264_SESSION_PARAMETERS_CREATE_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
+                <enum offset="5" extends="VkStructureType"                   name="VK_STRUCTURE_TYPE_VIDEO_DECODE_H264_SESSION_PARAMETERS_ADD_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
+                <enum offset="6" extends="VkStructureType"                   name="VK_STRUCTURE_TYPE_VIDEO_DECODE_H264_DPB_SLOT_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
                 <enum bitpos="0" extends="VkVideoCodecOperationFlagBitsKHR"  name="VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
                 <type name="VkVideoDecodeH264PictureLayoutFlagBitsEXT"/>
                 <type name="VkVideoDecodeH264PictureLayoutFlagsEXT"/>
-                <type name="VkVideoDecodeH264CreateFlagsEXT"/>
                 <type name="VkVideoDecodeH264ProfileEXT"/>
                 <type name="VkVideoDecodeH264CapabilitiesEXT"/>
-                <type name="VkVideoDecodeH264SessionCreateInfoEXT"/>
                 <type name="VkVideoDecodeH264SessionParametersCreateInfoEXT"/>
                 <type name="VkVideoDecodeH264SessionParametersAddInfoEXT"/>
                 <type name="VkVideoDecodeH264PictureInfoEXT"/>
@@ -14832,7 +14838,7 @@ typedef void <name>CAMetalLayer</name>;
         </extension>
         <extension name="VK_ANDROID_external_memory_android_hardware_buffer" number="130" type="device" author="ANDROID" requires="VK_KHR_sampler_ycbcr_conversion,VK_KHR_external_memory,VK_EXT_queue_family_foreign,VK_KHR_dedicated_allocation" platform="android" contact="Jesse Hall @critsec" supported="vulkan">
             <require>
-                <enum value="4"                                             name="VK_ANDROID_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER_SPEC_VERSION"/>
+                <enum value="5"                                             name="VK_ANDROID_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER_SPEC_VERSION"/>
                 <enum value="&quot;VK_ANDROID_external_memory_android_hardware_buffer&quot;" name="VK_ANDROID_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER_EXTENSION_NAME"/>
                 <enum bitpos="10" extends="VkExternalMemoryHandleTypeFlagBits" name="VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID"/>
                 <enum offset="0" extends="VkStructureType"                  name="VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_USAGE_ANDROID"/>
@@ -15763,21 +15769,18 @@ typedef void <name>CAMetalLayer</name>;
         </extension>
         <extension name="VK_EXT_video_decode_h265" number="188" type="device" requires="VK_KHR_video_decode_queue" author="KHR" contact="peter.fang@amd.com" provisional="true" platform="provisional" supported="vulkan">
             <require>
-                <enum value="1"                                         name="VK_EXT_VIDEO_DECODE_H265_SPEC_VERSION"/>
+                <enum value="2"                                         name="VK_EXT_VIDEO_DECODE_H265_SPEC_VERSION"/>
                 <enum value="&quot;VK_EXT_video_decode_h265&quot;"      name="VK_EXT_VIDEO_DECODE_H265_EXTENSION_NAME"/>
                 <enum offset="0" extends="VkStructureType"              name="VK_STRUCTURE_TYPE_VIDEO_DECODE_H265_CAPABILITIES_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="1" extends="VkStructureType"              name="VK_STRUCTURE_TYPE_VIDEO_DECODE_H265_SESSION_CREATE_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="2" extends="VkStructureType"              name="VK_STRUCTURE_TYPE_VIDEO_DECODE_H265_SESSION_PARAMETERS_CREATE_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="3" extends="VkStructureType"              name="VK_STRUCTURE_TYPE_VIDEO_DECODE_H265_SESSION_PARAMETERS_ADD_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="4" extends="VkStructureType"              name="VK_STRUCTURE_TYPE_VIDEO_DECODE_H265_PROFILE_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="5" extends="VkStructureType"              name="VK_STRUCTURE_TYPE_VIDEO_DECODE_H265_PICTURE_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
-                <enum offset="6" extends="VkStructureType"              name="VK_STRUCTURE_TYPE_VIDEO_DECODE_H265_DPB_SLOT_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
+                <enum offset="1" extends="VkStructureType"              name="VK_STRUCTURE_TYPE_VIDEO_DECODE_H265_SESSION_PARAMETERS_CREATE_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
+                <enum offset="2" extends="VkStructureType"              name="VK_STRUCTURE_TYPE_VIDEO_DECODE_H265_SESSION_PARAMETERS_ADD_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
+                <enum offset="3" extends="VkStructureType"              name="VK_STRUCTURE_TYPE_VIDEO_DECODE_H265_PROFILE_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
+                <enum offset="4" extends="VkStructureType"              name="VK_STRUCTURE_TYPE_VIDEO_DECODE_H265_PICTURE_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
+                <enum offset="5" extends="VkStructureType"              name="VK_STRUCTURE_TYPE_VIDEO_DECODE_H265_DPB_SLOT_INFO_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
                 <enum bitpos="1" extends="VkVideoCodecOperationFlagBitsKHR"      name="VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_EXT" protect="VK_ENABLE_BETA_EXTENSIONS"/>
 
-                <type name="VkVideoDecodeH265CreateFlagsEXT"/>
                 <type name="VkVideoDecodeH265ProfileEXT"/>
                 <type name="VkVideoDecodeH265CapabilitiesEXT"/>
-                <type name="VkVideoDecodeH265SessionCreateInfoEXT"/>
 
                 <type name="VkVideoDecodeH265SessionParametersCreateInfoEXT"/>
                 <type name="VkVideoDecodeH265SessionParametersAddInfoEXT"/>
@@ -16717,6 +16720,7 @@ typedef void <name>CAMetalLayer</name>;
             <require>
                 <enum value="0"                                             name="VK_INTEL_EXTENSION_271_SPEC_VERSION"/>
                 <enum value="&quot;VK_INTEL_extension_271&quot;"            name="VK_INTEL_EXTENSION_271_EXTENSION_NAME"/>
+                <enum bitpos="22" extends="VkImageUsageFlagBits"            name="VK_IMAGE_USAGE_RESERVED_22_BIT_EXT"/>
             </require>
         </extension>
         <extension name="VK_INTEL_extension_272" number="272" type="device" author="INTEL" contact="Jason Ekstrand @jekstrand" supported="disabled">
@@ -17864,6 +17868,7 @@ typedef void <name>CAMetalLayer</name>;
             <require>
                 <enum value="0"                                         name="VK_EXT_EXTENSION_377_SPEC_VERSION"/>
                 <enum value="&quot;VK_EXT_extension_377&quot;"          name="VK_EXT_EXTENSION_377_EXTENSION_NAME"/>
+                <enum bitpos="18" extends="VkImageCreateFlagBits"       name="VK_IMAGE_CREATE_RESERVED_18_BIT_EXT"/>
             </require>
         </extension>
         <extension name="VK_EXT_extended_dynamic_state2" number="378" type="device" requires="VK_KHR_get_physical_device_properties2" author="EXT" contact="Vikram Kushwaha @vkushwaha-nv" supported="vulkan" promotedto="VK_VERSION_1_3">
@@ -18011,10 +18016,11 @@ typedef void <name>CAMetalLayer</name>;
                 <enum extends="VkImageCreateFlagBits" bitpos="17" name="VK_IMAGE_CREATE_RESERVED_394_BIT_EXT"/>
             </require>
         </extension>
-        <extension name="VK_KHR_extension_395" number="395" author="KHR" contact="Lenny Komow @lkomow" supported="disabled">
+        <extension name="VK_KHR_portability_enumeration" number="395" author="KHR" contact="Charles Giessen @charles-lunarg" type="instance" supported="vulkan">
             <require>
-                <enum value="0"                                             name="VK_KHR_EXTENSION_395_SPEC_VERSION"/>
-                <enum value="&quot;VK_KHR_extension_395&quot;"              name="VK_KHR_EXTENSION_395_EXTENSION_NAME"/>
+                <enum value="1"                                             name="VK_KHR_PORTABILITY_ENUMERATION_SPEC_VERSION"/>
+                <enum value="&quot;VK_KHR_portability_enumeration&quot;"    name="VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME"/>
+                <enum bitpos="0" extends="VkInstanceCreateFlagBits"         name="VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR"/>
             </require>
         </extension>
         <extension name="VK_KHR_extension_396" number="396" author="EXT" contact="Jan-Harald Fredriksen @janharaldfredriksen-arm" supported="disabled">
@@ -18188,10 +18194,18 @@ typedef void <name>CAMetalLayer</name>;
                 <enum value="&quot;VK_EXT_extension_420&quot;"              name="VK_EXT_EXTENSION_420_EXTENSION_NAME"/>
             </require>
         </extension>
-        <extension name="VK_KHR_extension_421" number="421" author="KHR" contact="Hans-Kristian Arntzen @HansKristian-Work" supported="disabled">
+        <extension name="VK_VALVE_descriptor_set_host_mapping" number="421" type="device" author="VALVE" contact="Hans-Kristian Arntzen @HansKristian-Work" specialuse="d3demulation" supported="vulkan">
             <require>
-                <enum value="0"                                             name="VK_KHR_EXTENSION_421_SPEC_VERSION"/>
-                <enum value="&quot;VK_KHR_extension_421&quot;"              name="VK_KHR_EXTENSION_421_EXTENSION_NAME"/>
+                <enum value="1"                                                 name="VK_VALVE_DESCRIPTOR_SET_HOST_MAPPING_SPEC_VERSION"/>
+                <enum value="&quot;VK_VALVE_descriptor_set_host_mapping&quot;"  name="VK_VALVE_DESCRIPTOR_SET_HOST_MAPPING_EXTENSION_NAME"/>
+                <enum offset="0"  extends="VkStructureType"                     name="VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_SET_HOST_MAPPING_FEATURES_VALVE"/>
+                <enum offset="1"  extends="VkStructureType"                     name="VK_STRUCTURE_TYPE_DESCRIPTOR_SET_BINDING_REFERENCE_VALVE"/>
+                <enum offset="2"  extends="VkStructureType"                     name="VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_HOST_MAPPING_INFO_VALVE"/>
+                <type name="VkPhysicalDeviceDescriptorSetHostMappingFeaturesVALVE"/>
+                <type name="VkDescriptorSetBindingReferenceVALVE"/>
+                <type name="VkDescriptorSetLayoutHostMappingInfoVALVE"/>
+                <command name="vkGetDescriptorSetLayoutHostMappingInfoVALVE"/>
+                <command name="vkGetDescriptorSetHostMappingVALVE"/>
             </require>
         </extension>
         <extension name="VK_EXT_extension_422" number="422" author="EXT" contact="Graeme Leese @gnl21" supported="disabled">
@@ -18419,6 +18433,55 @@ typedef void <name>CAMetalLayer</name>;
             <require>
                 <enum value="0"                                         name="VK_GOOGLE_EXTENSION_455_SPEC_VERSION"/>
                 <enum value="&quot;VK_GOOGLE_extension_455&quot;"       name="VK_GOOGLE_EXTENSION_455_EXTENSION_NAME"/>
+            </require>
+        </extension>
+        <extension name="VK_NV_extension_456" number="456" author="NV" contact="Piers Daniell @pdaniell-nv" supported="disabled">
+            <require>
+                <enum value="0"                                         name="VK_NV_EXTENSION_456_SPEC_VERSION"/>
+                <enum value="&quot;VK_NV_extension_456&quot;"           name="VK_NV_EXTENSION_456_EXTENSION_NAME"/>
+            </require>
+        </extension>
+        <extension name="VK_EXT_extension_457" number="457" author="RASTERGRID" contact="Daniel Rakos @aqnuep1" supported="disabled">
+            <require>
+                <enum value="0"                                         name="VK_EXT_EXTENSION_457_SPEC_VERSION"/>
+                <enum value="&quot;VK_EXT_extension_457&quot;"          name="VK_EXT_EXTENSION_457_EXTENSION_NAME"/>
+            </require>
+        </extension>
+        <extension name="VK_EXT_extension_458" number="458" author="RASTERGRID" contact="Daniel Rakos @aqnuep1" supported="disabled">
+            <require>
+                <enum value="0"                                         name="VK_EXT_EXTENSION_458_SPEC_VERSION"/>
+                <enum value="&quot;VK_EXT_extension_458&quot;"          name="VK_EXT_EXTENSION_458_EXTENSION_NAME"/>
+            </require>
+        </extension>
+        <extension name="VK_ARM_extension_459" number="459" author="Arm" contact="Ting Wei @catweiting" supported="disabled">
+            <require>
+                <enum value="0"                                         name="VK_ARM_EXTENSION_459_SPEC_VERSION"/>
+                <enum value="&quot;VK_ARM_extension_459&quot;"          name="VK_ARM_EXTENSION_459_EXTENSION_NAME"/>
+            </require>
+        </extension>
+        <extension name="VK_EXT_extension_460" number="460" author="EXT" contact="Charles Giessen @charles-lunarg" supported="disabled">
+            <require>
+                <enum value="0"                                         name="VK_EXT_EXTENSION_460_SPEC_VERSION"/>
+                <enum value="&quot;VK_EXT_extension_460&quot;"          name="VK_EXT_EXTENSION_460_EXTENSION_NAME"/>
+            </require>
+        </extension>
+        <extension name="VK_EXT_extension_461" number="461" author="EXT" contact="Kevin Petit @kevinpetit" supported="disabled">
+            <require>
+                <enum value="0"                                         name="VK_EXT_EXTENSION_461_SPEC_VERSION"/>
+                <enum value="&quot;VK_EXT_extension_461&quot;"          name="VK_EXT_EXTENSION_461_EXTENSION_NAME"/>
+                <enum bitpos="39" extends="VkFormatFeatureFlagBits2"    name="VK_FORMAT_FEATURE_2_RESERVED_39_BIT_EXT"/>
+            </require>
+        </extension>
+        <extension name="VK_EXT_extension_462" number="462" author="EXT" contact="Joshua Ashton @Joshua-Ashton,Liam Middlebrook @liam-middlebrook" supported="disabled">
+            <require>
+                <enum value="0"                                         name="VK_EXT_EXTENSION_462_SPEC_VERSION"/>
+                <enum value="&quot;VK_EXT_extension_462&quot;"          name="VK_EXT_EXTENSION_462_EXTENSION_NAME"/>
+            </require>
+        </extension>
+        <extension name="VK_EXT_extension_463" number="463" author="EXT" contact="Hans-Kristian Arntzen @HansKristian-Work" supported="disabled">
+            <require>
+                <enum value="0"                                         name="VK_EXT_EXTENSION_463_SPEC_VERSION"/>
+                <enum value="&quot;VK_EXT_extension_463&quot;"          name="VK_EXT_EXTENSION_463_EXTENSION_NAME"/>
             </require>
         </extension>
     </extensions>
