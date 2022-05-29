@@ -580,7 +580,7 @@ impl ImageMemoryBarrier {
                 mip_levels: 0..0,
                 array_layers: 0..0,
             },
-            _ne: Default::default(),
+            _ne: crate::NonExhaustive(()),
         }
     }
 }

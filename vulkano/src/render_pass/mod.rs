@@ -31,7 +31,7 @@ pub use self::framebuffer::FramebufferCreateInfo;
 pub use self::framebuffer::FramebufferCreationError;
 use crate::{
     device::{Device, DeviceOwned},
-    format::{ClearValue, Format},
+    format::Format,
     image::{ImageAspects, ImageLayout, SampleCount},
     shader::ShaderInterface,
     sync::{AccessFlags, PipelineStages},
@@ -468,24 +468,6 @@ impl RenderPass {
 
         true
     }
-
-    /// Decodes `I` into a list of clear values where each element corresponds
-    /// to an attachment. The size of the returned iterator must be the same as the number of
-    /// attachments.
-    ///
-    /// When the user enters a render pass, they need to pass a list of clear values to apply to
-    /// the attachments of the framebuffer. This method is then responsible for checking the
-    /// correctness of these values and turning them into a list that can be processed by vulkano.
-    ///
-    /// The format of the clear value **must** match the format of the attachment. Attachments
-    /// that are not loaded with `LoadOp::Clear` must have an entry equal to `ClearValue::None`.
-    pub fn convert_clear_values<I>(&self, values: I) -> impl Iterator<Item = ClearValue>
-    where
-        I: IntoIterator<Item = ClearValue>,
-    {
-        // FIXME: safety checks
-        values.into_iter()
-    }
 }
 
 impl Drop for RenderPass {
@@ -493,8 +475,7 @@ impl Drop for RenderPass {
     fn drop(&mut self) {
         unsafe {
             let fns = self.device.fns();
-            (fns.v1_0
-                .destroy_render_pass)(self.device.internal_object(), self.handle, ptr::null());
+            (fns.v1_0.destroy_render_pass)(self.device.internal_object(), self.handle, ptr::null());
         }
     }
 }
@@ -1140,32 +1121,65 @@ impl From<StoreOp> for ash::vk::AttachmentStoreOp {
     }
 }
 
-/// Possible resolve modes for depth and stencil attachments.
+/// Possible resolve modes for attachments.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u32)]
 #[non_exhaustive]
 pub enum ResolveMode {
-    None = ash::vk::ResolveModeFlags::NONE.as_raw(),
+    /// The resolved sample is taken from sample number zero, the other samples are ignored.
+    ///
+    /// This mode is supported for depth and stencil formats, and for color images with an integer
+    /// format.
     SampleZero = ash::vk::ResolveModeFlags::SAMPLE_ZERO.as_raw(),
+
+    /// The resolved sample is calculated from the average of the samples.
+    ///
+    /// This mode is supported for depth formats, and for color images with a non-integer format.
     Average = ash::vk::ResolveModeFlags::AVERAGE.as_raw(),
+
+    /// The resolved sample is calculated from the minimum of the samples.
+    ///
+    /// This mode is supported for depth and stencil formats only.
     Min = ash::vk::ResolveModeFlags::MIN.as_raw(),
+
+    /// The resolved sample is calculated from the maximum of the samples.
+    ///
+    /// This mode is supported for depth and stencil formats only.
     Max = ash::vk::ResolveModeFlags::MAX.as_raw(),
+}
+
+impl From<ResolveMode> for ash::vk::ResolveModeFlags {
+    #[inline]
+    fn from(val: ResolveMode) -> Self {
+        Self::from_raw(val as u32)
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct ResolveModes {
-    pub none: bool,
     pub sample_zero: bool,
     pub average: bool,
     pub min: bool,
     pub max: bool,
 }
 
+impl ResolveModes {
+    /// Returns whether `self` contains the given `mode`.
+    #[inline]
+    pub fn contains(&self, mode: ResolveMode) -> bool {
+        match mode {
+            ResolveMode::SampleZero => self.sample_zero,
+            ResolveMode::Average => self.average,
+            ResolveMode::Min => self.min,
+            ResolveMode::Max => self.max,
+        }
+    }
+}
+
 impl From<ash::vk::ResolveModeFlags> for ResolveModes {
     #[inline]
     fn from(val: ash::vk::ResolveModeFlags) -> Self {
         Self {
-            none: val.intersects(ash::vk::ResolveModeFlags::NONE),
             sample_zero: val.intersects(ash::vk::ResolveModeFlags::SAMPLE_ZERO),
             average: val.intersects(ash::vk::ResolveModeFlags::AVERAGE),
             min: val.intersects(ash::vk::ResolveModeFlags::MIN),

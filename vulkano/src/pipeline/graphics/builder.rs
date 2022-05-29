@@ -11,47 +11,56 @@
 // to avoid duplicating code, so we hide the warnings for now
 #![allow(deprecated)]
 
-use crate::check_errors;
-use crate::descriptor_set::layout::{DescriptorSetLayout, DescriptorSetLayoutCreateInfo};
-use crate::device::Device;
-use crate::format::NumericType;
-use crate::pipeline::cache::PipelineCache;
-use crate::pipeline::graphics::color_blend::{
-    AttachmentBlend, ColorBlendAttachmentState, ColorBlendState, ColorComponents, LogicOp,
+use super::{
+    color_blend::{
+        AttachmentBlend, ColorBlendAttachmentState, ColorBlendState, ColorComponents, LogicOp,
+    },
+    depth_stencil::DepthStencilState,
+    discard_rectangle::DiscardRectangleState,
+    input_assembly::{InputAssemblyState, PrimitiveTopology, PrimitiveTopologyClass},
+    multisample::MultisampleState,
+    rasterization::{
+        CullMode, DepthBiasState, FrontFace, LineRasterizationMode, PolygonMode, RasterizationState,
+    },
+    render_pass::{PipelineRenderPassType, PipelineRenderingCreateInfo},
+    tessellation::TessellationState,
+    vertex_input::{BuffersDefinition, Vertex, VertexDefinition, VertexInputState},
+    viewport::{Scissor, Viewport, ViewportState},
+    GraphicsPipeline, GraphicsPipelineCreationError,
 };
-use crate::pipeline::graphics::depth_stencil::DepthStencilState;
-use crate::pipeline::graphics::discard_rectangle::DiscardRectangleState;
-use crate::pipeline::graphics::input_assembly::{InputAssemblyState, PrimitiveTopology};
-use crate::pipeline::graphics::multisample::MultisampleState;
-use crate::pipeline::graphics::rasterization::{
-    CullMode, FrontFace, PolygonMode, RasterizationState,
+use crate::{
+    check_errors,
+    descriptor_set::layout::{DescriptorSetLayout, DescriptorSetLayoutCreateInfo},
+    device::{Device, DeviceOwned},
+    format::NumericType,
+    pipeline::{
+        cache::PipelineCache,
+        graphics::{
+            color_blend::BlendFactor,
+            depth_stencil::{DepthBoundsState, DepthState, StencilOpState, StencilState},
+            vertex_input::VertexInputRate,
+        },
+        layout::{PipelineLayoutCreateInfo, PushConstantRange},
+        DynamicState, PartialStateMode, PipelineLayout, StateMode,
+    },
+    shader::{
+        DescriptorRequirements, EntryPoint, ShaderExecution, ShaderStage, SpecializationConstants,
+        SpecializationMapEntry,
+    },
+    DeviceSize, Version, VulkanObject,
 };
-use crate::pipeline::graphics::tessellation::TessellationState;
-use crate::pipeline::graphics::vertex_input::{
-    BuffersDefinition, Vertex, VertexDefinition, VertexInputState,
-};
-use crate::pipeline::graphics::viewport::{Scissor, Viewport, ViewportState};
-use crate::pipeline::graphics::{GraphicsPipeline, GraphicsPipelineCreationError};
-use crate::pipeline::layout::{PipelineLayout, PipelineLayoutCreateInfo, PushConstantRange};
-use crate::pipeline::{DynamicState, PartialStateMode, StateMode};
-use crate::render_pass::Subpass;
-use crate::shader::{
-    DescriptorRequirements, EntryPoint, ShaderExecution, ShaderStage, SpecializationConstants,
-    SpecializationMapEntry,
-};
-use crate::DeviceSize;
-use crate::VulkanObject;
 use smallvec::SmallVec;
-use std::collections::{hash_map::Entry, HashMap};
-use std::mem::MaybeUninit;
-use std::ptr;
-use std::sync::Arc;
-use std::u32;
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    mem::{size_of_val, MaybeUninit},
+    ptr, slice,
+    sync::Arc,
+};
 
 /// Prototype for a `GraphicsPipeline`.
 #[derive(Debug)]
 pub struct GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss> {
-    subpass: Option<Subpass>,
+    render_pass: Option<PipelineRenderPassType>,
     cache: Option<Arc<PipelineCache>>,
 
     vertex_shader: Option<(EntryPoint<'vs>, Vss)>,
@@ -95,7 +104,7 @@ impl
     /// Builds a new empty builder.
     pub(super) fn new() -> Self {
         GraphicsPipelineBuilder {
-            subpass: None,
+            render_pass: None,
             cache: None,
 
             vertex_shader: None,
@@ -114,6 +123,18 @@ impl
             color_blend_state: Default::default(),
         }
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct Has {
+    vertex_input_state: bool,
+    pre_rasterization_shader_state: bool,
+    tessellation_state: bool,
+    viewport_state: bool,
+    fragment_shader_state: bool,
+    depth_stencil_state: bool,
+    fragment_output_state: bool,
+    color_blend_state: bool,
 }
 
 impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
@@ -246,268 +267,118 @@ where
         device: Arc<Device>,
         pipeline_layout: Arc<PipelineLayout>,
     ) -> Result<Arc<GraphicsPipeline>, GraphicsPipelineCreationError> {
-        // TODO: return errors instead of panicking if missing param
-
-        let fns = device.fns();
-        let subpass = self.subpass.take().expect("Missing subpass");
-        let self_vertex_input_state = self
+        let vertex_input_state = self
             .vertex_input_state
             .definition(self.vertex_shader.as_ref().unwrap().0.input_interface())?;
 
-        // Check individual shaders
-        if let Some(vertex_shader) = &self.vertex_shader {
-            match self.vertex_shader.as_ref().unwrap().0.execution() {
-                ShaderExecution::Vertex => (),
-                _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
-            }
-
-            // Check that the vertex input state contains attributes for all the shader's input
-            // variables.
-            for element in vertex_shader.0.input_interface().elements() {
-                assert!(!element.ty.is_64bit); // TODO: implement
-                let location_range =
-                    element.location..element.location + element.ty.num_locations();
-
-                for location in location_range {
-                    let attribute_desc = match self_vertex_input_state.attributes.get(&location) {
-                        Some(attribute_desc) => attribute_desc,
-                        None => {
-                            return Err(
-                                GraphicsPipelineCreationError::VertexInputAttributeMissing {
-                                    location,
-                                },
-                            )
-                        }
-                    };
-
-                    // TODO: Check component assignments too. Multiple variables can occupy the same
-                    // location but in different components.
-
-                    let shader_type = element.ty.to_format().type_color().unwrap();
-                    let attribute_type = attribute_desc.format.type_color().unwrap();
-
-                    if !matches!(
-                        (shader_type, attribute_type),
-                        (
-                            NumericType::SFLOAT
-                                | NumericType::UFLOAT
-                                | NumericType::SNORM
-                                | NumericType::UNORM
-                                | NumericType::SSCALED
-                                | NumericType::USCALED
-                                | NumericType::SRGB,
-                            NumericType::SFLOAT
-                                | NumericType::UFLOAT
-                                | NumericType::SNORM
-                                | NumericType::UNORM
-                                | NumericType::SSCALED
-                                | NumericType::USCALED
-                                | NumericType::SRGB,
-                        ) | (NumericType::SINT, NumericType::SINT)
-                            | (NumericType::UINT, NumericType::UINT)
-                    ) {
-                        return Err(
-                            GraphicsPipelineCreationError::VertexInputAttributeIncompatibleFormat {
-                                location,
-                                shader_type,
-                                attribute_type,
-                            },
-                        );
+        // If there is one element, duplicate it for all attachments.
+        // TODO: this is undocumented and only exists for compatibility with some of the
+        // deprecated builder methods. Remove it when those methods are gone.
+        if self.color_blend_state.attachments.len() == 1 {
+            let color_attachment_count =
+                match self.render_pass.as_ref().expect("Missing render pass") {
+                    PipelineRenderPassType::BeginRenderPass(subpass) => {
+                        subpass.subpass_desc().color_attachments.len()
                     }
-                }
-            }
-        } else {
-            panic!("Missing vertex shader"); // TODO: return error
-        }
-
-        if let Some(tessellation_shaders) = &self.tessellation_shaders {
-            // FIXME: must check that the control shader and evaluation shader are compatible
-
-            if !device.enabled_features().tessellation_shader {
-                return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                    feature: "tessellation_shader",
-                    reason: "a tessellation shader was provided",
-                });
-            }
-
-            match tessellation_shaders.control.0.execution() {
-                ShaderExecution::TessellationControl => (),
-                _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
-            }
-
-            match tessellation_shaders.evaluation.0.execution() {
-                ShaderExecution::TessellationEvaluation => (),
-                _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
-            }
-
-            if subpass.render_pass().views_used() != 0
-                && !device.enabled_features().multiview_tessellation_shader
-            {
-                return Err(
-                        GraphicsPipelineCreationError::FeatureNotEnabled {
-                            feature: "multiview_tessellation_shader",
-                            reason: "a tessellation shader was provided, and the render pass has multiview enabled with more than zero layers used",
-                        },
-                    );
-            }
-        }
-
-        if let Some(geometry_shader) = &self.geometry_shader {
-            if !device.enabled_features().geometry_shader {
-                return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                    feature: "geometry_shader",
-                    reason: "a geometry shader was provided",
-                });
-            }
-
-            let input = match geometry_shader.0.execution() {
-                ShaderExecution::Geometry(execution) => execution.input,
-                _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
-            };
-
-            if let PartialStateMode::Fixed(topology) = self.input_assembly_state.topology {
-                if !input.is_compatible_with(topology) {
-                    return Err(GraphicsPipelineCreationError::TopologyNotMatchingGeometryShader);
-                }
-            }
-
-            if subpass.render_pass().views_used() != 0
-                && !device.enabled_features().multiview_geometry_shader
-            {
-                return Err(
-                    GraphicsPipelineCreationError::FeatureNotEnabled {
-                        feature: "multiview_geometry_shader",
-                        reason: "a geometry shader was provided, and the render pass has multiview enabled with more than zero layers used",
-                    },
-                );
-            }
-
-            // TODO: VUID-VkGraphicsPipelineCreateInfo-pStages-00739
-            // If the pipeline is being created with pre-rasterization shader state and pStages
-            // includes a geometry shader stage, and also includes tessellation shader stages,
-            // its shader code must contain an OpExecutionMode instruction that specifies an
-            // input primitive type that is compatible with the primitive topology that is
-            // output by the tessellation stages
-        }
-
-        if let Some(fragment_shader) = &self.fragment_shader {
-            match fragment_shader.0.execution() {
-                ShaderExecution::Fragment => (),
-                _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
-            }
-
-            // Check that the subpass can accept the output of the fragment shader.
-            // TODO: If there is no fragment shader, what should be checked then? The previous stage?
-            if !subpass.is_compatible_with(fragment_shader.0.output_interface()) {
-                return Err(GraphicsPipelineCreationError::FragmentShaderRenderPassIncompatible);
-            }
-        } else {
-            // TODO: should probably error out here at least under some circumstances?
-        }
-
-        // Collect all the shader stages for operations not specific to any shader type.
-        struct ShaderStageInfo<'a> {
-            entry_point: &'a EntryPoint<'a>,
-            specialization_map_entries: &'a [SpecializationMapEntry],
-            specialization_data: &'a [u8],
-        }
-
-        let stages_info: SmallVec<[ShaderStageInfo; 5]> = [
-            self.vertex_shader
-                .as_ref()
-                .map(|(entry_point, spec_consts)| ShaderStageInfo {
-                    entry_point,
-                    specialization_map_entries: Vss::descriptors(),
-                    specialization_data: unsafe {
-                        std::slice::from_raw_parts(
-                            spec_consts as *const _ as *const u8,
-                            std::mem::size_of_val(spec_consts),
-                        )
-                    },
-                }),
-            self.tessellation_shaders.as_ref().map(
-                |TessellationShaders {
-                     control: (entry_point, spec_consts),
-                     ..
-                 }| ShaderStageInfo {
-                    entry_point,
-                    specialization_map_entries: Tcss::descriptors(),
-                    specialization_data: unsafe {
-                        std::slice::from_raw_parts(
-                            spec_consts as *const _ as *const u8,
-                            std::mem::size_of_val(spec_consts),
-                        )
-                    },
-                },
-            ),
-            self.tessellation_shaders.as_ref().map(
-                |TessellationShaders {
-                     evaluation: (entry_point, spec_consts),
-                     ..
-                 }| ShaderStageInfo {
-                    entry_point,
-                    specialization_map_entries: Tess::descriptors(),
-                    specialization_data: unsafe {
-                        std::slice::from_raw_parts(
-                            spec_consts as *const _ as *const u8,
-                            std::mem::size_of_val(spec_consts),
-                        )
-                    },
-                },
-            ),
-            self.geometry_shader
-                .as_ref()
-                .map(|(entry_point, spec_consts)| ShaderStageInfo {
-                    entry_point,
-                    specialization_map_entries: Gss::descriptors(),
-                    specialization_data: unsafe {
-                        std::slice::from_raw_parts(
-                            spec_consts as *const _ as *const u8,
-                            std::mem::size_of_val(spec_consts),
-                        )
-                    },
-                }),
-            self.fragment_shader
-                .as_ref()
-                .map(|(entry_point, spec_consts)| ShaderStageInfo {
-                    entry_point,
-                    specialization_map_entries: Fss::descriptors(),
-                    specialization_data: unsafe {
-                        std::slice::from_raw_parts(
-                            spec_consts as *const _ as *const u8,
-                            std::mem::size_of_val(spec_consts),
-                        )
-                    },
-                }),
-        ]
-        .into_iter()
-        .flatten()
-        .collect();
-
-        let mut descriptor_requirements: HashMap<(u32, u32), DescriptorRequirements> =
-            HashMap::default();
-
-        // Check that the pipeline layout is compatible with the shader requirements, and collect
-        // an intersection of the requirements.
-        // TODO: more details in the errors
-        for stage_info in &stages_info {
-            pipeline_layout.ensure_compatible_with_shader(
-                stage_info.entry_point.descriptor_requirements(),
-                stage_info.entry_point.push_constant_requirements(),
-            )?;
-
-            for (loc, reqs) in stage_info.entry_point.descriptor_requirements() {
-                match descriptor_requirements.entry(loc) {
-                    Entry::Occupied(entry) => {
-                        let previous = entry.into_mut();
-                        *previous = previous.intersection(reqs).expect("Could not produce an intersection of the shader descriptor requirements");
+                    PipelineRenderPassType::BeginRendering(rendering_info) => {
+                        rendering_info.color_attachment_formats.len()
                     }
-                    Entry::Vacant(entry) => {
-                        entry.insert(reqs.clone());
-                    }
-                }
-            }
+                };
+            let element = self.color_blend_state.attachments.pop().unwrap();
+            self.color_blend_state
+                .attachments
+                .extend(std::iter::repeat(element).take(color_attachment_count));
         }
+
+        let has = {
+            let &Self {
+                ref render_pass,
+                ref cache,
+
+                ref vertex_shader,
+                ref tessellation_shaders,
+                ref geometry_shader,
+                ref fragment_shader,
+
+                vertex_input_state: _,
+                ref input_assembly_state,
+                ref tessellation_state,
+                ref viewport_state,
+                ref discard_rectangle_state,
+                ref rasterization_state,
+                ref multisample_state,
+                ref depth_stencil_state,
+                ref color_blend_state,
+            } = &self;
+
+            let render_pass = render_pass.as_ref().expect("Missing render pass");
+
+            let has_pre_rasterization_shader_state = true;
+            let has_vertex_input_state = vertex_shader.is_some();
+            let has_fragment_shader_state =
+                rasterization_state.rasterizer_discard_enable != StateMode::Fixed(true);
+            let has_fragment_output_state =
+                rasterization_state.rasterizer_discard_enable != StateMode::Fixed(true);
+
+            let has_tessellation_state =
+                has_pre_rasterization_shader_state && tessellation_shaders.is_some();
+            let has_viewport_state =
+                has_pre_rasterization_shader_state && has_fragment_shader_state;
+            let has_depth_stencil_state = has_fragment_shader_state
+                && match render_pass {
+                    PipelineRenderPassType::BeginRenderPass(subpass) => {
+                        subpass.subpass_desc().depth_stencil_attachment.is_some()
+                    }
+                    PipelineRenderPassType::BeginRendering(rendering_info) => {
+                        !has_fragment_output_state
+                            || rendering_info.depth_attachment_format.is_some()
+                            || rendering_info.stencil_attachment_format.is_some()
+                    }
+                };
+            let has_color_blend_state = has_fragment_output_state
+                && match render_pass {
+                    PipelineRenderPassType::BeginRenderPass(subpass) => {
+                        !subpass.subpass_desc().color_attachments.is_empty()
+                    }
+                    PipelineRenderPassType::BeginRendering(rendering_info) => {
+                        !rendering_info.color_attachment_formats.is_empty()
+                    }
+                };
+
+            Has {
+                vertex_input_state: has_vertex_input_state,
+                pre_rasterization_shader_state: has_pre_rasterization_shader_state,
+                tessellation_state: has_tessellation_state,
+                viewport_state: has_viewport_state,
+                fragment_shader_state: has_fragment_shader_state,
+                depth_stencil_state: has_depth_stencil_state,
+                fragment_output_state: has_fragment_output_state,
+                color_blend_state: has_color_blend_state,
+            }
+        };
+
+        self.validate_create(&device, &pipeline_layout, &vertex_input_state, has)?;
+
+        let (handle, descriptor_requirements, dynamic_state, shaders) =
+            unsafe { self.record_create(&device, &pipeline_layout, &vertex_input_state, has)? };
+
+        let Self {
+            mut render_pass,
+            cache,
+            vertex_shader,
+            tessellation_shaders,
+            geometry_shader,
+            fragment_shader,
+            vertex_input_state: _,
+            input_assembly_state,
+            tessellation_state,
+            viewport_state,
+            discard_rectangle_state,
+            rasterization_state,
+            multisample_state,
+            depth_stencil_state,
+            color_blend_state,
+        } = self;
 
         let num_used_descriptor_sets = descriptor_requirements
             .keys()
@@ -516,11 +387,1635 @@ where
             .map(|x| x + 1)
             .unwrap_or(0);
 
-        // Check that the input interface of each shader matches the output interface of the
-        // previous shader.
+        Ok(Arc::new(GraphicsPipeline {
+            handle,
+            device,
+            layout: pipeline_layout,
+            render_pass: render_pass.take().expect("Missing render pass"),
+            shaders,
+            descriptor_requirements,
+            num_used_descriptor_sets,
+
+            vertex_input_state, // Can be None if there's a mesh shader, but we don't support that yet
+            input_assembly_state, // Can be None if there's a mesh shader, but we don't support that yet
+            tessellation_state: has.tessellation_state.then(|| tessellation_state),
+            viewport_state: has.viewport_state.then(|| viewport_state),
+            discard_rectangle_state: has
+                .pre_rasterization_shader_state
+                .then(|| discard_rectangle_state),
+            rasterization_state,
+            multisample_state: has.fragment_output_state.then(|| multisample_state),
+            depth_stencil_state: has.depth_stencil_state.then(|| depth_stencil_state),
+            color_blend_state: has.color_blend_state.then(|| color_blend_state),
+            dynamic_state,
+        }))
+    }
+
+    fn validate_create(
+        &self,
+        device: &Device,
+        pipeline_layout: &PipelineLayout,
+        vertex_input_state: &VertexInputState,
+        has: Has,
+    ) -> Result<(), GraphicsPipelineCreationError> {
+        let physical_device = device.physical_device();
+        let properties = physical_device.properties();
+
+        let &Self {
+            ref render_pass,
+            ref cache,
+
+            ref vertex_shader,
+            ref tessellation_shaders,
+            ref geometry_shader,
+            ref fragment_shader,
+
+            vertex_input_state: _,
+            ref input_assembly_state,
+            ref tessellation_state,
+            ref viewport_state,
+            ref discard_rectangle_state,
+            ref rasterization_state,
+            ref multisample_state,
+            ref depth_stencil_state,
+            ref color_blend_state,
+        } = self;
+
+        let render_pass = render_pass.as_ref().expect("Missing render pass");
+
+        let mut shader_stages: SmallVec<[_; 5]> = SmallVec::new();
+
+        // VUID-VkGraphicsPipelineCreateInfo-layout-01688
+        // Checked at pipeline layout creation time.
+
+        /*
+            Render pass
+        */
+
+        match render_pass {
+            PipelineRenderPassType::BeginRenderPass(subpass) => {
+                // VUID-VkGraphicsPipelineCreateInfo-commonparent
+                assert_eq!(device, subpass.render_pass().device().as_ref());
+            }
+            PipelineRenderPassType::BeginRendering(rendering_info) => {
+                let &PipelineRenderingCreateInfo {
+                    view_mask,
+                    ref color_attachment_formats,
+                    depth_attachment_format,
+                    stencil_attachment_format,
+                    _ne: _,
+                } = rendering_info;
+
+                // VUID-VkGraphicsPipelineCreateInfo-dynamicRendering-06576
+                if !device.enabled_features().dynamic_rendering {
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "dynamic_rendering",
+                        reason: "render_pass was BeginRendering",
+                    });
+                }
+
+                // VUID-VkGraphicsPipelineCreateInfo-multiview-06577
+                if view_mask != 0 && !device.enabled_features().multiview {
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "multiview",
+                        reason: "PipelineRenderingCreateInfo::view_mask was not 0",
+                    });
+                }
+
+                let view_count = u32::BITS - view_mask.leading_zeros();
+
+                // VUID-VkGraphicsPipelineCreateInfo-renderPass-06578
+                if view_count > properties.max_multiview_view_count.unwrap_or(0) {
+                    return Err(
+                        GraphicsPipelineCreationError::MaxMultiviewViewCountExceeded {
+                            view_count,
+                            max: properties.max_multiview_view_count.unwrap_or(0),
+                        },
+                    );
+                }
+
+                if has.fragment_output_state {
+                    for (attachment_index, format) in color_attachment_formats
+                        .iter()
+                        .enumerate()
+                        .flat_map(|(i, f)| f.map(|f| (i, f)))
+                    {
+                        let attachment_index = attachment_index as u32;
+
+                        // VUID-VkGraphicsPipelineCreateInfo-renderPass-06582
+                        if !physical_device
+                            .format_properties(format)
+                            .potential_format_features()
+                            .color_attachment
+                        {
+                            return Err(
+                                GraphicsPipelineCreationError::ColorAttachmentFormatUsageNotSupported {
+                                    attachment_index,
+                                },
+                            );
+                        }
+                    }
+
+                    if let Some(format) = depth_attachment_format {
+                        // VUID-VkGraphicsPipelineCreateInfo-renderPass-06585
+                        if !physical_device
+                            .format_properties(format)
+                            .potential_format_features()
+                            .depth_stencil_attachment
+                        {
+                            return Err(
+                                GraphicsPipelineCreationError::DepthAttachmentFormatUsageNotSupported,
+                            );
+                        }
+
+                        // VUID-VkGraphicsPipelineCreateInfo-renderPass-06587
+                        if !format.aspects().depth {
+                            return Err(
+                                GraphicsPipelineCreationError::DepthAttachmentFormatUsageNotSupported,
+                            );
+                        }
+                    }
+
+                    if let Some(format) = stencil_attachment_format {
+                        // VUID-VkGraphicsPipelineCreateInfo-renderPass-06586
+                        if !physical_device
+                            .format_properties(format)
+                            .potential_format_features()
+                            .depth_stencil_attachment
+                        {
+                            return Err(
+                                GraphicsPipelineCreationError::StencilAttachmentFormatUsageNotSupported,
+                            );
+                        }
+
+                        // VUID-VkGraphicsPipelineCreateInfo-renderPass-06588
+                        if !format.aspects().stencil {
+                            return Err(
+                                GraphicsPipelineCreationError::StencilAttachmentFormatUsageNotSupported,
+                            );
+                        }
+                    }
+
+                    if let (Some(depth_format), Some(stencil_format)) =
+                        (depth_attachment_format, stencil_attachment_format)
+                    {
+                        // VUID-VkGraphicsPipelineCreateInfo-renderPass-06589
+                        if depth_format != stencil_format {
+                            return Err(
+                                GraphicsPipelineCreationError::DepthStencilAttachmentFormatMismatch,
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        /*
+            Vertex input state
+        */
+
+        if has.vertex_input_state {
+            // Vertex input state
+            // VUID-VkGraphicsPipelineCreateInfo-pVertexInputState-04910
+            {
+                let &VertexInputState {
+                    ref bindings,
+                    ref attributes,
+                } = vertex_input_state;
+
+                // VUID-VkPipelineVertexInputStateCreateInfo-vertexBindingDescriptionCount-00613
+                if bindings.len() > properties.max_vertex_input_bindings as usize {
+                    return Err(
+                        GraphicsPipelineCreationError::MaxVertexInputBindingsExceeded {
+                            max: properties.max_vertex_input_bindings,
+                            obtained: bindings.len() as u32,
+                        },
+                    );
+                }
+
+                // VUID-VkPipelineVertexInputStateCreateInfo-pVertexBindingDescriptions-00616
+                // Ensured by HashMap.
+
+                for (&binding, binding_desc) in bindings {
+                    // VUID-VkVertexInputBindingDescription-binding-00618
+                    if binding >= properties.max_vertex_input_bindings {
+                        return Err(
+                            GraphicsPipelineCreationError::MaxVertexInputBindingsExceeded {
+                                max: properties.max_vertex_input_bindings,
+                                obtained: binding,
+                            },
+                        );
+                    }
+
+                    // VUID-VkVertexInputBindingDescription-stride-00619
+                    if binding_desc.stride > properties.max_vertex_input_binding_stride {
+                        return Err(
+                            GraphicsPipelineCreationError::MaxVertexInputBindingStrideExceeded {
+                                binding,
+                                max: properties.max_vertex_input_binding_stride,
+                                obtained: binding_desc.stride,
+                            },
+                        );
+                    }
+
+                    match binding_desc.input_rate {
+                        VertexInputRate::Instance { divisor } if divisor != 1 => {
+                            // VUID-VkVertexInputBindingDivisorDescriptionEXT-vertexAttributeInstanceRateDivisor-02229
+                            if !device
+                                .enabled_features()
+                                .vertex_attribute_instance_rate_divisor
+                            {
+                                return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                    feature: "vertex_attribute_instance_rate_divisor",
+                                    reason: "VertexInputRate::Instance::divisor was not 1",
+                                });
+                            }
+
+                            // VUID-VkVertexInputBindingDivisorDescriptionEXT-vertexAttributeInstanceRateZeroDivisor-02228
+                            if divisor == 0
+                                && !device
+                                    .enabled_features()
+                                    .vertex_attribute_instance_rate_zero_divisor
+                            {
+                                return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                    feature: "vertex_attribute_instance_rate_zero_divisor",
+                                    reason: "VertexInputRate::Instance::divisor was 0",
+                                });
+                            }
+
+                            // VUID-VkVertexInputBindingDivisorDescriptionEXT-divisor-01870
+                            if divisor > properties.max_vertex_attrib_divisor.unwrap() {
+                                return Err(
+                                    GraphicsPipelineCreationError::MaxVertexAttribDivisorExceeded {
+                                        binding,
+                                        max: properties.max_vertex_attrib_divisor.unwrap(),
+                                        obtained: divisor,
+                                    },
+                                );
+                            }
+                        }
+                        _ => (),
+                    }
+                }
+
+                // VUID-VkPipelineVertexInputStateCreateInfo-vertexAttributeDescriptionCount-00614
+                if attributes.len() > properties.max_vertex_input_attributes as usize {
+                    return Err(
+                        GraphicsPipelineCreationError::MaxVertexInputAttributesExceeded {
+                            max: properties.max_vertex_input_attributes,
+                            obtained: attributes.len(),
+                        },
+                    );
+                }
+
+                // VUID-VkPipelineVertexInputStateCreateInfo-pVertexAttributeDescriptions-00617
+                // Ensured by HashMap.
+
+                for (&location, attribute_desc) in attributes {
+                    // TODO:
+                    // VUID-VkVertexInputAttributeDescription-location-00620
+
+                    // VUID-VkPipelineVertexInputStateCreateInfo-binding-00615
+                    if !bindings.contains_key(&attribute_desc.binding) {
+                        return Err(
+                            GraphicsPipelineCreationError::VertexInputAttributeInvalidBinding {
+                                location,
+                                binding: attribute_desc.binding,
+                            },
+                        );
+                    }
+
+                    // VUID-VkVertexInputAttributeDescription-offset-00622
+                    if attribute_desc.offset > properties.max_vertex_input_attribute_offset {
+                        return Err(
+                            GraphicsPipelineCreationError::MaxVertexInputAttributeOffsetExceeded {
+                                max: properties.max_vertex_input_attribute_offset,
+                                obtained: attribute_desc.offset,
+                            },
+                        );
+                    }
+
+                    let format_features = device
+                        .physical_device()
+                        .format_properties(attribute_desc.format)
+                        .buffer_features;
+
+                    // VUID-VkVertexInputAttributeDescription-format-00623
+                    if !format_features.vertex_buffer {
+                        return Err(
+                            GraphicsPipelineCreationError::VertexInputAttributeUnsupportedFormat {
+                                location,
+                                format: attribute_desc.format,
+                            },
+                        );
+                    }
+                }
+            }
+
+            // Input assembly state
+            // VUID-VkGraphicsPipelineCreateInfo-pStages-02098
+            {
+                let &InputAssemblyState {
+                    topology,
+                    primitive_restart_enable,
+                } = input_assembly_state;
+
+                match topology {
+                    PartialStateMode::Fixed(topology) => match topology {
+                        PrimitiveTopology::LineListWithAdjacency
+                        | PrimitiveTopology::LineStripWithAdjacency
+                        | PrimitiveTopology::TriangleListWithAdjacency
+                        | PrimitiveTopology::TriangleStripWithAdjacency => {
+                            // VUID-VkPipelineInputAssemblyStateCreateInfo-topology-00429
+                            if !device.enabled_features().geometry_shader {
+                                return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                    feature: "geometry_shader",
+                                    reason: "InputAssemblyState::topology was set to a WithAdjacency PrimitiveTopology",
+                                });
+                            }
+                        }
+                        PrimitiveTopology::PatchList => {
+                            // VUID-VkPipelineInputAssemblyStateCreateInfo-topology-00430
+                            if !device.enabled_features().tessellation_shader {
+                                return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                    feature: "tessellation_shader",
+                                    reason: "InputAssemblyState::topology was set to PrimitiveTopology::PatchList",
+                                });
+                            }
+
+                            // TODO:
+                            // VUID-VkGraphicsPipelineCreateInfo-topology-00737
+                        }
+                        _ => (),
+                    },
+                    PartialStateMode::Dynamic(topology_class) => {
+                        // VUID?
+                        if !(device.api_version() >= Version::V1_3
+                            || device.enabled_features().extended_dynamic_state)
+                        {
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "extended_dynamic_state",
+                                reason: "InputAssemblyState::topology was set to Dynamic",
+                            });
+                        }
+                    }
+                }
+
+                match primitive_restart_enable {
+                    StateMode::Fixed(primitive_restart_enable) => {
+                        if primitive_restart_enable {
+                            match topology {
+                                PartialStateMode::Fixed(
+                                    PrimitiveTopology::PointList
+                                    | PrimitiveTopology::LineList
+                                    | PrimitiveTopology::TriangleList
+                                    | PrimitiveTopology::LineListWithAdjacency
+                                    | PrimitiveTopology::TriangleListWithAdjacency,
+                                ) => {
+                                    // VUID-VkPipelineInputAssemblyStateCreateInfo-topology-06252
+                                    if !device.enabled_features().primitive_topology_list_restart {
+                                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                            feature: "primitive_topology_list_restart",
+                                            reason: "InputAssemblyState::primitive_restart_enable was set to true in combination with a List PrimitiveTopology",
+                                        });
+                                    }
+                                }
+                                PartialStateMode::Fixed(PrimitiveTopology::PatchList) => {
+                                    // VUID-VkPipelineInputAssemblyStateCreateInfo-topology-06253
+                                    if !device
+                                        .enabled_features()
+                                        .primitive_topology_patch_list_restart
+                                    {
+                                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                            feature: "primitive_topology_patch_list_restart",
+                                            reason: "InputAssemblyState::primitive_restart_enable was set to true in combination with PrimitiveTopology::PatchList",
+                                        });
+                                    }
+                                }
+                                _ => (),
+                            }
+                        }
+                    }
+                    StateMode::Dynamic => {
+                        // VUID?
+                        if !(device.api_version() >= Version::V1_3
+                            || device.enabled_features().extended_dynamic_state2)
+                        {
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "extended_dynamic_state2",
+                                reason: "InputAssemblyState::primitive_restart_enable was set to Dynamic",
+                            });
+                        }
+                    }
+                };
+            }
+        }
+
+        /*
+            Pre-rasterization shader state
+        */
+
+        if has.pre_rasterization_shader_state {
+            // Vertex shader
+            if let Some((entry_point, specialization_data)) = vertex_shader {
+                shader_stages.push(ShaderStageInfo {
+                    entry_point,
+                    specialization_map_entries: Vss::descriptors(),
+                    specialization_data: unsafe {
+                        std::slice::from_raw_parts(
+                            specialization_data as *const _ as *const u8,
+                            size_of_val(specialization_data),
+                        )
+                    },
+                });
+
+                match entry_point.execution() {
+                    ShaderExecution::Vertex => (),
+                    _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
+                }
+
+                // VUID?
+                // Check that the vertex input state contains attributes for all the shader's input
+                // variables.
+                for element in entry_point.input_interface().elements() {
+                    assert!(!element.ty.is_64bit); // TODO: implement
+                    let location_range =
+                        element.location..element.location + element.ty.num_locations();
+
+                    for location in location_range {
+                        let attribute_desc =
+                            match vertex_input_state.attributes.get(&location) {
+                                Some(attribute_desc) => attribute_desc,
+                                None => return Err(
+                                    GraphicsPipelineCreationError::VertexInputAttributeMissing {
+                                        location,
+                                    },
+                                ),
+                            };
+
+                        // TODO: Check component assignments too. Multiple variables can occupy the same
+                        // location but in different components.
+
+                        let shader_type = element.ty.to_format().type_color().unwrap();
+                        let attribute_type = attribute_desc.format.type_color().unwrap();
+
+                        if !matches!(
+                            (shader_type, attribute_type),
+                            (
+                                NumericType::SFLOAT
+                                    | NumericType::UFLOAT
+                                    | NumericType::SNORM
+                                    | NumericType::UNORM
+                                    | NumericType::SSCALED
+                                    | NumericType::USCALED
+                                    | NumericType::SRGB,
+                                NumericType::SFLOAT
+                                    | NumericType::UFLOAT
+                                    | NumericType::SNORM
+                                    | NumericType::UNORM
+                                    | NumericType::SSCALED
+                                    | NumericType::USCALED
+                                    | NumericType::SRGB,
+                            ) | (NumericType::SINT, NumericType::SINT)
+                                | (NumericType::UINT, NumericType::UINT)
+                        ) {
+                            return Err(
+                                GraphicsPipelineCreationError::VertexInputAttributeIncompatibleFormat {
+                                    location,
+                                    shader_type,
+                                    attribute_type,
+                                },
+                            );
+                        }
+                    }
+                }
+
+                // TODO:
+                // VUID-VkPipelineShaderStageCreateInfo-stage-00712
+            } else {
+                // VUID-VkGraphicsPipelineCreateInfo-stage-02096
+                panic!("Missing vertex shader"); // TODO: return error
+            }
+
+            // Tessellation shaders & tessellation state
+            if let Some(tessellation_shaders) = tessellation_shaders {
+                // VUID-VkGraphicsPipelineCreateInfo-pStages-00729
+                // VUID-VkGraphicsPipelineCreateInfo-pStages-00730
+                // Ensured by the definition of TessellationShaders.
+
+                // FIXME: must check that the control shader and evaluation shader are compatible
+
+                // VUID-VkPipelineShaderStageCreateInfo-stage-00705
+                if !device.enabled_features().tessellation_shader {
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "tessellation_shader",
+                        reason: "a tessellation shader was provided",
+                    });
+                }
+
+                {
+                    let (entry_point, specialization_data) = &tessellation_shaders.control;
+
+                    shader_stages.push(ShaderStageInfo {
+                        entry_point,
+                        specialization_map_entries: Tcss::descriptors(),
+                        specialization_data: unsafe {
+                            std::slice::from_raw_parts(
+                                specialization_data as *const _ as *const u8,
+                                size_of_val(specialization_data),
+                            )
+                        },
+                    });
+
+                    match entry_point.execution() {
+                        ShaderExecution::TessellationControl => (),
+                        _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
+                    }
+                }
+
+                {
+                    let (entry_point, specialization_data) = &tessellation_shaders.evaluation;
+
+                    shader_stages.push(ShaderStageInfo {
+                        entry_point,
+                        specialization_map_entries: Tess::descriptors(),
+                        specialization_data: unsafe {
+                            std::slice::from_raw_parts(
+                                specialization_data as *const _ as *const u8,
+                                size_of_val(specialization_data),
+                            )
+                        },
+                    });
+
+                    match entry_point.execution() {
+                        ShaderExecution::TessellationEvaluation => (),
+                        _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
+                    }
+                }
+
+                if !device.enabled_features().multiview_tessellation_shader {
+                    let view_mask = match render_pass {
+                        PipelineRenderPassType::BeginRenderPass(subpass) => {
+                            subpass.render_pass().views_used()
+                        }
+                        PipelineRenderPassType::BeginRendering(rendering_info) => {
+                            rendering_info.view_mask
+                        }
+                    };
+
+                    // VUID-VkGraphicsPipelineCreateInfo-renderPass-06047
+                    // VUID-VkGraphicsPipelineCreateInfo-renderPass-06057
+                    if view_mask != 0 {
+                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                            feature: "multiview_tessellation_shader",
+                            reason: "a tessellation shader was provided, and the render pass has multiview enabled with more than zero layers used",
+                        });
+                    }
+                }
+
+                // TODO:
+                // VUID-VkPipelineShaderStageCreateInfo-stage-00713
+                // VUID-VkGraphicsPipelineCreateInfo-pStages-00732
+                // VUID-VkGraphicsPipelineCreateInfo-pStages-00733
+                // VUID-VkGraphicsPipelineCreateInfo-pStages-00734
+                // VUID-VkGraphicsPipelineCreateInfo-pStages-00735
+            }
+
+            // Geometry shader
+            if let Some((entry_point, specialization_data)) = geometry_shader {
+                shader_stages.push(ShaderStageInfo {
+                    entry_point,
+                    specialization_map_entries: Gss::descriptors(),
+                    specialization_data: unsafe {
+                        std::slice::from_raw_parts(
+                            specialization_data as *const _ as *const u8,
+                            size_of_val(specialization_data),
+                        )
+                    },
+                });
+
+                // VUID-VkPipelineShaderStageCreateInfo-stage-00704
+                if !device.enabled_features().geometry_shader {
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "geometry_shader",
+                        reason: "a geometry shader was provided",
+                    });
+                }
+
+                let input = match entry_point.execution() {
+                    ShaderExecution::Geometry(execution) => execution.input,
+                    _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
+                };
+
+                if let PartialStateMode::Fixed(topology) = input_assembly_state.topology {
+                    // VUID-VkGraphicsPipelineCreateInfo-pStages-00738
+                    if !input.is_compatible_with(topology) {
+                        return Err(
+                            GraphicsPipelineCreationError::TopologyNotMatchingGeometryShader,
+                        );
+                    }
+                }
+
+                if !device.enabled_features().multiview_geometry_shader {
+                    let view_mask = match render_pass {
+                        PipelineRenderPassType::BeginRenderPass(subpass) => {
+                            subpass.render_pass().views_used()
+                        }
+                        PipelineRenderPassType::BeginRendering(rendering_info) => {
+                            rendering_info.view_mask
+                        }
+                    };
+
+                    // VUID-VkGraphicsPipelineCreateInfo-renderPass-06048
+                    // VUID-VkGraphicsPipelineCreateInfo-renderPass-06058
+                    if view_mask != 0 {
+                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                            feature: "multiview_geometry_shader",
+                            reason: "a geometry shader was provided, and the render pass has multiview enabled with more than zero layers used",
+                        });
+                    }
+                }
+
+                // TODO:
+                // VUID-VkPipelineShaderStageCreateInfo-stage-00714
+                // VUID-VkPipelineShaderStageCreateInfo-stage-00715
+                // VUID-VkGraphicsPipelineCreateInfo-pStages-00739
+            }
+
+            // Rasterization state
+            // VUID?
+            {
+                let &RasterizationState {
+                    depth_clamp_enable,
+                    rasterizer_discard_enable,
+                    polygon_mode,
+                    cull_mode,
+                    front_face,
+                    depth_bias,
+                    line_width,
+                    line_rasterization_mode,
+                    line_stipple,
+                } = rasterization_state;
+
+                // VUID-VkPipelineRasterizationStateCreateInfo-depthClampEnable-00782
+                if depth_clamp_enable && !device.enabled_features().depth_clamp {
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "depth_clamp",
+                        reason: "RasterizationState::depth_clamp_enable was true",
+                    });
+                }
+
+                // VUID?
+                if matches!(rasterizer_discard_enable, StateMode::Dynamic)
+                    && !(device.api_version() >= Version::V1_3
+                        || device.enabled_features().extended_dynamic_state2)
+                {
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "extended_dynamic_state2",
+                        reason: "RasterizationState::rasterizer_discard_enable was set to Dynamic",
+                    });
+                }
+
+                // VUID-VkPipelineRasterizationStateCreateInfo-polygonMode-01507
+                if polygon_mode != PolygonMode::Fill
+                    && !device.enabled_features().fill_mode_non_solid
+                {
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "fill_mode_non_solid",
+                        reason: "RasterizationState::polygon_mode was not Fill",
+                    });
+                }
+
+                // VUID?
+                if matches!(cull_mode, StateMode::Dynamic)
+                    && !(device.api_version() >= Version::V1_3
+                        || device.enabled_features().extended_dynamic_state)
+                {
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "extended_dynamic_state",
+                        reason: "RasterizationState::cull_mode was set to Dynamic",
+                    });
+                }
+
+                // VUID?
+                if matches!(front_face, StateMode::Dynamic)
+                    && !(device.api_version() >= Version::V1_3
+                        || device.enabled_features().extended_dynamic_state)
+                {
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "extended_dynamic_state",
+                        reason: "RasterizationState::front_face was set to Dynamic",
+                    });
+                }
+
+                if let Some(depth_bias_state) = depth_bias {
+                    let DepthBiasState {
+                        enable_dynamic,
+                        bias,
+                    } = depth_bias_state;
+
+                    // VUID?
+                    if enable_dynamic && !device.enabled_features().extended_dynamic_state2 {
+                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                            feature: "extended_dynamic_state2",
+                            reason: "DepthBiasState::enable_dynamic was true",
+                        });
+                    }
+
+                    // VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-00754
+                    if matches!(bias, StateMode::Fixed(bias) if bias.clamp != 0.0)
+                        && !device.enabled_features().depth_bias_clamp
+                    {
+                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                            feature: "depth_bias_clamp",
+                            reason: "DepthBias::clamp was not 0.0",
+                        });
+                    }
+                }
+
+                // VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-00749
+                if matches!(line_width, StateMode::Fixed(line_width) if line_width != 1.0)
+                    && !device.enabled_features().wide_lines
+                {
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "wide_lines",
+                        reason: "RasterizationState::line_width was not 1.0",
+                    });
+                }
+
+                if device.enabled_extensions().ext_line_rasterization {
+                    match line_rasterization_mode {
+                        LineRasterizationMode::Default => (),
+                        LineRasterizationMode::Rectangular => {
+                            // VUID-VkPipelineRasterizationLineStateCreateInfoEXT-lineRasterizationMode-02768
+                            if !device.enabled_features().rectangular_lines {
+                                return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "rectangular_lines",
+                                reason:
+                                    "RasterizationState::line_rasterization_mode was Rectangular",
+                            });
+                            }
+                        }
+                        LineRasterizationMode::Bresenham => {
+                            // VUID-VkPipelineRasterizationLineStateCreateInfoEXT-lineRasterizationMode-02769
+                            if !device.enabled_features().bresenham_lines {
+                                return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                    feature: "bresenham_lines",
+                                    reason:
+                                        "RasterizationState::line_rasterization_mode was Bresenham",
+                                });
+                            }
+                        }
+                        LineRasterizationMode::RectangularSmooth => {
+                            // VUID-VkPipelineRasterizationLineStateCreateInfoEXT-lineRasterizationMode-02770
+                            if !device.enabled_features().smooth_lines {
+                                return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                    feature: "smooth_lines",
+                                    reason: "RasterizationState::line_rasterization_mode was RectangularSmooth",
+                                });
+                            }
+                        }
+                    }
+
+                    if let Some(line_stipple) = line_stipple {
+                        match line_rasterization_mode {
+                            LineRasterizationMode::Default => {
+                                // VUID-VkPipelineRasterizationLineStateCreateInfoEXT-stippledLineEnable-02774
+                                if !device.enabled_features().stippled_rectangular_lines {
+                                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                        feature: "stippled_rectangular_lines",
+                                        reason: "RasterizationState::line_stipple was Some and line_rasterization_mode was Default",
+                                    });
+                                }
+
+                                // VUID-VkPipelineRasterizationLineStateCreateInfoEXT-stippledLineEnable-02774
+                                if !properties.strict_lines {
+                                    return Err(
+                                        GraphicsPipelineCreationError::StrictLinesNotSupported,
+                                    );
+                                }
+                            }
+                            LineRasterizationMode::Rectangular => {
+                                // VUID-VkPipelineRasterizationLineStateCreateInfoEXT-stippledLineEnable-02771
+                                if !device.enabled_features().stippled_rectangular_lines {
+                                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                        feature: "stippled_rectangular_lines",
+                                        reason: "RasterizationState::line_stipple was Some and line_rasterization_mode was Rectangular",
+                                    });
+                                }
+                            }
+                            LineRasterizationMode::Bresenham => {
+                                // VUID-VkPipelineRasterizationLineStateCreateInfoEXT-stippledLineEnable-02772
+                                if !device.enabled_features().stippled_bresenham_lines {
+                                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                        feature: "stippled_bresenham_lines",
+                                        reason: "RasterizationState::line_stipple was Some and line_rasterization_mode was Bresenham",
+                                    });
+                                }
+                            }
+                            LineRasterizationMode::RectangularSmooth => {
+                                // VUID-VkPipelineRasterizationLineStateCreateInfoEXT-stippledLineEnable-02773
+                                if !device.enabled_features().stippled_smooth_lines {
+                                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                        feature: "stippled_smooth_lines",
+                                        reason: "RasterizationState::line_stipple was Some and line_rasterization_mode was RectangularSmooth",
+                                    });
+                                }
+                            }
+                        }
+
+                        if let StateMode::Fixed(line_stipple) = line_stipple {
+                            // VUID-VkGraphicsPipelineCreateInfo-stippledLineEnable-02767
+                            assert!(line_stipple.factor >= 1 && line_stipple.factor <= 256);
+                            // TODO: return error?
+                        }
+                    }
+                } else {
+                    if line_rasterization_mode != LineRasterizationMode::Default {
+                        return Err(GraphicsPipelineCreationError::ExtensionNotEnabled {
+                            extension: "ext_line_rasterization",
+                            reason: "RasterizationState::line_rasterization_mode was not Default",
+                        });
+                    }
+
+                    if line_stipple.is_some() {
+                        return Err(GraphicsPipelineCreationError::ExtensionNotEnabled {
+                            extension: "ext_line_rasterization",
+                            reason: "RasterizationState::line_stipple was not None",
+                        });
+                    }
+                }
+            }
+
+            // Discard rectangle state
+            {
+                let &DiscardRectangleState {
+                    mode,
+                    ref rectangles,
+                } = discard_rectangle_state;
+
+                if device.enabled_extensions().ext_discard_rectangles {
+                    let discard_rectangle_count = match rectangles {
+                        &PartialStateMode::Dynamic(count) => count,
+                        &PartialStateMode::Fixed(ref rectangles) => rectangles.len() as u32,
+                    };
+
+                    // VUID-VkPipelineDiscardRectangleStateCreateInfoEXT-discardRectangleCount-00582
+                    if discard_rectangle_count > properties.max_discard_rectangles.unwrap() {
+                        return Err(
+                            GraphicsPipelineCreationError::MaxDiscardRectanglesExceeded {
+                                max: properties.max_discard_rectangles.unwrap(),
+                                obtained: discard_rectangle_count,
+                            },
+                        );
+                    }
+                } else {
+                    let error = match rectangles {
+                        &PartialStateMode::Dynamic(_) => true,
+                        &PartialStateMode::Fixed(ref rectangles) => !rectangles.is_empty(),
+                    };
+
+                    if error {
+                        return Err(GraphicsPipelineCreationError::ExtensionNotEnabled {
+                            extension: "ext_discard_rectangles",
+                            reason:
+                                "DiscardRectangleState::rectangles was not Fixed with an empty list",
+                        });
+                    }
+                }
+            }
+
+            // TODO:
+            // VUID-VkPipelineShaderStageCreateInfo-stage-02596
+            // VUID-VkPipelineShaderStageCreateInfo-stage-02597
+            // VUID-VkGraphicsPipelineCreateInfo-pStages-00740
+            // VUID-VkGraphicsPipelineCreateInfo-renderPass-06049
+            // VUID-VkGraphicsPipelineCreateInfo-renderPass-06050
+            // VUID-VkGraphicsPipelineCreateInfo-renderPass-06059
+        }
+
+        // VUID-VkGraphicsPipelineCreateInfo-pStages-00731
+        if has.tessellation_state {
+            let &TessellationState {
+                patch_control_points,
+            } = tessellation_state;
+
+            // VUID-VkGraphicsPipelineCreateInfo-pStages-00736
+            if !matches!(
+                input_assembly_state.topology,
+                PartialStateMode::Dynamic(PrimitiveTopologyClass::Patch)
+                    | PartialStateMode::Fixed(PrimitiveTopology::PatchList)
+            ) {
+                return Err(GraphicsPipelineCreationError::InvalidPrimitiveTopology);
+            }
+
+            match patch_control_points {
+                StateMode::Fixed(patch_control_points) => {
+                    // VUID-VkPipelineTessellationStateCreateInfo-patchControlPoints-01214
+                    if patch_control_points <= 0
+                        || patch_control_points > properties.max_tessellation_patch_size
+                    {
+                        return Err(GraphicsPipelineCreationError::InvalidNumPatchControlPoints);
+                    }
+                }
+                StateMode::Dynamic => {
+                    // VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-04870
+                    if !device
+                        .enabled_features()
+                        .extended_dynamic_state2_patch_control_points
+                    {
+                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                            feature: "extended_dynamic_state2_patch_control_points",
+                            reason: "TessellationState::patch_control_points was set to Dynamic",
+                        });
+                    }
+                }
+            };
+        }
+
+        // Viewport state
+        // VUID-VkGraphicsPipelineCreateInfo-rasterizerDiscardEnable-00750
+        // VUID-VkGraphicsPipelineCreateInfo-pViewportState-04892
+        if has.viewport_state {
+            let (viewport_count, scissor_count) = match viewport_state {
+                &ViewportState::Fixed { ref data } => {
+                    let count = data.len() as u32;
+                    assert!(count != 0); // TODO: return error?
+
+                    for (viewport, _) in data {
+                        for i in 0..2 {
+                            if viewport.dimensions[i] > properties.max_viewport_dimensions[i] as f32
+                            {
+                                return Err(
+                                    GraphicsPipelineCreationError::MaxViewportDimensionsExceeded,
+                                );
+                            }
+
+                            if viewport.origin[i] < properties.viewport_bounds_range[0]
+                                || viewport.origin[i] + viewport.dimensions[i]
+                                    > properties.viewport_bounds_range[1]
+                            {
+                                return Err(GraphicsPipelineCreationError::ViewportBoundsExceeded);
+                            }
+                        }
+                    }
+
+                    // TODO:
+                    // VUID-VkPipelineViewportStateCreateInfo-offset-02822
+                    // VUID-VkPipelineViewportStateCreateInfo-offset-02823
+
+                    (count, count)
+                }
+                &ViewportState::FixedViewport {
+                    ref viewports,
+                    scissor_count_dynamic,
+                } => {
+                    let viewport_count = viewports.len() as u32;
+
+                    // VUID-VkPipelineViewportStateCreateInfo-scissorCount-04136
+                    assert!(viewport_count != 0); // TODO: return error?
+
+                    for viewport in viewports {
+                        for i in 0..2 {
+                            if viewport.dimensions[i] > properties.max_viewport_dimensions[i] as f32
+                            {
+                                return Err(
+                                    GraphicsPipelineCreationError::MaxViewportDimensionsExceeded,
+                                );
+                            }
+
+                            if viewport.origin[i] < properties.viewport_bounds_range[0]
+                                || viewport.origin[i] + viewport.dimensions[i]
+                                    > properties.viewport_bounds_range[1]
+                            {
+                                return Err(GraphicsPipelineCreationError::ViewportBoundsExceeded);
+                            }
+                        }
+                    }
+
+                    // VUID-VkPipelineViewportStateCreateInfo-scissorCount-04136
+                    let scissor_count = if scissor_count_dynamic {
+                        if !(device.api_version() >= Version::V1_3
+                            || device.enabled_features().extended_dynamic_state)
+                        {
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                    feature: "extended_dynamic_state",
+                                    reason: "ViewportState::FixedViewport::scissor_count_dynamic was set to true",
+                                });
+                        }
+
+                        // VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-03380
+                        0
+                    } else {
+                        viewport_count
+                    };
+
+                    (viewport_count, scissor_count)
+                }
+                &ViewportState::FixedScissor {
+                    ref scissors,
+                    viewport_count_dynamic,
+                } => {
+                    let scissor_count = scissors.len() as u32;
+
+                    // VUID-VkPipelineViewportStateCreateInfo-viewportCount-04135
+                    assert!(scissor_count != 0); // TODO: return error?
+
+                    // VUID-VkPipelineViewportStateCreateInfo-viewportCount-04135
+                    let viewport_count = if viewport_count_dynamic {
+                        if !(device.api_version() >= Version::V1_3
+                            || device.enabled_features().extended_dynamic_state)
+                        {
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                    feature: "extended_dynamic_state",
+                                    reason: "ViewportState::FixedScissor::viewport_count_dynamic was set to true",
+                                });
+                        }
+
+                        // VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-03379
+                        0
+                    } else {
+                        scissor_count
+                    };
+
+                    // TODO:
+                    // VUID-VkPipelineViewportStateCreateInfo-offset-02822
+                    // VUID-VkPipelineViewportStateCreateInfo-offset-02823
+
+                    (viewport_count, scissor_count)
+                }
+                &ViewportState::Dynamic {
+                    count,
+                    viewport_count_dynamic,
+                    scissor_count_dynamic,
+                } => {
+                    // VUID-VkPipelineViewportStateCreateInfo-viewportCount-04135
+                    // VUID-VkPipelineViewportStateCreateInfo-scissorCount-04136
+                    if !(viewport_count_dynamic && scissor_count_dynamic) {
+                        assert!(count != 0); // TODO: return error?
+                    }
+
+                    // VUID-VkPipelineViewportStateCreateInfo-viewportCount-04135
+                    let viewport_count = if viewport_count_dynamic {
+                        if !(device.api_version() >= Version::V1_3
+                            || device.enabled_features().extended_dynamic_state)
+                        {
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "extended_dynamic_state",
+                                reason:
+                                    "ViewportState::Dynamic::viewport_count_dynamic was set to true",
+                            });
+                        }
+
+                        // VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-03379
+                        0
+                    } else {
+                        count
+                    };
+
+                    // VUID-VkPipelineViewportStateCreateInfo-scissorCount-04136
+                    let scissor_count = if scissor_count_dynamic {
+                        if !(device.api_version() >= Version::V1_3
+                            || device.enabled_features().extended_dynamic_state)
+                        {
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "extended_dynamic_state",
+                                reason:
+                                    "ViewportState::Dynamic::scissor_count_dynamic was set to true",
+                            });
+                        }
+
+                        // VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-03380
+                        0
+                    } else {
+                        count
+                    };
+
+                    (viewport_count, scissor_count)
+                }
+            };
+
+            // VUID-VkPipelineViewportStateCreateInfo-scissorCount-04134
+            // Ensured by the definition of `ViewportState`.
+
+            let viewport_scissor_count = u32::max(viewport_count, scissor_count);
+
+            // VUID-VkPipelineViewportStateCreateInfo-viewportCount-01216
+            // VUID-VkPipelineViewportStateCreateInfo-scissorCount-01217
+            if viewport_scissor_count > 1 && !device.enabled_features().multi_viewport {
+                return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                    feature: "multi_viewport",
+                    reason: "ViewportState viewport/scissor count was greater than 1",
+                });
+            }
+
+            // VUID-VkPipelineViewportStateCreateInfo-viewportCount-01218
+            // VUID-VkPipelineViewportStateCreateInfo-scissorCount-01219
+            if viewport_scissor_count > properties.max_viewports {
+                return Err(GraphicsPipelineCreationError::MaxViewportsExceeded {
+                    obtained: viewport_scissor_count,
+                    max: properties.max_viewports,
+                });
+            }
+
+            // TODO:
+            // VUID-VkGraphicsPipelineCreateInfo-primitiveFragmentShadingRateWithMultipleViewports-04503
+            // VUID-VkGraphicsPipelineCreateInfo-primitiveFragmentShadingRateWithMultipleViewports-04504
+        }
+
+        /*
+            Fragment shader state
+        */
+
+        if has.fragment_shader_state {
+            // Fragment shader
+            if let Some((entry_point, specialization_data)) = fragment_shader {
+                shader_stages.push(ShaderStageInfo {
+                    entry_point,
+                    specialization_map_entries: Fss::descriptors(),
+                    specialization_data: unsafe {
+                        std::slice::from_raw_parts(
+                            specialization_data as *const _ as *const u8,
+                            size_of_val(specialization_data),
+                        )
+                    },
+                });
+
+                match entry_point.execution() {
+                    ShaderExecution::Fragment => (),
+                    _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
+                }
+
+                // Check that the subpass can accept the output of the fragment shader.
+                match render_pass {
+                    PipelineRenderPassType::BeginRenderPass(subpass) => {
+                        if !subpass.is_compatible_with(entry_point.output_interface()) {
+                            return Err(
+                                GraphicsPipelineCreationError::FragmentShaderRenderPassIncompatible,
+                            );
+                        }
+                    }
+                    PipelineRenderPassType::BeginRendering(_) => {
+                        // TODO:
+                    }
+                }
+
+                // TODO:
+                // VUID-VkPipelineShaderStageCreateInfo-stage-00718
+                // VUID-VkPipelineShaderStageCreateInfo-stage-06685
+                // VUID-VkPipelineShaderStageCreateInfo-stage-06686
+                // VUID-VkGraphicsPipelineCreateInfo-pStages-01565
+                // VUID-VkGraphicsPipelineCreateInfo-renderPass-06056
+                // VUID-VkGraphicsPipelineCreateInfo-renderPass-06061
+            } else {
+                // TODO: should probably error out here at least under some circumstances?
+                // VUID?
+            }
+
+            // TODO:
+            // VUID-VkGraphicsPipelineCreateInfo-renderPass-06038
+        }
+
+        // Depth/stencil state
+        // VUID-VkGraphicsPipelineCreateInfo-renderPass-06043
+        // VUID-VkGraphicsPipelineCreateInfo-renderPass-06053
+        // VUID-VkGraphicsPipelineCreateInfo-renderPass-06590
+        if has.depth_stencil_state {
+            let &DepthStencilState {
+                ref depth,
+                ref depth_bounds,
+                ref stencil,
+            } = depth_stencil_state;
+
+            if let Some(depth_state) = depth {
+                let &DepthState {
+                    enable_dynamic,
+                    write_enable,
+                    compare_op,
+                } = depth_state;
+
+                let has_depth_attachment = match render_pass {
+                    PipelineRenderPassType::BeginRenderPass(subpass) => subpass.has_depth(),
+                    PipelineRenderPassType::BeginRendering(rendering_info) => {
+                        rendering_info.depth_attachment_format.is_none()
+                    }
+                };
+
+                // VUID?
+                if !has_depth_attachment {
+                    return Err(GraphicsPipelineCreationError::NoDepthAttachment);
+                }
+
+                // VUID?
+                if enable_dynamic
+                    && !(device.api_version() >= Version::V1_3
+                        || device.enabled_features().extended_dynamic_state)
+                {
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "extended_dynamic_state",
+                        reason: "DepthState::enable_dynamic was true",
+                    });
+                }
+
+                match write_enable {
+                    StateMode::Fixed(write_enable) => {
+                        match render_pass {
+                            PipelineRenderPassType::BeginRenderPass(subpass) => {
+                                // VUID-VkGraphicsPipelineCreateInfo-renderPass-06039
+                                if write_enable && !subpass.has_writable_depth() {
+                                    return Err(GraphicsPipelineCreationError::NoDepthAttachment);
+                                }
+                            }
+                            PipelineRenderPassType::BeginRendering(_) => {
+                                // No VUID?
+                            }
+                        }
+                    }
+                    StateMode::Dynamic => {
+                        // VUID?
+                        if !(device.api_version() >= Version::V1_3
+                            || device.enabled_features().extended_dynamic_state)
+                        {
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "extended_dynamic_state",
+                                reason: "DepthState::write_enable was set to Dynamic",
+                            });
+                        }
+                    }
+                }
+
+                // VUID?
+                if matches!(compare_op, StateMode::Dynamic)
+                    && !(device.api_version() >= Version::V1_3
+                        || device.enabled_features().extended_dynamic_state)
+                {
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "extended_dynamic_state",
+                        reason: "DepthState::compare_op was set to Dynamic",
+                    });
+                }
+            }
+
+            if let Some(depth_bounds_state) = depth_bounds {
+                let &DepthBoundsState {
+                    enable_dynamic,
+                    ref bounds,
+                } = depth_bounds_state;
+
+                // VUID-VkPipelineDepthStencilStateCreateInfo-depthBoundsTestEnable-00598
+                if !device.enabled_features().depth_bounds {
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "depth_bounds",
+                        reason: "DepthStencilState::depth_bounds was Some",
+                    });
+                }
+
+                // VUID?
+                if enable_dynamic
+                    && !(device.api_version() >= Version::V1_3
+                        || device.enabled_features().extended_dynamic_state)
+                {
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "extended_dynamic_state",
+                        reason: "DepthBoundsState::enable_dynamic was true",
+                    });
+                }
+
+                if let StateMode::Fixed(bounds) = bounds {
+                    // VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-02510
+                    if !device.enabled_extensions().ext_depth_range_unrestricted
+                        && !(0.0..1.0).contains(bounds.start())
+                        && !(0.0..1.0).contains(bounds.end())
+                    {
+                        return Err(GraphicsPipelineCreationError::ExtensionNotEnabled {
+                                extension: "ext_depth_range_unrestricted",
+                                reason: "DepthBoundsState::bounds were not both between 0.0 and 1.0 inclusive",
+                            });
+                    }
+                }
+            }
+
+            if let Some(stencil_state) = stencil {
+                let &StencilState {
+                    enable_dynamic,
+                    ref front,
+                    ref back,
+                } = stencil_state;
+
+                let has_stencil_attachment = match render_pass {
+                    PipelineRenderPassType::BeginRenderPass(subpass) => subpass.has_stencil(),
+                    PipelineRenderPassType::BeginRendering(rendering_info) => {
+                        rendering_info.stencil_attachment_format.is_none()
+                    }
+                };
+
+                if !has_stencil_attachment {
+                    return Err(GraphicsPipelineCreationError::NoDepthAttachment);
+                }
+
+                // VUID?
+                if enable_dynamic
+                    && !(device.api_version() >= Version::V1_3
+                        || device.enabled_features().extended_dynamic_state)
+                {
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "extended_dynamic_state",
+                        reason: "StencilState::enable_dynamic was true",
+                    });
+                }
+
+                match (front.ops, back.ops) {
+                    (StateMode::Fixed(_), StateMode::Fixed(_)) => (),
+                    (StateMode::Dynamic, StateMode::Dynamic) => {
+                        // VUID?
+                        if !(device.api_version() >= Version::V1_3
+                            || device.enabled_features().extended_dynamic_state)
+                        {
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "extended_dynamic_state",
+                                reason: "StencilState::ops was set to Dynamic",
+                            });
+                        }
+                    }
+                    _ => return Err(GraphicsPipelineCreationError::WrongStencilState),
+                }
+
+                if !matches!(
+                    (front.compare_mask, back.compare_mask),
+                    (StateMode::Fixed(_), StateMode::Fixed(_))
+                        | (StateMode::Dynamic, StateMode::Dynamic)
+                ) {
+                    return Err(GraphicsPipelineCreationError::WrongStencilState);
+                }
+
+                if !matches!(
+                    (front.write_mask, back.write_mask),
+                    (StateMode::Fixed(_), StateMode::Fixed(_))
+                        | (StateMode::Dynamic, StateMode::Dynamic)
+                ) {
+                    return Err(GraphicsPipelineCreationError::WrongStencilState);
+                }
+
+                if !matches!(
+                    (front.reference, back.reference),
+                    (StateMode::Fixed(_), StateMode::Fixed(_))
+                        | (StateMode::Dynamic, StateMode::Dynamic)
+                ) {
+                    return Err(GraphicsPipelineCreationError::WrongStencilState);
+                }
+
+                // TODO:
+                // VUID-VkGraphicsPipelineCreateInfo-renderPass-06040
+            }
+        }
+
+        /*
+            Fragment output state
+        */
+
+        if has.fragment_output_state {
+            // Multisample state
+            // VUID-VkGraphicsPipelineCreateInfo-rasterizerDiscardEnable-00751
+            {
+                let &MultisampleState {
+                    rasterization_samples,
+                    sample_shading,
+                    sample_mask,
+                    alpha_to_coverage_enable,
+                    alpha_to_one_enable,
+                } = multisample_state;
+
+                match render_pass {
+                    PipelineRenderPassType::BeginRenderPass(subpass) => {
+                        if let Some(samples) = subpass.num_samples() {
+                            // VUID-VkGraphicsPipelineCreateInfo-subpass-00757
+                            if rasterization_samples != samples {
+                                return Err(GraphicsPipelineCreationError::MultisampleRasterizationSamplesMismatch);
+                            }
+                        }
+
+                        // TODO:
+                        // VUID-VkGraphicsPipelineCreateInfo-subpass-00758
+                        // VUID-VkGraphicsPipelineCreateInfo-subpass-01505
+                        // VUID-VkGraphicsPipelineCreateInfo-subpass-01411
+                        // VUID-VkGraphicsPipelineCreateInfo-subpass-01412
+                    }
+                    PipelineRenderPassType::BeginRendering(_) => {
+                        // No equivalent VUIDs for dynamic rendering, as no sample count information
+                        // is provided until `begin_rendering`.
+                    }
+                }
+
+                if let Some(min_sample_shading) = sample_shading {
+                    // VUID-VkPipelineMultisampleStateCreateInfo-sampleShadingEnable-00784
+                    if !device.enabled_features().sample_rate_shading {
+                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                            feature: "sample_rate_shading",
+                            reason: "MultisampleState::sample_shading was Some",
+                        });
+                    }
+
+                    // VUID-VkPipelineMultisampleStateCreateInfo-minSampleShading-00786
+                    // TODO: return error?
+                    assert!(min_sample_shading >= 0.0 && min_sample_shading <= 1.0);
+                }
+
+                // VUID-VkPipelineMultisampleStateCreateInfo-alphaToOneEnable-00785
+                if alpha_to_one_enable && !device.enabled_features().alpha_to_one {
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "alpha_to_one",
+                        reason: "MultisampleState::alpha_to_one was true",
+                    });
+                }
+
+                // TODO:
+                // VUID-VkGraphicsPipelineCreateInfo-lineRasterizationMode-02766
+            }
+        }
+
+        // Color blend state
+        // VUID-VkGraphicsPipelineCreateInfo-renderPass-06044
+        // VUID-VkGraphicsPipelineCreateInfo-renderPass-06054
+        if has.color_blend_state {
+            let &ColorBlendState {
+                logic_op,
+                ref attachments,
+                blend_constants,
+            } = color_blend_state;
+
+            if let Some(logic_op) = logic_op {
+                // VUID-VkPipelineColorBlendStateCreateInfo-logicOpEnable-00606
+                if !device.enabled_features().logic_op {
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "logic_op",
+                        reason: "ColorBlendState::logic_op was set to Some",
+                    });
+                }
+
+                // VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-04869
+                if matches!(logic_op, StateMode::Dynamic)
+                    && !device.enabled_features().extended_dynamic_state2_logic_op
+                {
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "extended_dynamic_state2_logic_op",
+                        reason: "ColorBlendState::logic_op was set to Some(Dynamic)",
+                    });
+                }
+            }
+
+            let color_attachment_count = match render_pass {
+                PipelineRenderPassType::BeginRenderPass(subpass) => {
+                    subpass.subpass_desc().color_attachments.len()
+                }
+                PipelineRenderPassType::BeginRendering(rendering_info) => {
+                    rendering_info.color_attachment_formats.len()
+                }
+            };
+
+            // VUID-VkGraphicsPipelineCreateInfo-renderPass-06042
+            // VUID-VkGraphicsPipelineCreateInfo-renderPass-06055
+            // VUID-VkGraphicsPipelineCreateInfo-renderPass-06060
+            if color_attachment_count != attachments.len() {
+                return Err(GraphicsPipelineCreationError::MismatchBlendingAttachmentsCount);
+            }
+
+            if attachments.len() > 1 && !device.enabled_features().independent_blend {
+                // Ensure that all `blend` and `color_write_mask` are identical.
+                let mut iter = attachments
+                    .iter()
+                    .map(|state| (&state.blend, &state.color_write_mask));
+                let first = iter.next().unwrap();
+
+                // VUID-VkPipelineColorBlendStateCreateInfo-pAttachments-00605
+                if !iter.all(|state| state == first) {
+                    return Err(
+                            GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "independent_blend",
+                                reason: "The blend and color_write_mask members of all elements of ColorBlendState::attachments were not identical",
+                            },
+                        );
+                }
+            }
+
+            for (attachment_index, state) in attachments.iter().enumerate() {
+                let &ColorBlendAttachmentState {
+                    blend,
+                    color_write_mask,
+                    color_write_enable,
+                } = state;
+
+                if let Some(blend) = blend {
+                    // VUID?
+                    if !device.enabled_features().dual_src_blend
+                        && [
+                            blend.color_source,
+                            blend.color_destination,
+                            blend.alpha_source,
+                            blend.alpha_destination,
+                        ]
+                        .into_iter()
+                        .any(|blend_factor| {
+                            matches!(
+                                blend_factor,
+                                BlendFactor::Src1Color
+                                    | BlendFactor::OneMinusSrc1Color
+                                    | BlendFactor::Src1Alpha
+                                    | BlendFactor::OneMinusSrc1Alpha
+                            )
+                        })
+                    {
+                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                            feature: "dual_src_blend",
+                            reason:
+                                "One of the BlendFactor members of AttachmentBlend was set to Src1",
+                        });
+                    }
+
+                    let attachment_format = match render_pass {
+                        PipelineRenderPassType::BeginRenderPass(subpass) => subpass
+                            .subpass_desc()
+                            .color_attachments[attachment_index]
+                            .as_ref()
+                            .and_then(|atch_ref| {
+                                subpass.render_pass().attachments()[atch_ref.attachment as usize]
+                                    .format
+                            }),
+                        PipelineRenderPassType::BeginRendering(rendering_info) => {
+                            rendering_info.color_attachment_formats[attachment_index]
+                        }
+                    };
+
+                    // VUID-VkGraphicsPipelineCreateInfo-renderPass-06041
+                    // VUID-VkGraphicsPipelineCreateInfo-renderPass-06062
+                    if !attachment_format.map_or(false, |format| {
+                        physical_device
+                            .format_properties(format)
+                            .potential_format_features()
+                            .color_attachment_blend
+                    }) {
+                        return Err(
+                            GraphicsPipelineCreationError::ColorAttachmentFormatBlendNotSupported {
+                                attachment_index: attachment_index as u32,
+                            },
+                        );
+                    }
+                }
+
+                match color_write_enable {
+                    StateMode::Fixed(enable) => {
+                        // VUID-VkPipelineColorWriteCreateInfoEXT-pAttachments-04801
+                        if !enable && !device.enabled_features().color_write_enable {
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                    feature: "color_write_enable",
+                                    reason: "ColorBlendAttachmentState::color_blend_enable was set to Fixed(false)",
+                                });
+                        }
+                    }
+                    StateMode::Dynamic => {
+                        // VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-04800
+                        if !device.enabled_features().color_write_enable {
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                    feature: "color_write_enable",
+                                    reason: "ColorBlendAttachmentState::color_blend_enable was set to Dynamic",
+                                });
+                        }
+                    }
+                }
+            }
+        }
+
+        /*
+            Generic shader checks
+        */
+
+        for stage_info in &shader_stages {
+            // VUID-VkGraphicsPipelineCreateInfo-layout-00756
+            pipeline_layout.ensure_compatible_with_shader(
+                stage_info.entry_point.descriptor_requirements(),
+                stage_info.entry_point.push_constant_requirements(),
+            )?;
+
+            for (constant_id, reqs) in stage_info
+                .entry_point
+                .specialization_constant_requirements()
+            {
+                let map_entry = stage_info
+                    .specialization_map_entries
+                    .iter()
+                    .find(|desc| desc.constant_id == constant_id)
+                    .ok_or(GraphicsPipelineCreationError::IncompatibleSpecializationConstants)?;
+
+                if map_entry.size as DeviceSize != reqs.size {
+                    return Err(GraphicsPipelineCreationError::IncompatibleSpecializationConstants);
+                }
+            }
+        }
+
+        // VUID-VkGraphicsPipelineCreateInfo-pStages-00742
+        // VUID-VkGraphicsPipelineCreateInfo-None-04889
         // TODO: this check is too strict; the output only has to be a superset, any variables
         // not used in the input of the next shader are just ignored.
-        for (output, input) in stages_info.iter().zip(stages_info.iter().skip(1)) {
+        for (output, input) in shader_stages.iter().zip(shader_stages.iter().skip(1)) {
             if let Err(err) = input
                 .entry_point
                 .input_interface()
@@ -530,265 +2025,1175 @@ where
             }
         }
 
-        // Creating the specialization for each stage.
-        let specialization: SmallVec<[_; 5]> = stages_info
-            .iter()
-            .map(|stage_info| {
-                for (constant_id, reqs) in stage_info
-                    .entry_point
-                    .specialization_constant_requirements()
-                {
-                    let map_entry = stage_info
-                        .specialization_map_entries
-                        .iter()
-                        .find(|desc| desc.constant_id == constant_id)
-                        .ok_or(
-                            GraphicsPipelineCreationError::IncompatibleSpecializationConstants,
-                        )?;
-
-                    if map_entry.size as DeviceSize != reqs.size {
-                        return Err(
-                            GraphicsPipelineCreationError::IncompatibleSpecializationConstants,
-                        );
-                    }
-                }
-
-                Ok(ash::vk::SpecializationInfo {
-                    map_entry_count: stage_info.specialization_map_entries.len() as u32,
-                    p_map_entries: stage_info.specialization_map_entries.as_ptr() as *const _,
-                    data_size: stage_info.specialization_data.len(),
-                    p_data: stage_info.specialization_data.as_ptr() as *const _,
-                })
-            })
-            .collect::<Result<_, _>>()?;
-
-        debug_assert_eq!(specialization.len(), stages_info.len());
-
-        // Creating the shader stages themselves.
-        let stages: SmallVec<[_; 5]> = stages_info
-            .iter()
-            .zip(&specialization)
-            .map(|(stage_info, specialization)| {
-                let stage = ShaderStage::from(*stage_info.entry_point.execution());
-
-                ash::vk::PipelineShaderStageCreateInfo {
-                    flags: ash::vk::PipelineShaderStageCreateFlags::empty(),
-                    stage: stage.into(),
-                    module: stage_info.entry_point.module().internal_object(),
-                    p_name: stage_info.entry_point.name().as_ptr(),
-                    p_specialization_info: specialization as *const _,
-                    ..Default::default()
-                }
-            })
-            .collect();
-
-        debug_assert_eq!(stages.len(), stages_info.len());
-
-        // Will contain the list of dynamic states. Filled while checking the states.
-        let mut dynamic_state_modes: HashMap<DynamicState, bool> = HashMap::default();
-
-        // Vertex input state
-        let binding_descriptions = self_vertex_input_state.to_vulkan_bindings(&device)?;
-        let attribute_descriptions = self_vertex_input_state.to_vulkan_attributes(&device)?;
-        let binding_divisor_descriptions =
-            self_vertex_input_state.to_vulkan_binding_divisors(&device)?;
-        let binding_divisor_state = self_vertex_input_state
-            .to_vulkan_binding_divisor_state(binding_divisor_descriptions.as_ref());
-        let vertex_input_state = Some(self_vertex_input_state.to_vulkan(
-            &device,
-            &mut dynamic_state_modes,
-            &binding_descriptions,
-            &attribute_descriptions,
-            binding_divisor_state.as_ref(),
-        ));
-
-        // Input assembly state
-        let input_assembly_state = if self.vertex_shader.is_some() {
-            Some(
-                self.input_assembly_state
-                    .to_vulkan(&device, &mut dynamic_state_modes)?,
-            )
-        } else {
-            None
-        };
-
-        // Tessellation state
-        let tessellation_state = if self.tessellation_shaders.is_some() {
-            Some(self.tessellation_state.to_vulkan(
-                &device,
-                &mut dynamic_state_modes,
-                &self.input_assembly_state,
-            )?)
-        } else {
-            None
-        };
-
-        // Viewport state
-        let (viewport_count, viewports, scissor_count, scissors) = self
-            .viewport_state
-            .to_vulkan_viewports_scissors(&device, &mut dynamic_state_modes)?;
-        let viewport_state = Some(self.viewport_state.to_vulkan(
-            &device,
-            &mut dynamic_state_modes,
-            viewport_count,
-            &viewports,
-            scissor_count,
-            &scissors,
-        )?);
-
-        // Discard rectangle state
-        let discard_rectangles = self
-            .discard_rectangle_state
-            .to_vulkan_rectangles(&device, &mut dynamic_state_modes)?;
-        let mut discard_rectangle_state = self.discard_rectangle_state.to_vulkan(
-            &device,
-            &mut dynamic_state_modes,
-            &discard_rectangles,
-        )?;
-
-        // Rasterization state
-        let mut rasterization_line_state = self
-            .rasterization_state
-            .to_vulkan_line_state(&device, &mut dynamic_state_modes)?;
-        let rasterization_state = Some(self.rasterization_state.to_vulkan(
-            &device,
-            &mut dynamic_state_modes,
-            rasterization_line_state.as_mut(),
-        )?);
-
-        // Fragment shader state
-        let has_fragment_shader_state =
-            self.rasterization_state.rasterizer_discard_enable != StateMode::Fixed(true);
-
-        // Multisample state
-        let multisample_state = if has_fragment_shader_state {
-            Some(
-                self.multisample_state
-                    .to_vulkan(&device, &mut dynamic_state_modes, &subpass)?,
-            )
-        } else {
-            None
-        };
-
-        // Depth/stencil state
-        let depth_stencil_state = if has_fragment_shader_state
-            && subpass.subpass_desc().depth_stencil_attachment.is_some()
-        {
-            Some(
-                self.depth_stencil_state
-                    .to_vulkan(&device, &mut dynamic_state_modes, &subpass)?,
-            )
-        } else {
-            None
-        };
-
-        // Color blend state
-        let (color_blend_attachments, color_write_enables) = self
-            .color_blend_state
-            .to_vulkan_attachments(&device, &mut dynamic_state_modes, &subpass)?;
-        let mut color_write = self.color_blend_state.to_vulkan_color_write(
-            &device,
-            &mut dynamic_state_modes,
-            &color_write_enables,
-        )?;
-        let color_blend_state = if has_fragment_shader_state {
-            Some(self.color_blend_state.to_vulkan(
-                &device,
-                &mut dynamic_state_modes,
-                &color_blend_attachments,
-                color_write.as_mut(),
-            )?)
-        } else {
-            None
-        };
-
-        // Dynamic state
-        let dynamic_state_list: Vec<ash::vk::DynamicState> = dynamic_state_modes
-            .iter()
-            .filter(|(_, d)| **d)
-            .map(|(&state, _)| state.into())
-            .collect();
-
-        let dynamic_state = if !dynamic_state_list.is_empty() {
-            Some(ash::vk::PipelineDynamicStateCreateInfo {
-                flags: ash::vk::PipelineDynamicStateCreateFlags::empty(),
-                dynamic_state_count: dynamic_state_list.len() as u32,
-                p_dynamic_states: dynamic_state_list.as_ptr(),
-                ..Default::default()
-            })
-        } else {
-            None
-        };
+        // TODO:
+        // VUID-VkPipelineShaderStageCreateInfo-maxClipDistances-00708
+        // VUID-VkPipelineShaderStageCreateInfo-maxCullDistances-00709
+        // VUID-VkPipelineShaderStageCreateInfo-maxCombinedClipAndCullDistances-00710
+        // VUID-VkPipelineShaderStageCreateInfo-maxSampleMaskWords-00711
 
         // Dynamic states not handled yet:
         // - ViewportWScaling (VkPipelineViewportWScalingStateCreateInfoNV)
-        // - DiscardRectangle (VkPipelineDiscardRectangleStateCreateInfoEXT)
         // - SampleLocations (VkPipelineSampleLocationsStateCreateInfoEXT)
         // - ViewportShadingRatePalette (VkPipelineViewportShadingRateImageStateCreateInfoNV)
         // - ViewportCoarseSampleOrder (VkPipelineViewportCoarseSampleOrderStateCreateInfoNV)
         // - ExclusiveScissor (VkPipelineViewportExclusiveScissorStateCreateInfoNV)
         // - FragmentShadingRate (VkPipelineFragmentShadingRateStateCreateInfoKHR)
 
-        // Finally, create the pipeline itself.
-        let handle = unsafe {
-            let mut create_info = ash::vk::GraphicsPipelineCreateInfo {
-                flags: ash::vk::PipelineCreateFlags::empty(), // TODO: some flags are available but none are critical
-                stage_count: stages.len() as u32,
-                p_stages: stages.as_ptr(),
-                p_vertex_input_state: vertex_input_state
-                    .as_ref()
-                    .map(|p| p as *const _)
-                    .unwrap_or(ptr::null()),
-                p_input_assembly_state: input_assembly_state
-                    .as_ref()
-                    .map(|p| p as *const _)
-                    .unwrap_or(ptr::null()),
-                p_tessellation_state: tessellation_state
-                    .as_ref()
-                    .map(|p| p as *const _)
-                    .unwrap_or(ptr::null()),
-                p_viewport_state: viewport_state
-                    .as_ref()
-                    .map(|p| p as *const _)
-                    .unwrap_or(ptr::null()),
-                p_rasterization_state: rasterization_state
-                    .as_ref()
-                    .map(|p| p as *const _)
-                    .unwrap_or(ptr::null()),
-                p_multisample_state: multisample_state
-                    .as_ref()
-                    .map(|p| p as *const _)
-                    .unwrap_or(ptr::null()),
-                p_depth_stencil_state: depth_stencil_state
-                    .as_ref()
-                    .map(|p| p as *const _)
-                    .unwrap_or(ptr::null()),
-                p_color_blend_state: color_blend_state
-                    .as_ref()
-                    .map(|p| p as *const _)
-                    .unwrap_or(ptr::null()),
-                p_dynamic_state: dynamic_state
-                    .as_ref()
-                    .map(|s| s as *const _)
-                    .unwrap_or(ptr::null()),
-                layout: pipeline_layout.internal_object(),
-                render_pass: subpass.render_pass().internal_object(),
-                subpass: subpass.index(),
-                base_pipeline_handle: ash::vk::Pipeline::null(), // TODO:
-                base_pipeline_index: -1,                         // TODO:
-                ..Default::default()
-            };
+        Ok(())
+    }
 
-            if let Some(discard_rectangle_state) = discard_rectangle_state.as_mut() {
-                discard_rectangle_state.p_next = create_info.p_next;
-                create_info.p_next = discard_rectangle_state as *const _ as *const _;
+    unsafe fn record_create(
+        &self,
+        device: &Device,
+        pipeline_layout: &PipelineLayout,
+        vertex_input_state: &VertexInputState,
+        has: Has,
+    ) -> Result<
+        (
+            ash::vk::Pipeline,
+            HashMap<(u32, u32), DescriptorRequirements>,
+            HashMap<DynamicState, bool>,
+            HashMap<ShaderStage, ()>,
+        ),
+        GraphicsPipelineCreationError,
+    > {
+        let Self {
+            render_pass,
+            cache,
+
+            vertex_shader,
+            tessellation_shaders,
+            geometry_shader,
+            fragment_shader,
+
+            vertex_input_state: _,
+            input_assembly_state,
+            tessellation_state,
+            viewport_state,
+            discard_rectangle_state,
+            rasterization_state,
+            multisample_state,
+            depth_stencil_state,
+            color_blend_state,
+        } = self;
+
+        let render_pass = render_pass.as_ref().unwrap();
+
+        let mut descriptor_requirements: HashMap<(u32, u32), DescriptorRequirements> =
+            HashMap::new();
+        let mut dynamic_state: HashMap<DynamicState, bool> = HashMap::default();
+        let mut stages = HashMap::default();
+        let mut stages_vk: SmallVec<[_; 5]> = SmallVec::new();
+
+        /*
+            Render pass
+        */
+
+        let mut render_pass_vk = ash::vk::RenderPass::null();
+        let mut subpass_vk = 0;
+        let mut color_attachment_formats_vk: SmallVec<[_; 4]> = SmallVec::new();
+        let mut rendering_create_info_vk = None;
+
+        match render_pass {
+            PipelineRenderPassType::BeginRenderPass(subpass) => {
+                render_pass_vk = subpass.render_pass().internal_object();
+                subpass_vk = subpass.index();
+            }
+            PipelineRenderPassType::BeginRendering(rendering_info) => {
+                let &PipelineRenderingCreateInfo {
+                    view_mask,
+                    ref color_attachment_formats,
+                    depth_attachment_format,
+                    stencil_attachment_format,
+                    _ne: _,
+                } = rendering_info;
+
+                color_attachment_formats_vk.extend(
+                    color_attachment_formats
+                        .iter()
+                        .map(|format| format.map_or(ash::vk::Format::UNDEFINED, Into::into)),
+                );
+
+                let _ = rendering_create_info_vk.insert(ash::vk::PipelineRenderingCreateInfo {
+                    view_mask,
+                    color_attachment_count: color_attachment_formats_vk.len() as u32,
+                    p_color_attachment_formats: color_attachment_formats_vk.as_ptr(),
+                    depth_attachment_format: depth_attachment_format
+                        .map_or(ash::vk::Format::UNDEFINED, Into::into),
+                    stencil_attachment_format: stencil_attachment_format
+                        .map_or(ash::vk::Format::UNDEFINED, Into::into),
+                    ..Default::default()
+                });
+            }
+        }
+
+        /*
+            Vertex input state
+        */
+
+        let mut vertex_binding_descriptions_vk: SmallVec<[_; 8]> = SmallVec::new();
+        let mut vertex_attribute_descriptions_vk: SmallVec<[_; 8]> = SmallVec::new();
+        let mut vertex_binding_divisor_descriptions_vk: SmallVec<[_; 8]> = SmallVec::new();
+        let mut vertex_binding_divisor_state_vk = None;
+        let mut vertex_input_state_vk = None;
+        let mut input_assembly_state_vk = None;
+
+        if has.vertex_input_state {
+            // Vertex input state
+            {
+                dynamic_state.insert(DynamicState::VertexInput, false);
+
+                let &VertexInputState {
+                    ref bindings,
+                    ref attributes,
+                } = vertex_input_state;
+
+                vertex_binding_descriptions_vk.extend(bindings.iter().map(
+                    |(&binding, binding_desc)| ash::vk::VertexInputBindingDescription {
+                        binding,
+                        stride: binding_desc.stride,
+                        input_rate: binding_desc.input_rate.into(),
+                    },
+                ));
+
+                vertex_attribute_descriptions_vk.extend(attributes.iter().map(
+                    |(&location, attribute_desc)| ash::vk::VertexInputAttributeDescription {
+                        location,
+                        binding: attribute_desc.binding,
+                        format: attribute_desc.format.into(),
+                        offset: attribute_desc.offset,
+                    },
+                ));
+
+                let vertex_input_state =
+                    vertex_input_state_vk.insert(ash::vk::PipelineVertexInputStateCreateInfo {
+                        flags: ash::vk::PipelineVertexInputStateCreateFlags::empty(),
+                        vertex_binding_description_count: vertex_binding_descriptions_vk.len()
+                            as u32,
+                        p_vertex_binding_descriptions: vertex_binding_descriptions_vk.as_ptr(),
+                        vertex_attribute_description_count: vertex_attribute_descriptions_vk.len()
+                            as u32,
+                        p_vertex_attribute_descriptions: vertex_attribute_descriptions_vk.as_ptr(),
+                        ..Default::default()
+                    });
+
+                {
+                    vertex_binding_divisor_descriptions_vk.extend(
+                        bindings
+                            .iter()
+                            .filter_map(|(&binding, binding_desc)| match binding_desc.input_rate {
+                                VertexInputRate::Instance { divisor } if divisor != 1 => {
+                                    Some((binding, divisor))
+                                }
+                                _ => None,
+                            })
+                            .map(|(binding, divisor)| {
+                                ash::vk::VertexInputBindingDivisorDescriptionEXT {
+                                    binding,
+                                    divisor,
+                                }
+                            }),
+                    );
+
+                    // VUID-VkPipelineVertexInputDivisorStateCreateInfoEXT-vertexBindingDivisorCount-arraylength
+                    if !vertex_binding_divisor_descriptions_vk.is_empty() {
+                        vertex_input_state.p_next =
+                            vertex_binding_divisor_state_vk.insert(
+                                ash::vk::PipelineVertexInputDivisorStateCreateInfoEXT {
+                                    vertex_binding_divisor_count:
+                                        vertex_binding_divisor_descriptions_vk.len() as u32,
+                                    p_vertex_binding_divisors:
+                                        vertex_binding_divisor_descriptions_vk.as_ptr(),
+                                    ..Default::default()
+                                },
+                            ) as *const _ as *const _;
+                    }
+                }
             }
 
-            let cache_handle = match self.cache.as_ref() {
-                Some(cache) => cache.internal_object(),
-                None => ash::vk::PipelineCache::null(),
+            // Input assembly state
+            {
+                let &InputAssemblyState {
+                    topology,
+                    primitive_restart_enable,
+                } = input_assembly_state;
+
+                let topology = match topology {
+                    PartialStateMode::Fixed(topology) => {
+                        dynamic_state.insert(DynamicState::PrimitiveTopology, false);
+                        topology.into()
+                    }
+                    PartialStateMode::Dynamic(topology_class) => {
+                        dynamic_state.insert(DynamicState::PrimitiveTopology, true);
+                        topology_class.example().into()
+                    }
+                };
+
+                let primitive_restart_enable = match primitive_restart_enable {
+                    StateMode::Fixed(primitive_restart_enable) => {
+                        dynamic_state.insert(DynamicState::PrimitiveRestartEnable, false);
+                        primitive_restart_enable as ash::vk::Bool32
+                    }
+                    StateMode::Dynamic => {
+                        dynamic_state.insert(DynamicState::PrimitiveRestartEnable, true);
+                        Default::default()
+                    }
+                };
+
+                let _ =
+                    input_assembly_state_vk.insert(ash::vk::PipelineInputAssemblyStateCreateInfo {
+                        flags: ash::vk::PipelineInputAssemblyStateCreateFlags::empty(),
+                        topology,
+                        primitive_restart_enable,
+                        ..Default::default()
+                    });
+            }
+        }
+
+        /*
+            Pre-rasterization shader state
+        */
+
+        let mut vertex_shader_specialization_vk = None;
+        let mut tessellation_control_shader_specialization_vk = None;
+        let mut tessellation_evaluation_shader_specialization_vk = None;
+        let mut tessellation_state_vk = None;
+        let mut geometry_shader_specialization_vk = None;
+        let mut viewports_vk: SmallVec<[_; 2]> = SmallVec::new();
+        let mut scissors_vk: SmallVec<[_; 2]> = SmallVec::new();
+        let mut viewport_state_vk = None;
+        let mut rasterization_line_state_vk = None;
+        let mut rasterization_state_vk = None;
+        let mut discard_rectangles: SmallVec<[_; 2]> = SmallVec::new();
+        let mut discard_rectangle_state_vk = None;
+
+        if has.pre_rasterization_shader_state {
+            // Vertex shader
+            if let Some((entry_point, specialization_data)) = vertex_shader {
+                let specialization_map_entries = Vss::descriptors();
+                let specialization_data = slice::from_raw_parts(
+                    specialization_data as *const _ as *const u8,
+                    size_of_val(specialization_data),
+                );
+
+                let specialization_info_vk =
+                    vertex_shader_specialization_vk.insert(ash::vk::SpecializationInfo {
+                        map_entry_count: specialization_map_entries.len() as u32,
+                        p_map_entries: specialization_map_entries.as_ptr() as *const _,
+                        data_size: specialization_data.len(),
+                        p_data: specialization_data.as_ptr() as *const _,
+                    });
+
+                for (loc, reqs) in entry_point.descriptor_requirements() {
+                    match descriptor_requirements.entry(loc) {
+                        Entry::Occupied(entry) => {
+                            let previous = entry.into_mut();
+                            *previous = previous.intersection(reqs).expect("Could not produce an intersection of the shader descriptor requirements");
+                        }
+                        Entry::Vacant(entry) => {
+                            entry.insert(reqs.clone());
+                        }
+                    }
+                }
+
+                stages.insert(ShaderStage::Vertex, ());
+                stages_vk.push(ash::vk::PipelineShaderStageCreateInfo {
+                    flags: ash::vk::PipelineShaderStageCreateFlags::empty(),
+                    stage: ash::vk::ShaderStageFlags::VERTEX,
+                    module: entry_point.module().internal_object(),
+                    p_name: entry_point.name().as_ptr(),
+                    p_specialization_info: specialization_info_vk as *const _,
+                    ..Default::default()
+                });
+            }
+
+            // Tessellation shaders
+            if let Some(tessellation_shaders) = tessellation_shaders {
+                {
+                    let (entry_point, specialization_data) = &tessellation_shaders.control;
+                    let specialization_map_entries = Tcss::descriptors();
+                    let specialization_data = slice::from_raw_parts(
+                        specialization_data as *const _ as *const u8,
+                        size_of_val(specialization_data),
+                    );
+
+                    let specialization_info_vk = tessellation_control_shader_specialization_vk
+                        .insert(ash::vk::SpecializationInfo {
+                            map_entry_count: specialization_map_entries.len() as u32,
+                            p_map_entries: specialization_map_entries.as_ptr() as *const _,
+                            data_size: specialization_data.len(),
+                            p_data: specialization_data.as_ptr() as *const _,
+                        });
+
+                    for (loc, reqs) in entry_point.descriptor_requirements() {
+                        match descriptor_requirements.entry(loc) {
+                            Entry::Occupied(entry) => {
+                                let previous = entry.into_mut();
+                                *previous = previous.intersection(reqs).expect("Could not produce an intersection of the shader descriptor requirements");
+                            }
+                            Entry::Vacant(entry) => {
+                                entry.insert(reqs.clone());
+                            }
+                        }
+                    }
+
+                    stages.insert(ShaderStage::TessellationControl, ());
+                    stages_vk.push(ash::vk::PipelineShaderStageCreateInfo {
+                        flags: ash::vk::PipelineShaderStageCreateFlags::empty(),
+                        stage: ash::vk::ShaderStageFlags::TESSELLATION_CONTROL,
+                        module: entry_point.module().internal_object(),
+                        p_name: entry_point.name().as_ptr(),
+                        p_specialization_info: specialization_info_vk as *const _,
+                        ..Default::default()
+                    });
+                }
+
+                {
+                    let (entry_point, specialization_data) = &tessellation_shaders.evaluation;
+                    let specialization_map_entries = Tess::descriptors();
+                    let specialization_data = slice::from_raw_parts(
+                        specialization_data as *const _ as *const u8,
+                        size_of_val(specialization_data),
+                    );
+
+                    let specialization_info_vk = tessellation_evaluation_shader_specialization_vk
+                        .insert(ash::vk::SpecializationInfo {
+                            map_entry_count: specialization_map_entries.len() as u32,
+                            p_map_entries: specialization_map_entries.as_ptr() as *const _,
+                            data_size: specialization_data.len(),
+                            p_data: specialization_data.as_ptr() as *const _,
+                        });
+
+                    for (loc, reqs) in entry_point.descriptor_requirements() {
+                        match descriptor_requirements.entry(loc) {
+                            Entry::Occupied(entry) => {
+                                let previous = entry.into_mut();
+                                *previous = previous.intersection(reqs).expect("Could not produce an intersection of the shader descriptor requirements");
+                            }
+                            Entry::Vacant(entry) => {
+                                entry.insert(reqs.clone());
+                            }
+                        }
+                    }
+
+                    stages.insert(ShaderStage::TessellationEvaluation, ());
+                    stages_vk.push(ash::vk::PipelineShaderStageCreateInfo {
+                        flags: ash::vk::PipelineShaderStageCreateFlags::empty(),
+                        stage: ash::vk::ShaderStageFlags::TESSELLATION_EVALUATION,
+                        module: entry_point.module().internal_object(),
+                        p_name: entry_point.name().as_ptr(),
+                        p_specialization_info: specialization_info_vk as *const _,
+                        ..Default::default()
+                    });
+                }
+            }
+
+            // Geometry shader
+            if let Some((entry_point, specialization_data)) = geometry_shader {
+                let specialization_map_entries = Gss::descriptors();
+                let specialization_data = slice::from_raw_parts(
+                    specialization_data as *const _ as *const u8,
+                    size_of_val(specialization_data),
+                );
+
+                let specialization_info_vk =
+                    geometry_shader_specialization_vk.insert(ash::vk::SpecializationInfo {
+                        map_entry_count: specialization_map_entries.len() as u32,
+                        p_map_entries: specialization_map_entries.as_ptr() as *const _,
+                        data_size: specialization_data.len(),
+                        p_data: specialization_data.as_ptr() as *const _,
+                    });
+
+                for (loc, reqs) in entry_point.descriptor_requirements() {
+                    match descriptor_requirements.entry(loc) {
+                        Entry::Occupied(entry) => {
+                            let previous = entry.into_mut();
+                            *previous = previous.intersection(reqs).expect("Could not produce an intersection of the shader descriptor requirements");
+                        }
+                        Entry::Vacant(entry) => {
+                            entry.insert(reqs.clone());
+                        }
+                    }
+                }
+
+                stages.insert(ShaderStage::Geometry, ());
+                stages_vk.push(ash::vk::PipelineShaderStageCreateInfo {
+                    flags: ash::vk::PipelineShaderStageCreateFlags::empty(),
+                    stage: ash::vk::ShaderStageFlags::GEOMETRY,
+                    module: entry_point.module().internal_object(),
+                    p_name: entry_point.name().as_ptr(),
+                    p_specialization_info: specialization_info_vk as *const _,
+                    ..Default::default()
+                });
+            }
+
+            // Rasterization state
+            {
+                let &RasterizationState {
+                    depth_clamp_enable,
+                    rasterizer_discard_enable,
+                    polygon_mode,
+                    cull_mode,
+                    front_face,
+                    depth_bias,
+                    line_width,
+                    line_rasterization_mode,
+                    line_stipple,
+                } = rasterization_state;
+
+                let rasterizer_discard_enable = match rasterizer_discard_enable {
+                    StateMode::Fixed(rasterizer_discard_enable) => {
+                        dynamic_state.insert(DynamicState::RasterizerDiscardEnable, false);
+                        rasterizer_discard_enable as ash::vk::Bool32
+                    }
+                    StateMode::Dynamic => {
+                        dynamic_state.insert(DynamicState::RasterizerDiscardEnable, true);
+                        ash::vk::FALSE
+                    }
+                };
+
+                let cull_mode = match cull_mode {
+                    StateMode::Fixed(cull_mode) => {
+                        dynamic_state.insert(DynamicState::CullMode, false);
+                        cull_mode.into()
+                    }
+                    StateMode::Dynamic => {
+                        dynamic_state.insert(DynamicState::CullMode, true);
+                        CullMode::default().into()
+                    }
+                };
+
+                let front_face = match front_face {
+                    StateMode::Fixed(front_face) => {
+                        dynamic_state.insert(DynamicState::FrontFace, false);
+                        front_face.into()
+                    }
+                    StateMode::Dynamic => {
+                        dynamic_state.insert(DynamicState::FrontFace, true);
+                        FrontFace::default().into()
+                    }
+                };
+
+                let (
+                    depth_bias_enable,
+                    depth_bias_constant_factor,
+                    depth_bias_clamp,
+                    depth_bias_slope_factor,
+                ) = if let Some(depth_bias_state) = depth_bias {
+                    if depth_bias_state.enable_dynamic {
+                        dynamic_state.insert(DynamicState::DepthBiasEnable, true);
+                    } else {
+                        dynamic_state.insert(DynamicState::DepthBiasEnable, false);
+                    }
+
+                    let (constant_factor, clamp, slope_factor) = match depth_bias_state.bias {
+                        StateMode::Fixed(bias) => {
+                            dynamic_state.insert(DynamicState::DepthBias, false);
+                            (bias.constant_factor, bias.clamp, bias.slope_factor)
+                        }
+                        StateMode::Dynamic => {
+                            dynamic_state.insert(DynamicState::DepthBias, true);
+                            (0.0, 0.0, 0.0)
+                        }
+                    };
+
+                    (ash::vk::TRUE, constant_factor, clamp, slope_factor)
+                } else {
+                    (ash::vk::FALSE, 0.0, 0.0, 0.0)
+                };
+
+                let line_width = match line_width {
+                    StateMode::Fixed(line_width) => {
+                        dynamic_state.insert(DynamicState::LineWidth, false);
+                        line_width
+                    }
+                    StateMode::Dynamic => {
+                        dynamic_state.insert(DynamicState::LineWidth, true);
+                        1.0
+                    }
+                };
+
+                let rasterization_state =
+                    rasterization_state_vk.insert(ash::vk::PipelineRasterizationStateCreateInfo {
+                        flags: ash::vk::PipelineRasterizationStateCreateFlags::empty(),
+                        depth_clamp_enable: depth_clamp_enable as ash::vk::Bool32,
+                        rasterizer_discard_enable,
+                        polygon_mode: polygon_mode.into(),
+                        cull_mode,
+                        front_face,
+                        depth_bias_enable,
+                        depth_bias_constant_factor,
+                        depth_bias_clamp,
+                        depth_bias_slope_factor,
+                        line_width,
+                        ..Default::default()
+                    });
+
+                if device.enabled_extensions().ext_line_rasterization {
+                    let (stippled_line_enable, line_stipple_factor, line_stipple_pattern) =
+                        if let Some(line_stipple) = line_stipple {
+                            let (factor, pattern) = match line_stipple {
+                                StateMode::Fixed(line_stipple) => {
+                                    dynamic_state.insert(DynamicState::LineStipple, false);
+                                    (line_stipple.factor, line_stipple.pattern)
+                                }
+                                StateMode::Dynamic => {
+                                    dynamic_state.insert(DynamicState::LineStipple, true);
+                                    (1, 0)
+                                }
+                            };
+
+                            (ash::vk::TRUE, factor, pattern)
+                        } else {
+                            (ash::vk::FALSE, 1, 0)
+                        };
+
+                    rasterization_state.p_next = rasterization_line_state_vk.insert(
+                        ash::vk::PipelineRasterizationLineStateCreateInfoEXT {
+                            line_rasterization_mode: line_rasterization_mode.into(),
+                            stippled_line_enable,
+                            line_stipple_factor,
+                            line_stipple_pattern,
+                            ..Default::default()
+                        },
+                    ) as *const _ as *const _;
+                }
+            }
+
+            // Discard rectangle state
+            if device.enabled_extensions().ext_discard_rectangles {
+                let &DiscardRectangleState {
+                    mode,
+                    ref rectangles,
+                } = discard_rectangle_state;
+
+                let discard_rectangle_count = match rectangles {
+                    &PartialStateMode::Fixed(ref rectangles) => {
+                        dynamic_state.insert(DynamicState::DiscardRectangle, false);
+                        discard_rectangles.extend(rectangles.iter().map(|&rect| rect.into()));
+                        discard_rectangles.len() as u32
+                    }
+                    &PartialStateMode::Dynamic(count) => {
+                        dynamic_state.insert(DynamicState::DiscardRectangle, true);
+                        count
+                    }
+                };
+
+                let _ = discard_rectangle_state_vk.insert(
+                    ash::vk::PipelineDiscardRectangleStateCreateInfoEXT {
+                        flags: ash::vk::PipelineDiscardRectangleStateCreateFlagsEXT::empty(),
+                        discard_rectangle_mode: mode.into(),
+                        discard_rectangle_count,
+                        p_discard_rectangles: discard_rectangles.as_ptr(),
+                        ..Default::default()
+                    },
+                );
+            }
+        }
+
+        // Tessellation state
+        if has.tessellation_state {
+            let &TessellationState {
+                patch_control_points,
+            } = tessellation_state;
+
+            let patch_control_points = match patch_control_points {
+                StateMode::Fixed(patch_control_points) => {
+                    dynamic_state.insert(DynamicState::PatchControlPoints, false);
+                    patch_control_points
+                }
+                StateMode::Dynamic => {
+                    dynamic_state.insert(DynamicState::PatchControlPoints, true);
+                    Default::default()
+                }
             };
 
+            let _ = tessellation_state_vk.insert(ash::vk::PipelineTessellationStateCreateInfo {
+                flags: ash::vk::PipelineTessellationStateCreateFlags::empty(),
+                patch_control_points,
+                ..Default::default()
+            });
+        }
+
+        // Viewport state
+        if has.viewport_state {
+            let (viewport_count, scissor_count) = match viewport_state {
+                &ViewportState::Fixed { ref data } => {
+                    let count = data.len() as u32;
+                    viewports_vk.extend(data.iter().map(|e| e.0.clone().into()));
+                    dynamic_state.insert(DynamicState::Viewport, false);
+                    dynamic_state.insert(DynamicState::ViewportWithCount, false);
+
+                    scissors_vk.extend(data.iter().map(|e| e.1.clone().into()));
+                    dynamic_state.insert(DynamicState::Scissor, false);
+                    dynamic_state.insert(DynamicState::ScissorWithCount, false);
+
+                    (count, count)
+                }
+                &ViewportState::FixedViewport {
+                    ref viewports,
+                    scissor_count_dynamic,
+                } => {
+                    let viewport_count = viewports.len() as u32;
+                    viewports_vk.extend(viewports.iter().map(|e| e.clone().into()));
+                    dynamic_state.insert(DynamicState::Viewport, false);
+                    dynamic_state.insert(DynamicState::ViewportWithCount, false);
+
+                    let scissor_count = if scissor_count_dynamic {
+                        dynamic_state.insert(DynamicState::Scissor, false);
+                        dynamic_state.insert(DynamicState::ScissorWithCount, true);
+                        0
+                    } else {
+                        dynamic_state.insert(DynamicState::Scissor, true);
+                        dynamic_state.insert(DynamicState::ScissorWithCount, false);
+                        viewport_count
+                    };
+
+                    (viewport_count, scissor_count)
+                }
+                &ViewportState::FixedScissor {
+                    ref scissors,
+                    viewport_count_dynamic,
+                } => {
+                    let scissor_count = scissors.len() as u32;
+                    scissors_vk.extend(scissors.iter().map(|e| e.clone().into()));
+                    dynamic_state.insert(DynamicState::Scissor, false);
+                    dynamic_state.insert(DynamicState::ScissorWithCount, false);
+
+                    let viewport_count = if viewport_count_dynamic {
+                        dynamic_state.insert(DynamicState::Viewport, false);
+                        dynamic_state.insert(DynamicState::ViewportWithCount, true);
+                        0
+                    } else {
+                        dynamic_state.insert(DynamicState::Viewport, true);
+                        dynamic_state.insert(DynamicState::ViewportWithCount, false);
+                        scissor_count
+                    };
+
+                    (viewport_count, scissor_count)
+                }
+                &ViewportState::Dynamic {
+                    count,
+                    viewport_count_dynamic,
+                    scissor_count_dynamic,
+                } => {
+                    let viewport_count = if viewport_count_dynamic {
+                        dynamic_state.insert(DynamicState::Viewport, false);
+                        dynamic_state.insert(DynamicState::ViewportWithCount, true);
+                        0
+                    } else {
+                        dynamic_state.insert(DynamicState::Viewport, true);
+                        dynamic_state.insert(DynamicState::ViewportWithCount, false);
+                        count
+                    };
+                    let scissor_count = if scissor_count_dynamic {
+                        dynamic_state.insert(DynamicState::Scissor, false);
+                        dynamic_state.insert(DynamicState::ScissorWithCount, true);
+                        0
+                    } else {
+                        dynamic_state.insert(DynamicState::Scissor, true);
+                        dynamic_state.insert(DynamicState::ScissorWithCount, false);
+                        count
+                    };
+
+                    (viewport_count, scissor_count)
+                }
+            };
+
+            let _ = viewport_state_vk.insert(ash::vk::PipelineViewportStateCreateInfo {
+                flags: ash::vk::PipelineViewportStateCreateFlags::empty(),
+                viewport_count,
+                p_viewports: if viewports_vk.is_empty() {
+                    ptr::null()
+                } else {
+                    viewports_vk.as_ptr()
+                }, // validation layer crashes if you just pass the pointer
+                scissor_count,
+                p_scissors: if scissors_vk.is_empty() {
+                    ptr::null()
+                } else {
+                    scissors_vk.as_ptr()
+                }, // validation layer crashes if you just pass the pointer
+                ..Default::default()
+            });
+        }
+
+        /*
+            Fragment shader state
+        */
+
+        let mut fragment_shader_specialization_vk = None;
+        let mut depth_stencil_state_vk = None;
+
+        if has.fragment_shader_state {
+            // Fragment shader
+            if let Some((entry_point, specialization_data)) = fragment_shader {
+                let specialization_map_entries = Fss::descriptors();
+                let specialization_data = slice::from_raw_parts(
+                    specialization_data as *const _ as *const u8,
+                    size_of_val(specialization_data),
+                );
+
+                let specialization_info_vk =
+                    fragment_shader_specialization_vk.insert(ash::vk::SpecializationInfo {
+                        map_entry_count: specialization_map_entries.len() as u32,
+                        p_map_entries: specialization_map_entries.as_ptr() as *const _,
+                        data_size: specialization_data.len(),
+                        p_data: specialization_data.as_ptr() as *const _,
+                    });
+
+                for (loc, reqs) in entry_point.descriptor_requirements() {
+                    match descriptor_requirements.entry(loc) {
+                        Entry::Occupied(entry) => {
+                            let previous = entry.into_mut();
+                            *previous = previous.intersection(reqs).expect("Could not produce an intersection of the shader descriptor requirements");
+                        }
+                        Entry::Vacant(entry) => {
+                            entry.insert(reqs.clone());
+                        }
+                    }
+                }
+
+                stages.insert(ShaderStage::Fragment, ());
+                stages_vk.push(ash::vk::PipelineShaderStageCreateInfo {
+                    flags: ash::vk::PipelineShaderStageCreateFlags::empty(),
+                    stage: ash::vk::ShaderStageFlags::FRAGMENT,
+                    module: entry_point.module().internal_object(),
+                    p_name: entry_point.name().as_ptr(),
+                    p_specialization_info: specialization_info_vk as *const _,
+                    ..Default::default()
+                });
+            }
+        }
+
+        // Depth/stencil state
+        if has.depth_stencil_state {
+            let &DepthStencilState {
+                ref depth,
+                ref depth_bounds,
+                ref stencil,
+            } = depth_stencil_state;
+
+            let (depth_test_enable, depth_write_enable, depth_compare_op) =
+                if let Some(depth_state) = depth {
+                    let &DepthState {
+                        enable_dynamic,
+                        write_enable,
+                        compare_op,
+                    } = depth_state;
+
+                    if enable_dynamic {
+                        dynamic_state.insert(DynamicState::DepthTestEnable, true);
+                    } else {
+                        dynamic_state.insert(DynamicState::DepthTestEnable, false);
+                    }
+
+                    let write_enable = match write_enable {
+                        StateMode::Fixed(write_enable) => {
+                            dynamic_state.insert(DynamicState::DepthWriteEnable, false);
+                            write_enable as ash::vk::Bool32
+                        }
+                        StateMode::Dynamic => {
+                            dynamic_state.insert(DynamicState::DepthWriteEnable, true);
+                            ash::vk::TRUE
+                        }
+                    };
+
+                    let compare_op = match compare_op {
+                        StateMode::Fixed(compare_op) => {
+                            dynamic_state.insert(DynamicState::DepthCompareOp, false);
+                            compare_op.into()
+                        }
+                        StateMode::Dynamic => {
+                            dynamic_state.insert(DynamicState::DepthCompareOp, true);
+                            ash::vk::CompareOp::ALWAYS
+                        }
+                    };
+
+                    (ash::vk::TRUE, write_enable, compare_op)
+                } else {
+                    (ash::vk::FALSE, ash::vk::FALSE, ash::vk::CompareOp::ALWAYS)
+                };
+
+            let (depth_bounds_test_enable, min_depth_bounds, max_depth_bounds) =
+                if let Some(depth_bounds_state) = depth_bounds {
+                    let &DepthBoundsState {
+                        enable_dynamic,
+                        ref bounds,
+                    } = depth_bounds_state;
+
+                    if enable_dynamic {
+                        dynamic_state.insert(DynamicState::DepthBoundsTestEnable, true);
+                    } else {
+                        dynamic_state.insert(DynamicState::DepthBoundsTestEnable, false);
+                    }
+
+                    let (min_bounds, max_bounds) = match bounds.clone() {
+                        StateMode::Fixed(bounds) => {
+                            dynamic_state.insert(DynamicState::DepthBounds, false);
+                            bounds.into_inner()
+                        }
+                        StateMode::Dynamic => {
+                            dynamic_state.insert(DynamicState::DepthBounds, true);
+                            (0.0, 1.0)
+                        }
+                    };
+
+                    (ash::vk::TRUE, min_bounds, max_bounds)
+                } else {
+                    (ash::vk::FALSE, 0.0, 1.0)
+                };
+
+            let (stencil_test_enable, front, back) = if let Some(stencil_state) = stencil {
+                let &StencilState {
+                    enable_dynamic,
+                    ref front,
+                    ref back,
+                } = stencil_state;
+
+                if enable_dynamic {
+                    dynamic_state.insert(DynamicState::StencilTestEnable, true);
+                } else {
+                    dynamic_state.insert(DynamicState::StencilTestEnable, false);
+                }
+
+                match (front.ops, back.ops) {
+                    (StateMode::Fixed(_), StateMode::Fixed(_)) => {
+                        dynamic_state.insert(DynamicState::StencilOp, false);
+                    }
+                    (StateMode::Dynamic, StateMode::Dynamic) => {
+                        dynamic_state.insert(DynamicState::StencilOp, true);
+                    }
+                    _ => unreachable!(),
+                };
+
+                match (front.compare_mask, back.compare_mask) {
+                    (StateMode::Fixed(_), StateMode::Fixed(_)) => {
+                        dynamic_state.insert(DynamicState::StencilCompareMask, false);
+                    }
+                    (StateMode::Dynamic, StateMode::Dynamic) => {
+                        dynamic_state.insert(DynamicState::StencilCompareMask, true);
+                    }
+                    _ => unreachable!(),
+                };
+
+                match (front.write_mask, back.write_mask) {
+                    (StateMode::Fixed(_), StateMode::Fixed(_)) => {
+                        dynamic_state.insert(DynamicState::StencilWriteMask, false);
+                    }
+                    (StateMode::Dynamic, StateMode::Dynamic) => {
+                        dynamic_state.insert(DynamicState::StencilWriteMask, true);
+                    }
+                    _ => unreachable!(),
+                };
+
+                match (front.reference, back.reference) {
+                    (StateMode::Fixed(_), StateMode::Fixed(_)) => {
+                        dynamic_state.insert(DynamicState::StencilReference, false);
+                    }
+                    (StateMode::Dynamic, StateMode::Dynamic) => {
+                        dynamic_state.insert(DynamicState::StencilReference, true);
+                    }
+                    _ => unreachable!(),
+                };
+
+                let [front, back] = [front, back].map(|stencil_op_state| {
+                    let &StencilOpState {
+                        ops,
+                        compare_mask,
+                        write_mask,
+                        reference,
+                    } = stencil_op_state;
+
+                    let ops = match ops {
+                        StateMode::Fixed(x) => x,
+                        StateMode::Dynamic => Default::default(),
+                    };
+                    let compare_mask = match compare_mask {
+                        StateMode::Fixed(x) => x,
+                        StateMode::Dynamic => Default::default(),
+                    };
+                    let write_mask = match write_mask {
+                        StateMode::Fixed(x) => x,
+                        StateMode::Dynamic => Default::default(),
+                    };
+                    let reference = match reference {
+                        StateMode::Fixed(x) => x,
+                        StateMode::Dynamic => Default::default(),
+                    };
+
+                    ash::vk::StencilOpState {
+                        fail_op: ops.fail_op.into(),
+                        pass_op: ops.pass_op.into(),
+                        depth_fail_op: ops.depth_fail_op.into(),
+                        compare_op: ops.compare_op.into(),
+                        compare_mask,
+                        write_mask,
+                        reference,
+                    }
+                });
+
+                (ash::vk::TRUE, front, back)
+            } else {
+                (ash::vk::FALSE, Default::default(), Default::default())
+            };
+
+            let _ = depth_stencil_state_vk.insert(ash::vk::PipelineDepthStencilStateCreateInfo {
+                flags: ash::vk::PipelineDepthStencilStateCreateFlags::empty(),
+                depth_test_enable,
+                depth_write_enable,
+                depth_compare_op,
+                depth_bounds_test_enable,
+                stencil_test_enable,
+                front,
+                back,
+                min_depth_bounds,
+                max_depth_bounds,
+                ..Default::default()
+            });
+        }
+
+        /*
+            Fragment output state
+        */
+
+        let mut multisample_state_vk = None;
+        let mut color_blend_attachments_vk: SmallVec<[_; 4]> = SmallVec::new();
+        let mut color_write_enables_vk: SmallVec<[_; 4]> = SmallVec::new();
+        let mut color_write_vk = None;
+        let mut color_blend_state_vk = None;
+
+        if has.fragment_output_state {
+            // Multisample state
+            {
+                let &MultisampleState {
+                    rasterization_samples,
+                    sample_shading,
+                    ref sample_mask,
+                    alpha_to_coverage_enable,
+                    alpha_to_one_enable,
+                } = multisample_state;
+
+                let (sample_shading_enable, min_sample_shading) =
+                    if let Some(min_sample_shading) = sample_shading {
+                        (ash::vk::TRUE, min_sample_shading)
+                    } else {
+                        (ash::vk::FALSE, 0.0)
+                    };
+
+                let _ = multisample_state_vk.insert(ash::vk::PipelineMultisampleStateCreateInfo {
+                    flags: ash::vk::PipelineMultisampleStateCreateFlags::empty(),
+                    rasterization_samples: rasterization_samples.into(),
+                    sample_shading_enable,
+                    min_sample_shading,
+                    p_sample_mask: sample_mask as _,
+                    alpha_to_coverage_enable: alpha_to_coverage_enable as ash::vk::Bool32,
+                    alpha_to_one_enable: alpha_to_one_enable as ash::vk::Bool32,
+                    ..Default::default()
+                });
+            }
+        }
+
+        // Color blend state
+        if has.color_blend_state {
+            let &ColorBlendState {
+                logic_op,
+                ref attachments,
+                blend_constants,
+            } = color_blend_state;
+
+            color_blend_attachments_vk.extend(attachments.iter().map(
+                |color_blend_attachment_state| {
+                    let &ColorBlendAttachmentState {
+                        blend,
+                        color_write_mask,
+                        color_write_enable,
+                    } = color_blend_attachment_state;
+
+                    let blend = if let Some(blend) = blend {
+                        blend.clone().into()
+                    } else {
+                        Default::default()
+                    };
+
+                    ash::vk::PipelineColorBlendAttachmentState {
+                        color_write_mask: color_write_mask.into(),
+                        ..blend
+                    }
+                },
+            ));
+
+            let (logic_op_enable, logic_op) = if let Some(logic_op) = logic_op {
+                if !device.enabled_features().logic_op {
+                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                        feature: "logic_op",
+                        reason: "ColorBlendState::logic_op was set to Some",
+                    });
+                }
+
+                let logic_op = match logic_op {
+                    StateMode::Fixed(logic_op) => {
+                        dynamic_state.insert(DynamicState::LogicOp, false);
+                        logic_op.into()
+                    }
+                    StateMode::Dynamic => {
+                        dynamic_state.insert(DynamicState::LogicOp, true);
+                        Default::default()
+                    }
+                };
+
+                (ash::vk::TRUE, logic_op)
+            } else {
+                (ash::vk::FALSE, Default::default())
+            };
+
+            let blend_constants = match blend_constants {
+                StateMode::Fixed(blend_constants) => {
+                    dynamic_state.insert(DynamicState::BlendConstants, false);
+                    blend_constants
+                }
+                StateMode::Dynamic => {
+                    dynamic_state.insert(DynamicState::BlendConstants, true);
+                    Default::default()
+                }
+            };
+
+            let mut color_blend_state_vk =
+                color_blend_state_vk.insert(ash::vk::PipelineColorBlendStateCreateInfo {
+                    flags: ash::vk::PipelineColorBlendStateCreateFlags::empty(),
+                    logic_op_enable,
+                    logic_op,
+                    attachment_count: color_blend_attachments_vk.len() as u32,
+                    p_attachments: color_blend_attachments_vk.as_ptr(),
+                    blend_constants,
+                    ..Default::default()
+                });
+
+            if device.enabled_extensions().ext_color_write_enable {
+                color_write_enables_vk.extend(attachments.iter().map(
+                    |color_blend_attachment_state| {
+                        let &ColorBlendAttachmentState {
+                            blend,
+                            color_write_mask,
+                            color_write_enable,
+                        } = color_blend_attachment_state;
+
+                        match color_write_enable {
+                            StateMode::Fixed(enable) => {
+                                dynamic_state.insert(DynamicState::ColorWriteEnable, false);
+                                enable as ash::vk::Bool32
+                            }
+                            StateMode::Dynamic => {
+                                dynamic_state.insert(DynamicState::ColorWriteEnable, true);
+                                ash::vk::TRUE
+                            }
+                        }
+                    },
+                ));
+
+                color_blend_state_vk.p_next =
+                    color_write_vk.insert(ash::vk::PipelineColorWriteCreateInfoEXT {
+                        attachment_count: color_write_enables_vk.len() as u32,
+                        p_color_write_enables: color_write_enables_vk.as_ptr(),
+                        ..Default::default()
+                    }) as *const _ as *const _;
+            }
+        }
+
+        /*
+            Dynamic state
+        */
+
+        let mut dynamic_state_list: SmallVec<[_; 4]> = SmallVec::new();
+        let mut dynamic_state_vk = None;
+
+        {
+            dynamic_state_list.extend(
+                dynamic_state
+                    .iter()
+                    .filter(|(_, d)| **d)
+                    .map(|(&state, _)| state.into()),
+            );
+
+            if !dynamic_state_list.is_empty() {
+                let _ = dynamic_state_vk.insert(ash::vk::PipelineDynamicStateCreateInfo {
+                    flags: ash::vk::PipelineDynamicStateCreateFlags::empty(),
+                    dynamic_state_count: dynamic_state_list.len() as u32,
+                    p_dynamic_states: dynamic_state_list.as_ptr(),
+                    ..Default::default()
+                });
+            }
+        }
+
+        /*
+            Create
+        */
+
+        let mut create_info = ash::vk::GraphicsPipelineCreateInfo {
+            flags: ash::vk::PipelineCreateFlags::empty(), // TODO: some flags are available but none are critical
+            stage_count: stages_vk.len() as u32,
+            p_stages: stages_vk.as_ptr(),
+            p_vertex_input_state: vertex_input_state_vk
+                .as_ref()
+                .map(|p| p as *const _)
+                .unwrap_or(ptr::null()),
+            p_input_assembly_state: input_assembly_state_vk
+                .as_ref()
+                .map(|p| p as *const _)
+                .unwrap_or(ptr::null()),
+            p_tessellation_state: tessellation_state_vk
+                .as_ref()
+                .map(|p| p as *const _)
+                .unwrap_or(ptr::null()),
+            p_viewport_state: viewport_state_vk
+                .as_ref()
+                .map(|p| p as *const _)
+                .unwrap_or(ptr::null()),
+            p_rasterization_state: rasterization_state_vk
+                .as_ref()
+                .map(|p| p as *const _)
+                .unwrap_or(ptr::null()),
+            p_multisample_state: multisample_state_vk
+                .as_ref()
+                .map(|p| p as *const _)
+                .unwrap_or(ptr::null()),
+            p_depth_stencil_state: depth_stencil_state_vk
+                .as_ref()
+                .map(|p| p as *const _)
+                .unwrap_or(ptr::null()),
+            p_color_blend_state: color_blend_state_vk
+                .as_ref()
+                .map(|p| p as *const _)
+                .unwrap_or(ptr::null()),
+            p_dynamic_state: dynamic_state_vk
+                .as_ref()
+                .map(|s| s as *const _)
+                .unwrap_or(ptr::null()),
+            layout: pipeline_layout.internal_object(),
+            render_pass: render_pass_vk,
+            subpass: subpass_vk,
+            base_pipeline_handle: ash::vk::Pipeline::null(), // TODO:
+            base_pipeline_index: -1,                         // TODO:
+            ..Default::default()
+        };
+
+        if let Some(info) = discard_rectangle_state_vk.as_mut() {
+            info.p_next = create_info.p_next;
+            create_info.p_next = info as *const _ as *const _;
+        }
+
+        if let Some(info) = rendering_create_info_vk.as_mut() {
+            info.p_next = create_info.p_next;
+            create_info.p_next = info as *const _ as *const _;
+        }
+
+        let cache_handle = match cache.as_ref() {
+            Some(cache) => cache.internal_object(),
+            None => ash::vk::PipelineCache::null(),
+        };
+
+        let handle = {
+            let fns = device.fns();
             let mut output = MaybeUninit::uninit();
             check_errors((fns.v1_0.create_graphics_pipelines)(
                 device.internal_object(),
@@ -808,56 +3213,16 @@ where
             panic!("vkCreateGraphicsPipelines provided a NULL handle");
         }
 
-        Ok(Arc::new(GraphicsPipeline {
-            handle,
-            device: device.clone(),
-            layout: pipeline_layout,
-            subpass,
-            shaders: stages_info
-                .iter()
-                .map(|stage_info| (ShaderStage::from(*stage_info.entry_point.execution()), ()))
-                .collect(),
-            descriptor_requirements,
-            num_used_descriptor_sets,
-
-            vertex_input_state: self_vertex_input_state, // Can be None if there's a mesh shader, but we don't support that yet
-            input_assembly_state: self.input_assembly_state, // Can be None if there's a mesh shader, but we don't support that yet
-            tessellation_state: if tessellation_state.is_some() {
-                Some(self.tessellation_state)
-            } else {
-                None
-            },
-            viewport_state: if viewport_state.is_some() {
-                Some(self.viewport_state)
-            } else {
-                None
-            },
-            discard_rectangle_state: if discard_rectangle_state.is_some() {
-                Some(self.discard_rectangle_state)
-            } else {
-                None
-            },
-            rasterization_state: self.rasterization_state,
-            multisample_state: if multisample_state.is_some() {
-                Some(self.multisample_state)
-            } else {
-                None
-            },
-            depth_stencil_state: if depth_stencil_state.is_some() {
-                Some(self.depth_stencil_state)
-            } else {
-                None
-            },
-            color_blend_state: if color_blend_state.is_some() {
-                Some(self.color_blend_state)
-            } else {
-                None
-            },
-            dynamic_state: dynamic_state_modes,
-        }))
+        Ok((handle, descriptor_requirements, dynamic_state, stages))
     }
 
     // TODO: add build_with_cache method
+}
+
+struct ShaderStageInfo<'a> {
+    entry_point: &'a EntryPoint<'a>,
+    specialization_map_entries: &'a [SpecializationMapEntry],
+    specialization_data: &'a [u8],
 }
 
 impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
@@ -877,7 +3242,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
         Vss2: SpecializationConstants,
     {
         GraphicsPipelineBuilder {
-            subpass: self.subpass,
+            render_pass: self.render_pass,
             cache: self.cache,
 
             vertex_shader: Some((shader, specialization_constants)),
@@ -912,7 +3277,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
         Tess2: SpecializationConstants,
     {
         GraphicsPipelineBuilder {
-            subpass: self.subpass,
+            render_pass: self.render_pass,
             cache: self.cache,
 
             vertex_shader: self.vertex_shader,
@@ -947,7 +3312,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
         Gss2: SpecializationConstants,
     {
         GraphicsPipelineBuilder {
-            subpass: self.subpass,
+            render_pass: self.render_pass,
             cache: self.cache,
 
             vertex_shader: self.vertex_shader,
@@ -981,7 +3346,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
         Fss2: SpecializationConstants,
     {
         GraphicsPipelineBuilder {
-            subpass: self.subpass,
+            render_pass: self.render_pass,
             cache: self.cache,
 
             vertex_shader: self.vertex_shader,
@@ -1013,7 +3378,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
         T: VertexDefinition,
     {
         GraphicsPipelineBuilder {
-            subpass: self.subpass,
+            render_pass: self.render_pass,
             cache: self.cache,
 
             vertex_shader: self.vertex_shader,
@@ -1674,9 +4039,9 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
 
     /// Sets the render pass subpass to use.
     #[inline]
-    pub fn render_pass(self, subpass: Subpass) -> Self {
+    pub fn render_pass(self, render_pass: impl Into<PipelineRenderPassType>) -> Self {
         GraphicsPipelineBuilder {
-            subpass: Some(subpass),
+            render_pass: Some(render_pass.into()),
             cache: self.cache,
 
             vertex_shader: self.vertex_shader,
@@ -1721,7 +4086,7 @@ where
 {
     fn clone(&self) -> Self {
         GraphicsPipelineBuilder {
-            subpass: self.subpass.clone(),
+            render_pass: self.render_pass.clone(),
             cache: self.cache.clone(),
 
             vertex_shader: self.vertex_shader.clone(),

@@ -15,8 +15,9 @@ use super::{
 use crate::{
     buffer::{BufferAccess, BufferContents, BufferUsage, CpuAccessibleBuffer},
     command_buffer::{
-        AutoCommandBufferBuilder, BlitImageInfo, CommandBufferExecFuture, CommandBufferUsage,
-        CopyBufferToImageInfo, ImageBlit, PrimaryAutoCommandBuffer, PrimaryCommandBuffer,
+        AutoCommandBufferBuilder, BlitImageInfo, CommandBufferBeginError, CommandBufferExecFuture,
+        CommandBufferUsage, CopyBufferToImageInfo, ImageBlit, PrimaryAutoCommandBuffer,
+        PrimaryCommandBuffer,
     },
     device::{physical::QueueFamily, Device, DeviceOwned, Queue},
     format::Format,
@@ -26,13 +27,15 @@ use crate::{
             AllocFromRequirementsFilter, AllocLayout, MappingRequirement, MemoryPoolAlloc,
             PotentialDedicatedAllocation, StdMemoryPoolAlloc,
         },
-        DedicatedAllocation, MemoryPool,
+        DedicatedAllocation, DeviceMemoryAllocationError, MemoryPool,
     },
     sampler::Filter,
     sync::{NowFuture, Sharing},
+    OomError,
 };
 use smallvec::SmallVec;
 use std::{
+    error, fmt,
     hash::{Hash, Hasher},
     ops::Range,
     sync::Arc,
@@ -104,7 +107,7 @@ impl ImmutableImage {
         dimensions: ImageDimensions,
         format: Format,
         queue_families: I,
-    ) -> Result<Arc<ImmutableImage>, ImageCreationError>
+    ) -> Result<Arc<ImmutableImage>, ImmutableImageCreationError>
     where
         I: IntoIterator<Item = QueueFamily<'a>>,
     {
@@ -126,7 +129,7 @@ impl ImmutableImage {
         format: Format,
         mip_levels: M,
         queue_families: I,
-    ) -> Result<Arc<ImmutableImage>, ImageCreationError>
+    ) -> Result<Arc<ImmutableImage>, ImmutableImageCreationError>
     where
         I: IntoIterator<Item = QueueFamily<'a>>,
         M: Into<MipmapsCount>,
@@ -165,7 +168,7 @@ impl ImmutableImage {
         flags: ImageCreateFlags,
         layout: ImageLayout,
         queue_families: I,
-    ) -> Result<(Arc<ImmutableImage>, Arc<ImmutableImageInitialization>), ImageCreationError>
+    ) -> Result<(Arc<ImmutableImage>, Arc<ImmutableImageInitialization>), ImmutableImageCreationError>
     where
         I: IntoIterator<Item = QueueFamily<'a>>,
         M: Into<MipmapsCount>,
@@ -249,7 +252,7 @@ impl ImmutableImage {
             Arc<Self>,
             CommandBufferExecFuture<NowFuture, PrimaryAutoCommandBuffer>,
         ),
-        ImageCreationError,
+        ImmutableImageCreationError,
     >
     where
         [Px]: BufferContents,
@@ -277,7 +280,7 @@ impl ImmutableImage {
             Arc<Self>,
             CommandBufferExecFuture<NowFuture, PrimaryAutoCommandBuffer>,
         ),
-        ImageCreationError,
+        ImmutableImageCreationError,
     > {
         let need_to_generate_mipmaps = has_mipmaps(mip_levels);
         let usage = ImageUsage {
@@ -464,5 +467,62 @@ where
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum ImmutableImageCreationError {
+    ImageCreationError(ImageCreationError),
+    DeviceMemoryAllocationError(DeviceMemoryAllocationError),
+    CommandBufferBeginError(CommandBufferBeginError),
+}
+
+impl error::Error for ImmutableImageCreationError {
+    #[inline]
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            Self::ImageCreationError(err) => Some(err),
+            Self::DeviceMemoryAllocationError(err) => Some(err),
+            Self::CommandBufferBeginError(err) => Some(err),
+        }
+    }
+}
+
+impl fmt::Display for ImmutableImageCreationError {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ImageCreationError(err) => err.fmt(f),
+            Self::DeviceMemoryAllocationError(err) => err.fmt(f),
+            Self::CommandBufferBeginError(err) => err.fmt(f),
+        }
+    }
+}
+
+impl From<ImageCreationError> for ImmutableImageCreationError {
+    #[inline]
+    fn from(err: ImageCreationError) -> Self {
+        Self::ImageCreationError(err)
+    }
+}
+
+impl From<DeviceMemoryAllocationError> for ImmutableImageCreationError {
+    #[inline]
+    fn from(err: DeviceMemoryAllocationError) -> Self {
+        Self::DeviceMemoryAllocationError(err)
+    }
+}
+
+impl From<OomError> for ImmutableImageCreationError {
+    #[inline]
+    fn from(err: OomError) -> Self {
+        Self::DeviceMemoryAllocationError(err.into())
+    }
+}
+
+impl From<CommandBufferBeginError> for ImmutableImageCreationError {
+    #[inline]
+    fn from(err: CommandBufferBeginError) -> Self {
+        Self::CommandBufferBeginError(err)
     }
 }

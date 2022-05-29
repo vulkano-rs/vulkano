@@ -702,7 +702,7 @@ impl From<(f32, u32)> for ClearDepthStencilValue {
 }
 
 /// The properties of a format that are supported by a physical device.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct FormatProperties {
     /// Features available for images with linear tiling.
     pub linear_tiling_features: FormatFeatures,
@@ -716,6 +716,18 @@ pub struct FormatProperties {
     pub _ne: crate::NonExhaustive,
 }
 
+impl Default for FormatProperties {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            linear_tiling_features: Default::default(),
+            optimal_tiling_features: Default::default(),
+            buffer_features: Default::default(),
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
 impl FormatProperties {
     /// Returns the potential format features, following the definition of
     /// <https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap43.html#potential-format-features>.
@@ -726,7 +738,7 @@ impl FormatProperties {
 }
 
 /// The features supported by a device for an image or buffer with a particular format.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[allow(missing_docs)]
 pub struct FormatFeatures {
     // Image usage
@@ -823,6 +835,49 @@ pub struct FormatFeatures {
     pub acceleration_structure_vertex_buffer: bool,
 
     pub _ne: crate::NonExhaustive,
+}
+
+impl Default for FormatFeatures {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            sampled_image: false,
+            storage_image: false,
+            storage_image_atomic: false,
+            storage_read_without_format: false,
+            storage_write_without_format: false,
+            color_attachment: false,
+            color_attachment_blend: false,
+            depth_stencil_attachment: false,
+            fragment_density_map: false,
+            fragment_shading_rate_attachment: false,
+            transfer_src: false,
+            transfer_dst: false,
+            blit_src: false,
+            blit_dst: false,
+            sampled_image_filter_linear: false,
+            sampled_image_filter_cubic: false,
+            sampled_image_filter_minmax: false,
+            midpoint_chroma_samples: false,
+            cosited_chroma_samples: false,
+            sampled_image_ycbcr_conversion_linear_filter: false,
+            sampled_image_ycbcr_conversion_separate_reconstruction_filter: false,
+            sampled_image_ycbcr_conversion_chroma_reconstruction_explicit: false,
+            sampled_image_ycbcr_conversion_chroma_reconstruction_explicit_forceable: false,
+            sampled_image_depth_comparison: false,
+            video_decode_output: false,
+            video_decode_dpb: false,
+            video_encode_input: false,
+            video_encode_dpb: false,
+            disjoint: false,
+            uniform_texel_buffer: false,
+            storage_texel_buffer: false,
+            storage_texel_buffer_atomic: false,
+            vertex_buffer: false,
+            acceleration_structure_vertex_buffer: false,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
 }
 
 impl BitOr for &FormatFeatures {

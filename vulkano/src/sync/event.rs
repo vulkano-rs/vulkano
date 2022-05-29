@@ -96,10 +96,10 @@ impl Event {
     pub fn signaled(&self) -> Result<bool, OomError> {
         unsafe {
             let fns = self.device.fns();
-            let result = check_errors(
-                (fns.v1_0
-                    .get_event_status)(self.device.internal_object(), self.handle),
-            )?;
+            let result = check_errors((fns.v1_0.get_event_status)(
+                self.device.internal_object(),
+                self.handle,
+            ))?;
             match result {
                 Success::EventSet => Ok(true),
                 Success::EventReset => Ok(false),
@@ -113,10 +113,10 @@ impl Event {
     pub fn set_raw(&mut self) -> Result<(), OomError> {
         unsafe {
             let fns = self.device.fns();
-            check_errors(
-                (fns.v1_0
-                    .set_event)(self.device.internal_object(), self.handle),
-            )?;
+            check_errors((fns.v1_0.set_event)(
+                self.device.internal_object(),
+                self.handle,
+            ))?;
             Ok(())
         }
     }
@@ -139,10 +139,10 @@ impl Event {
     pub fn reset_raw(&mut self) -> Result<(), OomError> {
         unsafe {
             let fns = self.device.fns();
-            check_errors(
-                (fns.v1_0
-                    .reset_event)(self.device.internal_object(), self.handle),
-            )?;
+            check_errors((fns.v1_0.reset_event)(
+                self.device.internal_object(),
+                self.handle,
+            ))?;
             Ok(())
         }
     }
@@ -168,8 +168,7 @@ impl Drop for Event {
                 self.device.event_pool().lock().unwrap().push(raw_event);
             } else {
                 let fns = self.device.fns();
-                (fns.v1_0
-                    .destroy_event)(self.device.internal_object(), self.handle, ptr::null());
+                (fns.v1_0.destroy_event)(self.device.internal_object(), self.handle, ptr::null());
             }
         }
     }

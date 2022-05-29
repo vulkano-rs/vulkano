@@ -785,8 +785,7 @@ impl UnsafeCommandBufferBuilder {
     #[inline]
     pub unsafe fn end_query(&mut self, query: Query) {
         let fns = self.device.fns();
-        (fns.v1_0
-            .cmd_end_query)(self.handle, query.pool().internal_object(), query.index());
+        (fns.v1_0.cmd_end_query)(self.handle, query.pool().internal_object(), query.index());
     }
 
     /// Calls `vkCmdWriteTimestamp` on the builder.

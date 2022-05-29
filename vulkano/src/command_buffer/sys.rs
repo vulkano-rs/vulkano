@@ -17,10 +17,14 @@ use super::{
 };
 use crate::{
     check_errors,
+    command_buffer::{
+        CommandBufferInheritanceRenderPassInfo, CommandBufferInheritanceRenderPassType,
+        CommandBufferInheritanceRenderingInfo,
+    },
     device::{Device, DeviceOwned},
-    query::QueryPipelineStatisticFlags,
     OomError, VulkanObject,
 };
+use smallvec::SmallVec;
 use std::{ptr, sync::Arc};
 
 /// Command buffer being built.
@@ -75,89 +79,109 @@ impl UnsafeCommandBufferBuilder {
             // VUID-vkBeginCommandBuffer-commandBuffer-02840
             // Guaranteed by use of enum
             let mut flags = ash::vk::CommandBufferUsageFlags::from(usage);
+            let mut inheritance_info_vk = None;
+            let mut inheritance_rendering_info_vk = None;
+            let mut color_attachment_formats_vk: SmallVec<[_; 4]> = SmallVec::new();
 
-            let inheritance_info = if let Some(inheritance_info) = &inheritance_info {
-                let (render_pass, subpass, framebuffer) =
-                    if let Some(render_pass) = &inheritance_info.render_pass {
-                        flags |= ash::vk::CommandBufferUsageFlags::RENDER_PASS_CONTINUE;
+            if let Some(inheritance_info) = &inheritance_info {
+                let &CommandBufferInheritanceInfo {
+                    ref render_pass,
+                    occlusion_query,
+                    query_statistics_flags,
+                    _ne: _,
+                } = inheritance_info;
 
-                        // VUID-VkCommandBufferInheritanceInfo-commonparent
-                        debug_assert_eq!(render_pass.subpass.render_pass().device(), &device);
-                        debug_assert!(render_pass
-                            .framebuffer
-                            .as_ref()
-                            .map_or(true, |fb| fb.device() == &device));
+                let inheritance_info_vk =
+                    inheritance_info_vk.insert(ash::vk::CommandBufferInheritanceInfo {
+                        render_pass: ash::vk::RenderPass::null(),
+                        subpass: 0,
+                        framebuffer: ash::vk::Framebuffer::null(),
+                        occlusion_query_enable: ash::vk::FALSE,
+                        query_flags: ash::vk::QueryControlFlags::empty(),
+                        pipeline_statistics: query_statistics_flags.into(),
+                        ..Default::default()
+                    });
 
-                        (
-                            // VUID-VkCommandBufferBeginInfo-flags-00055
-                            // VUID-VkCommandBufferBeginInfo-flags-06000
-                            render_pass.subpass.render_pass().internal_object(),
-                            // VUID-VkCommandBufferBeginInfo-flags-06001
-                            // Guaranteed by subpass invariants
-                            render_pass.subpass.index(),
-                            render_pass
-                                .framebuffer
+                if let Some(flags) = inheritance_info.occlusion_query {
+                    inheritance_info_vk.occlusion_query_enable = ash::vk::TRUE;
+
+                    if flags.precise {
+                        inheritance_info_vk.query_flags = ash::vk::QueryControlFlags::PRECISE;
+                    }
+                }
+
+                if let Some(render_pass) = render_pass {
+                    flags |= ash::vk::CommandBufferUsageFlags::RENDER_PASS_CONTINUE;
+
+                    match render_pass {
+                        CommandBufferInheritanceRenderPassType::BeginRenderPass(
+                            render_pass_info,
+                        ) => {
+                            let &CommandBufferInheritanceRenderPassInfo {
+                                ref subpass,
+                                ref framebuffer,
+                            } = render_pass_info;
+
+                            inheritance_info_vk.render_pass =
+                                subpass.render_pass().internal_object();
+                            inheritance_info_vk.subpass = subpass.index();
+                            inheritance_info_vk.framebuffer = framebuffer
                                 .as_ref()
                                 .map(|fb| fb.internal_object())
-                                .unwrap_or_default(),
-                        )
-                    } else {
-                        Default::default()
-                    };
+                                .unwrap_or_default();
+                        }
+                        CommandBufferInheritanceRenderPassType::BeginRendering(rendering_info) => {
+                            let &CommandBufferInheritanceRenderingInfo {
+                                view_mask,
+                                ref color_attachment_formats,
+                                depth_attachment_format,
+                                stencil_attachment_format,
+                                rasterization_samples,
+                            } = rendering_info;
 
-                let (occlusion_query_enable, query_flags) =
-                    if let Some(flags) = inheritance_info.occlusion_query {
-                        // VUID-VkCommandBufferInheritanceInfo-occlusionQueryEnable-00056
-                        debug_assert!(device.enabled_features().inherited_queries);
+                            color_attachment_formats_vk.extend(
+                                color_attachment_formats.iter().map(|format| {
+                                    format.map_or(ash::vk::Format::UNDEFINED, Into::into)
+                                }),
+                            );
 
-                        // VUID-VkCommandBufferInheritanceInfo-queryFlags-00057
-                        let query_flags = if flags.precise {
-                            // VUID-vkBeginCommandBuffer-commandBuffer-00052
-                            debug_assert!(device.enabled_features().occlusion_query_precise);
+                            let inheritance_rendering_info_vk = inheritance_rendering_info_vk
+                                .insert(ash::vk::CommandBufferInheritanceRenderingInfo {
+                                    flags: ash::vk::RenderingFlags::empty(),
+                                    view_mask,
+                                    color_attachment_count: color_attachment_formats_vk.len()
+                                        as u32,
+                                    p_color_attachment_formats: color_attachment_formats_vk
+                                        .as_ptr(),
+                                    depth_attachment_format: depth_attachment_format
+                                        .map_or(ash::vk::Format::UNDEFINED, Into::into),
+                                    stencil_attachment_format: stencil_attachment_format
+                                        .map_or(ash::vk::Format::UNDEFINED, Into::into),
+                                    rasterization_samples: rasterization_samples.into(),
+                                    ..Default::default()
+                                });
 
-                            ash::vk::QueryControlFlags::PRECISE
-                        } else {
-                            ash::vk::QueryControlFlags::empty()
-                        };
-                        (ash::vk::TRUE, query_flags)
-                    } else {
-                        // VUID-VkCommandBufferInheritanceInfo-queryFlags-02788
-                        // VUID-vkBeginCommandBuffer-commandBuffer-00052
-                        (ash::vk::FALSE, ash::vk::QueryControlFlags::empty())
-                    };
+                            inheritance_info_vk.p_next =
+                                inheritance_rendering_info_vk as *const _ as *const _;
+                        }
+                    }
+                }
+            }
 
-                // VUID-VkCommandBufferInheritanceInfo-pipelineStatistics-02789
-                // VUID-VkCommandBufferInheritanceInfo-pipelineStatistics-00058
-                debug_assert!(
-                    inheritance_info.query_statistics_flags == QueryPipelineStatisticFlags::none()
-                        || device.enabled_features().pipeline_statistics_query
-                );
-
-                Some(ash::vk::CommandBufferInheritanceInfo {
-                    render_pass,
-                    subpass,
-                    framebuffer,
-                    occlusion_query_enable,
-                    query_flags,
-                    pipeline_statistics: inheritance_info.query_statistics_flags.into(),
-                    ..Default::default()
-                })
-            } else {
-                None
-            };
-
-            let begin_info = ash::vk::CommandBufferBeginInfo {
+            let begin_info_vk = ash::vk::CommandBufferBeginInfo {
                 flags,
-                p_inheritance_info: inheritance_info.as_ref().map_or(ptr::null(), |info| info),
+                p_inheritance_info: inheritance_info_vk
+                    .as_ref()
+                    .map_or(ptr::null(), |info| info),
                 ..Default::default()
             };
 
             let fns = device.fns();
 
-            check_errors(
-                (fns.v1_0
-                    .begin_command_buffer)(pool_alloc.internal_object(), &begin_info),
-            )?;
+            check_errors((fns.v1_0.begin_command_buffer)(
+                pool_alloc.internal_object(),
+                &begin_info_vk,
+            ))?;
         }
 
         Ok(UnsafeCommandBufferBuilder {

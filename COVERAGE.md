@@ -130,6 +130,8 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 
 ### Partially supported
 
+- [`VK_KHR_dynamic_rendering`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_dynamic_rendering.html)
+	- Suspend/resume
 - [`VK_KHR_synchronization2`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_synchronization2.html)
 	- `vkCmdResetEvent2KHR`
 	- `vkCmdSetEvent2KHR`
@@ -141,7 +143,6 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 
 ### Unsupported
 
-- [`VK_KHR_dynamic_rendering`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_dynamic_rendering.html)
 - [`VK_KHR_maintenance4`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_maintenance4.html)
 - [`VK_EXT_4444_formats`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_EXT_4444_formats.html)
 - [`VK_EXT_image_robustness`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_EXT_image_robustness.html)

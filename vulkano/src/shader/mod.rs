@@ -267,8 +267,11 @@ impl Drop for ShaderModule {
     fn drop(&mut self) {
         unsafe {
             let fns = self.device.fns();
-            (fns.v1_0
-                .destroy_shader_module)(self.device.internal_object(), self.handle, ptr::null());
+            (fns.v1_0.destroy_shader_module)(
+                self.device.internal_object(),
+                self.handle,
+                ptr::null(),
+            );
         }
     }
 }

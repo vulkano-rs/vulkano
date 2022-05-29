@@ -23,6 +23,9 @@
 - **Breaking** `ClearRect` now has a single `Range<u32>` for array layers.
 - **Breaking** The fields of `ClearAttachment::Color` are now named.
 - **Breaking** The `ImageClearValue` trait is removed.
+- **Breaking** The various `AutoCommandBufferBuilder` constructors for secondary command buffers have been merged into one `secondary` function, which directly takes a `CommandBufferInheritanceInfo` value.
+- **Breaking** The `render_pass` values of `GraphicsPipelineBuilder` and `CommandBufferInheritanceInfo` have both been changed into an enum that selects between rendering with `begin_render_pass` and rendering with `begin_rendering`. They implement `Into` for easy conversion.
+- **Breaking** Added the missing `rasterization_samples` field to `MultisampleState`, which must be provided when doing multisampled rendering.
 - `UnsafeCommandPoolCreateInfo` and `UnsafeCommandPoolCreationError` interfaces exposed.
 - Fixed compile error in Vulkano-win on Android.
 - Added `COVERAGE.md`, a document detailing how much of Vulkan is currently covered by Vulkano.
@@ -36,6 +39,8 @@
 - Vulkano-shaders now supports `raygen`, `anyhit`, `closesthit`, `miss`, `intersection` and `callable` shaders.
 - Fix PresentFuture flushing twice if `then_swapchain_present` fails.
 - Added new enum value `SwapchainCreationError::ImageExtentZeroLengthDimensions` to be returned when at least one of the image extent's dimensions are zero.
+- Added support for dynamic rendering, and a `triangle-v1_3` example demonstrating how it's used.
+- Fixed a bug where `NonExhaustive` implemented the `Default` trait and was therefore still constructable by the user.
 
 # Version 0.29.0 (2022-03-11)
 

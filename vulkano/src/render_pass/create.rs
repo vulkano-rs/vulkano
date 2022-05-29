@@ -26,6 +26,8 @@ impl RenderPass {
         device: &Device,
         create_info: &mut RenderPassCreateInfo,
     ) -> Result<u32, RenderPassCreationError> {
+        let properties = device.physical_device().properties();
+
         let RenderPassCreateInfo {
             attachments,
             subpasses,
@@ -111,6 +113,7 @@ impl RenderPass {
 
         let is_multiview = subpasses[0].view_mask != 0;
 
+        // VUID-VkSubpassDescription2-multiview-06558
         if is_multiview && !device.enabled_features().multiview {
             return Err(RenderPassCreationError::FeatureNotEnabled {
                 feature: "multiview",
@@ -141,17 +144,28 @@ impl RenderPass {
                 });
             }
 
-            views_used = views_used.max(32 - view_mask.leading_zeros());
+            let view_count = u32::BITS - view_mask.leading_zeros();
+
+            // VUID-VkSubpassDescription2-viewMask-06706
+            if view_count > properties.max_multiview_view_count.unwrap_or(0) {
+                return Err(
+                    RenderPassCreationError::SubpassMaxMultiviewViewCountExceeded {
+                        subpass: subpass_num,
+                        view_count,
+                        max: properties.max_multiview_view_count.unwrap_or(0),
+                    },
+                );
+            }
+
+            views_used = views_used.max(view_count);
 
             // VUID-VkSubpassDescription2-colorAttachmentCount-03063
-            if color_attachments.len() as u32
-                > device.physical_device().properties().max_color_attachments
-            {
+            if color_attachments.len() as u32 > properties.max_color_attachments {
                 return Err(
                     RenderPassCreationError::SubpassMaxColorAttachmentsExceeded {
                         subpass: subpass_num,
-                        color_attachments: color_attachments.len() as u32,
-                        max: device.physical_device().properties().max_color_attachments,
+                        color_attachment_count: color_attachments.len() as u32,
+                        max: properties.max_color_attachments,
                     },
                 );
             }
@@ -218,7 +232,7 @@ impl RenderPass {
                 // VUID-VkSubpassDescription2-pColorAttachments-02898
                 if !features.color_attachment {
                     return Err(
-                        RenderPassCreationError::SubpassAttachmentUsageNotSupported {
+                        RenderPassCreationError::SubpassAttachmentFormatUsageNotSupported {
                             subpass: subpass_num,
                             attachment: atch_ref.attachment,
                             usage: "color",
@@ -274,7 +288,7 @@ impl RenderPass {
                 // VUID-VkSubpassDescription2-pDepthStencilAttachment-02900
                 if !features.depth_stencil_attachment {
                     return Err(
-                        RenderPassCreationError::SubpassAttachmentUsageNotSupported {
+                        RenderPassCreationError::SubpassAttachmentFormatUsageNotSupported {
                             subpass: subpass_num,
                             attachment: atch_ref.attachment,
                             usage: "depth/stencil",
@@ -344,7 +358,7 @@ impl RenderPass {
                 // VUID-VkSubpassDescription2-pInputAttachments-02897
                 if !(features.color_attachment || features.depth_stencil_attachment) {
                     return Err(
-                        RenderPassCreationError::SubpassAttachmentUsageNotSupported {
+                        RenderPassCreationError::SubpassAttachmentFormatUsageNotSupported {
                             subpass: subpass_num,
                             attachment: atch_ref.attachment,
                             usage: "input",
@@ -441,7 +455,7 @@ impl RenderPass {
                 // VUID-VkSubpassDescription2-pResolveAttachments-02899
                 if !features.color_attachment {
                     return Err(
-                        RenderPassCreationError::SubpassAttachmentUsageNotSupported {
+                        RenderPassCreationError::SubpassAttachmentFormatUsageNotSupported {
                             subpass: subpass_num,
                             attachment: atch_ref.attachment,
                             usage: "resolve",
@@ -1415,7 +1429,7 @@ pub enum RenderPassCreationError {
 
     /// An attachment used as an attachment in a subpass has a format that does not support that
     /// usage.
-    SubpassAttachmentUsageNotSupported {
+    SubpassAttachmentFormatUsageNotSupported {
         subpass: u32,
         attachment: u32,
         usage: &'static str,
@@ -1441,7 +1455,14 @@ pub enum RenderPassCreationError {
     /// The `max_color_attachments` limit has been exceeded for a subpass.
     SubpassMaxColorAttachmentsExceeded {
         subpass: u32,
-        color_attachments: u32,
+        color_attachment_count: u32,
+        max: u32,
+    },
+
+    /// The `max_multiview_view_count` limit has been exceeded for a subpass.
+    SubpassMaxMultiviewViewCountExceeded {
+        subpass: u32,
+        view_count: u32,
         max: u32,
     },
 
@@ -1606,7 +1627,7 @@ impl fmt::Display for RenderPassCreationError {
                 "attachment {} is used as both a color attachment and a depth/stencil attachment in subpass {}",
                 attachment, subpass,
             ),
-            Self::SubpassAttachmentUsageNotSupported { subpass, attachment, usage, } => write!(
+            Self::SubpassAttachmentFormatUsageNotSupported { subpass, attachment, usage, } => write!(
                 fmt,
                 "attachment {} used as {} attachment in subpass {} has a format that does not support that usage",
                 attachment, usage, subpass,
@@ -1634,6 +1655,9 @@ impl fmt::Display for RenderPassCreationError {
             Self::SubpassMaxColorAttachmentsExceeded { .. } => {
                 write!(fmt, "the `max_color_attachments` limit has been exceeded",)
             }
+            Self::SubpassMaxMultiviewViewCountExceeded { .. } => {
+                write!(fmt, "the `max_multiview_view_count` limit has been exceeded for a subpass",)
+            },
             Self::SubpassMultiviewMismatch {
                 subpass,
                 multiview,

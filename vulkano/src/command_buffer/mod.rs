@@ -91,7 +91,11 @@ pub use self::commands::{
         CheckBeginQueryError, CheckCopyQueryPoolResultsError, CheckEndQueryError,
         CheckResetQueryPoolError, CheckWriteTimestampError,
     },
-    render_pass::{ClearAttachment, ClearRect, RenderPassBeginInfo, RenderPassError},
+    render_pass::{
+        ClearAttachment, ClearRect, RenderPassBeginInfo, RenderPassError, RenderingAttachmentInfo,
+        RenderingAttachmentResolveInfo, RenderingInfo,
+    },
+    secondary::{ExecuteCommandsError, UnsafeCommandBufferBuilderExecuteCommands},
     transfer::{
         BufferCopy, BufferImageCopy, CopyBufferInfo, CopyBufferInfoTyped, CopyBufferToImageInfo,
         CopyImageInfo, CopyImageToBufferInfo, FillBufferInfo, ImageCopy,
@@ -100,11 +104,11 @@ pub use self::commands::{
 };
 pub use self::{
     auto::{
-        AutoCommandBufferBuilder, AutoCommandBufferBuilderContextError, BeginError,
-        BeginQueryError, BuildError, CopyQueryPoolResultsError, DispatchError,
+        AutoCommandBufferBuilder, AutoCommandBufferBuilderContextError, BeginQueryError,
+        BuildError, CommandBufferBeginError, CopyQueryPoolResultsError, DispatchError,
         DispatchIndirectError, DrawError, DrawIndexedError, DrawIndexedIndirectError,
-        DrawIndirectError, EndQueryError, ExecuteCommandsError, PrimaryAutoCommandBuffer,
-        ResetQueryPoolError, SecondaryAutoCommandBuffer, WriteTimestampError,
+        DrawIndirectError, EndQueryError, PrimaryAutoCommandBuffer, ResetQueryPoolError,
+        SecondaryAutoCommandBuffer, WriteTimestampError,
     },
     traits::{
         CommandBufferExecError, CommandBufferExecFuture, PrimaryCommandBuffer,
@@ -112,6 +116,8 @@ pub use self::{
     },
 };
 use crate::{
+    format::Format,
+    image::SampleCount,
     query::{QueryControlFlags, QueryPipelineStatisticFlags},
     render_pass::{Framebuffer, Subpass},
 };
@@ -170,6 +176,16 @@ impl From<SubpassContents> for ash::vk::SubpassContents {
     }
 }
 
+impl From<SubpassContents> for ash::vk::RenderingFlags {
+    #[inline]
+    fn from(val: SubpassContents) -> Self {
+        match val {
+            SubpassContents::Inline => Self::empty(),
+            SubpassContents::SecondaryCommandBuffers => Self::CONTENTS_SECONDARY_COMMAND_BUFFERS,
+        }
+    }
+}
+
 /// Determines the kind of command buffer to create.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(i32)]
@@ -194,13 +210,13 @@ impl From<CommandBufferLevel> for ash::vk::CommandBufferLevel {
 /// buffer it's executed in.
 #[derive(Clone, Debug)]
 pub struct CommandBufferInheritanceInfo {
-    /// If `Some`, the secondary command buffer is required to be executed within a specific
-    /// render subpass, and can only call draw operations.
-    /// If `None`, it must be executed outside a render pass, and can execute dispatch and transfer
-    /// operations, but not drawing operations.
+    /// If `Some`, the secondary command buffer is required to be executed within a render pass
+    /// instance, and can only call draw operations.
+    /// If `None`, it must be executed outside a render pass instance, and can execute dispatch and
+    /// transfer operations, but not drawing operations.
     ///
     /// The default value is `None`.
-    pub render_pass: Option<CommandBufferInheritanceRenderPassInfo>,
+    pub render_pass: Option<CommandBufferInheritanceRenderPassType>,
 
     /// If `Some`, the secondary command buffer is allowed to be executed within a primary that has
     /// an occlusion query active. The inner `QueryControlFlags` specifies which flags the
@@ -237,15 +253,126 @@ impl Default for CommandBufferInheritanceInfo {
     }
 }
 
+/// Selects the type of render pass for command buffer inheritance.
+#[derive(Clone, Debug)]
+pub enum CommandBufferInheritanceRenderPassType {
+    /// The secondary command buffer will be executed within a render pass begun with
+    /// `begin_render_pass`, using a `RenderPass` object and `Framebuffer`.
+    BeginRenderPass(CommandBufferInheritanceRenderPassInfo),
+
+    /// The secondary command buffer will be executed within a render pass begun with
+    /// `begin_rendering`, using dynamic rendering.
+    BeginRendering(CommandBufferInheritanceRenderingInfo),
+}
+
+impl From<Subpass> for CommandBufferInheritanceRenderPassType {
+    #[inline]
+    fn from(val: Subpass) -> Self {
+        Self::BeginRenderPass(val.into())
+    }
+}
+
+impl From<CommandBufferInheritanceRenderPassInfo> for CommandBufferInheritanceRenderPassType {
+    #[inline]
+    fn from(val: CommandBufferInheritanceRenderPassInfo) -> Self {
+        Self::BeginRenderPass(val)
+    }
+}
+
+impl From<CommandBufferInheritanceRenderingInfo> for CommandBufferInheritanceRenderPassType {
+    #[inline]
+    fn from(val: CommandBufferInheritanceRenderingInfo) -> Self {
+        Self::BeginRendering(val)
+    }
+}
+
 /// The render pass context that a secondary command buffer is created for.
 #[derive(Clone, Debug)]
 pub struct CommandBufferInheritanceRenderPassInfo {
     /// The render subpass that this secondary command buffer must be executed within.
+    ///
+    /// There is no default value.
     pub subpass: Subpass,
 
     /// The framebuffer object that will be used when calling the command buffer.
     /// This parameter is optional and is an optimization hint for the implementation.
+    ///
+    /// The default value is `None`.
     pub framebuffer: Option<Arc<Framebuffer>>,
+}
+
+impl CommandBufferInheritanceRenderPassInfo {
+    /// Returns a `CommandBufferInheritanceRenderPassInfo` with the specified `subpass`.
+    #[inline]
+    pub fn subpass(subpass: Subpass) -> Self {
+        Self {
+            subpass,
+            framebuffer: None,
+        }
+    }
+}
+
+impl From<Subpass> for CommandBufferInheritanceRenderPassInfo {
+    #[inline]
+    fn from(subpass: Subpass) -> Self {
+        Self {
+            subpass,
+            framebuffer: None,
+        }
+    }
+}
+
+/// The dynamic rendering context that a secondary command buffer is created for.
+#[derive(Clone, Debug)]
+pub struct CommandBufferInheritanceRenderingInfo {
+    /// If not `0`, indicates that multiview rendering will be enabled, and specifies the view
+    /// indices that are rendered to. The value is a bitmask, so that that for example `0b11` will
+    /// draw to the first two views and `0b101` will draw to the first and third view.
+    ///
+    /// If set to a nonzero value, the [`multiview`](crate::device::Features::multiview) feature
+    /// must be enabled on the device.
+    ///
+    /// The default value is `0`.
+    pub view_mask: u32,
+
+    /// The formats of the color attachments that will be used during rendering.
+    ///
+    /// If an element is `None`, it indicates that the attachment will not be used.
+    ///
+    /// The default value is empty.
+    pub color_attachment_formats: Vec<Option<Format>>,
+
+    /// The format of the depth attachment that will be used during rendering.
+    ///
+    /// If set to `None`, it indicates that no depth attachment will be used.
+    ///
+    /// The default value is `None`.
+    pub depth_attachment_format: Option<Format>,
+
+    /// The format of the stencil attachment that will be used during rendering.
+    ///
+    /// If set to `None`, it indicates that no stencil attachment will be used.
+    ///
+    /// The default value is `None`.
+    pub stencil_attachment_format: Option<Format>,
+
+    /// The number of samples that the color, depth and stencil attachments will have.
+    ///
+    /// The default value is [`SampleCount::Sample1`]
+    pub rasterization_samples: SampleCount,
+}
+
+impl Default for CommandBufferInheritanceRenderingInfo {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            view_mask: 0,
+            color_attachment_formats: Vec::new(),
+            depth_attachment_format: None,
+            stencil_attachment_format: None,
+            rasterization_samples: SampleCount::Sample1,
+        }
+    }
 }
 
 /// Usage flags to pass when creating a command buffer.
