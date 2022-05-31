@@ -33,6 +33,7 @@ use crate::device::physical::PhysicalDevice;
 use crate::instance::Instance;
 use crate::swapchain::SupportedSurfaceTransforms;
 use crate::OomError;
+use crate::Success;
 use crate::VulkanObject;
 use std::ffi::CStr;
 use std::fmt::Formatter;
@@ -60,60 +61,64 @@ impl DisplayPlane {
 
         assert!(device.instance().enabled_extensions().khr_display); // TODO: return error instead
 
-        let num = unsafe {
-            let mut num: u32 = 0;
-            check_errors((fns
-                .khr_display
-                .get_physical_device_display_plane_properties_khr)(
-                device.internal_object(),
-                &mut num,
-                ptr::null_mut(),
-            ))?;
-            num
+        let display_plane_properties = unsafe {
+            loop {
+                let mut count = 0;
+                check_errors((fns
+                    .khr_display
+                    .get_physical_device_display_plane_properties_khr)(
+                    device.internal_object(),
+                    &mut count,
+                    ptr::null_mut(),
+                ))?;
+
+                let mut properties = Vec::with_capacity(count as usize);
+                let result = check_errors((fns
+                    .khr_display
+                    .get_physical_device_display_plane_properties_khr)(
+                    device.internal_object(),
+                    &mut count,
+                    properties.as_mut_ptr(),
+                ))?;
+
+                if !matches!(result, Success::Incomplete) {
+                    properties.set_len(count as usize);
+                    break properties;
+                }
+            }
         };
 
-        let planes: Vec<ash::vk::DisplayPlanePropertiesKHR> = unsafe {
-            let mut planes = Vec::with_capacity(num as usize);
-            let mut num = num;
-            check_errors((fns
-                .khr_display
-                .get_physical_device_display_plane_properties_khr)(
-                device.internal_object(),
-                &mut num,
-                planes.as_mut_ptr(),
-            ))?;
-            planes.set_len(num as usize);
-            planes
-        };
-
-        Ok(planes
+        Ok(display_plane_properties
             .into_iter()
             .enumerate()
             .map(|(index, prop)| {
-                let num = unsafe {
-                    let mut num: u32 = 0;
-                    check_errors((fns.khr_display.get_display_plane_supported_displays_khr)(
-                        device.internal_object(),
-                        index as u32,
-                        &mut num,
-                        ptr::null_mut(),
-                    ))
-                    .unwrap(); // TODO: shouldn't unwrap
-                    num
-                };
+                let supported_displays = unsafe {
+                    loop {
+                        let mut count = 0;
+                        check_errors((fns.khr_display.get_display_plane_supported_displays_khr)(
+                            device.internal_object(),
+                            index as u32,
+                            &mut count,
+                            ptr::null_mut(),
+                        ))
+                        .unwrap(); // TODO: shouldn't unwrap
 
-                let supported_displays: Vec<ash::vk::DisplayKHR> = unsafe {
-                    let mut displays = Vec::with_capacity(num as usize);
-                    let mut num = num;
-                    check_errors((fns.khr_display.get_display_plane_supported_displays_khr)(
-                        device.internal_object(),
-                        index as u32,
-                        &mut num,
-                        displays.as_mut_ptr(),
-                    ))
-                    .unwrap(); // TODO: shouldn't unwrap
-                    displays.set_len(num as usize);
-                    displays
+                        let mut displays = Vec::with_capacity(count as usize);
+                        let result = check_errors((fns
+                            .khr_display
+                            .get_display_plane_supported_displays_khr)(
+                            device.internal_object(),
+                            index as u32,
+                            &mut count,
+                            displays.as_mut_ptr(),
+                        ))
+                        .unwrap(); // TODO: shouldn't unwrap
+
+                        if !matches!(result, Success::Incomplete) {
+                            displays.set_len(count as usize);
+                            break displays;
+                        }
+                    }
                 };
 
                 DisplayPlane {
@@ -121,7 +126,7 @@ impl DisplayPlane {
                     physical_device: device.index(),
                     index: index as u32,
                     properties: prop,
-                    supported_displays: supported_displays,
+                    supported_displays,
                 }
             })
             .collect::<Vec<_>>()
@@ -182,33 +187,34 @@ impl Display {
         let fns = device.instance().fns();
         assert!(device.instance().enabled_extensions().khr_display); // TODO: return error instead
 
-        let num = unsafe {
-            let mut num = 0;
-            check_errors(
-                (fns.khr_display.get_physical_device_display_properties_khr)(
+        let display_properties = unsafe {
+            loop {
+                let mut count = 0;
+                check_errors(
+                    (fns.khr_display.get_physical_device_display_properties_khr)(
+                        device.internal_object(),
+                        &mut count,
+                        ptr::null_mut(),
+                    ),
+                )?;
+
+                let mut properties = Vec::with_capacity(count as usize);
+                let result = check_errors((fns
+                    .khr_display
+                    .get_physical_device_display_properties_khr)(
                     device.internal_object(),
-                    &mut num,
-                    ptr::null_mut(),
-                ),
-            )?;
-            num
+                    &mut count,
+                    properties.as_mut_ptr(),
+                ))?;
+
+                if !matches!(result, Success::Incomplete) {
+                    properties.set_len(count as usize);
+                    break properties;
+                }
+            }
         };
 
-        let displays: Vec<ash::vk::DisplayPropertiesKHR> = unsafe {
-            let mut displays = Vec::with_capacity(num as usize);
-            let mut num = num;
-            check_errors(
-                (fns.khr_display.get_physical_device_display_properties_khr)(
-                    device.internal_object(),
-                    &mut num,
-                    displays.as_mut_ptr(),
-                ),
-            )?;
-            displays.set_len(num as usize);
-            displays
-        };
-
-        Ok(displays
+        Ok(display_properties
             .into_iter()
             .map(|prop| Display {
                 instance: device.instance().clone(),
@@ -286,31 +292,32 @@ impl Display {
     pub fn display_modes_raw(&self) -> Result<IntoIter<DisplayMode>, OomError> {
         let fns = self.instance.fns();
 
-        let num = unsafe {
-            let mut num = 0;
-            check_errors((fns.khr_display.get_display_mode_properties_khr)(
-                self.physical_device().internal_object(),
-                self.properties.display,
-                &mut num,
-                ptr::null_mut(),
-            ))?;
-            num
+        let mode_properties = unsafe {
+            loop {
+                let mut count = 0;
+                check_errors((fns.khr_display.get_display_mode_properties_khr)(
+                    self.physical_device().internal_object(),
+                    self.properties.display,
+                    &mut count,
+                    ptr::null_mut(),
+                ))?;
+
+                let mut properties = Vec::with_capacity(count as usize);
+                let result = check_errors((fns.khr_display.get_display_mode_properties_khr)(
+                    self.physical_device().internal_object(),
+                    self.properties.display,
+                    &mut count,
+                    properties.as_mut_ptr(),
+                ))?;
+
+                if !matches!(result, Success::Incomplete) {
+                    properties.set_len(count as usize);
+                    break properties;
+                }
+            }
         };
 
-        let modes: Vec<ash::vk::DisplayModePropertiesKHR> = unsafe {
-            let mut modes = Vec::with_capacity(num as usize);
-            let mut num = num;
-            check_errors((fns.khr_display.get_display_mode_properties_khr)(
-                self.physical_device().internal_object(),
-                self.properties.display,
-                &mut num,
-                modes.as_mut_ptr(),
-            ))?;
-            modes.set_len(num as usize);
-            modes
-        };
-
-        Ok(modes
+        Ok(mode_properties
             .into_iter()
             .map(|mode| DisplayMode {
                 display: self.clone(),

@@ -577,8 +577,9 @@ impl<W> Swapchain<W> {
             create_info.p_next = surface_full_screen_exclusive_win32_info as *const _ as *const _;
         }
 
+        let fns = device.fns();
+
         let handle = {
-            let fns = device.fns();
             let mut output = MaybeUninit::uninit();
             check_errors((fns.khr_swapchain.create_swapchain_khr)(
                 device.internal_object(),
@@ -589,25 +590,27 @@ impl<W> Swapchain<W> {
             output.assume_init()
         };
 
-        let image_handles = {
-            let fns = device.fns();
-            let mut num = 0;
+        let image_handles = loop {
+            let mut count = 0;
             check_errors((fns.khr_swapchain.get_swapchain_images_khr)(
                 device.internal_object(),
                 handle,
-                &mut num,
+                &mut count,
                 ptr::null_mut(),
             ))?;
 
-            let mut images = Vec::with_capacity(num as usize);
-            check_errors((fns.khr_swapchain.get_swapchain_images_khr)(
+            let mut images = Vec::with_capacity(count as usize);
+            let result = check_errors((fns.khr_swapchain.get_swapchain_images_khr)(
                 device.internal_object(),
                 handle,
-                &mut num,
+                &mut count,
                 images.as_mut_ptr(),
             ))?;
-            images.set_len(num as usize);
-            images
+
+            if !matches!(result, Success::Incomplete) {
+                images.set_len(count as usize);
+                break images;
+            }
         };
 
         Ok((handle, image_handles))

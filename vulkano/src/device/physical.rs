@@ -19,7 +19,7 @@ use crate::{
         SurfaceApi, SurfaceCapabilities, SurfaceInfo,
     },
     sync::{ExternalSemaphoreInfo, ExternalSemaphoreProperties, PipelineStage},
-    DeviceSize, Error, OomError, Version, VulkanObject,
+    DeviceSize, Error, OomError, Success, Version, VulkanObject,
 };
 use std::{error, ffi::CStr, fmt, hash::Hash, mem::MaybeUninit, ptr, sync::Arc};
 
@@ -41,22 +41,27 @@ pub(crate) fn init_physical_devices(
     let fns = instance.fns();
     let instance_extensions = instance.enabled_extensions();
 
-    let handles: Vec<ash::vk::PhysicalDevice> = unsafe {
-        let mut num = 0;
-        check_errors((fns.v1_0.enumerate_physical_devices)(
-            instance.internal_object(),
-            &mut num,
-            ptr::null_mut(),
-        ))?;
+    let handles = unsafe {
+        loop {
+            let mut count = 0;
+            check_errors((fns.v1_0.enumerate_physical_devices)(
+                instance.internal_object(),
+                &mut count,
+                ptr::null_mut(),
+            ))?;
 
-        let mut handles = Vec::with_capacity(num as usize);
-        check_errors((fns.v1_0.enumerate_physical_devices)(
-            instance.internal_object(),
-            &mut num,
-            handles.as_mut_ptr(),
-        ))?;
-        handles.set_len(num as usize);
-        handles
+            let mut handles = Vec::with_capacity(count as usize);
+            let result = check_errors((fns.v1_0.enumerate_physical_devices)(
+                instance.internal_object(),
+                &mut count,
+                handles.as_mut_ptr(),
+            ))?;
+
+            if !matches!(result, Success::Incomplete) {
+                handles.set_len(count as usize);
+                break handles;
+            }
+        }
     };
 
     Ok(handles
@@ -70,24 +75,29 @@ pub(crate) fn init_physical_devices(
                 std::cmp::min(instance.max_api_version(), api_version)
             };
 
-            let extension_properties: Vec<ash::vk::ExtensionProperties> = unsafe {
-                let mut num = 0;
-                check_errors((fns.v1_0.enumerate_device_extension_properties)(
-                    handle,
-                    ptr::null(),
-                    &mut num,
-                    ptr::null_mut(),
-                ))?;
+            let extension_properties = unsafe {
+                loop {
+                    let mut count = 0;
+                    check_errors((fns.v1_0.enumerate_device_extension_properties)(
+                        handle,
+                        ptr::null(),
+                        &mut count,
+                        ptr::null_mut(),
+                    ))?;
 
-                let mut properties = Vec::with_capacity(num as usize);
-                check_errors((fns.v1_0.enumerate_device_extension_properties)(
-                    handle,
-                    ptr::null(),
-                    &mut num,
-                    properties.as_mut_ptr(),
-                ))?;
-                properties.set_len(num as usize);
-                properties
+                    let mut properties = Vec::with_capacity(count as usize);
+                    let result = check_errors((fns.v1_0.enumerate_device_extension_properties)(
+                        handle,
+                        ptr::null(),
+                        &mut count,
+                        properties.as_mut_ptr(),
+                    ))?;
+
+                    if !matches!(result, Success::Incomplete) {
+                        properties.set_len(count as usize);
+                        break properties;
+                    }
+                }
             };
 
             let supported_extensions = DeviceExtensions::from(
@@ -1163,31 +1173,37 @@ impl<'a> PhysicalDevice<'a> {
                     surface_full_screen_exclusive_win32_info as *const _ as *const _;
             }
 
-            let mut surface_format2s;
+            let fns = self.instance.fns();
 
-            unsafe {
-                let fns = self.instance.fns();
+            let surface_format2s = unsafe {
+                loop {
+                    let mut count = 0;
+                    check_errors((fns
+                        .khr_get_surface_capabilities2
+                        .get_physical_device_surface_formats2_khr)(
+                        self.internal_object(),
+                        &surface_info2,
+                        &mut count,
+                        ptr::null_mut(),
+                    ))?;
 
-                let mut num = 0;
-                check_errors((fns
-                    .khr_get_surface_capabilities2
-                    .get_physical_device_surface_formats2_khr)(
-                    self.internal_object(),
-                    &surface_info2,
-                    &mut num,
-                    ptr::null_mut(),
-                ))?;
+                    let mut surface_format2s =
+                        vec![ash::vk::SurfaceFormat2KHR::default(); count as usize];
+                    let result = check_errors((fns
+                        .khr_get_surface_capabilities2
+                        .get_physical_device_surface_formats2_khr)(
+                        self.internal_object(),
+                        &surface_info2,
+                        &mut count,
+                        surface_format2s.as_mut_ptr(),
+                    ))?;
 
-                surface_format2s = vec![ash::vk::SurfaceFormat2KHR::default(); num as usize];
-                check_errors((fns
-                    .khr_get_surface_capabilities2
-                    .get_physical_device_surface_formats2_khr)(
-                    self.internal_object(),
-                    &surface_info2,
-                    &mut num,
-                    surface_format2s.as_mut_ptr(),
-                ))?;
-            }
+                    if !matches!(result, Success::Incomplete) {
+                        surface_format2s.set_len(count as usize);
+                        break surface_format2s;
+                    }
+                }
+            };
 
             Ok(surface_format2s
                 .into_iter()
@@ -1201,28 +1217,33 @@ impl<'a> PhysicalDevice<'a> {
                 return Ok(Vec::new());
             }
 
-            let mut surface_formats;
+            let fns = self.instance.fns();
 
-            unsafe {
-                let fns = self.instance.fns();
+            let surface_formats = unsafe {
+                loop {
+                    let mut count = 0;
+                    check_errors((fns.khr_surface.get_physical_device_surface_formats_khr)(
+                        self.internal_object(),
+                        surface.internal_object(),
+                        &mut count,
+                        ptr::null_mut(),
+                    ))?;
 
-                let mut num = 0;
-                check_errors((fns.khr_surface.get_physical_device_surface_formats_khr)(
-                    self.internal_object(),
-                    surface.internal_object(),
-                    &mut num,
-                    ptr::null_mut(),
-                ))?;
+                    let mut surface_formats = Vec::with_capacity(count as usize);
+                    let result =
+                        check_errors((fns.khr_surface.get_physical_device_surface_formats_khr)(
+                            self.internal_object(),
+                            surface.internal_object(),
+                            &mut count,
+                            surface_formats.as_mut_ptr(),
+                        ))?;
 
-                surface_formats = Vec::with_capacity(num as usize);
-                check_errors((fns.khr_surface.get_physical_device_surface_formats_khr)(
-                    self.internal_object(),
-                    surface.internal_object(),
-                    &mut num,
-                    surface_formats.as_mut_ptr(),
-                ))?;
-                surface_formats.set_len(num as usize);
-            }
+                    if !matches!(result, Success::Incomplete) {
+                        surface_formats.set_len(count as usize);
+                        break surface_formats;
+                    }
+                }
+            };
 
             Ok(surface_formats
                 .into_iter()
@@ -1248,30 +1269,35 @@ impl<'a> PhysicalDevice<'a> {
             surface.instance().internal_object(),
         );
 
+        let fns = self.instance.fns();
+
         let modes = unsafe {
-            let fns = self.instance.fns();
+            loop {
+                let mut count = 0;
+                check_errors((fns
+                    .khr_surface
+                    .get_physical_device_surface_present_modes_khr)(
+                    self.internal_object(),
+                    surface.internal_object(),
+                    &mut count,
+                    ptr::null_mut(),
+                ))?;
 
-            let mut num = 0;
-            check_errors((fns
-                .khr_surface
-                .get_physical_device_surface_present_modes_khr)(
-                self.internal_object(),
-                surface.internal_object(),
-                &mut num,
-                ptr::null_mut(),
-            ))?;
+                let mut modes = Vec::with_capacity(count as usize);
+                let result = check_errors((fns
+                    .khr_surface
+                    .get_physical_device_surface_present_modes_khr)(
+                    self.internal_object(),
+                    surface.internal_object(),
+                    &mut count,
+                    modes.as_mut_ptr(),
+                ))?;
 
-            let mut modes = Vec::with_capacity(num as usize);
-            check_errors((fns
-                .khr_surface
-                .get_physical_device_surface_present_modes_khr)(
-                self.internal_object(),
-                surface.internal_object(),
-                &mut num,
-                modes.as_mut_ptr(),
-            ))?;
-            modes.set_len(num as usize);
-            modes
+                if !matches!(result, Success::Incomplete) {
+                    modes.set_len(count as usize);
+                    break modes;
+                }
+            }
         };
 
         debug_assert!(modes.len() > 0);
