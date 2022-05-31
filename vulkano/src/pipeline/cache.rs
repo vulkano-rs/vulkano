@@ -24,6 +24,7 @@
 use crate::check_errors;
 use crate::device::Device;
 use crate::OomError;
+use crate::Success;
 use crate::VulkanObject;
 use std::mem::MaybeUninit;
 use std::ptr;
@@ -199,28 +200,34 @@ impl PipelineCache {
     /// }
     /// ```
     pub fn get_data(&self) -> Result<Vec<u8>, OomError> {
-        unsafe {
-            let fns = self.device.fns();
+        let fns = self.device.fns();
 
-            let mut num = 0;
-            check_errors((fns.v1_0.get_pipeline_cache_data)(
-                self.device.internal_object(),
-                self.cache,
-                &mut num,
-                ptr::null_mut(),
-            ))?;
+        let data = unsafe {
+            loop {
+                let mut count = 0;
+                check_errors((fns.v1_0.get_pipeline_cache_data)(
+                    self.device.internal_object(),
+                    self.cache,
+                    &mut count,
+                    ptr::null_mut(),
+                ))?;
 
-            let mut data: Vec<u8> = Vec::with_capacity(num as usize);
-            check_errors((fns.v1_0.get_pipeline_cache_data)(
-                self.device.internal_object(),
-                self.cache,
-                &mut num,
-                data.as_mut_ptr() as *mut _,
-            ))?;
-            data.set_len(num as usize);
+                let mut data: Vec<u8> = Vec::with_capacity(count as usize);
+                let result = check_errors((fns.v1_0.get_pipeline_cache_data)(
+                    self.device.internal_object(),
+                    self.cache,
+                    &mut count,
+                    data.as_mut_ptr() as *mut _,
+                ))?;
 
-            Ok(data)
-        }
+                if !matches!(result, Success::Incomplete) {
+                    data.set_len(count as usize);
+                    break data;
+                }
+            }
+        };
+
+        Ok(data)
     }
 }
 

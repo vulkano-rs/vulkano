@@ -12,6 +12,7 @@ use crate::instance::loader;
 use crate::instance::loader::LoadingError;
 use crate::Error;
 use crate::OomError;
+use crate::Success;
 use crate::Version;
 use std::error;
 use std::ffi::CStr;
@@ -52,23 +53,31 @@ pub fn layers_list_from_loader<L>(
 where
     L: loader::Loader,
 {
-    unsafe {
-        let fns = ptrs.fns();
+    let fns = ptrs.fns();
 
-        let mut num = 0;
-        check_errors((fns.v1_0.enumerate_instance_layer_properties)(
-            &mut num,
-            ptr::null_mut(),
-        ))?;
+    let layer_properties = unsafe {
+        loop {
+            let mut count = 0;
+            check_errors((fns.v1_0.enumerate_instance_layer_properties)(
+                &mut count,
+                ptr::null_mut(),
+            ))?;
 
-        let mut layers: Vec<ash::vk::LayerProperties> = Vec::with_capacity(num as usize);
-        check_errors({
-            (fns.v1_0.enumerate_instance_layer_properties)(&mut num, layers.as_mut_ptr())
-        })?;
-        layers.set_len(num as usize);
+            let mut properties = Vec::with_capacity(count as usize);
+            let result = check_errors({
+                (fns.v1_0.enumerate_instance_layer_properties)(&mut count, properties.as_mut_ptr())
+            })?;
 
-        Ok(layers.into_iter().map(|p| LayerProperties { props: p }))
-    }
+            if !matches!(result, Success::Incomplete) {
+                properties.set_len(count as usize);
+                break properties;
+            }
+        }
+    };
+
+    Ok(layer_properties
+        .into_iter()
+        .map(|p| LayerProperties { props: p }))
 }
 
 /// Properties of a layer.
