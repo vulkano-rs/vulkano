@@ -23,7 +23,9 @@ use crate::memory::ExternalMemoryHandleTypes;
 use crate::memory::MappedDeviceMemory;
 use crate::memory::MemoryRequirements;
 use crate::DeviceSize;
+use std::os::unix::prelude::FromRawFd;
 use std::sync::Arc;
+use std::fs::File;
 
 mod host_visible;
 mod non_host_visible;
@@ -97,6 +99,63 @@ where
             ..MemoryAllocateInfo::dedicated_allocation(dedicated_allocation)
         },
     )?;
+
+    match map {
+        MappingRequirement::Map => {
+            let mapped_memory = MappedDeviceMemory::new(memory, 0..requirements.size)?;
+            Ok(PotentialDedicatedAllocation::DedicatedMapped(mapped_memory))
+        }
+        MappingRequirement::DoNotMap => Ok(PotentialDedicatedAllocation::Dedicated(memory)),
+    }
+}
+
+/// Allocate dedicated memory with exportable fd.
+/// Memory pool memory always exports the same fd, thus dedicated is preferred.
+pub(crate) fn alloc_import_from_fd<F>(
+    device: Arc<Device>,
+    requirements: &MemoryRequirements,
+    layout: AllocLayout,
+    map: MappingRequirement,
+    dedicated_allocation: DedicatedAllocation,
+    filter: F,
+    fd: i32
+) -> Result<PotentialDedicatedAllocation<StdMemoryPoolAlloc>, DeviceMemoryAllocationError>
+where
+    F: FnMut(MemoryType) -> AllocFromRequirementsFilter,
+{
+    assert!(device.enabled_extensions().khr_external_memory_fd);
+    assert!(device.enabled_extensions().khr_external_memory);
+
+    let memory_type = choose_allocation_memory_type(&device, requirements, filter, map);
+
+    let memory = unsafe {
+	DeviceMemory::import(device.clone(),
+			     MemoryAllocateInfo {
+				 allocation_size: requirements.size,
+				 memory_type_index: memory_type.id(),
+				 export_handle_types: ExternalMemoryHandleTypes {
+				     dma_buf: true,
+				     ..ExternalMemoryHandleTypes::none()
+				 },
+				 ..MemoryAllocateInfo::dedicated_allocation(dedicated_allocation)
+			     },
+			     crate::memory::MemoryImportInfo::Fd { handle_type: crate::memory::ExternalMemoryHandleType::DmaBuf, file: File::from_raw_fd(32) })
+    }?;
+    /* 
+    let memory = DeviceMemory::allocate(
+    device.clone(),
+        MemoryAllocateInfo {
+            allocation_size: requirements.size,
+            memory_type_index: memory_type.id(),
+            export_handle_types: ExternalMemoryHandleTypes {
+                opaque_fd: true,
+		dma_buf: true,
+                ..ExternalMemoryHandleTypes::none()
+            },
+            ..MemoryAllocateInfo::dedicated_allocation(dedicated_allocation)
+        },
+)?;
+    */
 
     match map {
         MappingRequirement::Map => {

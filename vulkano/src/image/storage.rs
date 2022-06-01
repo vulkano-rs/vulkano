@@ -18,7 +18,7 @@ use crate::{
     memory::{
         pool::{
             alloc_dedicated_with_exportable_fd, AllocFromRequirementsFilter, AllocLayout,
-            MappingRequirement, MemoryPoolAlloc, PotentialDedicatedAllocation, StdMemoryPool,
+            MappingRequirement, MemoryPoolAlloc, PotentialDedicatedAllocation, StdMemoryPool, alloc_import_from_fd,
         },
         DedicatedAllocation, DeviceMemoryExportError, ExternalMemoryHandleType,
         ExternalMemoryHandleTypes, MemoryPool,
@@ -167,13 +167,92 @@ impl StorageImage {
     where
         I: IntoIterator<Item = QueueFamily<'a>>,
     {
+
+	/*
+	let x1 = ash::vk::MemoryAllocateInfo{
+	    s_type: todo!(),
+	    p_next: todo!(),
+	    allocation_size: todo!(),
+	    memory_type_index: todo!(),
+	};
+	
 	let x = ash::vk::ImportMemoryFdInfoKHR {
 	    s_type: todo!(),
 	    p_next: todo!(),
 	    handle_type: todo!(),
 	    fd,
 	};
-	Err(ImageCreationError::CubeCompatibleNot2d)
+
+	let a = MemoryImportInfo::Fd { handle_type: (), file: () };
+	*/
+	
+	 let queue_families = queue_families
+            .into_iter()
+            .map(|f| f.id())
+            .collect::<SmallVec<[u32; 4]>>();
+
+        let image = UnsafeImage::new(
+            device.clone(),
+            UnsafeImageCreateInfo {
+                dimensions,
+                format: Some(format),
+                usage,
+                sharing: if queue_families.len() >= 2 {
+                    Sharing::Concurrent(queue_families.iter().cloned().collect())
+                } else {
+                    Sharing::Exclusive
+                },
+                external_memory_handle_types: ExternalMemoryHandleTypes {
+                    dma_buf: true,
+                    ..ExternalMemoryHandleTypes::none()
+                },
+                mutable_format: flags.mutable_format,
+                cube_compatible: flags.cube_compatible,
+                array_2d_compatible: flags.array_2d_compatible,
+                block_texel_view_compatible: flags.block_texel_view_compatible,
+                ..Default::default()
+            },
+        )?;
+
+	
+        let mem_reqs = image.memory_requirements();
+
+	let memory = alloc_import_from_fd(device.clone(), &mem_reqs, AllocLayout::Optimal, MappingRequirement::DoNotMap, DedicatedAllocation::Image(&image),|t| {
+                if t.is_device_local() {
+                    AllocFromRequirementsFilter::Preferred
+                } else {
+                    AllocFromRequirementsFilter::Allowed
+                }
+            } , fd)?;
+
+	/*
+        let memory = alloc_dedicated_with_exportable_fd(
+            device.clone(),
+            &mem_reqs,
+            AllocLayout::Optimal,
+            MappingRequirement::DoNotMap,
+            DedicatedAllocation::Image(&image),
+            |t| {
+                if t.is_device_local() {
+                    AllocFromRequirementsFilter::Preferred
+                } else {
+                    AllocFromRequirementsFilter::Allowed
+                }
+            },
+    )?;
+	*/
+        debug_assert!((memory.offset() % mem_reqs.alignment) == 0);
+        unsafe {
+            image.bind_memory(memory.memory(), memory.offset())?;
+        }
+
+        Ok(Arc::new(StorageImage {
+            image,
+            memory,
+            dimensions,
+            format,
+            queue_families,
+        }))
     }
 
     pub fn new_with_exportable_fd<'a, I>(
