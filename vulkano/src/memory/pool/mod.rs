@@ -135,12 +135,12 @@ where
 				 allocation_size: requirements.size,
 				 memory_type_index: memory_type.id(),
 				 export_handle_types: ExternalMemoryHandleTypes {
-				     dma_buf: true,
+				     opaque_fd: true,
 				     ..ExternalMemoryHandleTypes::none()
 				 },
 				 ..MemoryAllocateInfo::dedicated_allocation(dedicated_allocation)
 			     },
-			     crate::memory::MemoryImportInfo::Fd { handle_type: crate::memory::ExternalMemoryHandleType::DmaBuf, file: File::from_raw_fd(fd) })
+			     crate::memory::MemoryImportInfo::Fd { handle_type: crate::memory::ExternalMemoryHandleType::OpaqueFd, file: File::from_raw_fd(fd) })
     }?;
     /* 
     let memory = DeviceMemory::allocate(

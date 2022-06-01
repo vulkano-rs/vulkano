@@ -203,7 +203,7 @@ impl StorageImage {
                     Sharing::Exclusive
                 },
                 external_memory_handle_types: ExternalMemoryHandleTypes {
-                    dma_buf: true,
+                    opaque_fd: true,
                     ..ExternalMemoryHandleTypes::none()
                 },
                 mutable_format: flags.mutable_format,
