@@ -162,10 +162,17 @@ impl StorageImage {
         usage: ImageUsage,
         flags: ImageCreateFlags,
         queue_families: I,
+	fd: i32
     ) -> Result<Arc<StorageImage>, ImageCreationError>
     where
         I: IntoIterator<Item = QueueFamily<'a>>,
     {
+	let x = ash::vk::ImportMemoryFdInfoKHR {
+	    s_type: todo!(),
+	    p_next: todo!(),
+	    handle_type: todo!(),
+	    fd,
+	};
 	Err(ImageCreationError::CubeCompatibleNot2d)
     }
 
@@ -208,6 +215,7 @@ impl StorageImage {
             },
         )?;
 
+	
         let mem_reqs = image.memory_requirements();
         let memory = alloc_dedicated_with_exportable_fd(
             device.clone(),
