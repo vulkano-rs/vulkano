@@ -125,6 +125,7 @@ where
 {
     assert!(device.enabled_extensions().khr_external_memory_fd);
     assert!(device.enabled_extensions().khr_external_memory);
+    assert!(device.enabled_extensions().ext_external_memory_dma_buf);
 
     let memory_type = choose_allocation_memory_type(&device, requirements, filter, map);
 
@@ -139,7 +140,7 @@ where
 				 },
 				 ..MemoryAllocateInfo::dedicated_allocation(dedicated_allocation)
 			     },
-			     crate::memory::MemoryImportInfo::Fd { handle_type: crate::memory::ExternalMemoryHandleType::DmaBuf, file: File::from_raw_fd(32) })
+			     crate::memory::MemoryImportInfo::Fd { handle_type: crate::memory::ExternalMemoryHandleType::DmaBuf, file: File::from_raw_fd(fd) })
     }?;
     /* 
     let memory = DeviceMemory::allocate(
