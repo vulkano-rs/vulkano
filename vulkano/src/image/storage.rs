@@ -155,6 +155,20 @@ impl StorageImage {
         }))
     }
 
+    pub fn new_from_dma_buf_fd<'a, I>(
+	device: Arc<Device>,
+        dimensions: ImageDimensions,
+        format: Format,
+        usage: ImageUsage,
+        flags: ImageCreateFlags,
+        queue_families: I,
+    ) -> Result<Arc<StorageImage>, ImageCreationError>
+    where
+        I: IntoIterator<Item = QueueFamily<'a>>,
+    {
+	Err(ImageCreationError::CubeCompatibleNot2d)
+    }
+
     pub fn new_with_exportable_fd<'a, I>(
         device: Arc<Device>,
         dimensions: ImageDimensions,
