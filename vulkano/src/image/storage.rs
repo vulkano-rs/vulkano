@@ -27,7 +27,7 @@ use crate::{
     sync::Sharing,
     DeviceSize,
 };
-use ash::{extensions::ext::ImageDrmFormatModifier, vk::DrmFormatModifierPropertiesListEXT};
+use ash::{extensions::ext::ImageDrmFormatModifier, vk::{DrmFormatModifierPropertiesListEXT, ImageDrmFormatModifierExplicitCreateInfoEXT, SubresourceLayout}};
 use smallvec::SmallVec;
 use std::{
     fs::File,
@@ -167,6 +167,8 @@ impl StorageImage {
         flags: ImageCreateFlags,
         queue_families: I,
         fds: Vec<RawFd>,
+	offset: u64,
+	pitch: u64,
     ) -> Result<Arc<StorageImage>, ImageCreationError>
     where
         I: IntoIterator<Item = QueueFamily<'a>>,
@@ -193,6 +195,18 @@ impl StorageImage {
             .into_iter()
             .map(|f| f.id())
             .collect::<SmallVec<[u32; 4]>>();
+	let layout = SubresourceLayout {
+	    offset,
+	    size: 0,
+	    row_pitch: pitch,
+	    array_pitch: 0,
+	    depth_pitch: 0,
+	};
+	let vec = vec!(layout);
+	 let drm_mod = ImageDrmFormatModifierExplicitCreateInfoEXT::builder()
+		.drm_format_modifier(0)
+		.plane_layouts(vec.as_ref())
+	    .build();
 
         let image = UnsafeImage::new(
             device.clone(),
@@ -210,6 +224,7 @@ impl StorageImage {
                 array_2d_compatible: flags.array_2d_compatible,
                 block_texel_view_compatible: flags.block_texel_view_compatible,
                 tiling: ImageTiling::Linear,
+		image_drm_format_modifier_create_info:  Some(drm_mod),
                 ..Default::default()
             },
         )?;

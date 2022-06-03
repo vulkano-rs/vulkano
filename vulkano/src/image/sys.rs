@@ -121,6 +121,7 @@ impl UnsafeImage {
             cube_compatible,
             array_2d_compatible,
             block_texel_view_compatible,
+	    image_drm_format_modifier_create_info,
             _ne: _,
         } = create_info;
 
@@ -176,6 +177,7 @@ impl UnsafeImage {
             cube_compatible,
             array_2d_compatible,
             block_texel_view_compatible,
+	    image_drm_format_modifier_create_info,
             _ne: _,
         } = create_info;
 
@@ -754,6 +756,7 @@ impl UnsafeImage {
             cube_compatible,
             array_2d_compatible,
             block_texel_view_compatible,
+	    image_drm_format_modifier_create_info,
             _ne: _,
         } = create_info;
 
@@ -819,18 +822,9 @@ impl UnsafeImage {
             create_info = create_info.push_next(next);
         }
 
-	let layout = SubresourceLayout {
-	    offset: todo!(),
-	    size: 0,
-	    row_pitch: todo!(),
-	    array_pitch: 0,
-	    depth_pitch: 0,
-	};
+	
 	if  external_memory_handle_types.dma_buf {
-	    let x = ImageDrmFormatModifierExplicitCreateInfoEXT::builder()
-		.drm_format_modifier(0)
-		.plane_layouts()
-		.build();
+	   
 
 	}
 
@@ -1479,6 +1473,9 @@ pub struct UnsafeImageCreateInfo {
     /// The default value is `false`.
     pub block_texel_view_compatible: bool,
 
+    pub image_drm_format_modifier_create_info: Option<ImageDrmFormatModifierExplicitCreateInfoEXT>,
+
+
     pub _ne: crate::NonExhaustive,
 }
 
@@ -1502,6 +1499,7 @@ impl Default for UnsafeImageCreateInfo {
             cube_compatible: false,
             array_2d_compatible: false,
             block_texel_view_compatible: false,
+	    image_drm_format_modifier_create_info: None,
             _ne: crate::NonExhaustive(()),
         }
     }
