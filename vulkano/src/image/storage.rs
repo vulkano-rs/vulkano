@@ -14,11 +14,12 @@ use super::{
 use crate::{
     device::{physical::QueueFamily, Device, DeviceOwned},
     format::Format,
-    image::sys::UnsafeImageCreateInfo,
+    image::{sys::UnsafeImageCreateInfo, ImageTiling},
     memory::{
         pool::{
-            alloc_dedicated_with_exportable_fd, AllocFromRequirementsFilter, AllocLayout,
-            MappingRequirement, MemoryPoolAlloc, PotentialDedicatedAllocation, StdMemoryPool, alloc_import_from_fd,
+            alloc_dedicated_with_exportable_fd, alloc_import_from_fd, AllocFromRequirementsFilter,
+            AllocLayout, MappingRequirement, MemoryPoolAlloc, PotentialDedicatedAllocation,
+            StdMemoryPool,
         },
         DedicatedAllocation, DeviceMemoryExportError, ExternalMemoryHandleType,
         ExternalMemoryHandleTypes, MemoryPool,
@@ -26,11 +27,14 @@ use crate::{
     sync::Sharing,
     DeviceSize,
 };
+use ash::extensions::ext::ImageDrmFormatModifier;
 use smallvec::SmallVec;
 use std::{
     fs::File,
     hash::{Hash, Hasher},
+    os::unix::prelude::RawFd,
     sync::Arc,
+    vec,
 };
 
 /// General-purpose image in device memory. Can be used for any usage, but will be slower than a
@@ -156,37 +160,36 @@ impl StorageImage {
     }
 
     pub fn new_from_dma_buf_fd<'a, I>(
-	device: Arc<Device>,
+        device: Arc<Device>,
         dimensions: ImageDimensions,
         format: Format,
         usage: ImageUsage,
         flags: ImageCreateFlags,
         queue_families: I,
-	fd: i32
+        fds: Vec<RawFd>,
     ) -> Result<Arc<StorageImage>, ImageCreationError>
     where
         I: IntoIterator<Item = QueueFamily<'a>>,
     {
+        /*
+        let x1 = ash::vk::MemoryAllocateInfo{
+            s_type: todo!(),
+            p_next: todo!(),
+            allocation_size: todo!(),
+            memory_type_index: todo!(),
+        };
 
-	/*
-	let x1 = ash::vk::MemoryAllocateInfo{
-	    s_type: todo!(),
-	    p_next: todo!(),
-	    allocation_size: todo!(),
-	    memory_type_index: todo!(),
-	};
-	
-	let x = ash::vk::ImportMemoryFdInfoKHR {
-	    s_type: todo!(),
-	    p_next: todo!(),
-	    handle_type: todo!(),
-	    fd,
-	};
+        let x = ash::vk::ImportMemoryFdInfoKHR {
+            s_type: todo!(),
+            p_next: todo!(),
+            handle_type: todo!(),
+            fd,
+        };
 
-	let a = MemoryImportInfo::Fd { handle_type: (), file: () };
-	*/
-	
-	 let queue_families = queue_families
+        let a = MemoryImportInfo::Fd { handle_type: (), file: () };
+        */
+
+        let queue_families = queue_families
             .into_iter()
             .map(|f| f.id())
             .collect::<SmallVec<[u32; 4]>>();
@@ -197,39 +200,26 @@ impl StorageImage {
                 dimensions,
                 format: Some(format),
                 usage,
-                sharing: if queue_families.len() >= 2 {
-                    Sharing::Concurrent(queue_families.iter().cloned().collect())
-                } else {
-                    Sharing::Exclusive
-                },
+                sharing: Sharing::Exclusive,
                 external_memory_handle_types: ExternalMemoryHandleTypes {
-                    opaque_fd: true,
+                    dma_buf: true,
                     ..ExternalMemoryHandleTypes::none()
                 },
                 mutable_format: flags.mutable_format,
                 cube_compatible: flags.cube_compatible,
                 array_2d_compatible: flags.array_2d_compatible,
                 block_texel_view_compatible: flags.block_texel_view_compatible,
+                tiling: ImageTiling::Linear,
                 ..Default::default()
             },
         )?;
 
-	
         let mem_reqs = image.memory_requirements();
 
-	let memory = alloc_import_from_fd(device.clone(), &mem_reqs, AllocLayout::Optimal, MappingRequirement::DoNotMap, DedicatedAllocation::Image(&image),|t| {
-                if t.is_device_local() {
-                    AllocFromRequirementsFilter::Preferred
-                } else {
-                    AllocFromRequirementsFilter::Allowed
-                }
-            } , fd)?;
-
-	/*
-        let memory = alloc_dedicated_with_exportable_fd(
+        let memory = alloc_import_from_fd(
             device.clone(),
             &mem_reqs,
-            AllocLayout::Optimal,
+            AllocLayout::Linear,
             MappingRequirement::DoNotMap,
             DedicatedAllocation::Image(&image),
             |t| {
@@ -239,8 +229,9 @@ impl StorageImage {
                     AllocFromRequirementsFilter::Allowed
                 }
             },
-    )?;
-	*/
+            fds,
+        )?;
+
         debug_assert!((memory.offset() % mem_reqs.alignment) == 0);
         unsafe {
             image.bind_memory(memory.memory(), memory.offset())?;
@@ -294,7 +285,6 @@ impl StorageImage {
             },
         )?;
 
-	
         let mem_reqs = image.memory_requirements();
         let memory = alloc_dedicated_with_exportable_fd(
             device.clone(),

@@ -23,9 +23,10 @@ use crate::memory::ExternalMemoryHandleTypes;
 use crate::memory::MappedDeviceMemory;
 use crate::memory::MemoryRequirements;
 use crate::DeviceSize;
-use std::os::unix::prelude::FromRawFd;
-use std::sync::Arc;
 use std::fs::File;
+use std::os::unix::prelude::FromRawFd;
+use std::os::unix::prelude::RawFd;
+use std::sync::Arc;
 
 mod host_visible;
 mod non_host_visible;
@@ -109,8 +110,7 @@ where
     }
 }
 
-/// Allocate dedicated memory with exportable fd.
-/// Memory pool memory always exports the same fd, thus dedicated is preferred.
+///
 pub(crate) fn alloc_import_from_fd<F>(
     device: Arc<Device>,
     requirements: &MemoryRequirements,
@@ -118,7 +118,7 @@ pub(crate) fn alloc_import_from_fd<F>(
     map: MappingRequirement,
     dedicated_allocation: DedicatedAllocation,
     filter: F,
-    fd: i32
+    fd: Vec<RawFd>,
 ) -> Result<PotentialDedicatedAllocation<StdMemoryPoolAlloc>, DeviceMemoryAllocationError>
 where
     F: FnMut(MemoryType) -> AllocFromRequirementsFilter,
@@ -129,34 +129,33 @@ where
 
     let memory_type = choose_allocation_memory_type(&device, requirements, filter, map);
 
+    println!("Fd len: {:?}\n", fd.len());
+
     let memory = unsafe {
-	DeviceMemory::import(device.clone(),
-			     MemoryAllocateInfo {
-				 allocation_size: requirements.size,
-				 memory_type_index: memory_type.id(),
-				 export_handle_types: ExternalMemoryHandleTypes {
-				     opaque_fd: true,
-				     ..ExternalMemoryHandleTypes::none()
-				 },
-				 ..MemoryAllocateInfo::dedicated_allocation(dedicated_allocation)
-			     },
-			     crate::memory::MemoryImportInfo::Fd { handle_type: crate::memory::ExternalMemoryHandleType::OpaqueFd, file: File::from_raw_fd(fd) })
-    }?;
-    /* 
-    let memory = DeviceMemory::allocate(
-    device.clone(),
-        MemoryAllocateInfo {
-            allocation_size: requirements.size,
-            memory_type_index: memory_type.id(),
-            export_handle_types: ExternalMemoryHandleTypes {
-                opaque_fd: true,
-		dma_buf: true,
-                ..ExternalMemoryHandleTypes::none()
+        let file = File::from_raw_fd(fd.get(0).unwrap().clone());
+        let properties = device
+            .memory_fd_properties(crate::memory::ExternalMemoryHandleType::DmaBuf, file)
+            .unwrap();
+        let file = File::from_raw_fd(fd.get(0).unwrap().clone());
+        println!("size: {:?}", requirements.size);
+
+        DeviceMemory::import(
+            device.clone(),
+            MemoryAllocateInfo {
+                allocation_size: requirements.size,
+                memory_type_index: memory_type.id(),
+                export_handle_types: ExternalMemoryHandleTypes {
+                    dma_buf: false,
+                    ..ExternalMemoryHandleTypes::none()
+                },
+                ..MemoryAllocateInfo::default()
             },
-            ..MemoryAllocateInfo::dedicated_allocation(dedicated_allocation)
-        },
-)?;
-    */
+            crate::memory::MemoryImportInfo::Fd {
+                handle_type: crate::memory::ExternalMemoryHandleType::DmaBuf,
+                file,
+            },
+        )
+    }?;
 
     match map {
         MappingRequirement::Map => {
