@@ -31,7 +31,7 @@ use crate::{
     sync::{AccessError, CurrentAccess, Sharing},
     DeviceSize, Error, OomError, Version, VulkanObject,
 };
-use ash::vk::Handle;
+use ash::{vk::{Handle, ImageDrmFormatModifierExplicitCreateInfoEXT, ImageDrmFormatModifierExplicitCreateInfoEXTBuilder, SubresourceLayout}, extensions::ext::ImageDrmFormatModifier};
 use parking_lot::{Mutex, MutexGuard};
 use rangemap::RangeMap;
 use smallvec::{smallvec, SmallVec};
@@ -814,9 +814,25 @@ impl UnsafeImage {
             .queue_family_indices(queue_family_indices)
             .initial_layout(initial_layout.into());
 
+
         if let Some(next) = external_memory_image_create_info.as_mut() {
             create_info = create_info.push_next(next);
         }
+
+	let layout = SubresourceLayout {
+	    offset: todo!(),
+	    size: 0,
+	    row_pitch: todo!(),
+	    array_pitch: 0,
+	    depth_pitch: 0,
+	};
+	if  external_memory_handle_types.dma_buf {
+	    let x = ImageDrmFormatModifierExplicitCreateInfoEXT::builder()
+		.drm_format_modifier(0)
+		.plane_layouts()
+		.build();
+
+	}
 
         let handle = {
             let fns = device.fns();

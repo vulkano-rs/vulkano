@@ -27,7 +27,7 @@ use crate::{
     sync::Sharing,
     DeviceSize,
 };
-use ash::extensions::ext::ImageDrmFormatModifier;
+use ash::{extensions::ext::ImageDrmFormatModifier, vk::DrmFormatModifierPropertiesListEXT};
 use smallvec::SmallVec;
 use std::{
     fs::File,
