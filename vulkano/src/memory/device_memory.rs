@@ -82,6 +82,7 @@ impl DeviceMemory {
             memory_type_index,
             dedicated_allocation,
             export_handle_types,
+	    import_handle_types,
             _ne: _,
         } = allocate_info;
 
@@ -121,6 +122,7 @@ impl DeviceMemory {
             memory_type_index,
             dedicated_allocation,
             export_handle_types,
+	    import_handle_types,
             _ne: _,
         } = allocate_info;
 
@@ -146,6 +148,7 @@ impl DeviceMemory {
             memory_type_index,
             ref mut dedicated_allocation,
             export_handle_types,
+	    import_handle_types,
             _ne: _,
         } = allocate_info;
 
@@ -311,6 +314,7 @@ impl DeviceMemory {
             memory_type_index,
             dedicated_allocation,
             export_handle_types,
+	    import_handle_types,
             _ne: _,
         } = allocate_info;
 
@@ -684,6 +688,9 @@ pub struct MemoryAllocateInfo<'d> {
     /// The handle types that can be exported from the allocated memory.
     pub export_handle_types: ExternalMemoryHandleTypes,
 
+    /// Handle for importing
+    pub import_handle_types: ExternalMemoryHandleTypes,
+
     pub _ne: crate::NonExhaustive,
 }
 
@@ -695,6 +702,7 @@ impl Default for MemoryAllocateInfo<'static> {
             memory_type_index: u32::MAX,
             dedicated_allocation: None,
             export_handle_types: ExternalMemoryHandleTypes::none(),
+	    import_handle_types: ExternalMemoryHandleTypes::none(),
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -708,6 +716,7 @@ impl<'d> MemoryAllocateInfo<'d> {
             memory_type_index: u32::MAX,
             dedicated_allocation: Some(dedicated_allocation),
             export_handle_types: ExternalMemoryHandleTypes::none(),
+	    import_handle_types: ExternalMemoryHandleTypes::none(),
             _ne: crate::NonExhaustive(()),
         }
     }

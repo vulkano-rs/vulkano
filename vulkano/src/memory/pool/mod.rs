@@ -19,6 +19,7 @@ use crate::memory::device_memory::MemoryAllocateInfo;
 use crate::memory::DedicatedAllocation;
 use crate::memory::DeviceMemory;
 use crate::memory::DeviceMemoryAllocationError;
+use crate::memory::ExternalMemoryHandleType;
 use crate::memory::ExternalMemoryHandleTypes;
 use crate::memory::MappedDeviceMemory;
 use crate::memory::MemoryRequirements;
@@ -144,11 +145,12 @@ where
             MemoryAllocateInfo {
                 allocation_size: requirements.size,
                 memory_type_index: memory_type.id(),
-                export_handle_types: ExternalMemoryHandleTypes {
-                    dma_buf: false,
+                export_handle_types: ExternalMemoryHandleTypes::none(),
+                import_handle_types: ExternalMemoryHandleTypes {
+                    dma_buf: true,
                     ..ExternalMemoryHandleTypes::none()
                 },
-                ..MemoryAllocateInfo::default()
+                ..MemoryAllocateInfo::dedicated_allocation(dedicated_allocation)
             },
             crate::memory::MemoryImportInfo::Fd {
                 handle_type: crate::memory::ExternalMemoryHandleType::DmaBuf,
