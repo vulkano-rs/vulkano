@@ -10,13 +10,12 @@
 use crate::{
     buffer::TypedBufferAccess,
     command_buffer::{
-        auto::QueryState,
+        auto::{QueryState, RenderPassStateType},
         synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
-        AutoCommandBufferBuilder, AutoCommandBufferBuilderContextError, BeginQueryError,
-        CopyQueryPoolResultsError, EndQueryError, ResetQueryPoolError, WriteTimestampError,
+        AutoCommandBufferBuilder, CommandBufferInheritanceRenderPassType,
     },
-    device::{physical::QueueFamily, Device, DeviceOwned},
+    device::{physical::QueueFamily, DeviceOwned},
     query::{
         GetResultsError, QueriesRange, Query, QueryControlFlags, QueryPool, QueryResultElement,
         QueryResultFlags, QueryType,
@@ -28,7 +27,7 @@ use std::{error, fmt, mem::size_of, ops::Range, sync::Arc};
 
 /// # Commands related to queries.
 impl<L, P> AutoCommandBufferBuilder<L, P> {
-    /// Adds a command that begins a query.
+    /// Begins a query.
     ///
     /// The query will be active until [`end_query`](Self::end_query) is called for the same query.
     ///
@@ -39,40 +38,15 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         query_pool: Arc<QueryPool>,
         query: u32,
         flags: QueryControlFlags,
-    ) -> Result<&mut Self, BeginQueryError> {
-        check_begin_query(self.device(), &query_pool, query, flags)?;
-
-        match query_pool.query_type() {
-            QueryType::Occlusion => {
-                if !self.queue_family().supports_graphics() {
-                    return Err(
-                        AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into(),
-                    );
-                }
-            }
-            QueryType::PipelineStatistics(flags) => {
-                if flags.is_compute() && !self.queue_family().supports_compute()
-                    || flags.is_graphics() && !self.queue_family().supports_graphics()
-                {
-                    return Err(
-                        AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into(),
-                    );
-                }
-            }
-            QueryType::Timestamp => unreachable!(),
-        }
+    ) -> Result<&mut Self, QueryError> {
+        self.validate_begin_query(&query_pool, query, flags)?;
 
         let ty = query_pool.query_type();
-        let raw_ty = ty.into();
         let raw_query_pool = query_pool.internal_object();
-        if self.query_state.contains_key(&raw_ty) {
-            return Err(AutoCommandBufferBuilderContextError::QueryIsActive.into());
-        }
 
-        // TODO: validity checks
         self.inner.begin_query(query_pool, query, flags);
         self.query_state.insert(
-            raw_ty,
+            ty.into(),
             QueryState {
                 query_pool: raw_query_pool,
                 query,
@@ -85,23 +59,112 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         Ok(self)
     }
 
-    /// Adds a command that ends an active query.
+    fn validate_begin_query(
+        &self,
+        query_pool: &QueryPool,
+        query: u32,
+        flags: QueryControlFlags,
+    ) -> Result<(), QueryError> {
+        // VUID-vkCmdBeginQuery-commandBuffer-cmdpool
+        if !(self.queue_family().supports_graphics() || self.queue_family().supports_compute()) {
+            return Err(QueryError::NotSupportedByQueueFamily.into());
+        }
+
+        let device = self.device();
+
+        // VUID-vkCmdBeginQuery-commonparent
+        assert_eq!(device, query_pool.device());
+
+        // VUID-vkCmdBeginQuery-query-00802
+        query_pool.query(query).ok_or(QueryError::OutOfRange)?;
+
+        match query_pool.query_type() {
+            QueryType::Occlusion => {
+                // VUID-vkCmdBeginQuery-commandBuffer-cmdpool
+                // // VUID-vkCmdBeginQuery-queryType-00803
+                if !self.queue_family().supports_graphics() {
+                    return Err(QueryError::NotSupportedByQueueFamily);
+                }
+
+                // VUID-vkCmdBeginQuery-queryType-00800
+                if flags.precise && !device.enabled_features().occlusion_query_precise {
+                    return Err(QueryError::FeatureNotEnabled {
+                        feature: "occlusion_query_precise",
+                        reason: "flags.precise was enabled",
+                    });
+                }
+            }
+            QueryType::PipelineStatistics(statistic_flags) => {
+                // VUID-vkCmdBeginQuery-commandBuffer-cmdpool
+                // VUID-vkCmdBeginQuery-queryType-00804
+                // VUID-vkCmdBeginQuery-queryType-00805
+                if statistic_flags.is_compute() && !self.queue_family().supports_compute()
+                    || statistic_flags.is_graphics() && !self.queue_family().supports_graphics()
+                {
+                    return Err(QueryError::NotSupportedByQueueFamily);
+                }
+
+                // VUID-vkCmdBeginQuery-queryType-00800
+                if flags.precise {
+                    return Err(QueryError::InvalidFlags);
+                }
+            }
+            // VUID-vkCmdBeginQuery-queryType-02804
+            QueryType::Timestamp => return Err(QueryError::NotPermitted),
+        }
+
+        // VUID-vkCmdBeginQuery-queryPool-01922
+        if self
+            .query_state
+            .contains_key(&query_pool.query_type().into())
+        {
+            return Err(QueryError::QueryIsActive);
+        }
+
+        if let Some(state) = &self.render_pass_state {
+            let view_mask = match &state.render_pass {
+                RenderPassStateType::BeginRenderPass(state) => {
+                    state.subpass.subpass_desc().view_mask
+                }
+                RenderPassStateType::BeginRendering(state) => state.view_mask,
+                RenderPassStateType::Inherited => match self
+                    .inheritance_info
+                    .as_ref()
+                    .unwrap()
+                    .render_pass
+                    .as_ref()
+                    .unwrap()
+                {
+                    CommandBufferInheritanceRenderPassType::BeginRenderPass(info) => {
+                        info.subpass.subpass_desc().view_mask
+                    }
+                    CommandBufferInheritanceRenderPassType::BeginRendering(info) => info.view_mask,
+                },
+            };
+
+            // VUID-vkCmdBeginQuery-query-00808
+            if query + view_mask.count_ones() > query_pool.query_count() {
+                return Err(QueryError::OutOfRangeMultiview);
+            }
+        }
+
+        // VUID-vkCmdBeginQuery-None-00807
+        // Not checked, therefore unsafe.
+        // TODO: add check.
+
+        Ok(())
+    }
+
+    /// Ends an active query.
     pub fn end_query(
         &mut self,
         query_pool: Arc<QueryPool>,
         query: u32,
-    ) -> Result<&mut Self, EndQueryError> {
+    ) -> Result<&mut Self, QueryError> {
+        self.validate_end_query(&query_pool, query)?;
+
         unsafe {
-            check_end_query(self.device(), &query_pool, query)?;
-
             let raw_ty = query_pool.query_type().into();
-            let raw_query_pool = query_pool.internal_object();
-            if !self.query_state.get(&raw_ty).map_or(false, |state| {
-                state.query_pool == raw_query_pool && state.query == query
-            }) {
-                return Err(AutoCommandBufferBuilderContextError::QueryNotActive.into());
-            }
-
             self.inner.end_query(query_pool, query);
             self.query_state.remove(&raw_ty);
         }
@@ -109,7 +172,62 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         Ok(self)
     }
 
-    /// Adds a command that writes a timestamp to a timestamp query.
+    fn validate_end_query(&self, query_pool: &QueryPool, query: u32) -> Result<(), QueryError> {
+        // VUID-vkCmdEndQuery-commandBuffer-cmdpool
+        if !(self.queue_family().supports_graphics() || self.queue_family().supports_compute()) {
+            return Err(QueryError::NotSupportedByQueueFamily.into());
+        }
+
+        let device = self.device();
+
+        // VUID-vkCmdEndQuery-commonparent
+        assert_eq!(device, query_pool.device());
+
+        // VUID-vkCmdEndQuery-None-01923
+        if !self
+            .query_state
+            .get(&query_pool.query_type().into())
+            .map_or(false, |state| {
+                state.query_pool == query_pool.internal_object() && state.query == query
+            })
+        {
+            return Err(QueryError::QueryNotActive.into());
+        }
+
+        // VUID-vkCmdEndQuery-query-00810
+        query_pool.query(query).ok_or(QueryError::OutOfRange)?;
+
+        if let Some(state) = &self.render_pass_state {
+            let view_mask = match &state.render_pass {
+                RenderPassStateType::BeginRenderPass(state) => {
+                    state.subpass.subpass_desc().view_mask
+                }
+                RenderPassStateType::BeginRendering(state) => state.view_mask,
+                RenderPassStateType::Inherited => match self
+                    .inheritance_info
+                    .as_ref()
+                    .unwrap()
+                    .render_pass
+                    .as_ref()
+                    .unwrap()
+                {
+                    CommandBufferInheritanceRenderPassType::BeginRenderPass(info) => {
+                        info.subpass.subpass_desc().view_mask
+                    }
+                    CommandBufferInheritanceRenderPassType::BeginRendering(info) => info.view_mask,
+                },
+            };
+
+            // VUID-vkCmdEndQuery-query-00812
+            if query + view_mask.count_ones() > query_pool.query_count() {
+                return Err(QueryError::OutOfRangeMultiview);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Writes a timestamp to a timestamp query.
     ///
     /// # Safety
     /// The query must be unavailable, ensured by calling [`reset_query_pool`](Self::reset_query_pool).
@@ -118,29 +236,112 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         query_pool: Arc<QueryPool>,
         query: u32,
         stage: PipelineStage,
-    ) -> Result<&mut Self, WriteTimestampError> {
-        check_write_timestamp(
-            self.device(),
-            self.queue_family(),
-            &query_pool,
-            query,
-            stage,
-        )?;
+    ) -> Result<&mut Self, QueryError> {
+        self.validate_write_timestamp(self.queue_family(), &query_pool, query, stage)?;
 
-        if !(self.queue_family().supports_graphics()
-            || self.queue_family().supports_compute()
-            || self.queue_family().explicitly_supports_transfers())
-        {
-            return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
-        }
-
-        // TODO: validity checks
         self.inner.write_timestamp(query_pool, query, stage);
 
         Ok(self)
     }
 
-    /// Adds a command that copies the results of a range of queries to a buffer on the GPU.
+    fn validate_write_timestamp(
+        &self,
+        queue_family: QueueFamily,
+        query_pool: &QueryPool,
+        query: u32,
+        stage: PipelineStage,
+    ) -> Result<(), QueryError> {
+        // VUID-vkCmdWriteTimestamp-commandBuffer-cmdpool
+        if !(self.queue_family().explicitly_supports_transfers()
+            || self.queue_family().supports_graphics()
+            || self.queue_family().supports_compute())
+        {
+            return Err(QueryError::NotSupportedByQueueFamily.into());
+        }
+
+        let device = self.device();
+
+        // VUID-vkCmdWriteTimestamp-commonparent
+        assert_eq!(device, query_pool.device());
+
+        // VUID-vkCmdWriteTimestamp-pipelineStage-04074
+        if !queue_family.supports_stage(stage) {
+            return Err(QueryError::StageNotSupported);
+        }
+
+        match stage {
+            PipelineStage::GeometryShader => {
+                // VUID-vkCmdWriteTimestamp-pipelineStage-04075
+                if !device.enabled_features().geometry_shader {
+                    return Err(QueryError::FeatureNotEnabled {
+                        feature: "geometry_shader",
+                        reason: "stage was GeometryShader",
+                    });
+                }
+            }
+            PipelineStage::TessellationControlShader
+            | PipelineStage::TessellationEvaluationShader => {
+                // VUID-vkCmdWriteTimestamp-pipelineStage-04076
+                if !device.enabled_features().tessellation_shader {
+                    return Err(QueryError::FeatureNotEnabled {
+                        feature: "tessellation_shader",
+                        reason:
+                            "stage was TessellationControlShader or TessellationEvaluationShader",
+                    });
+                }
+            }
+            _ => (),
+        }
+
+        // VUID-vkCmdWriteTimestamp-queryPool-01416
+        if !matches!(query_pool.query_type(), QueryType::Timestamp) {
+            return Err(QueryError::NotPermitted);
+        }
+
+        // VUID-vkCmdWriteTimestamp-timestampValidBits-00829
+        if queue_family.timestamp_valid_bits().is_none() {
+            return Err(QueryError::NoTimestampValidBits);
+        }
+
+        // VUID-vkCmdWriteTimestamp-query-04904
+        query_pool.query(query).ok_or(QueryError::OutOfRange)?;
+
+        if let Some(state) = &self.render_pass_state {
+            let view_mask = match &state.render_pass {
+                RenderPassStateType::BeginRenderPass(state) => {
+                    state.subpass.subpass_desc().view_mask
+                }
+                RenderPassStateType::BeginRendering(state) => state.view_mask,
+                RenderPassStateType::Inherited => match self
+                    .inheritance_info
+                    .as_ref()
+                    .unwrap()
+                    .render_pass
+                    .as_ref()
+                    .unwrap()
+                {
+                    CommandBufferInheritanceRenderPassType::BeginRenderPass(info) => {
+                        info.subpass.subpass_desc().view_mask
+                    }
+                    CommandBufferInheritanceRenderPassType::BeginRendering(info) => info.view_mask,
+                },
+            };
+
+            // VUID-vkCmdWriteTimestamp-query-00831
+            if query + view_mask.count_ones() > query_pool.query_count() {
+                return Err(QueryError::OutOfRangeMultiview);
+            }
+        }
+
+        // VUID-vkCmdWriteTimestamp-queryPool-00828
+        // VUID-vkCmdWriteTimestamp-None-00830
+        // Not checked, therefore unsafe.
+        // TODO: add check.
+
+        Ok(())
+    }
+
+    /// Copies the results of a range of queries to a buffer on the GPU.
     ///
     /// [`query_pool.ty().result_len()`](crate::query::QueryType::result_len) elements
     /// will be written for each query in the range, plus 1 extra element per query if
@@ -154,20 +355,22 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         queries: Range<u32>,
         destination: Arc<D>,
         flags: QueryResultFlags,
-    ) -> Result<&mut Self, CopyQueryPoolResultsError>
+    ) -> Result<&mut Self, QueryError>
     where
         D: TypedBufferAccess<Content = [T]> + 'static,
         T: QueryResultElement,
     {
+        self.validate_copy_query_pool_results(
+            &query_pool,
+            queries.clone(),
+            destination.as_ref(),
+            flags,
+        )?;
+
         unsafe {
-            self.ensure_outside_render_pass()?;
-            let stride = check_copy_query_pool_results(
-                self.device(),
-                &query_pool,
-                queries.clone(),
-                destination.as_ref(),
-                flags,
-            )?;
+            let per_query_len =
+                query_pool.query_type().result_len() + flags.with_availability as DeviceSize;
+            let stride = per_query_len * std::mem::size_of::<T>() as DeviceSize;
             self.inner
                 .copy_query_pool_results(query_pool, queries, destination, stride, flags)?;
         }
@@ -175,401 +378,126 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         Ok(self)
     }
 
-    /// Adds a command to reset a range of queries on a query pool.
+    fn validate_copy_query_pool_results<D, T>(
+        &self,
+        query_pool: &QueryPool,
+        queries: Range<u32>,
+        destination: &D,
+        flags: QueryResultFlags,
+    ) -> Result<(), QueryError>
+    where
+        D: ?Sized + TypedBufferAccess<Content = [T]>,
+        T: QueryResultElement,
+    {
+        // VUID-vkCmdCopyQueryPoolResults-commandBuffer-cmdpool
+        if !(self.queue_family().supports_graphics() || self.queue_family().supports_compute()) {
+            return Err(QueryError::NotSupportedByQueueFamily.into());
+        }
+
+        // VUID-vkCmdCopyQueryPoolResults-renderpass
+        if self.render_pass_state.is_some() {
+            return Err(QueryError::ForbiddenInsideRenderPass);
+        }
+
+        let device = self.device();
+        let buffer_inner = destination.inner();
+
+        // VUID-vkCmdCopyQueryPoolResults-commonparent
+        assert_eq!(device, buffer_inner.buffer.device());
+        assert_eq!(device, query_pool.device());
+
+        assert!(destination.len() > 0);
+
+        // VUID-vkCmdCopyQueryPoolResults-flags-00822
+        // VUID-vkCmdCopyQueryPoolResults-flags-00823
+        debug_assert!(buffer_inner.offset % std::mem::size_of::<T>() as DeviceSize == 0);
+
+        // VUID-vkCmdCopyQueryPoolResults-firstQuery-00820
+        // VUID-vkCmdCopyQueryPoolResults-firstQuery-00821
+        query_pool
+            .queries_range(queries.clone())
+            .ok_or(QueryError::OutOfRange)?;
+
+        let count = queries.end - queries.start;
+        let per_query_len =
+            query_pool.query_type().result_len() + flags.with_availability as DeviceSize;
+        let required_len = per_query_len * count as DeviceSize;
+
+        // VUID-vkCmdCopyQueryPoolResults-dstBuffer-00824
+        if destination.len() < required_len {
+            return Err(QueryError::BufferTooSmall {
+                required_len,
+                actual_len: destination.len(),
+            });
+        }
+
+        // VUID-vkCmdCopyQueryPoolResults-dstBuffer-00825
+        if !buffer_inner.buffer.usage().transfer_dst {
+            return Err(QueryError::DestinationMissingUsage);
+        }
+
+        // VUID-vkCmdCopyQueryPoolResults-queryType-00827
+        if matches!(query_pool.query_type(), QueryType::Timestamp) && flags.partial {
+            return Err(QueryError::InvalidFlags);
+        }
+
+        Ok(())
+    }
+
+    /// Resets a range of queries on a query pool.
     ///
     /// The affected queries will be marked as "unavailable" after this command runs, and will no
     /// longer return any results. They will be ready to have new results recorded for them.
     ///
     /// # Safety
     /// The queries in the specified range must not be active in another command buffer.
+    // TODO: Do other command buffers actually matter here? Not sure on the Vulkan spec.
     pub unsafe fn reset_query_pool(
         &mut self,
         query_pool: Arc<QueryPool>,
         queries: Range<u32>,
-    ) -> Result<&mut Self, ResetQueryPoolError> {
-        self.ensure_outside_render_pass()?;
-        check_reset_query_pool(self.device(), &query_pool, queries.clone())?;
+    ) -> Result<&mut Self, QueryError> {
+        self.validate_reset_query_pool(&query_pool, queries.clone())?;
 
-        let raw_query_pool = query_pool.internal_object();
-        if self
-            .query_state
-            .values()
-            .any(|state| state.query_pool == raw_query_pool && queries.contains(&state.query))
-        {
-            return Err(AutoCommandBufferBuilderContextError::QueryIsActive.into());
-        }
-
-        // TODO: validity checks
-        // Do other command buffers actually matter here? Not sure on the Vulkan spec.
         self.inner.reset_query_pool(query_pool, queries);
 
         Ok(self)
     }
-}
 
-/// Checks whether a `begin_query` command is valid.
-///
-/// # Panic
-///
-/// - Panics if the query pool was not created with `device`.
-fn check_begin_query(
-    device: &Device,
-    query_pool: &QueryPool,
-    query: u32,
-    flags: QueryControlFlags,
-) -> Result<(), CheckBeginQueryError> {
-    assert_eq!(
-        device.internal_object(),
-        query_pool.device().internal_object(),
-    );
-    query_pool
-        .query(query)
-        .ok_or(CheckBeginQueryError::OutOfRange)?;
-
-    match query_pool.query_type() {
-        QueryType::Occlusion => {
-            if flags.precise && !device.enabled_features().occlusion_query_precise {
-                return Err(CheckBeginQueryError::OcclusionQueryPreciseFeatureNotEnabled);
-            }
+    fn validate_reset_query_pool(
+        &self,
+        query_pool: &QueryPool,
+        queries: Range<u32>,
+    ) -> Result<(), QueryError> {
+        // VUID-vkCmdResetQueryPool-renderpass
+        if self.render_pass_state.is_some() {
+            return Err(QueryError::ForbiddenInsideRenderPass);
         }
-        QueryType::PipelineStatistics(_) => {
-            if flags.precise {
-                return Err(CheckBeginQueryError::InvalidFlags);
-            }
+
+        // VUID-vkCmdResetQueryPool-commandBuffer-cmdpool
+        if !(self.queue_family().supports_graphics() || self.queue_family().supports_compute()) {
+            return Err(QueryError::NotSupportedByQueueFamily.into());
         }
-        QueryType::Timestamp => return Err(CheckBeginQueryError::NotPermitted),
-    }
 
-    Ok(())
-}
+        let device = self.device();
 
-/// Error that can happen from `check_begin_query`.
-#[derive(Debug, Copy, Clone)]
-pub enum CheckBeginQueryError {
-    /// The provided flags are not allowed for this type of query.
-    InvalidFlags,
-    /// This operation is not permitted on this query type.
-    NotPermitted,
-    /// `QueryControlFlags::precise` was requested, but the `occlusion_query_precise` feature was not enabled.
-    OcclusionQueryPreciseFeatureNotEnabled,
-    /// The provided query index is not valid for this pool.
-    OutOfRange,
-}
+        // VUID-vkCmdResetQueryPool-commonparent
+        assert_eq!(device, query_pool.device());
 
-impl error::Error for CheckBeginQueryError {}
+        // VUID-vkCmdResetQueryPool-firstQuery-00796
+        // VUID-vkCmdResetQueryPool-firstQuery-00797
+        query_pool
+            .queries_range(queries.clone())
+            .ok_or(QueryError::OutOfRange)?;
 
-impl fmt::Display for CheckBeginQueryError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                Self::InvalidFlags => {
-                    "the provided flags are not allowed for this type of query"
-                }
-                Self::NotPermitted => {
-                    "this operation is not permitted on this query type"
-                }
-                Self::OcclusionQueryPreciseFeatureNotEnabled => {
-                    "QueryControlFlags::precise was requested, but the occlusion_query_precise feature was not enabled"
-                }
-                Self::OutOfRange => {
-                    "the provided query index is not valid for this pool"
-                }
-            }
-        )
-    }
-}
-
-/// Checks whether a `end_query` command is valid.
-///
-/// # Panic
-///
-/// - Panics if the query pool was not created with `device`.
-fn check_end_query(
-    device: &Device,
-    query_pool: &QueryPool,
-    query: u32,
-) -> Result<(), CheckEndQueryError> {
-    assert_eq!(
-        device.internal_object(),
-        query_pool.device().internal_object(),
-    );
-
-    query_pool
-        .query(query)
-        .ok_or(CheckEndQueryError::OutOfRange)?;
-
-    Ok(())
-}
-
-/// Error that can happen from `check_end_query`.
-#[derive(Debug, Copy, Clone)]
-pub enum CheckEndQueryError {
-    /// The provided query index is not valid for this pool.
-    OutOfRange,
-}
-
-impl error::Error for CheckEndQueryError {}
-
-impl fmt::Display for CheckEndQueryError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                Self::OutOfRange => {
-                    "the provided query index is not valid for this pool"
-                }
-            }
-        )
-    }
-}
-
-/// Checks whether a `write_timestamp` command is valid.
-///
-/// # Panic
-///
-/// - Panics if the query pool was not created with `device`.
-fn check_write_timestamp(
-    device: &Device,
-    queue_family: QueueFamily,
-    query_pool: &QueryPool,
-    query: u32,
-    stage: PipelineStage,
-) -> Result<(), CheckWriteTimestampError> {
-    assert_eq!(
-        device.internal_object(),
-        query_pool.device().internal_object(),
-    );
-
-    if !matches!(query_pool.query_type(), QueryType::Timestamp) {
-        return Err(CheckWriteTimestampError::NotPermitted);
-    }
-
-    query_pool
-        .query(query)
-        .ok_or(CheckWriteTimestampError::OutOfRange)?;
-
-    if queue_family.timestamp_valid_bits().is_none() {
-        return Err(CheckWriteTimestampError::NoTimestampValidBits);
-    }
-
-    if !queue_family.supports_stage(stage) {
-        return Err(CheckWriteTimestampError::StageNotSupported);
-    }
-
-    match stage {
-        PipelineStage::GeometryShader => {
-            if !device.enabled_features().geometry_shader {
-                return Err(CheckWriteTimestampError::GeometryShaderFeatureNotEnabled);
-            }
+        // VUID-vkCmdResetQueryPool-None-02841
+        if self.query_state.values().any(|state| {
+            state.query_pool == query_pool.internal_object() && queries.contains(&state.query)
+        }) {
+            return Err(QueryError::QueryIsActive.into());
         }
-        PipelineStage::TessellationControlShader | PipelineStage::TessellationEvaluationShader => {
-            if !device.enabled_features().tessellation_shader {
-                return Err(CheckWriteTimestampError::TessellationShaderFeatureNotEnabled);
-            }
-        }
-        _ => (),
-    }
 
-    Ok(())
-}
-
-/// Error that can happen from `check_write_timestamp`.
-#[derive(Debug, Copy, Clone)]
-pub enum CheckWriteTimestampError {
-    /// The geometry shader stage was requested, but the `geometry_shader` feature was not enabled.
-    GeometryShaderFeatureNotEnabled,
-    /// The queue family's `timestamp_valid_bits` value is `None`.
-    NoTimestampValidBits,
-    /// This operation is not permitted on this query type.
-    NotPermitted,
-    /// The provided query index is not valid for this pool.
-    OutOfRange,
-    /// The provided stage is not supported by the queue family.
-    StageNotSupported,
-    /// A tessellation shader stage was requested, but the `tessellation_shader` feature was not enabled.
-    TessellationShaderFeatureNotEnabled,
-}
-
-impl error::Error for CheckWriteTimestampError {}
-
-impl fmt::Display for CheckWriteTimestampError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                Self::GeometryShaderFeatureNotEnabled => {
-                    "the geometry shader stage was requested, but the geometry_shader feature was not enabled"
-                }
-                Self::NoTimestampValidBits => {
-                    "the queue family's timestamp_valid_bits value is None"
-                }
-                Self::NotPermitted => {
-                    "this operation is not permitted on this query type"
-                }
-                Self::OutOfRange => {
-                    "the provided query index is not valid for this pool"
-                }
-                Self::StageNotSupported => {
-                    "the provided stage is not supported by the queue family"
-                }
-                Self::TessellationShaderFeatureNotEnabled => {
-                    "a tessellation shader stage was requested, but the tessellation_shader feature was not enabled"
-                }
-            }
-        )
-    }
-}
-
-/// Checks whether a `copy_query_pool_results` command is valid.
-///
-/// # Panic
-///
-/// - Panics if the query pool or buffer was not created with `device`.
-fn check_copy_query_pool_results<D, T>(
-    device: &Device,
-    query_pool: &QueryPool,
-    queries: Range<u32>,
-    destination: &D,
-    flags: QueryResultFlags,
-) -> Result<DeviceSize, CheckCopyQueryPoolResultsError>
-where
-    D: ?Sized + TypedBufferAccess<Content = [T]>,
-    T: QueryResultElement,
-{
-    let buffer_inner = destination.inner();
-    assert_eq!(
-        device.internal_object(),
-        buffer_inner.buffer.device().internal_object(),
-    );
-    assert_eq!(
-        device.internal_object(),
-        query_pool.device().internal_object(),
-    );
-
-    if !buffer_inner.buffer.usage().transfer_dst {
-        return Err(CheckCopyQueryPoolResultsError::DestinationMissingTransferUsage);
-    }
-
-    let queries_range = query_pool
-        .queries_range(queries)
-        .ok_or(CheckCopyQueryPoolResultsError::OutOfRange)?;
-
-    Ok(queries_range.check_query_pool_results::<T>(
-        buffer_inner.offset,
-        destination.len(),
-        flags,
-    )?)
-}
-
-/// Error that can happen from `check_copy_query_pool_results`.
-#[derive(Debug, Copy, Clone)]
-pub enum CheckCopyQueryPoolResultsError {
-    /// The buffer is too small for the copy operation.
-    BufferTooSmall {
-        /// Required number of elements in the buffer.
-        required_len: DeviceSize,
-        /// Actual number of elements in the buffer.
-        actual_len: DeviceSize,
-    },
-    /// The destination buffer is missing the transfer destination usage.
-    DestinationMissingTransferUsage,
-    /// The provided flags are not allowed for this type of query.
-    InvalidFlags,
-    /// The provided queries range is not valid for this pool.
-    OutOfRange,
-}
-
-impl From<GetResultsError> for CheckCopyQueryPoolResultsError {
-    #[inline]
-    fn from(value: GetResultsError) -> Self {
-        match value {
-            GetResultsError::BufferTooSmall {
-                required_len,
-                actual_len,
-            } => CheckCopyQueryPoolResultsError::BufferTooSmall {
-                required_len,
-                actual_len,
-            },
-            GetResultsError::InvalidFlags => CheckCopyQueryPoolResultsError::InvalidFlags,
-            GetResultsError::DeviceLost | GetResultsError::OomError(_) => unreachable!(),
-        }
-    }
-}
-
-impl error::Error for CheckCopyQueryPoolResultsError {}
-
-impl fmt::Display for CheckCopyQueryPoolResultsError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                Self::BufferTooSmall { .. } => {
-                    "the buffer is too small for the copy operation"
-                }
-                Self::DestinationMissingTransferUsage => {
-                    "the destination buffer is missing the transfer destination usage"
-                }
-                Self::InvalidFlags => {
-                    "the provided flags are not allowed for this type of query"
-                }
-                Self::OutOfRange => {
-                    "the provided queries range is not valid for this pool"
-                }
-            }
-        )
-    }
-}
-
-/// Checks whether a `reset_query_pool` command is valid.
-///
-/// # Panic
-///
-/// - Panics if the query pool was not created with `device`.
-fn check_reset_query_pool(
-    device: &Device,
-    query_pool: &QueryPool,
-    queries: Range<u32>,
-) -> Result<(), CheckResetQueryPoolError> {
-    assert_eq!(
-        device.internal_object(),
-        query_pool.device().internal_object(),
-    );
-    query_pool
-        .queries_range(queries)
-        .ok_or(CheckResetQueryPoolError::OutOfRange)?;
-    Ok(())
-}
-
-/// Error that can happen from `check_reset_query_pool`.
-#[derive(Debug, Copy, Clone)]
-pub enum CheckResetQueryPoolError {
-    /// The provided queries range is not valid for this pool.
-    OutOfRange,
-}
-
-impl error::Error for CheckResetQueryPoolError {}
-
-impl fmt::Display for CheckResetQueryPoolError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                Self::OutOfRange => {
-                    "the provided queries range is not valid for this pool"
-                }
-            }
-        )
+        Ok(())
     }
 }
 
@@ -843,5 +771,137 @@ impl UnsafeCommandBufferBuilder {
             range.start,
             range.end - range.start,
         );
+    }
+}
+
+/// Error that can happen when calling a query command.
+#[derive(Clone, Debug)]
+pub enum QueryError {
+    SyncCommandBufferBuilderError(SyncCommandBufferBuilderError),
+
+    FeatureNotEnabled {
+        feature: &'static str,
+        reason: &'static str,
+    },
+
+    /// The buffer is too small for the copy operation.
+    BufferTooSmall {
+        /// Required number of elements in the buffer.
+        required_len: DeviceSize,
+        /// Actual number of elements in the buffer.
+        actual_len: DeviceSize,
+    },
+
+    /// The destination buffer is missing the `transfer_dst` usage.
+    DestinationMissingUsage,
+
+    /// Operation forbidden inside of a render pass.
+    ForbiddenInsideRenderPass,
+
+    /// The provided flags are not allowed for this type of query.
+    InvalidFlags,
+
+    /// The queue family's `timestamp_valid_bits` value is `None`.
+    NoTimestampValidBits,
+
+    /// This operation is not permitted on this query type.
+    NotPermitted,
+
+    /// The queue family doesn't allow this operation.
+    NotSupportedByQueueFamily,
+
+    /// The provided query index is not valid for this pool.
+    OutOfRange,
+
+    /// The provided query index plus the number of views in the current render subpass is greater
+    /// than the number of queries in the pool.
+    OutOfRangeMultiview,
+
+    /// A query is active that conflicts with the current operation.
+    QueryIsActive,
+
+    /// This query was not active.
+    QueryNotActive,
+
+    /// The provided stage is not supported by the queue family.
+    StageNotSupported,
+}
+
+impl error::Error for QueryError {}
+
+impl fmt::Display for QueryError {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match *self {
+            Self::SyncCommandBufferBuilderError(_) => write!(
+                f,
+                "a SyncCommandBufferBuilderError",
+            ),
+
+            Self::FeatureNotEnabled { feature, reason } => write!(
+                f,
+                "the feature {} must be enabled: {}",
+                feature, reason,
+            ),
+
+            Self::BufferTooSmall { .. } => {
+                write!(f, "the buffer is too small for the copy operation")
+            }
+            Self::DestinationMissingUsage => write!(
+                f,
+                "the destination buffer is missing the `transfer_dst` usage",
+            ),
+            Self::ForbiddenInsideRenderPass => {
+                write!(f, "operation forbidden inside of a render pass")
+            }
+            Self::InvalidFlags => write!(
+                f,
+                "the provided flags are not allowed for this type of query",
+            ),
+            Self::NoTimestampValidBits => {
+                write!(f, "the queue family's timestamp_valid_bits value is None")
+            }
+            Self::NotPermitted => write!(f, "this operation is not permitted on this query type"),
+            Self::NotSupportedByQueueFamily => {
+                write!(f, "the queue family doesn't allow this operation")
+            }
+            Self::OutOfRange => write!(f, "the provided query index is not valid for this pool"),
+            Self::OutOfRangeMultiview => write!(
+                f,
+                "the provided query index plus the number of views in the current render subpass is greater than the number of queries in the pool",
+            ),
+            Self::QueryIsActive => write!(
+                f,
+                "a query is active that conflicts with the current operation"
+            ),
+            Self::QueryNotActive => write!(f, "this query was not active"),
+            Self::StageNotSupported => {
+                write!(f, "the provided stage is not supported by the queue family")
+            }
+        }
+    }
+}
+
+impl From<SyncCommandBufferBuilderError> for QueryError {
+    #[inline]
+    fn from(err: SyncCommandBufferBuilderError) -> Self {
+        Self::SyncCommandBufferBuilderError(err)
+    }
+}
+
+impl From<GetResultsError> for QueryError {
+    #[inline]
+    fn from(value: GetResultsError) -> Self {
+        match value {
+            GetResultsError::BufferTooSmall {
+                required_len,
+                actual_len,
+            } => Self::BufferTooSmall {
+                required_len,
+                actual_len,
+            },
+            GetResultsError::InvalidFlags => Self::InvalidFlags,
+            GetResultsError::DeviceLost | GetResultsError::OomError(_) => unreachable!(),
+        }
     }
 }

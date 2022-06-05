@@ -8,16 +8,10 @@
 // according to those terms.
 
 use super::{
-    commands::{
-        pipeline::{
-            CheckDescriptorSetsValidityError, CheckDispatchError, CheckDynamicStateValidityError,
-            CheckIndexBufferError, CheckIndirectBufferError, CheckPipelineError,
-            CheckPushConstantsValidityError, CheckVertexBufferError,
-        },
-        query::{
-            CheckBeginQueryError, CheckCopyQueryPoolResultsError, CheckEndQueryError,
-            CheckResetQueryPoolError, CheckWriteTimestampError,
-        },
+    commands::pipeline::{
+        CheckDescriptorSetsValidityError, CheckDispatchError, CheckDynamicStateValidityError,
+        CheckIndexBufferError, CheckIndirectBufferError, CheckPipelineError,
+        CheckPushConstantsValidityError, CheckVertexBufferError,
     },
     pool::{
         standard::{StandardCommandPoolAlloc, StandardCommandPoolBuilder},
@@ -1015,12 +1009,6 @@ err_gen!(BuildError {
     OomError,
 });
 
-err_gen!(CopyQueryPoolResultsError {
-    AutoCommandBufferBuilderContextError,
-    CheckCopyQueryPoolResultsError,
-    SyncCommandBufferBuilderError,
-});
-
 err_gen!(DispatchError {
     AutoCommandBufferBuilderContextError,
     CheckPipelineError,
@@ -1082,26 +1070,6 @@ err_gen!(DrawIndexedIndirectError {
     CheckIndexBufferError,
     CheckIndirectBufferError,
     SyncCommandBufferBuilderError,
-});
-
-err_gen!(BeginQueryError {
-    AutoCommandBufferBuilderContextError,
-    CheckBeginQueryError,
-});
-
-err_gen!(EndQueryError {
-    AutoCommandBufferBuilderContextError,
-    CheckEndQueryError,
-});
-
-err_gen!(WriteTimestampError {
-    AutoCommandBufferBuilderContextError,
-    CheckWriteTimestampError,
-});
-
-err_gen!(ResetQueryPoolError {
-    AutoCommandBufferBuilderContextError,
-    CheckResetQueryPoolError,
 });
 
 #[derive(Debug, Copy, Clone)]

@@ -367,6 +367,9 @@ impl<'a> QueriesRange<'a> {
         T: QueryResultElement,
     {
         assert!(buffer_len > 0);
+
+        // VUID-vkGetQueryPoolResults-flags-02828
+        // VUID-vkGetQueryPoolResults-flags-00815
         debug_assert!(buffer_start % std::mem::size_of::<T>() as DeviceSize == 0);
 
         let count = self.range.end - self.range.start;
@@ -374,6 +377,7 @@ impl<'a> QueriesRange<'a> {
             self.pool.query_type.result_len() + flags.with_availability as DeviceSize;
         let required_len = per_query_len * count as DeviceSize;
 
+        // VUID-vkGetQueryPoolResults-dataSize-00817
         if buffer_len < required_len {
             return Err(GetResultsError::BufferTooSmall {
                 required_len: required_len as DeviceSize,
@@ -385,6 +389,7 @@ impl<'a> QueriesRange<'a> {
             QueryType::Occlusion => (),
             QueryType::PipelineStatistics(_) => (),
             QueryType::Timestamp => {
+                // VUID-vkGetQueryPoolResults-queryType-00818
                 if flags.partial {
                     return Err(GetResultsError::InvalidFlags);
                 }
