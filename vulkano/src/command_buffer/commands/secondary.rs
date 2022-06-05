@@ -33,7 +33,7 @@ impl<P> AutoCommandBufferBuilder<PrimaryAutoCommandBuffer<P::Alloc>, P>
 where
     P: CommandPoolBuilderAlloc,
 {
-    /// Adds a command that executes a secondary command buffer.
+    /// Executes a secondary command buffer.
     ///
     /// If the `flags` that `command_buffer` was created with are more restrictive than those of
     /// `self`, then `self` will be restricted to match. E.g. executing a secondary command buffer
@@ -63,7 +63,7 @@ where
         Ok(self)
     }
 
-    /// Adds a command that multiple secondary command buffers in a vector.
+    /// Executes multiple secondary command buffers in a vector.
     ///
     /// This requires that the secondary command buffers do not have resource conflicts; an error
     /// will be returned if there are any. Use `execute_commands` if you want to ensure that

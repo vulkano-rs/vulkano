@@ -87,10 +87,7 @@ pub use self::commands::{
         CheckIndexBufferError, CheckIndirectBufferError, CheckPipelineError,
         CheckPushConstantsValidityError, CheckVertexBufferError,
     },
-    query::{
-        CheckBeginQueryError, CheckCopyQueryPoolResultsError, CheckEndQueryError,
-        CheckResetQueryPoolError, CheckWriteTimestampError,
-    },
+    query::QueryError,
     render_pass::{
         ClearAttachment, ClearRect, RenderPassBeginInfo, RenderPassError, RenderingAttachmentInfo,
         RenderingAttachmentResolveInfo, RenderingInfo,
@@ -104,11 +101,10 @@ pub use self::commands::{
 };
 pub use self::{
     auto::{
-        AutoCommandBufferBuilder, AutoCommandBufferBuilderContextError, BeginQueryError,
-        BuildError, CommandBufferBeginError, CopyQueryPoolResultsError, DispatchError,
-        DispatchIndirectError, DrawError, DrawIndexedError, DrawIndexedIndirectError,
-        DrawIndirectError, EndQueryError, PrimaryAutoCommandBuffer, ResetQueryPoolError,
-        SecondaryAutoCommandBuffer, WriteTimestampError,
+        AutoCommandBufferBuilder, AutoCommandBufferBuilderContextError, BuildError,
+        CommandBufferBeginError, DispatchError, DispatchIndirectError, DrawError, DrawIndexedError,
+        DrawIndexedIndirectError, DrawIndirectError, PrimaryAutoCommandBuffer,
+        SecondaryAutoCommandBuffer,
     },
     traits::{
         CommandBufferExecError, CommandBufferExecFuture, PrimaryCommandBuffer,
