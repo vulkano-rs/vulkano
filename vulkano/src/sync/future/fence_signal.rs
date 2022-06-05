@@ -14,7 +14,7 @@ use crate::{
     device::{Device, DeviceOwned, Queue},
     image::{sys::UnsafeImage, ImageLayout},
     sync::{AccessFlags, Fence, PipelineStages},
-    DeviceSize,
+    DeviceSize, OomError,
 };
 use parking_lot::{Mutex, MutexGuard};
 use std::{mem::replace, ops::Range, sync::Arc, time::Duration};
@@ -120,6 +120,19 @@ impl<F> FenceSignalFuture<F>
 where
     F: GpuFuture,
 {
+    /// Returns true if the fence is signaled by the GPU.
+    pub fn is_signaled(&self) -> Result<bool, OomError> {
+        let state = self.state.lock();
+
+        match &*state {
+            FenceSignalFutureState::Pending(_, fence)
+            | FenceSignalFutureState::PartiallyFlushed(_, fence)
+            | FenceSignalFutureState::Flushed(_, fence) => fence.is_signaled(),
+            FenceSignalFutureState::Cleaned => Ok(true),
+            FenceSignalFutureState::Poisoned => unreachable!(),
+        }
+    }
+
     /// Blocks the current thread until the fence is signaled by the GPU. Performs a flush if
     /// necessary.
     ///
