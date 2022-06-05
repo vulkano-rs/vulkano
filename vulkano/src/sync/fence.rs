@@ -38,7 +38,7 @@ pub struct Fence {
     // If true, we know that the `Fence` is signaled. If false, we don't know.
     // This variable exists so that we don't need to call `vkGetFenceStatus` or `vkWaitForFences`
     // multiple times.
-    signaled: AtomicBool,
+    is_signaled: AtomicBool,
 
     // Indicates whether this fence was taken from the fence pool.
     // If true, will be put back into fence pool on drop.
@@ -76,7 +76,7 @@ impl Fence {
         Ok(Fence {
             handle,
             device,
-            signaled: AtomicBool::new(signaled),
+            is_signaled: AtomicBool::new(signaled),
             must_put_in_pool: false,
         })
     }
@@ -104,7 +104,7 @@ impl Fence {
                 Fence {
                     handle,
                     device,
-                    signaled: AtomicBool::new(false),
+                    is_signaled: AtomicBool::new(false),
                     must_put_in_pool: true,
                 }
             }
@@ -121,9 +121,9 @@ impl Fence {
 
     /// Returns true if the fence is signaled.
     #[inline]
-    pub fn ready(&self) -> Result<bool, OomError> {
+    pub fn is_signaled(&self) -> Result<bool, OomError> {
         unsafe {
-            if self.signaled.load(Ordering::Relaxed) {
+            if self.is_signaled.load(Ordering::Relaxed) {
                 return Ok(true);
             }
 
@@ -134,7 +134,7 @@ impl Fence {
             ))?;
             match result {
                 Success::Success => {
-                    self.signaled.store(true, Ordering::Relaxed);
+                    self.is_signaled.store(true, Ordering::Relaxed);
                     Ok(true)
                 }
                 Success::NotReady => Ok(false),
@@ -150,7 +150,7 @@ impl Fence {
     /// If you pass a duration of 0, then the function will return without blocking.
     pub fn wait(&self, timeout: Option<Duration>) -> Result<(), FenceWaitError> {
         unsafe {
-            if self.signaled.load(Ordering::Relaxed) {
+            if self.is_signaled.load(Ordering::Relaxed) {
                 return Ok(());
             }
 
@@ -174,7 +174,7 @@ impl Fence {
 
             match r {
                 Success::Success => {
-                    self.signaled.store(true, Ordering::Relaxed);
+                    self.is_signaled.store(true, Ordering::Relaxed);
                     Ok(())
                 }
                 Success::Timeout => Err(FenceWaitError::Timeout),
@@ -207,7 +207,7 @@ impl Fence {
                     ),
                 };
 
-                if fence.signaled.load(Ordering::Relaxed) {
+                if fence.is_signaled.load(Ordering::Relaxed) {
                     None
                 } else {
                     Some(fence.handle)
@@ -258,7 +258,7 @@ impl Fence {
                 1,
                 &self.handle,
             ))?;
-            self.signaled.store(false, Ordering::Relaxed);
+            self.is_signaled.store(false, Ordering::Relaxed);
             Ok(())
         }
     }
@@ -288,7 +288,7 @@ impl Fence {
                     ),
                 };
 
-                fence.signaled.store(false, Ordering::Relaxed);
+                fence.is_signaled.store(false, Ordering::Relaxed);
                 fence.handle
             })
             .collect();
@@ -438,7 +438,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let fence = Fence::new(device.clone(), Default::default()).unwrap();
-        assert!(!fence.ready().unwrap());
+        assert!(!fence.is_signaled().unwrap());
     }
 
     #[test]
@@ -453,7 +453,7 @@ mod tests {
             },
         )
         .unwrap();
-        assert!(fence.ready().unwrap());
+        assert!(fence.is_signaled().unwrap());
     }
 
     #[test]
@@ -484,7 +484,7 @@ mod tests {
         )
         .unwrap();
         fence.reset().unwrap();
-        assert!(!fence.ready().unwrap());
+        assert!(!fence.is_signaled().unwrap());
     }
 
     #[test]

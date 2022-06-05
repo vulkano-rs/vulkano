@@ -313,14 +313,14 @@ mod tests {
             let (device, queue) = gfx_dev_and_queue!();
 
             let fence = Fence::new(device.clone(), Default::default()).unwrap();
-            assert!(!fence.ready().unwrap());
+            assert!(!fence.is_signaled().unwrap());
 
             let mut builder = SubmitCommandBufferBuilder::new();
             builder.set_fence_signal(&fence);
 
             builder.submit(&queue).unwrap();
             fence.wait(Some(Duration::from_secs(5))).unwrap();
-            assert!(fence.ready().unwrap());
+            assert!(fence.is_signaled().unwrap());
         }
     }
 
