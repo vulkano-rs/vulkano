@@ -16,13 +16,13 @@ should always conform to valid API usage.
 
 What does vulkano do?
 
-- Provides a low-levelish API around Vulkan. It doesn't hide what it does, but provides some
+- Provides a low-levelish API around Vulkan. It doesn't hide what it does but provides some
   comfort types.
 - Plans to prevent all invalid API usages, even the most obscure ones. The purpose of Vulkano
   is not to simply let you draw a teapot, but to cover all possible usages of Vulkan and detect all
   the possible problems in order to write robust programs. Invalid API usage is prevented thanks to
   both compile-time checks and runtime checks.
-- Can handle synchronization on the GPU side for you (unless you choose do that yourself), as this
+- Can handle synchronization on the GPU side for you (unless you choose to do that yourself), as this
   aspect of Vulkan is both annoying to handle and error-prone. Dependencies between submissions are
   automatically detected, and semaphores are managed automatically. The behavior of the library can
   be customized thanks to unsafe trait implementations.
@@ -43,19 +43,19 @@ Comparison to other well-known Graphics APIs in Rust ecosystem.
 | [Ash](https://github.com/MaikKlein/ash) | August, 2016 | Low-level API for Vulkan. | Unsafe Vulkan API bindings. |
 | [Erupt](https://gitlab.com/Friz64/erupt) | April, 2020 | Low-level API for Vulkan. | Unsafe Vulkan API bindings. |
 
-Please note that by the current date non of the known projects in the ecosystem(including Vulkano)
+Please note that by the current date none of the known projects in the ecosystem(including Vulkano)
 reached stable release versions and the final design goals, their APIs are changing from time
-to time in breakable way too, and there could be bugs and unfinished features too.
+to time in a breakable way too, and there could be bugs and unfinished features too.
 
-However, most of the projects mentioned above are already established definitive structure, all
-feature breaking changes will likely be straight-forward to fix in user code, and most of them
-are maintained. As such we can recommend to start using any of them in the 3rd party code.
+However, most of the projects mentioned above are already established definitive structures, all
+feature breaking changes will likely be straightforward to fix in user code, and most of them
+are maintained. As such we can recommend using any of them in the 3rd party code.
 The choice depends on the end project's goals and requirements, and we recommend examining
-actual set of their features and API capabilities beforehand.
+their actual set of features and API capabilities beforehand.
 
 ### Projects using Vulkano
 
-We started collecting this list just recently, and will be appreciated if you help us by
+We started collecting this list just recently and it would be appreciated if you help us by
 contributing(opening a PR) into [README.md](https://github.com/vulkano-rs/vulkano/blob/master/README.md).
 
 | Project Name | Description |
@@ -67,7 +67,7 @@ contributing(opening a PR) into [README.md](https://github.com/vulkano-rs/vulkan
 | [VideowindoW](https://www.videowindow.eu/) | Uses Vulkano under the hood to enable asynchronous video stream compositing |
 
 We would love to help you keep your project in sync with the most recent changes in Vulkano
-if you give us feedback by adding your project into this list.
+if you give us feedback by adding your project to this list.
 
 Thanks in advance!
 
@@ -79,11 +79,11 @@ To get started you are encouraged to use the following resources:
    examples in the repo and also a list of projects that use vulkano.
  - [docs.rs](https://docs.rs/vulkano) - Full Vulkano API documentation
  - The guide on [vulkano.rs](https://vulkano.rs/guide/introduction) - Starts with trivial compute
-   examples (~50 lines of code) then works up to rendering triangles and mandelbrots.
+   examples (~50 lines of code) and then works up to rendering triangles and mandelbrots.
    The guide is currently outdated a little. We are planning to update it in the future, but it's
-   a good place to start understanding base building blocks of Vulkano API.
+   a good place to start understanding the base building blocks of Vulkano API.
  - Github [Issues](https://github.com/vulkano-rs/vulkano/issues) - Raise a topic, ask a question
-   or report a bug. The new topics there are watching regularly by maintainers and other
+   or report a bug. The new topics there are watched regularly by maintainers and other
    community users.
  - Gitter [Chat](https://gitter.im/vulkano-rs/Lobby) - Another place to raise a question. However,
    the chat is not maintained regularly at this moment. Better use Github Issues for this purpose.
@@ -94,11 +94,11 @@ Contributions are very welcome! Feel free to submit pull requests, to open quest
 in the [Issues](https://github.com/vulkano-rs/vulkano/issues) section.
 
 The project was initially developed by Pierre Krieger(Tomaka), who established Vulkano's base
-design goals, and the code structure. In the meantime development is driven by Vulkano
+design goals, and the code structure. In the meantime, development is driven by Vulkano
 community members.
 
 **New Pull Requests are usually scheduled for review by the end of each week.**
-The older PRs that already in review have priority over the new ones. We are trying to push
+The older PRs that are already in review have priority over the new ones. We are trying to push
 development forward as quick as possible, but the review process sometimes takes time,
 please be patient as the maintainers need time to check everything properly.
 
@@ -134,8 +134,8 @@ We would love to mention some members, who put significant contributions to this
 - Pierre Krieger. The initial developer. [Patreon page](https://www.patreon.com/tomaka).
 - Lucas Kent. Maintainer. [Patreon page](https://www.patreon.com/rukai).
 - Austin Johnson. Maintainer. [Patreon page](https://www.patreon.com/austinj235).
-- Rua. An active developer, who put a lot of efforts to improve Vulkano and constantly keeping it up to date.
-- **You!** Thanks to your help, contributions, improvements, bug reports and use experience
+- Rua. An active developer, who put a lot of effort to improve Vulkano and constantly keeping it up to date.
+- **You!** Thanks to your help, contributions, improvements, bug reports and user experience
   to make this project one of the major Rust graphics API library in Rust!
 
 ## Setup and Troubleshooting
@@ -154,7 +154,7 @@ Unless you provide libshaderc, in order to build libshaderc with the shaderc-sys
 - [Python](https://www.python.org/) (works with both Python 2.x and 3.x, on windows the executable must be named `python.exe`)
 
 These requirements can be either installed with your favourite package manager or with installers
-from the projects' websites. Below are some example ways to get setup.
+from the projects' websites. Below are some examples of ways to set up.
 
 ### windows-msvc Specific Setup
 
@@ -174,7 +174,7 @@ Steps 1 and 2 are to workaround https://github.com/rust-lang/rust/issues/49078 b
 2.  Add the absolute path to mingw64\bin to your PATH environment variable. (This path needs to be before the msys2 path)
 3.  Run the command: `rustup default stable-x86_64-pc-windows-msvc`
 4.  Run the command: `rustup target install x86_64-pc-windows-gnu`
-5.  Install [Build Tools for Visual Studio 2017](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2017). If you have already been using this toolchain then its probably already installed.
+5.  Install [Build Tools for Visual Studio 2017](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2017). If you have already been using this toolchain then it's probably already installed.
 6.  Install [msys2](https://www.msys2.org/), following ALL of the instructions.
 7.  Then in the msys2 terminal run: `pacman --noconfirm -Syu mingw64/mingw-w64-x86_64-pkg-config mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-make mingw-w64-x86_64-python2 mingw-w64-x86_64-ninja`
 8.  Add the msys2 mingw64 binary path to the PATH environment variable.
@@ -182,7 +182,7 @@ Steps 1 and 2 are to workaround https://github.com/rust-lang/rust/issues/49078 b
 
 ### Linux Specific Setup
 
-Use your package manager to install the required dev-tools and vulkan drivers
+Use your package manager to install the required dev-tools and Vulkan drivers
 
 For example on ubuntu:
 ```
