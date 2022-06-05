@@ -43,6 +43,7 @@
 - Fixed a bug where `NonExhaustive` implemented the `Default` trait and was therefore still constructable by the user.
 - Updated ash to 0.37.0+1.3.209.
 - Fixed bug in various Vulkan calls where the returned data might be incomplete.
+- Fixed bug that triggered an assert if a render pass had an attachment with `Undefined` initial layout.
 
 # Version 0.29.0 (2022-03-11)
 
