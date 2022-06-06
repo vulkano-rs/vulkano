@@ -27,6 +27,7 @@
 - **Breaking** The `render_pass` values of `GraphicsPipelineBuilder` and `CommandBufferInheritanceInfo` have both been changed into an enum that selects between rendering with `begin_render_pass` and rendering with `begin_rendering`. They implement `Into` for easy conversion.
 - **Breaking** Added the missing `rasterization_samples` field to `MultisampleState`, which must be provided when doing multisampled rendering.
 - **Breaking** Renamed the `ready` method of `Fence` to `is_signaled`.
+- **Breaking** The `set_depth_bounds` parameter is now a single `RangeInclusive` instead of two separate `f32`, to match the type used on the `DepthBoundsState` struct.
 - `UnsafeCommandPoolCreateInfo` and `UnsafeCommandPoolCreationError` interfaces exposed.
 - Fixed compile error in Vulkano-win on Android.
 - Added `COVERAGE.md`, a document detailing how much of Vulkan is currently covered by Vulkano.
