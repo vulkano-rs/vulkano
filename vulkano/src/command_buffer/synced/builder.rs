@@ -48,7 +48,7 @@ use std::{
     borrow::Cow,
     collections::{hash_map::Entry, HashMap},
     error, fmt,
-    ops::Range,
+    ops::{Range, RangeInclusive},
     sync::Arc,
 };
 
@@ -958,7 +958,7 @@ pub(in crate::command_buffer) struct CurrentState {
     pub(in crate::command_buffer) cull_mode: Option<CullMode>,
     pub(in crate::command_buffer) depth_bias: Option<DepthBias>,
     pub(in crate::command_buffer) depth_bias_enable: Option<bool>,
-    pub(in crate::command_buffer) depth_bounds: Option<(f32, f32)>,
+    pub(in crate::command_buffer) depth_bounds: Option<RangeInclusive<f32>>,
     pub(in crate::command_buffer) depth_bounds_test_enable: Option<bool>,
     pub(in crate::command_buffer) depth_compare_op: Option<CompareOp>,
     pub(in crate::command_buffer) depth_test_enable: Option<bool>,
@@ -1223,8 +1223,8 @@ impl<'a> CommandBufferState<'a> {
 
     /// Returns the current depth bounds settings, or `None` if nothing has been set yet.
     #[inline]
-    pub fn depth_bounds(&self) -> Option<(f32, f32)> {
-        self.current_state.depth_bounds
+    pub fn depth_bounds(&self) -> Option<RangeInclusive<f32>> {
+        self.current_state.depth_bounds.clone()
     }
 
     /// Returns whether depth bound testing is enabled, or `None` if nothing has been set yet.
