@@ -17,8 +17,8 @@ use crate::{
     },
     device::{physical::QueueFamily, DeviceOwned},
     query::{
-        GetResultsError, QueriesRange, Query, QueryControlFlags, QueryPool, QueryResultElement,
-        QueryResultFlags, QueryType,
+        QueriesRange, Query, QueryControlFlags, QueryPool, QueryResultElement, QueryResultFlags,
+        QueryType,
     },
     sync::{AccessFlags, PipelineMemoryAccess, PipelineStage, PipelineStages},
     DeviceSize, VulkanObject,
@@ -886,22 +886,5 @@ impl From<SyncCommandBufferBuilderError> for QueryError {
     #[inline]
     fn from(err: SyncCommandBufferBuilderError) -> Self {
         Self::SyncCommandBufferBuilderError(err)
-    }
-}
-
-impl From<GetResultsError> for QueryError {
-    #[inline]
-    fn from(value: GetResultsError) -> Self {
-        match value {
-            GetResultsError::BufferTooSmall {
-                required_len,
-                actual_len,
-            } => Self::BufferTooSmall {
-                required_len,
-                actual_len,
-            },
-            GetResultsError::InvalidFlags => Self::InvalidFlags,
-            GetResultsError::DeviceLost | GetResultsError::OomError(_) => unreachable!(),
-        }
     }
 }

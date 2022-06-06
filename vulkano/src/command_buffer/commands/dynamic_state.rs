@@ -28,6 +28,7 @@ use crate::{
 };
 use parking_lot::Mutex;
 use smallvec::SmallVec;
+use std::{error, fmt, ops::RangeInclusive};
 
 /// # Commands to set dynamic state for pipelines.
 ///
@@ -35,10 +36,9 @@ use smallvec::SmallVec;
 impl<L, P> AutoCommandBufferBuilder<L, P> {
     // Helper function for dynamic state setting.
     fn has_fixed_state(&self, state: DynamicState) -> bool {
-        self.state()
-            .pipeline_graphics()
-            .map(|pipeline| matches!(pipeline.dynamic_state(state), Some(false)))
-            .unwrap_or(false)
+        self.state().pipeline_graphics().map_or(false, |pipeline| {
+            matches!(pipeline.dynamic_state(state), Some(false))
+        })
     }
 
     /// Sets the dynamic blend constants for future draw calls.
@@ -48,20 +48,29 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// - Panics if the queue family of the command buffer does not support graphics operations.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     pub fn set_blend_constants(&mut self, constants: [f32; 4]) -> &mut Self {
-        assert!(
-            self.queue_family().supports_graphics(),
-            "the queue family of the command buffer must support graphics operations"
-        );
-        assert!(
-            !self.has_fixed_state(DynamicState::BlendConstants),
-            "the currently bound graphics pipeline must not contain this state internally"
-        );
+        self.validate_set_blend_constants(constants).unwrap();
 
         unsafe {
             self.inner.set_blend_constants(constants);
         }
 
         self
+    }
+
+    fn validate_set_blend_constants(
+        &self,
+        constants: [f32; 4],
+    ) -> Result<(), SetDynamicStateError> {
+        if self.has_fixed_state(DynamicState::BlendConstants) {
+            return Err(SetDynamicStateError::PipelineHasFixedState);
+        }
+
+        // VUID-vkCmdSetBlendConstants-commandBuffer-cmdpool
+        if !self.queue_family().supports_graphics() {
+            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
+        }
+
+        Ok(())
     }
 
     /// Sets whether dynamic color writes should be enabled for each attachment in the
@@ -81,37 +90,56 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         I: IntoIterator<Item = bool>,
         I::IntoIter: ExactSizeIterator,
     {
-        assert!(
-            self.queue_family().supports_graphics(),
-            "the queue family of the command buffer must support graphics operations"
-        );
-        assert!(
-            self.device().enabled_features().color_write_enable,
-            "the color_write_enable feature must be enabled on the device"
-        );
-        assert!(
-            !self.has_fixed_state(DynamicState::ColorWriteEnable),
-            "the currently bound graphics pipeline must not contain this state internally"
-        );
-
         let enables = enables.into_iter();
 
-        if let Some(color_blend_state) = self
-            .state()
-            .pipeline_graphics()
-            .and_then(|pipeline| pipeline.color_blend_state())
-        {
-            assert!(
-					enables.len() == color_blend_state.attachments.len(),
-					"if there is a graphics pipeline with color blend state bound, enables.len() must equal attachments.len()"
-				);
-        }
+        self.validate_set_color_write_enable(&enables).unwrap();
 
         unsafe {
             self.inner.set_color_write_enable(enables);
         }
 
         self
+    }
+
+    fn validate_set_color_write_enable(
+        &self,
+        enables: &impl ExactSizeIterator,
+    ) -> Result<(), SetDynamicStateError> {
+        if self.has_fixed_state(DynamicState::ColorWriteEnable) {
+            return Err(SetDynamicStateError::PipelineHasFixedState);
+        }
+
+        // VUID-vkCmdSetColorWriteEnableEXT-commandBuffer-cmdpool
+        if !self.queue_family().supports_graphics() {
+            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
+        }
+
+        // VUID-vkCmdSetColorWriteEnableEXT-None-04803
+        if !self.device().enabled_features().color_write_enable {
+            return Err(SetDynamicStateError::ExtensionNotEnabled {
+                extension: "color_write_enable",
+                reason: "called set_color_write_enable",
+            });
+        }
+
+        if let Some(color_blend_state) = self
+            .state()
+            .pipeline_graphics()
+            .and_then(|pipeline| pipeline.color_blend_state())
+        {
+            // VUID-vkCmdSetColorWriteEnableEXT-attachmentCount-06656
+            // Indirectly checked
+            if enables.len() != color_blend_state.attachments.len() {
+                return Err(
+                    SetDynamicStateError::PipelineColorBlendAttachmentCountMismatch {
+                        provided_count: enables.len() as u32,
+                        required_count: color_blend_state.attachments.len() as u32,
+                    },
+                );
+            }
+        }
+
+        Ok(())
     }
 
     /// Sets the dynamic cull mode for future draw calls.
@@ -125,25 +153,36 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     #[inline]
     pub fn set_cull_mode(&mut self, cull_mode: CullMode) -> &mut Self {
-        assert!(
-            self.queue_family().supports_graphics(),
-            "the queue family of the command buffer must support graphics operations"
-        );
-        assert!(
-            self.device().api_version() >= Version::V1_3
-                || self.device().enabled_features().extended_dynamic_state,
-            "the extended_dynamic_state feature must be enabled on the device"
-        );
-        assert!(
-            !self.has_fixed_state(DynamicState::CullMode),
-            "the currently bound graphics pipeline must not contain this state internally"
-        );
+        self.validate_set_cull_mode(cull_mode).unwrap();
 
         unsafe {
             self.inner.set_cull_mode(cull_mode);
         }
 
         self
+    }
+
+    fn validate_set_cull_mode(&self, cull_mode: CullMode) -> Result<(), SetDynamicStateError> {
+        if self.has_fixed_state(DynamicState::CullMode) {
+            return Err(SetDynamicStateError::PipelineHasFixedState);
+        }
+
+        // VUID-vkCmdSetCullMode-commandBuffer-cmdpool
+        if !self.queue_family().supports_graphics() {
+            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
+        }
+
+        // VUID-vkCmdSetCullMode-None-03384
+        if !(self.device().api_version() >= Version::V1_3
+            || self.device().enabled_features().extended_dynamic_state)
+        {
+            return Err(SetDynamicStateError::FeatureNotEnabled {
+                feature: "extended_dynamic_state",
+                reason: "called set_cull_mode",
+            });
+        }
+
+        Ok(())
     }
 
     /// Sets the dynamic depth bias values for future draw calls.
@@ -161,18 +200,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         clamp: f32,
         slope_factor: f32,
     ) -> &mut Self {
-        assert!(
-            self.queue_family().supports_graphics(),
-            "the queue family of the command buffer must support graphics operations"
-        );
-        assert!(
-            !self.has_fixed_state(DynamicState::DepthBias),
-            "the currently bound graphics pipeline must not contain this state internally"
-        );
-        assert!(
-            clamp == 0.0 || self.device().enabled_features().depth_bias_clamp,
-            "if the depth_bias_clamp feature is not enabled, clamp must be 0.0"
-        );
+        self.validate_set_depth_bias(constant_factor, clamp, slope_factor)
+            .unwrap();
 
         unsafe {
             self.inner
@@ -180,6 +209,32 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
 
         self
+    }
+
+    fn validate_set_depth_bias(
+        &self,
+        constant_factor: f32,
+        clamp: f32,
+        slope_factor: f32,
+    ) -> Result<(), SetDynamicStateError> {
+        if self.has_fixed_state(DynamicState::DepthBias) {
+            return Err(SetDynamicStateError::PipelineHasFixedState);
+        }
+
+        // VUID-vkCmdSetDepthBias-commandBuffer-cmdpool
+        if !self.queue_family().supports_graphics() {
+            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
+        }
+
+        // VUID-vkCmdSetDepthBias-depthBiasClamp-00790
+        if clamp != 0.0 && !self.device().enabled_features().depth_bias_clamp {
+            return Err(SetDynamicStateError::FeatureNotEnabled {
+                feature: "depth_bias_clamp",
+                reason: "clamp was not 0.0",
+            });
+        }
+
+        Ok(())
     }
 
     /// Sets whether dynamic depth bias is enabled for future draw calls.
@@ -193,25 +248,36 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     #[inline]
     pub fn set_depth_bias_enable(&mut self, enable: bool) -> &mut Self {
-        assert!(
-            self.queue_family().supports_graphics(),
-            "the queue family of the command buffer must support graphics operations"
-        );
-        assert!(
-            self.device().api_version() >= Version::V1_3
-                || self.device().enabled_features().extended_dynamic_state2,
-            "the extended_dynamic_state2 feature must be enabled on the device"
-        );
-        assert!(
-            !self.has_fixed_state(DynamicState::DepthBiasEnable),
-            "the currently bound graphics pipeline must not contain this state internally"
-        );
+        self.validate_set_depth_bias_enable(enable).unwrap();
 
         unsafe {
             self.inner.set_depth_bias_enable(enable);
         }
 
         self
+    }
+
+    fn validate_set_depth_bias_enable(&self, enable: bool) -> Result<(), SetDynamicStateError> {
+        if self.has_fixed_state(DynamicState::DepthBiasEnable) {
+            return Err(SetDynamicStateError::PipelineHasFixedState);
+        }
+
+        // VUID-vkCmdSetDepthBiasEnable-commandBuffer-cmdpool
+        if !self.queue_family().supports_graphics() {
+            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
+        }
+
+        // VUID-vkCmdSetDepthBiasEnable-None-04872
+        if !(self.device().api_version() >= Version::V1_3
+            || self.device().enabled_features().extended_dynamic_state2)
+        {
+            return Err(SetDynamicStateError::FeatureNotEnabled {
+                feature: "extended_dynamic_state2",
+                reason: "called set_depth_bias_enable",
+            });
+        }
+
+        Ok(())
     }
 
     /// Sets the dynamic depth bounds for future draw calls.
@@ -222,33 +288,46 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     /// - If the
     ///   [`ext_depth_range_unrestricted`](crate::device::DeviceExtensions::ext_depth_range_unrestricted)
-    ///   device extension is not enabled, panics if `min` or `max` is not between 0.0 and 1.0 inclusive.
-    pub fn set_depth_bounds(&mut self, min: f32, max: f32) -> &mut Self {
-        assert!(
-            self.queue_family().supports_graphics(),
-            "the queue family of the command buffer must support graphics operations"
-        );
-        assert!(
-            !self.has_fixed_state(DynamicState::DepthBounds),
-            "the currently bound graphics pipeline must not contain this state internally"
-        );
+    ///   device extension is not enabled, panics if the start and end of `bounds` are not between
+    ///   0.0 and 1.0 inclusive.
+    pub fn set_depth_bounds(&mut self, bounds: RangeInclusive<f32>) -> &mut Self {
+        self.validate_set_depth_bounds(bounds.clone()).unwrap();
 
+        unsafe {
+            self.inner.set_depth_bounds(bounds);
+        }
+
+        self
+    }
+
+    fn validate_set_depth_bounds(
+        &self,
+        bounds: RangeInclusive<f32>,
+    ) -> Result<(), SetDynamicStateError> {
+        if self.has_fixed_state(DynamicState::DepthBounds) {
+            return Err(SetDynamicStateError::PipelineHasFixedState);
+        }
+
+        // VUID-vkCmdSetDepthBounds-commandBuffer-cmdpool
+        if !self.queue_family().supports_graphics() {
+            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
+        }
+
+        // VUID-vkCmdSetDepthBounds-minDepthBounds-00600
+        // VUID-vkCmdSetDepthBounds-maxDepthBounds-00601
         if !self
             .device()
             .enabled_extensions()
             .ext_depth_range_unrestricted
+            && !((0.0..=1.0).contains(bounds.start()) && (0.0..=1.0).contains(bounds.end()))
         {
-            assert!(
-					min >= 0.0 && min <= 1.0 && max >= 0.0 && max <= 1.0,
-					"if the ext_depth_range_unrestricted device extension is not enabled, depth bounds values must be between 0.0 and 1.0"
-				);
+            return Err(SetDynamicStateError::ExtensionNotEnabled {
+                extension: "ext_depth_range_unrestricted",
+                reason: "the start and end of bounds were not between 0.0 and 1.0 inclusive",
+            });
         }
 
-        unsafe {
-            self.inner.set_depth_bounds(min, max);
-        }
-
-        self
+        Ok(())
     }
 
     /// Sets whether dynamic depth bounds testing is enabled for future draw calls.
@@ -262,25 +341,39 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     #[inline]
     pub fn set_depth_bounds_test_enable(&mut self, enable: bool) -> &mut Self {
-        assert!(
-            self.queue_family().supports_graphics(),
-            "the queue family of the command buffer must support graphics operations"
-        );
-        assert!(
-            self.device().api_version() >= Version::V1_3
-                || self.device().enabled_features().extended_dynamic_state,
-            "the extended_dynamic_state feature must be enabled on the device"
-        );
-        assert!(
-            !self.has_fixed_state(DynamicState::DepthBoundsTestEnable),
-            "the currently bound graphics pipeline must not contain this state internally"
-        );
+        self.validate_set_depth_bounds_test_enable(enable).unwrap();
 
         unsafe {
             self.inner.set_depth_bounds_test_enable(enable);
         }
 
         self
+    }
+
+    fn validate_set_depth_bounds_test_enable(
+        &self,
+        enable: bool,
+    ) -> Result<(), SetDynamicStateError> {
+        if self.has_fixed_state(DynamicState::DepthBoundsTestEnable) {
+            return Err(SetDynamicStateError::PipelineHasFixedState);
+        }
+
+        // VUID-vkCmdSetDepthBoundsTestEnable-commandBuffer-cmdpool
+        if !self.queue_family().supports_graphics() {
+            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
+        }
+
+        // VUID-vkCmdSetDepthBoundsTestEnable-None-03349
+        if !(self.device().api_version() >= Version::V1_3
+            || self.device().enabled_features().extended_dynamic_state)
+        {
+            return Err(SetDynamicStateError::FeatureNotEnabled {
+                feature: "extended_dynamic_state",
+                reason: "called set_depth_bounds_test_enable",
+            });
+        }
+
+        Ok(())
     }
 
     /// Sets the dynamic depth compare op for future draw calls.
@@ -294,25 +387,39 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     #[inline]
     pub fn set_depth_compare_op(&mut self, compare_op: CompareOp) -> &mut Self {
-        assert!(
-            self.queue_family().supports_graphics(),
-            "the queue family of the command buffer must support graphics operations"
-        );
-        assert!(
-            self.device().api_version() >= Version::V1_3
-                || self.device().enabled_features().extended_dynamic_state,
-            "the extended_dynamic_state feature must be enabled on the device"
-        );
-        assert!(
-            !self.has_fixed_state(DynamicState::DepthCompareOp),
-            "the currently bound graphics pipeline must not contain this state internally"
-        );
+        self.validate_set_depth_compare_op(compare_op).unwrap();
 
         unsafe {
             self.inner.set_depth_compare_op(compare_op);
         }
 
         self
+    }
+
+    fn validate_set_depth_compare_op(
+        &self,
+        compare_op: CompareOp,
+    ) -> Result<(), SetDynamicStateError> {
+        if self.has_fixed_state(DynamicState::DepthCompareOp) {
+            return Err(SetDynamicStateError::PipelineHasFixedState);
+        }
+
+        // VUID-vkCmdSetDepthCompareOp-commandBuffer-cmdpool
+        if !self.queue_family().supports_graphics() {
+            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
+        }
+
+        // VUID-vkCmdSetDepthCompareOp-None-03353
+        if !(self.device().api_version() >= Version::V1_3
+            || self.device().enabled_features().extended_dynamic_state)
+        {
+            return Err(SetDynamicStateError::FeatureNotEnabled {
+                feature: "extended_dynamic_state",
+                reason: "called set_depth_compare_op",
+            });
+        }
+
+        Ok(())
     }
 
     /// Sets whether dynamic depth testing is enabled for future draw calls.
@@ -326,25 +433,36 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     #[inline]
     pub fn set_depth_test_enable(&mut self, enable: bool) -> &mut Self {
-        assert!(
-            self.queue_family().supports_graphics(),
-            "the queue family of the command buffer must support graphics operations"
-        );
-        assert!(
-            self.device().api_version() >= Version::V1_3
-                || self.device().enabled_features().extended_dynamic_state,
-            "the extended_dynamic_state feature must be enabled on the device"
-        );
-        assert!(
-            !self.has_fixed_state(DynamicState::DepthTestEnable),
-            "the currently bound graphics pipeline must not contain this state internally"
-        );
+        self.validate_set_depth_test_enable(enable).unwrap();
 
         unsafe {
             self.inner.set_depth_test_enable(enable);
         }
 
         self
+    }
+
+    fn validate_set_depth_test_enable(&self, enable: bool) -> Result<(), SetDynamicStateError> {
+        if self.has_fixed_state(DynamicState::DepthTestEnable) {
+            return Err(SetDynamicStateError::PipelineHasFixedState);
+        }
+
+        // VUID-vkCmdSetDepthTestEnable-commandBuffer-cmdpool
+        if !self.queue_family().supports_graphics() {
+            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
+        }
+
+        // VUID-vkCmdSetDepthTestEnable-None-03352
+        if !(self.device().api_version() >= Version::V1_3
+            || self.device().enabled_features().extended_dynamic_state)
+        {
+            return Err(SetDynamicStateError::FeatureNotEnabled {
+                feature: "extended_dynamic_state",
+                reason: "called set_depth_test_enable",
+            });
+        }
+
+        Ok(())
     }
 
     /// Sets whether dynamic depth write is enabled for future draw calls.
@@ -358,25 +476,36 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     #[inline]
     pub fn set_depth_write_enable(&mut self, enable: bool) -> &mut Self {
-        assert!(
-            self.queue_family().supports_graphics(),
-            "the queue family of the command buffer must support graphics operations"
-        );
-        assert!(
-            self.device().api_version() >= Version::V1_3
-                || self.device().enabled_features().extended_dynamic_state,
-            "the extended_dynamic_state feature must be enabled on the device"
-        );
-        assert!(
-            !self.has_fixed_state(DynamicState::DepthWriteEnable),
-            "the currently bound graphics pipeline must not contain this state internally"
-        );
+        self.validate_set_depth_write_enable(enable).unwrap();
 
         unsafe {
             self.inner.set_depth_write_enable(enable);
         }
 
         self
+    }
+
+    fn validate_set_depth_write_enable(&self, enable: bool) -> Result<(), SetDynamicStateError> {
+        if self.has_fixed_state(DynamicState::DepthWriteEnable) {
+            return Err(SetDynamicStateError::PipelineHasFixedState);
+        }
+
+        // VUID-vkCmdSetDepthWriteEnable-commandBuffer-cmdpool
+        if !self.queue_family().supports_graphics() {
+            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
+        }
+
+        // VUID-vkCmdSetDepthWriteEnable-None-03354
+        if !(self.device().api_version() >= Version::V1_3
+            || self.device().enabled_features().extended_dynamic_state)
+        {
+            return Err(SetDynamicStateError::FeatureNotEnabled {
+                feature: "extended_dynamic_state",
+                reason: "called set_depth_write_enable",
+            });
+        }
+
+        Ok(())
     }
 
     /// Sets the dynamic discard rectangles for future draw calls.
@@ -395,30 +524,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     where
         I: IntoIterator<Item = Scissor>,
     {
-        assert!(
-            self.queue_family().supports_graphics(),
-            "the queue family of the command buffer must support graphics operations"
-        );
-        assert!(
-            self.device().enabled_extensions().ext_discard_rectangles,
-            "the ext_discard_rectangles extension must be enabled on the device"
-        );
-        assert!(
-            !self.has_fixed_state(DynamicState::DiscardRectangle),
-            "the currently bound graphics pipeline must not contain this state internally"
-        );
-
         let rectangles: SmallVec<[Scissor; 2]> = rectangles.into_iter().collect();
-
-        assert!(
-				first_rectangle + rectangles.len() as u32 <= self.device().physical_device().properties().max_discard_rectangles.unwrap(),
-				"the highest discard rectangle slot being set must not be higher than the max_discard_rectangles device property"
-			);
-
-        // TODO: VUID-vkCmdSetDiscardRectangleEXT-viewportScissor2D-04788
-        // If this command is recorded in a secondary command buffer with
-        // VkCommandBufferInheritanceViewportScissorInfoNV::viewportScissor2D enabled, then this
-        // function must not be called
+        self.validate_set_discard_rectangle(first_rectangle, &rectangles)
+            .unwrap();
 
         unsafe {
             self.inner
@@ -426,6 +534,50 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
 
         self
+    }
+
+    fn validate_set_discard_rectangle(
+        &self,
+        first_rectangle: u32,
+        rectangles: &[Scissor],
+    ) -> Result<(), SetDynamicStateError> {
+        if self.has_fixed_state(DynamicState::DiscardRectangle) {
+            return Err(SetDynamicStateError::PipelineHasFixedState);
+        }
+
+        // VUID-vkCmdSetDiscardRectangle-commandBuffer-cmdpool
+        if !self.queue_family().supports_graphics() {
+            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
+        }
+
+        if self.device().enabled_extensions().ext_discard_rectangles {
+            return Err(SetDynamicStateError::ExtensionNotEnabled {
+                extension: "ext_discard_rectangles",
+                reason: "called set_discard_rectangle",
+            });
+        }
+
+        // VUID-vkCmdSetDiscardRectangleEXT-firstDiscardRectangle-00585
+        if first_rectangle + rectangles.len() as u32
+            > self
+                .device()
+                .physical_device()
+                .properties()
+                .max_discard_rectangles
+                .unwrap()
+        {
+            return Err(SetDynamicStateError::MaxDiscardRectanglesExceeded {
+                provided: first_rectangle + rectangles.len() as u32,
+                max: self
+                    .device()
+                    .physical_device()
+                    .properties()
+                    .max_discard_rectangles
+                    .unwrap(),
+            });
+        }
+
+        Ok(())
     }
 
     /// Sets the dynamic front face for future draw calls.
@@ -439,25 +591,36 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     #[inline]
     pub fn set_front_face(&mut self, face: FrontFace) -> &mut Self {
-        assert!(
-            self.queue_family().supports_graphics(),
-            "the queue family of the command buffer must support graphics operations"
-        );
-        assert!(
-            self.device().api_version() >= Version::V1_3
-                || self.device().enabled_features().extended_dynamic_state,
-            "the extended_dynamic_state feature must be enabled on the device"
-        );
-        assert!(
-            !self.has_fixed_state(DynamicState::FrontFace),
-            "the currently bound graphics pipeline must not contain this state internally"
-        );
+        self.validate_set_front_face(face).unwrap();
 
         unsafe {
             self.inner.set_front_face(face);
         }
 
         self
+    }
+
+    fn validate_set_front_face(&self, face: FrontFace) -> Result<(), SetDynamicStateError> {
+        if self.has_fixed_state(DynamicState::FrontFace) {
+            return Err(SetDynamicStateError::PipelineHasFixedState);
+        }
+
+        // VUID-vkCmdSetFrontFace-commandBuffer-cmdpool
+        if !self.queue_family().supports_graphics() {
+            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
+        }
+
+        // VUID-vkCmdSetFrontFace-None-03383
+        if !(self.device().api_version() >= Version::V1_3
+            || self.device().enabled_features().extended_dynamic_state)
+        {
+            return Err(SetDynamicStateError::FeatureNotEnabled {
+                feature: "extended_dynamic_state",
+                reason: "called set_front_face",
+            });
+        }
+
+        Ok(())
     }
 
     /// Sets the dynamic line stipple values for future draw calls.
@@ -471,28 +634,42 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// - Panics if `factor` is not between 1 and 256 inclusive.
     #[inline]
     pub fn set_line_stipple(&mut self, factor: u32, pattern: u16) -> &mut Self {
-        assert!(
-            self.queue_family().supports_graphics(),
-            "the queue family of the command buffer must support graphics operations"
-        );
-        assert!(
-            self.device().enabled_extensions().ext_line_rasterization,
-            "the ext_line_rasterization extension must be enabled on the device"
-        );
-        assert!(
-            !self.has_fixed_state(DynamicState::LineStipple),
-            "the currently bound graphics pipeline must not contain this state internally"
-        );
-        assert!(
-            factor >= 1 && factor <= 256,
-            "factor must be between 1 and 256 inclusive"
-        );
+        self.validate_set_line_stipple(factor, pattern).unwrap();
 
         unsafe {
             self.inner.set_line_stipple(factor, pattern);
         }
 
         self
+    }
+
+    fn validate_set_line_stipple(
+        &self,
+        factor: u32,
+        pattern: u16,
+    ) -> Result<(), SetDynamicStateError> {
+        if self.has_fixed_state(DynamicState::LineStipple) {
+            return Err(SetDynamicStateError::PipelineHasFixedState);
+        }
+
+        // VUID-vkCmdSetLineStippleEXT-commandBuffer-cmdpool
+        if !self.queue_family().supports_graphics() {
+            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
+        }
+
+        if !self.device().enabled_extensions().ext_line_rasterization {
+            return Err(SetDynamicStateError::ExtensionNotEnabled {
+                extension: "ext_line_rasterization",
+                reason: "called set_line_stipple",
+            });
+        }
+
+        // VUID-vkCmdSetLineStippleEXT-lineStippleFactor-02776
+        if !(1..=256).contains(&factor) {
+            return Err(SetDynamicStateError::FactorOutOfRange);
+        }
+
+        Ok(())
     }
 
     /// Sets the dynamic line width for future draw calls.
@@ -504,27 +681,34 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// - If the [`wide_lines`](crate::device::Features::wide_lines) feature is not enabled, panics
     ///   if `line_width` is not 1.0.
     pub fn set_line_width(&mut self, line_width: f32) -> &mut Self {
-        assert!(
-            self.queue_family().supports_graphics(),
-            "the queue family of the command buffer must support graphics operations"
-        );
-        assert!(
-            !self.has_fixed_state(DynamicState::LineWidth),
-            "the currently bound graphics pipeline must not contain this state internally"
-        );
-
-        if !self.device().enabled_features().wide_lines {
-            assert!(
-                line_width == 1.0,
-                "if the wide_line features is not enabled, line width must be 1.0"
-            );
-        }
+        self.validate_set_line_width(line_width).unwrap();
 
         unsafe {
             self.inner.set_line_width(line_width);
         }
 
         self
+    }
+
+    fn validate_set_line_width(&self, line_width: f32) -> Result<(), SetDynamicStateError> {
+        if self.has_fixed_state(DynamicState::LineWidth) {
+            return Err(SetDynamicStateError::PipelineHasFixedState);
+        }
+
+        // VUID-vkCmdSetLineWidth-commandBuffer-cmdpool
+        if !self.queue_family().supports_graphics() {
+            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
+        }
+
+        // VUID-vkCmdSetLineWidth-lineWidth-00788
+        if !self.device().enabled_features().wide_lines && line_width != 1.0 {
+            return Err(SetDynamicStateError::FeatureNotEnabled {
+                feature: "wide_lines",
+                reason: "line_width was not 1.0",
+            });
+        }
+
+        Ok(())
     }
 
     /// Sets the dynamic logic op for future draw calls.
@@ -538,26 +722,38 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     #[inline]
     pub fn set_logic_op(&mut self, logic_op: LogicOp) -> &mut Self {
-        assert!(
-            self.queue_family().supports_graphics(),
-            "the queue family of the command buffer must support graphics operations"
-        );
-        assert!(
-            self.device()
-                .enabled_features()
-                .extended_dynamic_state2_logic_op,
-            "the extended_dynamic_state2_logic_op feature must be enabled on the device"
-        );
-        assert!(
-            !self.has_fixed_state(DynamicState::LogicOp),
-            "the currently bound graphics pipeline must not contain this state internally"
-        );
+        self.validate_set_logic_op(logic_op).unwrap();
 
         unsafe {
             self.inner.set_logic_op(logic_op);
         }
 
         self
+    }
+
+    fn validate_set_logic_op(&self, logic_op: LogicOp) -> Result<(), SetDynamicStateError> {
+        if self.has_fixed_state(DynamicState::LogicOp) {
+            return Err(SetDynamicStateError::PipelineHasFixedState);
+        }
+
+        // VUID-vkCmdSetLogicOpEXT-commandBuffer-cmdpool
+        if !self.queue_family().supports_graphics() {
+            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
+        }
+
+        // VUID-vkCmdSetLogicOpEXT-None-04867
+        if !self
+            .device()
+            .enabled_features()
+            .extended_dynamic_state2_logic_op
+        {
+            return Err(SetDynamicStateError::FeatureNotEnabled {
+                feature: "extended_dynamic_state2_logic_op",
+                reason: "called set_logic_op",
+            });
+        }
+
+        Ok(())
     }
 
     /// Sets the dynamic number of patch control points for future draw calls.
@@ -575,33 +771,59 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///   property of the device.
     #[inline]
     pub fn set_patch_control_points(&mut self, num: u32) -> &mut Self {
-        assert!(
-            self.queue_family().supports_graphics(),
-            "the queue family of the command buffer must support graphics operations"
-        );
-        assert!(
-				self.device().enabled_features().extended_dynamic_state2_patch_control_points,
-				"the extended_dynamic_state2_patch_control_points feature must be enabled on the device"
-			);
-        assert!(
-            !self.has_fixed_state(DynamicState::PatchControlPoints),
-            "the currently bound graphics pipeline must not contain this state internally"
-        );
-        assert!(num > 0, "num must be greater than 0");
-        assert!(
-            num <= self
-                .device()
-                .physical_device()
-                .properties()
-                .max_tessellation_patch_size,
-            "num must be less than or equal to max_tessellation_patch_size"
-        );
+        self.validate_set_patch_control_points(num).unwrap();
 
         unsafe {
             self.inner.set_patch_control_points(num);
         }
 
         self
+    }
+
+    fn validate_set_patch_control_points(&self, num: u32) -> Result<(), SetDynamicStateError> {
+        if self.has_fixed_state(DynamicState::PatchControlPoints) {
+            return Err(SetDynamicStateError::PipelineHasFixedState);
+        }
+
+        // VUID-vkCmdSetPatchControlPointsEXT-commandBuffer-cmdpool
+        if !self.queue_family().supports_graphics() {
+            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
+        }
+
+        // VUID-vkCmdSetPatchControlPointsEXT-None-04873
+        if !self
+            .device()
+            .enabled_features()
+            .extended_dynamic_state2_patch_control_points
+        {
+            return Err(SetDynamicStateError::FeatureNotEnabled {
+                feature: "extended_dynamic_state2_patch_control_points",
+                reason: "called set_patch_control_points",
+            });
+        }
+
+        // VUID-vkCmdSetPatchControlPointsEXT-patchControlPoints-04874
+        assert!(num > 0, "num must be greater than 0");
+
+        // VUID-vkCmdSetPatchControlPointsEXT-patchControlPoints-04874
+        if num
+            > self
+                .device()
+                .physical_device()
+                .properties()
+                .max_tessellation_patch_size
+        {
+            return Err(SetDynamicStateError::MaxTessellationPatchSizeExceeded {
+                provided: num,
+                max: self
+                    .device()
+                    .physical_device()
+                    .properties()
+                    .max_tessellation_patch_size,
+            });
+        }
+
+        Ok(())
     }
 
     /// Sets whether dynamic primitive restart is enabled for future draw calls.
@@ -615,25 +837,39 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     #[inline]
     pub fn set_primitive_restart_enable(&mut self, enable: bool) -> &mut Self {
-        assert!(
-            self.queue_family().supports_graphics(),
-            "the queue family of the command buffer must support graphics operations"
-        );
-        assert!(
-            self.device().api_version() >= Version::V1_3
-                || self.device().enabled_features().extended_dynamic_state2,
-            "the extended_dynamic_state2 feature must be enabled on the device"
-        );
-        assert!(
-            !self.has_fixed_state(DynamicState::PrimitiveRestartEnable),
-            "the currently bound graphics pipeline must not contain this state internally"
-        );
+        self.validate_set_primitive_restart_enable(enable).unwrap();
 
         unsafe {
             self.inner.set_primitive_restart_enable(enable);
         }
 
         self
+    }
+
+    fn validate_set_primitive_restart_enable(
+        &self,
+        enable: bool,
+    ) -> Result<(), SetDynamicStateError> {
+        if self.has_fixed_state(DynamicState::PrimitiveRestartEnable) {
+            return Err(SetDynamicStateError::PipelineHasFixedState);
+        }
+
+        // VUID-vkCmdSetPrimitiveRestartEnable-commandBuffer-cmdpool
+        if !self.queue_family().supports_graphics() {
+            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
+        }
+
+        // VUID-vkCmdSetPrimitiveRestartEnable-None-04866
+        if !(self.device().api_version() >= Version::V1_3
+            || self.device().enabled_features().extended_dynamic_state2)
+        {
+            return Err(SetDynamicStateError::FeatureNotEnabled {
+                feature: "extended_dynamic_state2",
+                reason: "called set_primitive_restart_enable",
+            });
+        }
+
+        Ok(())
     }
 
     /// Sets the dynamic primitive topology for future draw calls.
@@ -651,39 +887,65 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///   not enabled, panics if `topology` is `PatchList`.
     #[inline]
     pub fn set_primitive_topology(&mut self, topology: PrimitiveTopology) -> &mut Self {
-        assert!(
-            self.queue_family().supports_graphics(),
-            "the queue family of the command buffer must support graphics operations"
-        );
-        assert!(
-            self.device().api_version() >= Version::V1_3
-                || self.device().enabled_features().extended_dynamic_state,
-            "the extended_dynamic_state feature must be enabled on the device"
-        );
-        assert!(
-            !self.has_fixed_state(DynamicState::PrimitiveTopology),
-            "the currently bound graphics pipeline must not contain this state internally"
-        );
-
-        if !self.device().enabled_features().geometry_shader {
-            assert!(!matches!(topology, PrimitiveTopology::LineListWithAdjacency
-				| PrimitiveTopology::LineStripWithAdjacency
-				| PrimitiveTopology::TriangleListWithAdjacency
-				| PrimitiveTopology::TriangleStripWithAdjacency), "if the geometry_shader feature is not enabled, topology must not be a WithAdjacency topology");
-        }
-
-        if !self.device().enabled_features().tessellation_shader {
-            assert!(
-                !matches!(topology, PrimitiveTopology::PatchList),
-                "if the tessellation_shader feature is not enabled, topology must not be PatchList"
-            );
-        }
+        self.validate_set_primitive_topology(topology).unwrap();
 
         unsafe {
             self.inner.set_primitive_topology(topology);
         }
 
         self
+    }
+
+    fn validate_set_primitive_topology(
+        &self,
+        topology: PrimitiveTopology,
+    ) -> Result<(), SetDynamicStateError> {
+        if self.has_fixed_state(DynamicState::PrimitiveTopology) {
+            return Err(SetDynamicStateError::PipelineHasFixedState);
+        }
+
+        // VUID-vkCmdSetPrimitiveTopology-commandBuffer-cmdpool
+        if !self.queue_family().supports_graphics() {
+            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
+        }
+
+        // VUID-vkCmdSetPrimitiveTopology-None-03347
+        if !(self.device().api_version() >= Version::V1_3
+            || self.device().enabled_features().extended_dynamic_state)
+        {
+            return Err(SetDynamicStateError::FeatureNotEnabled {
+                feature: "extended_dynamic_state",
+                reason: "called set_primitive_topology",
+            });
+        }
+
+        // VUID?
+        if !self.device().enabled_features().geometry_shader
+            && matches!(
+                topology,
+                PrimitiveTopology::LineListWithAdjacency
+                    | PrimitiveTopology::LineStripWithAdjacency
+                    | PrimitiveTopology::TriangleListWithAdjacency
+                    | PrimitiveTopology::TriangleStripWithAdjacency
+            )
+        {
+            return Err(SetDynamicStateError::FeatureNotEnabled {
+                feature: "geometry_shader",
+                reason: "topology was a WithAdjacency topology",
+            });
+        }
+
+        // VUID?
+        if !self.device().enabled_features().tessellation_shader
+            && matches!(topology, PrimitiveTopology::PatchList)
+        {
+            return Err(SetDynamicStateError::FeatureNotEnabled {
+                feature: "tessellation_shader",
+                reason: "topology was PatchList",
+            });
+        }
+
+        Ok(())
     }
 
     /// Sets whether dynamic rasterizer discard is enabled for future draw calls.
@@ -697,25 +959,39 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     #[inline]
     pub fn set_rasterizer_discard_enable(&mut self, enable: bool) -> &mut Self {
-        assert!(
-            self.queue_family().supports_graphics(),
-            "the queue family of the command buffer must support graphics operations"
-        );
-        assert!(
-            self.device().api_version() >= Version::V1_3
-                || self.device().enabled_features().extended_dynamic_state2,
-            "the extended_dynamic_state2 feature must be enabled on the device"
-        );
-        assert!(
-            !self.has_fixed_state(DynamicState::RasterizerDiscardEnable),
-            "the currently bound graphics pipeline must not contain this state internally"
-        );
+        self.validate_set_rasterizer_discard_enable(enable).unwrap();
 
         unsafe {
             self.inner.set_rasterizer_discard_enable(enable);
         }
 
         self
+    }
+
+    fn validate_set_rasterizer_discard_enable(
+        &self,
+        enable: bool,
+    ) -> Result<(), SetDynamicStateError> {
+        if self.has_fixed_state(DynamicState::RasterizerDiscardEnable) {
+            return Err(SetDynamicStateError::PipelineHasFixedState);
+        }
+
+        // VUID-vkCmdSetRasterizerDiscardEnable-commandBuffer-cmdpool
+        if !self.queue_family().supports_graphics() {
+            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
+        }
+
+        // VUID-vkCmdSetRasterizerDiscardEnable-None-04871
+        if !(self.device().api_version() >= Version::V1_3
+            || self.device().enabled_features().extended_dynamic_state2)
+        {
+            return Err(SetDynamicStateError::FeatureNotEnabled {
+                feature: "extended_dynamic_state2",
+                reason: "called set_rasterizer_discard_enable",
+            });
+        }
+
+        Ok(())
     }
 
     /// Sets the dynamic scissors for future draw calls.
@@ -732,44 +1008,59 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     where
         I: IntoIterator<Item = Scissor>,
     {
-        assert!(
-            self.queue_family().supports_graphics(),
-            "the queue family of the command buffer must support graphics operations"
-        );
-        assert!(
-            !self.has_fixed_state(DynamicState::Scissor),
-            "the currently bound graphics pipeline must not contain this state internally"
-        );
-
         let scissors: SmallVec<[Scissor; 2]> = scissors.into_iter().collect();
-
-        assert!(
-				first_scissor + scissors.len() as u32 <= self.device().physical_device().properties().max_viewports,
-				"the highest scissor slot being set must not be higher than the max_viewports device property"
-			);
-
-        if !self.device().enabled_features().multi_viewport {
-            assert!(
-                first_scissor == 0,
-                "if the multi_viewport feature is not enabled, first_scissor must be 0"
-            );
-
-            assert!(
-					scissors.len() <= 1,
-					"if the multi_viewport feature is not enabled, no more than 1 scissor must be provided"
-				);
-        }
-
-        // TODO:
-        // If this command is recorded in a secondary command buffer with
-        // VkCommandBufferInheritanceViewportScissorInfoNV::viewportScissor2D enabled, then this
-        // function must not be called
+        self.validate_set_scissor(first_scissor, &scissors).unwrap();
 
         unsafe {
             self.inner.set_scissor(first_scissor, scissors);
         }
 
         self
+    }
+
+    fn validate_set_scissor(
+        &self,
+        first_scissor: u32,
+        scissors: &[Scissor],
+    ) -> Result<(), SetDynamicStateError> {
+        if self.has_fixed_state(DynamicState::Scissor) {
+            return Err(SetDynamicStateError::PipelineHasFixedState);
+        }
+
+        // VUID-vkCmdSetScissor-commandBuffer-cmdpool
+        if !self.queue_family().supports_graphics() {
+            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
+        }
+
+        // VUID-vkCmdSetScissor-firstScissor-00592
+        if first_scissor + scissors.len() as u32
+            > self.device().physical_device().properties().max_viewports
+        {
+            return Err(SetDynamicStateError::MaxViewportsExceeded {
+                provided: first_scissor + scissors.len() as u32,
+                max: self.device().physical_device().properties().max_viewports,
+            });
+        }
+
+        if !self.device().enabled_features().multi_viewport {
+            // VUID-vkCmdSetScissor-firstScissor-00593
+            if first_scissor != 0 {
+                return Err(SetDynamicStateError::FeatureNotEnabled {
+                    feature: "multi_viewport",
+                    reason: "first_scissor was not 0",
+                });
+            }
+
+            // VUID-vkCmdSetScissor-scissorCount-00594
+            if scissors.len() > 1 {
+                return Err(SetDynamicStateError::FeatureNotEnabled {
+                    feature: "multi_viewport",
+                    reason: "scissors contained more than one element",
+                });
+            }
+        }
+
+        Ok(())
     }
 
     /// Sets the dynamic scissors with count for future draw calls.
@@ -790,43 +1081,56 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     where
         I: IntoIterator<Item = Scissor>,
     {
-        assert!(
-            self.queue_family().supports_graphics(),
-            "the queue family of the command buffer must support graphics operations"
-        );
-        assert!(
-            self.device().api_version() >= Version::V1_3
-                || self.device().enabled_features().extended_dynamic_state,
-            "the extended_dynamic_state feature must be enabled on the device"
-        );
-        assert!(
-            !self.has_fixed_state(DynamicState::ScissorWithCount),
-            "the currently bound graphics pipeline must not contain this state internally"
-        );
-
         let scissors: SmallVec<[Scissor; 2]> = scissors.into_iter().collect();
-
-        assert!(
-				scissors.len() as u32 <= self.device().physical_device().properties().max_viewports,
-				"the highest scissor slot being set must not be higher than the max_viewports device property"
-			);
-
-        if !self.device().enabled_features().multi_viewport {
-            assert!(
-					scissors.len() <= 1,
-					"if the multi_viewport feature is not enabled, no more than 1 scissor must be provided"
-				);
-        }
-
-        // TODO: VUID-vkCmdSetScissorWithCountEXT-commandBuffer-04820
-        // commandBuffer must not have
-        // VkCommandBufferInheritanceViewportScissorInfoNV::viewportScissor2D enabled
+        self.validate_set_scissor_with_count(&scissors).unwrap();
 
         unsafe {
             self.inner.set_scissor_with_count(scissors);
         }
 
         self
+    }
+
+    fn validate_set_scissor_with_count(
+        &self,
+        scissors: &[Scissor],
+    ) -> Result<(), SetDynamicStateError> {
+        if self.has_fixed_state(DynamicState::ScissorWithCount) {
+            return Err(SetDynamicStateError::PipelineHasFixedState);
+        }
+
+        // VUID-vkCmdSetScissorWithCount-commandBuffer-cmdpool
+        if !self.queue_family().supports_graphics() {
+            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
+        }
+
+        // VUID-vkCmdSetScissorWithCount-None-03396
+        if !(self.device().api_version() >= Version::V1_3
+            || self.device().enabled_features().extended_dynamic_state)
+        {
+            return Err(SetDynamicStateError::FeatureNotEnabled {
+                feature: "extended_dynamic_state",
+                reason: "called set_scissor_with_count",
+            });
+        }
+
+        // VUID-vkCmdSetScissorWithCount-scissorCount-03397
+        if scissors.len() as u32 > self.device().physical_device().properties().max_viewports {
+            return Err(SetDynamicStateError::MaxViewportsExceeded {
+                provided: scissors.len() as u32,
+                max: self.device().physical_device().properties().max_viewports,
+            });
+        }
+
+        // VUID-vkCmdSetScissorWithCount-scissorCount-03398
+        if !self.device().enabled_features().multi_viewport && scissors.len() > 1 {
+            return Err(SetDynamicStateError::FeatureNotEnabled {
+                feature: "multi_viewport",
+                reason: "scissors contained more than one element",
+            });
+        }
+
+        Ok(())
     }
 
     /// Sets the dynamic stencil compare mask on one or both faces for future draw calls.
@@ -840,20 +1144,31 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         faces: StencilFaces,
         compare_mask: u32,
     ) -> &mut Self {
-        assert!(
-            self.queue_family().supports_graphics(),
-            "the queue family of the command buffer must support graphics operations"
-        );
-        assert!(
-            !self.has_fixed_state(DynamicState::StencilCompareMask),
-            "the currently bound graphics pipeline must not contain this state internally"
-        );
+        self.validate_set_stencil_compare_mask(faces, compare_mask)
+            .unwrap();
 
         unsafe {
             self.inner.set_stencil_compare_mask(faces, compare_mask);
         }
 
         self
+    }
+
+    fn validate_set_stencil_compare_mask(
+        &self,
+        faces: StencilFaces,
+        compare_mask: u32,
+    ) -> Result<(), SetDynamicStateError> {
+        if self.has_fixed_state(DynamicState::StencilCompareMask) {
+            return Err(SetDynamicStateError::PipelineHasFixedState);
+        }
+
+        // VUID-vkCmdSetStencilCompareMask-commandBuffer-cmdpool
+        if !self.queue_family().supports_graphics() {
+            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
+        }
+
+        Ok(())
     }
 
     /// Sets the dynamic stencil ops on one or both faces for future draw calls.
@@ -874,19 +1189,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         depth_fail_op: StencilOp,
         compare_op: CompareOp,
     ) -> &mut Self {
-        assert!(
-            self.queue_family().supports_graphics(),
-            "the queue family of the command buffer must support graphics operations"
-        );
-        assert!(
-            self.device().api_version() >= Version::V1_3
-                || self.device().enabled_features().extended_dynamic_state,
-            "the extended_dynamic_state feature must be enabled on the device"
-        );
-        assert!(
-            !self.has_fixed_state(DynamicState::StencilOp),
-            "the currently bound graphics pipeline must not contain this state internally"
-        );
+        self.validate_set_stencil_op(faces, fail_op, pass_op, depth_fail_op, compare_op)
+            .unwrap();
 
         unsafe {
             self.inner
@@ -896,6 +1200,36 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         self
     }
 
+    fn validate_set_stencil_op(
+        &self,
+        faces: StencilFaces,
+        fail_op: StencilOp,
+        pass_op: StencilOp,
+        depth_fail_op: StencilOp,
+        compare_op: CompareOp,
+    ) -> Result<(), SetDynamicStateError> {
+        if self.has_fixed_state(DynamicState::StencilOp) {
+            return Err(SetDynamicStateError::PipelineHasFixedState);
+        }
+
+        // VUID-vkCmdSetStencilOp-commandBuffer-cmdpool
+        if !self.queue_family().supports_graphics() {
+            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
+        }
+
+        // VUID-vkCmdSetStencilOp-None-03351
+        if !(self.device().api_version() >= Version::V1_3
+            || self.device().enabled_features().extended_dynamic_state)
+        {
+            return Err(SetDynamicStateError::FeatureNotEnabled {
+                feature: "extended_dynamic_state",
+                reason: "called set_stencil_op",
+            });
+        }
+
+        Ok(())
+    }
+
     /// Sets the dynamic stencil reference on one or both faces for future draw calls.
     ///
     /// # Panics
@@ -903,20 +1237,31 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// - Panics if the queue family of the command buffer does not support graphics operations.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     pub fn set_stencil_reference(&mut self, faces: StencilFaces, reference: u32) -> &mut Self {
-        assert!(
-            self.queue_family().supports_graphics(),
-            "the queue family of the command buffer must support graphics operations"
-        );
-        assert!(
-            !self.has_fixed_state(DynamicState::StencilReference),
-            "the currently bound graphics pipeline must not contain this state internally"
-        );
+        self.validate_set_stencil_reference(faces, reference)
+            .unwrap();
 
         unsafe {
             self.inner.set_stencil_reference(faces, reference);
         }
 
         self
+    }
+
+    fn validate_set_stencil_reference(
+        &self,
+        faces: StencilFaces,
+        reference: u32,
+    ) -> Result<(), SetDynamicStateError> {
+        if self.has_fixed_state(DynamicState::StencilReference) {
+            return Err(SetDynamicStateError::PipelineHasFixedState);
+        }
+
+        // VUID-vkCmdSetStencilReference-commandBuffer-cmdpool
+        if !self.queue_family().supports_graphics() {
+            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
+        }
+
+        Ok(())
     }
 
     /// Sets whether dynamic stencil testing is enabled for future draw calls.
@@ -930,25 +1275,36 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     #[inline]
     pub fn set_stencil_test_enable(&mut self, enable: bool) -> &mut Self {
-        assert!(
-            self.queue_family().supports_graphics(),
-            "the queue family of the command buffer must support graphics operations"
-        );
-        assert!(
-            self.device().api_version() >= Version::V1_3
-                || self.device().enabled_features().extended_dynamic_state,
-            "the extended_dynamic_state feature must be enabled on the device"
-        );
-        assert!(
-            !self.has_fixed_state(DynamicState::StencilTestEnable),
-            "the currently bound graphics pipeline must not contain this state internally"
-        );
+        self.validate_set_stencil_test_enable(enable).unwrap();
 
         unsafe {
             self.inner.set_stencil_test_enable(enable);
         }
 
         self
+    }
+
+    fn validate_set_stencil_test_enable(&self, enable: bool) -> Result<(), SetDynamicStateError> {
+        if self.has_fixed_state(DynamicState::StencilTestEnable) {
+            return Err(SetDynamicStateError::PipelineHasFixedState);
+        }
+
+        // VUID-vkCmdSetStencilTestEnable-commandBuffer-cmdpool
+        if !self.queue_family().supports_graphics() {
+            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
+        }
+
+        // VUID-vkCmdSetStencilTestEnable-None-03350
+        if !(self.device().api_version() >= Version::V1_3
+            || self.device().enabled_features().extended_dynamic_state)
+        {
+            return Err(SetDynamicStateError::FeatureNotEnabled {
+                feature: "extended_dynamic_state",
+                reason: "called set_stencil_test_enable",
+            });
+        }
+
+        Ok(())
     }
 
     /// Sets the dynamic stencil write mask on one or both faces for future draw calls.
@@ -958,20 +1314,31 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// - Panics if the queue family of the command buffer does not support graphics operations.
     /// - Panics if the currently bound graphics pipeline already contains this state internally.
     pub fn set_stencil_write_mask(&mut self, faces: StencilFaces, write_mask: u32) -> &mut Self {
-        assert!(
-            self.queue_family().supports_graphics(),
-            "the queue family of the command buffer must support graphics operations"
-        );
-        assert!(
-            !self.has_fixed_state(DynamicState::StencilWriteMask),
-            "the currently bound graphics pipeline must not contain this state internally"
-        );
+        self.validate_set_stencil_write_mask(faces, write_mask)
+            .unwrap();
 
         unsafe {
             self.inner.set_stencil_write_mask(faces, write_mask);
         }
 
         self
+    }
+
+    fn validate_set_stencil_write_mask(
+        &self,
+        faces: StencilFaces,
+        write_mask: u32,
+    ) -> Result<(), SetDynamicStateError> {
+        if self.has_fixed_state(DynamicState::StencilWriteMask) {
+            return Err(SetDynamicStateError::PipelineHasFixedState);
+        }
+
+        // VUID-vkCmdSetStencilWriteMask-commandBuffer-cmdpool
+        if !self.queue_family().supports_graphics() {
+            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
+        }
+
+        Ok(())
     }
 
     /// Sets the dynamic viewports for future draw calls.
@@ -988,43 +1355,60 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     where
         I: IntoIterator<Item = Viewport>,
     {
-        assert!(
-            self.queue_family().supports_graphics(),
-            "the queue family of the command buffer must support graphics operations"
-        );
-        assert!(
-            !self.has_fixed_state(DynamicState::Viewport),
-            "the currently bound graphics pipeline must not contain this state internally"
-        );
-
         let viewports: SmallVec<[Viewport; 2]> = viewports.into_iter().collect();
-
-        assert!(
-				first_viewport + viewports.len() as u32 <= self.device().physical_device().properties().max_viewports,
-				"the highest viewport slot being set must not be higher than the max_viewports device property"
-			);
-
-        if !self.device().enabled_features().multi_viewport {
-            assert!(
-                first_viewport == 0,
-                "if the multi_viewport feature is not enabled, first_viewport must be 0"
-            );
-
-            assert!(
-					viewports.len() <= 1,
-					"if the multi_viewport feature is not enabled, no more than 1 viewport must be provided"
-				);
-        }
-
-        // TODO:
-        // commandBuffer must not have
-        // VkCommandBufferInheritanceViewportScissorInfoNV::viewportScissor2D enabled
+        self.validate_set_viewport(first_viewport, &viewports)
+            .unwrap();
 
         unsafe {
             self.inner.set_viewport(first_viewport, viewports);
         }
 
         self
+    }
+
+    fn validate_set_viewport(
+        &self,
+        first_viewport: u32,
+        viewports: &[Viewport],
+    ) -> Result<(), SetDynamicStateError> {
+        if self.has_fixed_state(DynamicState::Viewport) {
+            return Err(SetDynamicStateError::PipelineHasFixedState);
+        }
+
+        // VUID-vkCmdSetViewport-commandBuffer-cmdpool
+        if !self.queue_family().supports_graphics() {
+            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
+        }
+
+        // VUID-vkCmdSetViewport-firstViewport-01223
+        if first_viewport + viewports.len() as u32
+            > self.device().physical_device().properties().max_viewports
+        {
+            return Err(SetDynamicStateError::MaxViewportsExceeded {
+                provided: first_viewport + viewports.len() as u32,
+                max: self.device().physical_device().properties().max_viewports,
+            });
+        }
+
+        if !self.device().enabled_features().multi_viewport {
+            // VUID-vkCmdSetViewport-firstViewport-01224
+            if first_viewport != 0 {
+                return Err(SetDynamicStateError::FeatureNotEnabled {
+                    feature: "multi_viewport",
+                    reason: "first_viewport was not 0",
+                });
+            }
+
+            // VUID-vkCmdSetViewport-viewportCount-01225
+            if viewports.len() > 1 {
+                return Err(SetDynamicStateError::FeatureNotEnabled {
+                    feature: "multi_viewport",
+                    reason: "viewports contained more than one element",
+                });
+            }
+        }
+
+        Ok(())
     }
 
     /// Sets the dynamic viewports with count for future draw calls.
@@ -1045,43 +1429,56 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     where
         I: IntoIterator<Item = Viewport>,
     {
-        assert!(
-            self.queue_family().supports_graphics(),
-            "the queue family of the command buffer must support graphics operations"
-        );
-        assert!(
-            self.device().api_version() >= Version::V1_3
-                || self.device().enabled_features().extended_dynamic_state,
-            "the extended_dynamic_state feature must be enabled on the device"
-        );
-        assert!(
-            !self.has_fixed_state(DynamicState::ViewportWithCount),
-            "the currently bound graphics pipeline must not contain this state internally"
-        );
-
         let viewports: SmallVec<[Viewport; 2]> = viewports.into_iter().collect();
-
-        assert!(
-				viewports.len() as u32 <= self.device().physical_device().properties().max_viewports,
-				"the highest viewport slot being set must not be higher than the max_viewports device property"
-			);
-
-        if !self.device().enabled_features().multi_viewport {
-            assert!(
-					viewports.len() <= 1,
-					"if the multi_viewport feature is not enabled, no more than 1 viewport must be provided"
-				);
-        }
-
-        // TODO: VUID-vkCmdSetViewportWithCountEXT-commandBuffer-04819
-        // commandBuffer must not have
-        // VkCommandBufferInheritanceViewportScissorInfoNV::viewportScissor2D enabled
+        self.validate_set_viewport_with_count(&viewports).unwrap();
 
         unsafe {
             self.inner.set_viewport_with_count(viewports);
         }
 
         self
+    }
+
+    fn validate_set_viewport_with_count(
+        &self,
+        viewports: &[Viewport],
+    ) -> Result<(), SetDynamicStateError> {
+        if self.has_fixed_state(DynamicState::ViewportWithCount) {
+            return Err(SetDynamicStateError::PipelineHasFixedState);
+        }
+
+        // VUID-vkCmdSetViewportWithCount-commandBuffer-cmdpool
+        if !self.queue_family().supports_graphics() {
+            return Err(SetDynamicStateError::NotSupportedByQueueFamily);
+        }
+
+        // VUID-vkCmdSetViewportWithCount-None-03393
+        if !(self.device().api_version() >= Version::V1_3
+            || self.device().enabled_features().extended_dynamic_state)
+        {
+            return Err(SetDynamicStateError::FeatureNotEnabled {
+                feature: "extended_dynamic_state",
+                reason: "called set_viewport_with_count",
+            });
+        }
+
+        // VUID-vkCmdSetViewportWithCount-viewportCount-03394
+        if viewports.len() as u32 > self.device().physical_device().properties().max_viewports {
+            return Err(SetDynamicStateError::MaxViewportsExceeded {
+                provided: viewports.len() as u32,
+                max: self.device().physical_device().properties().max_viewports,
+            });
+        }
+
+        // VUID-vkCmdSetViewportWithCount-viewportCount-03395
+        if !self.device().enabled_features().multi_viewport && viewports.len() > 1 {
+            return Err(SetDynamicStateError::FeatureNotEnabled {
+                feature: "multi_viewport",
+                reason: "viewports contained more than one element",
+            });
+        }
+
+        Ok(())
     }
 }
 
@@ -1214,10 +1611,9 @@ impl SyncCommandBufferBuilder {
 
     /// Calls `vkCmdSetDepthBounds` on the builder.
     #[inline]
-    pub unsafe fn set_depth_bounds(&mut self, min: f32, max: f32) {
+    pub unsafe fn set_depth_bounds(&mut self, bounds: RangeInclusive<f32>) {
         struct Cmd {
-            min: f32,
-            max: f32,
+            bounds: RangeInclusive<f32>,
         }
 
         impl Command for Cmd {
@@ -1226,12 +1622,14 @@ impl SyncCommandBufferBuilder {
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_depth_bounds(self.min, self.max);
+                out.set_depth_bounds(self.bounds.clone());
             }
         }
 
-        self.commands.push(Box::new(Cmd { min, max }));
-        self.current_state.depth_bounds = Some((min, max));
+        self.commands.push(Box::new(Cmd {
+            bounds: bounds.clone(),
+        }));
+        self.current_state.depth_bounds = Some(bounds);
     }
 
     /// Calls `vkCmdSetDepthBoundsTestEnableEXT` on the builder.
@@ -1850,7 +2248,6 @@ impl UnsafeCommandBufferBuilder {
     #[inline]
     pub unsafe fn set_color_write_enable(&mut self, enables: impl IntoIterator<Item = bool>) {
         debug_assert!(self.device.enabled_extensions().ext_color_write_enable);
-        debug_assert!(self.device.enabled_features().color_write_enable);
 
         let enables = enables
             .into_iter()
@@ -1877,7 +2274,6 @@ impl UnsafeCommandBufferBuilder {
             (fns.v1_3.cmd_set_cull_mode)(self.handle, cull_mode.into());
         } else {
             debug_assert!(self.device.enabled_extensions().ext_extended_dynamic_state);
-            debug_assert!(self.device.enabled_features().extended_dynamic_state);
             (fns.ext_extended_dynamic_state.cmd_set_cull_mode_ext)(self.handle, cull_mode.into());
         }
     }
@@ -1885,7 +2281,6 @@ impl UnsafeCommandBufferBuilder {
     /// Calls `vkCmdSetDepthBias` on the builder.
     #[inline]
     pub unsafe fn set_depth_bias(&mut self, constant_factor: f32, clamp: f32, slope_factor: f32) {
-        debug_assert!(clamp == 0.0 || self.device.enabled_features().depth_bias_clamp);
         let fns = self.device.fns();
         (fns.v1_0.cmd_set_depth_bias)(self.handle, constant_factor, clamp, slope_factor);
     }
@@ -1899,7 +2294,6 @@ impl UnsafeCommandBufferBuilder {
             (fns.v1_3.cmd_set_depth_bias_enable)(self.handle, enable.into());
         } else {
             debug_assert!(self.device.enabled_extensions().ext_extended_dynamic_state2);
-            debug_assert!(self.device.enabled_features().extended_dynamic_state2);
             (fns.ext_extended_dynamic_state2
                 .cmd_set_depth_bias_enable_ext)(self.handle, enable.into());
         }
@@ -1907,11 +2301,9 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdSetDepthBounds` on the builder.
     #[inline]
-    pub unsafe fn set_depth_bounds(&mut self, min: f32, max: f32) {
-        debug_assert!(min >= 0.0 && min <= 1.0);
-        debug_assert!(max >= 0.0 && max <= 1.0);
+    pub unsafe fn set_depth_bounds(&mut self, bounds: RangeInclusive<f32>) {
         let fns = self.device.fns();
-        (fns.v1_0.cmd_set_depth_bounds)(self.handle, min, max);
+        (fns.v1_0.cmd_set_depth_bounds)(self.handle, *bounds.start(), *bounds.end());
     }
 
     /// Calls `vkCmdSetDepthBoundsTestEnableEXT` on the builder.
@@ -1923,7 +2315,6 @@ impl UnsafeCommandBufferBuilder {
             (fns.v1_3.cmd_set_depth_bounds_test_enable)(self.handle, enable.into());
         } else {
             debug_assert!(self.device.enabled_extensions().ext_extended_dynamic_state);
-            debug_assert!(self.device.enabled_features().extended_dynamic_state);
             (fns.ext_extended_dynamic_state
                 .cmd_set_depth_bounds_test_enable_ext)(self.handle, enable.into());
         }
@@ -1938,7 +2329,6 @@ impl UnsafeCommandBufferBuilder {
             (fns.v1_3.cmd_set_depth_compare_op)(self.handle, compare_op.into());
         } else {
             debug_assert!(self.device.enabled_extensions().ext_extended_dynamic_state);
-            debug_assert!(self.device.enabled_features().extended_dynamic_state);
             (fns.ext_extended_dynamic_state.cmd_set_depth_compare_op_ext)(
                 self.handle,
                 compare_op.into(),
@@ -1955,7 +2345,6 @@ impl UnsafeCommandBufferBuilder {
             (fns.v1_3.cmd_set_depth_test_enable)(self.handle, enable.into());
         } else {
             debug_assert!(self.device.enabled_extensions().ext_extended_dynamic_state);
-            debug_assert!(self.device.enabled_features().extended_dynamic_state);
             (fns.ext_extended_dynamic_state.cmd_set_depth_test_enable_ext)(
                 self.handle,
                 enable.into(),
@@ -1972,7 +2361,6 @@ impl UnsafeCommandBufferBuilder {
             (fns.v1_3.cmd_set_depth_write_enable)(self.handle, enable.into());
         } else {
             debug_assert!(self.device.enabled_extensions().ext_extended_dynamic_state);
-            debug_assert!(self.device.enabled_features().extended_dynamic_state);
             (fns.ext_extended_dynamic_state
                 .cmd_set_depth_write_enable_ext)(self.handle, enable.into());
         }
@@ -2025,7 +2413,6 @@ impl UnsafeCommandBufferBuilder {
             (fns.v1_3.cmd_set_front_face)(self.handle, face.into());
         } else {
             debug_assert!(self.device.enabled_extensions().ext_extended_dynamic_state);
-            debug_assert!(self.device.enabled_features().extended_dynamic_state);
             (fns.ext_extended_dynamic_state.cmd_set_front_face_ext)(self.handle, face.into());
         }
     }
@@ -2034,7 +2421,6 @@ impl UnsafeCommandBufferBuilder {
     #[inline]
     pub unsafe fn set_line_stipple(&mut self, factor: u32, pattern: u16) {
         debug_assert!(self.device.enabled_extensions().ext_line_rasterization);
-        debug_assert!(factor >= 1 && factor <= 256);
         let fns = self.device.fns();
         (fns.ext_line_rasterization.cmd_set_line_stipple_ext)(self.handle, factor, pattern);
     }
@@ -2042,7 +2428,6 @@ impl UnsafeCommandBufferBuilder {
     /// Calls `vkCmdSetLineWidth` on the builder.
     #[inline]
     pub unsafe fn set_line_width(&mut self, line_width: f32) {
-        debug_assert!(line_width == 1.0 || self.device.enabled_features().wide_lines);
         let fns = self.device.fns();
         (fns.v1_0.cmd_set_line_width)(self.handle, line_width);
     }
@@ -2065,20 +2450,6 @@ impl UnsafeCommandBufferBuilder {
     #[inline]
     pub unsafe fn set_patch_control_points(&mut self, num: u32) {
         debug_assert!(self.device.enabled_extensions().ext_extended_dynamic_state2);
-        debug_assert!(
-            self.device
-                .enabled_features()
-                .extended_dynamic_state2_patch_control_points
-        );
-        debug_assert!(num > 0);
-        debug_assert!(
-            num as u32
-                <= self
-                    .device
-                    .physical_device()
-                    .properties()
-                    .max_tessellation_patch_size
-        );
         let fns = self.device.fns();
         (fns.ext_extended_dynamic_state2
             .cmd_set_patch_control_points_ext)(self.handle, num);
@@ -2093,7 +2464,6 @@ impl UnsafeCommandBufferBuilder {
             (fns.v1_3.cmd_set_primitive_restart_enable)(self.handle, enable.into());
         } else {
             debug_assert!(self.device.enabled_extensions().ext_extended_dynamic_state2);
-            debug_assert!(self.device.enabled_features().extended_dynamic_state2);
             (fns.ext_extended_dynamic_state2
                 .cmd_set_primitive_restart_enable_ext)(self.handle, enable.into());
         }
@@ -2108,7 +2478,6 @@ impl UnsafeCommandBufferBuilder {
             (fns.v1_3.cmd_set_primitive_topology)(self.handle, topology.into());
         } else {
             debug_assert!(self.device.enabled_extensions().ext_extended_dynamic_state);
-            debug_assert!(self.device.enabled_features().extended_dynamic_state);
             (fns.ext_extended_dynamic_state
                 .cmd_set_primitive_topology_ext)(self.handle, topology.into());
         }
@@ -2123,7 +2492,6 @@ impl UnsafeCommandBufferBuilder {
             (fns.v1_3.cmd_set_rasterizer_discard_enable)(self.handle, enable.into());
         } else {
             debug_assert!(self.device.enabled_extensions().ext_extended_dynamic_state2);
-            debug_assert!(self.device.enabled_features().extended_dynamic_state2);
             (fns.ext_extended_dynamic_state2
                 .cmd_set_rasterizer_discard_enable_ext)(self.handle, enable.into());
         }
@@ -2159,7 +2527,6 @@ impl UnsafeCommandBufferBuilder {
             );
         } else {
             debug_assert!(self.device.enabled_extensions().ext_extended_dynamic_state);
-            debug_assert!(self.device.enabled_features().extended_dynamic_state);
             (fns.ext_extended_dynamic_state.cmd_set_stencil_op_ext)(
                 self.handle,
                 face_mask.into(),
@@ -2187,7 +2554,6 @@ impl UnsafeCommandBufferBuilder {
             (fns.v1_3.cmd_set_stencil_test_enable)(self.handle, enable.into());
         } else {
             debug_assert!(self.device.enabled_extensions().ext_extended_dynamic_state);
-            debug_assert!(self.device.enabled_features().extended_dynamic_state);
             (fns.ext_extended_dynamic_state
                 .cmd_set_stencil_test_enable_ext)(self.handle, enable.into());
         }
@@ -2217,22 +2583,6 @@ impl UnsafeCommandBufferBuilder {
             return;
         }
 
-        debug_assert!(scissors.iter().all(|s| s.offset.x >= 0 && s.offset.y >= 0));
-        debug_assert!(scissors.iter().all(|s| {
-            s.extent.width < i32::MAX as u32
-                && s.extent.height < i32::MAX as u32
-                && s.offset.x.checked_add(s.extent.width as i32).is_some()
-                && s.offset.y.checked_add(s.extent.height as i32).is_some()
-        }));
-        debug_assert!(
-            (first_scissor == 0 && scissors.len() == 1)
-                || self.device.enabled_features().multi_viewport
-        );
-        debug_assert!(
-            first_scissor + scissors.len() as u32
-                <= self.device.physical_device().properties().max_viewports
-        );
-
         let fns = self.device.fns();
         (fns.v1_0.cmd_set_scissor)(
             self.handle,
@@ -2255,18 +2605,6 @@ impl UnsafeCommandBufferBuilder {
             return;
         }
 
-        debug_assert!(scissors.iter().all(|s| s.offset.x >= 0 && s.offset.y >= 0));
-        debug_assert!(scissors.iter().all(|s| {
-            s.extent.width < i32::MAX as u32
-                && s.extent.height < i32::MAX as u32
-                && s.offset.x.checked_add(s.extent.width as i32).is_some()
-                && s.offset.y.checked_add(s.extent.height as i32).is_some()
-        }));
-        debug_assert!(scissors.len() == 1 || self.device.enabled_features().multi_viewport);
-        debug_assert!(
-            scissors.len() as u32 <= self.device.physical_device().properties().max_viewports
-        );
-
         let fns = self.device.fns();
 
         if self.device.api_version() >= Version::V1_3 {
@@ -2277,7 +2615,6 @@ impl UnsafeCommandBufferBuilder {
             );
         } else {
             debug_assert!(self.device.enabled_extensions().ext_extended_dynamic_state);
-            debug_assert!(self.device.enabled_features().extended_dynamic_state);
             (fns.ext_extended_dynamic_state
                 .cmd_set_scissor_with_count_ext)(
                 self.handle,
@@ -2304,15 +2641,6 @@ impl UnsafeCommandBufferBuilder {
             return;
         }
 
-        debug_assert!(
-            (first_viewport == 0 && viewports.len() == 1)
-                || self.device.enabled_features().multi_viewport
-        );
-        debug_assert!(
-            first_viewport + viewports.len() as u32
-                <= self.device.physical_device().properties().max_viewports
-        );
-
         let fns = self.device.fns();
         (fns.v1_0.cmd_set_viewport)(
             self.handle,
@@ -2338,11 +2666,6 @@ impl UnsafeCommandBufferBuilder {
             return;
         }
 
-        debug_assert!(viewports.len() == 1 || self.device.enabled_features().multi_viewport);
-        debug_assert!(
-            viewports.len() as u32 <= self.device.physical_device().properties().max_viewports
-        );
-
         let fns = self.device.fns();
 
         if self.device.api_version() >= Version::V1_3 {
@@ -2353,13 +2676,102 @@ impl UnsafeCommandBufferBuilder {
             );
         } else {
             debug_assert!(self.device.enabled_extensions().ext_extended_dynamic_state);
-            debug_assert!(self.device.enabled_features().extended_dynamic_state);
             (fns.ext_extended_dynamic_state
                 .cmd_set_viewport_with_count_ext)(
                 self.handle,
                 viewports.len() as u32,
                 viewports.as_ptr(),
             );
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+enum SetDynamicStateError {
+    ExtensionNotEnabled {
+        extension: &'static str,
+        reason: &'static str,
+    },
+    FeatureNotEnabled {
+        feature: &'static str,
+        reason: &'static str,
+    },
+
+    /// The provided `factor` is not between 1 and 256 inclusive.
+    FactorOutOfRange,
+
+    /// The [`max_discard_rectangles`](crate::device::Properties::max_discard_rectangles)
+    /// limit has been exceeded.
+    MaxDiscardRectanglesExceeded { provided: u32, max: u32 },
+
+    /// The [`max_tessellation_patch_size`](crate::device::Properties::max_tessellation_patch_size)
+    /// limit has been exceeded.
+    MaxTessellationPatchSizeExceeded { provided: u32, max: u32 },
+
+    /// The [`max_viewports`](crate::device::Properties::max_viewports)
+    /// limit has been exceeded.
+    MaxViewportsExceeded { provided: u32, max: u32 },
+
+    /// The queue family doesn't allow this operation.
+    NotSupportedByQueueFamily,
+
+    /// The provided item count is different from the number of attachments in the color blend
+    /// state of the currently bound pipeline.
+    PipelineColorBlendAttachmentCountMismatch {
+        provided_count: u32,
+        required_count: u32,
+    },
+
+    /// The currently bound pipeline contains this state as internally fixed state, which cannot be
+    /// overridden with dynamic state.
+    PipelineHasFixedState,
+}
+
+impl error::Error for SetDynamicStateError {}
+
+impl fmt::Display for SetDynamicStateError {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match self {
+            Self::ExtensionNotEnabled { extension, reason } => {
+                write!(f, "the extension {} must be enabled: {}", extension, reason)
+            }
+            Self::FeatureNotEnabled { feature, reason } => {
+                write!(f, "the feature {} must be enabled: {}", feature, reason,)
+            }
+
+            Self::FactorOutOfRange => write!(
+                f,
+                "the provided `factor` is not between 1 and 256 inclusive",
+            ),
+            Self::MaxDiscardRectanglesExceeded { .. } => write!(
+                f,
+                "the `max_discard_rectangles` limit has been exceeded",
+            ),
+            Self::MaxTessellationPatchSizeExceeded { .. } => write!(
+                f,
+                "the `max_tessellation_patch_size` limit has been exceeded",
+            ),
+            Self::MaxViewportsExceeded { .. } => write!(
+                f,
+                "the `max_viewports` limit has been exceeded",
+            ),
+            Self::NotSupportedByQueueFamily => write!(
+                f,
+                "the queue family doesn't allow this operation",
+            ),
+            Self::PipelineColorBlendAttachmentCountMismatch {
+                provided_count,
+                required_count,
+            } => write!(
+                f,
+                "the provided item count ({}) is different from the number of attachments in the color blend state of the currently bound pipeline ({})",
+                provided_count, required_count,
+            ),
+            Self::PipelineHasFixedState => write!(
+                f,
+                "the currently bound pipeline contains this state as internally fixed state, which cannot be overridden with dynamic state",
+            ),
         }
     }
 }
