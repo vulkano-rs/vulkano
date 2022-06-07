@@ -199,7 +199,7 @@ impl StorageImage {
             .collect::<SmallVec<[u32; 4]>>();
 	let layout = SubresourceLayout {
 	    offset,
-	    size: 0,
+	    size: pitch * dimensions.height() as u64,
 	    row_pitch: pitch,
 	    array_pitch: 0,
 	    depth_pitch: 0,
@@ -225,7 +225,7 @@ impl StorageImage {
                 cube_compatible: flags.cube_compatible,
                 array_2d_compatible: flags.array_2d_compatible,
                 block_texel_view_compatible: flags.block_texel_view_compatible,
-                tiling: ImageTiling::Optimal,
+                tiling: ImageTiling::Linear,
 		image_drm_format_modifier_create_info:  Some(drm_mod),
                 ..Default::default()
             },

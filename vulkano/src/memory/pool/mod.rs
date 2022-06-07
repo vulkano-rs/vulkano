@@ -26,6 +26,7 @@ use crate::memory::MemoryRequirements;
 use crate::DeviceSize;
 use std::fs::File;
 use std::os::unix::prelude::FromRawFd;
+use std::os::unix::prelude::IntoRawFd;
 use std::os::unix::prelude::RawFd;
 use std::sync::Arc;
 
@@ -134,7 +135,9 @@ where
 
     let memory = unsafe {
 	// Try cloning underlying fd
-       //let file = File::from_raw_fd(fd.get(0).unwrap().clone()).try_clone().unwrap();
+	let file = File::from_raw_fd(fd.get(0).unwrap().clone());
+	let new_file = file.try_clone().unwrap();
+	file.into_raw_fd();
 	//let f: RawFd = file.into_raw_fd();
 
         //let properties = device
@@ -155,9 +158,9 @@ where
                 },
                 ..MemoryAllocateInfo::dedicated_allocation(dedicated_allocation)
             },
-            crate::memory::MemoryImportInfo::RawFd {
+            crate::memory::MemoryImportInfo::Fd {
                 handle_type: crate::memory::ExternalMemoryHandleType::DmaBuf,
-                fd: *fd.get(0).unwrap(),
+                file: new_file,
             },
         )
     }?;
