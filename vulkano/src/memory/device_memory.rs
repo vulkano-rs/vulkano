@@ -22,7 +22,7 @@ use std::{
     mem::MaybeUninit,
     ops::{BitOr, Range},
     ptr, slice,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex}, os::unix::prelude::RawFd,
 };
 
 /// Represents memory that has been allocated from the device.
@@ -247,6 +247,58 @@ impl DeviceMemory {
 
         if let Some(import_info) = import_info {
             match import_info {
+		&mut MemoryImportInfo::RawFd {
+		    handle_type,
+		    fd } => {
+		    
+		                        if !device.enabled_extensions().khr_external_memory_fd {
+                        return Err(DeviceMemoryAllocationError::ExtensionNotEnabled {
+                            extension: "khr_external_memory_fd",
+                            reason: "`import_info` was `MemoryImportInfo::Fd`",
+                        });
+                    }
+
+                    #[cfg(not(unix))]
+                    unreachable!(
+                        "`khr_external_memory_fd` was somehow enabled on a non-Unix system"
+                    );
+
+                    #[cfg(unix)]
+                    {
+                        // VUID-VkImportMemoryFdInfoKHR-handleType-00669
+                        match handle_type {
+                            ExternalMemoryHandleType::OpaqueFd => {
+                                // VUID-VkMemoryAllocateInfo-allocationSize-01742
+                                // Can't validate, must be ensured by user
+
+                                // VUID-VkMemoryDedicatedAllocateInfo-buffer-01879
+                                // Can't validate, must be ensured by user
+
+                                // VUID-VkMemoryDedicatedAllocateInfo-image-01878
+                                // Can't validate, must be ensured by user
+                            }
+                            ExternalMemoryHandleType::DmaBuf => {
+                                if !device.enabled_extensions().ext_external_memory_dma_buf {
+                                    return Err(DeviceMemoryAllocationError::ExtensionNotEnabled {
+                                    extension: "ext_external_memory_dma_buf",
+                                    reason: "`import_info` was `MemoryImportInfo::Fd` and `handle_type` was `ExternalMemoryHandleType::DmaBuf`"
+                                });
+                                }
+                            }
+                            _ => {
+                                return Err(
+                                    DeviceMemoryAllocationError::ImportFdHandleTypeNotSupported {
+                                        handle_type,
+                                    },
+                                )
+                            }
+                        }
+
+                        // VUID-VkMemoryAllocateInfo-memoryTypeIndex-00648
+                        // Can't validate, must be ensured by user
+                    }
+                
+		}
                 &mut MemoryImportInfo::Fd {
                     handle_type,
                     ref file,
@@ -366,6 +418,13 @@ impl DeviceMemory {
                     ..Default::default()
                 })
             }
+	    Some(MemoryImportInfo::RawFd { handle_type, fd }) => {
+	        Some(ash::vk::ImportMemoryFdInfoKHR {
+                    handle_type: handle_type.into(),
+                    fd,
+                    ..Default::default()
+                })	
+	    }
             _ => None,
         };
 
@@ -678,7 +737,7 @@ pub struct MemoryAllocateInfo<'d> {
     pub memory_type_index: u32,
 
     /// Allocates memory for a specific buffer or image.
-    ///
+    ///1
     /// This value is silently ignored (treated as `None`) if the device API version is less than
     /// 1.1 and the
     /// [`khr_dedicated_allocation`](crate::device::DeviceExtensions::khr_dedicated_allocation)
@@ -750,6 +809,10 @@ pub enum MemoryImportInfo {
         handle_type: ExternalMemoryHandleType,
         file: File,
     },
+    RawFd {
+	handle_type: ExternalMemoryHandleType,
+	fd: RawFd,
+    }
 }
 
 /// Describes a handle type used for Vulkan external memory apis.  This is **not** just a

@@ -133,11 +133,14 @@ where
     println!("Fd len: {:?}\n", fd.len());
 
     let memory = unsafe {
-        let file = File::from_raw_fd(fd.get(0).unwrap().clone());
-        let properties = device
-            .memory_fd_properties(crate::memory::ExternalMemoryHandleType::DmaBuf, file)
-            .unwrap();
-        let file = File::from_raw_fd(fd.get(0).unwrap().clone());
+	// Try cloning underlying fd
+       let file = File::from_raw_fd(fd.get(0).unwrap().clone()).try_clone().unwrap();
+	//let f: RawFd = file.into_raw_fd();
+
+        //let properties = device
+        //    .memory_fd_properties(crate::memory::ExternalMemoryHandleType::DmaBuf, file)
+        //    .unwrap();
+        //let file = File::from_raw_fd(fd.get(0).unwrap().clone());
         println!("size: {:?}", requirements.size);
 
         DeviceMemory::import(

@@ -822,10 +822,14 @@ impl UnsafeImage {
             create_info = create_info.push_next(next);
         }
 
-	let m = &mut image_drm_format_modifier_create_info.unwrap();
+	
+
+	let mut m;
 
 	if  external_memory_handle_types.dma_buf {
-	   create_info = create_info.push_next(m);
+	    m = image_drm_format_modifier_create_info.unwrap();
+
+	   create_info = create_info.push_next(&mut m);
 	}
 
         let handle = {

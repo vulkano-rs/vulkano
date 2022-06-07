@@ -223,7 +223,7 @@ impl StorageImage {
                 cube_compatible: flags.cube_compatible,
                 array_2d_compatible: flags.array_2d_compatible,
                 block_texel_view_compatible: flags.block_texel_view_compatible,
-                tiling: ImageTiling::Linear,
+                tiling: ImageTiling::Optimal,
 		image_drm_format_modifier_create_info:  Some(drm_mod),
                 ..Default::default()
             },
@@ -246,6 +246,8 @@ impl StorageImage {
             },
             fds,
         )?;
+
+	todo!("todo");
 
         debug_assert!((memory.offset() % mem_reqs.alignment) == 0);
         unsafe {
