@@ -189,7 +189,9 @@ impl StorageImage {
         };
 
         let a = MemoryImportInfo::Fd { handle_type: (), file: () };
-        */
+         */
+
+	println!("Dimensions: {:?}", dimensions);
 
         let queue_families = queue_families
             .into_iter()
@@ -247,7 +249,7 @@ impl StorageImage {
             fds,
         )?;
 
-	todo!("todo");
+	//todo!("todo");
 
         debug_assert!((memory.offset() % mem_reqs.alignment) == 0);
         unsafe {

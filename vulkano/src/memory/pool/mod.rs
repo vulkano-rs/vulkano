@@ -134,7 +134,7 @@ where
 
     let memory = unsafe {
 	// Try cloning underlying fd
-       let file = File::from_raw_fd(fd.get(0).unwrap().clone()).try_clone().unwrap();
+       //let file = File::from_raw_fd(fd.get(0).unwrap().clone()).try_clone().unwrap();
 	//let f: RawFd = file.into_raw_fd();
 
         //let properties = device
@@ -155,9 +155,9 @@ where
                 },
                 ..MemoryAllocateInfo::dedicated_allocation(dedicated_allocation)
             },
-            crate::memory::MemoryImportInfo::Fd {
+            crate::memory::MemoryImportInfo::RawFd {
                 handle_type: crate::memory::ExternalMemoryHandleType::DmaBuf,
-                file,
+                fd: *fd.get(0).unwrap(),
             },
         )
     }?;
