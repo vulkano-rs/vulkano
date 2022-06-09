@@ -31,7 +31,11 @@ use crate::{
     sync::{AccessError, CurrentAccess, Sharing},
     DeviceSize, Error, OomError, Version, VulkanObject,
 };
-use ash::{vk::{Handle, ImageDrmFormatModifierExplicitCreateInfoEXT, ImageDrmFormatModifierExplicitCreateInfoEXTBuilder, SubresourceLayout}, extensions::ext::ImageDrmFormatModifier};
+use ash::{
+    vk::{
+        Handle, ImageDrmFormatModifierExplicitCreateInfoEXT,
+    },
+};
 use parking_lot::{Mutex, MutexGuard};
 use rangemap::RangeMap;
 use smallvec::{smallvec, SmallVec};
@@ -121,7 +125,7 @@ impl UnsafeImage {
             cube_compatible,
             array_2d_compatible,
             block_texel_view_compatible,
-	    image_drm_format_modifier_create_info,
+            image_drm_format_modifier_create_info,
             _ne: _,
         } = create_info;
 
@@ -177,7 +181,7 @@ impl UnsafeImage {
             cube_compatible,
             array_2d_compatible,
             block_texel_view_compatible,
-	    image_drm_format_modifier_create_info,
+            image_drm_format_modifier_create_info,
             _ne: _,
         } = create_info;
 
@@ -756,7 +760,7 @@ impl UnsafeImage {
             cube_compatible,
             array_2d_compatible,
             block_texel_view_compatible,
-	    image_drm_format_modifier_create_info,
+            image_drm_format_modifier_create_info,
             _ne: _,
         } = create_info;
 
@@ -817,20 +821,17 @@ impl UnsafeImage {
             .queue_family_indices(queue_family_indices)
             .initial_layout(initial_layout.into());
 
-
         if let Some(next) = external_memory_image_create_info.as_mut() {
             create_info = create_info.push_next(next);
         }
 
-	
+        let mut m;
 
-	let mut m;
+        if external_memory_handle_types.dma_buf {
+            m = image_drm_format_modifier_create_info.unwrap();
 
-	if  external_memory_handle_types.dma_buf {
-	    m = image_drm_format_modifier_create_info.unwrap();
-
-	   create_info = create_info.push_next(&mut m);
-	}
+            create_info = create_info.push_next(&mut m);
+        }
 
         let handle = {
             let fns = device.fns();
@@ -1479,7 +1480,6 @@ pub struct UnsafeImageCreateInfo {
 
     pub image_drm_format_modifier_create_info: Option<ImageDrmFormatModifierExplicitCreateInfoEXT>,
 
-
     pub _ne: crate::NonExhaustive,
 }
 
@@ -1503,7 +1503,7 @@ impl Default for UnsafeImageCreateInfo {
             cube_compatible: false,
             array_2d_compatible: false,
             block_texel_view_compatible: false,
-	    image_drm_format_modifier_create_info: None,
+            image_drm_format_modifier_create_info: None,
             _ne: crate::NonExhaustive(()),
         }
     }

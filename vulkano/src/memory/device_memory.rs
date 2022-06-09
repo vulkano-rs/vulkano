@@ -22,8 +22,9 @@ use std::{
     mem::MaybeUninit,
     ops::{BitOr, Range},
     ptr, slice,
-    sync::{Arc, Mutex}, os::unix::prelude::RawFd,
+    sync::{Arc, Mutex},
 };
+
 
 /// Represents memory that has been allocated from the device.
 ///
@@ -82,7 +83,7 @@ impl DeviceMemory {
             memory_type_index,
             dedicated_allocation,
             export_handle_types,
-	    import_handle_types,
+            import_handle_types,
             _ne: _,
         } = allocate_info;
 
@@ -122,7 +123,7 @@ impl DeviceMemory {
             memory_type_index,
             dedicated_allocation,
             export_handle_types,
-	    import_handle_types,
+            import_handle_types,
             _ne: _,
         } = allocate_info;
 
@@ -148,7 +149,7 @@ impl DeviceMemory {
             memory_type_index,
             ref mut dedicated_allocation,
             export_handle_types,
-	    import_handle_types,
+            import_handle_types,
             _ne: _,
         } = allocate_info;
 
@@ -247,58 +248,6 @@ impl DeviceMemory {
 
         if let Some(import_info) = import_info {
             match import_info {
-		&mut MemoryImportInfo::RawFd {
-		    handle_type,
-		    fd } => {
-		    
-		                        if !device.enabled_extensions().khr_external_memory_fd {
-                        return Err(DeviceMemoryAllocationError::ExtensionNotEnabled {
-                            extension: "khr_external_memory_fd",
-                            reason: "`import_info` was `MemoryImportInfo::Fd`",
-                        });
-                    }
-
-                    #[cfg(not(unix))]
-                    unreachable!(
-                        "`khr_external_memory_fd` was somehow enabled on a non-Unix system"
-                    );
-
-                    #[cfg(unix)]
-                    {
-                        // VUID-VkImportMemoryFdInfoKHR-handleType-00669
-                        match handle_type {
-                            ExternalMemoryHandleType::OpaqueFd => {
-                                // VUID-VkMemoryAllocateInfo-allocationSize-01742
-                                // Can't validate, must be ensured by user
-
-                                // VUID-VkMemoryDedicatedAllocateInfo-buffer-01879
-                                // Can't validate, must be ensured by user
-
-                                // VUID-VkMemoryDedicatedAllocateInfo-image-01878
-                                // Can't validate, must be ensured by user
-                            }
-                            ExternalMemoryHandleType::DmaBuf => {
-                                if !device.enabled_extensions().ext_external_memory_dma_buf {
-                                    return Err(DeviceMemoryAllocationError::ExtensionNotEnabled {
-                                    extension: "ext_external_memory_dma_buf",
-                                    reason: "`import_info` was `MemoryImportInfo::Fd` and `handle_type` was `ExternalMemoryHandleType::DmaBuf`"
-                                });
-                                }
-                            }
-                            _ => {
-                                return Err(
-                                    DeviceMemoryAllocationError::ImportFdHandleTypeNotSupported {
-                                        handle_type,
-                                    },
-                                )
-                            }
-                        }
-
-                        // VUID-VkMemoryAllocateInfo-memoryTypeIndex-00648
-                        // Can't validate, must be ensured by user
-                    }
-                
-		}
                 &mut MemoryImportInfo::Fd {
                     handle_type,
                     ref file,
@@ -366,7 +315,7 @@ impl DeviceMemory {
             memory_type_index,
             dedicated_allocation,
             export_handle_types,
-	    import_handle_types,
+            import_handle_types,
             _ne: _,
         } = allocate_info;
 
@@ -418,13 +367,6 @@ impl DeviceMemory {
                     ..Default::default()
                 })
             }
-	    Some(MemoryImportInfo::RawFd { handle_type, fd }) => {
-	        Some(ash::vk::ImportMemoryFdInfoKHR {
-                    handle_type: handle_type.into(),
-                    fd,
-                    ..Default::default()
-                })	
-	    }
             _ => None,
         };
 
@@ -761,7 +703,7 @@ impl Default for MemoryAllocateInfo<'static> {
             memory_type_index: u32::MAX,
             dedicated_allocation: None,
             export_handle_types: ExternalMemoryHandleTypes::none(),
-	    import_handle_types: ExternalMemoryHandleTypes::none(),
+            import_handle_types: ExternalMemoryHandleTypes::none(),
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -775,7 +717,7 @@ impl<'d> MemoryAllocateInfo<'d> {
             memory_type_index: u32::MAX,
             dedicated_allocation: Some(dedicated_allocation),
             export_handle_types: ExternalMemoryHandleTypes::none(),
-	    import_handle_types: ExternalMemoryHandleTypes::none(),
+            import_handle_types: ExternalMemoryHandleTypes::none(),
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -808,10 +750,6 @@ pub enum MemoryImportInfo {
     Fd {
         handle_type: ExternalMemoryHandleType,
         file: File,
-    },
-    RawFd {
-	handle_type: ExternalMemoryHandleType,
-	fd: RawFd,
     }
 }
 

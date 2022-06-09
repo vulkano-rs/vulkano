@@ -27,7 +27,7 @@ use crate::{
     sync::Sharing,
     DeviceSize,
 };
-use ash::{extensions::ext::ImageDrmFormatModifier, vk::{DrmFormatModifierPropertiesListEXT, ImageDrmFormatModifierExplicitCreateInfoEXT, SubresourceLayout}};
+use ash::vk::{SubresourceLayout, ImageDrmFormatModifierExplicitCreateInfoEXT};
 use smallvec::SmallVec;
 use std::{
     fs::File,
@@ -159,6 +159,11 @@ impl StorageImage {
         }))
     }
 
+    /// Creates a new image from a set of dma_buf file descriptors. The memory will be imported from the file desciptors, and will be bound to the image.
+    /// # Arguments
+    /// * `fds` - The list of file descriptors to import from. Single planar images should only use one, and multiplanar images can use multiple, for example, for each color.
+    /// * `offset` - The byte offset from the start of the image or the plane where the image subresource begins.
+    /// * `pitch` - Describes the number of bytes between each row of texels in an image.
     pub fn new_from_dma_buf_fd<'a, I>(
         device: Arc<Device>,
         dimensions: ImageDimensions,
@@ -167,48 +172,30 @@ impl StorageImage {
         flags: ImageCreateFlags,
         queue_families: I,
         fds: Vec<RawFd>,
-	offset: u64,
-	pitch: u64,
+        offset: u64,
+        pitch: u64,
     ) -> Result<Arc<StorageImage>, ImageCreationError>
     where
         I: IntoIterator<Item = QueueFamily<'a>>,
     {
-        /*
-        let x1 = ash::vk::MemoryAllocateInfo{
-            s_type: todo!(),
-            p_next: todo!(),
-            allocation_size: todo!(),
-            memory_type_index: todo!(),
-        };
-
-        let x = ash::vk::ImportMemoryFdInfoKHR {
-            s_type: todo!(),
-            p_next: todo!(),
-            handle_type: todo!(),
-            fd,
-        };
-
-        let a = MemoryImportInfo::Fd { handle_type: (), file: () };
-         */
-
-	println!("Dimensions: {:?}", dimensions);
-
         let queue_families = queue_families
             .into_iter()
             .map(|f| f.id())
             .collect::<SmallVec<[u32; 4]>>();
-	let layout = SubresourceLayout {
-	    offset,
-	    size: pitch * dimensions.height() as u64,
-	    row_pitch: pitch,
-	    array_pitch: 0,
-	    depth_pitch: 0,
-	};
-	let vec = vec!(layout);
-	 let drm_mod = ImageDrmFormatModifierExplicitCreateInfoEXT::builder()
-		.drm_format_modifier(0)
-		.plane_layouts(vec.as_ref())
-	    .build();
+        let layout = SubresourceLayout {
+            offset,
+            size: pitch * dimensions.height() as u64,
+            row_pitch: pitch,
+            array_pitch: 0,
+            depth_pitch: 0,
+        };
+	// Create a vector of the layout of each image plane.
+        let vec = vec![layout];
+	
+        let drm_mod = ImageDrmFormatModifierExplicitCreateInfoEXT::builder()
+            .drm_format_modifier(0)
+            .plane_layouts(vec.as_ref())
+            .build();
 
         let image = UnsafeImage::new(
             device.clone(),
@@ -226,9 +213,9 @@ impl StorageImage {
                 array_2d_compatible: flags.array_2d_compatible,
                 block_texel_view_compatible: flags.block_texel_view_compatible,
                 tiling: ImageTiling::Linear,
-		image_drm_format_modifier_create_info:  Some(drm_mod),
+                image_drm_format_modifier_create_info: Some(drm_mod),
                 ..Default::default()
-            },
+            }
         )?;
 
         let mem_reqs = image.memory_requirements();
@@ -248,8 +235,6 @@ impl StorageImage {
             },
             fds,
         )?;
-
-	//todo!("todo");
 
         debug_assert!((memory.offset() % mem_reqs.alignment) == 0);
         unsafe {

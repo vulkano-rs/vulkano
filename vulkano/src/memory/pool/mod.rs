@@ -19,7 +19,6 @@ use crate::memory::device_memory::MemoryAllocateInfo;
 use crate::memory::DedicatedAllocation;
 use crate::memory::DeviceMemory;
 use crate::memory::DeviceMemoryAllocationError;
-use crate::memory::ExternalMemoryHandleType;
 use crate::memory::ExternalMemoryHandleTypes;
 use crate::memory::MappedDeviceMemory;
 use crate::memory::MemoryRequirements;
@@ -112,7 +111,7 @@ where
     }
 }
 
-///
+/// Import memory from a Vec of file descriptors.
 pub(crate) fn alloc_import_from_fd<F>(
     device: Arc<Device>,
     requirements: &MemoryRequirements,
@@ -131,20 +130,13 @@ where
 
     let memory_type = choose_allocation_memory_type(&device, requirements, filter, map);
 
-    println!("Fd len: {:?}\n", fd.len());
-
     let memory = unsafe {
-	// Try cloning underlying fd
-	let file = File::from_raw_fd(fd.get(0).unwrap().clone());
-	let new_file = file.try_clone().unwrap();
-	file.into_raw_fd();
-	//let f: RawFd = file.into_raw_fd();
+        // Try cloning underlying fd
+        let file = File::from_raw_fd(*fd.get(0).expect("File descriptor Vec is empty"));
+        let new_file = file.try_clone().expect("Error cloning file descriptor");
 
-        //let properties = device
-        //    .memory_fd_properties(crate::memory::ExternalMemoryHandleType::DmaBuf, file)
-        //    .unwrap();
-        //let file = File::from_raw_fd(fd.get(0).unwrap().clone());
-        println!("size: {:?}", requirements.size);
+	// Turn the original file descriptor back into a raw fd to avoid ownership problems
+        file.into_raw_fd();
 
         DeviceMemory::import(
             device.clone(),
