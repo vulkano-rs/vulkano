@@ -25,7 +25,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-
 /// Represents memory that has been allocated from the device.
 ///
 /// The destructor of `DeviceMemory` automatically frees the memory.
@@ -750,7 +749,7 @@ pub enum MemoryImportInfo {
     Fd {
         handle_type: ExternalMemoryHandleType,
         file: File,
-    }
+    },
 }
 
 /// Describes a handle type used for Vulkan external memory apis.  This is **not** just a

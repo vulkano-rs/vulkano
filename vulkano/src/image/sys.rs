@@ -31,11 +31,7 @@ use crate::{
     sync::{AccessError, CurrentAccess, Sharing},
     DeviceSize, Error, OomError, Version, VulkanObject,
 };
-use ash::{
-    vk::{
-        Handle, ImageDrmFormatModifierExplicitCreateInfoEXT,
-    },
-};
+use ash::vk::{Handle, ImageDrmFormatModifierExplicitCreateInfoEXT};
 use parking_lot::{Mutex, MutexGuard};
 use rangemap::RangeMap;
 use smallvec::{smallvec, SmallVec};

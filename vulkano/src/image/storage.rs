@@ -27,7 +27,7 @@ use crate::{
     sync::Sharing,
     DeviceSize,
 };
-use ash::vk::{SubresourceLayout, ImageDrmFormatModifierExplicitCreateInfoEXT};
+use ash::vk::{ImageDrmFormatModifierExplicitCreateInfoEXT, SubresourceLayout};
 use smallvec::SmallVec;
 use std::{
     fs::File,
@@ -189,9 +189,9 @@ impl StorageImage {
             array_pitch: 0,
             depth_pitch: 0,
         };
-	// Create a vector of the layout of each image plane.
+        // Create a vector of the layout of each image plane.
         let vec = vec![layout];
-	
+
         let drm_mod = ImageDrmFormatModifierExplicitCreateInfoEXT::builder()
             .drm_format_modifier(0)
             .plane_layouts(vec.as_ref())
@@ -215,7 +215,7 @@ impl StorageImage {
                 tiling: ImageTiling::Linear,
                 image_drm_format_modifier_create_info: Some(drm_mod),
                 ..Default::default()
-            }
+            },
         )?;
 
         let mem_reqs = image.memory_requirements();

@@ -135,7 +135,7 @@ where
         let file = File::from_raw_fd(*fd.get(0).expect("File descriptor Vec is empty"));
         let new_file = file.try_clone().expect("Error cloning file descriptor");
 
-	// Turn the original file descriptor back into a raw fd to avoid ownership problems
+        // Turn the original file descriptor back into a raw fd to avoid ownership problems
         file.into_raw_fd();
 
         DeviceMemory::import(
