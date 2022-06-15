@@ -9,7 +9,7 @@
 
 use crate::check_errors;
 use crate::command_buffer::sys::UnsafeCommandBuffer;
-use crate::device::Queue;
+use crate::queue::Queue;
 use crate::sync::Fence;
 use crate::sync::PipelineStages;
 use crate::sync::Semaphore;

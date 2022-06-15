@@ -14,7 +14,8 @@ use super::{
 };
 use crate::{
     buffer::{sys::UnsafeBuffer, BufferAccess},
-    device::{Device, DeviceOwned, Queue},
+    device::{Device, DeviceOwned},
+    queue::Queue,
     image::{sys::UnsafeImage, ImageAccess, ImageLayout, ImageSubresourceRange},
     sync::{
         now, AccessCheckError, AccessError, AccessFlags, FlushError, GpuFuture, NowFuture,

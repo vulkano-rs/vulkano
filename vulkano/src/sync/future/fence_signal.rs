@@ -11,7 +11,8 @@ use super::{AccessCheckError, FlushError, GpuFuture};
 use crate::{
     buffer::sys::UnsafeBuffer,
     command_buffer::submit::{SubmitAnyBuilder, SubmitCommandBufferBuilder},
-    device::{Device, DeviceOwned, Queue},
+    device::{Device, DeviceOwned},
+    queue::Queue,
     image::{sys::UnsafeImage, ImageLayout},
     sync::{AccessFlags, Fence, PipelineStages},
     DeviceSize, OomError,

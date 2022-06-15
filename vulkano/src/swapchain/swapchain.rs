@@ -17,7 +17,8 @@ use crate::{
     command_buffer::submit::{
         SubmitAnyBuilder, SubmitPresentBuilder, SubmitPresentError, SubmitSemaphoresWaitBuilder,
     },
-    device::{physical::SurfacePropertiesError, Device, DeviceOwned, Queue},
+    device::{physical::SurfacePropertiesError, Device, DeviceOwned},
+    queue::Queue,
     format::Format,
     image::{
         sys::UnsafeImage, ImageCreateFlags, ImageDimensions, ImageFormatInfo, ImageInner,

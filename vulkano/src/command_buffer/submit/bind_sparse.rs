@@ -9,7 +9,7 @@
 
 use crate::buffer::sys::UnsafeBuffer;
 use crate::check_errors;
-use crate::device::Queue;
+use crate::queue::Queue;
 use crate::image::sys::UnsafeImage;
 use crate::memory::DeviceMemory;
 use crate::sync::Fence;

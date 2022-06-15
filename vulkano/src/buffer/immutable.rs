@@ -28,7 +28,8 @@ use crate::{
         AutoCommandBufferBuilder, CommandBufferBeginError, CommandBufferExecFuture,
         CommandBufferUsage, CopyBufferInfo, PrimaryAutoCommandBuffer, PrimaryCommandBuffer,
     },
-    device::{physical::QueueFamily, Device, DeviceOwned, Queue},
+    device::{physical::QueueFamily, Device, DeviceOwned},
+    queue::Queue,
     memory::{
         pool::{
             AllocFromRequirementsFilter, AllocLayout, MappingRequirement, MemoryPoolAlloc,

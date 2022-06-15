@@ -19,7 +19,8 @@ use crate::{
         CommandBufferUsage, CopyBufferToImageInfo, ImageBlit, PrimaryAutoCommandBuffer,
         PrimaryCommandBuffer,
     },
-    device::{physical::QueueFamily, Device, DeviceOwned, Queue},
+    device::{physical::QueueFamily, Device, DeviceOwned},
+    queue::Queue,
     format::Format,
     image::sys::UnsafeImageCreateInfo,
     memory::{

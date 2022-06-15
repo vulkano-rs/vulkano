@@ -14,7 +14,7 @@ use std::marker::PhantomData;
 use std::ptr;
 
 use crate::device::DeviceOwned;
-use crate::device::Queue;
+use crate::queue::Queue;
 use crate::swapchain::PresentRegion;
 use crate::swapchain::Swapchain;
 use crate::sync::Semaphore;

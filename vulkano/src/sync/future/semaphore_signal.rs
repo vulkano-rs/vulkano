@@ -13,7 +13,8 @@ use crate::{
     command_buffer::submit::{
         SubmitAnyBuilder, SubmitCommandBufferBuilder, SubmitSemaphoresWaitBuilder,
     },
-    device::{Device, DeviceOwned, Queue},
+    device::{Device, DeviceOwned},
+    queue::Queue,
     image::{sys::UnsafeImage, ImageLayout},
     sync::{AccessFlags, PipelineStages, Semaphore},
     DeviceSize,

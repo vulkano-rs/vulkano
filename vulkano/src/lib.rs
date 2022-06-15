@@ -39,7 +39,7 @@
 //!   [*command buffer*](crate::command_buffer). A command buffer contains a list of commands
 //!   that the GPU must perform. This can include copies between buffers and images, compute
 //!   operations, or graphics operations. For the work to start, the command buffer must then be
-//!   submitted to a [`Queue`](crate::device::Queue), which is obtained when you create the
+//!   submitted to a [`Queue`](crate::queue::Queue), which is obtained when you create the
 //!   `Device`.
 //!
 //! - In order to be able to add a compute operation or a graphics operation to a command buffer,
@@ -79,6 +79,7 @@ pub mod buffer;
 pub mod command_buffer;
 pub mod descriptor_set;
 pub mod device;
+pub mod queue;
 pub mod format;
 mod version;
 #[macro_use]

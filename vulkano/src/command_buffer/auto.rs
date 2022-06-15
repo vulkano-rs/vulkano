@@ -29,11 +29,12 @@ use super::{
 use crate::{
     buffer::{sys::UnsafeBuffer, BufferAccess},
     command_buffer::CommandBufferInheritanceRenderingInfo,
-    device::{physical::QueueFamily, Device, DeviceOwned, Queue},
+    device::{physical::QueueFamily, Device, DeviceOwned},
     image::{sys::UnsafeImage, ImageAccess, ImageLayout, ImageSubresourceRange},
     pipeline::{graphics::render_pass::PipelineRenderPassType, GraphicsPipeline},
     query::{QueryControlFlags, QueryType},
     render_pass::{Framebuffer, Subpass},
+    queue::Queue,
     sync::{AccessCheckError, AccessFlags, GpuFuture, PipelineMemoryAccess, PipelineStages},
     DeviceSize, OomError,
 };
