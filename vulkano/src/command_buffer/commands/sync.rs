@@ -41,7 +41,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.commands.push(Box::new(Cmd { event, stages }));
+        self.append_command(Box::new(Cmd { event, stages }), &[]);
     }
 
     /// Calls `vkCmdResetEvent` on the builder.
@@ -62,7 +62,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.commands.push(Box::new(Cmd { event, stages }));
+        self.append_command(Box::new(Cmd { event, stages }), &[]);
     }
 }
 

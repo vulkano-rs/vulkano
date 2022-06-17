@@ -1689,15 +1689,7 @@ impl SyncCommandBufferBuilder {
             pipeline.descriptor_requirements(),
         );
 
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd { group_counts }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
+        self.append_command(Box::new(Cmd { group_counts }), &resources);
 
         Ok(())
     }
@@ -1732,15 +1724,7 @@ impl SyncCommandBufferBuilder {
         );
         self.add_indirect_buffer_resources(&mut resources, &indirect_buffer);
 
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd { indirect_buffer }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
+        self.append_command(Box::new(Cmd { indirect_buffer }), &resources);
 
         Ok(())
     }
@@ -1786,20 +1770,15 @@ impl SyncCommandBufferBuilder {
         );
         self.add_vertex_buffer_resources(&mut resources, pipeline.vertex_input_state());
 
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd {
-            vertex_count,
-            instance_count,
-            first_vertex,
-            first_instance,
-        }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
+        self.append_command(
+            Box::new(Cmd {
+                vertex_count,
+                instance_count,
+                first_vertex,
+                first_instance,
+            }),
+            &resources,
+        );
 
         Ok(())
     }
@@ -1849,21 +1828,16 @@ impl SyncCommandBufferBuilder {
         self.add_vertex_buffer_resources(&mut resources, pipeline.vertex_input_state());
         self.add_index_buffer_resources(&mut resources);
 
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd {
-            index_count,
-            instance_count,
-            first_index,
-            vertex_offset,
-            first_instance,
-        }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
+        self.append_command(
+            Box::new(Cmd {
+                index_count,
+                instance_count,
+                first_index,
+                vertex_offset,
+                first_instance,
+            }),
+            &resources,
+        );
 
         Ok(())
     }
@@ -1903,19 +1877,14 @@ impl SyncCommandBufferBuilder {
         self.add_vertex_buffer_resources(&mut resources, pipeline.vertex_input_state());
         self.add_indirect_buffer_resources(&mut resources, &indirect_buffer);
 
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd {
-            indirect_buffer,
-            draw_count,
-            stride,
-        }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
+        self.append_command(
+            Box::new(Cmd {
+                indirect_buffer,
+                draw_count,
+                stride,
+            }),
+            &resources,
+        );
 
         Ok(())
     }
@@ -1960,19 +1929,14 @@ impl SyncCommandBufferBuilder {
         self.add_index_buffer_resources(&mut resources);
         self.add_indirect_buffer_resources(&mut resources, &indirect_buffer);
 
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd {
-            indirect_buffer,
-            draw_count,
-            stride,
-        }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
+        self.append_command(
+            Box::new(Cmd {
+                indirect_buffer,
+                draw_count,
+                stride,
+            }),
+            &resources,
+        );
 
         Ok(())
     }

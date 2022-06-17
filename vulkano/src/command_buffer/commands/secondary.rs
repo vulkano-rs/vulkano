@@ -477,22 +477,17 @@ impl<'a> SyncCommandBufferBuilderExecuteCommands<'a> {
             resources
         };
 
-        for resource in &resources {
-            self.builder.check_resource_conflicts(resource)?;
-        }
-
-        self.builder.commands.push(Box::new(Cmd(self
-            .inner
-            .into_iter()
-            .map(|cbuf| {
-                cbuf.lock_record()?;
-                Ok(DropUnlock(cbuf))
-            })
-            .collect::<Result<Vec<_>, CommandBufferExecError>>()?)));
-
-        for resource in resources {
-            self.builder.add_resource(resource);
-        }
+        self.builder.append_command(
+            Box::new(Cmd(self
+                .inner
+                .into_iter()
+                .map(|cbuf| {
+                    cbuf.lock_record()?;
+                    Ok(DropUnlock(cbuf))
+                })
+                .collect::<Result<Vec<_>, CommandBufferExecError>>()?)),
+            &resources,
+        );
 
         Ok(())
     }

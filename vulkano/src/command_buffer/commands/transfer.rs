@@ -1996,15 +1996,7 @@ impl SyncCommandBufferBuilder {
             })
             .collect();
 
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd { copy_buffer_info }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
+        self.append_command(Box::new(Cmd { copy_buffer_info }), &resources);
 
         Ok(())
     }
@@ -2098,15 +2090,7 @@ impl SyncCommandBufferBuilder {
             })
             .collect();
 
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd { copy_image_info }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
+        self.append_command(Box::new(Cmd { copy_image_info }), &resources);
 
         Ok(())
     }
@@ -2199,17 +2183,12 @@ impl SyncCommandBufferBuilder {
             })
             .collect();
 
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd {
-            copy_buffer_to_image_info,
-        }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
+        self.append_command(
+            Box::new(Cmd {
+                copy_buffer_to_image_info,
+            }),
+            &resources,
+        );
 
         Ok(())
     }
@@ -2302,17 +2281,12 @@ impl SyncCommandBufferBuilder {
             })
             .collect();
 
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd {
-            copy_image_to_buffer_info,
-        }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
+        self.append_command(
+            Box::new(Cmd {
+                copy_image_to_buffer_info,
+            }),
+            &resources,
+        );
 
         Ok(())
     }
@@ -2364,15 +2338,7 @@ impl SyncCommandBufferBuilder {
             },
         )];
 
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd { fill_buffer_info }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
+        self.append_command(Box::new(Cmd { fill_buffer_info }), &resources);
 
         Ok(())
     }
@@ -2428,19 +2394,14 @@ impl SyncCommandBufferBuilder {
             },
         )];
 
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd {
-            data,
-            dst_buffer,
-            dst_offset,
-        }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
+        self.append_command(
+            Box::new(Cmd {
+                data,
+                dst_buffer,
+                dst_offset,
+            }),
+            &resources,
+        );
 
         Ok(())
     }
