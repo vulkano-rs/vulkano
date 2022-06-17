@@ -121,6 +121,9 @@ pub use self::{
         ExternalSemaphoreHandleType, ExternalSemaphoreHandleTypes, ExternalSemaphoreInfo,
         ExternalSemaphoreProperties, Semaphore, SemaphoreCreateInfo, SemaphoreCreationError,
     },
+    resources_access::{
+        ResourcesAccessDelta
+    }
 };
 
 mod event;
@@ -128,6 +131,7 @@ mod fence;
 mod future;
 mod pipeline;
 mod semaphore;
+mod resources_access;
 
 /// Declares in which queue(s) a resource can be used.
 ///
