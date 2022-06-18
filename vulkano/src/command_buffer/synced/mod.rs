@@ -96,15 +96,11 @@ pub struct SyncCommandBuffer {
 
     // List of commands used by the command buffer. Used to hold the various resources that are
     // being used.
-    commands: Vec<Box<dyn Command>>,
-
-    // Locations within commands that pipeline barriers were inserted. For debugging purposes.
-    // TODO: present only in cfg(debug_assertions)?
-    barriers: Vec<usize>,
+    command_names: Vec<&'static str>,
 
     // State of all the resources used by this command buffer.
-    buffers2: HashMap<Arc<UnsafeBuffer>, RangeMap<DeviceSize, BufferFinalState>>,
-    images2: HashMap<Arc<UnsafeImage>, RangeMap<DeviceSize, ImageFinalState>>,
+    buffers_final_states: HashMap<Arc<UnsafeBuffer>, RangeMap<DeviceSize, BufferFinalState>>,
+    images_final_states: HashMap<Arc<UnsafeImage>, RangeMap<DeviceSize, ImageFinalState>>,
 
     // Resources and their accesses. Used for executing secondary command buffers in a primary.
     buffers: Vec<(
@@ -135,7 +131,7 @@ impl SyncCommandBuffer {
         */
 
         let buffer_state_mutexes = self
-            .buffers2
+            .buffers_final_states
             .iter()
             .map(|(buffer, range_map)| {
                 let mut buffer_state = buffer.state();
@@ -148,9 +144,7 @@ impl SyncCommandBuffer {
 
                             return Err(CommandBufferExecError::AccessError {
                                 error: err,
-                                command_name: self.commands[resource_use.command_index]
-                                    .name()
-                                    .into(),
+                                command_name: self.command_names[resource_use.command_index].into(),
                                 command_param: resource_use.name.clone(),
                                 command_offset: resource_use.command_index,
                             });
@@ -167,8 +161,7 @@ impl SyncCommandBuffer {
 
                                 return Err(CommandBufferExecError::AccessError {
                                     error: err,
-                                    command_name: self.commands[resource_use.command_index]
-                                        .name()
+                                    command_name: self.command_names[resource_use.command_index]
                                         .into(),
                                     command_param: resource_use.name.clone(),
                                     command_offset: resource_use.command_index,
@@ -184,7 +177,7 @@ impl SyncCommandBuffer {
             .collect::<Result<Vec<(_, _)>, _>>()?;
 
         let image_state_mutexes = self
-            .images2
+            .images_final_states
             .iter()
             .map(|(image, range_map)| {
                 let mut image_state = image.state();
@@ -202,9 +195,7 @@ impl SyncCommandBuffer {
 
                             return Err(CommandBufferExecError::AccessError {
                                 error: err,
-                                command_name: self.commands[resource_use.command_index]
-                                    .name()
-                                    .into(),
+                                command_name: self.command_names[resource_use.command_index].into(),
                                 command_param: resource_use.name.clone(),
                                 command_offset: resource_use.command_index,
                             });
@@ -221,8 +212,7 @@ impl SyncCommandBuffer {
 
                                 return Err(CommandBufferExecError::AccessError {
                                     error: err,
-                                    command_name: self.commands[resource_use.command_index]
-                                        .name()
+                                    command_name: self.command_names[resource_use.command_index]
                                         .into(),
                                     command_param: resource_use.name.clone(),
                                     command_offset: resource_use.command_index,
@@ -243,7 +233,7 @@ impl SyncCommandBuffer {
         */
         unsafe {
             for (buffer, mut buffer_state) in buffer_state_mutexes {
-                for (range, state) in self.buffers2[buffer].iter() {
+                for (range, state) in self.buffers_final_states[buffer].iter() {
                     if state.exclusive {
                         buffer_state.gpu_write_lock(range.clone());
                     } else {
@@ -253,7 +243,7 @@ impl SyncCommandBuffer {
             }
 
             for (image, mut image_state) in image_state_mutexes {
-                for (range, state) in self.images2[image].iter() {
+                for (range, state) in self.images_final_states[image].iter() {
                     if state.exclusive {
                         image_state.gpu_write_lock(range.clone(), state.final_layout);
                     } else {
@@ -277,7 +267,7 @@ impl SyncCommandBuffer {
     /// The command buffer must have been successfully locked with `lock_submit()`.
     ///
     pub unsafe fn unlock(&self) {
-        for (buffer, range_map) in &self.buffers2 {
+        for (buffer, range_map) in &self.buffers_final_states {
             let mut buffer_state = buffer.state();
 
             for (range, state) in range_map.iter() {
@@ -289,7 +279,7 @@ impl SyncCommandBuffer {
             }
         }
 
-        for (image, range_map) in &self.images2 {
+        for (image, range_map) in &self.images_final_states {
             let mut image_state = image.state();
 
             for (range, state) in range_map.iter() {
@@ -313,7 +303,7 @@ impl SyncCommandBuffer {
         exclusive: bool,
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
-        let range_map = match self.buffers2.get(buffer) {
+        let range_map = match self.buffers_final_states.get(buffer) {
             Some(x) => x,
             None => return Err(AccessCheckError::Unknown),
         };
@@ -347,7 +337,7 @@ impl SyncCommandBuffer {
         expected_layout: ImageLayout,
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
-        let range_map = match self.images2.get(image) {
+        let range_map = match self.images_final_states.get(image) {
             Some(x) => x,
             None => return Err(AccessCheckError::Unknown),
         };
@@ -488,7 +478,7 @@ struct ImageUse {
 
 /// Type of resource whose state is to be tracked.
 #[derive(Clone)]
-pub(super) enum Resource {
+pub enum Resource {
     Buffer {
         buffer: Arc<dyn BufferAccess>,
         range: Range<DeviceSize>,
@@ -503,10 +493,20 @@ pub(super) enum Resource {
     },
 }
 
+pub(super) enum CommandType {
+    RenderPassBegin,
+    RenderPassEnd,
+    Other,
+}
+
 // Trait for single commands within the list of commands.
 pub(super) trait Command: Send + Sync {
     // Returns a user-friendly name for the command, for error reporting purposes.
     fn name(&self) -> &'static str;
+
+    fn command_type(&self) -> CommandType {
+        CommandType::Other
+    }
 
     // Sends the command to the `UnsafeCommandBufferBuilder`. Calling this method twice on the same
     // object will likely lead to a panic.
