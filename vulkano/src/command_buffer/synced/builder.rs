@@ -303,11 +303,7 @@ impl SyncCommandBufferBuilder {
         command: Box<dyn Command>,
         resources: &[(Cow<'static, str>, Resource)],
     ) {
-        let mut cmd_access_delta = ResourcesAccessDelta::empty();
-
-        for (name, resource) in resources {
-            cmd_access_delta.add_resource(resource);
-        }
+        let mut cmd_access_delta = ResourcesAccessDelta::from_single_command(0, &resources);
 
         if self.level == CommandBufferLevel::Primary {
             // Here we are accumulating "fake" access deltas for initial and final image layout transfers
@@ -340,6 +336,7 @@ impl SyncCommandBufferBuilder {
 
                         self.initial_image_access_delta
                             .add_image(
+                                0,
                                 image.clone(),
                                 image.inner().image.subresource_range(),
                                 PipelineMemoryAccess::default(),
@@ -358,6 +355,7 @@ impl SyncCommandBufferBuilder {
 
                         self.final_image_access_delta
                             .add_image(
+                                0,
                                 image.clone(),
                                 image.inner().image.subresource_range(),
                                 PipelineMemoryAccess {

@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ops::Range;
 use std::sync::Arc;
@@ -51,13 +52,16 @@ struct ImageBarrierDescription {
 /// in this case we can easily determine which barrier we need to put in between corresponding command batches.
 /// If batch represented by `d2` should go first and then `d1` we know that barrier should have following parameters:
 /// `barrier = {src_stage_mask = TRANSFER, src_access_mask = WRITE, dst_stage_mask = VERTEX, dst_access_mask = READ}`
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Default, PartialEq, Eq)]
 pub(crate) struct PipelineMemoryAccessDelta {
     /// What memory access is needed to start executing corresponding set of commands
     pub in_access: PipelineMemoryAccess,
+    /// Index of the first command in the batch
+    pub in_command_index: usize,
     /// What memory access will this resource have after corresponding set of commands is executed
     pub out_access: PipelineMemoryAccess,
-
+    /// Index of the last command in the batch
+    pub out_command_index: usize,
     /// Indicates if there were any barriers in between
     pub any_barrier: bool,
     /// Indicates if there were any actual access (any read or any write)
@@ -77,9 +81,12 @@ impl PipelineMemoryAccessDelta {
     fn debug_validation(&self) {
         debug_assert!(self.any_barrier || self.in_access == self.out_access);
         debug_assert!(self.any_access || !self.any_barrier);
+        debug_assert!(self.in_command_index <= self.out_command_index);
         if !self.any_access {
             debug_assert_eq!(self.in_access, PipelineMemoryAccess::default());
             debug_assert_eq!(self.out_access, PipelineMemoryAccess::default());
+            debug_assert_eq!(self.in_command_index, 0);
+            debug_assert_eq!(self.out_command_index, 0);
         }
     }
 
@@ -116,6 +123,8 @@ impl PipelineMemoryAccessDelta {
                 Self {
                     in_access: self.in_access,
                     out_access: other.out_access,
+                    in_command_index: self.in_command_index,
+                    out_command_index: other.out_command_index,
                     any_barrier: true,
                     any_access: true,
                 },
@@ -134,6 +143,8 @@ impl PipelineMemoryAccessDelta {
                     Self {
                         in_access: combine_read_access(&self.out_access, &other.in_access),
                         out_access: combine_read_access(&self.out_access, &other.in_access),
+                        in_command_index: self.in_command_index,
+                        out_command_index: other.out_command_index,
                         any_barrier: false,
                         any_access: true,
                     }
@@ -142,6 +153,8 @@ impl PipelineMemoryAccessDelta {
                     Self {
                         in_access: combine_read_access(&self.out_access, &other.in_access),
                         out_access: other.out_access,
+                        in_command_index: self.in_command_index,
+                        out_command_index: other.out_command_index,
                         any_barrier: true,
                         any_access: true,
                     }
@@ -150,6 +163,8 @@ impl PipelineMemoryAccessDelta {
                     Self {
                         in_access: self.in_access,
                         out_access: combine_read_access(&self.out_access, &other.in_access),
+                        in_command_index: self.in_command_index,
+                        out_command_index: other.out_command_index,
                         any_barrier: true,
                         any_access: true,
                     }
@@ -158,6 +173,8 @@ impl PipelineMemoryAccessDelta {
                     Self {
                         in_access: self.in_access,
                         out_access: other.out_access,
+                        in_command_index: self.in_command_index,
+                        out_command_index: other.out_command_index,
                         any_barrier: true,
                         any_access: true,
                     }
@@ -407,6 +424,7 @@ impl ResourcesAccessDelta {
 
     pub fn add_buffer(
         &mut self,
+        command_index: usize,
         buffer: Arc<dyn BufferAccess>,
         mut range: Range<DeviceSize>,
         memory: PipelineMemoryAccess,
@@ -420,23 +438,17 @@ impl ResourcesAccessDelta {
         }
 
         let mut buffer_access_delta = BufferAccessDelta {
-            range_map: [(
-                0..inner.buffer.size(),
-                PipelineMemoryAccessDelta {
-                    in_access: PipelineMemoryAccess::default(),
-                    out_access: PipelineMemoryAccess::default(),
-                    any_barrier: false,
-                    any_access: false,
-                },
-            )]
-            .into_iter()
-            .collect(),
+            range_map: [(0..inner.buffer.size(), PipelineMemoryAccessDelta::default())]
+                .into_iter()
+                .collect(),
         };
 
         for (range, delta) in &mut buffer_access_delta.range_map.range_mut(&range) {
             delta.any_access = true;
             delta.in_access = memory.clone();
             delta.out_access = memory.clone();
+            delta.in_command_index = command_index;
+            delta.out_command_index = command_index;
         }
 
         self.buffer_access_deltas
@@ -450,6 +462,7 @@ impl ResourcesAccessDelta {
     // Normally you should use the same PipelineMemoryAccess
     pub fn add_image(
         &mut self,
+        command_index: usize,
         image: Arc<dyn ImageAccess>,
         mut subresource_range: ImageSubresourceRange,
         memory_in: PipelineMemoryAccess,
@@ -471,12 +484,7 @@ impl ResourcesAccessDelta {
             range_map: [(
                 0..inner.image.range_size(),
                 PipelineImageAccessDelta {
-                    memory_access_delta: PipelineMemoryAccessDelta {
-                        in_access: PipelineMemoryAccess::default(),
-                        out_access: PipelineMemoryAccess::default(),
-                        any_barrier: false,
-                        any_access: false,
-                    },
+                    memory_access_delta: PipelineMemoryAccessDelta::default(),
                     in_layout: ImageLayout::Undefined,
                     out_layout: ImageLayout::Undefined,
                 },
@@ -494,6 +502,8 @@ impl ResourcesAccessDelta {
                 delta.memory_access_delta.any_barrier = memory_out != memory_in;
                 delta.in_layout = start_layout;
                 delta.out_layout = end_layout;
+                delta.memory_access_delta.in_command_index = command_index;
+                delta.memory_access_delta.out_command_index = command_index;
             }
         }
 
@@ -503,14 +513,15 @@ impl ResourcesAccessDelta {
         Ok(())
     }
 
-    pub fn add_resource(&mut self, resource: &Resource) {
+    pub fn add_resource(&mut self, command_index: usize, resource: &Resource) {
         match (*resource).clone() {
             Resource::Buffer {
                 buffer,
                 range,
                 memory,
             } => {
-                self.add_buffer(buffer.clone(), range, memory).unwrap();
+                self.add_buffer(command_index, buffer.clone(), range, memory)
+                    .unwrap();
             }
             Resource::Image {
                 image,
@@ -520,6 +531,7 @@ impl ResourcesAccessDelta {
                 end_layout,
             } => {
                 self.add_image(
+                    command_index,
                     image,
                     subresource_range,
                     memory,
@@ -530,5 +542,25 @@ impl ResourcesAccessDelta {
                 .unwrap();
             }
         }
+    }
+
+    pub fn from_single_command(
+        command_index: usize,
+        resources: &[(Cow<'static, str>, Resource)],
+    ) -> Self {
+        let mut res = Self::empty();
+
+        for (name, resource) in resources {
+            res.add_resource(command_index, resource)
+        }
+
+        res
+    }
+
+    pub fn primary_command_buffer_(
+        &mut self,
+        images: &[Arc<dyn ImageAccess>],
+    ) -> (Option<DependencyInfo>, Option<DependencyInfo>) {
+        for image in images {}
     }
 }
