@@ -7,11 +7,13 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::{
-    app::FractalApp,
-    renderer::{image_over_frame_renderpass, RenderOptions, Renderer},
-};
+use crate::app::FractalApp;
+use vulkano::image::ImageUsage;
+use vulkano::swapchain::PresentMode;
 use vulkano::sync::GpuFuture;
+use vulkano_util::context::{VulkanoConfig, VulkanoContext};
+use vulkano_util::renderer::{VulkanoWindowRenderer, DEFAULT_IMAGE_FORMAT};
+use vulkano_util::window::{VulkanoWindows, WindowDescriptor};
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
@@ -22,7 +24,6 @@ mod app;
 mod fractal_compute_pipeline;
 mod pixels_draw_pipeline;
 mod place_over_frame;
-mod renderer;
 
 /// This is an example demonstrating an application with some more non-trivial functionality.
 /// It should get you more up to speed with how you can use Vulkano.
@@ -36,21 +37,39 @@ mod renderer;
 fn main() {
     // Create event loop
     let mut event_loop = EventLoop::new();
-    // Create a renderer with a window & render options
-    let mut renderer = Renderer::new(
+    let context = VulkanoContext::new(VulkanoConfig::default());
+    let mut windows = VulkanoWindows::default();
+    windows.create_window(
         &event_loop,
-        RenderOptions {
-            title: "Fractal",
-            ..RenderOptions::default()
+        &context,
+        &WindowDescriptor {
+            title: "Fractal".to_string(),
+            present_mode: PresentMode::Immediate,
+            ..Default::default()
+        },
+        |_| {},
+    );
+
+    // Add our render target image onto which we'll be rendering our fractals.
+    let render_target_id = 0;
+    let primary_window_renderer = windows.get_primary_renderer_mut().unwrap();
+    // Make sure the image usage is correct (based on your pipeline).
+    primary_window_renderer.add_additional_image_view(
+        render_target_id,
+        DEFAULT_IMAGE_FORMAT,
+        ImageUsage {
+            sampled: true,
+            storage: true,
+            color_attachment: true,
+            transfer_dst: true,
+            ..ImageUsage::none()
         },
     );
-    // Add our render target image onto which we'll be rendering our fractals.
-    // View size None here means renderer will keep resizing the image on resize
-    let render_target_id = 0;
-    renderer.add_interim_image_view(render_target_id, None, renderer.image_format());
 
     // Create app to hold the logic of our fractal explorer
-    let mut app = FractalApp::new(&renderer);
+    let gfx_queue = context.graphics_queue();
+    // We intend to eventually render on our swapchain, thus we use that format when creating the app here.
+    let mut app = FractalApp::new(gfx_queue, primary_window_renderer.swapchain_format());
     app.print_guide();
 
     // Basic loop for our runtime
@@ -60,24 +79,24 @@ fn main() {
     // 4. Reset input state
     // 5. Update time & title
     loop {
-        if !handle_events(&mut event_loop, &mut renderer, &mut app) {
+        if !handle_events(&mut event_loop, primary_window_renderer, &mut app) {
             break;
         }
 
-        match renderer.window_size() {
+        match primary_window_renderer.window_size() {
             [w, h] => {
                 // Skip this frame when minimized
-                if w == 0 || h == 0 {
+                if w == 0.0 || h == 0.0 {
                     continue;
                 }
             }
         }
 
-        app.update_state_after_inputs(&mut renderer);
-        compute_then_render(&mut renderer, &mut app, render_target_id);
+        app.update_state_after_inputs(primary_window_renderer);
+        compute_then_render(primary_window_renderer, &mut app, render_target_id);
         app.reset_input_state();
         app.update_time();
-        renderer.window().set_title(&format!(
+        primary_window_renderer.window().set_title(&format!(
             "{} fps: {:.2} dt: {:.2}, Max Iterations: {}",
             if app.is_julia { "Julia" } else { "Mandelbrot" },
             app.avg_fps(),
@@ -90,7 +109,7 @@ fn main() {
 /// Handle events and return `bool` if we should quit
 fn handle_events(
     event_loop: &mut EventLoop<()>,
-    renderer: &mut Renderer,
+    renderer: &mut VulkanoWindowRenderer,
     app: &mut FractalApp,
 ) -> bool {
     let mut is_running = true;
@@ -114,7 +133,11 @@ fn handle_events(
 }
 
 /// Orchestrate rendering here
-fn compute_then_render(renderer: &mut Renderer, app: &mut FractalApp, target_image_id: usize) {
+fn compute_then_render(
+    renderer: &mut VulkanoWindowRenderer,
+    app: &mut FractalApp,
+    target_image_id: usize,
+) {
     // Start frame
     let before_pipeline_future = match renderer.start_frame() {
         Err(e) => {
@@ -124,14 +147,13 @@ fn compute_then_render(renderer: &mut Renderer, app: &mut FractalApp, target_ima
         Ok(future) => future,
     };
     // Retrieve target image
-    let target_image = renderer.get_interim_image_view(target_image_id);
+    let image = renderer.get_additional_image_view(target_image_id);
     // Compute our fractal (writes to target image). Join future with `before_pipeline_future`.
-    let after_compute = app
-        .compute(target_image.clone())
-        .join(before_pipeline_future);
-    // Render target image over frame. Input previous future.
+    let after_compute = app.compute(image.clone()).join(before_pipeline_future);
+    // Render image over frame. Input previous future. Draw on swapchain image
     let after_renderpass_future =
-        image_over_frame_renderpass(renderer, after_compute, target_image);
+        app.place_over_frame
+            .render(after_compute, image, renderer.swapchain_image_view());
     // Finish frame (which presents the view). Input last future
     renderer.finish_frame(after_renderpass_future);
 }

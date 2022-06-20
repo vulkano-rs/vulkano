@@ -57,7 +57,7 @@ impl VulkanoWindowRenderer {
         vulkano_context: &VulkanoContext,
         window: winit::window::Window,
         descriptor: &WindowDescriptor,
-        swapchain_create_info_overrides: SwapchainCreateInfo,
+        swapchain_create_info_modify: fn(&mut SwapchainCreateInfo),
     ) -> VulkanoWindowRenderer {
         // Create rendering surface from window
         let surface = create_surface_from_winit(window, vulkano_context.instance()).unwrap();
@@ -66,10 +66,8 @@ impl VulkanoWindowRenderer {
         let (swap_chain, final_views) = Self::create_swap_chain(
             vulkano_context.device(),
             surface.clone(),
-            SwapchainCreateInfo {
-                present_mode: descriptor.present_mode,
-                ..swapchain_create_info_overrides
-            },
+            descriptor,
+            swapchain_create_info_modify,
         );
 
         let previous_frame_end = Some(sync::now(vulkano_context.device()).boxed());
@@ -91,7 +89,8 @@ impl VulkanoWindowRenderer {
     fn create_swap_chain(
         device: Arc<Device>,
         surface: Arc<Surface<Window>>,
-        swapchain_create_info_overrides: SwapchainCreateInfo,
+        window_descriptor: &WindowDescriptor,
+        swapchain_create_info_modify: fn(&mut SwapchainCreateInfo),
     ) -> (Arc<Swapchain<Window>>, Vec<SwapchainImageView>) {
         let surface_capabilities = device
             .physical_device()
@@ -105,10 +104,8 @@ impl VulkanoWindowRenderer {
                 .0,
         );
         let image_extent = surface.window().inner_size().into();
-        let (swapchain, images) = Swapchain::new(
-            device,
-            surface,
-            SwapchainCreateInfo {
+        let (swapchain, images) = Swapchain::new(device, surface, {
+            let mut create_info = SwapchainCreateInfo {
                 min_image_count: surface_capabilities.min_image_count,
                 image_format,
                 image_extent,
@@ -118,9 +115,13 @@ impl VulkanoWindowRenderer {
                     .iter()
                     .next()
                     .unwrap(),
-                ..swapchain_create_info_overrides
-            },
-        )
+                ..Default::default()
+            };
+            // Get present mode from window descriptor
+            create_info.present_mode = window_descriptor.present_mode;
+            swapchain_create_info_modify(&mut create_info);
+            create_info
+        })
         .unwrap();
         let images = images
             .into_iter()

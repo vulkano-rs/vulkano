@@ -28,8 +28,8 @@ use winit::dpi::LogicalSize;
 ///    let context = VulkanoContext::new(VulkanoConfig::default());
 ///    let event_loop = EventLoop::new();
 ///    let mut vulkano_windows = VulkanoWindows::default();
-///    vulkano_windows.create_window(&event_loop, &context, &Default::default(), Default::default());
-///    vulkano_windows.create_window(&event_loop, &context, &Default::default(), Default::default());
+///    vulkano_windows.create_window(&event_loop, &context, &Default::default(), |_| {});
+///    vulkano_windows.create_window(&event_loop, &context, &Default::default(), |_| {});
 /// // You should now have two windows
 /// }
 /// ```
@@ -45,7 +45,7 @@ impl VulkanoWindows {
         event_loop: &winit::event_loop::EventLoopWindowTarget<()>,
         vulkano_context: &VulkanoContext,
         window_descriptor: &WindowDescriptor,
-        swapchain_create_info_overriders: SwapchainCreateInfo,
+        swapchain_create_info_modify: fn(&mut SwapchainCreateInfo),
     ) {
         #[cfg(target_os = "windows")]
         let mut winit_window_builder = {
@@ -156,7 +156,7 @@ impl VulkanoWindows {
                 vulkano_context,
                 winit_window,
                 window_descriptor,
-                swapchain_create_info_overriders,
+                swapchain_create_info_modify,
             ),
         );
     }

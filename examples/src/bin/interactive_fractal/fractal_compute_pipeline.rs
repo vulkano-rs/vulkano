@@ -7,7 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::renderer::InterimImageView;
 use cgmath::Vector2;
 use rand::Rng;
 use std::sync::Arc;
@@ -20,9 +19,10 @@ use vulkano::{
     pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
     sync::GpuFuture,
 };
+use vulkano_util::renderer::DeviceImageView;
 
 pub struct FractalComputePipeline {
-    gfx_queue: Arc<Queue>,
+    queue: Arc<Queue>,
     pipeline: Arc<ComputePipeline>,
     palette: Arc<CpuAccessibleBuffer<[[f32; 4]]>>,
     palette_size: i32,
@@ -30,7 +30,7 @@ pub struct FractalComputePipeline {
 }
 
 impl FractalComputePipeline {
-    pub fn new(gfx_queue: Arc<Queue>) -> FractalComputePipeline {
+    pub fn new(queue: Arc<Queue>) -> FractalComputePipeline {
         // Initial colors
         let colors = vec![
             [1.0, 0.0, 0.0, 1.0],
@@ -42,7 +42,7 @@ impl FractalComputePipeline {
         ];
         let palette_size = colors.len() as i32;
         let palette = CpuAccessibleBuffer::from_iter(
-            gfx_queue.device().clone(),
+            queue.device().clone(),
             BufferUsage::all(),
             false,
             colors,
@@ -51,9 +51,9 @@ impl FractalComputePipeline {
         let end_color = [0.0; 4];
 
         let pipeline = {
-            let shader = cs::load(gfx_queue.device().clone()).unwrap();
+            let shader = cs::load(queue.device().clone()).unwrap();
             ComputePipeline::new(
-                gfx_queue.device().clone(),
+                queue.device().clone(),
                 shader.entry_point("main").unwrap(),
                 &(),
                 None,
@@ -62,7 +62,7 @@ impl FractalComputePipeline {
             .unwrap()
         };
         FractalComputePipeline {
-            gfx_queue,
+            queue,
             pipeline,
             palette,
             palette_size,
@@ -81,7 +81,7 @@ impl FractalComputePipeline {
             colors.push([r, g, b, a]);
         }
         self.palette = CpuAccessibleBuffer::from_iter(
-            self.gfx_queue.device().clone(),
+            self.queue.device().clone(),
             BufferUsage::all(),
             false,
             colors.into_iter(),
@@ -91,7 +91,7 @@ impl FractalComputePipeline {
 
     pub fn compute(
         &mut self,
-        image: InterimImageView,
+        image: DeviceImageView,
         c: Vector2<f32>,
         scale: Vector2<f32>,
         translation: Vector2<f32>,
@@ -111,8 +111,8 @@ impl FractalComputePipeline {
         )
         .unwrap();
         let mut builder = AutoCommandBufferBuilder::primary(
-            self.gfx_queue.device().clone(),
-            self.gfx_queue.family(),
+            self.queue.device().clone(),
+            self.queue.family(),
             CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
@@ -134,7 +134,7 @@ impl FractalComputePipeline {
             .dispatch([img_dims[0] / 8, img_dims[1] / 8, 1])
             .unwrap();
         let command_buffer = builder.build().unwrap();
-        let finished = command_buffer.execute(self.gfx_queue.clone()).unwrap();
+        let finished = command_buffer.execute(self.queue.clone()).unwrap();
         finished.then_signal_fence_and_flush().unwrap().boxed()
     }
 }

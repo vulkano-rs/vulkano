@@ -30,6 +30,7 @@ impl Default for VulkanoConfig {
         VulkanoConfig {
             instance_create_info: InstanceCreateInfo {
                 application_version: Version::V1_2,
+                enabled_extensions: vulkano_win::required_extensions(),
                 ..Default::default()
             },
             debug_create_info: None,
@@ -41,7 +42,10 @@ impl Default for VulkanoConfig {
                 PhysicalDeviceType::Other => 5,
             },
             print_device_name: true,
-            device_extensions: DeviceExtensions::none(),
+            device_extensions: DeviceExtensions {
+                khr_swapchain: true,
+                ..DeviceExtensions::none()
+            },
             device_features: Features::none(),
         }
     }
