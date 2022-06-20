@@ -13,3 +13,5 @@ categories = ["rendering::graphics-api"]
 
 [dependencies]
 vulkano = { version = "0.29.0", path = "../vulkano" }
+vulkano-win = { version = "0.29.0", path = "../vulkano-win" }
+ winit = { version = "0.26" }
