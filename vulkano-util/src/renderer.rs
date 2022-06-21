@@ -13,7 +13,7 @@ use std::sync::Arc;
 use crate::context::VulkanoContext;
 use crate::window::WindowDescriptor;
 use vulkano::device::Device;
-use vulkano::image::{ImageCreateFlags, ImageDimensions, ImageUsage, StorageImage, SwapchainImage};
+use vulkano::image::{ImageUsage, StorageImage, SwapchainImage};
 use vulkano::{
     device::Queue,
     format::Format,
@@ -199,8 +199,13 @@ impl VulkanoWindowRenderer {
     /// Add interim image view that resizes with window
     pub fn add_additional_image_view(&mut self, key: usize, format: Format, usage: ImageUsage) {
         let size = self.swapchain_image_size();
-        let image =
-            create_device_image_with_usage(self.graphics_queue.clone(), size, format, usage);
+        let image = StorageImage::general_purpose_image_view(
+            self.graphics_queue.clone(),
+            size,
+            format,
+            usage,
+        )
+        .unwrap();
         self.additional_image_views.insert(key, image);
     }
 
@@ -311,31 +316,4 @@ impl VulkanoWindowRenderer {
         }
         self.recreate_swapchain = false;
     }
-}
-
-/// A simple utility function to create storage image views with usage
-pub fn create_device_image_with_usage(
-    queue: Arc<Queue>,
-    size: [u32; 2],
-    format: Format,
-    usage: ImageUsage,
-) -> DeviceImageView {
-    let dims = ImageDimensions::Dim2d {
-        width: size[0],
-        height: size[1],
-        array_layers: 1,
-    };
-    let flags = ImageCreateFlags::none();
-    ImageView::new_default(
-        StorageImage::with_usage(
-            queue.device().clone(),
-            dims,
-            format,
-            usage,
-            flags,
-            Some(queue.family()),
-        )
-        .unwrap(),
-    )
-    .unwrap()
 }

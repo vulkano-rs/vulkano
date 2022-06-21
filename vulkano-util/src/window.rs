@@ -11,9 +11,11 @@
 
 use crate::context::VulkanoContext;
 use crate::renderer::VulkanoWindowRenderer;
+use std::collections::hash_map::{Iter, IterMut};
 use std::collections::HashMap;
 use vulkano::swapchain::{PresentMode, SwapchainCreateInfo};
 use winit::dpi::LogicalSize;
+use winit::window::WindowId;
 
 /// A struct organizing windows and their corresponding renderers. This makes it easy to handle multiple windows.
 ///
@@ -28,8 +30,8 @@ use winit::dpi::LogicalSize;
 ///    let context = VulkanoContext::new(VulkanoConfig::default());
 ///    let event_loop = EventLoop::new();
 ///    let mut vulkano_windows = VulkanoWindows::default();
-///    vulkano_windows.create_window(&event_loop, &context, &Default::default(), |_| {});
-///    vulkano_windows.create_window(&event_loop, &context, &Default::default(), |_| {});
+///    let _id1 = vulkano_windows.create_window(&event_loop, &context, &Default::default(), |_| {});
+///    let _id2 = vulkano_windows.create_window(&event_loop, &context, &Default::default(), |_| {});
 /// // You should now have two windows
 /// }
 /// ```
@@ -46,7 +48,7 @@ impl VulkanoWindows {
         vulkano_context: &VulkanoContext,
         window_descriptor: &WindowDescriptor,
         swapchain_create_info_modify: fn(&mut SwapchainCreateInfo),
-    ) {
+    ) -> winit::window::WindowId {
         #[cfg(target_os = "windows")]
         let mut winit_window_builder = {
             use winit::platform::windows::WindowBuilderExtWindows;
@@ -146,12 +148,13 @@ impl VulkanoWindows {
 
         winit_window.set_cursor_visible(window_descriptor.cursor_visible);
 
+        let id = winit_window.id();
         if self.primary.is_none() {
-            self.primary = Some(winit_window.id());
+            self.primary = Some(id);
         }
 
         self.windows.insert(
-            winit_window.id(),
+            id,
             VulkanoWindowRenderer::new(
                 vulkano_context,
                 winit_window,
@@ -159,6 +162,8 @@ impl VulkanoWindows {
                 swapchain_create_info_modify,
             ),
         );
+
+        id
     }
 
     /// Get a mutable reference to the primary window's renderer
@@ -206,6 +211,31 @@ impl VulkanoWindows {
         self.windows
             .get(&id)
             .and_then(|v_window| Some(v_window.window()))
+    }
+
+    /// Return primary window id
+    pub fn primary_window_id(&self) -> Option<winit::window::WindowId> {
+        self.primary
+    }
+
+    /// Remove renderer by window id
+    pub fn remove_renderer(&mut self, id: winit::window::WindowId) {
+        self.windows.remove(&id);
+        if let Some(primary) = self.primary {
+            if primary == id {
+                self.primary = None;
+            }
+        }
+    }
+
+    /// Return iterator over window renderers
+    pub fn iter(&self) -> Iter<WindowId, VulkanoWindowRenderer> {
+        self.windows.iter()
+    }
+
+    /// Return iterator over mutable window renderers
+    pub fn iter_mut(&mut self) -> IterMut<WindowId, VulkanoWindowRenderer> {
+        self.windows.iter_mut()
     }
 }
 

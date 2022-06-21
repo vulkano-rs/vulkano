@@ -7,8 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-#![allow(dead_code)]
-
 pub mod context;
 pub mod renderer;
 pub mod window;
