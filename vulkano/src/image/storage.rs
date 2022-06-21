@@ -226,26 +226,6 @@ impl StorageImage {
     }
 
     /// Allows the creation of a simple 2D general purpose image view from `StorageImage`.
-    /// ## Example
-    /// ```
-    /// use vulkano::image::StorageImage;
-    /// use vulkano::image::ImageUsage;
-    /// use vulkano::format::Format;
-    ///
-    /// let image = StorageImage::general_purpose_image_view(
-    ///     queue.clone(),
-    ///     size,
-    ///     Format::R8G8B8A8_UNORM,
-    ///     ImageUsage {
-    ///         sampled: true,
-    ///         storage: true,
-    ///         color_attachment: true,
-    ///         transfer_dst: true,
-    ///         ..ImageUsage::none()
-    ///     },
-    ///  )
-    ///  .unwrap();
-    /// ```
     pub fn general_purpose_image_view(
         queue: Arc<Queue>,
         size: [u32; 2],
@@ -258,18 +238,22 @@ impl StorageImage {
             array_layers: 1,
         };
         let flags = ImageCreateFlags::none();
-        match StorageImage::with_usage(
+        let image_result = StorageImage::with_usage(
             queue.device().clone(),
             dims,
             format,
             usage,
             flags,
             Some(queue.family()),
-        ) {
-            Ok(image) => match ImageView::new_default(image) {
-                Ok(view) => Ok(view),
-                Err(e) => Err(ImageCreationError::ImageViewCreationFailed(e)),
-            },
+        );
+        match image_result {
+            Ok(image) => {
+                let image_view = ImageView::new_default(image);
+                match image_view {
+                    Ok(view) => Ok(view),
+                    Err(e) => Err(ImageCreationError::DirectImageViewCreationFailed(e)),
+                }
+            }
             Err(e) => Err(e),
         }
     }
@@ -369,7 +353,8 @@ where
 mod tests {
     use super::StorageImage;
     use crate::format::Format;
-    use crate::image::ImageDimensions;
+    use crate::image::view::ImageViewCreationError;
+    use crate::image::{ImageAccess, ImageCreationError, ImageDimensions, ImageUsage};
 
     #[test]
     fn create() {
@@ -385,5 +370,46 @@ mod tests {
             Some(queue.family()),
         )
         .unwrap();
+    }
+
+    #[test]
+    fn create_general_purpose_image_view() {
+        let (device, queue) = gfx_dev_and_queue!();
+        let usage = ImageUsage {
+            transfer_src: true,
+            transfer_dst: true,
+            color_attachment: true,
+            ..ImageUsage::none()
+        };
+        let img_view = StorageImage::general_purpose_image_view(
+            queue.clone(),
+            [32, 32],
+            Format::R8G8B8A8_UNORM,
+            usage,
+        )
+        .unwrap();
+        assert_eq!(img_view.image().usage(), &usage);
+    }
+
+    #[test]
+    fn create_general_purpose_image_view_failed() {
+        let (device, queue) = gfx_dev_and_queue!();
+        // Not valid for image view...
+        let usage = ImageUsage {
+            transfer_src: true,
+            ..ImageUsage::none()
+        };
+        let img_result = StorageImage::general_purpose_image_view(
+            queue.clone(),
+            [32, 32],
+            Format::R8G8B8A8_UNORM,
+            usage,
+        );
+        assert_eq!(
+            img_result,
+            Err(ImageCreationError::DirectImageViewCreationFailed(
+                ImageViewCreationError::ImageMissingUsage
+            ))
+        );
     }
 }
