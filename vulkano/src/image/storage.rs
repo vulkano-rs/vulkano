@@ -11,6 +11,8 @@ use super::{
     sys::UnsafeImage, traits::ImageContent, ImageAccess, ImageCreateFlags, ImageCreationError,
     ImageDescriptorLayouts, ImageDimensions, ImageInner, ImageLayout, ImageUsage,
 };
+use crate::device::Queue;
+use crate::image::view::ImageView;
 use crate::{
     device::{physical::QueueFamily, Device, DeviceOwned},
     format::Format,
@@ -221,6 +223,55 @@ impl StorageImage {
             format,
             queue_families,
         }))
+    }
+
+    /// Allows the creation of a simple 2D general purpose image view from `StorageImage`.
+    /// ## Example
+    /// ```
+    /// use vulkano::image::StorageImage;
+    /// use vulkano::image::ImageUsage;
+    /// use vulkano::format::Format;
+    ///
+    /// let image = StorageImage::general_purpose_image_view(
+    ///     queue.clone(),
+    ///     size,
+    ///     Format::R8G8B8A8_UNORM,
+    ///     ImageUsage {
+    ///         sampled: true,
+    ///         storage: true,
+    ///         color_attachment: true,
+    ///         transfer_dst: true,
+    ///         ..ImageUsage::none()
+    ///     },
+    ///  )
+    ///  .unwrap();
+    /// ```
+    pub fn general_purpose_image_view(
+        queue: Arc<Queue>,
+        size: [u32; 2],
+        format: Format,
+        usage: ImageUsage,
+    ) -> Result<Arc<ImageView<StorageImage>>, ImageCreationError> {
+        let dims = ImageDimensions::Dim2d {
+            width: size[0],
+            height: size[1],
+            array_layers: 1,
+        };
+        let flags = ImageCreateFlags::none();
+        match StorageImage::with_usage(
+            queue.device().clone(),
+            dims,
+            format,
+            usage,
+            flags,
+            Some(queue.family()),
+        ) {
+            Ok(image) => match ImageView::new_default(image) {
+                Ok(view) => Ok(view),
+                Err(e) => Err(ImageCreationError::ImageViewCreationFailed(e)),
+            },
+            Err(e) => Err(e),
+        }
     }
 
     /// Exports posix file descriptor for the allocated memory

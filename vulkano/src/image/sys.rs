@@ -18,6 +18,7 @@ use super::{
     ImageSubresourceLayers, ImageSubresourceRange, ImageTiling, ImageUsage, SampleCount,
     SampleCounts,
 };
+use crate::image::view::ImageViewCreationError;
 use crate::{
     buffer::cpu_access::{ReadLockError, WriteLockError},
     check_errors,
@@ -1532,7 +1533,9 @@ pub enum ImageCreationError {
     FormatNotSupported,
 
     /// A requested usage flag was not supported by the given format.
-    FormatUsageNotSupported { usage: &'static str },
+    FormatUsageNotSupported {
+        usage: &'static str,
+    },
 
     /// The image configuration as queried through the `image_format_properties` function was not
     /// supported by the device.
@@ -1540,18 +1543,30 @@ pub enum ImageCreationError {
 
     /// The number of array layers exceeds the maximum supported by the device for this image
     /// configuration.
-    MaxArrayLayersExceeded { array_layers: u32, max: u32 },
+    MaxArrayLayersExceeded {
+        array_layers: u32,
+        max: u32,
+    },
 
     /// The specified dimensions exceed the maximum supported by the device for this image
     /// configuration.
-    MaxDimensionsExceeded { extent: [u32; 3], max: [u32; 3] },
+    MaxDimensionsExceeded {
+        extent: [u32; 3],
+        max: [u32; 3],
+    },
 
     /// The usage included one of the attachment types, and the specified width and height exceeded
     /// the `max_framebuffer_width` or `max_framebuffer_height` limits.
-    MaxFramebufferDimensionsExceeded { extent: [u32; 2], max: [u32; 2] },
+    MaxFramebufferDimensionsExceeded {
+        extent: [u32; 2],
+        max: [u32; 2],
+    },
 
     /// The maximum number of mip levels for the given dimensions has been exceeded.
-    MaxMipLevelsExceeded { mip_levels: u32, max: u32 },
+    MaxMipLevelsExceeded {
+        mip_levels: u32,
+        max: u32,
+    },
 
     /// Multisampling was enabled, and the `cube_compatible` flag was set.
     MultisampleCubeCompatible,
@@ -1573,7 +1588,9 @@ pub enum ImageCreationError {
 
     /// The sharing mode was set to `Concurrent`, but one of the specified queue family ids was not
     /// valid.
-    SharingInvalidQueueFamilyId { id: u32 },
+    SharingInvalidQueueFamilyId {
+        id: u32,
+    },
 
     /// A YCbCr format was given, but the specified width and/or height was not a multiple of 2
     /// as required by the format's chroma subsampling.
@@ -1587,6 +1604,8 @@ pub enum ImageCreationError {
 
     /// A YCbCr format was given, but the image type was not 2D.
     YcbcrFormatNot2d,
+
+    ImageViewCreationFailed(ImageViewCreationError),
 }
 
 impl error::Error for ImageCreationError {
@@ -1719,6 +1738,9 @@ impl fmt::Display for ImageCreationError {
                     fmt,
                     "a YCbCr format was given, but the image type was not 2D"
                 )
+            }
+            Self::ImageViewCreationFailed(e) => {
+                write!(fmt, "Image view creation failed {}", e)
             }
         }
     }

@@ -47,6 +47,7 @@
 - Fixed bug in various Vulkan calls where the returned data might be incomplete.
 - Fixed bug that triggered an assert if a render pass had an attachment with `Undefined` initial layout.
 - Added an `is_signaled` method to `FenceSignalFuture`.
+- Add a simple `general_purpose_image_view` method to `StorageImage` for less verbose image view creation for e.g. intermediary render targets.
 
 # Version 0.29.0 (2022-03-11)
 
