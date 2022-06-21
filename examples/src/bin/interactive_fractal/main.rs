@@ -139,7 +139,7 @@ fn compute_then_render(
     target_image_id: usize,
 ) {
     // Start frame
-    let before_pipeline_future = match renderer.start_frame() {
+    let before_pipeline_future = match renderer.acquire() {
         Err(e) => {
             println!("{}", e.to_string());
             return;
@@ -156,5 +156,5 @@ fn compute_then_render(
             .render(after_compute, image, renderer.swapchain_image_view());
     // Finish frame (which presents the view). Input last future. Wait for the future so resources are not in use
     // when we render
-    renderer.finish_frame(after_renderpass_future, true);
+    renderer.present(after_renderpass_future, true);
 }

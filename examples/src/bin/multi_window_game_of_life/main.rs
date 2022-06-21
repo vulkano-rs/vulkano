@@ -196,7 +196,7 @@ fn compute_then_render(
     }
 
     // Start frame
-    let before_pipeline_future = match window_renderer.start_frame() {
+    let before_pipeline_future = match window_renderer.acquire() {
         Err(e) => {
             println!("{}", e.to_string());
             return;
@@ -218,5 +218,5 @@ fn compute_then_render(
         .render(after_compute, color_image, target_image);
 
     // Finish frame. Wait for the future so resources are not in use when we render
-    window_renderer.finish_frame(after_render, true);
+    window_renderer.present(after_render, true);
 }

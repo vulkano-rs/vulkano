@@ -37,7 +37,7 @@ pub const DEFAULT_IMAGE_FORMAT: Format = Format::R8G8B8A8_UNORM;
 /// A window renderer struct holding the winit window surface and functionality for organizing your render
 /// between frames.
 ///
-/// Begin rendering with [`VulkanoWindowRenderer::start_frame`] and finish with [`VulkanoWindowRenderer::finish_frame`].
+/// Begin rendering with [`VulkanoWindowRenderer::acquire`] and finish with [`VulkanoWindowRenderer::present`].
 /// Between those, you should execute your command buffers.
 ///
 /// The intended usage of this struct is through [`crate::window::VulkanoWindows`].
@@ -229,11 +229,11 @@ impl VulkanoWindowRenderer {
         self.additional_image_views.remove(&key);
     }
 
-    /// Begin your rendering by calling `start_frame`.
+    /// Begin your rendering by calling `acquire`.
     /// Returns a [`GpuFuture`](vulkano::sync::future::GpuFuture) representing the time after which the swapchain image has been acquired
     /// and previous frame ended.
-    /// Execute your command buffers after calling this function and finish rendering by calling [`VulkanoWindowRenderer::finish_frame`].
-    pub fn start_frame(&mut self) -> std::result::Result<Box<dyn GpuFuture>, AcquireError> {
+    /// Execute your command buffers after calling this function and finish rendering by calling [`VulkanoWindowRenderer::present`].
+    pub fn acquire(&mut self) -> std::result::Result<Box<dyn GpuFuture>, AcquireError> {
         // Recreate swap chain if needed (when resizing of window occurs or swapchain is outdated)
         // Also resize render views if needed
         if self.recreate_swapchain {
@@ -265,7 +265,7 @@ impl VulkanoWindowRenderer {
     ///
     /// Depending on your implementation, you may want to wait on your future. For example, a compute shader
     /// dispatch using an image that's being later drawn should probably be waited on.
-    pub fn finish_frame(&mut self, after_future: Box<dyn GpuFuture>, wait_future: bool) {
+    pub fn present(&mut self, after_future: Box<dyn GpuFuture>, wait_future: bool) {
         let future = after_future
             .then_swapchain_present(
                 self.graphics_queue.clone(),
