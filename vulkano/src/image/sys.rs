@@ -1605,7 +1605,7 @@ pub enum ImageCreationError {
     /// A YCbCr format was given, but the image type was not 2D.
     YcbcrFormatNot2d,
 
-    ImageViewCreationFailed(ImageViewCreationError),
+    DirectImageViewCreationFailed(ImageViewCreationError),
 }
 
 impl error::Error for ImageCreationError {
@@ -1739,8 +1739,8 @@ impl fmt::Display for ImageCreationError {
                     "a YCbCr format was given, but the image type was not 2D"
                 )
             }
-            Self::ImageViewCreationFailed(e) => {
-                write!(fmt, "Image view creation failed {}", e)
+            Self::DirectImageViewCreationFailed(e) => {
+                write!(fmt, "Image view creation failed {}", e.to_string())
             }
         }
     }
