@@ -44,7 +44,7 @@ pub struct VulkanoWindows {
 }
 
 impl VulkanoWindows {
-    /// Creates a winit window with `VulkanoWindowRenderer` based on the given `WindowDescriptor`
+    /// Creates a winit window with [`VulkanoWindowRenderer`] based on the given [`WindowDescriptor`]
     /// input and swapchain creation modifications
     pub fn create_window(
         &mut self,

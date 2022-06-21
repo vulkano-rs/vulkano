@@ -16,12 +16,18 @@ use vulkano::instance::debug::{DebugUtilsMessenger, DebugUtilsMessengerCreateInf
 use vulkano::instance::{Instance, InstanceCreateInfo};
 use vulkano::Version;
 
+/// A config struct to pass various creation options to create [`VulkanoContext`].
+#[derive(Debug)]
 pub struct VulkanoConfig {
     instance_create_info: InstanceCreateInfo,
+    /// Optionally you can pass the `DebugUtilsMessengerCreateInfo` to create the debug callback
+    /// for printing debug information at runtime.
     debug_create_info: Option<DebugUtilsMessengerCreateInfo>,
+    /// Pass priority order function for your physical device selection. See default for example.
     device_priority_fn: fn(device_type: PhysicalDeviceType) -> u32,
     device_extensions: DeviceExtensions,
     device_features: Features,
+    /// Print your selected device name at start.
     print_device_name: bool,
 }
 
@@ -51,7 +57,11 @@ impl Default for VulkanoConfig {
     }
 }
 
-/// VulkanoContext is a utility struct to create and access Vulkano device(s), queues and so on.
+/// A utility struct to create, access and hold alive Vulkano device, instance and queues.
+///
+/// Vulkano context is used in the creation of your graphics or compute pipelines, images and
+/// in the creation of [`VulkanoWindowRenderer`] through [`VulkanoWindows`].
+///
 /// ## Example
 ///
 /// ```
@@ -81,7 +91,7 @@ impl Default for VulkanoContext {
 }
 
 impl VulkanoContext {
-    /// Creates a new `VulkanoContext`.
+    /// Creates a new [`VulkanoContext`].
     ///
     /// # Panics
     ///

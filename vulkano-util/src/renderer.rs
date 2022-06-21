@@ -34,12 +34,13 @@ pub type DeviceImageView = Arc<ImageView<StorageImage>>;
 /// Most common image format
 pub const DEFAULT_IMAGE_FORMAT: Format = Format::R8G8B8A8_UNORM;
 
-/// A window renderer struct holding the winit window surface, functionality to organize and resize
-/// swapchain images.
+/// A window renderer struct holding the winit window surface and functionality for organizing your render
+/// between frames.
 ///
-/// Begin rendering with `start_frame` and finish with `finish_frame`.
+/// Begin rendering with [`VulkanoWindowRenderer::start_frame`] and finish with [`VulkanoWindowRenderer::finish_frame`].
+/// Between those, you should execute your command buffers.
 ///
-/// The intended usage of this struct is through `VulkanoWindows`.
+/// The intended usage of this struct is through [`crate::window::VulkanoWindows`].
 pub struct VulkanoWindowRenderer {
     surface: Arc<Surface<Window>>,
     graphics_queue: Arc<Queue>,
@@ -59,8 +60,8 @@ unsafe impl Sync for VulkanoWindowRenderer {}
 unsafe impl Send for VulkanoWindowRenderer {}
 
 impl VulkanoWindowRenderer {
-    /// Creates a new `VulkanoWindowRenderer` which is used to orchestrate your rendering with Vulkano.
-    /// Pass `WindowDescriptor` and optionally a function modifying the `SapchainCreateInfo` parameters.
+    /// Creates a new [`VulkanoWindowRenderer`] which is used to orchestrate your rendering with Vulkano.
+    /// Pass [`WindowDescriptor`] and optionally a function modifying the [`SwapchainCreateInfo`](vulkano::swapchain::SwapchainCreateInfo) parameters.
     pub(crate) fn new(
         vulkano_context: &VulkanoContext,
         window: winit::window::Window,
@@ -93,7 +94,7 @@ impl VulkanoWindowRenderer {
         }
     }
 
-    /// Creates the swapchain and its images based on `WindowDescriptor`. The swapchain creation
+    /// Creates the swapchain and its images based on [`WindowDescriptor`]. The swapchain creation
     /// can be modified with the `swapchain_create_info_modify` function passed as an input.
     fn create_swap_chain(
         device: Arc<Device>,
@@ -149,12 +150,12 @@ impl VulkanoWindowRenderer {
         self.image_index
     }
 
-    /// Graphics queue of this window. You also can access this through VulkanoContext
+    /// Graphics queue of this window. You also can access this through [`VulkanoContext`]
     pub fn graphics_queue(&self) -> Arc<Queue> {
         self.graphics_queue.clone()
     }
 
-    /// Compute queue of this window. You can also access this through VulkanoContext
+    /// Compute queue of this window. You can also access this through [`VulkanoContext`]
     pub fn compute_queue(&self) -> Arc<Queue> {
         self.compute_queue.clone()
     }
@@ -229,9 +230,9 @@ impl VulkanoWindowRenderer {
     }
 
     /// Begin your rendering by calling `start_frame`.
-    /// Returns a `GpuFuture` representing the time after which the swapchain image has been acquired
+    /// Returns a [`GpuFuture`](vulkano::sync::future::GpuFuture) representing the time after which the swapchain image has been acquired
     /// and previous frame ended.
-    /// Execute your command buffers after calling this function and finish rendering by calling `finish_frame`.
+    /// Execute your command buffers after calling this function and finish rendering by calling [`VulkanoWindowRenderer::finish_frame`].
     pub fn start_frame(&mut self) -> std::result::Result<Box<dyn GpuFuture>, AcquireError> {
         // Recreate swap chain if needed (when resizing of window occurs or swapchain is outdated)
         // Also resize render views if needed
