@@ -34,6 +34,12 @@ pub type DeviceImageView = Arc<ImageView<StorageImage>>;
 /// Most common image format
 pub const DEFAULT_IMAGE_FORMAT: Format = Format::R8G8B8A8_UNORM;
 
+/// A window renderer struct holding the winit window surface, functionality to organize and resize
+/// swapchain images.
+///
+/// Begin rendering with `start_frame` and finish with `finish_frame`.
+///
+/// The intended usage of this struct is through `VulkanoWindows`.
 pub struct VulkanoWindowRenderer {
     surface: Arc<Surface<Window>>,
     graphics_queue: Arc<Queue>,
@@ -41,6 +47,7 @@ pub struct VulkanoWindowRenderer {
     swap_chain: Arc<Swapchain<Window>>,
     final_views: Vec<SwapchainImageView>,
     /// Additional image views that you can add which are resized with the window.
+    /// Use associated functions to get access to these.
     additional_image_views: HashMap<usize, DeviceImageView>,
     recreate_swapchain: bool,
     previous_frame_end: Option<Box<dyn GpuFuture>>,
@@ -53,7 +60,8 @@ unsafe impl Send for VulkanoWindowRenderer {}
 
 impl VulkanoWindowRenderer {
     /// Creates a new `VulkanoWindowRenderer` which is used to orchestrate your rendering with Vulkano.
-    pub fn new(
+    /// Pass `WindowDescriptor` and optionally a function modifying the `SapchainCreateInfo` parameters.
+    pub(crate) fn new(
         vulkano_context: &VulkanoContext,
         window: winit::window::Window,
         descriptor: &WindowDescriptor,
@@ -85,7 +93,8 @@ impl VulkanoWindowRenderer {
         }
     }
 
-    /// Creates the swapchain and its images
+    /// Creates the swapchain and its images based on `WindowDescriptor`. The swapchain creation
+    /// can be modified with the `swapchain_create_info_modify` function passed as an input.
     fn create_swap_chain(
         device: Arc<Device>,
         surface: Arc<Surface<Window>>,
@@ -219,10 +228,10 @@ impl VulkanoWindowRenderer {
         self.additional_image_views.remove(&key);
     }
 
-    /// This is the first to call in render orchestration.
-    /// Returns a gpu future representing the time after which the swapchain image has been acquired
+    /// Begin your rendering by calling `start_frame`.
+    /// Returns a `GpuFuture` representing the time after which the swapchain image has been acquired
     /// and previous frame ended.
-    /// After calling this, you should execute your command buffers and pass your last future to `finish_frame`.
+    /// Execute your command buffers after calling this function and finish rendering by calling `finish_frame`.
     pub fn start_frame(&mut self) -> std::result::Result<Box<dyn GpuFuture>, AcquireError> {
         // Recreate swap chain if needed (when resizing of window occurs or swapchain is outdated)
         // Also resize render views if needed
@@ -251,7 +260,7 @@ impl VulkanoWindowRenderer {
         Ok(future.boxed())
     }
 
-    /// Finishes render by presenting the swapchain. Pass your last future as an input to this function.
+    /// Finishes rendering by presenting the swapchain. Pass your last future as an input to this function.
     pub fn finish_frame(&mut self, after_future: Box<dyn GpuFuture>) {
         let future = after_future
             .then_swapchain_present(

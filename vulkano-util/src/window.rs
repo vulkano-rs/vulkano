@@ -42,6 +42,8 @@ pub struct VulkanoWindows {
 }
 
 impl VulkanoWindows {
+    /// Creates a winit window with `VulkanoWindowRenderer` based on the given `WindowDescriptor`
+    /// input and swapchain creation modifications
     pub fn create_window(
         &mut self,
         event_loop: &winit::event_loop::EventLoopWindowTarget<()>,
@@ -239,7 +241,7 @@ impl VulkanoWindows {
     }
 }
 
-pub fn get_fitting_videomode(
+fn get_fitting_videomode(
     monitor: &winit::monitor::MonitorHandle,
     width: u32,
     height: u32,
@@ -269,7 +271,7 @@ pub fn get_fitting_videomode(
     modes.first().unwrap().clone()
 }
 
-pub fn get_best_videomode(monitor: &winit::monitor::MonitorHandle) -> winit::monitor::VideoMode {
+fn get_best_videomode(monitor: &winit::monitor::MonitorHandle) -> winit::monitor::VideoMode {
     let mut modes = monitor.video_modes().collect::<Vec<_>>();
     modes.sort_by(|a, b| {
         use std::cmp::Ordering::*;
