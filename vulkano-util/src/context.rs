@@ -239,7 +239,7 @@ fn create_instance(instance_create_info: InstanceCreateInfo) -> Arc<Instance> {
     {
         match Instance::new(instance_create_info) {
             Err(e) => match e {
-                InstanceCreationError::LoadingError(le) => {
+                vulkano::instance::InstanceCreationError::LoadingError(le) => {
                      Err(le).expect("Failed to create instance. Did you install vulkanSDK from https://vulkan.lunarg.com/sdk/home ?")
                 }
                 _ => Err(e).expect("Failed to create instance"),
