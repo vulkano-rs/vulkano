@@ -262,6 +262,9 @@ impl VulkanoWindowRenderer {
     }
 
     /// Finishes rendering by presenting the swapchain. Pass your last future as an input to this function.
+    ///
+    /// Depending on your implementation, you may want to wait on your future. For example, a compute shader
+    /// dispatch using an image that's being later drawn should probably be waited on.
     pub fn finish_frame(&mut self, after_future: Box<dyn GpuFuture>, wait_future: bool) {
         let future = after_future
             .then_swapchain_present(
