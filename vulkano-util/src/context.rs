@@ -17,14 +17,15 @@ use vulkano::instance::{Instance, InstanceCreateInfo};
 use vulkano::Version;
 
 /// A config struct to pass various creation options to create [`VulkanoContext`].
-#[derive(Debug)]
 pub struct VulkanoConfig {
     instance_create_info: InstanceCreateInfo,
-    /// Optionally you can pass the `DebugUtilsMessengerCreateInfo` to create the debug callback
+    /// Pass the `DebugUtilsMessengerCreateInfo` to create the debug callback
     /// for printing debug information at runtime.
     debug_create_info: Option<DebugUtilsMessengerCreateInfo>,
+    /// Pass filter function for your physical device selection. See default for example.
+    device_filter_fn: Arc<dyn Fn(&PhysicalDevice) -> bool>,
     /// Pass priority order function for your physical device selection. See default for example.
-    device_priority_fn: fn(device_type: PhysicalDeviceType) -> u32,
+    device_priority_fn: Arc<dyn Fn(&PhysicalDevice) -> u32>,
     device_extensions: DeviceExtensions,
     device_features: Features,
     /// Print your selected device name at start.
@@ -33,6 +34,10 @@ pub struct VulkanoConfig {
 
 impl Default for VulkanoConfig {
     fn default() -> Self {
+        let device_extensions = DeviceExtensions {
+            khr_swapchain: true,
+            ..DeviceExtensions::none()
+        };
         VulkanoConfig {
             instance_create_info: InstanceCreateInfo {
                 application_version: Version::V1_2,
@@ -40,18 +45,18 @@ impl Default for VulkanoConfig {
                 ..Default::default()
             },
             debug_create_info: None,
-            device_priority_fn: |p| match p {
+            device_filter_fn: Arc::new(move |p| {
+                p.supported_extensions().is_superset_of(&device_extensions)
+            }),
+            device_priority_fn: Arc::new(|p| match p.properties().device_type {
                 PhysicalDeviceType::DiscreteGpu => 1,
                 PhysicalDeviceType::IntegratedGpu => 2,
                 PhysicalDeviceType::VirtualGpu => 3,
                 PhysicalDeviceType::Cpu => 4,
                 PhysicalDeviceType::Other => 5,
-            },
+            }),
             print_device_name: true,
-            device_extensions: DeviceExtensions {
-                khr_swapchain: true,
-                ..DeviceExtensions::none()
-            },
+            device_extensions,
             device_features: Features::none(),
         }
     }
@@ -111,7 +116,8 @@ impl VulkanoContext {
         };
         // Get prioritized device
         let physical_device = PhysicalDevice::enumerate(&instance)
-            .min_by_key(|p| (config.device_priority_fn)(p.properties().device_type))
+            .filter(|p| (config.device_filter_fn)(p))
+            .min_by_key(|p| (config.device_priority_fn)(p))
             .expect("Failed to create physical device");
         // Print used device
         if config.print_device_name {
