@@ -1,4 +1,6 @@
-// Mostly a copy from https://github.com/bevyengine/bevy/tree/main/crates/bevy_window, modified to fit Vulkano.
+// Modified from https://github.com/bevyengine/bevy/tree/main/crates/bevy_window, to fit Vulkano.
+// Their licences: https://github.com/bevyengine/bevy/blob/main/LICENSE-MIT
+// https://github.com/bevyengine/bevy/blob/main/LICENSE-APACHE
 
 // Copyright (c) 2022 The vulkano developers
 // Licensed under the Apache License, Version 2.0
