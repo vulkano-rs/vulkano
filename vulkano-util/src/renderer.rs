@@ -262,7 +262,7 @@ impl VulkanoWindowRenderer {
     }
 
     /// Finishes rendering by presenting the swapchain. Pass your last future as an input to this function.
-    pub fn finish_frame(&mut self, after_future: Box<dyn GpuFuture>) {
+    pub fn finish_frame(&mut self, after_future: Box<dyn GpuFuture>, wait_future: bool) {
         let future = after_future
             .then_swapchain_present(
                 self.graphics_queue.clone(),
@@ -271,14 +271,17 @@ impl VulkanoWindowRenderer {
             )
             .then_signal_fence_and_flush();
         match future {
-            Ok(future) => {
-                // Prevent OutOfMemory error on Nvidia :(
-                // https://github.com/vulkano-rs/vulkano/issues/627.
-                // Maybe there's some way to prevent this with synchronization...
-                match future.wait(None) {
-                    Ok(x) => x,
-                    Err(err) => println!("{:?}", err),
+            Ok(mut future) => {
+                if wait_future {
+                    match future.wait(None) {
+                        Ok(x) => x,
+                        Err(err) => println!("{:?}", err),
+                    }
+                    // wait allows you to organize resource waiting yourself.
+                } else {
+                    future.cleanup_finished();
                 }
+
                 self.previous_frame_end = Some(future.boxed());
             }
             Err(FlushError::OutOfDate) => {

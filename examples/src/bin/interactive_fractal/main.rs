@@ -154,6 +154,7 @@ fn compute_then_render(
     let after_renderpass_future =
         app.place_over_frame
             .render(after_compute, image, renderer.swapchain_image_view());
-    // Finish frame (which presents the view). Input last future
-    renderer.finish_frame(after_renderpass_future);
+    // Finish frame (which presents the view). Input last future. Wait for the future so resources are not in use
+    // when we render
+    renderer.finish_frame(after_renderpass_future, true);
 }

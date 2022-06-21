@@ -217,6 +217,6 @@ fn compute_then_render(
         .place_over_frame
         .render(after_compute, color_image, target_image);
 
-    // Finish frame
-    window_renderer.finish_frame(after_render);
+    // Finish frame. Wait for the future so resources are not in use when we render
+    window_renderer.finish_frame(after_render, true);
 }
