@@ -69,10 +69,9 @@ impl Default for VulkanoConfig {
 ///
 /// ## Example
 ///
-/// ```
+/// ```no_run
 /// use vulkano_util::context::{VulkanoConfig, VulkanoContext};
 ///
-/// #[test]
 /// fn test() {
 ///     let context = VulkanoContext::new(VulkanoConfig::default());
 ///     // Then create event loop, windows, pipelines, etc.
@@ -250,17 +249,5 @@ fn create_instance(instance_create_info: InstanceCreateInfo) -> Arc<Instance> {
     #[cfg(not(target_os = "macos"))]
     {
         Instance::new(instance_create_info).expect("Failed to create instance")
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::context::{VulkanoConfig, VulkanoContext};
-
-    // Simply test creation of the context...
-    #[test]
-    fn test_creation() {
-        let context = VulkanoContext::new(VulkanoConfig::default());
-        assert_ne!(context.max_memory(), 0);
     }
 }
