@@ -7,10 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::{
-    pixels_draw::PixelsDrawPipeline,
-    vulkano_context::{DeviceImageView, FinalImageView},
-};
+use crate::pixels_draw::PixelsDrawPipeline;
 use std::sync::Arc;
 use vulkano::{
     command_buffer::{
@@ -22,6 +19,7 @@ use vulkano::{
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     sync::GpuFuture,
 };
+use vulkano_util::renderer::{DeviceImageView, SwapchainImageView};
 
 /// A render pass which places an incoming image over frame filling it
 pub struct RenderPassPlaceOverFrame {
@@ -62,7 +60,7 @@ impl RenderPassPlaceOverFrame {
         &mut self,
         before_future: F,
         view: DeviceImageView,
-        target: FinalImageView,
+        target: SwapchainImageView,
     ) -> Box<dyn GpuFuture>
     where
         F: GpuFuture + 'static,

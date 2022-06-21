@@ -39,7 +39,7 @@ fn main() {
     let mut event_loop = EventLoop::new();
     let context = VulkanoContext::new(VulkanoConfig::default());
     let mut windows = VulkanoWindows::default();
-    windows.create_window(
+    let _id = windows.create_window(
         &event_loop,
         &context,
         &WindowDescriptor {

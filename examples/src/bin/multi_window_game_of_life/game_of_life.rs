@@ -7,10 +7,10 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::{vulkano_context::DeviceImageView, vulkano_window::create_device_image};
 use cgmath::Vector2;
 use rand::Rng;
 use std::sync::Arc;
+use vulkano::image::{ImageUsage, StorageImage};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer},
@@ -21,6 +21,7 @@ use vulkano::{
     pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
     sync::GpuFuture,
 };
+use vulkano_util::renderer::DeviceImageView;
 
 /// Pipeline holding double buffered grid & color image.
 /// Grids are used to calculate the state, and color image is used to show the output.
@@ -64,7 +65,19 @@ impl GameOfLifeComputePipeline {
             .unwrap()
         };
 
-        let image = create_device_image(compute_queue.clone(), size, Format::R8G8B8A8_UNORM);
+        let image = StorageImage::general_purpose_image_view(
+            compute_queue.clone(),
+            size,
+            Format::R8G8B8A8_UNORM,
+            ImageUsage {
+                sampled: true,
+                storage: true,
+                color_attachment: true,
+                transfer_dst: true,
+                ..ImageUsage::none()
+            },
+        )
+        .unwrap();
         GameOfLifeComputePipeline {
             compute_queue,
             compute_life_pipeline,

@@ -8,16 +8,14 @@
 // according to those terms.
 
 use crate::{
-    game_of_life::GameOfLifeComputePipeline, render_pass::RenderPassPlaceOverFrame,
-    vulkano_config::VulkanoConfig, vulkano_context::VulkanoContext, vulkano_window::VulkanoWindow,
-    SCALING, WINDOW2_HEIGHT, WINDOW2_WIDTH, WINDOW_HEIGHT, WINDOW_WIDTH,
+    game_of_life::GameOfLifeComputePipeline, render_pass::RenderPassPlaceOverFrame, SCALING,
+    WINDOW2_HEIGHT, WINDOW2_WIDTH, WINDOW_HEIGHT, WINDOW_WIDTH,
 };
 use std::{collections::HashMap, sync::Arc};
 use vulkano::{device::Queue, format::Format};
-use winit::{
-    event_loop::EventLoop,
-    window::{WindowBuilder, WindowId},
-};
+use vulkano_util::context::{VulkanoConfig, VulkanoContext};
+use vulkano_util::window::{VulkanoWindows, WindowDescriptor};
+use winit::{event_loop::EventLoop, window::WindowId};
 
 pub struct RenderPipeline {
     pub compute: GameOfLifeComputePipeline,
@@ -40,64 +38,72 @@ impl RenderPipeline {
 
 pub struct App {
     pub context: VulkanoContext,
-    pub windows: HashMap<WindowId, VulkanoWindow>,
+    pub windows: VulkanoWindows,
     pub pipelines: HashMap<WindowId, RenderPipeline>,
-    pub primary_window_id: WindowId,
 }
 
 impl App {
     pub fn open(&mut self, event_loop: &EventLoop<()>) {
         // Create windows & pipelines
-        let winit_window_primary_builder = WindowBuilder::new()
-            .with_inner_size(winit::dpi::LogicalSize::new(
-                WINDOW_WIDTH as f32,
-                WINDOW_HEIGHT as f32,
-            ))
-            .with_title("Game of Life Primary");
-        let winit_window_secondary_builder = WindowBuilder::new()
-            .with_inner_size(winit::dpi::LogicalSize::new(
-                WINDOW2_WIDTH as f32,
-                WINDOW2_HEIGHT as f32,
-            ))
-            .with_title("Game of Life Secondary");
-        let winit_window_primary = winit_window_primary_builder.build(&event_loop).unwrap();
-        let winit_window_secondary = winit_window_secondary_builder.build(&event_loop).unwrap();
-        let window_primary = VulkanoWindow::new(&self.context, winit_window_primary, false);
-        let window_secondary = VulkanoWindow::new(&self.context, winit_window_secondary, false);
+        let id1 = self.windows.create_window(
+            event_loop,
+            &self.context,
+            &WindowDescriptor {
+                width: WINDOW_WIDTH,
+                height: WINDOW_HEIGHT,
+                title: "Game of Life Primary".to_string(),
+                ..Default::default()
+            },
+            |_| {},
+        );
+        let id2 = self.windows.create_window(
+            event_loop,
+            &self.context,
+            &WindowDescriptor {
+                width: WINDOW2_WIDTH,
+                height: WINDOW2_HEIGHT,
+                title: "Game of Life Secondary".to_string(),
+                ..Default::default()
+            },
+            |_| {},
+        );
         self.pipelines.insert(
-            window_primary.window().id(),
+            id1,
             RenderPipeline::new(
                 // Use same queue.. for synchronization
                 self.context.graphics_queue(),
                 self.context.graphics_queue(),
-                [WINDOW_WIDTH / SCALING, WINDOW_HEIGHT / SCALING],
-                window_primary.swapchain_format(),
+                [
+                    (WINDOW_WIDTH / SCALING) as u32,
+                    (WINDOW_HEIGHT / SCALING) as u32,
+                ],
+                self.windows
+                    .get_primary_renderer()
+                    .unwrap()
+                    .swapchain_format(),
             ),
         );
         self.pipelines.insert(
-            window_secondary.window().id(),
+            id2,
             RenderPipeline::new(
                 self.context.graphics_queue(),
                 self.context.graphics_queue(),
-                [WINDOW2_WIDTH / SCALING, WINDOW2_HEIGHT / SCALING],
-                window_secondary.swapchain_format(),
+                [
+                    (WINDOW2_WIDTH / SCALING) as u32,
+                    (WINDOW2_HEIGHT / SCALING) as u32,
+                ],
+                self.windows.get_renderer(id2).unwrap().swapchain_format(),
             ),
         );
-        self.primary_window_id = window_primary.window().id();
-        self.windows
-            .insert(window_primary.window().id(), window_primary);
-        self.windows
-            .insert(window_secondary.window().id(), window_secondary);
     }
 }
 
 impl Default for App {
     fn default() -> Self {
         App {
-            context: VulkanoContext::new(&VulkanoConfig::default()),
-            windows: HashMap::new(),
+            context: VulkanoContext::new(VulkanoConfig::default()),
+            windows: VulkanoWindows::default(),
             pipelines: HashMap::new(),
-            primary_window_id: unsafe { WindowId::dummy() },
         }
     }
 }
