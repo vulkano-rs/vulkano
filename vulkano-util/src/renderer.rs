@@ -26,7 +26,7 @@ use vulkano::{
 use vulkano_win::create_surface_from_winit;
 use winit::window::Window;
 
-/// Final render target to which you draw and then display on the window
+/// Swapchain Image View. Your final render target typically.
 pub type SwapchainImageView = Arc<ImageView<SwapchainImage<Window>>>;
 /// Multipurpose image view
 pub type DeviceImageView = Arc<ImageView<StorageImage>>;

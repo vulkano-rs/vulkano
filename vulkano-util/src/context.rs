@@ -16,7 +16,7 @@ use vulkano::instance::debug::{DebugUtilsMessenger, DebugUtilsMessengerCreateInf
 use vulkano::instance::{Instance, InstanceCreateInfo};
 use vulkano::Version;
 
-/// A config struct to pass various creation options to create [`VulkanoContext`].
+/// A configuration struct to pass various creation options to create [`VulkanoContext`].
 pub struct VulkanoConfig {
     instance_create_info: InstanceCreateInfo,
     /// Pass the `DebugUtilsMessengerCreateInfo` to create the debug callback
@@ -75,6 +75,7 @@ impl Default for VulkanoConfig {
 /// #[test]
 /// fn test() {
 ///     let context = VulkanoContext::new(VulkanoConfig::default());
+///     // Then create event loop, windows, pipelines, etc.
 /// }
 /// ```
 pub struct VulkanoContext {
@@ -144,8 +145,8 @@ impl VulkanoContext {
         }
     }
 
-    /// Creates vulkan device with required queue families and required extensions. Returns an optional secondary queue for compute.
-    /// However, typically you can just use the gfx queue for that.
+    /// Creates vulkano device with required queue families and required extensions. Creates a separate queue for compute
+    /// if possible. If not, same queue as graphics is used.
     fn create_device(
         physical: PhysicalDevice,
         device_extensions: DeviceExtensions,
@@ -156,54 +157,41 @@ impl VulkanoContext {
             .enumerate()
             .find(|&(_i, q)| q.supports_graphics())
             .expect("Could not find a queue that supports graphics");
+        // Try finding a separate queue for compute
         let compute_family_data = physical
             .queue_families()
             .enumerate()
-            .find(|&(i, q)| i != gfx_index && q.supports_compute());
+            .find(|&(i, q)| q.supports_compute() && i != gfx_index);
 
-        // If we have an extra compute queue:
-        if let Some((_compute_index, queue_family_compute)) = compute_family_data {
-            let (device, mut queues) = {
-                Device::new(
-                    physical,
-                    DeviceCreateInfo {
-                        enabled_extensions: physical
-                            .required_extensions()
-                            .union(&device_extensions),
-                        enabled_features: features,
-                        queue_create_infos: vec![
-                            QueueCreateInfo::family(queue_family_graphics),
-                            QueueCreateInfo::family(queue_family_compute),
-                        ],
-                        ..Default::default()
-                    },
-                )
-                .expect("Failed to create device")
-            };
-            let gfx_queue = queues.next().unwrap();
-            let compute_queue = queues.next().unwrap();
-            (device, gfx_queue, compute_queue)
-        }
-        // And if we do not have an extra compute queue, just use the same queue for gfx and compute
-        else {
-            let (device, mut queues) = {
-                Device::new(
-                    physical,
-                    DeviceCreateInfo {
-                        enabled_extensions: physical
-                            .required_extensions()
-                            .union(&device_extensions),
-                        enabled_features: features,
-                        queue_create_infos: vec![QueueCreateInfo::family(queue_family_graphics)],
-                        ..Default::default()
-                    },
-                )
-                .expect("Failed to create device")
-            };
-            let gfx_queue = queues.next().unwrap();
-            let compute_queue = gfx_queue.clone();
-            (device, gfx_queue, compute_queue)
-        }
+        let is_separate_compute_queue = compute_family_data.is_some();
+        let queue_create_infos = if is_separate_compute_queue {
+            let (_i, queue_family_compute) = compute_family_data.unwrap();
+            vec![
+                QueueCreateInfo::family(queue_family_graphics),
+                QueueCreateInfo::family(queue_family_compute),
+            ]
+        } else {
+            vec![QueueCreateInfo::family(queue_family_graphics)]
+        };
+        let (device, mut queues) = {
+            Device::new(
+                physical,
+                DeviceCreateInfo {
+                    enabled_extensions: physical.required_extensions().union(&device_extensions),
+                    enabled_features: features,
+                    queue_create_infos,
+                    ..Default::default()
+                },
+            )
+            .expect("Failed to create device")
+        };
+        let gfx_queue = queues.next().unwrap();
+        let compute_queue = if is_separate_compute_queue {
+            queues.next().unwrap()
+        } else {
+            gfx_queue.clone()
+        };
+        (device, gfx_queue, compute_queue)
     }
 
     /// Check device name
