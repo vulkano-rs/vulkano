@@ -62,7 +62,7 @@ unsafe impl Send for VulkanoWindowRenderer {}
 impl VulkanoWindowRenderer {
     /// Creates a new [`VulkanoWindowRenderer`] which is used to orchestrate your rendering with Vulkano.
     /// Pass [`WindowDescriptor`] and optionally a function modifying the [`SwapchainCreateInfo`](vulkano::swapchain::SwapchainCreateInfo) parameters.
-    pub(crate) fn new(
+    pub fn new(
         vulkano_context: &VulkanoContext,
         window: winit::window::Window,
         descriptor: &WindowDescriptor,
