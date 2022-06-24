@@ -701,7 +701,7 @@ impl ImageViewCreateInfo {
 }
 
 /// Error that can happen when creating an image view.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ImageViewCreationError {
     /// Allocating memory failed.
     OomError(OomError),

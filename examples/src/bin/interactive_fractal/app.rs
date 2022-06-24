@@ -7,13 +7,16 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::{
-    fractal_compute_pipeline::FractalComputePipeline,
-    renderer::{InterimImageView, RenderOptions, Renderer},
-};
+use crate::fractal_compute_pipeline::FractalComputePipeline;
+use crate::place_over_frame::RenderPassPlaceOverFrame;
 use cgmath::Vector2;
+use std::sync::Arc;
 use std::time::Instant;
+use vulkano::device::Queue;
 use vulkano::sync::GpuFuture;
+use vulkano_util::renderer::{DeviceImageView, VulkanoWindowRenderer};
+use vulkano_util::window::WindowDescriptor;
+use winit::window::Fullscreen;
 use winit::{
     dpi::PhysicalPosition,
     event::{
@@ -29,6 +32,8 @@ const MOVE_SPEED: f32 = 0.5;
 pub struct FractalApp {
     /// Pipeline that computes Mandelbrot & Julia fractals and writes them to an image
     fractal_pipeline: FractalComputePipeline,
+    /// Our render pipeline (pass)
+    pub place_over_frame: RenderPassPlaceOverFrame,
     /// Toggle that flips between julia and mandelbrot
     pub is_julia: bool,
     /// Togglet thats stops the movement on Julia
@@ -52,9 +57,10 @@ pub struct FractalApp {
 }
 
 impl FractalApp {
-    pub fn new(renderer: &Renderer) -> FractalApp {
+    pub fn new(gfx_queue: Arc<Queue>, image_format: vulkano::format::Format) -> FractalApp {
         FractalApp {
-            fractal_pipeline: FractalComputePipeline::new(renderer.queue()),
+            fractal_pipeline: FractalComputePipeline::new(gfx_queue.clone()),
+            place_over_frame: RenderPassPlaceOverFrame::new(gfx_queue, image_format),
             is_julia: false,
             is_c_paused: false,
             c: Vector2::new(0.0, 0.0),
@@ -87,7 +93,7 @@ Usage:
     }
 
     /// Run our compute pipeline and return a future of when the compute is finished
-    pub fn compute(&mut self, image_target: InterimImageView) -> Box<dyn GpuFuture> {
+    pub fn compute(&mut self, image_target: DeviceImageView) -> Box<dyn GpuFuture> {
         self.fractal_pipeline.compute(
             image_target,
             self.c,
@@ -128,7 +134,7 @@ Usage:
     }
 
     /// Updates app state based on input state
-    pub fn update_state_after_inputs(&mut self, renderer: &mut Renderer) {
+    pub fn update_state_after_inputs(&mut self, renderer: &mut VulkanoWindowRenderer) {
         // Zoom in or out
         if self.input_state.scroll_delta > 0. {
             self.scale /= 1.05;
@@ -182,12 +188,17 @@ Usage:
         }
         // Toggle full-screen
         if self.input_state.toggle_full_screen {
-            renderer.toggle_full_screen()
+            let is_full_screen = renderer.window().fullscreen().is_some();
+            renderer.window().set_fullscreen(if !is_full_screen {
+                Some(Fullscreen::Borderless(renderer.window().current_monitor()))
+            } else {
+                None
+            });
         }
     }
 
     /// Update input state
-    pub fn handle_input(&mut self, window_size: [u32; 2], event: &Event<()>) {
+    pub fn handle_input(&mut self, window_size: [f32; 2], event: &Event<()>) {
         self.input_state.handle_input(window_size, event);
     }
 
@@ -208,7 +219,7 @@ fn state_is_pressed(state: ElementState) -> bool {
 /// Winit only has Pressed and Released events, thus continuous movement needs toggles.
 /// Panning is one of those where continuous movement feels better.
 struct InputState {
-    pub window_size: [u32; 2],
+    pub window_size: [f32; 2],
     pub pan_up: bool,
     pub pan_down: bool,
     pub pan_right: bool,
@@ -227,7 +238,10 @@ struct InputState {
 impl InputState {
     fn new() -> InputState {
         InputState {
-            window_size: RenderOptions::default().window_size,
+            window_size: [
+                WindowDescriptor::default().width,
+                WindowDescriptor::default().height,
+            ],
             pan_up: false,
             pan_down: false,
             pan_right: false,
@@ -265,7 +279,7 @@ impl InputState {
         }
     }
 
-    fn handle_input(&mut self, window_size: [u32; 2], event: &Event<()>) {
+    fn handle_input(&mut self, window_size: [f32; 2], event: &Event<()>) {
         self.window_size = window_size;
         if let winit::event::Event::WindowEvent { event, .. } = event {
             match event {

@@ -11,6 +11,8 @@ use super::{
     sys::UnsafeImage, traits::ImageContent, ImageAccess, ImageCreateFlags, ImageCreationError,
     ImageDescriptorLayouts, ImageDimensions, ImageInner, ImageLayout, ImageUsage,
 };
+use crate::device::Queue;
+use crate::image::view::ImageView;
 use crate::{
     device::{physical::QueueFamily, Device, DeviceOwned},
     format::Format,
@@ -223,6 +225,39 @@ impl StorageImage {
         }))
     }
 
+    /// Allows the creation of a simple 2D general purpose image view from `StorageImage`.
+    pub fn general_purpose_image_view(
+        queue: Arc<Queue>,
+        size: [u32; 2],
+        format: Format,
+        usage: ImageUsage,
+    ) -> Result<Arc<ImageView<StorageImage>>, ImageCreationError> {
+        let dims = ImageDimensions::Dim2d {
+            width: size[0],
+            height: size[1],
+            array_layers: 1,
+        };
+        let flags = ImageCreateFlags::none();
+        let image_result = StorageImage::with_usage(
+            queue.device().clone(),
+            dims,
+            format,
+            usage,
+            flags,
+            Some(queue.family()),
+        );
+        match image_result {
+            Ok(image) => {
+                let image_view = ImageView::new_default(image);
+                match image_view {
+                    Ok(view) => Ok(view),
+                    Err(e) => Err(ImageCreationError::DirectImageViewCreationFailed(e)),
+                }
+            }
+            Err(e) => Err(e),
+        }
+    }
+
     /// Exports posix file descriptor for the allocated memory
     /// requires `khr_external_memory_fd` and `khr_external_memory` extensions to be loaded.
     pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryExportError> {
@@ -318,7 +353,8 @@ where
 mod tests {
     use super::StorageImage;
     use crate::format::Format;
-    use crate::image::ImageDimensions;
+    use crate::image::view::ImageViewCreationError;
+    use crate::image::{ImageAccess, ImageCreationError, ImageDimensions, ImageUsage};
 
     #[test]
     fn create() {
@@ -334,5 +370,46 @@ mod tests {
             Some(queue.family()),
         )
         .unwrap();
+    }
+
+    #[test]
+    fn create_general_purpose_image_view() {
+        let (device, queue) = gfx_dev_and_queue!();
+        let usage = ImageUsage {
+            transfer_src: true,
+            transfer_dst: true,
+            color_attachment: true,
+            ..ImageUsage::none()
+        };
+        let img_view = StorageImage::general_purpose_image_view(
+            queue.clone(),
+            [32, 32],
+            Format::R8G8B8A8_UNORM,
+            usage,
+        )
+        .unwrap();
+        assert_eq!(img_view.image().usage(), &usage);
+    }
+
+    #[test]
+    fn create_general_purpose_image_view_failed() {
+        let (device, queue) = gfx_dev_and_queue!();
+        // Not valid for image view...
+        let usage = ImageUsage {
+            transfer_src: true,
+            ..ImageUsage::none()
+        };
+        let img_result = StorageImage::general_purpose_image_view(
+            queue.clone(),
+            [32, 32],
+            Format::R8G8B8A8_UNORM,
+            usage,
+        );
+        assert_eq!(
+            img_result,
+            Err(ImageCreationError::DirectImageViewCreationFailed(
+                ImageViewCreationError::ImageMissingUsage
+            ))
+        );
     }
 }
