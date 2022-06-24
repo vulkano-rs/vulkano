@@ -32,10 +32,6 @@ pub struct VulkanoConfig {
     pub print_device_name: bool,
 }
 
-unsafe impl Send for VulkanoConfig {}
-
-unsafe impl Sync for VulkanoConfig {}
-
 impl Default for VulkanoConfig {
     fn default() -> Self {
         let device_extensions = DeviceExtensions {
@@ -88,10 +84,6 @@ pub struct VulkanoContext {
     graphics_queue: Arc<Queue>,
     compute_queue: Arc<Queue>,
 }
-
-unsafe impl Sync for VulkanoContext {}
-
-unsafe impl Send for VulkanoContext {}
 
 impl Default for VulkanoContext {
     fn default() -> Self {

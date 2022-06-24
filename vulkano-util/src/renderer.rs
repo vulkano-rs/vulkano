@@ -55,10 +55,6 @@ pub struct VulkanoWindowRenderer {
     image_index: usize,
 }
 
-unsafe impl Sync for VulkanoWindowRenderer {}
-
-unsafe impl Send for VulkanoWindowRenderer {}
-
 impl VulkanoWindowRenderer {
     /// Creates a new [`VulkanoWindowRenderer`] which is used to orchestrate your rendering with Vulkano.
     /// Pass [`WindowDescriptor`] and optionally a function modifying the [`SwapchainCreateInfo`](vulkano::swapchain::SwapchainCreateInfo) parameters.
