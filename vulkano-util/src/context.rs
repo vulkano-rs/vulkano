@@ -18,19 +18,23 @@ use vulkano::Version;
 
 /// A configuration struct to pass various creation options to create [`VulkanoContext`].
 pub struct VulkanoConfig {
-    instance_create_info: InstanceCreateInfo,
+    pub instance_create_info: InstanceCreateInfo,
     /// Pass the `DebugUtilsMessengerCreateInfo` to create the debug callback
     /// for printing debug information at runtime.
-    debug_create_info: Option<DebugUtilsMessengerCreateInfo>,
+    pub debug_create_info: Option<DebugUtilsMessengerCreateInfo>,
     /// Pass filter function for your physical device selection. See default for example.
-    device_filter_fn: Arc<dyn Fn(&PhysicalDevice) -> bool>,
+    pub device_filter_fn: Arc<dyn Fn(&PhysicalDevice) -> bool>,
     /// Pass priority order function for your physical device selection. See default for example.
-    device_priority_fn: Arc<dyn Fn(&PhysicalDevice) -> u32>,
-    device_extensions: DeviceExtensions,
-    device_features: Features,
+    pub device_priority_fn: Arc<dyn Fn(&PhysicalDevice) -> u32>,
+    pub device_extensions: DeviceExtensions,
+    pub device_features: Features,
     /// Print your selected device name at start.
-    print_device_name: bool,
+    pub print_device_name: bool,
 }
+
+unsafe impl Send for VulkanoConfig {}
+
+unsafe impl Sync for VulkanoConfig {}
 
 impl Default for VulkanoConfig {
     fn default() -> Self {
@@ -55,7 +59,7 @@ impl Default for VulkanoConfig {
                 PhysicalDeviceType::Cpu => 4,
                 PhysicalDeviceType::Other => 5,
             }),
-            print_device_name: true,
+            print_device_name: false,
             device_extensions,
             device_features: Features::none(),
         }
