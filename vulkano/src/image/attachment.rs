@@ -401,7 +401,18 @@ impl AttachmentImage {
         base_usage: ImageUsage,
         samples: SampleCount,
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
-        // TODO: check dimensions against the max_framebuffer_width/height/layers limits
+        let physical_device = device.physical_device();
+        let device_properties = physical_device.properties();
+
+        if dimensions[0] > device_properties.max_framebuffer_height {
+            panic!("AttachmentImage height exceeds physical device's max_framebuffer_height");
+        }
+        if dimensions[1] > device_properties.max_framebuffer_width {
+            panic!("AttachmentImage width exceeds physical device's max_framebuffer_width");
+        }
+        if array_layers > device_properties.max_framebuffer_layers {
+            panic!("AttachmentImage layer count exceeds physical device's max_framebuffer_layers");
+        }
 
         let aspects = format.aspects();
         let is_depth = aspects.depth || aspects.stencil;
@@ -471,7 +482,18 @@ impl AttachmentImage {
         base_usage: ImageUsage,
         samples: SampleCount,
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
-        // TODO: check dimensions against the max_framebuffer_width/height/layers limits
+        let physical_device = device.physical_device();
+        let device_properties = physical_device.properties();
+
+        if dimensions[0] > device_properties.max_framebuffer_height {
+            panic!("AttachmentImage height exceeds physical device's max_framebuffer_height");
+        }
+        if dimensions[1] > device_properties.max_framebuffer_width {
+            panic!("AttachmentImage width exceeds physical device's max_framebuffer_width");
+        }
+        if array_layers > device_properties.max_framebuffer_layers {
+            panic!("AttachmentImage layer count exceeds physical device's max_framebuffer_layers");
+        }
 
         let aspects = format.aspects();
         let is_depth = aspects.depth || aspects.stencil;
