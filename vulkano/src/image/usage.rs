@@ -151,6 +151,21 @@ impl ImageUsage {
             input_attachment: false,
         }
     }
+
+    /// Builds a ImageUsage with input_attachment and transient_attachment set to true and the rest to false.
+    #[inline]
+    pub fn transient_input_attachment() -> ImageUsage {
+        ImageUsage {
+            transfer_src: false,
+            transfer_dst: false,
+            sampled: false,
+            storage: false,
+            color_attachment: false,
+            depth_stencil_attachment: false,
+            transient_attachment: true,
+            input_attachment: true,
+        }
+    }
 }
 
 impl From<ImageUsage> for ash::vk::ImageUsageFlags {
