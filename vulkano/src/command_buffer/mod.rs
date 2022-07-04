@@ -49,7 +49,13 @@
 //! use vulkano::command_buffer::AutoCommandBufferBuilder;
 //! use vulkano::command_buffer::CommandBufferUsage;
 //! use vulkano::command_buffer::PrimaryCommandBuffer;
+//! use vulkano::command_buffer::SubpassContents;
 //!
+//! # #[repr(C)]
+//! # #[derive(Clone, Copy, Debug, Default, bytemuck::Zeroable, bytemuck::Pod)]
+//! # struct Vertex { position: [f32; 3] };
+//! # vulkano::impl_vertex!(Vertex, position);
+//! # use vulkano::buffer::TypedBufferAccess;
 //! # let device: std::sync::Arc<vulkano::device::Device> = return;
 //! # let queue: std::sync::Arc<vulkano::device::Queue> = return;
 //! # let vertex_buffer: std::sync::Arc<vulkano::buffer::CpuAccessibleBuffer<[Vertex]>> = return;
@@ -60,11 +66,10 @@
 //!     queue.family(),
 //!     CommandBufferUsage::MultipleSubmit
 //! ).unwrap()
-//! .begin_render_pass(render_pass_begin_info, SubpassContents::Inline)
-//! .unwrap()
+//! .begin_render_pass(render_pass_begin_info, SubpassContents::Inline).unwrap()
 //! .bind_pipeline_graphics(graphics_pipeline.clone())
 //! .bind_vertex_buffers(0, vertex_buffer.clone())
-//! .draw(vertex_buffer.len(), 1, 0, 0)
+//! .draw(vertex_buffer.len() as u32, 1, 0, 0).unwrap()
 //! .end_render_pass().unwrap()
 //! .build().unwrap();
 //!
