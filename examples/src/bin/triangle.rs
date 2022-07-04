@@ -331,7 +331,9 @@ fn main() {
                 // of your structs that implements the `FormatDesc` trait). Here we use the
                 // same format as the swapchain.
                 format: swapchain.image_format(),
-                // TODO:
+                // `samples: 1` means that we ask the GPU to use one sample to determine the value
+                // of each pixel in the color attachment. We could use a larger value (multisampling)
+                // for antialiasing. An example of this can be found in msaa-renderpass.rs.
                 samples: 1,
             }
         },

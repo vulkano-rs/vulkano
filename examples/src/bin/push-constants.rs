@@ -7,7 +7,11 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-// TODO: Give a paragraph about what push constants are and what problems they solve
+// Push constants are a small bank of values written directly to the command buffer 
+// and accessible in shaders. They allow the application to set values used in shaders
+// without creating buffers or modifying and binding descriptor sets for each update.
+// As a result, they are expected to outperform such memory-backed resource updates.
+
 
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
