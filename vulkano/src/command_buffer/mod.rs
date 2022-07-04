@@ -52,12 +52,20 @@
 //!
 //! # let device: std::sync::Arc<vulkano::device::Device> = return;
 //! # let queue: std::sync::Arc<vulkano::device::Queue> = return;
+//! # let vertex_buffer: std::sync::Arc<vulkano::buffer::CpuAccessibleBuffer<[Vertex]>> = return;
+//! # let render_pass_begin_info: vulkano::command_buffer::RenderPassBeginInfo = return;
+//! # let graphics_pipeline: std::sync::Arc<vulkano::pipeline::graphics::GraphicsPipeline> = return;
 //! let cb = AutoCommandBufferBuilder::primary(
 //!     device.clone(),
 //!     queue.family(),
 //!     CommandBufferUsage::MultipleSubmit
 //! ).unwrap()
-//! // TODO: add an actual command to this example
+//! .begin_render_pass(render_pass_begin_info, SubpassContents::Inline)
+//! .unwrap()
+//! .bind_pipeline_graphics(graphics_pipeline.clone())
+//! .bind_vertex_buffers(0, vertex_buffer.clone())
+//! .draw(vertex_buffer.len(), 1, 0, 0)
+//! .end_render_pass().unwrap()
 //! .build().unwrap();
 //!
 //! let _future = cb.execute(queue.clone());
