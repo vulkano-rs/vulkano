@@ -162,7 +162,7 @@ impl StorageImage {
     /// Creates a new image from a set of dma_buf file descriptors. The memory will be imported from the file desciptors, and will be bound to the image.
     /// # Arguments
     /// * `fds` - The list of file descriptors to import from. Single planar images should only use one, and multiplanar images can use multiple, for example, for each color.
-    /// * `offset` - The byte offset from the start of the image or the plane where the image subresource begins.
+    /// * `offset` - The byte offset from the start of the image of the plane where the image subresource begins.
     /// * `pitch` - Describes the number of bytes between each row of texels in an image.
     pub fn new_from_dma_buf_fd<'a, I>(
         device: Arc<Device>,
@@ -171,9 +171,7 @@ impl StorageImage {
         usage: ImageUsage,
         flags: ImageCreateFlags,
         queue_families: I,
-        fds: Vec<RawFd>,
-        offset: u64,
-        pitch: u64,
+        subresource_data: Vec<SubresourceData>,
     ) -> Result<Arc<StorageImage>, ImageCreationError>
     where
         I: IntoIterator<Item = QueueFamily<'a>>,
@@ -182,19 +180,26 @@ impl StorageImage {
             .into_iter()
             .map(|f| f.id())
             .collect::<SmallVec<[u32; 4]>>();
-        let layout = SubresourceLayout {
-            offset,
-            size: pitch * dimensions.height() as u64,
-            row_pitch: pitch,
+
+
+	// Create a vector of the layout of each image plane.
+	let layout: Vec<SubresourceLayout> = subresource_data.iter_mut().map(|SubresourceData {fd, offset, row_pitch }| {
+	    SubresourceLayout {
+            offset: offset.clone(),
+            size: *row_pitch * dimensions.height() as u64,
+            row_pitch: row_pitch.clone(),
             array_pitch: 0,
             depth_pitch: 0,
-        };
-        // Create a vector of the layout of each image plane.
-        let vec = vec![layout];
+        }
+	}).collect();
+
+	let fds: Vec<RawFd> = subresource_data.iter_mut().map(|SubresourceData {fd, offset, row_pitch }| {
+	    *fd
+	}).collect();
 
         let drm_mod = ImageDrmFormatModifierExplicitCreateInfoEXT::builder()
             .drm_format_modifier(0)
-            .plane_layouts(vec.as_ref())
+            .plane_layouts(layout.as_ref())
             .build();
 
         let image = UnsafeImage::new(
@@ -330,6 +335,19 @@ impl StorageImage {
     pub fn mem_size(&self) -> DeviceSize {
         self.memory.memory().allocation_size()
     }
+}
+
+/// Struct that contains the a file descriptor to import, when creating an image. Since a file descriptor is used for each plane in the case of multiplanar images, each fd needs to have an offset and a row pitch in order to interpret the imported data.
+pub struct SubresourceData {
+
+    // The file descriptor hanfle of a layer of an image.
+    fd: RawFd,
+
+    // The byte offset from the start of the plane where the image subresource begins.
+    offset: u64,
+
+    //  Describes the number of bytes between each row of texels in an image plane.
+    row_pitch: u64
 }
 
 unsafe impl<A> DeviceOwned for StorageImage<A>

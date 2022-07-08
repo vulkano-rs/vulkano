@@ -132,6 +132,7 @@ where
 
     let memory = unsafe {
         // Try cloning underlying fd
+	// @TODO: For completeness, importing memory from muliple file descriptors should be added (In order to support importing multiplanar images). As of now, only single planar image importing will work.
         let file = File::from_raw_fd(*fd.get(0).expect("File descriptor Vec is empty"));
         let new_file = file.try_clone().expect("Error cloning file descriptor");
 
