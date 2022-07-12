@@ -138,6 +138,7 @@ impl VulkanoWindowRenderer {
         (swapchain, images)
     }
 
+    /// Set window renderer present mode. This triggers a swapchain recreation.
     pub fn set_present_mode(&mut self, present_mode: vulkano::swapchain::PresentMode) {
         if self.present_mode != present_mode {
             self.present_mode = present_mode;
