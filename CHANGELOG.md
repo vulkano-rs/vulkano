@@ -49,6 +49,7 @@
 - Added an `is_signaled` method to `FenceSignalFuture`.
 - Add a simple `general_purpose_image_view` method to `StorageImage` for less verbose image view creation for e.g. intermediary render targets.
 - Add a `vulkano_util` crate to help reduce boilerplate in many use cases. `VulkanoContext` to hold access to device & instances, `VulkanoWindows` to organize windows and their renderers. `VulkanoRenderer` to hold the window and methods to `acquire` (swapchain) and `present` between which you are intended to execute your pipelines.
+- Add option to change `PresentMode` at runtime in `vulkano_util` with `set_present_mode`
 
 # Version 0.29.0 (2022-03-11)
 
