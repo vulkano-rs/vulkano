@@ -52,7 +52,7 @@ impl ImageUsage {
     /// Builds a `ImageUsage` with all values set to true. Note that using the returned value will
     /// produce an error because of `transient_attachment` being true.
     #[inline]
-    pub fn all() -> ImageUsage {
+    pub const fn all() -> ImageUsage {
         ImageUsage {
             transfer_src: true,
             transfer_dst: true,
@@ -79,7 +79,7 @@ impl ImageUsage {
     /// };
     /// ```
     #[inline]
-    pub fn none() -> ImageUsage {
+    pub const fn none() -> ImageUsage {
         ImageUsage {
             transfer_src: false,
             transfer_dst: false,
@@ -94,7 +94,7 @@ impl ImageUsage {
 
     /// Builds a ImageUsage with color_attachment set to true and the rest to false.
     #[inline]
-    pub fn color_attachment() -> ImageUsage {
+    pub const fn color_attachment() -> ImageUsage {
         ImageUsage {
             transfer_src: false,
             transfer_dst: false,
@@ -109,7 +109,7 @@ impl ImageUsage {
 
     /// Builds a ImageUsage with depth_stencil_attachment set to true and the rest to false.
     #[inline]
-    pub fn depth_stencil_attachment() -> ImageUsage {
+    pub const fn depth_stencil_attachment() -> ImageUsage {
         ImageUsage {
             transfer_src: false,
             transfer_dst: false,
@@ -124,7 +124,7 @@ impl ImageUsage {
 
     /// Builds a ImageUsage with color_attachment and transient_attachment set to true and the rest to false.
     #[inline]
-    pub fn transient_color_attachment() -> ImageUsage {
+    pub const fn transient_color_attachment() -> ImageUsage {
         ImageUsage {
             transfer_src: false,
             transfer_dst: false,
@@ -139,7 +139,7 @@ impl ImageUsage {
 
     /// Builds a ImageUsage with depth_stencil_attachment and transient_attachment set to true and the rest to false.
     #[inline]
-    pub fn transient_depth_stencil_attachment() -> ImageUsage {
+    pub const fn transient_depth_stencil_attachment() -> ImageUsage {
         ImageUsage {
             transfer_src: false,
             transfer_dst: false,
@@ -154,7 +154,7 @@ impl ImageUsage {
 
     /// Builds a ImageUsage with input_attachment and transient_attachment set to true and the rest to false.
     #[inline]
-    pub fn transient_input_attachment() -> ImageUsage {
+    pub const fn transient_input_attachment() -> ImageUsage {
         ImageUsage {
             transfer_src: false,
             transfer_dst: false,
