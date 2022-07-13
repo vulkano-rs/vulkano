@@ -53,6 +53,7 @@ pub struct VulkanoWindowRenderer {
     recreate_swapchain: bool,
     previous_frame_end: Option<Box<dyn GpuFuture>>,
     image_index: usize,
+    present_mode: vulkano::swapchain::PresentMode,
 }
 
 impl VulkanoWindowRenderer {
@@ -87,6 +88,7 @@ impl VulkanoWindowRenderer {
             recreate_swapchain: false,
             previous_frame_end,
             image_index: 0,
+            present_mode: descriptor.present_mode,
         }
     }
 
@@ -134,6 +136,14 @@ impl VulkanoWindowRenderer {
             .map(|image| ImageView::new_default(image).unwrap())
             .collect::<Vec<_>>();
         (swapchain, images)
+    }
+
+    /// Set window renderer present mode. This triggers a swapchain recreation.
+    pub fn set_present_mode(&mut self, present_mode: vulkano::swapchain::PresentMode) {
+        if self.present_mode != present_mode {
+            self.present_mode = present_mode;
+            self.recreate_swapchain = true;
+        }
     }
 
     /// Return swapchain image format
@@ -197,7 +207,7 @@ impl VulkanoWindowRenderer {
         dims[0] / dims[1]
     }
 
-    /// Resize swapchain and camera view images at the beginning of next frame
+    /// Resize swapchain and camera view images at the beginning of next frame based on window dimensions
     pub fn resize(&mut self) {
         self.recreate_swapchain = true;
     }
@@ -301,6 +311,8 @@ impl VulkanoWindowRenderer {
         let dimensions: [u32; 2] = self.window().inner_size().into();
         let (new_swapchain, new_images) = match self.swap_chain.recreate(SwapchainCreateInfo {
             image_extent: dimensions,
+            // Use present mode from current state
+            present_mode: self.present_mode,
             ..self.swap_chain.create_info()
         }) {
             Ok(r) => r,
