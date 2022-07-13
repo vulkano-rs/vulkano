@@ -142,18 +142,12 @@ impl FrameSystem {
 
         // For now we create three temporary images with a dimension of 1 by 1 pixel.
         // These images will be replaced the first time we call `frame()`.
-        // TODO: use shortcut provided in vulkano 0.6
-        let atch_usage = ImageUsage {
-            transient_attachment: true,
-            input_attachment: true,
-            ..ImageUsage::none()
-        };
         let diffuse_buffer = ImageView::new_default(
             AttachmentImage::with_usage(
                 gfx_queue.device().clone(),
                 [1, 1],
                 Format::A2B10G10R10_UNORM_PACK32,
-                atch_usage,
+                ImageUsage::transient_input_attachment(),
             )
             .unwrap(),
         )
@@ -163,7 +157,7 @@ impl FrameSystem {
                 gfx_queue.device().clone(),
                 [1, 1],
                 Format::R16G16B16A16_SFLOAT,
-                atch_usage,
+                ImageUsage::transient_input_attachment(),
             )
             .unwrap(),
         )
@@ -173,7 +167,7 @@ impl FrameSystem {
                 gfx_queue.device().clone(),
                 [1, 1],
                 Format::D16_UNORM,
-                atch_usage,
+                ImageUsage::transient_input_attachment(),
             )
             .unwrap(),
         )
@@ -232,13 +226,6 @@ impl FrameSystem {
         // `self.depth_buffer` if their dimensions doesn't match the dimensions of the final image.
         let img_dims = final_image.image().dimensions().width_height();
         if self.diffuse_buffer.image().dimensions().width_height() != img_dims {
-            // TODO: use shortcut provided in vulkano 0.6
-            let atch_usage = ImageUsage {
-                transient_attachment: true,
-                input_attachment: true,
-                ..ImageUsage::none()
-            };
-
             // Note that we create "transient" images here. This means that the content of the
             // image is only defined when within a render pass. In other words you can draw to
             // them in a subpass then read them in another subpass, but as soon as you leave the
@@ -248,7 +235,7 @@ impl FrameSystem {
                     self.gfx_queue.device().clone(),
                     img_dims,
                     Format::A2B10G10R10_UNORM_PACK32,
-                    atch_usage,
+                    ImageUsage::transient_input_attachment(),
                 )
                 .unwrap(),
             )
@@ -258,7 +245,7 @@ impl FrameSystem {
                     self.gfx_queue.device().clone(),
                     img_dims,
                     Format::R16G16B16A16_SFLOAT,
-                    atch_usage,
+                    ImageUsage::transient_input_attachment(),
                 )
                 .unwrap(),
             )
@@ -268,7 +255,7 @@ impl FrameSystem {
                     self.gfx_queue.device().clone(),
                     img_dims,
                     Format::D16_UNORM,
-                    atch_usage,
+                    ImageUsage::transient_input_attachment(),
                 )
                 .unwrap(),
             )

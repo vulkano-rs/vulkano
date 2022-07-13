@@ -206,7 +206,7 @@ fn main() {
             width: 128,
             height: 128,
             array_layers: 3,
-        }; // TODO replace with your actual image array dimensions
+        }; // Replace with your actual image array dimensions
         let (image, future) = ImmutableImage::from_iter(
             image_array_data,
             dimensions,
