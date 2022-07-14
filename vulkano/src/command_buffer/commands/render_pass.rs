@@ -7,6 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::command_buffer::synced::CommandType;
+use crate::command_buffer::synced::CommandType::{RenderPassBegin, RenderPassEnd};
 use crate::{
     command_buffer::{
         auto::{BeginRenderPassState, BeginRenderingState, RenderPassState, RenderPassStateType},
@@ -1525,6 +1527,10 @@ impl SyncCommandBufferBuilder {
                 "begin_render_pass"
             }
 
+            fn command_type(&self) -> CommandType {
+                RenderPassBegin
+            }
+
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.begin_render_pass(&self.render_pass_begin_info, self.subpass_contents);
             }
@@ -1573,20 +1579,13 @@ impl SyncCommandBufferBuilder {
             })
             .collect::<Vec<_>>();
 
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd {
-            render_pass_begin_info,
-            subpass_contents,
-        }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
-
-        self.latest_render_pass_enter = Some(self.commands.len() - 1);
+        self.append_command(
+            Box::new(Cmd {
+                render_pass_begin_info,
+                subpass_contents,
+            }),
+            &resources,
+        );
 
         Ok(())
     }
@@ -1608,7 +1607,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.commands.push(Box::new(Cmd { subpass_contents }));
+        self.append_command(Box::new(Cmd { subpass_contents }), &[]);
     }
 
     /// Calls `vkCmdEndRenderPass` on the builder.
@@ -1621,14 +1620,16 @@ impl SyncCommandBufferBuilder {
                 "end_render_pass"
             }
 
+            fn command_type(&self) -> CommandType {
+                RenderPassEnd
+            }
+
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.end_render_pass();
             }
         }
 
-        self.commands.push(Box::new(Cmd));
-        debug_assert!(self.latest_render_pass_enter.is_some());
-        self.latest_render_pass_enter = None;
+        self.append_command(Box::new(Cmd), &[]);
     }
 
     /// Calls `vkCmdBeginRendering` on the builder.
@@ -1644,6 +1645,10 @@ impl SyncCommandBufferBuilder {
         impl Command for Cmd {
             fn name(&self) -> &'static str {
                 "begin_rendering"
+            }
+
+            fn command_type(&self) -> CommandType {
+                RenderPassBegin
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
@@ -1874,17 +1879,7 @@ impl SyncCommandBufferBuilder {
         }))
         .collect::<Vec<_>>();
 
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd { rendering_info }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
-
-        self.latest_render_pass_enter = Some(self.commands.len() - 1);
+        self.append_command(Box::new(Cmd { rendering_info }), &resources);
 
         Ok(())
     }
@@ -1899,14 +1894,16 @@ impl SyncCommandBufferBuilder {
                 "end_rendering"
             }
 
+            fn command_type(&self) -> CommandType {
+                RenderPassEnd
+            }
+
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.end_rendering();
             }
         }
 
-        self.commands.push(Box::new(Cmd));
-        debug_assert!(self.latest_render_pass_enter.is_some());
-        self.latest_render_pass_enter = None;
+        self.append_command(Box::new(Cmd), &[]);
     }
 
     /// Calls `vkCmdClearAttachments` on the builder.
@@ -1935,7 +1932,7 @@ impl SyncCommandBufferBuilder {
         let attachments: SmallVec<[_; 3]> = attachments.into_iter().collect();
         let rects: SmallVec<[_; 4]> = rects.into_iter().collect();
 
-        self.commands.push(Box::new(Cmd { attachments, rects }));
+        self.append_command(Box::new(Cmd { attachments, rects }), &[]);
     }
 }
 

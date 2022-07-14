@@ -103,8 +103,11 @@
 //! TODO: talk about fence + semaphore simultaneously
 //! TODO: talk about using fences to clean up
 
-use crate::device::Queue;
 use std::sync::Arc;
+
+pub(crate) use resources_access::ResourcesAccessDelta;
+
+use crate::device::Queue;
 
 pub use self::{
     event::{Event, EventCreateInfo},
@@ -127,6 +130,7 @@ mod event;
 mod fence;
 mod future;
 mod pipeline;
+mod resources_access;
 mod semaphore;
 
 /// Declares in which queue(s) a resource can be used.

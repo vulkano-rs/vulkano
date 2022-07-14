@@ -1213,15 +1213,7 @@ impl SyncCommandBufferBuilder {
             })
             .collect();
 
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd { blit_image_info }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
+        self.append_command(Box::new(Cmd { blit_image_info }), &resources);
 
         Ok(())
     }
@@ -1283,15 +1275,7 @@ impl SyncCommandBufferBuilder {
             })
             .collect();
 
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd { clear_info }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
+        self.append_command(Box::new(Cmd { clear_info }), &resources);
 
         Ok(())
     }
@@ -1353,15 +1337,7 @@ impl SyncCommandBufferBuilder {
             })
             .collect();
 
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd { clear_info }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
+        self.append_command(Box::new(Cmd { clear_info }), &resources);
 
         Ok(())
     }
@@ -1455,15 +1431,7 @@ impl SyncCommandBufferBuilder {
             })
             .collect();
 
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd { resolve_image_info }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
+        self.append_command(Box::new(Cmd { resolve_image_info }), &resources);
 
         Ok(())
     }

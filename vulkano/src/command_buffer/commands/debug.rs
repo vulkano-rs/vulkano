@@ -168,7 +168,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.commands.push(Box::new(Cmd { label_info }));
+        self.append_command(Box::new(Cmd { label_info }), &[]);
     }
 
     /// Calls `vkCmdEndDebugUtilsLabelEXT` on the builder.
@@ -192,7 +192,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.commands.push(Box::new(Cmd {}));
+        self.append_command(Box::new(Cmd {}), &[]);
     }
 
     /// Calls `vkCmdInsertDebugUtilsLabelEXT` on the builder.
@@ -216,7 +216,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.commands.push(Box::new(Cmd { label_info }));
+        self.append_command(Box::new(Cmd { label_info }), &[]);
     }
 }
 

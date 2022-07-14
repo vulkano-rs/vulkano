@@ -1500,7 +1500,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.commands.push(Box::new(Cmd { constants }));
+        self.append_command(Box::new(Cmd { constants }), &[]);
         self.current_state.blend_constants = Some(constants);
     }
 
@@ -1531,9 +1531,12 @@ impl SyncCommandBufferBuilder {
 
         let enables: SmallVec<[bool; 4]> = enables.into_iter().collect();
         self.current_state.color_write_enable = Some(enables.clone());
-        self.commands.push(Box::new(Cmd {
-            enables: Mutex::new(Some(enables)),
-        }));
+        self.append_command(
+            Box::new(Cmd {
+                enables: Mutex::new(Some(enables)),
+            }),
+            &[],
+        );
     }
 
     /// Calls `vkCmdSetCullModeEXT` on the builder.
@@ -1553,7 +1556,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.commands.push(Box::new(Cmd { cull_mode }));
+        self.append_command(Box::new(Cmd { cull_mode }), &[]);
         self.current_state.cull_mode = Some(cull_mode);
     }
 
@@ -1576,11 +1579,14 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.commands.push(Box::new(Cmd {
-            constant_factor,
-            clamp,
-            slope_factor,
-        }));
+        self.append_command(
+            Box::new(Cmd {
+                constant_factor,
+                clamp,
+                slope_factor,
+            }),
+            &[],
+        );
         self.current_state.depth_bias = Some(DepthBias {
             constant_factor,
             clamp,
@@ -1605,7 +1611,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.commands.push(Box::new(Cmd { enable }));
+        self.append_command(Box::new(Cmd { enable }), &[]);
         self.current_state.depth_bias_enable = Some(enable);
     }
 
@@ -1626,9 +1632,12 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.commands.push(Box::new(Cmd {
-            bounds: bounds.clone(),
-        }));
+        self.append_command(
+            Box::new(Cmd {
+                bounds: bounds.clone(),
+            }),
+            &[],
+        );
         self.current_state.depth_bounds = Some(bounds);
     }
 
@@ -1649,7 +1658,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.commands.push(Box::new(Cmd { enable }));
+        self.append_command(Box::new(Cmd { enable }), &[]);
         self.current_state.depth_bounds_test_enable = Some(enable);
     }
 
@@ -1670,7 +1679,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.commands.push(Box::new(Cmd { compare_op }));
+        self.append_command(Box::new(Cmd { compare_op }), &[]);
         self.current_state.depth_compare_op = Some(compare_op);
     }
 
@@ -1691,7 +1700,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.commands.push(Box::new(Cmd { enable }));
+        self.append_command(Box::new(Cmd { enable }), &[]);
         self.current_state.depth_test_enable = Some(enable);
     }
 
@@ -1712,7 +1721,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.commands.push(Box::new(Cmd { enable }));
+        self.append_command(Box::new(Cmd { enable }), &[]);
         self.current_state.depth_write_enable = Some(enable);
     }
 
@@ -1748,10 +1757,13 @@ impl SyncCommandBufferBuilder {
                 .insert(num, rectangle.clone());
         }
 
-        self.commands.push(Box::new(Cmd {
-            first_rectangle,
-            rectangles: Mutex::new(rectangles),
-        }));
+        self.append_command(
+            Box::new(Cmd {
+                first_rectangle,
+                rectangles: Mutex::new(rectangles),
+            }),
+            &[],
+        );
     }
 
     /// Calls `vkCmdSetFrontFaceEXT` on the builder.
@@ -1771,7 +1783,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.commands.push(Box::new(Cmd { face }));
+        self.append_command(Box::new(Cmd { face }), &[]);
         self.current_state.front_face = Some(face);
     }
 
@@ -1793,7 +1805,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.commands.push(Box::new(Cmd { factor, pattern }));
+        self.append_command(Box::new(Cmd { factor, pattern }), &[]);
         self.current_state.line_stipple = Some(LineStipple { factor, pattern });
     }
 
@@ -1814,7 +1826,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.commands.push(Box::new(Cmd { line_width }));
+        self.append_command(Box::new(Cmd { line_width }), &[]);
         self.current_state.line_width = Some(line_width);
     }
 
@@ -1835,7 +1847,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.commands.push(Box::new(Cmd { logic_op }));
+        self.append_command(Box::new(Cmd { logic_op }), &[]);
         self.current_state.logic_op = Some(logic_op);
     }
 
@@ -1856,7 +1868,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.commands.push(Box::new(Cmd { num }));
+        self.append_command(Box::new(Cmd { num }), &[]);
         self.current_state.patch_control_points = Some(num);
     }
 
@@ -1877,7 +1889,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.commands.push(Box::new(Cmd { enable }));
+        self.append_command(Box::new(Cmd { enable }), &[]);
         self.current_state.primitive_restart_enable = Some(enable);
     }
 
@@ -1898,7 +1910,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.commands.push(Box::new(Cmd { topology }));
+        self.append_command(Box::new(Cmd { topology }), &[]);
         self.current_state.primitive_topology = Some(topology);
     }
 
@@ -1919,7 +1931,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.commands.push(Box::new(Cmd { enable }));
+        self.append_command(Box::new(Cmd { enable }), &[]);
         self.current_state.rasterizer_discard_enable = Some(enable);
     }
 
@@ -1941,10 +1953,13 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.commands.push(Box::new(Cmd {
-            faces,
-            compare_mask,
-        }));
+        self.append_command(
+            Box::new(Cmd {
+                faces,
+                compare_mask,
+            }),
+            &[],
+        );
 
         let faces = ash::vk::StencilFaceFlags::from(faces);
 
@@ -1991,13 +2006,16 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.commands.push(Box::new(Cmd {
-            faces,
-            fail_op,
-            pass_op,
-            depth_fail_op,
-            compare_op,
-        }));
+        self.append_command(
+            Box::new(Cmd {
+                faces,
+                fail_op,
+                pass_op,
+                depth_fail_op,
+                compare_op,
+            }),
+            &[],
+        );
 
         let faces = ash::vk::StencilFaceFlags::from(faces);
 
@@ -2038,7 +2056,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.commands.push(Box::new(Cmd { faces, reference }));
+        self.append_command(Box::new(Cmd { faces, reference }), &[]);
 
         let faces = ash::vk::StencilFaceFlags::from(faces);
 
@@ -2068,7 +2086,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.commands.push(Box::new(Cmd { enable }));
+        self.append_command(Box::new(Cmd { enable }), &[]);
         self.current_state.stencil_test_enable = Some(enable);
     }
 
@@ -2090,7 +2108,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.commands.push(Box::new(Cmd { faces, write_mask }));
+        self.append_command(Box::new(Cmd { faces, write_mask }), &[]);
 
         let faces = ash::vk::StencilFaceFlags::from(faces);
 
@@ -2133,10 +2151,13 @@ impl SyncCommandBufferBuilder {
             self.current_state.scissor.insert(num, scissor.clone());
         }
 
-        self.commands.push(Box::new(Cmd {
-            first_scissor,
-            scissors: Mutex::new(scissors),
-        }));
+        self.append_command(
+            Box::new(Cmd {
+                first_scissor,
+                scissors: Mutex::new(scissors),
+            }),
+            &[],
+        );
     }
 
     /// Calls `vkCmdSetScissorWithCountEXT` on the builder.
@@ -2163,9 +2184,12 @@ impl SyncCommandBufferBuilder {
 
         let scissors: SmallVec<[Scissor; 2]> = scissors.into_iter().collect();
         self.current_state.scissor_with_count = Some(scissors.clone());
-        self.commands.push(Box::new(Cmd {
-            scissors: Mutex::new(scissors),
-        }));
+        self.append_command(
+            Box::new(Cmd {
+                scissors: Mutex::new(scissors),
+            }),
+            &[],
+        );
     }
 
     /// Calls `vkCmdSetViewport` on the builder.
@@ -2198,10 +2222,13 @@ impl SyncCommandBufferBuilder {
             self.current_state.viewport.insert(num, viewport.clone());
         }
 
-        self.commands.push(Box::new(Cmd {
-            first_viewport,
-            viewports: Mutex::new(viewports),
-        }));
+        self.append_command(
+            Box::new(Cmd {
+                first_viewport,
+                viewports: Mutex::new(viewports),
+            }),
+            &[],
+        );
     }
 
     /// Calls `vkCmdSetViewportWithCountEXT` on the builder.
@@ -2228,9 +2255,12 @@ impl SyncCommandBufferBuilder {
 
         let viewports: SmallVec<[Viewport; 2]> = viewports.into_iter().collect();
         self.current_state.viewport_with_count = Some(viewports.clone());
-        self.commands.push(Box::new(Cmd {
-            viewports: Mutex::new(viewports),
-        }));
+        self.append_command(
+            Box::new(Cmd {
+                viewports: Mutex::new(viewports),
+            }),
+            &[],
+        );
     }
 }
 

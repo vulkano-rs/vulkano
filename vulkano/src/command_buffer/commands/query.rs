@@ -526,11 +526,14 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.commands.push(Box::new(Cmd {
-            query_pool,
-            query,
-            flags,
-        }));
+        self.append_command(
+            Box::new(Cmd {
+                query_pool,
+                query,
+                flags,
+            }),
+            &[],
+        );
     }
 
     /// Calls `vkCmdEndQuery` on the builder.
@@ -551,7 +554,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.commands.push(Box::new(Cmd { query_pool, query }));
+        self.append_command(Box::new(Cmd { query_pool, query }), &[]);
     }
 
     /// Calls `vkCmdWriteTimestamp` on the builder.
@@ -578,11 +581,14 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.commands.push(Box::new(Cmd {
-            query_pool,
-            query,
-            stage,
-        }));
+        self.append_command(
+            Box::new(Cmd {
+                query_pool,
+                query,
+                stage,
+            }),
+            &[],
+        );
     }
 
     /// Calls `vkCmdCopyQueryPoolResults` on the builder.
@@ -647,21 +653,16 @@ impl SyncCommandBufferBuilder {
             },
         )];
 
-        for resource in &resources {
-            self.check_resource_conflicts(resource)?;
-        }
-
-        self.commands.push(Box::new(Cmd {
-            query_pool,
-            queries,
-            destination,
-            stride,
-            flags,
-        }));
-
-        for resource in resources {
-            self.add_resource(resource);
-        }
+        self.append_command(
+            Box::new(Cmd {
+                query_pool,
+                queries,
+                destination,
+                stride,
+                flags,
+            }),
+            &resources,
+        );
 
         Ok(())
     }
@@ -684,10 +685,13 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.commands.push(Box::new(Cmd {
-            query_pool,
-            queries,
-        }));
+        self.append_command(
+            Box::new(Cmd {
+                query_pool,
+                queries,
+            }),
+            &[],
+        );
     }
 }
 
