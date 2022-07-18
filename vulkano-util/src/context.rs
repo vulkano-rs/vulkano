@@ -172,7 +172,7 @@ impl VulkanoContext {
             Device::new(
                 physical,
                 DeviceCreateInfo {
-                    enabled_extensions: physical.required_extensions().union(&device_extensions),
+                    enabled_extensions: device_extensions,
                     enabled_features: features,
                     queue_create_infos,
                     ..Default::default()

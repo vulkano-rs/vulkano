@@ -7,11 +7,10 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-// Push constants are a small bank of values written directly to the command buffer 
+// Push constants are a small bank of values written directly to the command buffer
 // and accessible in shaders. They allow the application to set values used in shaders
 // without creating buffers or modifying and binding descriptor sets for each update.
 // As a result, they are expected to outperform such memory-backed resource updates.
-
 
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
@@ -21,13 +20,18 @@ use vulkano::{
         physical::{PhysicalDevice, PhysicalDeviceType},
         Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
     },
-    instance::Instance,
+    instance::{Instance, InstanceCreateInfo},
     pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
     sync::{self, GpuFuture},
 };
 
 fn main() {
-    let instance = Instance::new(Default::default()).unwrap();
+    let instance = Instance::new(InstanceCreateInfo {
+        // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
+        enumerate_portability: true,
+        ..Default::default()
+    })
+    .unwrap();
 
     let device_extensions = DeviceExtensions {
         khr_storage_buffer_storage_class: true,
@@ -58,9 +62,7 @@ fn main() {
     let (device, mut queues) = Device::new(
         physical_device,
         DeviceCreateInfo {
-            enabled_extensions: physical_device
-                .required_extensions()
-                .union(&device_extensions),
+            enabled_extensions: device_extensions,
             queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
             ..Default::default()
         },

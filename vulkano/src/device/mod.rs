@@ -180,7 +180,7 @@ impl Device {
         create_info: DeviceCreateInfo,
     ) -> Result<(Arc<Device>, impl ExactSizeIterator<Item = Arc<Queue>>), DeviceCreationError> {
         let DeviceCreateInfo {
-            enabled_extensions,
+            mut enabled_extensions,
             mut enabled_features,
             queue_create_infos,
             _ne: _,
@@ -254,6 +254,11 @@ impl Device {
 
         active_queue_families.sort_unstable();
         active_queue_families.dedup();
+        let supported_extensions = physical_device.supported_extensions();
+
+        if supported_extensions.khr_portability_subset {
+            enabled_extensions.khr_portability_subset = true;
+        }
 
         /*
             Extensions
@@ -263,7 +268,7 @@ impl Device {
         // VUID-VkDeviceCreateInfo-ppEnabledExtensionNames-03328
         // VUID-VkDeviceCreateInfo-pProperties-04451
         enabled_extensions.check_requirements(
-            physical_device.supported_extensions(),
+            supported_extensions,
             api_version,
             instance.enabled_extensions(),
         )?;

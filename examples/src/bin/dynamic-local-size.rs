@@ -39,6 +39,8 @@ fn main() {
 
             ..InstanceExtensions::none()
         },
+        // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
+        enumerate_portability: true,
         ..Default::default()
     })
     .unwrap();
@@ -71,9 +73,7 @@ fn main() {
     let (device, mut queues) = Device::new(
         physical_device,
         DeviceCreateInfo {
-            enabled_extensions: physical_device
-                .required_extensions()
-                .union(&device_extensions),
+            enabled_extensions: device_extensions,
             queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
             ..Default::default()
         },
