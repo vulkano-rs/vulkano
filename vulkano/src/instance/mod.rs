@@ -308,7 +308,8 @@ impl Instance {
 
         // VUID-VkApplicationInfo-apiVersion-04010
         assert!(max_api_version >= Version::V1_0);
-        let supported_extensions = InstanceExtensions::supported_by_core_with_loader(&function_pointers)?;
+        let supported_extensions =
+            InstanceExtensions::supported_by_core_with_loader(&function_pointers)?;
         let mut flags = ash::vk::InstanceCreateFlags::empty();
 
         if enumerate_portability && supported_extensions.khr_portability_enumeration {
@@ -317,10 +318,7 @@ impl Instance {
         }
 
         // Check if the extensions are correct
-        enabled_extensions.check_requirements(
-            &supported_extensions,
-            api_version,
-        )?;
+        enabled_extensions.check_requirements(&supported_extensions, api_version)?;
 
         // FIXME: check whether each layer is supported
         let enabled_layers_cstr: Vec<CString> = enabled_layers
@@ -606,9 +604,16 @@ pub struct InstanceCreateInfo {
     /// Enumerate devices that support `VK_KHR_portability_subset`.
     ///
     /// With this enabled, devices that use non-conformant vulkan implementations can be enumerated.
-    /// For example, MolkenVK is one of these.
+    /// (ex. MoltenVK)
     ///
     /// The default value is false.
+    ///
+    /// # Notes
+    ///
+    /// - If `true` and `khr_portability_enumeration` extension is not preset this field will be ignored
+    ///   and the `ENUMERATE_PORTABILITY_KHR` flag will not be set.
+    /// - If `true` and `khr_portability_enumeration` extension is present, `khr_portability_enumeration`
+    ///   extension will automatically be enabled.
     pub enumerate_portability: bool,
 
     pub _ne: crate::NonExhaustive,
