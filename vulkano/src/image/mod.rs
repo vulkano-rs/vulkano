@@ -65,6 +65,7 @@ use crate::memory::ExternalMemoryHandleType;
 use crate::memory::ExternalMemoryProperties;
 use crate::DeviceSize;
 use std::cmp;
+use std::ops::BitAnd;
 use std::ops::Range;
 
 mod aspect;
@@ -155,7 +156,7 @@ pub struct SampleCounts {
 impl SampleCounts {
     /// Returns true if `self` has the `sample_count` value set.
     #[inline]
-    pub fn contains(&self, sample_count: SampleCount) -> bool {
+    pub const fn contains(&self, sample_count: SampleCount) -> bool {
         match sample_count {
             SampleCount::Sample1 => self.sample1,
             SampleCount::Sample2 => self.sample2,
@@ -164,6 +165,51 @@ impl SampleCounts {
             SampleCount::Sample16 => self.sample16,
             SampleCount::Sample32 => self.sample32,
             SampleCount::Sample64 => self.sample64,
+        }
+    }
+
+    /// Returns the intersection of these sample counts and another set of sample counts.
+    ///
+    /// # Examples
+    ///
+    /// If you're using both a color and depth buffer, and want to use multisampling, then you
+    /// should check the intersection of the supported sample counts because they don't have to
+    /// match. You could similarily apply this to the stencil counts.
+    /// ```no_run
+    /// # use vulkano::instance::Instance;
+    /// # use vulkano::device::physical::PhysicalDevice;
+    /// # let instance = Instance::new(Default::default()).unwrap();
+    /// # let physical_device = PhysicalDevice::from_index(&instance, 0).unwrap();
+    /// let properties = physical_device.properties();
+    /// let color_counts = properties.framebuffer_color_sample_counts;
+    /// let depth_counts = properties.framebuffer_depth_sample_counts;
+    ///
+    /// let counts = color_counts.intersection(&depth_counts);
+    /// ```
+    #[inline]
+    pub const fn intersection(&self, other: &SampleCounts) -> SampleCounts {
+        SampleCounts {
+            sample1: self.sample1 && other.sample1,
+            sample2: self.sample2 && other.sample2,
+            sample4: self.sample4 && other.sample4,
+            sample8: self.sample8 && other.sample8,
+            sample16: self.sample16 && other.sample16,
+            sample32: self.sample32 && other.sample32,
+            sample64: self.sample64 && other.sample64,
+        }
+    }
+
+    /// Returns the maximum sample count supported by `self`.
+    #[inline]
+    pub const fn max_count(&self) -> SampleCount {
+        match self {
+            Self { sample64: true, .. } => SampleCount::Sample64,
+            Self { sample32: true, .. } => SampleCount::Sample32,
+            Self { sample16: true, .. } => SampleCount::Sample16,
+            Self { sample8: true, .. } => SampleCount::Sample8,
+            Self { sample4: true, .. } => SampleCount::Sample4,
+            Self { sample2: true, .. } => SampleCount::Sample2,
+            _ => SampleCount::Sample1,
         }
     }
 }
@@ -209,6 +255,22 @@ impl From<SampleCounts> for ash::vk::SampleCountFlags {
         }
 
         sample_counts
+    }
+}
+
+impl BitAnd for SampleCounts {
+    type Output = SampleCounts;
+
+    fn bitand(self, rhs: Self) -> Self::Output {
+        SampleCounts {
+            sample1: self.sample1 && rhs.sample1,
+            sample2: self.sample2 && rhs.sample2,
+            sample4: self.sample4 && rhs.sample4,
+            sample8: self.sample8 && rhs.sample8,
+            sample16: self.sample16 && rhs.sample16,
+            sample32: self.sample32 && rhs.sample32,
+            sample64: self.sample64 && rhs.sample64,
+        }
     }
 }
 
