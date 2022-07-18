@@ -309,9 +309,11 @@ impl Instance {
         // VUID-VkApplicationInfo-apiVersion-04010
         assert!(max_api_version >= Version::V1_0);
         let supported_extensions = InstanceExtensions::supported_by_core_with_loader(&function_pointers)?;
+        let mut flags = ash::vk::InstanceCreateFlags::empty();
 
         if enumerate_portability && supported_extensions.khr_portability_enumeration {
             enabled_extensions.khr_portability_enumeration = true;
+            flags |= ash::vk::InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR;
         }
 
         // Check if the extensions are correct
@@ -354,12 +356,6 @@ impl Instance {
             api_version: max_api_version.try_into().expect("Version out of range"),
             ..Default::default()
         };
-
-        let mut flags = ash::vk::InstanceCreateFlags::empty();
-
-        if enumerate_portability{
-            flags |= ash::vk::InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR;
-        }
 
         let mut create_info = ash::vk::InstanceCreateInfo {
             flags,

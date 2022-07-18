@@ -163,12 +163,7 @@ fn main() {
             // Some parts of the Vulkan specs are optional and must be enabled manually at device
             // creation. In this example the only thing we are going to need is the `khr_swapchain`
             // extension that allows us to draw to a window.
-            enabled_extensions: physical_device
-                // Some devices require certain extensions to be enabled if they are present
-                // (e.g. `khr_portability_subset`). We add them to the device extensions that we're
-                // going to enable.
-                .required_extensions()
-                .union(&device_extensions),
+            enabled_extensions: device_extensions,
 
             // The list of queues that we are going to use. Here we only use one queue, from the
             // previously chosen queue family.

@@ -28,7 +28,6 @@ pub(crate) struct PhysicalDeviceInfo {
     handle: ash::vk::PhysicalDevice,
     api_version: Version,
     supported_extensions: DeviceExtensions,
-    required_extensions: DeviceExtensions,
     supported_features: Features,
     properties: Properties,
     memory_properties: ash::vk::PhysicalDeviceMemoryProperties,
@@ -106,14 +105,10 @@ pub(crate) fn init_physical_devices(
                     .map(|property| unsafe { CStr::from_ptr(property.extension_name.as_ptr()) }),
             );
 
-            let required_extensions = supported_extensions
-                .intersection(&DeviceExtensions::required_if_supported_extensions());
-
             let mut info = PhysicalDeviceInfo {
                 handle,
                 api_version,
                 supported_extensions,
-                required_extensions,
                 supported_features: Default::default(),
                 properties: Default::default(),
                 memory_properties: Default::default(),
@@ -405,12 +400,6 @@ impl<'a> PhysicalDevice<'a> {
     #[inline]
     pub fn supported_extensions(&self) -> &'a DeviceExtensions {
         &self.info.supported_extensions
-    }
-
-    /// Returns the extensions that must be enabled as a minimum when creating a `Device` from this
-    /// physical device.
-    pub fn required_extensions(&self) -> &'a DeviceExtensions {
-        &self.info.required_extensions
     }
 
     /// Returns the properties reported by the device.

@@ -39,16 +39,6 @@ impl DeviceExtensions {
     pub fn supported_by_device(physical_device: PhysicalDevice) -> Self {
         *physical_device.supported_extensions()
     }
-
-    /// Returns a `DeviceExtensions` object with extensions required as well as supported by the `PhysicalDevice`.
-    /// They are needed to be passed to `Device::new(...)`.
-    #[deprecated(
-        since = "0.25",
-        note = "Use PhysicalDevice::required_extensions instead"
-    )]
-    pub fn required_extensions(physical_device: PhysicalDevice) -> Self {
-        *physical_device.required_extensions()
-    }
 }
 
 #[cfg(test)]
@@ -60,16 +50,5 @@ mod tests {
     fn empty_extensions() {
         let d: Vec<CString> = (&DeviceExtensions::none()).into();
         assert!(d.iter().next().is_none());
-    }
-
-    #[test]
-    fn required_if_supported_extensions() {
-        assert_eq!(
-            DeviceExtensions::required_if_supported_extensions(),
-            DeviceExtensions {
-                khr_portability_subset: true,
-                ..DeviceExtensions::none()
-            }
-        )
     }
 }

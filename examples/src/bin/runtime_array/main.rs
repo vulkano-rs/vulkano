@@ -99,9 +99,7 @@ fn main() {
     let (device, mut queues) = Device::new(
         physical_device,
         DeviceCreateInfo {
-            enabled_extensions: physical_device
-                .required_extensions()
-                .union(&device_extensions),
+            enabled_extensions: device_extensions,
             enabled_features: Features {
                 descriptor_indexing: true,
                 shader_uniform_buffer_array_non_uniform_indexing: true,
