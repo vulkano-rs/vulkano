@@ -28,6 +28,8 @@
 - **Breaking** Added the missing `rasterization_samples` field to `MultisampleState`, which must be provided when doing multisampled rendering.
 - **Breaking** Renamed the `ready` method of `Fence` to `is_signaled`.
 - **Breaking** The `set_depth_bounds` parameter is now a single `RangeInclusive` instead of two separate `f32`, to match the type used on the `DepthBoundsState` struct.
+- **Breaking** Removed `DeviceExtensions::required_extensions()`. Required extensions such as `khr_portability_subset` are now enabled automatically when available.
+- **Breaking** Removed `PhysicalDevice::required_extensions()`
 - `UnsafeCommandPoolCreateInfo` and `UnsafeCommandPoolCreationError` interfaces exposed.
 - Fixed compile error in Vulkano-win on Android.
 - Added `COVERAGE.md`, a document detailing how much of Vulkan is currently covered by Vulkano.
@@ -52,7 +54,7 @@
 - Add option to change `PresentMode` at runtime in `vulkano_util` with `set_present_mode`
 - Made `ImageUsage` constructor functions `const`.
 - Added `intersection` and `max_count` methods to `SampleCounts`, as well as a `BitAnd` implementation.
-
+- `InstanceCreateInfo` now has `enumerate_portability` field.
 
 # Version 0.29.0 (2022-03-11)
 
