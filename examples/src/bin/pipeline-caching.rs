@@ -36,13 +36,18 @@ use vulkano::{
         physical::{PhysicalDevice, PhysicalDeviceType},
         Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
     },
-    instance::Instance,
+    instance::{Instance, InstanceCreateInfo},
     pipeline::{cache::PipelineCache, ComputePipeline},
 };
 
 fn main() {
     // As with other examples, the first step is to create an instance.
-    let instance = Instance::new(Default::default()).unwrap();
+    let instance = Instance::new(InstanceCreateInfo {
+        // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
+        enumerate_portability: true,
+        ..Default::default()
+    })
+    .unwrap();
 
     // Choose which physical device to use.
     let device_extensions = DeviceExtensions {

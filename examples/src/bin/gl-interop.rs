@@ -391,6 +391,10 @@ mod linux {
                 ..InstanceExtensions::none()
             }
             .union(&required_extensions),
+
+            // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
+            enumerate_portability: true,
+            
             ..Default::default()
         })
         .unwrap();

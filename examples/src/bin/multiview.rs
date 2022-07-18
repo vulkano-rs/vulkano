@@ -53,6 +53,8 @@ fn main() {
             khr_get_physical_device_properties2: true, // required to get multiview limits
             ..InstanceExtensions::none()
         },
+        // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
+        enumerate_portability: true,
         ..Default::default()
     })
     .unwrap();

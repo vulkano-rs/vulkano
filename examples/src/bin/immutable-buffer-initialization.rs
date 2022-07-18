@@ -17,7 +17,7 @@ use vulkano::{
         physical::{PhysicalDevice, PhysicalDeviceType},
         Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
     },
-    instance::Instance,
+    instance::{Instance, InstanceCreateInfo},
     pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
     sync::{self, GpuFuture},
 };
@@ -26,7 +26,12 @@ fn main() {
     // The most part of this example is exactly the same as `basic-compute-shader`. You should read the
     // `basic-compute-shader` example if you haven't done so yet.
 
-    let instance = Instance::new(Default::default()).unwrap();
+    let instance = Instance::new(InstanceCreateInfo {
+        // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
+        enumerate_portability: true,
+        ..Default::default()
+    })
+    .unwrap();
 
     let device_extensions = DeviceExtensions {
         khr_storage_buffer_storage_class: true,

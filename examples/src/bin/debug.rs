@@ -66,6 +66,8 @@ fn main() {
     let instance = Instance::new(InstanceCreateInfo {
         enabled_extensions: extensions,
         enabled_layers: layers,
+        // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
+        enumerate_portability: true,
         ..Default::default()
     })
     .expect("failed to create Vulkan instance");

@@ -74,6 +74,8 @@ fn main() {
     let required_extensions = vulkano_win::required_extensions();
     let instance = Instance::new(InstanceCreateInfo {
         enabled_extensions: required_extensions,
+        // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
+        enumerate_portability: true,
         ..Default::default()
     })
     .unwrap();
