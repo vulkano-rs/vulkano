@@ -28,6 +28,7 @@ use super::{
     cpu_access::{ReadLockError, WriteLockError},
     BufferUsage,
 };
+use crate::range_map::RangeMap;
 use crate::{
     check_errors,
     device::{Device, DeviceOwned},
@@ -37,7 +38,6 @@ use crate::{
 };
 use ash::vk::Handle;
 use parking_lot::{Mutex, MutexGuard};
-use rangemap::RangeMap;
 use smallvec::SmallVec;
 use std::{
     error, fmt,

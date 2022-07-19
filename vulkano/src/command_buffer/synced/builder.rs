@@ -14,6 +14,7 @@ pub use crate::command_buffer::commands::{
     },
     secondary::SyncCommandBufferBuilderExecuteCommands,
 };
+use crate::range_map::RangeMap;
 use crate::{
     buffer::{sys::UnsafeBuffer, BufferAccess},
     command_buffer::{
@@ -42,7 +43,6 @@ use crate::{
     },
     DeviceSize, OomError, VulkanObject,
 };
-use rangemap::RangeMap;
 use smallvec::SmallVec;
 use std::{
     borrow::Cow,
