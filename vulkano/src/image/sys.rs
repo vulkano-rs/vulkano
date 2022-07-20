@@ -19,6 +19,7 @@ use super::{
     SampleCounts,
 };
 use crate::image::view::ImageViewCreationError;
+use crate::range_map::RangeMap;
 use crate::{
     buffer::cpu_access::{ReadLockError, WriteLockError},
     check_errors,
@@ -34,7 +35,6 @@ use crate::{
 };
 use ash::vk::Handle;
 use parking_lot::{Mutex, MutexGuard};
-use rangemap::RangeMap;
 use smallvec::{smallvec, SmallVec};
 use std::{
     error, fmt,

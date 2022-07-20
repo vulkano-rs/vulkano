@@ -74,6 +74,7 @@ use super::{
     sys::{UnsafeCommandBuffer, UnsafeCommandBufferBuilder},
     CommandBufferExecError,
 };
+use crate::range_map::RangeMap;
 use crate::{
     buffer::{sys::UnsafeBuffer, BufferAccess},
     device::{Device, DeviceOwned, Queue},
@@ -83,7 +84,6 @@ use crate::{
     },
     DeviceSize,
 };
-use rangemap::RangeMap;
 use std::{borrow::Cow, collections::HashMap, ops::Range, sync::Arc};
 
 mod builder;
