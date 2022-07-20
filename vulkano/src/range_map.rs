@@ -4,7 +4,7 @@ use std::collections::{btree_map, BTreeMap};
 use std::fmt::{self, Debug};
 use std::iter::{FromIterator, FusedIterator, Peekable};
 use std::ops::Bound;
-use std::ops::{Add, Range, RangeInclusive, Sub};
+use std::ops::{Add, Range, Sub};
 
 /// A map whose keys are stored as (half-open) ranges bounded
 /// inclusively below and exclusively above `(start..end)`.
@@ -796,48 +796,6 @@ where
     }
 }
 
-//
-// RangeInclusive start wrapper
-//
-
-#[derive(Eq, Debug, Clone)]
-pub struct RangeInclusiveStartWrapper<T> {
-    pub range: RangeInclusive<T>,
-}
-
-impl<T> RangeInclusiveStartWrapper<T> {
-    pub fn new(range: RangeInclusive<T>) -> RangeInclusiveStartWrapper<T> {
-        RangeInclusiveStartWrapper { range }
-    }
-}
-
-impl<T> PartialEq for RangeInclusiveStartWrapper<T>
-where
-    T: Eq,
-{
-    fn eq(&self, other: &RangeInclusiveStartWrapper<T>) -> bool {
-        self.range.start() == other.range.start()
-    }
-}
-
-impl<T> Ord for RangeInclusiveStartWrapper<T>
-where
-    T: Ord,
-{
-    fn cmp(&self, other: &RangeInclusiveStartWrapper<T>) -> Ordering {
-        self.range.start().cmp(other.range.start())
-    }
-}
-
-impl<T> PartialOrd for RangeInclusiveStartWrapper<T>
-where
-    T: Ord,
-{
-    fn partial_cmp(&self, other: &RangeInclusiveStartWrapper<T>) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
 pub trait RangeExt<T> {
     fn overlaps(&self, other: &Self) -> bool;
     fn touches(&self, other: &Self) -> bool;
@@ -857,48 +815,6 @@ where
         // I.e. the two could be joined into a single range, because they're overlapping
         // or immediately adjacent.
         cmp::max(&self.start, &other.start) <= cmp::min(&self.end, &other.end)
-    }
-}
-
-pub trait RangeInclusiveExt<T> {
-    fn overlaps(&self, other: &Self) -> bool;
-    fn touches<StepFnsT>(&self, other: &Self) -> bool
-    where
-        StepFnsT: StepFns<T>;
-}
-
-impl<T> RangeInclusiveExt<T> for RangeInclusive<T>
-where
-    T: Ord + Clone,
-{
-    fn overlaps(&self, other: &Self) -> bool {
-        // Less than or equal, because ends are included.
-        cmp::max(self.start(), other.start()) <= cmp::min(self.end(), other.end())
-    }
-
-    fn touches<StepFnsT>(&self, other: &Self) -> bool
-    where
-        StepFnsT: StepFns<T>,
-    {
-        // Touching for end-inclusive ranges is equivalent to touching of
-        // slightly longer end-inclusive ranges.
-        //
-        // We need to do a small dance to avoid arithmetic overflow
-        // at the extremes of the key space. And to do this without
-        // needing to bound our key type on something like `num::Bounded`
-        // (https://docs.rs/num/0.3.0/num/trait.Bounded.html),
-        // we'll just extend the end of the _earlier_ range iff
-        // its end is already earlier than the latter range's start.
-        let max_start = cmp::max(self.start(), other.start());
-        let min_range_end = cmp::min(self.end(), other.end());
-
-        let min_range_end_extended = if min_range_end < max_start {
-            StepFnsT::add_one(min_range_end)
-        } else {
-            min_range_end.clone()
-        };
-
-        *max_start <= min_range_end_extended
     }
 }
 

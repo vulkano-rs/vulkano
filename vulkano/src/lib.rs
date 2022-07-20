@@ -89,7 +89,7 @@ pub mod instance;
 pub mod memory;
 pub mod pipeline;
 pub mod query;
-pub mod range_map;
+mod range_map;
 pub mod range_set;
 pub mod sampler;
 pub mod shader;
