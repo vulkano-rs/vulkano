@@ -120,7 +120,8 @@ of unreleased and breaking changes in `master`
 This repository contains four libraries:
 
 - `vulkano` is the main one.
-- `vulkano-shaders` Provides the `shader!` macro for compiling glsl shaders.
+- `vulkano-shaders` provides the `shader!` macro for compiling glsl shaders.
+- `vulkano-util` provides a variety of utility functions to streamline certain common operations such as device and swapchain creation.
 - `vulkano-win` provides a safe link between vulkano and the `winit` library which can create
   a window to render to.
 - `vk-sys` contains raw bindings for Vulkan. We used these binding previously in Vulkano, but now they are deprecated as we have migrated to Ash. However, the subproject is still in maintenance for legacy purposes, and you can use it even if you don't care about Vulkano.
