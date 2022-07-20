@@ -1,6 +1,6 @@
 [package]
 name = "vulkano-util"
-version = "0.29.0"
+version = "0.30.0"
 edition = "2021"
 authors = ["The vulkano contributors"]
 repository = "https://github.com/vulkano-rs/vulkano"
@@ -12,6 +12,6 @@ keywords = ["vulkan", "bindings", "graphics", "gpu", "rendering"]
 categories = ["rendering::graphics-api"]
 
 [dependencies]
-vulkano = { version = "0.29.0", path = "../vulkano" }
-vulkano-win = { version = "0.29.0", path = "../vulkano-win" }
- winit = { version = "0.26" }
+vulkano = { version = "0.30.0", path = "../vulkano" }
+vulkano-win = { version = "0.30.0", path = "../vulkano-win" }
+winit = { version = "0.26" }
