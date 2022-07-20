@@ -79,31 +79,49 @@ pub struct DynamicLibraryLoader {
 }
 
 impl DynamicLibraryLoader {
-    /// Tries to load the dynamic library at the given path, and tries to
-    /// load `vkGetInstanceProcAddr` in it.
+    /// Tries to load the dynamic library at the given paths, using the first successfully loaded,
+    /// and tries to load `vkGetInstanceProcAddr` in it.
     ///
     /// # Safety
     ///
     /// - The dynamic library must be a valid Vulkan implementation.
     ///
-    pub unsafe fn new<P>(path: P) -> Result<DynamicLibraryLoader, LoadingError>
+    pub unsafe fn new<P>(paths: &[P]) -> Result<DynamicLibraryLoader, LoadingError>
     where
         P: AsRef<Path>,
     {
-        let vk_lib = shared_library::dynamic_library::DynamicLibrary::open(Some(path.as_ref()))
-            .map_err(LoadingError::LibraryLoadFailure)?;
+        let mut errors = Vec::new();
+        let vk_lib = paths.iter().find_map(|path| {
+            shared_library::dynamic_library::DynamicLibrary::open(Some(path.as_ref()))
+                .or_else(|e| {
+                    errors.push(e.clone());
+                    Err(e)
+                })
+                .ok()
+        });
 
-        let get_proc_addr = {
-            let ptr: *mut c_void = vk_lib
-                .symbol("vkGetInstanceProcAddr")
-                .map_err(|_| LoadingError::MissingEntryPoint("vkGetInstanceProcAddr".to_owned()))?;
-            mem::transmute(ptr)
-        };
+        match vk_lib {
+            Some(dl) => {
+                let get_proc_addr = {
+                    let ptr: *mut c_void = dl
+                        .symbol("vkGetInstanceProcAddr")
+                        // Arguably we could continue trying subsequent paths here, but we don't
+                        // expect to find a matching filename without the right contents, so better
+                        // to fail here, especially since an unknown library is now loaded into the
+                        // process.
+                        .map_err(|_| {
+                            LoadingError::MissingEntryPoint("vkGetInstanceProcAddr".to_owned())
+                        })?;
+                    mem::transmute(ptr)
+                };
 
-        Ok(DynamicLibraryLoader {
-            vk_lib,
-            get_proc_addr,
-        })
+                Ok(DynamicLibraryLoader {
+                    vk_lib: dl,
+                    get_proc_addr,
+                })
+            }
+            None => Err(LoadingError::LibraryLoadFailure(errors.join(" "))),
+        }
     }
 }
 
@@ -237,23 +255,29 @@ pub fn auto_loader() -> Result<&'static FunctionPointers<Box<dyn Loader>>, Loadi
     #[cfg(not(target_os = "ios"))]
     fn def_loader_impl() -> Result<Box<dyn Loader>, LoadingError> {
         #[cfg(windows)]
-        fn get_path() -> &'static Path {
-            Path::new("vulkan-1.dll")
+        fn get_paths() -> [&'static Path; 1] {
+            [&Path::new("vulkan-1.dll")]
         }
         #[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))]
-        fn get_path() -> &'static Path {
-            Path::new("libvulkan.so.1")
+        fn get_paths() -> [&'static Path; 1] {
+            [&Path::new("libvulkan.so.1")]
         }
         #[cfg(target_os = "macos")]
-        fn get_path() -> &'static Path {
-            Path::new("libvulkan.1.dylib")
+        fn get_paths() -> [&'static Path; 5] {
+            [
+                &Path::new("libvulkan.1.dylib"),
+                &Path::new("libvulkan.dylib"),
+                &Path::new("vulkan.framework/vulkan"),
+                &Path::new("MoltenVK.framework/MoltenVK"),
+                &Path::new("libMoltenVK.dylib"),
+            ]
         }
         #[cfg(target_os = "android")]
-        fn get_path() -> &'static Path {
-            Path::new("libvulkan.so")
+        fn get_paths() -> [&'static Path; 1] {
+            [&Path::new("libvulkan.so")]
         }
 
-        let loader = unsafe { DynamicLibraryLoader::new(get_path())? };
+        let loader = unsafe { DynamicLibraryLoader::new(&get_paths())? };
 
         Ok(Box::new(loader))
     }
@@ -299,7 +323,7 @@ impl fmt::Display for LoadingError {
                 LoadingError::LibraryLoadFailure(_) => "failed to load the Vulkan shared library",
                 LoadingError::MissingEntryPoint(_) => {
                     "one of the entry points required to be supported by the Vulkan implementation \
-                 is missing"
+                           is missing"
                 }
             }
         )
@@ -314,7 +338,10 @@ mod tests {
     #[test]
     fn dl_open_error() {
         unsafe {
-            match DynamicLibraryLoader::new("_non_existing_library.void") {
+            match DynamicLibraryLoader::new(&[
+                "_non_existing_library.void",
+                "_another_non_existing_library.void",
+            ]) {
                 Err(LoadingError::LibraryLoadFailure(_)) => (),
                 _ => panic!(),
             }
