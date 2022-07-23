@@ -75,8 +75,7 @@ Thanks in advance!
 
 To get started you are encouraged to use the following resources:
 
- - The [vulkano-examples](https://github.com/vulkano-rs/vulkano-examples) repository - Includes
-   examples in the repo and also a list of projects that use vulkano.
+- The [examples](https://github.com/vulkano-rs/vulkano/tree/master/examples) folder in this repository.
  - [docs.rs](https://docs.rs/vulkano) - Full Vulkano API documentation
  - The guide on [vulkano.rs](https://vulkano.rs/guide/introduction) - Starts with trivial compute
    examples (~50 lines of code) and then works up to rendering triangles and mandelbrots.
