@@ -238,7 +238,7 @@ fn create_instance(instance_create_info: InstanceCreateInfo) -> Arc<Instance> {
     let library = match VulkanLibrary::new() {
         Ok(x) => x,
         #[cfg(target_os = "macos")]
-        Err(LoadingError::LibraryLoadFailure(_)) => {
+        Err(vulkano::library::LoadingError::LibraryLoadFailure(err)) => {
             panic!("Failed to load Vulkan library: {}. Did you install vulkanSDK from https://vulkan.lunarg.com/sdk/home ?", err);
         }
         Err(err) => {
