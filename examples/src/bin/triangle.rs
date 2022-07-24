@@ -43,6 +43,7 @@ use vulkano::{
         acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
     },
     sync::{self, FlushError, GpuFuture},
+    VulkanLibrary,
 };
 use vulkano_win::VkSurfaceBuild;
 use winit::{
@@ -59,15 +60,19 @@ fn main() {
     // All the window-drawing functionalities are part of non-core extensions that we need
     // to enable manually. To do so, we ask the `vulkano_win` crate for the list of extensions
     // required to draw to a window.
-    let required_extensions = vulkano_win::required_extensions();
+    let library = VulkanLibrary::new().unwrap();
+    let required_extensions = vulkano_win::required_extensions(&library);
 
     // Now creating the instance.
-    let instance = Instance::new(InstanceCreateInfo {
-        enabled_extensions: required_extensions,
-        // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
-        enumerate_portability: true,
-        ..Default::default()
-    })
+    let instance = Instance::new(
+        library,
+        InstanceCreateInfo {
+            enabled_extensions: required_extensions,
+            // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
+            enumerate_portability: true,
+            ..Default::default()
+        },
+    )
     .unwrap();
 
     // The objective of this example is to draw a triangle on a window. To do so, we first need to

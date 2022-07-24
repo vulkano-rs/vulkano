@@ -15,16 +15,17 @@
 //! Basic example:
 //!
 //! ```no_run
-//! use vulkano::device::physical::PhysicalDevice;
-//! use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, Features, QueueCreateInfo};
-//! use vulkano::instance::{Instance, InstanceExtensions};
-//! use vulkano::Version;
+//! use vulkano::{
+//!     device::{physical::PhysicalDevice, Device, DeviceCreateInfo, DeviceExtensions, Features, QueueCreateInfo},
+//!     instance::{Instance, InstanceExtensions},
+//!     Version, VulkanLibrary,
+//! };
 //!
 //! // Creating the instance. See the documentation of the `instance` module.
-//! let instance = match Instance::new(Default::default()) {
-//!     Ok(i) => i,
-//!     Err(err) => panic!("Couldn't build instance: {:?}", err)
-//! };
+//! let library = VulkanLibrary::new()
+//!     .unwrap_or_else(|err| panic!("Couldn't load Vulkan library: {:?}", err));
+//! let instance = Instance::new(library, Default::default())
+//!     .unwrap_or_else(|err| panic!("Couldn't create instance: {:?}", err));
 //!
 //! // We just choose the first physical device. In a real application you would choose depending
 //! // on the capabilities of the physical device and the user's preferences.
@@ -111,7 +112,7 @@ use crate::{
 };
 pub use crate::{
     device::extensions::DeviceExtensions,
-    extensions::{ExtensionRestriction, ExtensionRestrictionError, SupportedExtensionsError},
+    extensions::{ExtensionRestriction, ExtensionRestrictionError},
     fns::DeviceFunctions,
 };
 use ash::vk::Handle;
@@ -447,7 +448,7 @@ impl Device {
         self.api_version
     }
 
-    /// Grants access to the Vulkan functions of the device.
+    /// Returns pointers to the raw Vulkan functions of the device.
     #[inline]
     pub fn fns(&self) -> &DeviceFunctions {
         &self.fns

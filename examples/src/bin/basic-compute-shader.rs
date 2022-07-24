@@ -24,15 +24,20 @@ use vulkano::{
     instance::{Instance, InstanceCreateInfo},
     pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
     sync::{self, GpuFuture},
+    VulkanLibrary,
 };
 
 fn main() {
     // As with other examples, the first step is to create an instance.
-    let instance = Instance::new(InstanceCreateInfo {
-        // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
-        enumerate_portability: true,
-        ..Default::default()
-    })
+    let library = VulkanLibrary::new().unwrap();
+    let instance = Instance::new(
+        library,
+        InstanceCreateInfo {
+            // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
+            enumerate_portability: true,
+            ..Default::default()
+        },
+    )
     .unwrap();
 
     // Choose which physical device to use.

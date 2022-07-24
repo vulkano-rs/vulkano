@@ -20,8 +20,9 @@ use vulkano::{
             DebugUtilsMessageSeverity, DebugUtilsMessageType, DebugUtilsMessenger,
             DebugUtilsMessengerCreateInfo,
         },
-        layers_list, Instance, InstanceCreateInfo, InstanceExtensions,
+        Instance, InstanceCreateInfo, InstanceExtensions,
     },
+    VulkanLibrary,
 };
 
 fn main() {
@@ -39,6 +40,8 @@ fn main() {
         ..InstanceExtensions::none()
     };
 
+    let library = VulkanLibrary::new().unwrap();
+
     // You also need to specify (unless you've used the methods linked above) which debugging layers
     // your code should use. Each layer is a bunch of checks or messages that provide information of
     // some sort.
@@ -50,7 +53,7 @@ fn main() {
     // and you should verify that list for safety - Vulkano will return an error if you specify
     // any layers that are not installed on this system. That code to do could look like this:
     println!("List of Vulkan debugging layers available to use:");
-    let mut layers = layers_list().unwrap();
+    let mut layers = library.layer_properties().unwrap();
     while let Some(l) = layers.next() {
         println!("\t{}", l.name());
     }
@@ -63,13 +66,16 @@ fn main() {
     let layers = vec!["VK_LAYER_KHRONOS_validation".to_owned()];
 
     // Important: pass the extension(s) and layer(s) when creating the vulkano instance
-    let instance = Instance::new(InstanceCreateInfo {
-        enabled_extensions: extensions,
-        enabled_layers: layers,
-        // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
-        enumerate_portability: true,
-        ..Default::default()
-    })
+    let instance = Instance::new(
+        library,
+        InstanceCreateInfo {
+            enabled_extensions: extensions,
+            enabled_layers: layers,
+            // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
+            enumerate_portability: true,
+            ..Default::default()
+        },
+    )
     .expect("failed to create Vulkan instance");
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////

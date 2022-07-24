@@ -12,11 +12,14 @@
 //!
 //! # Brief summary of Vulkan
 //!
-//! - The [`Instance`](crate::instance::Instance) object is the API entry point. It is the
-//!   first object you must create before starting to use Vulkan.
+//! - The [`VulkanLibrary`](crate::VulkanLibrary) represents a Vulkan library on the system.
+//!   It must be loaded before you can do anything with Vulkan.
 //!
-//! - The [`PhysicalDevice`](crate::device::physical::PhysicalDevice) object represents an
-//!   implementation of Vulkan available on the system (eg. a graphics card, a software
+//! - The [`Instance`](crate::instance::Instance) object is the API entry point, and represents
+//!   an initialised Vulkan library. This is the first Vulkan object that you create.
+//!
+//! - The [`PhysicalDevice`](crate::device::physical::PhysicalDevice) object represents a
+//!   Vulkan-capable device that is available on the system (eg. a graphics card, a software
 //!   implementation, etc.). Physical devices can be enumerated from an instance with
 //!   [`PhysicalDevice::enumerate`](crate::device::physical::PhysicalDevice::enumerate).
 //!
@@ -30,27 +33,27 @@
 //!   usually used to store information about vertices, lights, etc. or arbitrary data, while
 //!   images are used to store textures or multi-dimensional data.
 //!
-//! - In order to show something on the screen, you need a [`Swapchain`](crate::swapchain).
+//! - In order to show something on the screen, you need a
+//!   [`Surface` and a `Swapchain`](crate::swapchain).
 //!   A `Swapchain` contains special `Image`s that correspond to the content of the window or the
 //!   monitor. When you *present* a swapchain, the content of one of these special images is shown
 //!   on the screen.
 //!
-//! - In order to ask the GPU to do something, you must create a
+//! - For graphical operations, [`RenderPass`es and `Framebuffer`s](crate::render_pass)
+//!   describe which images the device must draw upon.
+//!
+//! - In order to be able to perform operations on the device, you need to have created a
+//!   [pipeline object](crate::pipeline) that describes the operation you want. These objects are usually
+//!   created during your program's initialization. `Shader`s are programs that the GPU will
+//!   execute as part of a pipeline. [*Descriptor sets*](crate::descriptor_set) can be used to access
+//!   the content of buffers or images from within shaders.
+//!
+//! - To tell the GPU to do something, you must create a
 //!   [*command buffer*](crate::command_buffer). A command buffer contains a list of commands
 //!   that the GPU must perform. This can include copies between buffers and images, compute
 //!   operations, or graphics operations. For the work to start, the command buffer must then be
 //!   submitted to a [`Queue`](crate::device::Queue), which is obtained when you create the
 //!   `Device`.
-//!
-//! - In order to be able to add a compute operation or a graphics operation to a command buffer,
-//!   you need to have created a [`ComputePipeline` or a `GraphicsPipeline`
-//!   object](crate::pipeline) that describes the operation you want. These objects are usually
-//!   created during your program's initialization. `Shader`s are programs that the GPU will
-//!   execute as part of a pipeline. [*Descriptor sets*](crate::descriptor_set) can be used to access
-//!   the content of buffers or images from within shaders.
-//!
-//! - For graphical operations, [`RenderPass`es and `Framebuffer`s](crate::render_pass)
-//!   describe on which images the implementation must draw upon.
 //!
 //! - Once you have built a *command buffer* that contains a list of commands, submitting it to the
 //!   GPU will return an object that implements [the `GpuFuture` trait](crate::sync::GpuFuture).
@@ -64,6 +67,7 @@
 
 pub use ash::vk::Handle;
 pub use half;
+pub use library::VulkanLibrary;
 use std::{
     error, fmt,
     ops::Deref,
@@ -86,6 +90,7 @@ pub mod render_pass;
 mod fns;
 pub mod image;
 pub mod instance;
+pub mod library;
 pub mod memory;
 pub mod pipeline;
 pub mod query;

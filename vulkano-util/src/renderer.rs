@@ -236,7 +236,7 @@ impl VulkanoWindowRenderer {
     }
 
     /// Begin your rendering by calling `acquire`.
-    /// Returns a [`GpuFuture`](vulkano::sync::future::GpuFuture) representing the time after which the swapchain image has been acquired
+    /// Returns a [`GpuFuture`](vulkano::sync::GpuFuture) representing the time after which the swapchain image has been acquired
     /// and previous frame ended.
     /// Execute your command buffers after calling this function and finish rendering by calling [`VulkanoWindowRenderer::present`].
     pub fn acquire(&mut self) -> std::result::Result<Box<dyn GpuFuture>, AcquireError> {

@@ -28,21 +28,26 @@ use vulkano::{
     instance::{Instance, InstanceCreateInfo, InstanceExtensions},
     pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
     sync::{self, GpuFuture},
+    VulkanLibrary,
 };
 
 fn main() {
-    let instance = Instance::new(InstanceCreateInfo {
-        enabled_extensions: InstanceExtensions {
-            // This extension is required to obtain physical device metadata
-            // about the device workgroup size limits
-            khr_get_physical_device_properties2: true,
+    let library = VulkanLibrary::new().unwrap();
+    let instance = Instance::new(
+        library,
+        InstanceCreateInfo {
+            enabled_extensions: InstanceExtensions {
+                // This extension is required to obtain physical device metadata
+                // about the device workgroup size limits
+                khr_get_physical_device_properties2: true,
 
-            ..InstanceExtensions::none()
+                ..InstanceExtensions::none()
+            },
+            // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
+            enumerate_portability: true,
+            ..Default::default()
         },
-        // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
-        enumerate_portability: true,
-        ..Default::default()
-    })
+    )
     .unwrap();
 
     let device_extensions = DeviceExtensions {

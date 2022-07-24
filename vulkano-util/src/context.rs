@@ -8,13 +8,17 @@
 // according to those terms.
 
 use std::sync::Arc;
-use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{
-    Device, DeviceCreateInfo, DeviceExtensions, Features, Queue, QueueCreateInfo,
+use vulkano::{
+    device::{
+        physical::{PhysicalDevice, PhysicalDeviceType},
+        Device, DeviceCreateInfo, DeviceExtensions, Features, Queue, QueueCreateInfo,
+    },
+    instance::{
+        debug::{DebugUtilsMessenger, DebugUtilsMessengerCreateInfo},
+        Instance, InstanceCreateInfo, InstanceExtensions,
+    },
 };
-use vulkano::instance::debug::{DebugUtilsMessenger, DebugUtilsMessengerCreateInfo};
-use vulkano::instance::{Instance, InstanceCreateInfo};
-use vulkano::Version;
+use vulkano::{Version, VulkanLibrary};
 
 /// A configuration struct to pass various creation options to create [`VulkanoContext`].
 pub struct VulkanoConfig {
@@ -41,7 +45,7 @@ impl Default for VulkanoConfig {
         VulkanoConfig {
             instance_create_info: InstanceCreateInfo {
                 application_version: Version::V1_2,
-                enabled_extensions: vulkano_win::required_extensions(),
+                enabled_extensions: InstanceExtensions::none(), // FIXME: vulkano_win::required_extensions(),
                 ..Default::default()
             },
             debug_create_info: None,
@@ -65,7 +69,8 @@ impl Default for VulkanoConfig {
 /// A utility struct to create, access and hold alive Vulkano device, instance and queues.
 ///
 /// Vulkano context is used in the creation of your graphics or compute pipelines, images and
-/// in the creation of [`VulkanoWindowRenderer`] through [`VulkanoWindows`].
+/// in the creation of [`VulkanoWindowRenderer`](crate::renderer::VulkanoWindowRenderer) through
+/// [`VulkanoWindows`](crate::window::VulkanoWindows).
 ///
 /// ## Example
 ///
@@ -230,20 +235,16 @@ impl VulkanoContext {
 
 /// Create instance, but remind user to install vulkan SDK on mac os if loading error is received on that platform.
 fn create_instance(instance_create_info: InstanceCreateInfo) -> Arc<Instance> {
-    #[cfg(target_os = "macos")]
-    {
-        match Instance::new(instance_create_info) {
-            Err(e) => match e {
-                vulkano::instance::InstanceCreationError::LoadingError(le) => {
-                     Err(le).expect("Failed to create instance. Did you install vulkanSDK from https://vulkan.lunarg.com/sdk/home ?")
-                }
-                _ => Err(e).expect("Failed to create instance"),
-            },
-            Ok(i) => i,
+    let library = match VulkanLibrary::new() {
+        Ok(x) => x,
+        #[cfg(target_os = "macos")]
+        Err(LoadingError::LibraryLoadFailure(_)) => {
+            panic!("Failed to load Vulkan library: {}. Did you install vulkanSDK from https://vulkan.lunarg.com/sdk/home ?", err);
         }
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        Instance::new(instance_create_info).expect("Failed to create instance")
-    }
+        Err(err) => {
+            panic!("Failed to load Vulkan library: {}.", err);
+        }
+    };
+
+    Instance::new(library, instance_create_info).expect("Failed to create instance")
 }

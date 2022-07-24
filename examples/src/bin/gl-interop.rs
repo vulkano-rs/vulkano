@@ -46,6 +46,7 @@ mod linux {
             now, ExternalSemaphoreHandleTypes, FlushError, GpuFuture, PipelineStages, Semaphore,
             SemaphoreCreateInfo,
         },
+        VulkanLibrary,
     };
     use vulkano_win::VkSurfaceBuild;
     use winit::{
@@ -378,25 +379,28 @@ mod linux {
         Arc<GraphicsPipeline>,
         Arc<CpuAccessibleBuffer<[Vertex]>>,
     ) {
-        let required_extensions = vulkano_win::required_extensions();
+        let library = VulkanLibrary::new().unwrap();
+        let required_extensions = vulkano_win::required_extensions(&library);
+        let instance = Instance::new(
+            library,
+            InstanceCreateInfo {
+                enabled_extensions: InstanceExtensions {
+                    khr_get_physical_device_properties2: true,
+                    khr_external_memory_capabilities: true,
+                    khr_external_semaphore_capabilities: true,
+                    khr_external_fence_capabilities: true,
+                    ext_debug_utils: true,
 
-        let instance = Instance::new(InstanceCreateInfo {
-            enabled_extensions: InstanceExtensions {
-                khr_get_physical_device_properties2: true,
-                khr_external_memory_capabilities: true,
-                khr_external_semaphore_capabilities: true,
-                khr_external_fence_capabilities: true,
-                ext_debug_utils: true,
+                    ..InstanceExtensions::none()
+                }
+                .union(&required_extensions),
 
-                ..InstanceExtensions::none()
-            }
-            .union(&required_extensions),
+                // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
+                enumerate_portability: true,
 
-            // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
-            enumerate_portability: true,
-
-            ..Default::default()
-        })
+                ..Default::default()
+            },
+        )
         .unwrap();
 
         let _debug_callback = unsafe {

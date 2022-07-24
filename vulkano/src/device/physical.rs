@@ -281,12 +281,14 @@ fn init_info2(instance: &Instance, info: &mut PhysicalDeviceInfo) {
 /// # Example
 ///
 /// ```no_run
-/// # use vulkano::instance::Instance;
-/// # use vulkano::instance::InstanceExtensions;
-/// # use vulkano::Version;
+/// # use vulkano::{
+/// #     instance::{Instance, InstanceExtensions},
+/// #     Version, VulkanLibrary,
+/// # };
 /// use vulkano::device::physical::PhysicalDevice;
 ///
-/// # let instance = Instance::new(Default::default()).unwrap();
+/// # let library = VulkanLibrary::new().unwrap();
+/// # let instance = Instance::new(library, Default::default()).unwrap();
 /// for physical_device in PhysicalDevice::enumerate(&instance) {
 ///     print_infos(physical_device);
 /// }
@@ -308,12 +310,14 @@ impl<'a> PhysicalDevice<'a> {
     /// # Example
     ///
     /// ```no_run
-    /// # use vulkano::instance::Instance;
-    /// # use vulkano::instance::InstanceExtensions;
-    /// # use vulkano::Version;
+    /// # use vulkano::{
+    /// #     instance::{Instance, InstanceExtensions},
+    /// #     Version, VulkanLibrary,
+    /// # };
     /// use vulkano::device::physical::PhysicalDevice;
     ///
-    /// # let instance = Instance::new(Default::default()).unwrap();
+    /// # let library = VulkanLibrary::new().unwrap();
+    /// # let instance = Instance::new(library, Default::default()).unwrap();
     /// for physical_device in PhysicalDevice::enumerate(&instance) {
     ///     println!("Available device: {}", physical_device.properties().device_name);
     /// }
@@ -340,12 +344,14 @@ impl<'a> PhysicalDevice<'a> {
     /// # Example
     ///
     /// ```no_run
-    /// use vulkano::instance::Instance;
-    /// use vulkano::instance::InstanceExtensions;
+    /// # use vulkano::{
+    /// #     instance::{Instance, InstanceExtensions},
+    /// #     Version, VulkanLibrary,
+    /// # };
     /// use vulkano::device::physical::PhysicalDevice;
-    /// use vulkano::Version;
     ///
-    /// let instance = Instance::new(Default::default()).unwrap();
+    /// # let library = VulkanLibrary::new().unwrap();
+    /// # let instance = Instance::new(library, Default::default()).unwrap();
     /// let first_physical_device = PhysicalDevice::from_index(&instance, 0).unwrap();
     /// ```
     #[inline]
@@ -389,7 +395,7 @@ impl<'a> PhysicalDevice<'a> {
     /// Returns the version of Vulkan supported by this device.
     ///
     /// Unlike the `api_version` property, which is the version reported by the device directly,
-    /// this function returns the version the device can actually support, based on the instance's,
+    /// this function returns the version the device can actually support, based on the instance's
     /// `max_api_version`.
     #[inline]
     pub fn api_version(&self) -> Version {
