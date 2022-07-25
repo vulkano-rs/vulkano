@@ -71,8 +71,8 @@ impl App {
             id1,
             RenderPipeline::new(
                 // Use same queue.. for synchronization
-                self.context.graphics_queue(),
-                self.context.graphics_queue(),
+                self.context.graphics_queue().clone(),
+                self.context.graphics_queue().clone(),
                 [
                     (WINDOW_WIDTH / SCALING) as u32,
                     (WINDOW_HEIGHT / SCALING) as u32,
@@ -86,8 +86,8 @@ impl App {
         self.pipelines.insert(
             id2,
             RenderPipeline::new(
-                self.context.graphics_queue(),
-                self.context.graphics_queue(),
+                self.context.graphics_queue().clone(),
+                self.context.graphics_queue().clone(),
                 [
                     (WINDOW2_WIDTH / SCALING) as u32,
                     (WINDOW2_HEIGHT / SCALING) as u32,

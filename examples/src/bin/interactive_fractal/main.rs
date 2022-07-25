@@ -69,7 +69,10 @@ fn main() {
     // Create app to hold the logic of our fractal explorer
     let gfx_queue = context.graphics_queue();
     // We intend to eventually render on our swapchain, thus we use that format when creating the app here.
-    let mut app = FractalApp::new(gfx_queue, primary_window_renderer.swapchain_format());
+    let mut app = FractalApp::new(
+        gfx_queue.clone(),
+        primary_window_renderer.swapchain_format(),
+    );
     app.print_guide();
 
     // Basic loop for our runtime

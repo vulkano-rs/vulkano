@@ -461,6 +461,12 @@ impl Instance {
         Ok(Arc::new(instance))
     }
 
+    /// Returns the Vulkan library used to create this instance.
+    #[inline]
+    pub fn library(&self) -> &Arc<VulkanLibrary> {
+        &self.library
+    }
+
     /// Returns the Vulkan version supported by the instance.
     ///
     /// This is the lower of the
