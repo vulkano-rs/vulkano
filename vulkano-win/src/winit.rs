@@ -217,8 +217,8 @@ unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
 
     Surface::from_win32(
         instance,
-        win.borrow().hinstance() as _,
-        win.borrow().hwnd() as _,
+        win.borrow().hinstance() as *const (),
+        win.borrow().hwnd() as *const (),
         win,
     )
 }
@@ -232,7 +232,7 @@ use winit::{monitor::MonitorHandle, platform::windows::MonitorHandleExtWindows};
 /// Creates a `Win32Monitor` from a Winit monitor handle.
 #[inline]
 pub fn create_win32_monitor_from_winit(monitor_handle: &MonitorHandle) -> Win32Monitor {
-    unsafe { Win32Monitor::new(monitor_handle.hmonitor() as _) }
+    unsafe { Win32Monitor::new(monitor_handle.hmonitor() as *const ()) }
 }
 
 /// An alternative to `Borrow<T>` with the requirement that all calls to
