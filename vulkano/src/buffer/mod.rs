@@ -87,7 +87,6 @@ pub use self::{
     cpu_access::CpuAccessibleBuffer,
     cpu_pool::CpuBufferPool,
     device_local::DeviceLocalBuffer,
-    immutable::ImmutableBuffer,
     slice::BufferSlice,
     sys::{BufferCreationError, SparseLevel},
     traits::{
@@ -108,7 +107,6 @@ use std::mem::size_of;
 pub mod cpu_access;
 pub mod cpu_pool;
 pub mod device_local;
-pub mod immutable;
 pub mod sys;
 pub mod view;
 
