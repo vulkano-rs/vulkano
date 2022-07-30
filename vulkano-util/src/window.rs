@@ -17,7 +17,7 @@ use std::collections::hash_map::{Iter, IterMut};
 use std::collections::HashMap;
 use vulkano::swapchain::{PresentMode, SwapchainCreateInfo};
 use winit::dpi::LogicalSize;
-use winit::window::WindowId;
+use winit::window::{CursorGrabMode, WindowId};
 
 /// A struct organizing windows and their corresponding renderers. This makes it easy to handle multiple windows.
 ///
@@ -143,7 +143,7 @@ impl VulkanoWindows {
         let winit_window = winit_window_builder.build(event_loop).unwrap();
 
         if window_descriptor.cursor_locked {
-            match winit_window.set_cursor_grab(true) {
+            match winit_window.set_cursor_grab(CursorGrabMode::Confined) {
                 Ok(_) => {}
                 Err(winit::error::ExternalError::NotSupported(_)) => {}
                 Err(err) => Err(err).unwrap(),
@@ -262,7 +262,9 @@ fn get_fitting_videomode(
         match abs_diff(a.size().width, width).cmp(&abs_diff(b.size().width, width)) {
             Equal => {
                 match abs_diff(a.size().height, height).cmp(&abs_diff(b.size().height, height)) {
-                    Equal => b.refresh_rate().cmp(&a.refresh_rate()),
+                    Equal => b
+                        .refresh_rate_millihertz()
+                        .cmp(&a.refresh_rate_millihertz()),
                     default => default,
                 }
             }
@@ -279,7 +281,9 @@ fn get_best_videomode(monitor: &winit::monitor::MonitorHandle) -> winit::monitor
         use std::cmp::Ordering::*;
         match b.size().width.cmp(&a.size().width) {
             Equal => match b.size().height.cmp(&a.size().height) {
-                Equal => b.refresh_rate().cmp(&a.refresh_rate()),
+                Equal => b
+                    .refresh_rate_millihertz()
+                    .cmp(&a.refresh_rate_millihertz()),
                 default => default,
             },
             default => default,
