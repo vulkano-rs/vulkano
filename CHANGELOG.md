@@ -6,6 +6,17 @@
     description. They will be transferred to this file right after the
     Pull Request merge. 
 -->
+- **Breaking** Changes to `Instance` and Vulkan initialization:
+  - `FunctionPointers` is renamed to `VulkanLibrary`, and now resides in a separate `library` module. It is re-exported from the crate root.
+  - The `Loader` trait is now in the `library` module.
+  - `Instance` now requires a `VulkanLibrary` object, which you must create beforehand.
+  - The `auto_loader` function is removed.
+  - Supported extensions and layers are now retrieved from the `VulkanLibrary` object. The old `layers_list` and `InstanceExtensions` methods are removed.
+  - The deprecated methods of `DeviceExtensions` are removed.
+  - Vulkano-win: `required_extensions` now requires a reference to `VulkanLibrary`.
+- **Breaking** Changes to Vulkano-util:
+  - Required instance extensions for surface creation aren't added until `VulkanoContext` is created.
+  - The `instance`, `device`, `graphics_queue` and `compute_queue` methods of `VulkanoContext` now return a reference instead of an owned `Arc`.
 
 # Version 0.30.0 (2022-07-20)
 
