@@ -524,11 +524,14 @@ impl From<OomError> for SemaphoreExportError {
 
 #[cfg(test)]
 mod tests {
-    use crate::device::physical::PhysicalDevice;
-    use crate::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
-    use crate::instance::{Instance, InstanceCreateInfo, InstanceExtensions};
-    use crate::sync::{ExternalSemaphoreHandleTypes, Semaphore, SemaphoreCreateInfo};
-    use crate::VulkanObject;
+    use crate::{
+        device::{
+            physical::PhysicalDevice, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+        },
+        instance::{Instance, InstanceCreateInfo, InstanceExtensions},
+        sync::{ExternalSemaphoreHandleTypes, Semaphore, SemaphoreCreateInfo},
+        VulkanLibrary, VulkanObject,
+    };
 
     #[test]
     fn semaphore_create() {
@@ -555,14 +558,22 @@ mod tests {
 
     #[test]
     fn semaphore_export() {
-        let instance = match Instance::new(InstanceCreateInfo {
-            enabled_extensions: InstanceExtensions {
-                khr_get_physical_device_properties2: true,
-                khr_external_semaphore_capabilities: true,
-                ..InstanceExtensions::none()
+        let library = match VulkanLibrary::new() {
+            Ok(x) => x,
+            Err(_) => return,
+        };
+
+        let instance = match Instance::new(
+            library,
+            InstanceCreateInfo {
+                enabled_extensions: InstanceExtensions {
+                    khr_get_physical_device_properties2: true,
+                    khr_external_semaphore_capabilities: true,
+                    ..InstanceExtensions::none()
+                },
+                ..Default::default()
             },
-            ..Default::default()
-        }) {
+        ) {
             Ok(x) => x,
             Err(_) => return,
         };

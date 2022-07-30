@@ -66,22 +66,23 @@ impl VulkanoWindowRenderer {
         swapchain_create_info_modify: fn(&mut SwapchainCreateInfo),
     ) -> VulkanoWindowRenderer {
         // Create rendering surface from window
-        let surface = create_surface_from_winit(window, vulkano_context.instance()).unwrap();
+        let surface =
+            create_surface_from_winit(window, vulkano_context.instance().clone()).unwrap();
 
         // Create swap chain & frame(s) to which we'll render
-        let (swap_chain, final_views) = Self::create_swap_chain(
-            vulkano_context.device(),
+        let (swap_chain, final_views) = Self::create_swapchain(
+            vulkano_context.device().clone(),
             surface.clone(),
             descriptor,
             swapchain_create_info_modify,
         );
 
-        let previous_frame_end = Some(sync::now(vulkano_context.device()).boxed());
+        let previous_frame_end = Some(sync::now(vulkano_context.device().clone()).boxed());
 
         VulkanoWindowRenderer {
             surface,
-            graphics_queue: vulkano_context.graphics_queue(),
-            compute_queue: vulkano_context.compute_queue(),
+            graphics_queue: vulkano_context.graphics_queue().clone(),
+            compute_queue: vulkano_context.compute_queue().clone(),
             swap_chain,
             final_views,
             additional_image_views: HashMap::default(),
@@ -94,7 +95,7 @@ impl VulkanoWindowRenderer {
 
     /// Creates the swapchain and its images based on [`WindowDescriptor`]. The swapchain creation
     /// can be modified with the `swapchain_create_info_modify` function passed as an input.
-    fn create_swap_chain(
+    fn create_swapchain(
         device: Arc<Device>,
         surface: Arc<Surface<Window>>,
         window_descriptor: &WindowDescriptor,
@@ -236,7 +237,7 @@ impl VulkanoWindowRenderer {
     }
 
     /// Begin your rendering by calling `acquire`.
-    /// Returns a [`GpuFuture`](vulkano::sync::future::GpuFuture) representing the time after which the swapchain image has been acquired
+    /// Returns a [`GpuFuture`](vulkano::sync::GpuFuture) representing the time after which the swapchain image has been acquired
     /// and previous frame ended.
     /// Execute your command buffers after calling this function and finish rendering by calling [`VulkanoWindowRenderer::present`].
     pub fn acquire(&mut self) -> std::result::Result<Box<dyn GpuFuture>, AcquireError> {

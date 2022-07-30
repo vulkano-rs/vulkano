@@ -8,26 +8,39 @@
 // according to those terms.
 
 use std::sync::Arc;
-use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{
-    Device, DeviceCreateInfo, DeviceExtensions, Features, Queue, QueueCreateInfo,
+use vulkano::{
+    device::{
+        physical::{PhysicalDevice, PhysicalDeviceType},
+        Device, DeviceCreateInfo, DeviceExtensions, Features, Queue, QueueCreateInfo,
+    },
+    instance::{
+        debug::{DebugUtilsMessenger, DebugUtilsMessengerCreateInfo},
+        Instance, InstanceCreateInfo, InstanceExtensions,
+    },
 };
-use vulkano::instance::debug::{DebugUtilsMessenger, DebugUtilsMessengerCreateInfo};
-use vulkano::instance::{Instance, InstanceCreateInfo};
-use vulkano::Version;
+use vulkano::{Version, VulkanLibrary};
 
 /// A configuration struct to pass various creation options to create [`VulkanoContext`].
+///
+/// Instance extensions that are required for surface creation will be appended to the config when
+/// creating [`VulkanoContext`].
 pub struct VulkanoConfig {
     pub instance_create_info: InstanceCreateInfo,
+
     /// Pass the `DebugUtilsMessengerCreateInfo` to create the debug callback
     /// for printing debug information at runtime.
     pub debug_create_info: Option<DebugUtilsMessengerCreateInfo>,
+
     /// Pass filter function for your physical device selection. See default for example.
     pub device_filter_fn: Arc<dyn Fn(&PhysicalDevice) -> bool>,
+
     /// Pass priority order function for your physical device selection. See default for example.
     pub device_priority_fn: Arc<dyn Fn(&PhysicalDevice) -> u32>,
+
     pub device_extensions: DeviceExtensions,
+
     pub device_features: Features,
+
     /// Print your selected device name at start.
     pub print_device_name: bool,
 }
@@ -41,7 +54,7 @@ impl Default for VulkanoConfig {
         VulkanoConfig {
             instance_create_info: InstanceCreateInfo {
                 application_version: Version::V1_2,
-                enabled_extensions: vulkano_win::required_extensions(),
+                enabled_extensions: InstanceExtensions::none(),
                 ..Default::default()
             },
             debug_create_info: None,
@@ -65,7 +78,8 @@ impl Default for VulkanoConfig {
 /// A utility struct to create, access and hold alive Vulkano device, instance and queues.
 ///
 /// Vulkano context is used in the creation of your graphics or compute pipelines, images and
-/// in the creation of [`VulkanoWindowRenderer`] through [`VulkanoWindows`].
+/// in the creation of [`VulkanoWindowRenderer`](crate::renderer::VulkanoWindowRenderer) through
+/// [`VulkanoWindows`](crate::window::VulkanoWindows).
 ///
 /// ## Example
 ///
@@ -98,8 +112,25 @@ impl VulkanoContext {
     ///
     /// - Panics where the underlying Vulkano struct creations fail
     pub fn new(mut config: VulkanoConfig) -> Self {
+        let library = match VulkanLibrary::new() {
+            Ok(x) => x,
+            #[cfg(target_os = "macos")]
+            Err(vulkano::library::LoadingError::LibraryLoadFailure(err)) => {
+                panic!("Failed to load Vulkan library: {}. Did you install vulkanSDK from https://vulkan.lunarg.com/sdk/home ?", err);
+            }
+            Err(err) => {
+                panic!("Failed to load Vulkan library: {}.", err);
+            }
+        };
+
+        // Append required extensions
+        config.instance_create_info.enabled_extensions = vulkano_win::required_extensions(&library)
+            .union(&config.instance_create_info.enabled_extensions);
+
         // Create instance
-        let instance = create_instance(config.instance_create_info);
+        let instance = Instance::new(library.clone(), config.instance_create_info)
+            .expect("Failed to create instance");
+
         // Create debug callback
         let _debug_utils_messenger = if let Some(dbg_create_info) = config.debug_create_info.take()
         {
@@ -110,6 +141,7 @@ impl VulkanoContext {
         } else {
             None
         };
+
         // Get prioritized device
         let physical_device = PhysicalDevice::enumerate(&instance)
             .filter(|p| (config.device_filter_fn)(p))
@@ -140,8 +172,8 @@ impl VulkanoContext {
         }
     }
 
-    /// Creates vulkano device with required queue families and required extensions. Creates a separate queue for compute
-    /// if possible. If not, same queue as graphics is used.
+    /// Creates vulkano device with required queue families and required extensions. Creates a
+    /// separate queue for compute if possible. If not, same queue as graphics is used.
     fn create_device(
         physical: PhysicalDevice,
         device_extensions: DeviceExtensions,
@@ -189,17 +221,17 @@ impl VulkanoContext {
         (device, gfx_queue, compute_queue)
     }
 
-    /// Check device name
+    /// Returns the name of the device.
     pub fn device_name(&self) -> &str {
         &self.device.physical_device().properties().device_name
     }
 
-    /// Check device type
+    /// Returns the type of the device.
     pub fn device_type(&self) -> PhysicalDeviceType {
         self.device.physical_device().properties().device_type
     }
 
-    /// Check device memory count
+    /// Returns the maximum memory allocation of the device.
     pub fn max_memory(&self) -> u32 {
         self.device
             .physical_device()
@@ -207,43 +239,25 @@ impl VulkanoContext {
             .max_memory_allocation_count as u32
     }
 
-    /// Access instance
-    pub fn instance(&self) -> Arc<Instance> {
-        self.instance.clone()
+    /// Returns the instance.
+    pub fn instance(&self) -> &Arc<Instance> {
+        &self.instance
     }
 
-    /// Access device
-    pub fn device(&self) -> Arc<Device> {
-        self.device.clone()
+    /// Returns the device.
+    pub fn device(&self) -> &Arc<Device> {
+        &self.device
     }
 
-    /// Access rendering queue
-    pub fn graphics_queue(&self) -> Arc<Queue> {
-        self.graphics_queue.clone()
+    /// Returns the graphics queue.
+    pub fn graphics_queue(&self) -> &Arc<Queue> {
+        &self.graphics_queue
     }
 
-    /// Access compute queue. Depending on your device, this might be the same as graphics queue.
-    pub fn compute_queue(&self) -> Arc<Queue> {
-        self.compute_queue.clone()
-    }
-}
-
-/// Create instance, but remind user to install vulkan SDK on mac os if loading error is received on that platform.
-fn create_instance(instance_create_info: InstanceCreateInfo) -> Arc<Instance> {
-    #[cfg(target_os = "macos")]
-    {
-        match Instance::new(instance_create_info) {
-            Err(e) => match e {
-                vulkano::instance::InstanceCreationError::LoadingError(le) => {
-                     Err(le).expect("Failed to create instance. Did you install vulkanSDK from https://vulkan.lunarg.com/sdk/home ?")
-                }
-                _ => Err(e).expect("Failed to create instance"),
-            },
-            Ok(i) => i,
-        }
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        Instance::new(instance_create_info).expect("Failed to create instance")
+    /// Returns the compute queue.
+    ///
+    /// Depending on your device, this might be the same as graphics queue.
+    pub fn compute_queue(&self) -> &Arc<Queue> {
+        &self.compute_queue
     }
 }

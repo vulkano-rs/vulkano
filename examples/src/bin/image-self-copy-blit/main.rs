@@ -43,6 +43,7 @@ use vulkano::{
         acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
     },
     sync::{self, FlushError, GpuFuture},
+    VulkanLibrary,
 };
 use vulkano_win::VkSurfaceBuild;
 use winit::{
@@ -55,13 +56,17 @@ fn main() {
     // The start of this example is exactly the same as `triangle`. You should read the
     // `triangle` example if you haven't done so yet.
 
-    let required_extensions = vulkano_win::required_extensions();
-    let instance = Instance::new(InstanceCreateInfo {
-        enabled_extensions: required_extensions,
-        // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
-        enumerate_portability: true,
-        ..Default::default()
-    })
+    let library = VulkanLibrary::new().unwrap();
+    let required_extensions = vulkano_win::required_extensions(&library);
+    let instance = Instance::new(
+        library,
+        InstanceCreateInfo {
+            enabled_extensions: required_extensions,
+            // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
+            enumerate_portability: true,
+            ..Default::default()
+        },
+    )
     .unwrap();
 
     let event_loop = EventLoop::new();

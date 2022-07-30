@@ -1,20 +1,16 @@
-use std::borrow::Borrow;
-use std::error;
-use std::fmt;
-use std::rc::Rc;
-use std::sync::Arc;
-
-use vulkano::instance::Instance;
-use vulkano::instance::InstanceExtensions;
-use vulkano::swapchain::Surface;
-use vulkano::swapchain::SurfaceCreationError;
+use std::{borrow::Borrow, error, fmt, rc::Rc, sync::Arc};
+use vulkano::{
+    instance::{Instance, InstanceExtensions},
+    swapchain::{Surface, SurfaceCreationError},
+    VulkanLibrary,
+};
 use winit::{
     error::OsError as WindowCreationError,
     event_loop::EventLoopWindowTarget,
     window::{Window, WindowBuilder},
 };
 
-pub fn required_extensions() -> InstanceExtensions {
+pub fn required_extensions(library: &VulkanLibrary) -> InstanceExtensions {
     let ideal = InstanceExtensions {
         khr_surface: true,
         khr_xlib_surface: true,
@@ -29,10 +25,7 @@ pub fn required_extensions() -> InstanceExtensions {
         ..InstanceExtensions::none()
     };
 
-    match InstanceExtensions::supported_by_core() {
-        Ok(supported) => supported.intersection(&ideal),
-        Err(_) => InstanceExtensions::none(),
-    }
+    library.supported_extensions().intersection(&ideal)
 }
 
 /// Create a surface from a Winit window or a reference to it. The surface takes `W` to prevent it

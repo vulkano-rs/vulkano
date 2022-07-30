@@ -12,10 +12,15 @@
 /// Creates an instance or returns if initialization fails.
 macro_rules! instance {
     () => {{
-        use crate::instance::Instance;
+        use crate::{instance::Instance, VulkanLibrary};
 
-        match Instance::new(Default::default()) {
-            Ok(i) => i,
+        let library = match VulkanLibrary::new() {
+            Ok(x) => x,
+            Err(_) => return,
+        };
+
+        match Instance::new(library, Default::default()) {
+            Ok(x) => x,
             Err(_) => return,
         }
     }};

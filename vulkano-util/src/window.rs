@@ -339,7 +339,7 @@ pub struct WindowDescriptor {
     pub cursor_visible: bool,
     /// Sets whether the window locks the cursor inside its borders when the window has focus.
     pub cursor_locked: bool,
-    /// Sets the [`WindowMode`](crate::WindowMode).
+    /// Sets the [`WindowMode`].
     pub mode: WindowMode,
     /// Sets whether the background of the window should be transparent.
     pub transparent: bool,

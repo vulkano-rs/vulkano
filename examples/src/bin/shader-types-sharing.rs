@@ -39,14 +39,19 @@ use vulkano::{
     instance::{Instance, InstanceCreateInfo},
     pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
     sync::{self, GpuFuture},
+    VulkanLibrary,
 };
 
 fn main() {
-    let instance = Instance::new(InstanceCreateInfo {
-        // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
-        enumerate_portability: true,
-        ..Default::default()
-    })
+    let library = VulkanLibrary::new().unwrap();
+    let instance = Instance::new(
+        library,
+        InstanceCreateInfo {
+            // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
+            enumerate_portability: true,
+            ..Default::default()
+        },
+    )
     .unwrap();
 
     let device_extensions = DeviceExtensions {

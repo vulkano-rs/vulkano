@@ -40,6 +40,7 @@ use vulkano::{
     render_pass::{Framebuffer, FramebufferCreateInfo, Subpass},
     swapchain::{PresentMode, Swapchain, SwapchainCreateInfo},
     sync::{FenceSignalFuture, GpuFuture},
+    VulkanLibrary,
 };
 use vulkano_win::VkSurfaceBuild;
 use winit::{
@@ -56,13 +57,17 @@ const PARTICLE_COUNT: usize = 100_000;
 fn main() {
     // The usual Vulkan initialization.
     // Largely the same as example `triangle.rs` until further commentation is provided.
-    let required_extensions = vulkano_win::required_extensions();
-    let instance = Instance::new(InstanceCreateInfo {
-        enabled_extensions: required_extensions,
-        // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
-        enumerate_portability: true,
-        ..Default::default()
-    })
+    let library = VulkanLibrary::new().unwrap();
+    let required_extensions = vulkano_win::required_extensions(&library);
+    let instance = Instance::new(
+        library,
+        InstanceCreateInfo {
+            enabled_extensions: required_extensions,
+            // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
+            enumerate_portability: true,
+            ..Default::default()
+        },
+    )
     .unwrap();
 
     let event_loop = EventLoop::new();

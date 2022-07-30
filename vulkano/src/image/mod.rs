@@ -46,27 +46,27 @@
 //! To be written.
 //!
 
-pub use self::aspect::ImageAspect;
-pub use self::aspect::ImageAspects;
-pub use self::attachment::AttachmentImage;
-pub use self::immutable::ImmutableImage;
-pub use self::layout::ImageDescriptorLayouts;
-pub use self::layout::ImageLayout;
-pub use self::storage::StorageImage;
-pub use self::swapchain::SwapchainImage;
-pub use self::sys::ImageCreationError;
-pub use self::traits::ImageAccess;
-pub use self::traits::ImageInner;
-pub use self::usage::ImageUsage;
-pub use self::view::ImageViewAbstract;
-use self::view::ImageViewType;
-use crate::format::Format;
-use crate::memory::ExternalMemoryHandleType;
-use crate::memory::ExternalMemoryProperties;
-use crate::DeviceSize;
-use std::cmp;
-use std::ops::BitAnd;
-use std::ops::Range;
+pub use self::{
+    aspect::{ImageAspect, ImageAspects},
+    attachment::AttachmentImage,
+    immutable::ImmutableImage,
+    layout::{ImageDescriptorLayouts, ImageLayout},
+    storage::StorageImage,
+    swapchain::SwapchainImage,
+    sys::ImageCreationError,
+    traits::{ImageAccess, ImageInner},
+    usage::ImageUsage,
+    view::{ImageViewAbstract, ImageViewType},
+};
+use crate::{
+    format::Format,
+    memory::{ExternalMemoryHandleType, ExternalMemoryProperties},
+    DeviceSize,
+};
+use std::{
+    cmp,
+    ops::{BitAnd, Range},
+};
 
 mod aspect;
 pub mod attachment; // TODO: make private
@@ -176,9 +176,13 @@ impl SampleCounts {
     /// should check the intersection of the supported sample counts because they don't have to
     /// match. You could similarily apply this to the stencil counts.
     /// ```no_run
-    /// # use vulkano::instance::Instance;
-    /// # use vulkano::device::physical::PhysicalDevice;
-    /// # let instance = Instance::new(Default::default()).unwrap();
+    /// # use vulkano::{
+    /// #     instance::Instance,
+    /// #     device::physical::PhysicalDevice,
+    /// #     VulkanLibrary,
+    /// # };
+    /// # let library = VulkanLibrary::new().unwrap();
+    /// # let instance = Instance::new(library, Default::default()).unwrap();
     /// # let physical_device = PhysicalDevice::from_index(&instance, 0).unwrap();
     /// let properties = physical_device.properties();
     /// let color_counts = properties.framebuffer_color_sample_counts;

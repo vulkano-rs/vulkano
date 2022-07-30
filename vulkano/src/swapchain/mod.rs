@@ -55,24 +55,30 @@
 //!
 //! ```no_run
 //! use std::ptr;
-//! use vulkano::instance::{Instance, InstanceCreateInfo, InstanceExtensions};
-//! use vulkano::swapchain::Surface;
-//! use vulkano::Version;
+//! use vulkano::{
+//!     instance::{Instance, InstanceCreateInfo, InstanceExtensions},
+//!     swapchain::Surface,
+//!     Version, VulkanLibrary,
+//! };
 //!
 //! let instance = {
+//!     let library = VulkanLibrary::new()
+//!         .unwrap_or_else(|err| panic!("Couldn't load Vulkan library: {:?}", err));
+//!
 //!     let extensions = InstanceExtensions {
 //!         khr_surface: true,
 //!         khr_win32_surface: true,        // If you don't enable this, `from_hwnd` will fail.
 //!         .. InstanceExtensions::none()
 //!     };
 //!
-//!     match Instance::new(InstanceCreateInfo {
-//!         enabled_extensions: extensions,
-//!         ..Default::default()
-//!     }) {
-//!         Ok(i) => i,
-//!         Err(err) => panic!("Couldn't build instance: {:?}", err)
-//!     }
+//!     Instance::new(
+//!         library,
+//!         InstanceCreateInfo {
+//!             enabled_extensions: extensions,
+//!             ..Default::default()
+//!         },
+//!     )
+//!     .unwrap_or_else(|err| panic!("Couldn't create instance: {:?}", err))
 //! };
 //!
 //! # use std::sync::Arc;

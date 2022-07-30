@@ -9,31 +9,34 @@
 
 //! API entry point.
 //!
-//! The first thing to do before you start using Vulkan is to create an `Instance` object.
+//! The first thing to do after loading the Vulkan library is to create an `Instance` object.
 //!
 //! For example:
 //!
 //! ```no_run
-//! use vulkano::instance::Instance;
-//! use vulkano::instance::InstanceExtensions;
-//! use vulkano::Version;
-//!
-//! let instance = match Instance::new(Default::default()) {
-//!     Ok(i) => i,
-//!     Err(err) => panic!("Couldn't build instance: {:?}", err)
+//! use vulkano::{
+//!     instance::{Instance, InstanceExtensions},
+//!     Version, VulkanLibrary,
 //! };
+//!
+//! let library = VulkanLibrary::new()
+//!     .unwrap_or_else(|err| panic!("Couldn't load Vulkan library: {:?}", err));
+//! let instance = Instance::new(library, Default::default())
+//!     .unwrap_or_else(|err| panic!("Couldn't create instance: {:?}", err));
 //! ```
 //!
 //! Creating an instance initializes everything and allows you to enumerate physical devices,
 //! ie. all the Vulkan implementations that are available on the system.
 //!
 //! ```no_run
-//! # use vulkano::instance::Instance;
-//! # use vulkano::instance::InstanceExtensions;
-//! # use vulkano::Version;
+//! # use vulkano::{
+//! #     instance::{Instance, InstanceExtensions},
+//! #     Version, VulkanLibrary,
+//! # };
 //! use vulkano::device::physical::PhysicalDevice;
 //!
-//! # let instance = Instance::new(Default::default()).unwrap();
+//! # let library = VulkanLibrary::new().unwrap();
+//! # let instance = Instance::new(library, Default::default()).unwrap();
 //! for physical_device in PhysicalDevice::enumerate(&instance) {
 //!     println!("Available device: {}", physical_device.properties().device_name);
 //! }
@@ -51,23 +54,16 @@
 //! Once you have chosen a physical device, you can create a `Device` object from it. See the
 //! `device` module for more info.
 
-use self::{
-    debug::{DebugUtilsMessengerCreateInfo, UserCallback},
-    loader::{FunctionPointers, Loader},
-};
-pub use self::{
-    extensions::InstanceExtensions,
-    layers::{layers_list, LayerProperties, LayersListError},
-    loader::LoadingError,
-};
+use self::debug::{DebugUtilsMessengerCreateInfo, UserCallback};
+pub use self::{extensions::InstanceExtensions, layers::LayerProperties};
 use crate::{
     check_errors,
     device::physical::{init_physical_devices, PhysicalDeviceInfo},
     instance::debug::{trampoline, DebugUtilsMessageSeverity, DebugUtilsMessageType},
-    Error, OomError, VulkanObject,
+    Error, OomError, VulkanLibrary, VulkanObject,
 };
 pub use crate::{
-    extensions::{ExtensionRestriction, ExtensionRestrictionError, SupportedExtensionsError},
+    extensions::{ExtensionRestriction, ExtensionRestrictionError},
     fns::InstanceFunctions,
     version::Version,
 };
@@ -78,7 +74,6 @@ use std::{
     fmt,
     hash::{Hash, Hasher},
     mem::MaybeUninit,
-    ops::Deref,
     panic::{RefUnwindSafe, UnwindSafe},
     ptr,
     sync::Arc,
@@ -87,7 +82,6 @@ use std::{
 pub mod debug;
 pub(crate) mod extensions;
 mod layers;
-pub mod loader;
 
 /// An instance of a Vulkan context. This is the main object that should be created by an
 /// application before everything else.
@@ -103,10 +97,16 @@ pub mod loader;
 /// ```no_run
 /// # #[macro_use] extern crate vulkano;
 /// # fn main() {
-/// use vulkano::instance::{Instance, InstanceCreateInfo, InstanceExtensions};
-/// use vulkano::Version;
+/// use vulkano::{
+///     instance::{Instance, InstanceCreateInfo, InstanceExtensions},
+///     Version, VulkanLibrary,
+/// };
 ///
-/// let _instance = Instance::new(InstanceCreateInfo::application_from_cargo_toml()).unwrap();
+/// let library = VulkanLibrary::new().unwrap();
+/// let _instance = Instance::new(
+///     library,
+///     InstanceCreateInfo::application_from_cargo_toml(),
+/// ).unwrap();
 /// # }
 /// ```
 ///
@@ -117,7 +117,7 @@ pub mod loader;
 /// to use when used on a particular instance or device. It is possible for the instance and the
 /// device to support different versions. The supported version for an instance can be queried
 /// before creation with
-/// [`FunctionPointers::api_version`](crate::instance::loader::FunctionPointers::api_version),
+/// [`VulkanLibrary::api_version`](crate::VulkanLibrary::api_version),
 /// while for a device it can be retrieved with
 /// [`PhysicalDevice::api_version`](crate::device::physical::PhysicalDevice::api_version).
 ///
@@ -157,8 +157,13 @@ pub mod loader;
 /// succeed on anything else than an Android-running device.
 ///
 /// ```no_run
-/// use vulkano::instance::{Instance, InstanceCreateInfo, InstanceExtensions};
-/// use vulkano::Version;
+/// use vulkano::{
+///     instance::{Instance, InstanceCreateInfo, InstanceExtensions},
+///     Version, VulkanLibrary,
+/// };
+///
+/// let library = VulkanLibrary::new()
+///     .unwrap_or_else(|err| panic!("Couldn't load Vulkan library: {:?}", err));
 ///
 /// let extensions = InstanceExtensions {
 ///     khr_surface: true,
@@ -166,20 +171,22 @@ pub mod loader;
 ///     .. InstanceExtensions::none()
 /// };
 ///
-/// let instance = match Instance::new(InstanceCreateInfo {
-///     enabled_extensions: extensions,
-///     ..Default::default()
-/// }) {
-///     Ok(i) => i,
-///     Err(err) => panic!("Couldn't build instance: {:?}", err)
-/// };
+/// let instance = Instance::new(
+///     library,
+///     InstanceCreateInfo {
+///         enabled_extensions: extensions,
+///         ..Default::default()
+///     },
+/// )
+/// .unwrap_or_else(|err| panic!("Couldn't create instance: {:?}", err));
 /// ```
 ///
 /// # Layers
 ///
 /// When creating an `Instance`, you have the possibility to pass a list of **layers** that will
 /// be activated on the newly-created instance. The list of available layers can be retrieved by
-/// calling [the `layers_list` function](crate::instance::layers_list).
+/// calling the [`layer_properties`](crate::VulkanLibrary::layer_properties) method of
+/// `VulkanLibrary`.
 ///
 /// A layer is a component that will hook and potentially modify the Vulkan function calls.
 /// For example, activating a layer could add a frames-per-second counter on the screen, or it
@@ -200,24 +207,27 @@ pub mod loader;
 /// ## Example
 ///
 /// ```
-/// # use std::sync::Arc;
-/// # use std::error::Error;
-/// # use vulkano::instance;
-/// # use vulkano::instance::Instance;
-/// # use vulkano::instance::InstanceCreateInfo;
-/// # use vulkano::instance::InstanceExtensions;
-/// # use vulkano::Version;
+/// # use std::{sync::Arc, error::Error};
+/// # use vulkano::{
+/// #     instance::{Instance, InstanceCreateInfo, InstanceExtensions},
+/// #     Version, VulkanLibrary,
+/// # };
 /// # fn test() -> Result<Arc<Instance>, Box<dyn Error>> {
+/// let library = VulkanLibrary::new()?;
+///
 /// // For the sake of the example, we activate all the layers that
 /// // contain the word "foo" in their description.
-/// let layers: Vec<_> = instance::layers_list()?
+/// let layers: Vec<_> = library.layer_properties()?
 ///     .filter(|l| l.description().contains("foo"))
 ///     .collect();
 ///
-/// let instance = Instance::new(InstanceCreateInfo {
-///     enabled_layers: layers.iter().map(|l| l.name().to_owned()).collect(),
-///     ..Default::default()
-/// })?;
+/// let instance = Instance::new(
+///     library,
+///     InstanceCreateInfo {
+///         enabled_layers: layers.iter().map(|l| l.name().to_owned()).collect(),
+///         ..Default::default()
+///     },
+/// )?;
 /// # Ok(instance)
 /// # }
 /// ```
@@ -230,7 +240,7 @@ pub struct Instance {
     api_version: Version,
     enabled_extensions: InstanceExtensions,
     enabled_layers: Vec<String>,
-    function_pointers: OwnedOrRef<FunctionPointers<Box<dyn Loader>>>,
+    library: Arc<VulkanLibrary>,
     max_api_version: Version,
     user_callbacks: Vec<Box<UserCallback>>,
 }
@@ -247,8 +257,11 @@ impl Instance {
     /// - Panics if any version numbers in `create_info` contain a field too large to be converted
     ///   into a Vulkan version number.
     /// - Panics if `create_info.max_api_version` is not at least `V1_0`.
-    pub fn new(create_info: InstanceCreateInfo) -> Result<Arc<Instance>, InstanceCreationError> {
-        unsafe { Self::with_debug_utils_messengers(create_info, []) }
+    pub fn new(
+        library: Arc<VulkanLibrary>,
+        create_info: InstanceCreateInfo,
+    ) -> Result<Arc<Instance>, InstanceCreationError> {
+        unsafe { Self::with_debug_utils_messengers(library, create_info, []) }
     }
 
     /// Creates a new `Instance` with debug messengers to use during the creation and destruction
@@ -271,6 +284,7 @@ impl Instance {
     /// - The `user_callback` of each element of `debug_utils_messengers` must not make any calls
     ///   to the Vulkan API.
     pub unsafe fn with_debug_utils_messengers(
+        library: Arc<VulkanLibrary>,
         create_info: InstanceCreateInfo,
         debug_utils_messengers: impl IntoIterator<Item = DebugUtilsMessengerCreateInfo>,
     ) -> Result<Arc<Instance>, InstanceCreationError> {
@@ -281,20 +295,13 @@ impl Instance {
             enabled_layers,
             engine_name,
             engine_version,
-            function_pointers,
             max_api_version,
             enumerate_portability,
             _ne: _,
         } = create_info;
 
-        let function_pointers = if let Some(function_pointers) = function_pointers {
-            OwnedOrRef::Owned(function_pointers)
-        } else {
-            OwnedOrRef::Ref(loader::auto_loader()?)
-        };
-
         let (api_version, max_api_version) = {
-            let api_version = function_pointers.api_version()?;
+            let api_version = library.api_version();
             let max_api_version = if let Some(max_api_version) = max_api_version {
                 max_api_version
             } else if api_version < Version::V1_1 {
@@ -308,8 +315,7 @@ impl Instance {
 
         // VUID-VkApplicationInfo-apiVersion-04010
         assert!(max_api_version >= Version::V1_0);
-        let supported_extensions =
-            InstanceExtensions::supported_by_core_with_loader(&function_pointers)?;
+        let supported_extensions = library.supported_extensions();
         let mut flags = ash::vk::InstanceCreateFlags::empty();
 
         if enumerate_portability && supported_extensions.khr_portability_enumeration {
@@ -422,7 +428,7 @@ impl Instance {
         // Creating the Vulkan instance.
         let handle = {
             let mut output = MaybeUninit::uninit();
-            let fns = function_pointers.fns();
+            let fns = library.fns();
             check_errors((fns.v1_0.create_instance)(
                 &create_info,
                 ptr::null(),
@@ -433,9 +439,7 @@ impl Instance {
 
         // Loading the function pointers of the newly-created instance.
         let fns = {
-            InstanceFunctions::load(|name| {
-                function_pointers.get_instance_proc_addr(handle, name.as_ptr())
-            })
+            InstanceFunctions::load(|name| library.get_instance_proc_addr(handle, name.as_ptr()))
         };
 
         let mut instance = Instance {
@@ -446,7 +450,7 @@ impl Instance {
             api_version,
             enabled_extensions,
             enabled_layers,
-            function_pointers,
+            library,
             max_api_version,
             user_callbacks,
         };
@@ -457,10 +461,16 @@ impl Instance {
         Ok(Arc::new(instance))
     }
 
+    /// Returns the Vulkan library used to create this instance.
+    #[inline]
+    pub fn library(&self) -> &Arc<VulkanLibrary> {
+        &self.library
+    }
+
     /// Returns the Vulkan version supported by the instance.
     ///
     /// This is the lower of the
-    /// [driver's supported version](crate::instance::loader::FunctionPointers::api_version) and
+    /// [driver's supported version](crate::VulkanLibrary::api_version) and
     /// [`max_api_version`](Instance::max_api_version).
     #[inline]
     pub fn api_version(&self) -> Version {
@@ -473,7 +483,7 @@ impl Instance {
         self.max_api_version
     }
 
-    /// Grants access to the Vulkan functions of the instance.
+    /// Returns pointers to the raw Vulkan functions of the instance.
     #[inline]
     pub fn fns(&self) -> &InstanceFunctions {
         &self.fns
@@ -537,7 +547,7 @@ impl fmt::Debug for Instance {
             api_version,
             enabled_extensions,
             enabled_layers,
-            function_pointers,
+            library: function_pointers,
             max_api_version,
             user_callbacks: _,
         } = self;
@@ -587,12 +597,6 @@ pub struct InstanceCreateInfo {
     /// The default value is zero.
     pub engine_version: Version,
 
-    /// Function pointers loaded from a custom loader.
-    ///
-    /// You can use this if you want to load the Vulkan API explicitly, rather than using Vulkano's
-    /// default.
-    pub function_pointers: Option<FunctionPointers<Box<dyn Loader>>>,
-
     /// The highest Vulkan API version that the application will use with the instance.
     ///
     /// Usually, you will want to leave this at the default.
@@ -629,7 +633,6 @@ impl Default for InstanceCreateInfo {
             enabled_layers: Vec::new(),
             engine_name: None,
             engine_version: Version::major_minor(0, 0),
-            function_pointers: None,
             max_api_version: None,
             enumerate_portability: false,
             _ne: crate::NonExhaustive(()),
@@ -662,20 +665,24 @@ impl InstanceCreateInfo {
 /// Error that can happen when creating an instance.
 #[derive(Clone, Debug)]
 pub enum InstanceCreationError {
-    /// Failed to load the Vulkan shared library.
-    LoadingError(LoadingError),
     /// Not enough memory.
     OomError(OomError),
+
     /// Failed to initialize for an implementation-specific reason.
     InitializationFailed,
+
     /// One of the requested layers is missing.
     LayerNotPresent,
+
     /// One of the requested extensions is not supported by the implementation.
     ExtensionNotPresent,
+
     /// The version requested is not supported by the implementation.
     IncompatibleDriver,
+
     /// A restriction for an extension was not met.
     ExtensionRestrictionNotMet(ExtensionRestrictionError),
+
     ExtensionNotEnabled {
         extension: &'static str,
         reason: &'static str,
@@ -686,7 +693,6 @@ impl error::Error for InstanceCreationError {
     #[inline]
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
-            Self::LoadingError(ref err) => Some(err),
             Self::OomError(ref err) => Some(err),
             _ => None,
         }
@@ -697,9 +703,6 @@ impl fmt::Display for InstanceCreationError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match *self {
-            Self::LoadingError(_) => {
-                write!(fmt, "failed to load the Vulkan shared library")
-            }
             Self::OomError(_) => write!(fmt, "not enough memory available"),
             Self::InitializationFailed => write!(fmt, "initialization failed"),
             Self::LayerNotPresent => write!(fmt, "layer not present"),
@@ -722,13 +725,6 @@ impl From<OomError> for InstanceCreationError {
     }
 }
 
-impl From<LoadingError> for InstanceCreationError {
-    #[inline]
-    fn from(err: LoadingError) -> Self {
-        Self::LoadingError(err)
-    }
-}
-
 impl From<ExtensionRestrictionError> for InstanceCreationError {
     #[inline]
     fn from(err: ExtensionRestrictionError) -> Self {
@@ -747,24 +743,6 @@ impl From<Error> for InstanceCreationError {
             Error::ExtensionNotPresent => Self::ExtensionNotPresent,
             Error::IncompatibleDriver => Self::IncompatibleDriver,
             _ => panic!("unexpected error: {:?}", err),
-        }
-    }
-}
-
-// Same as Cow but less annoying.
-#[derive(Debug)]
-enum OwnedOrRef<T: 'static> {
-    Owned(T),
-    Ref(&'static T),
-}
-
-impl<T> Deref for OwnedOrRef<T> {
-    type Target = T;
-    #[inline]
-    fn deref(&self) -> &T {
-        match *self {
-            OwnedOrRef::Owned(ref v) => v,
-            OwnedOrRef::Ref(v) => v,
         }
     }
 }
