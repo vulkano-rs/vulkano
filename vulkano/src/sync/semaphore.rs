@@ -146,7 +146,8 @@ impl Semaphore {
     /// the `create_info` must match the info used to create said object
     pub unsafe fn from_handle(handle : ash::vk::Semaphore,
                               create_info: SemaphoreCreateInfo,
-                              device: Arc<Device>
+                              device: Arc<Device>,
+                              must_put_in_pool: bool
     ) -> Semaphore {
         let SemaphoreCreateInfo {
             export_handle_types,
@@ -156,7 +157,7 @@ impl Semaphore {
         Semaphore {
             device,
             handle,
-            must_put_in_pool: false,
+            must_put_in_pool,
 
             export_handle_types,
         }
