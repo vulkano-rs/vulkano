@@ -116,6 +116,32 @@ impl UnsafeDescriptorPool {
         })
     }
 
+    /// Creates a new `UnsafeDescriptorPool` from an ash-handle
+    /// # Safety
+    /// The `handle` has to be a valid vulkan object handle and
+    /// the `create_info` must match the info used to create said object
+    pub unsafe fn from_handle(
+        handle: ash::vk::DescriptorPool,
+        create_info: UnsafeDescriptorPoolCreateInfo,
+        device: Arc<Device>,
+    ) -> UnsafeDescriptorPool {
+        let UnsafeDescriptorPoolCreateInfo {
+            max_sets,
+            pool_sizes,
+            can_free_descriptor_sets,
+            _ne: _,
+        } = create_info;
+
+        UnsafeDescriptorPool {
+            handle,
+            device,
+
+            max_sets,
+            pool_sizes,
+            can_free_descriptor_sets,
+        }
+    }
+
     /// Returns the maximum number of sets that can be allocated from the pool.
     #[inline]
     pub fn max_sets(&self) -> u32 {
