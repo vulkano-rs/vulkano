@@ -316,15 +316,15 @@ impl SamplerYcbcrConversion {
         }))
     }
 
-
     /// Creates a new `SamplerYcbcrConversion` from an ash-handle
     /// # Safety
     /// The `handle` has to be a valid vulkan object handle and
     /// the `create_info` must match the info used to create said object
     /// `create_info.format` must be some -- see `SamplerYcbcrConversion`::new`
-    pub unsafe fn from_handle(handle : ash::vk::SamplerYcbcrConversion,
-                              create_info: SamplerYcbcrConversionCreateInfo,
-                              device: Arc<Device>
+    pub unsafe fn from_handle(
+        handle: ash::vk::SamplerYcbcrConversion,
+        create_info: SamplerYcbcrConversionCreateInfo,
+        device: Arc<Device>,
     ) -> Arc<SamplerYcbcrConversion> {
         let SamplerYcbcrConversionCreateInfo {
             format,

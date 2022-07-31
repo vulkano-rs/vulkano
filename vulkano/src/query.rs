@@ -106,10 +106,11 @@ impl QueryPool {
     /// # Safety
     /// The `handle` has to be a valid vulkan object handle and
     /// the `create_info` must match the info used to create said object
-    pub unsafe fn from_handle(handle : ash::vk::QueryPool,
-                              create_info: QueryPoolCreateInfo,
-                              device: Arc<Device>
-    ) -> Arc<QueryPool>{
+    pub unsafe fn from_handle(
+        handle: ash::vk::QueryPool,
+        create_info: QueryPoolCreateInfo,
+        device: Arc<Device>,
+    ) -> Arc<QueryPool> {
         let QueryPoolCreateInfo {
             query_type,
             query_count,

@@ -332,9 +332,10 @@ impl Framebuffer {
     /// # Safety
     /// The `handle` has to be a valid vulkan object handle and
     /// the `create_info` must match the info used to create said object
-    pub unsafe fn from_handle(handle : ash::vk::Framebuffer,
-                              create_info: FramebufferCreateInfo,
-                              render_pass: Arc<RenderPass>
+    pub unsafe fn from_handle(
+        handle: ash::vk::Framebuffer,
+        create_info: FramebufferCreateInfo,
+        render_pass: Arc<RenderPass>,
     ) -> Arc<Framebuffer> {
         let FramebufferCreateInfo {
             attachments,

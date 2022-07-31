@@ -167,11 +167,7 @@ impl RenderPass {
     unsafe fn get_granularity(device: &Arc<Device>, handle: ash::vk::RenderPass) -> [u32; 2] {
         let fns = device.fns();
         let mut out = MaybeUninit::uninit();
-        (fns.v1_0.get_render_area_granularity)(
-            device.internal_object(),
-            handle,
-            out.as_mut_ptr(),
-        );
+        (fns.v1_0.get_render_area_granularity)(device.internal_object(), handle, out.as_mut_ptr());
 
         let out = out.assume_init();
         debug_assert_ne!(out.width, 0);
@@ -183,13 +179,14 @@ impl RenderPass {
     /// # Safety
     /// The `handle` has to be a valid vulkan object handle and
     /// the `create_info` must match the info used to create said object
-    pub unsafe fn from_handle(handle : ash::vk::RenderPass,
-                              mut create_info: RenderPassCreateInfo,
-                              granularity: [u32; 2],
-                              device: Arc<Device>
+    pub unsafe fn from_handle(
+        handle: ash::vk::RenderPass,
+        mut create_info: RenderPassCreateInfo,
+        granularity: [u32; 2],
+        device: Arc<Device>,
     ) -> Result<Arc<RenderPass>, RenderPassCreationError> {
         let views_used = Self::validate(&device, &mut create_info)?;
-        let granularity =  Self::get_granularity(&device, handle);
+        let granularity = Self::get_granularity(&device, handle);
 
         let RenderPassCreateInfo {
             attachments,

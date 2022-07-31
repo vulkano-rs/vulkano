@@ -91,20 +91,20 @@ impl Event {
         Ok(event)
     }
 
-
     /// Creates a new `Event` from an ash-handle
     /// # Safety
     /// The `handle` has to be a valid vulkan object handle and
     /// the `create_info` must match the info used to create said object
-    pub unsafe fn from_handle(handle : ash::vk::Event,
-                              create_info: EventCreateInfo,
-                              device: Arc<Device>,
-                              must_put_in_pool: bool
+    pub unsafe fn from_handle(
+        handle: ash::vk::Event,
+        create_info: EventCreateInfo,
+        device: Arc<Device>,
+        must_put_in_pool: bool,
     ) -> Event {
         Event {
             device,
             handle,
-            must_put_in_pool
+            must_put_in_pool,
         }
     }
 

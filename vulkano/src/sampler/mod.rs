@@ -428,10 +428,11 @@ impl Sampler {
     /// # Safety
     /// The `handle` has to be a valid vulkan object handle and
     /// the `create_info` must match the info used to create said object
-    pub unsafe fn from_handle(handle : ash::vk::Sampler,
-                              create_info: SamplerCreateInfo,
-                              device: Arc<Device>
-    ) -> Arc<Sampler>{
+    pub unsafe fn from_handle(
+        handle: ash::vk::Sampler,
+        create_info: SamplerCreateInfo,
+        device: Arc<Device>,
+    ) -> Arc<Sampler> {
         let SamplerCreateInfo {
             mag_filter,
             min_filter,
@@ -469,8 +470,6 @@ impl Sampler {
             unnormalized_coordinates,
         })
     }
-
-
 
     /// Checks whether this sampler is compatible with `image_view`.
     pub fn check_can_sample<I>(

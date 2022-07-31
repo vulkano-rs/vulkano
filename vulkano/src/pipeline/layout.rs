@@ -123,7 +123,8 @@ impl PipelineLayout {
             )
         });
 
-        let push_constant_ranges_disjoint = Self::create_push_constant_ranges_disjoint(&push_constant_ranges);
+        let push_constant_ranges_disjoint =
+            Self::create_push_constant_ranges_disjoint(&push_constant_ranges);
 
         Ok(Arc::new(PipelineLayout {
             handle,
@@ -134,7 +135,9 @@ impl PipelineLayout {
         }))
     }
 
-    fn create_push_constant_ranges_disjoint(push_constant_ranges: &Vec<PushConstantRange>) -> Vec<PushConstantRange> {
+    fn create_push_constant_ranges_disjoint(
+        push_constant_ranges: &Vec<PushConstantRange>,
+    ) -> Vec<PushConstantRange> {
         let mut push_constant_ranges_disjoint: Vec<PushConstantRange> =
             Vec::with_capacity(push_constant_ranges.len());
 
@@ -173,14 +176,14 @@ impl PipelineLayout {
         push_constant_ranges_disjoint
     }
 
-
     /// Creates a new `PipelineLayout` from an ash-handle
     /// # Safety
     /// The `handle` has to be a valid vulkan object handle and
     /// the `create_info` must match the info used to create said object
-    pub unsafe fn from_handle(handle : ash::vk::PipelineLayout,
-                              create_info: PipelineLayoutCreateInfo,
-                              device: Arc<Device>
+    pub unsafe fn from_handle(
+        handle: ash::vk::PipelineLayout,
+        create_info: PipelineLayoutCreateInfo,
+        device: Arc<Device>,
     ) -> Arc<PipelineLayout> {
         let PipelineLayoutCreateInfo {
             set_layouts,
@@ -188,7 +191,8 @@ impl PipelineLayout {
             _ne: _,
         } = create_info;
 
-        let push_constant_ranges_disjoint = Self::create_push_constant_ranges_disjoint(& push_constant_ranges);
+        let push_constant_ranges_disjoint =
+            Self::create_push_constant_ranges_disjoint(&push_constant_ranges);
 
         Arc::new(PipelineLayout {
             handle,
