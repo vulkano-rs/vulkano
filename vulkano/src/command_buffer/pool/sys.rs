@@ -72,6 +72,33 @@ impl UnsafeCommandPool {
         })
     }
 
+    /// Creates a new `UnsafeCommandPool` from an ash-handle
+    /// # Safety
+    /// The `handle` has to be a valid vulkan object handle and
+    /// the `create_info` must match the info used to create said object
+    pub unsafe fn from_handle(
+        handle: ash::vk::CommandPool,
+        create_info: UnsafeCommandPoolCreateInfo,
+        device: Arc<Device>,
+    ) -> UnsafeCommandPool {
+        let UnsafeCommandPoolCreateInfo {
+            queue_family_index,
+            transient,
+            reset_command_buffer,
+            _ne: _,
+        } = create_info;
+
+        UnsafeCommandPool {
+            handle,
+            device,
+            dummy_avoid_sync: PhantomData,
+
+            queue_family_index,
+            transient,
+            reset_command_buffer,
+        }
+    }
+
     fn validate(
         device: &Device,
         create_info: &mut UnsafeCommandPoolCreateInfo,

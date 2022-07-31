@@ -148,20 +148,58 @@ impl RenderPass {
             _ne: _,
         } = create_info;
 
-        let granularity = unsafe {
-            let fns = device.fns();
-            let mut out = MaybeUninit::uninit();
-            (fns.v1_0.get_render_area_granularity)(
-                device.internal_object(),
-                handle,
-                out.as_mut_ptr(),
-            );
+        let granularity = unsafe { Self::get_granularity(&device, handle) };
 
-            let out = out.assume_init();
-            debug_assert_ne!(out.width, 0);
-            debug_assert_ne!(out.height, 0);
-            [out.width, out.height]
-        };
+        Ok(Arc::new(RenderPass {
+            handle,
+            device,
+
+            attachments,
+            subpasses,
+            dependencies,
+            correlated_view_masks,
+
+            granularity,
+            views_used,
+        }))
+    }
+
+    unsafe fn get_granularity(device: &Arc<Device>, handle: ash::vk::RenderPass) -> [u32; 2] {
+        let fns = device.fns();
+        let mut out = MaybeUninit::uninit();
+        (fns.v1_0.get_render_area_granularity)(device.internal_object(), handle, out.as_mut_ptr());
+
+        let out = out.assume_init();
+        debug_assert_ne!(out.width, 0);
+        debug_assert_ne!(out.height, 0);
+        [out.width, out.height]
+    }
+
+    /// Creates a new `RenderPass` from an ash-handle
+    /// # Safety
+    /// The `handle` has to be a valid vulkan object handle and
+    /// the `create_info` must match the info used to create said object
+    pub unsafe fn from_handle(
+        handle: ash::vk::RenderPass,
+        create_info: RenderPassCreateInfo,
+        granularity: [u32; 2],
+        device: Arc<Device>,
+    ) -> Result<Arc<RenderPass>, RenderPassCreationError> {
+        let views_used = create_info
+            .subpasses
+            .iter()
+            .map(|subpass| u32::BITS - subpass.view_mask.leading_zeros())
+            .max()
+            .unwrap();
+        let granularity = Self::get_granularity(&device, handle);
+
+        let RenderPassCreateInfo {
+            attachments,
+            subpasses,
+            dependencies,
+            correlated_view_masks,
+            _ne: _,
+        } = create_info;
 
         Ok(Arc::new(RenderPass {
             handle,

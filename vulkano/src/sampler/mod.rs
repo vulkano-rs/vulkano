@@ -424,6 +424,53 @@ impl Sampler {
         }))
     }
 
+    /// Creates a new `Sampler` from an ash-handle
+    /// # Safety
+    /// The `handle` has to be a valid vulkan object handle and
+    /// the `create_info` must match the info used to create said object
+    pub unsafe fn from_handle(
+        handle: ash::vk::Sampler,
+        create_info: SamplerCreateInfo,
+        device: Arc<Device>,
+    ) -> Arc<Sampler> {
+        let SamplerCreateInfo {
+            mag_filter,
+            min_filter,
+            mipmap_mode,
+            address_mode,
+            mip_lod_bias,
+            anisotropy,
+            compare,
+            lod,
+            border_color,
+            unnormalized_coordinates,
+            reduction_mode,
+            sampler_ycbcr_conversion,
+            _ne: _,
+        } = create_info;
+
+        Arc::new(Sampler {
+            handle,
+            device,
+
+            address_mode,
+            anisotropy,
+            border_color: address_mode
+                .into_iter()
+                .any(|mode| mode == SamplerAddressMode::ClampToBorder)
+                .then(|| border_color),
+            compare,
+            lod,
+            mag_filter,
+            min_filter,
+            mip_lod_bias,
+            mipmap_mode,
+            reduction_mode,
+            sampler_ycbcr_conversion,
+            unnormalized_coordinates,
+        })
+    }
+
     /// Checks whether this sampler is compatible with `image_view`.
     pub fn check_can_sample<I>(
         &self,

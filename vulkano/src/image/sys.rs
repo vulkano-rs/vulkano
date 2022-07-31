@@ -105,9 +105,21 @@ impl UnsafeImage {
         device: Arc<Device>,
         mut create_info: UnsafeImageCreateInfo,
     ) -> Result<Arc<UnsafeImage>, ImageCreationError> {
-        let format_features = Self::validate(&device, &mut create_info)?;
+        Self::validate(&device, &mut create_info)?;
         let handle = unsafe { Self::create(&device, &create_info)? };
 
+        unsafe { Ok(UnsafeImage::from_handle(handle, create_info, device)) }
+    }
+
+    /// Creates a new `UnsafeImage` from an ash-handle
+    /// # Safety
+    /// The `handle` has to be a valid vulkan object handle and
+    /// the `create_info` must match the info used to create said object
+    pub unsafe fn from_handle(
+        handle: ash::vk::Image,
+        create_info: UnsafeImageCreateInfo,
+        device: Arc<Device>,
+    ) -> Arc<UnsafeImage> {
         let UnsafeImageCreateInfo {
             dimensions,
             format,
@@ -125,13 +137,21 @@ impl UnsafeImage {
             _ne: _,
         } = create_info;
 
+        // Get format features
+        let format_features = {
+            let format_properties = device.physical_device().format_properties(format.unwrap());
+            match tiling {
+                ImageTiling::Linear => format_properties.linear_tiling_features,
+                ImageTiling::Optimal => format_properties.optimal_tiling_features,
+            }
+        };
         let aspects = format.unwrap().aspects();
         let aspect_list: SmallVec<[ImageAspect; 4]> = aspects.iter().collect();
         let mip_level_size = dimensions.array_layers() as DeviceSize;
         let aspect_size = mip_level_size * mip_levels as DeviceSize;
         let range_size = aspect_list.len() as DeviceSize * aspect_size;
 
-        let image = UnsafeImage {
+        Arc::new(UnsafeImage {
             device,
             handle,
 
@@ -154,9 +174,7 @@ impl UnsafeImage {
             needs_destruction: true,
             range_size,
             state: Mutex::new(ImageState::new(range_size, initial_layout)),
-        };
-
-        Ok(Arc::new(image))
+        })
     }
 
     fn validate(

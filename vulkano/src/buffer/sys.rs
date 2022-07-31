@@ -182,6 +182,28 @@ impl UnsafeBuffer {
         Ok(Arc::new(buffer))
     }
 
+    /// Creates a new `UnsafeBuffer` from an ash-handle
+    /// # Safety
+    /// The `handle` has to be a valid vulkan object handle and
+    /// the `create_info` must match the info used to create said object
+    pub unsafe fn from_handle(
+        handle: ash::vk::Buffer,
+        create_info: UnsafeBufferCreateInfo,
+        device: Arc<Device>,
+    ) -> Arc<UnsafeBuffer> {
+        let UnsafeBufferCreateInfo { size, usage, .. } = create_info;
+
+        Arc::new(UnsafeBuffer {
+            handle,
+            device,
+
+            size,
+            usage,
+
+            state: Mutex::new(BufferState::new(size)),
+        })
+    }
+
     /// Returns the memory requirements for this buffer.
     pub fn memory_requirements(&self) -> MemoryRequirements {
         #[inline]

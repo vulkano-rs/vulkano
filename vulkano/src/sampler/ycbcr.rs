@@ -316,6 +316,39 @@ impl SamplerYcbcrConversion {
         }))
     }
 
+    /// Creates a new `SamplerYcbcrConversion` from an ash-handle
+    /// # Safety
+    /// The `handle` has to be a valid vulkan object handle and
+    /// the `create_info` must match the info used to create said object
+    /// `create_info.format` must be some -- see `SamplerYcbcrConversion`::new`
+    pub unsafe fn from_handle(
+        handle: ash::vk::SamplerYcbcrConversion,
+        create_info: SamplerYcbcrConversionCreateInfo,
+        device: Arc<Device>,
+    ) -> Arc<SamplerYcbcrConversion> {
+        let SamplerYcbcrConversionCreateInfo {
+            format,
+            ycbcr_model,
+            ycbcr_range,
+            component_mapping,
+            chroma_offset,
+            chroma_filter,
+            force_explicit_reconstruction,
+            _ne: _,
+        } = create_info;
+        Arc::new(SamplerYcbcrConversion {
+            handle,
+            device,
+            format,
+            ycbcr_model,
+            ycbcr_range,
+            component_mapping,
+            chroma_offset,
+            chroma_filter,
+            force_explicit_reconstruction,
+        })
+    }
+
     /// Returns the chroma filter used by the conversion.
     #[inline]
     pub fn chroma_filter(&self) -> Filter {

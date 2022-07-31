@@ -65,6 +65,41 @@ impl DescriptorSetLayout {
         }))
     }
 
+    /// Creates a new `DescriptorSetLayout` from an ash-handle
+    /// # Safety
+    /// The `handle` has to be a valid vulkan object handle and
+    /// the `create_info` must match the info used to create said object
+    pub unsafe fn from_handle(
+        handle: ash::vk::DescriptorSetLayout,
+        create_info: DescriptorSetLayoutCreateInfo,
+        device: Arc<Device>,
+    ) -> Arc<DescriptorSetLayout> {
+        let DescriptorSetLayoutCreateInfo {
+            bindings,
+            push_descriptor,
+            _ne: _,
+        } = create_info;
+
+        let mut descriptor_counts = HashMap::default();
+        for (&binding_num, binding) in bindings.iter() {
+            if binding.descriptor_count != 0 {
+                *descriptor_counts
+                    .entry(binding.descriptor_type)
+                    .or_default() += binding.descriptor_count;
+            }
+        }
+
+        Arc::new(DescriptorSetLayout {
+            handle,
+            device,
+
+            bindings,
+            push_descriptor,
+
+            descriptor_counts,
+        })
+    }
+
     fn validate(
         device: &Device,
         create_info: &mut DescriptorSetLayoutCreateInfo,

@@ -119,6 +119,25 @@ impl Fence {
         Ok(fence)
     }
 
+    /// Creates a new `Fence` from an ash-handle
+    /// # Safety
+    /// The `handle` has to be a valid vulkan object handle and
+    /// the `create_info` must match the info used to create said object
+    pub unsafe fn from_handle(
+        handle: ash::vk::Fence,
+        create_info: FenceCreateInfo,
+        device: Arc<Device>,
+    ) -> Fence {
+        let FenceCreateInfo { signaled, _ne: _ } = create_info;
+
+        Fence {
+            handle,
+            device,
+            is_signaled: AtomicBool::new(signaled),
+            must_put_in_pool: false,
+        }
+    }
+
     /// Returns true if the fence is signaled.
     #[inline]
     pub fn is_signaled(&self) -> Result<bool, OomError> {
