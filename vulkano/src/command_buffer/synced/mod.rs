@@ -523,7 +523,7 @@ impl std::fmt::Debug for dyn Command {
 mod tests {
     use super::*;
     use crate::{
-        buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer},
+        buffer::{BufferUsage, CpuAccessibleBuffer, DeviceLocalBuffer},
         command_buffer::{
             pool::{CommandPool, CommandPoolBuilderAlloc},
             sys::CommandBufferBeginInfo,
@@ -571,7 +571,7 @@ mod tests {
 
             // Create a tiny test buffer
             let (buf, future) =
-                ImmutableBuffer::from_data(0u32, BufferUsage::transfer_dst(), queue.clone())
+                DeviceLocalBuffer::from_data(0u32, BufferUsage::transfer_dst(), queue.clone())
                     .unwrap();
             future
                 .then_signal_fence_and_flush()

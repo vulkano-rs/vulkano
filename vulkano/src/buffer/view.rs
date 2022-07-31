@@ -19,7 +19,7 @@
 //!
 //! ```
 //! # use std::sync::Arc;
-//! use vulkano::buffer::immutable::ImmutableBuffer;
+//! use vulkano::buffer::DeviceLocalBuffer;
 //! use vulkano::buffer::BufferUsage;
 //! use vulkano::buffer::view::{BufferView, BufferViewCreateInfo};
 //! use vulkano::format::Format;
@@ -31,7 +31,7 @@
 //!     .. BufferUsage::none()
 //! };
 //!
-//! let (buffer, _future) = ImmutableBuffer::<[u32]>::from_iter((0..128).map(|n| n), usage,
+//! let (buffer, _future) = DeviceLocalBuffer::<[u32]>::from_iter((0..128).map(|n| n), usage,
 //!                                                             queue.clone()).unwrap();
 //! let _view = BufferView::new(
 //!     buffer,
@@ -462,9 +462,8 @@ impl Hash for dyn BufferViewAbstract {
 
 #[cfg(test)]
 mod tests {
-    use crate::buffer::immutable::ImmutableBuffer;
     use crate::buffer::view::{BufferView, BufferViewCreateInfo, BufferViewCreationError};
-    use crate::buffer::BufferUsage;
+    use crate::buffer::{BufferUsage, DeviceLocalBuffer};
     use crate::format::Format;
 
     #[test]
@@ -477,9 +476,12 @@ mod tests {
             ..BufferUsage::none()
         };
 
-        let (buffer, _) =
-            ImmutableBuffer::<[[u8; 4]]>::from_iter((0..128).map(|_| [0; 4]), usage, queue.clone())
-                .unwrap();
+        let (buffer, _) = DeviceLocalBuffer::<[[u8; 4]]>::from_iter(
+            (0..128).map(|_| [0; 4]),
+            usage,
+            queue.clone(),
+        )
+        .unwrap();
         let view = BufferView::new(
             buffer,
             BufferViewCreateInfo {
@@ -500,9 +502,12 @@ mod tests {
             ..BufferUsage::none()
         };
 
-        let (buffer, _) =
-            ImmutableBuffer::<[[u8; 4]]>::from_iter((0..128).map(|_| [0; 4]), usage, queue.clone())
-                .unwrap();
+        let (buffer, _) = DeviceLocalBuffer::<[[u8; 4]]>::from_iter(
+            (0..128).map(|_| [0; 4]),
+            usage,
+            queue.clone(),
+        )
+        .unwrap();
         BufferView::new(
             buffer,
             BufferViewCreateInfo {
@@ -524,7 +529,8 @@ mod tests {
         };
 
         let (buffer, _) =
-            ImmutableBuffer::<[u32]>::from_iter((0..128).map(|_| 0), usage, queue.clone()).unwrap();
+            DeviceLocalBuffer::<[u32]>::from_iter((0..128).map(|_| 0), usage, queue.clone())
+                .unwrap();
         BufferView::new(
             buffer,
             BufferViewCreateInfo {
@@ -540,7 +546,7 @@ mod tests {
         // `VK_FORMAT_R8G8B8A8_UNORM` guaranteed to be a supported format
         let (device, queue) = gfx_dev_and_queue!();
 
-        let (buffer, _) = ImmutableBuffer::<[[u8; 4]]>::from_iter(
+        let (buffer, _) = DeviceLocalBuffer::<[[u8; 4]]>::from_iter(
             (0..128).map(|_| [0; 4]),
             BufferUsage::none(),
             queue.clone(),
@@ -569,7 +575,7 @@ mod tests {
             ..BufferUsage::none()
         };
 
-        let (buffer, _) = ImmutableBuffer::<[[f64; 4]]>::from_iter(
+        let (buffer, _) = DeviceLocalBuffer::<[[f64; 4]]>::from_iter(
             (0..128).map(|_| [0.0; 4]),
             usage,
             queue.clone(),

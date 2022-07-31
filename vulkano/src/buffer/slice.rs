@@ -141,10 +141,10 @@ impl<T: ?Sized, B> BufferSlice<T, B> {
     /// ```
     /// # use std::sync::Arc;
     /// # use vulkano::buffer::BufferSlice;
-    /// # use vulkano::buffer::immutable::ImmutableBuffer;
+    /// # use vulkano::buffer::DeviceLocalBuffer;
     /// # struct VertexImpl;
-    /// let blob_slice: Arc<BufferSlice<[u8], Arc<ImmutableBuffer<[u8]>>>> = return;
-    /// let vertex_slice: Arc<BufferSlice<[VertexImpl], Arc<ImmutableBuffer<[u8]>>>> = unsafe {
+    /// let blob_slice: Arc<BufferSlice<[u8], Arc<DeviceLocalBuffer<[u8]>>>> = return;
+    /// let vertex_slice: Arc<BufferSlice<[VertexImpl], Arc<DeviceLocalBuffer<[u8]>>>> = unsafe {
     ///     blob_slice.reinterpret::<[VertexImpl]>()
     /// };
     /// ```
