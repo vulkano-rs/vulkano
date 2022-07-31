@@ -148,7 +148,6 @@ impl Semaphore {
         handle: ash::vk::Semaphore,
         create_info: SemaphoreCreateInfo,
         device: Arc<Device>,
-        must_put_in_pool: bool,
     ) -> Semaphore {
         let SemaphoreCreateInfo {
             export_handle_types,
@@ -158,7 +157,7 @@ impl Semaphore {
         Semaphore {
             device,
             handle,
-            must_put_in_pool,
+            must_put_in_pool: false,
 
             export_handle_types,
         }

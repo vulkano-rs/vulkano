@@ -99,12 +99,11 @@ impl Event {
         handle: ash::vk::Event,
         create_info: EventCreateInfo,
         device: Arc<Device>,
-        must_put_in_pool: bool,
     ) -> Event {
         Event {
             device,
             handle,
-            must_put_in_pool,
+            must_put_in_pool: false,
         }
     }
 
