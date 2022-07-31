@@ -102,6 +102,27 @@ impl QueryPool {
         }))
     }
 
+    /// Creates a new `QueryPool` from an ash-handle
+    /// # Safety
+    /// The `handle` has to be a valid vulkan object handle and
+    /// the `create_info` must match the info used to create said object
+    pub unsafe fn from_handle(handle : ash::vk::QueryPool,
+                              create_info: QueryPoolCreateInfo,
+                              device: Arc<Device>
+    ) -> Arc<QueryPool>{
+        let QueryPoolCreateInfo {
+            query_type,
+            query_count,
+            _ne: _,
+        } = create_info;
+        return Arc::new(QueryPool {
+            handle,
+            device,
+            query_type,
+            query_count,
+        });
+    }
+
     /// Returns the query type of the pool.
     #[inline]
     pub fn query_type(&self) -> QueryType {
