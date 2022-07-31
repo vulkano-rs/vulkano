@@ -185,10 +185,12 @@ impl RenderPass {
         granularity: [u32; 2],
         device: Arc<Device>,
     ) -> Result<Arc<RenderPass>, RenderPassCreationError> {
-        let views_used = create_info.subpasses
+        let views_used = create_info
+            .subpasses
             .iter()
             .map(|subpass| u32::BITS - subpass.view_mask.leading_zeros())
-            .max().unwrap();
+            .max()
+            .unwrap();
         let granularity = Self::get_granularity(&device, handle);
 
         let RenderPassCreateInfo {

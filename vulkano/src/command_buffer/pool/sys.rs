@@ -99,7 +99,6 @@ impl UnsafeCommandPool {
         }
     }
 
-
     fn validate(
         device: &Device,
         create_info: &mut UnsafeCommandPoolCreateInfo,
