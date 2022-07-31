@@ -19,6 +19,7 @@
 - **Breaking** Changes to Vulkano-util:
   - Required instance extensions for surface creation aren't added until `VulkanoContext` is created.
   - The `instance`, `device`, `graphics_queue` and `compute_queue` methods of `VulkanoContext` now return a reference instead of an owned `Arc`.
+- **Breaking** Merged `ImmutableBuffer` into `DeviceLocalBuffer`.
 
 # Version 0.30.0 (2022-07-20)
 
