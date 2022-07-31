@@ -33,10 +33,6 @@
 //!   usually located in video memory and whose content can't be directly accessed by your
 //!   application. Accessing this buffer from the GPU is generally faster compared to accessing a
 //!   CPU-accessible buffer.
-//! - An [`ImmutableBuffer`](crate::buffer::immutable::ImmutableBuffer) designates a buffer in video
-//!   memory and whose content can only be written at creation. Compared to `DeviceLocalBuffer`,
-//!   this buffer requires less CPU processing because we don't need to keep track of the reads
-//!   and writes.
 //! - A [`CpuBufferPool`](crate::buffer::cpu_pool::CpuBufferPool) is a ring buffer that can be used to
 //!   transfer data between the CPU and the GPU at a high rate.
 //! - A [`CpuAccessibleBuffer`](crate::buffer::cpu_access::CpuAccessibleBuffer) is a simple buffer that
@@ -45,12 +41,7 @@
 //! Here is a quick way to choose which buffer to use. Do you often need to read or write
 //! the content of the buffer? If so, use a `CpuBufferPool`. Otherwise, do you need to be able to
 //! modify the content of the buffer after its initialization? If so, use a `DeviceLocalBuffer`.
-//! If no to both questions, use an `ImmutableBuffer`.
 //!
-//! When deciding how your buffer is going to be used, don't forget that sometimes the best
-//! solution is to manipulate multiple buffers instead. For example if you need to update a buffer's
-//! content only from time to time, it may be a good idea to simply recreate a new `ImmutableBuffer`
-//! every time.
 //! Another example: if a buffer is under constant access by the GPU but you need to
 //! read its content on the CPU from time to time, it may be a good idea to use a
 //! `DeviceLocalBuffer` as the main buffer and a `CpuBufferPool` for when you need to read it.

@@ -178,10 +178,10 @@ impl<T> DeviceLocalBuffer<T>
 where
     T: BufferContents + ?Sized,
 {
-    /// Builds an `ImmutableBuffer` that copies its data from another buffer.
+    /// Builds a `DeviceLocalBuffer` that copies its data from another buffer.
     ///
     /// This function returns two objects: the newly-created buffer, and a future representing
-    /// the initial upload operation. In order to be allowed to use the `ImmutableBuffer`, you must
+    /// the initial upload operation. In order to be allowed to use the `DeviceLocalBuffer`, you must
     /// either submit your operation after this future, or execute this future and wait for it to
     /// be finished before submitting your own operation.
     pub fn from_buffer<B>(
