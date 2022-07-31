@@ -181,11 +181,14 @@ impl RenderPass {
     /// the `create_info` must match the info used to create said object
     pub unsafe fn from_handle(
         handle: ash::vk::RenderPass,
-        mut create_info: RenderPassCreateInfo,
+        create_info: RenderPassCreateInfo,
         granularity: [u32; 2],
         device: Arc<Device>,
     ) -> Result<Arc<RenderPass>, RenderPassCreationError> {
-        let views_used = Self::validate(&device, &mut create_info)?;
+        let views_used = create_info.subpasses
+            .iter()
+            .map(|subpass| u32::BITS - subpass.view_mask.leading_zeros())
+            .max().unwrap();
         let granularity = Self::get_granularity(&device, handle);
 
         let RenderPassCreateInfo {
