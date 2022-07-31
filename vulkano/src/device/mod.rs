@@ -117,6 +117,7 @@ pub use crate::{
 use ash::vk::Handle;
 use smallvec::SmallVec;
 use std::{
+    cell::RefCell,
     collections::{hash_map::Entry, HashMap},
     error,
     ffi::CString,
@@ -148,7 +149,6 @@ pub struct Device {
     fns: DeviceFunctions,
     standard_pool: Mutex<Weak<StdMemoryPool>>,
     standard_descriptor_pool: Mutex<Weak<StdDescriptorPool>>,
-    standard_command_pools: Mutex<HashMap<u32, Weak<StandardCommandPool>>>,
     enabled_extensions: DeviceExtensions,
     enabled_features: Features,
     active_queue_families: SmallVec<[u32; 2]>,
@@ -405,7 +405,6 @@ impl Device {
             fns,
             standard_pool: Mutex::new(Weak::new()),
             standard_descriptor_pool: Mutex::new(Weak::new()),
-            standard_command_pools: Mutex::new(Default::default()),
             enabled_extensions,
             enabled_features,
             active_queue_families,
@@ -537,29 +536,35 @@ impl Device {
     /// Returns the standard command buffer pool used by default if you don't provide any other
     /// pool.
     ///
-    /// # Panic
+    /// Pools are stored in thread-local storage to avoid locks, which means that a pool is only
+    /// dropped once both the thread exits and all command buffers allocated from it are dropped.
+    /// A pool is created lazily for each thread, device and queue family combination as needed,
+    /// which is why this function might return an `OomError`.
+    ///
+    /// # Panics
     ///
     /// - Panics if the device and the queue family don't belong to the same physical device.
-    ///
-    pub fn standard_command_pool(me: &Arc<Self>, queue: QueueFamily) -> Arc<StandardCommandPool> {
-        let mut standard_command_pools = me.standard_command_pools.lock().unwrap();
-
-        match standard_command_pools.entry(queue.id()) {
-            Entry::Occupied(mut entry) => {
-                if let Some(pool) = entry.get().upgrade() {
-                    return pool;
-                }
-
-                let new_pool = Arc::new(StandardCommandPool::new(me.clone(), queue));
-                *entry.get_mut() = Arc::downgrade(&new_pool);
-                new_pool
-            }
-            Entry::Vacant(entry) => {
-                let new_pool = Arc::new(StandardCommandPool::new(me.clone(), queue));
-                entry.insert(Arc::downgrade(&new_pool));
-                new_pool
-            }
+    pub fn standard_command_pool(
+        me: &Arc<Self>,
+        queue_family: QueueFamily,
+    ) -> Result<Arc<StandardCommandPool>, OomError> {
+        thread_local! {
+            static TLS: RefCell<HashMap<(ash::vk::Device, u32), Arc<StandardCommandPool>>> =
+                RefCell::new(Default::default());
         }
+
+        TLS.with(|tls| {
+            let mut tls = tls.borrow_mut();
+            let per_family = match tls.entry((me.internal_object(), queue_family.id())) {
+                Entry::Occupied(entry) => entry.into_mut(),
+                Entry::Vacant(entry) => entry.insert(Arc::new(StandardCommandPool::new(
+                    me.clone(),
+                    queue_family,
+                )?)),
+            };
+
+            Ok(per_family.clone())
+        })
     }
 
     /// Used to track the number of allocations on this device.
