@@ -328,6 +328,30 @@ impl Framebuffer {
         }))
     }
 
+    /// Creates a new `Framebuffer` from an ash-handle
+    /// # Safety
+    /// The `handle` has to be a valid vulkan object handle and
+    /// the `create_info` must match the info used to create said object
+    pub unsafe fn from_handle(handle : ash::vk::Framebuffer,
+                              create_info: FramebufferCreateInfo,
+                              render_pass: Arc<RenderPass>
+    ) -> Arc<Framebuffer> {
+        let FramebufferCreateInfo {
+            attachments,
+            extent,
+            layers,
+            _ne: _,
+        } = create_info;
+
+        Arc::new(Framebuffer {
+            handle,
+            render_pass,
+
+            attachments,
+            extent,
+            layers,
+        })
+    }
     /// Returns the renderpass that was used to create this framebuffer.
     #[inline]
     pub fn render_pass(&self) -> &Arc<RenderPass> {
