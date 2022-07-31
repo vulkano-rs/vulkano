@@ -119,6 +119,8 @@ impl Fence {
         Ok(fence)
     }
 
+
+
     /// Returns true if the fence is signaled.
     #[inline]
     pub fn is_signaled(&self) -> Result<bool, OomError> {

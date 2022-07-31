@@ -140,6 +140,28 @@ impl Semaphore {
         Ok(semaphore)
     }
 
+    /// Creates a new `Semaphore` from an ash-handle
+    /// # Safety
+    /// The `handle` has to be a valid vulkan object handle and
+    /// the `create_info` must match the info used to create said object
+    pub unsafe fn from_handle(handle : ash::vk::Semaphore,
+                              create_info: SemaphoreCreateInfo,
+                              device: Arc<Device>
+    ) -> Semaphore {
+        let SemaphoreCreateInfo {
+            export_handle_types,
+            _ne: _,
+        } = create_info;
+
+        Semaphore {
+            device,
+            handle,
+            must_put_in_pool: false,
+
+            export_handle_types,
+        }
+    }
+
     /// # Safety
     ///
     /// - The semaphore must not be used, or have been used, to acquire a swapchain image.
