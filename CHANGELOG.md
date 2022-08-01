@@ -20,6 +20,9 @@
   - Required instance extensions for surface creation aren't added until `VulkanoContext` is created.
   - The `instance`, `device`, `graphics_queue` and `compute_queue` methods of `VulkanoContext` now return a reference instead of an owned `Arc`.
 - **Breaking** Merged `ImmutableBuffer` into `DeviceLocalBuffer`.
+- **Breaking** Changes to `StandardCommandPool`:
+  - `StandardCommandPool` is now implemented lock-free, using thread-local storage.
+  - `StandardCommandPool::new` and `Device::standard_command_pool` now return a `Result`.
 
 # Version 0.30.0 (2022-07-20)
 
