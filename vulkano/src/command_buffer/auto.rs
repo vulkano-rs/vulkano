@@ -233,7 +233,7 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
             }
         }
 
-        let pool_builder_alloc = Device::standard_command_pool(&device, queue_family)
+        let pool_builder_alloc = Device::standard_command_pool(&device, queue_family)?
             .allocate(level, 1)?
             .next()
             .expect("Requested one command buffer from the command pool, but got zero.");

@@ -546,7 +546,7 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
-            let pool = Device::standard_command_pool(&device, queue.family());
+            let pool = Device::standard_command_pool(&device, queue.family()).unwrap();
             let pool_builder_alloc = pool
                 .allocate(CommandBufferLevel::Primary, 1)
                 .unwrap()
@@ -599,7 +599,7 @@ mod tests {
                 })
                 .collect::<Vec<_>>();
 
-            let pool = Device::standard_command_pool(&device, queue.family());
+            let pool = Device::standard_command_pool(&device, queue.family()).unwrap();
             let allocs = pool
                 .allocate(CommandBufferLevel::Primary, 2)
                 .unwrap()
@@ -659,7 +659,7 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
-            let pool = Device::standard_command_pool(&device, queue.family());
+            let pool = Device::standard_command_pool(&device, queue.family()).unwrap();
             let pool_builder_alloc = pool
                 .allocate(CommandBufferLevel::Primary, 1)
                 .unwrap()
@@ -690,7 +690,7 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
-            let pool = Device::standard_command_pool(&device, queue.family());
+            let pool = Device::standard_command_pool(&device, queue.family()).unwrap();
             let pool_builder_alloc = pool
                 .allocate(CommandBufferLevel::Primary, 1)
                 .unwrap()
