@@ -340,10 +340,8 @@ fn write_interface(interface: &ShaderInterface) -> TokenStream {
     );
 
     quote! {
-        unsafe {
-            ::vulkano::shader::ShaderInterface::new_unchecked(vec![
-                #( #items )*
-            ])
-        }
+        ::vulkano::shader::ShaderInterface::new_unchecked(vec![
+            #( #items )*
+        ])
     }
 }
