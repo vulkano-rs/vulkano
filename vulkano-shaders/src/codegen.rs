@@ -272,14 +272,14 @@ where
             static WORDS: &[u32] = &[ #( #words ),* ];
 
             unsafe {
-                Ok(::vulkano::shader::ShaderModule::from_words_with_data(
+                ::vulkano::shader::ShaderModule::from_words_with_data(
                     device,
                     WORDS,
                     #spirv_version,
                     [#(#spirv_capabilities),*],
                     [#(#spirv_extensions),*],
                     [#(#entry_points),*],
-                )?)
+                )
             }
         }
 
