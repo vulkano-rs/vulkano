@@ -73,15 +73,6 @@ unsafe impl DescriptorPool for StdDescriptorPool {
             max_count,
         );
 
-        if !self.pools.contains_key(layout) {
-            let pool = if max_count == 0 {
-                Pool::Fixed(SingleLayoutDescSetPool::new(layout.clone())?)
-            } else {
-                Pool::Variable(SingleLayoutVariableDescSetPool::new(layout.clone())?)
-            };
-            self.pools.insert(layout.clone(), pool);
-        }
-
         // We do this instead of using `HashMap::entry` directly because that would involve cloning
         // an `Arc` every time. `hash_raw_entry` is still not stabilized >:(
         let pool = if let Some(pool) = self.pools.get_mut(layout) {
