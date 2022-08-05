@@ -24,9 +24,6 @@ pub mod standard;
 mod sys;
 
 /// A pool from which descriptor sets can be allocated.
-///
-/// Since the destructor of `Alloc` must free the descriptor set, this trait is usually implemented
-/// on `Arc<T>` or `&'a T` and not `T` directly, so that the `Alloc` object can hold the pool.
 pub unsafe trait DescriptorPool: DeviceOwned {
     /// Object that represented an allocated descriptor set.
     ///
