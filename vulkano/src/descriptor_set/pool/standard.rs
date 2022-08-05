@@ -7,40 +7,36 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{DescriptorPool, DescriptorPoolAlloc, UnsafeDescriptorPool};
+use super::{DescriptorPool, DescriptorPoolAlloc};
 use crate::{
     descriptor_set::{
-        layout::{DescriptorSetLayout, DescriptorType},
-        pool::{
-            DescriptorPoolAllocError, DescriptorSetAllocateInfo, UnsafeDescriptorPoolCreateInfo,
+        layout::DescriptorSetLayout,
+        single_layout_pool::{
+            SingleLayoutPoolAlloc, SingleLayoutVariableDescSetPool, SingleLayoutVariablePoolAlloc,
         },
         sys::UnsafeDescriptorSet,
+        SingleLayoutDescSetPool,
     },
     device::{Device, DeviceOwned},
     OomError,
 };
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 /// Standard implementation of a descriptor pool.
 ///
-/// It is guaranteed that the `Arc<StdDescriptorPool>` is kept alive by its allocations. This is
-/// desirable so that we can store a `Weak<StdDescriptorPool>`.
-///
-/// Whenever a set is allocated, this implementation will try to find a pool that has some space
-/// for it. If there is one, allocate from it. If there is none, create a new pool whose capacity
-/// is 40 sets and 40 times the requested descriptors. This number is arbitrary.
+/// Interally, this implementation uses one [`SingleLayoutDescSetPool`] /
+/// [`SingleLayoutVariableDescSetPool`] per descriptor set layout.
 #[derive(Debug)]
 pub struct StdDescriptorPool {
     device: Arc<Device>,
-    pools: Mutex<Vec<Arc<Mutex<Pool>>>>,
+    pools: HashMap<Arc<DescriptorSetLayout>, Pool>,
 }
 
 #[derive(Debug)]
-struct Pool {
-    pool: UnsafeDescriptorPool,
-    remaining_capacity: HashMap<DescriptorType, u32>,
-    remaining_sets_count: u32,
+enum Pool {
+    Fixed(SingleLayoutDescSetPool),
+    Variable(SingleLayoutVariableDescSetPool),
 }
 
 impl StdDescriptorPool {
@@ -48,150 +44,66 @@ impl StdDescriptorPool {
     pub fn new(device: Arc<Device>) -> StdDescriptorPool {
         StdDescriptorPool {
             device,
-            pools: Mutex::new(Vec::new()),
+            pools: HashMap::default(),
         }
     }
 }
 
-/// A descriptor set allocated from a `StdDescriptorPool`.
-pub struct StdDescriptorPoolAlloc {
-    pool: Arc<Mutex<Pool>>,
-    // The set. Inside an option so that we can extract it in the destructor.
-    set: Option<UnsafeDescriptorSet>,
-    // We need to keep track of this count in order to add it back to the capacity when freeing.
-    descriptor_counts: HashMap<DescriptorType, u32>,
-    // We keep the parent of the pool alive, otherwise it would be destroyed.
-    pool_parent: Arc<StdDescriptorPool>,
-}
-
-unsafe impl DescriptorPool for Arc<StdDescriptorPool> {
+unsafe impl DescriptorPool for StdDescriptorPool {
     type Alloc = StdDescriptorPoolAlloc;
 
-    // TODO: eventually use a lock-free algorithm?
     fn allocate(
         &mut self,
-        layout: &DescriptorSetLayout,
+        layout: &Arc<DescriptorSetLayout>,
         variable_descriptor_count: u32,
     ) -> Result<StdDescriptorPoolAlloc, OomError> {
         assert!(
             !layout.push_descriptor(),
-            "the provided descriptor set layout is for push descriptors, and cannot be used to build a descriptor set object",
+            "the provided descriptor set layout is for push descriptors, and cannot be used to \
+            build a descriptor set object",
         );
 
         let max_count = layout.variable_descriptor_count();
 
         assert!(
             variable_descriptor_count <= max_count,
-            "the provided variable_descriptor_count ({}) is greater than the maximum number of variable count descriptors in the set ({})",
+            "the provided variable_descriptor_count ({}) is greater than the maximum number of \
+            variable count descriptors in the set ({})",
             variable_descriptor_count,
             max_count,
         );
 
-        let mut pools = self.pools.lock().unwrap();
-
-        // Try find an existing pool with some free space.
-        for pool_arc in pools.iter_mut() {
-            let mut pool = pool_arc.lock().unwrap();
-
-            if pool.remaining_sets_count == 0 {
-                continue;
-            }
-
-            if !layout.descriptor_counts().iter().all(|(ty, &count)| {
-                pool.remaining_capacity.get(ty).copied().unwrap_or_default() >= count
-            }) {
-                continue;
-            }
-
-            // Note that we decrease these values *before* trying to allocate from the pool.
-            // If allocating from the pool results in an error, we just ignore it. In order to
-            // avoid trying the same failing pool every time, we "pollute" it by reducing the
-            // available space.
-            pool.remaining_sets_count -= 1;
-            let descriptor_counts = layout.descriptor_counts().clone();
-            descriptor_counts
-                .iter()
-                .for_each(|(&ty, &count)| *pool.remaining_capacity.entry(ty).or_default() -= count);
-
-            let alloc = unsafe {
-                match pool
-                    .pool
-                    .allocate_descriptor_sets([DescriptorSetAllocateInfo {
-                        layout,
-                        variable_descriptor_count,
-                    }]) {
-                    Ok(mut sets) => sets.next().unwrap(),
-                    // An error can happen if we're out of memory, or if the pool is fragmented.
-                    // We handle these errors by just ignoring this pool and trying the next ones.
-                    Err(_) => continue,
-                }
+        if !self.pools.contains_key(layout) {
+            let pool = if max_count == 0 {
+                Pool::Fixed(SingleLayoutDescSetPool::new(layout.clone())?)
+            } else {
+                Pool::Variable(SingleLayoutVariableDescSetPool::new(layout.clone())?)
             };
-
-            return Ok(StdDescriptorPoolAlloc {
-                pool: pool_arc.clone(),
-                set: Some(alloc),
-                descriptor_counts,
-                pool_parent: self.clone(),
-            });
+            self.pools.insert(layout.clone(), pool);
         }
 
-        // No existing pool can be used. Create a new one.
-        // We use an arbitrary number of 40 sets and 40 times the requested descriptors.
-        // Failure to allocate a new pool results in an error for the whole function because
-        // there's no way we can recover from that.
-        let mut new_pool = UnsafeDescriptorPool::new(
-            self.device.clone(),
-            UnsafeDescriptorPoolCreateInfo {
-                max_sets: 40,
-                pool_sizes: layout
-                    .descriptor_counts()
-                    .iter()
-                    .map(|(&ty, &count)| (ty, count * 40))
-                    .collect(),
-                can_free_descriptor_sets: true,
-                ..Default::default()
-            },
-        )?;
+        // We do this instead of using `HashMap::entry` directly because that would involve cloning
+        // an `Arc` every time. `hash_raw_entry` is still not stabilized >:(
+        let pool = if let Some(pool) = self.pools.get_mut(layout) {
+            pool
+        } else {
+            self.pools
+                .entry(layout.clone())
+                .or_insert(if max_count == 0 {
+                    Pool::Fixed(SingleLayoutDescSetPool::new(layout.clone())?)
+                } else {
+                    Pool::Variable(SingleLayoutVariableDescSetPool::new(layout.clone())?)
+                })
+        };
 
-        let alloc = unsafe {
-            match new_pool.allocate_descriptor_sets([DescriptorSetAllocateInfo {
-                layout,
-                variable_descriptor_count,
-            }]) {
-                Ok(mut sets) => sets.next().unwrap(),
-                Err(DescriptorPoolAllocError::OutOfHostMemory) => {
-                    return Err(OomError::OutOfHostMemory);
-                }
-                Err(DescriptorPoolAllocError::OutOfDeviceMemory) => {
-                    return Err(OomError::OutOfDeviceMemory);
-                }
-                // A fragmented pool error can't happen at the first ever allocation.
-                Err(DescriptorPoolAllocError::FragmentedPool) => unreachable!(),
-                // Out of pool memory cannot happen at the first ever allocation.
-                Err(DescriptorPoolAllocError::OutOfPoolMemory) => unreachable!(),
+        let inner = match pool {
+            Pool::Fixed(pool) => PoolAlloc::Fixed(pool.next_alloc()?),
+            Pool::Variable(pool) => {
+                PoolAlloc::Variable(pool.next_alloc(variable_descriptor_count)?)
             }
         };
 
-        let descriptor_counts = layout.descriptor_counts().clone();
-        let mut remaining_capacity = new_pool.pool_sizes().clone();
-        descriptor_counts
-            .iter()
-            .for_each(|(&ty, &count)| *remaining_capacity.entry(ty).or_default() -= count);
-
-        let pool_obj = Arc::new(Mutex::new(Pool {
-            pool: new_pool,
-            remaining_capacity,
-            remaining_sets_count: 40 - 1,
-        }));
-
-        pools.push(pool_obj.clone());
-
-        Ok(StdDescriptorPoolAlloc {
-            pool: pool_obj,
-            set: Some(alloc),
-            descriptor_counts,
-            pool_parent: self.clone(),
-        })
+        Ok(StdDescriptorPoolAlloc { inner })
     }
 }
 
@@ -202,69 +114,33 @@ unsafe impl DeviceOwned for StdDescriptorPool {
     }
 }
 
+/// A descriptor set allocated from a `StdDescriptorPool`.
+#[derive(Debug)]
+pub struct StdDescriptorPoolAlloc {
+    // The actual descriptor alloc.
+    inner: PoolAlloc,
+}
+
+#[derive(Debug)]
+enum PoolAlloc {
+    Fixed(SingleLayoutPoolAlloc),
+    Variable(SingleLayoutVariablePoolAlloc),
+}
+
 impl DescriptorPoolAlloc for StdDescriptorPoolAlloc {
     #[inline]
     fn inner(&self) -> &UnsafeDescriptorSet {
-        self.set.as_ref().unwrap()
+        match &self.inner {
+            PoolAlloc::Fixed(alloc) => alloc.inner(),
+            PoolAlloc::Variable(alloc) => alloc.inner(),
+        }
     }
 
     #[inline]
     fn inner_mut(&mut self) -> &mut UnsafeDescriptorSet {
-        self.set.as_mut().unwrap()
-    }
-}
-
-impl Drop for StdDescriptorPoolAlloc {
-    // This is the destructor of a single allocation (not of the whole pool).
-    fn drop(&mut self) {
-        unsafe {
-            let mut pool = self.pool.lock().unwrap();
-            pool.pool.free_descriptor_sets(self.set.take()).unwrap();
-            // Add back the capacity only after freeing, in case of a panic during the free.
-            pool.remaining_sets_count += 1;
-            self.descriptor_counts
-                .iter()
-                .for_each(|(&ty, &count)| *pool.remaining_capacity.entry(ty).or_default() += count);
+        match &mut self.inner {
+            PoolAlloc::Fixed(alloc) => alloc.inner_mut(),
+            PoolAlloc::Variable(alloc) => alloc.inner_mut(),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::descriptor_set::layout::DescriptorSetLayout;
-    use crate::descriptor_set::layout::DescriptorSetLayoutBinding;
-    use crate::descriptor_set::layout::DescriptorSetLayoutCreateInfo;
-    use crate::descriptor_set::layout::DescriptorType;
-    use crate::descriptor_set::pool::DescriptorPool;
-    use crate::descriptor_set::pool::StdDescriptorPool;
-    use crate::shader::ShaderStages;
-    use std::sync::Arc;
-
-    #[test]
-    fn desc_pool_kept_alive() {
-        // Test that the `StdDescriptorPool` is kept alive by its allocations.
-        let (device, _) = gfx_dev_and_queue!();
-
-        let layout = DescriptorSetLayout::new(
-            device.clone(),
-            DescriptorSetLayoutCreateInfo {
-                bindings: [(
-                    0,
-                    DescriptorSetLayoutBinding {
-                        stages: ShaderStages::all(),
-                        ..DescriptorSetLayoutBinding::descriptor_type(DescriptorType::Sampler)
-                    },
-                )]
-                .into(),
-                ..Default::default()
-            },
-        )
-        .unwrap();
-
-        let mut pool = Arc::new(StdDescriptorPool::new(device));
-        let pool_weak = Arc::downgrade(&pool);
-        let alloc = pool.allocate(&layout, 0);
-        drop(pool);
-        assert!(pool_weak.upgrade().is_some());
     }
 }

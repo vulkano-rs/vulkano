@@ -18,6 +18,7 @@ pub use self::{
 };
 use super::{layout::DescriptorSetLayout, sys::UnsafeDescriptorSet};
 use crate::{device::DeviceOwned, OomError};
+use std::sync::Arc;
 
 pub mod standard;
 mod sys;
@@ -35,7 +36,7 @@ pub unsafe trait DescriptorPool: DeviceOwned {
     /// Allocates a descriptor set.
     fn allocate(
         &mut self,
-        layout: &DescriptorSetLayout,
+        layout: &Arc<DescriptorSetLayout>,
         variable_descriptor_count: u32,
     ) -> Result<Self::Alloc, OomError>;
 }
