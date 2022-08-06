@@ -23,6 +23,7 @@
 - **Breaking** Changes to `StandardCommandPool`:
   - `StandardCommandPool` is now implemented lock-free, using thread-local storage.
   - `StandardCommandPool::new` and `Device::standard_command_pool` now return a `Result`.
+  - Added `khr_portability_enumeration` as a default configuration for MacOS in `vulkano-utils`
 
 # Version 0.30.0 (2022-07-20)
 
