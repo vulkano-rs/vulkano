@@ -529,7 +529,7 @@ impl Device {
     ///
     /// - Panics if called again from within the callback.
     pub fn with_standard_descriptor_pool<T>(
-        self: &Arc<Device>,
+        self: &Arc<Self>,
         f: impl FnOnce(&mut StdDescriptorPool) -> T,
     ) -> T {
         thread_local! {
@@ -548,8 +548,8 @@ impl Device {
         })
     }
 
-    /// Returns the standard command buffer pool used by default if you don't provide any other
-    /// pool.
+    /// Gives you access to the standard command buffer pool used by default if you don't provide
+    /// any other pool.
     ///
     /// Pools are stored in thread-local storage to avoid locks, which means that a pool is only
     /// dropped once both the thread exits and all command buffers allocated from it are dropped.
@@ -559,10 +559,12 @@ impl Device {
     /// # Panics
     ///
     /// - Panics if the device and the queue family don't belong to the same physical device.
-    pub fn standard_command_pool(
-        me: &Arc<Self>,
+    /// - Panics if called again from within the callback.
+    pub fn with_standard_command_pool<T>(
+        self: &Arc<Self>,
         queue_family: QueueFamily,
-    ) -> Result<Arc<StandardCommandPool>, OomError> {
+        f: impl FnOnce(&Arc<StandardCommandPool>) -> T,
+    ) -> Result<T, OomError> {
         thread_local! {
             static TLS: RefCell<HashMap<(ash::vk::Device, u32), Arc<StandardCommandPool>>> =
                 RefCell::new(Default::default());
@@ -570,15 +572,15 @@ impl Device {
 
         TLS.with(|tls| {
             let mut tls = tls.borrow_mut();
-            let per_family = match tls.entry((me.internal_object(), queue_family.id())) {
+            let pool = match tls.entry((self.internal_object(), queue_family.id())) {
                 Entry::Occupied(entry) => entry.into_mut(),
                 Entry::Vacant(entry) => entry.insert(Arc::new(StandardCommandPool::new(
-                    me.clone(),
+                    self.clone(),
                     queue_family,
                 )?)),
             };
 
-            Ok(per_family.clone())
+            Ok(f(pool))
         })
     }
 

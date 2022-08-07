@@ -233,22 +233,25 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
             }
         }
 
-        let pool_builder_alloc = Device::standard_command_pool(&device, queue_family)?
-            .allocate(level, 1)?
-            .next()
-            .expect("Requested one command buffer from the command pool, but got zero.");
-        let inner = SyncCommandBufferBuilder::new(pool_builder_alloc.inner(), begin_info)?;
+        device.with_standard_command_pool(queue_family, |pool| {
+            let pool_builder_alloc = pool
+                .allocate(level, 1)?
+                .next()
+                .expect("Requested one command buffer from the command pool, but got zero.");
 
-        Ok(AutoCommandBufferBuilder {
-            inner,
-            pool_builder_alloc,
-            queue_family_id: queue_family.id(),
-            render_pass_state,
-            query_state: HashMap::default(),
-            inheritance_info,
-            usage,
-            _data: PhantomData,
-        })
+            let inner = SyncCommandBufferBuilder::new(pool_builder_alloc.inner(), begin_info)?;
+
+            Ok(AutoCommandBufferBuilder {
+                inner,
+                pool_builder_alloc,
+                queue_family_id: queue_family.id(),
+                render_pass_state,
+                query_state: HashMap::default(),
+                inheritance_info,
+                usage,
+                _data: PhantomData,
+            })
+        })?
     }
 
     fn validate_begin(
