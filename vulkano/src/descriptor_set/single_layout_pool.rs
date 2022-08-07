@@ -346,7 +346,7 @@ impl SingleLayoutVariableDescSetPool {
 
             let allocate_info = DescriptorSetAllocateInfo {
                 layout: &self.layout,
-                variable_descriptor_count: 0,
+                variable_descriptor_count,
             };
 
             match unsafe { unsafe_pool.allocate_descriptor_sets([allocate_info]) } {
