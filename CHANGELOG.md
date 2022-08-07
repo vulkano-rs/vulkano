@@ -30,6 +30,8 @@
   - `DescriptorPool::allocate` now takes `&Arc<DescriptorSetLayout>` instead of `&DescriptorSetLayout`.
   - `SingleLayoutDescSetPool::new` now returns `Result`.
   - Added `SingleLayoutVariableDescSetPool`.
+- Bugs fixed:
+  - [#1896](https://github.com/vulkano-rs/vulkano/issues/1896): Vulkano-shaders generates invalid struct definitions when struct field names are stripped out by the compiler.
 
 # Version 0.30.0 (2022-07-20)
 
