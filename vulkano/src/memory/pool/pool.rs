@@ -7,25 +7,22 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::device::physical::MemoryType;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::memory::pool::AllocLayout;
-use crate::memory::pool::MappingRequirement;
-use crate::memory::pool::MemoryPool;
-use crate::memory::pool::MemoryPoolAlloc;
-use crate::memory::pool::StandardHostVisibleMemoryTypePool;
-use crate::memory::pool::StandardHostVisibleMemoryTypePoolAlloc;
-use crate::memory::pool::StandardNonHostVisibleMemoryTypePool;
-use crate::memory::pool::StandardNonHostVisibleMemoryTypePoolAlloc;
-use crate::memory::DeviceMemory;
-use crate::memory::DeviceMemoryAllocationError;
-use crate::memory::MappedDeviceMemory;
-use crate::DeviceSize;
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::sync::Mutex;
+use crate::{
+    device::{physical::MemoryType, Device, DeviceOwned},
+    memory::{
+        pool::{
+            AllocLayout, MappingRequirement, MemoryPool, MemoryPoolAlloc,
+            StandardHostVisibleMemoryTypePool, StandardHostVisibleMemoryTypePoolAlloc,
+            StandardNonHostVisibleMemoryTypePool, StandardNonHostVisibleMemoryTypePoolAlloc,
+        },
+        DeviceMemory, DeviceMemoryAllocationError, MappedDeviceMemory,
+    },
+    DeviceSize,
+};
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    sync::{Arc, Mutex},
+};
 
 #[derive(Debug)]
 pub struct StandardMemoryPool {

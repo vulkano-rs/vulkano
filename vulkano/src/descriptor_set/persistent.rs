@@ -21,17 +21,20 @@
 //! # Example
 //! TODO:
 
-use crate::descriptor_set::pool::standard::StandardDescriptorPoolAlloc;
-use crate::descriptor_set::pool::{DescriptorPool, DescriptorPoolAlloc};
-use crate::descriptor_set::update::WriteDescriptorSet;
-use crate::descriptor_set::{
-    DescriptorSet, DescriptorSetCreationError, DescriptorSetInner, DescriptorSetLayout,
-    DescriptorSetResources, UnsafeDescriptorSet,
+use crate::{
+    descriptor_set::{
+        pool::{standard::StandardDescriptorPoolAlloc, DescriptorPool, DescriptorPoolAlloc},
+        update::WriteDescriptorSet,
+        DescriptorSet, DescriptorSetCreationError, DescriptorSetInner, DescriptorSetLayout,
+        DescriptorSetResources, UnsafeDescriptorSet,
+    },
+    device::{Device, DeviceOwned},
+    VulkanObject,
 };
-use crate::device::{Device, DeviceOwned};
-use crate::VulkanObject;
-use std::hash::{Hash, Hasher};
-use std::sync::Arc;
+use std::{
+    hash::{Hash, Hasher},
+    sync::Arc,
+};
 
 /// A simple, immutable descriptor set that is expected to be long-lived.
 pub struct PersistentDescriptorSet<P = StandardDescriptorPoolAlloc> {

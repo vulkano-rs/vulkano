@@ -18,18 +18,17 @@ use super::{
     ImageSubresourceLayers, ImageSubresourceRange, ImageTiling, ImageUsage, SampleCount,
     SampleCounts,
 };
-use crate::image::view::ImageViewCreationError;
-use crate::range_map::RangeMap;
 use crate::{
     buffer::cpu_access::{ReadLockError, WriteLockError},
     check_errors,
     device::{Device, DeviceOwned},
     format::{ChromaSampling, Format, FormatFeatures, NumericType},
-    image::{ImageFormatInfo, ImageFormatProperties, ImageType},
+    image::{view::ImageViewCreationError, ImageFormatInfo, ImageFormatProperties, ImageType},
     memory::{
         DeviceMemory, DeviceMemoryAllocationError, ExternalMemoryHandleType,
         ExternalMemoryHandleTypes, MemoryRequirements,
     },
+    range_map::RangeMap,
     sync::{AccessError, CurrentAccess, Sharing},
     DeviceSize, Error, OomError, Version, VulkanObject,
 };
@@ -2186,18 +2185,15 @@ impl FusedIterator for SubresourceRangeIterator {}
 
 #[cfg(test)]
 mod tests {
-    use super::ImageCreationError;
-    use super::ImageUsage;
-    use super::UnsafeImage;
-    use super::UnsafeImageCreateInfo;
-    use crate::format::Format;
-    use crate::image::sys::SubresourceRangeIterator;
-    use crate::image::ImageAspect;
-    use crate::image::ImageAspects;
-    use crate::image::ImageDimensions;
-    use crate::image::ImageSubresourceRange;
-    use crate::image::SampleCount;
-    use crate::DeviceSize;
+    use super::{ImageCreationError, ImageUsage, UnsafeImage, UnsafeImageCreateInfo};
+    use crate::{
+        format::Format,
+        image::{
+            sys::SubresourceRangeIterator, ImageAspect, ImageAspects, ImageDimensions,
+            ImageSubresourceRange, SampleCount,
+        },
+        DeviceSize,
+    };
     use smallvec::SmallVec;
 
     #[test]

@@ -74,11 +74,11 @@ use super::{
     sys::{UnsafeCommandBuffer, UnsafeCommandBufferBuilder},
     CommandBufferExecError,
 };
-use crate::range_map::RangeMap;
 use crate::{
     buffer::{sys::UnsafeBuffer, BufferAccess},
     device::{Device, DeviceOwned, Queue},
     image::{sys::UnsafeImage, ImageAccess, ImageLayout, ImageSubresourceRange},
+    range_map::RangeMap,
     sync::{
         AccessCheckError, AccessError, AccessFlags, GpuFuture, PipelineMemoryAccess, PipelineStages,
     },

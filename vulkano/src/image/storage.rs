@@ -11,12 +11,10 @@ use super::{
     sys::UnsafeImage, traits::ImageContent, ImageAccess, ImageCreateFlags, ImageCreationError,
     ImageDescriptorLayouts, ImageDimensions, ImageInner, ImageLayout, ImageUsage,
 };
-use crate::device::Queue;
-use crate::image::view::ImageView;
 use crate::{
-    device::{physical::QueueFamily, Device, DeviceOwned},
+    device::{physical::QueueFamily, Device, DeviceOwned, Queue},
     format::Format,
-    image::sys::UnsafeImageCreateInfo,
+    image::{sys::UnsafeImageCreateInfo, view::ImageView},
     memory::{
         pool::{
             alloc_dedicated_with_exportable_fd, AllocFromRequirementsFilter, AllocLayout,
@@ -352,9 +350,13 @@ where
 #[cfg(test)]
 mod tests {
     use super::StorageImage;
-    use crate::format::Format;
-    use crate::image::view::ImageViewCreationError;
-    use crate::image::{ImageAccess, ImageCreationError, ImageDimensions, ImageUsage};
+    use crate::{
+        format::Format,
+        image::{
+            view::ImageViewCreationError, ImageAccess, ImageCreationError, ImageDimensions,
+            ImageUsage,
+        },
+    };
 
     #[test]
     fn create() {

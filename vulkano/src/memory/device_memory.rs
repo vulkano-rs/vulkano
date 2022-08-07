@@ -1476,9 +1476,10 @@ impl From<OomError> for MemoryMapError {
 #[cfg(test)]
 mod tests {
     use super::MemoryAllocateInfo;
-    use crate::memory::DeviceMemory;
-    use crate::memory::DeviceMemoryAllocationError;
-    use crate::OomError;
+    use crate::{
+        memory::{DeviceMemory, DeviceMemoryAllocationError},
+        OomError,
+    };
 
     #[test]
     fn create() {

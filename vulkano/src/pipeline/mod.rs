@@ -17,9 +17,7 @@
 //! the CPU). Consequently it is a CPU-intensive operation that should be performed at
 //! initialization or during a loading screen.
 
-pub use self::compute::ComputePipeline;
-pub use self::graphics::GraphicsPipeline;
-pub use self::layout::PipelineLayout;
+pub use self::{compute::ComputePipeline, graphics::GraphicsPipeline, layout::PipelineLayout};
 use crate::device::DeviceOwned;
 use std::sync::Arc;
 

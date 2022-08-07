@@ -9,13 +9,16 @@
 
 //! Low-level descriptor set.
 
-use crate::descriptor_set::layout::DescriptorSetLayout;
-use crate::descriptor_set::update::{DescriptorWriteInfo, WriteDescriptorSet};
-use crate::device::DeviceOwned;
-use crate::VulkanObject;
+use crate::{
+    descriptor_set::{
+        layout::DescriptorSetLayout,
+        update::{DescriptorWriteInfo, WriteDescriptorSet},
+    },
+    device::DeviceOwned,
+    VulkanObject,
+};
 use smallvec::SmallVec;
-use std::fmt;
-use std::ptr;
+use std::{fmt, ptr};
 
 /// Low-level descriptor set.
 ///

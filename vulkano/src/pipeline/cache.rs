@@ -21,14 +21,8 @@
 //! of [`get_data`](crate::pipeline::cache::PipelineCache::get_data) for example of how to store the data
 //! on the disk, and [`with_data`](crate::pipeline::cache::PipelineCache::with_data) for how to reload it.
 
-use crate::check_errors;
-use crate::device::Device;
-use crate::OomError;
-use crate::Success;
-use crate::VulkanObject;
-use std::mem::MaybeUninit;
-use std::ptr;
-use std::sync::Arc;
+use crate::{check_errors, device::Device, OomError, Success, VulkanObject};
+use std::{mem::MaybeUninit, ptr, sync::Arc};
 
 /// Opaque cache that contains pipeline objects.
 ///
@@ -256,9 +250,10 @@ impl Drop for PipelineCache {
 
 #[cfg(test)]
 mod tests {
-    use crate::pipeline::cache::PipelineCache;
-    use crate::pipeline::ComputePipeline;
-    use crate::shader::ShaderModule;
+    use crate::{
+        pipeline::{cache::PipelineCache, ComputePipeline},
+        shader::ShaderModule,
+    };
     use std::sync::Arc;
 
     #[test]

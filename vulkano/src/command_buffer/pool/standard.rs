@@ -228,12 +228,14 @@ impl Drop for StandardCommandPoolAlloc {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-    use std::thread;
-
-    use crate::command_buffer::pool::{CommandPool, CommandPoolBuilderAlloc};
-    use crate::command_buffer::CommandBufferLevel;
-    use crate::VulkanObject;
+    use crate::{
+        command_buffer::{
+            pool::{CommandPool, CommandPoolBuilderAlloc},
+            CommandBufferLevel,
+        },
+        VulkanObject,
+    };
+    use std::{sync::Arc, thread};
 
     #[test]
     fn reuse_command_buffers() {

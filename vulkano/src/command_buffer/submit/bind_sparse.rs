@@ -7,22 +7,17 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::buffer::sys::UnsafeBuffer;
-use crate::check_errors;
-use crate::device::Queue;
-use crate::image::sys::UnsafeImage;
-use crate::memory::DeviceMemory;
-use crate::sync::Fence;
-use crate::sync::Semaphore;
-use crate::DeviceSize;
-use crate::Error;
-use crate::OomError;
-use crate::SynchronizedVulkanObject;
-use crate::VulkanObject;
+use crate::{
+    buffer::sys::UnsafeBuffer,
+    check_errors,
+    device::Queue,
+    image::sys::UnsafeImage,
+    memory::DeviceMemory,
+    sync::{Fence, Semaphore},
+    DeviceSize, Error, OomError, SynchronizedVulkanObject, VulkanObject,
+};
 use smallvec::SmallVec;
-use std::error;
-use std::fmt;
-use std::marker::PhantomData;
+use std::{error, fmt, marker::PhantomData};
 
 // TODO: correctly implement Debug on all the structs of this module
 

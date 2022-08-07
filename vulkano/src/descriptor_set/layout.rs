@@ -848,11 +848,13 @@ impl From<DescriptorType> for ash::vk::DescriptorType {
 
 #[cfg(test)]
 mod tests {
-    use crate::descriptor_set::layout::DescriptorSetLayout;
-    use crate::descriptor_set::layout::DescriptorSetLayoutBinding;
-    use crate::descriptor_set::layout::DescriptorSetLayoutCreateInfo;
-    use crate::descriptor_set::layout::DescriptorType;
-    use crate::shader::ShaderStages;
+    use crate::{
+        descriptor_set::layout::{
+            DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
+            DescriptorType,
+        },
+        shader::ShaderStages,
+    };
     use std::collections::HashMap;
 
     #[test]

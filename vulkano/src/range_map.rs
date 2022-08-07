@@ -1,10 +1,11 @@
-use std::cmp;
-use std::cmp::Ordering;
-use std::collections::{btree_map, BTreeMap};
-use std::fmt::{self, Debug};
-use std::iter::{FromIterator, FusedIterator, Peekable};
-use std::ops::Bound;
-use std::ops::{Add, Range, Sub};
+use std::{
+    cmp,
+    cmp::Ordering,
+    collections::{btree_map, BTreeMap},
+    fmt::{self, Debug},
+    iter::{FromIterator, FusedIterator, Peekable},
+    ops::{Add, Bound, Range, Sub},
+};
 
 /// A map whose keys are stored as (half-open) ranges bounded
 /// inclusively below and exclusively above `(start..end)`.

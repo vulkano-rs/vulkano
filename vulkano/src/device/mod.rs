@@ -1224,9 +1224,10 @@ impl fmt::Display for DebugUtilsError {
 
 #[cfg(test)]
 mod tests {
-    use crate::device::physical::PhysicalDevice;
-    use crate::device::{Device, DeviceCreateInfo, DeviceCreationError, QueueCreateInfo};
-    use crate::device::{FeatureRestriction, FeatureRestrictionError, Features};
+    use crate::device::{
+        physical::PhysicalDevice, Device, DeviceCreateInfo, DeviceCreationError,
+        FeatureRestriction, FeatureRestrictionError, Features, QueueCreateInfo,
+    };
     use std::sync::Arc;
 
     #[test]

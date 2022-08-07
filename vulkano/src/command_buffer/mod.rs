@@ -89,35 +89,35 @@
 //! alternative command pool implementations and use them. See the `pool` module for more
 //! information.
 
-pub use self::commands::{
-    debug::DebugUtilsError,
-    image::{
-        BlitImageInfo, ClearColorImageInfo, ClearDepthStencilImageInfo, ImageBlit, ImageResolve,
-        ResolveImageInfo,
-    },
-    pipeline::{
-        CheckDescriptorSetsValidityError, CheckDispatchError, CheckDynamicStateValidityError,
-        CheckIndexBufferError, CheckIndirectBufferError, CheckPipelineError,
-        CheckPushConstantsValidityError, CheckVertexBufferError,
-    },
-    query::QueryError,
-    render_pass::{
-        ClearAttachment, ClearRect, RenderPassBeginInfo, RenderPassError, RenderingAttachmentInfo,
-        RenderingAttachmentResolveInfo, RenderingInfo,
-    },
-    secondary::{ExecuteCommandsError, UnsafeCommandBufferBuilderExecuteCommands},
-    transfer::{
-        BufferCopy, BufferImageCopy, CopyBufferInfo, CopyBufferInfoTyped, CopyBufferToImageInfo,
-        CopyImageInfo, CopyImageToBufferInfo, FillBufferInfo, ImageCopy,
-    },
-    CopyError, CopyErrorResource,
-};
 pub use self::{
     auto::{
         AutoCommandBufferBuilder, AutoCommandBufferBuilderContextError, BuildError,
         CommandBufferBeginError, DispatchError, DispatchIndirectError, DrawError, DrawIndexedError,
         DrawIndexedIndirectError, DrawIndirectError, PrimaryAutoCommandBuffer,
         SecondaryAutoCommandBuffer,
+    },
+    commands::{
+        debug::DebugUtilsError,
+        image::{
+            BlitImageInfo, ClearColorImageInfo, ClearDepthStencilImageInfo, ImageBlit,
+            ImageResolve, ResolveImageInfo,
+        },
+        pipeline::{
+            CheckDescriptorSetsValidityError, CheckDispatchError, CheckDynamicStateValidityError,
+            CheckIndexBufferError, CheckIndirectBufferError, CheckPipelineError,
+            CheckPushConstantsValidityError, CheckVertexBufferError,
+        },
+        query::QueryError,
+        render_pass::{
+            ClearAttachment, ClearRect, RenderPassBeginInfo, RenderPassError,
+            RenderingAttachmentInfo, RenderingAttachmentResolveInfo, RenderingInfo,
+        },
+        secondary::{ExecuteCommandsError, UnsafeCommandBufferBuilderExecuteCommands},
+        transfer::{
+            BufferCopy, BufferImageCopy, CopyBufferInfo, CopyBufferInfoTyped,
+            CopyBufferToImageInfo, CopyImageInfo, CopyImageToBufferInfo, FillBufferInfo, ImageCopy,
+        },
+        CopyError, CopyErrorResource,
     },
     traits::{
         CommandBufferExecError, CommandBufferExecFuture, PrimaryCommandBuffer,
