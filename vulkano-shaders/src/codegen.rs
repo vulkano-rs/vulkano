@@ -246,13 +246,8 @@ where
     let entry_points = reflect::entry_points(&spirv)
         .map(|(name, model, info)| entry_point::write_entry_point(&name, model, &info));
 
-    let specialization_constants = structs::write_specialization_constants(
-        prefix,
-        &spirv,
-        types_meta,
-        shared_constants,
-        types_registry,
-    );
+    let specialization_constants =
+        structs::write_specialization_constants(prefix, &spirv, shared_constants, types_registry);
 
     let load_name = if prefix.is_empty() {
         format_ident!("load")
