@@ -149,7 +149,6 @@ pub struct Device {
 
     fns: DeviceFunctions,
     standard_pool: Mutex<Weak<StdMemoryPool>>,
-    standard_descriptor_pool: Mutex<Weak<StdDescriptorPool>>,
     enabled_extensions: DeviceExtensions,
     enabled_features: Features,
     active_queue_families: SmallVec<[u32; 2]>,
@@ -405,7 +404,6 @@ impl Device {
             api_version,
             fns,
             standard_pool: Mutex::new(Weak::new()),
-            standard_descriptor_pool: Mutex::new(Weak::new()),
             enabled_extensions,
             enabled_features,
             active_queue_families,
@@ -520,18 +518,34 @@ impl Device {
         new_pool
     }
 
-    /// Returns the standard descriptor pool used by default if you don't provide any other pool.
-    pub fn standard_descriptor_pool(me: &Arc<Self>) -> Arc<StdDescriptorPool> {
-        let mut pool = me.standard_descriptor_pool.lock().unwrap();
-
-        if let Some(p) = pool.upgrade() {
-            return p;
+    /// Gives you access to the standard descriptor pool that is used by default if you don't
+    /// provide any other pool.
+    ///
+    /// Pools are stored in thread-local storage to avoid locks, which means that a pool is only
+    /// dropped once both the thread exits and all descriptor sets allocated from it are dropped.
+    /// A pool is created lazily for each thread.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if called again from within the callback.
+    pub fn with_standard_descriptor_pool<T>(
+        self: &Arc<Device>,
+        f: impl FnOnce(&mut StdDescriptorPool) -> T,
+    ) -> T {
+        thread_local! {
+            static TLS: RefCell<HashMap<ash::vk::Device, StdDescriptorPool>> =
+                RefCell::new(HashMap::default());
         }
 
-        // The weak pointer is empty, so we create the pool.
-        let new_pool = Arc::new(StdDescriptorPool::new(me.clone()));
-        *pool = Arc::downgrade(&new_pool);
-        new_pool
+        TLS.with(|tls| {
+            let mut tls = tls.borrow_mut();
+            let pool = match tls.entry(self.internal_object()) {
+                Entry::Occupied(entry) => entry.into_mut(),
+                Entry::Vacant(entry) => entry.insert(StdDescriptorPool::new(self.clone())),
+            };
+
+            f(pool)
+        })
     }
 
     /// Returns the standard command buffer pool used by default if you don't provide any other

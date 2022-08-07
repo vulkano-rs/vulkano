@@ -18,14 +18,12 @@ pub use self::{
 };
 use super::{layout::DescriptorSetLayout, sys::UnsafeDescriptorSet};
 use crate::{device::DeviceOwned, OomError};
+use std::sync::Arc;
 
 pub mod standard;
 mod sys;
 
 /// A pool from which descriptor sets can be allocated.
-///
-/// Since the destructor of `Alloc` must free the descriptor set, this trait is usually implemented
-/// on `Arc<T>` or `&'a T` and not `T` directly, so that the `Alloc` object can hold the pool.
 pub unsafe trait DescriptorPool: DeviceOwned {
     /// Object that represented an allocated descriptor set.
     ///
@@ -35,7 +33,7 @@ pub unsafe trait DescriptorPool: DeviceOwned {
     /// Allocates a descriptor set.
     fn allocate(
         &mut self,
-        layout: &DescriptorSetLayout,
+        layout: &Arc<DescriptorSetLayout>,
         variable_descriptor_count: u32,
     ) -> Result<Self::Alloc, OomError>;
 }

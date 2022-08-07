@@ -48,8 +48,12 @@ impl PersistentDescriptorSet {
         layout: Arc<DescriptorSetLayout>,
         descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
     ) -> Result<Arc<PersistentDescriptorSet>, DescriptorSetCreationError> {
-        let mut pool = Device::standard_descriptor_pool(layout.device());
-        Self::new_with_pool(layout, 0, &mut pool, descriptor_writes)
+        layout
+            .device()
+            .clone()
+            .with_standard_descriptor_pool(|pool| {
+                Self::new_with_pool(layout, 0, pool, descriptor_writes)
+            })
     }
 
     /// Creates and returns a new descriptor set with the requested variable descriptor count.
@@ -61,13 +65,12 @@ impl PersistentDescriptorSet {
         variable_descriptor_count: u32,
         descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
     ) -> Result<Arc<PersistentDescriptorSet>, DescriptorSetCreationError> {
-        let mut pool = Device::standard_descriptor_pool(layout.device());
-        Self::new_with_pool(
-            layout,
-            variable_descriptor_count,
-            &mut pool,
-            descriptor_writes,
-        )
+        layout
+            .device()
+            .clone()
+            .with_standard_descriptor_pool(|pool| {
+                Self::new_with_pool(layout, variable_descriptor_count, pool, descriptor_writes)
+            })
     }
 
     /// Creates and returns a new descriptor set with the requested variable descriptor count,
@@ -88,14 +91,16 @@ impl PersistentDescriptorSet {
     {
         assert!(
             !layout.push_descriptor(),
-            "the provided descriptor set layout is for push descriptors, and cannot be used to build a descriptor set object"
+            "the provided descriptor set layout is for push descriptors, and cannot be used to \
+            build a descriptor set object",
         );
 
         let max_count = layout.variable_descriptor_count();
 
         assert!(
             variable_descriptor_count <= max_count,
-            "the provided variable_descriptor_count ({}) is greater than the maximum number of variable count descriptors in the set ({})",
+            "the provided variable_descriptor_count ({}) is greater than the maximum number of \
+            variable count descriptors in the set ({})",
             variable_descriptor_count,
             max_count,
         );
