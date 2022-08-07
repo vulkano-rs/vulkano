@@ -21,9 +21,9 @@ bytemuck = { version = "1.7", features = ["derive", "extern_crate_std", "min_con
 crossbeam-queue = "0.3"
 half = "1.8"
 lazy_static = "1.4"
+libloading = "0.7"
 nalgebra = { version = "0.31.0", optional = true }
 parking_lot = { version = "0.12", features = ["send_guard"] }
-shared_library = "0.1"
 smallvec = "1.8"
 
 [build-dependencies]

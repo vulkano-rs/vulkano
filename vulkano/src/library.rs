@@ -24,17 +24,8 @@ use crate::{
     instance::{InstanceExtensions, LayerProperties},
     Error, OomError, SafeDeref, Success, Version,
 };
-use shared_library;
-use std::{
-    error,
-    ffi::{c_void, CStr},
-    fmt,
-    mem::transmute,
-    os::raw::c_char,
-    path::Path,
-    ptr,
-    sync::Arc,
-};
+use libloading::{Error as LibloadingError, Library};
+use std::{error, ffi::CStr, fmt, mem::transmute, os::raw::c_char, path::Path, ptr, sync::Arc};
 
 /// A loaded library containing a valid Vulkan implementation.
 #[derive(Debug)]
@@ -89,7 +80,9 @@ impl VulkanLibrary {
         L: Loader + 'static,
     {
         let fns = EntryFunctions::load(|name| unsafe {
-            transmute(loader.get_instance_proc_addr(ash::vk::Instance::null(), name.as_ptr()))
+            loader
+                .get_instance_proc_addr(ash::vk::Instance::null(), name.as_ptr())
+                .map_or(ptr::null(), |func| func as _)
         });
 
         // Per the Vulkan spec:
@@ -100,18 +93,17 @@ impl VulkanLibrary {
             let name = CStr::from_bytes_with_nul_unchecked(b"vkEnumerateInstanceVersion\0");
             let func = loader.get_instance_proc_addr(ash::vk::Instance::null(), name.as_ptr());
 
-            if func.is_null() {
+            if let Some(func) = func {
+                let func: ash::vk::PFN_vkEnumerateInstanceVersion = transmute(func);
+                let mut api_version = 0;
+                check_errors(func(&mut api_version))?;
+                Version::from(api_version)
+            } else {
                 Version {
                     major: 1,
                     minor: 0,
                     patch: 0,
                 }
-            } else {
-                type Pfn = extern "system" fn(pApiVersion: *mut u32) -> ash::vk::Result;
-                let func: Pfn = transmute(func);
-                let mut api_version = 0;
-                check_errors(func(&mut api_version))?;
-                Version::from(api_version)
             }
         };
 
@@ -227,11 +219,11 @@ impl VulkanLibrary {
 
     /// Calls `get_instance_proc_addr` on the underlying loader.
     #[inline]
-    pub fn get_instance_proc_addr(
+    pub unsafe fn get_instance_proc_addr(
         &self,
         instance: ash::vk::Instance,
         name: *const c_char,
-    ) -> *const c_void {
+    ) -> ash::vk::PFN_vkVoidFunction {
         self.loader.get_instance_proc_addr(instance, name)
     }
 }
@@ -241,11 +233,11 @@ pub unsafe trait Loader: Send + Sync {
     /// Calls the `vkGetInstanceProcAddr` function. The parameters are the same.
     ///
     /// The returned function must stay valid for as long as `self` is alive.
-    fn get_instance_proc_addr(
+    unsafe fn get_instance_proc_addr(
         &self,
         instance: ash::vk::Instance,
         name: *const c_char,
-    ) -> *const c_void;
+    ) -> ash::vk::PFN_vkVoidFunction;
 }
 
 unsafe impl<T> Loader for T
@@ -254,11 +246,11 @@ where
     T::Target: Loader,
 {
     #[inline]
-    fn get_instance_proc_addr(
+    unsafe fn get_instance_proc_addr(
         &self,
         instance: ash::vk::Instance,
         name: *const c_char,
-    ) -> *const c_void {
+    ) -> ash::vk::PFN_vkVoidFunction {
         (**self).get_instance_proc_addr(instance, name)
     }
 }
@@ -272,9 +264,8 @@ impl fmt::Debug for dyn Loader {
 
 /// Implementation of `Loader` that loads Vulkan from a dynamic library.
 pub struct DynamicLibraryLoader {
-    vk_lib: shared_library::dynamic_library::DynamicLibrary,
-    get_proc_addr:
-        extern "system" fn(instance: ash::vk::Instance, pName: *const c_char) -> *const c_void,
+    vk_lib: Library,
+    get_instance_proc_addr: ash::vk::PFN_vkGetInstanceProcAddr,
 }
 
 impl DynamicLibraryLoader {
@@ -289,31 +280,27 @@ impl DynamicLibraryLoader {
     where
         P: AsRef<Path>,
     {
-        let vk_lib = shared_library::dynamic_library::DynamicLibrary::open(Some(path.as_ref()))
-            .map_err(LoadingError::LibraryLoadFailure)?;
+        let vk_lib = Library::new(path.as_ref()).map_err(LoadingError::LibraryLoadFailure)?;
 
-        let get_proc_addr = {
-            let ptr: *mut c_void = vk_lib
-                .symbol("vkGetInstanceProcAddr")
-                .map_err(|_| LoadingError::MissingEntryPoint("vkGetInstanceProcAddr".to_owned()))?;
-            transmute(ptr)
-        };
+        let get_instance_proc_addr = *vk_lib
+            .get(b"vkGetInstanceProcAddr")
+            .map_err(LoadingError::LibraryLoadFailure)?;
 
         Ok(DynamicLibraryLoader {
             vk_lib,
-            get_proc_addr,
+            get_instance_proc_addr,
         })
     }
 }
 
 unsafe impl Loader for DynamicLibraryLoader {
     #[inline]
-    fn get_instance_proc_addr(
+    unsafe fn get_instance_proc_addr(
         &self,
         instance: ash::vk::Instance,
         name: *const c_char,
-    ) -> *const c_void {
-        (self.get_proc_addr)(instance, name)
+    ) -> ash::vk::PFN_vkVoidFunction {
+        (self.get_instance_proc_addr)(instance, name)
     }
 }
 
@@ -352,13 +339,10 @@ macro_rules! statically_linked_vulkan_loader {
 }
 
 /// Error that can happen when loading a Vulkan library.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum LoadingError {
     /// Failed to load the Vulkan shared library.
-    LibraryLoadFailure(String), // TODO: meh for error type, but this needs changes in shared_library
-
-    /// One of the entry points required to be supported by the Vulkan implementation is missing.
-    MissingEntryPoint(String),
+    LibraryLoadFailure(LibloadingError),
 
     /// Not enough memory.
     OomError(OomError),
@@ -383,7 +367,6 @@ impl fmt::Display for LoadingError {
             "{}",
             match *self {
                 Self::LibraryLoadFailure(_) => "failed to load the Vulkan shared library",
-                Self::MissingEntryPoint(_) => "one of the entry points required to be supported by the Vulkan implementation is missing",
                 Self::OomError(_) => "not enough memory available",
             }
         )
