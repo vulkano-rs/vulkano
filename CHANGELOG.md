@@ -24,6 +24,12 @@
   - `StandardCommandPool` is now implemented lock-free, using thread-local storage.
   - `StandardCommandPool::new` and `Device::standard_command_pool` now return a `Result`.
   - Added `khr_portability_enumeration` as a default configuration for MacOS in `vulkano-utils`
+- **Breaking** Changes to descriptor (set) pools:
+  - `StdDescriptorPool` is now implemented lock-less, using thread-local storage.
+  - Removed `Device::standard_descriptor_pool` in favor of `Device::with_standard_descriptor_pool`.
+  - `DescriptorPool::allocate` now takes `&Arc<DescriptorSetLayout>` instead of `&DescriptorSetLayout`.
+  - `SingleLayoutDescSetPool::new` now returns `Result`.
+  - Added `SingleLayoutVariableDescSetPool`.
 
 # Version 0.30.0 (2022-07-20)
 
