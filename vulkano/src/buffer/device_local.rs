@@ -359,7 +359,7 @@ where
         let (buffer, mem_reqs) = Self::build_buffer(&device, size, usage, &queue_families)?;
 
         let memory = MemoryPool::alloc_from_requirements(
-            &Device::standard_pool(&device),
+            &device.standard_memory_pool(),
             &mem_reqs,
             AllocLayout::Linear,
             MappingRequirement::DoNotMap,

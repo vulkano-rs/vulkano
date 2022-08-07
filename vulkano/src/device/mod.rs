@@ -505,15 +505,15 @@ impl Device {
     }
 
     /// Returns the standard memory pool used by default if you don't provide any other pool.
-    pub fn standard_pool(me: &Arc<Self>) -> Arc<StandardMemoryPool> {
-        let mut pool = me.standard_pool.lock().unwrap();
+    pub fn standard_memory_pool(self: &Arc<Self>) -> Arc<StandardMemoryPool> {
+        let mut pool = self.standard_pool.lock().unwrap();
 
         if let Some(p) = pool.upgrade() {
             return p;
         }
 
         // The weak pointer is empty, so we create the pool.
-        let new_pool = StandardMemoryPool::new(me.clone());
+        let new_pool = StandardMemoryPool::new(self.clone());
         *pool = Arc::downgrade(&new_pool);
         new_pool
     }

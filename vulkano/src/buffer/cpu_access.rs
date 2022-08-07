@@ -252,7 +252,7 @@ where
         let mem_reqs = buffer.memory_requirements();
 
         let memory = MemoryPool::alloc_from_requirements(
-            &Device::standard_pool(&device),
+            &device.standard_memory_pool(),
             &mem_reqs,
             AllocLayout::Linear,
             MappingRequirement::Map,

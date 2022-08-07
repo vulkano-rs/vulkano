@@ -196,11 +196,11 @@ where
     #[inline]
     pub fn new(device: Arc<Device>, usage: BufferUsage) -> CpuBufferPool<T> {
         assert!(size_of::<T>() > 0);
-        let pool = Device::standard_pool(&device);
+        let pool = device.standard_memory_pool();
 
         CpuBufferPool {
-            device: device,
-            pool: pool,
+            device,
+            pool,
             current_buffer: Mutex::new(None),
             usage: usage.clone(),
             marker: PhantomData,
