@@ -20,16 +20,21 @@
   - Required instance extensions for surface creation aren't added until `VulkanoContext` is created.
   - The `instance`, `device`, `graphics_queue` and `compute_queue` methods of `VulkanoContext` now return a reference instead of an owned `Arc`.
 - **Breaking** Merged `ImmutableBuffer` into `DeviceLocalBuffer`.
-- **Breaking** Changes to `StandardCommandPool`:
+- **Breaking** Changes to command pools:
   - `StandardCommandPool` is now implemented lock-free, using thread-local storage.
-  - `StandardCommandPool::new` and `Device::standard_command_pool` now return a `Result`.
+  - `Device::standard_command_pool` has been removed in favor of `Device::with_standard_command_pool`.
+  - `StandardCommandPool::new` nows return a `Result`.
   - Added `khr_portability_enumeration` as a default configuration for MacOS in `vulkano-utils`
 - **Breaking** Changes to descriptor (set) pools:
-  - `StdDescriptorPool` is now implemented lock-less, using thread-local storage.
+  - Renamed `StdDescriptorPool[Alloc]` to `Standard{...}`.
+  - `StandardDescriptorPool` is now implemented lock-less, using thread-local storage.
   - Removed `Device::standard_descriptor_pool` in favor of `Device::with_standard_descriptor_pool`.
   - `DescriptorPool::allocate` now takes `&Arc<DescriptorSetLayout>` instead of `&DescriptorSetLayout`.
   - `SingleLayoutDescSetPool::new` now returns `Result`.
   - Added `SingleLayoutVariableDescSetPool`.
+- **Breaking** Changes to memory pools:
+  - Renamed `StdMemoryPool[Alloc]`, `StdHostVisibleMemoryTypePool[Alloc]`, `StdNonHostVisibleMemoryTypePool[Alloc]` to `Standard{...}`.
+  - Removed `Device::standard_pool` in favor of `Device::standard_memory_pool`.
 - Bugs fixed:
   - [#1896](https://github.com/vulkano-rs/vulkano/issues/1896): Vulkano-shaders generates invalid struct definitions when struct field names are stripped out by the compiler.
 
