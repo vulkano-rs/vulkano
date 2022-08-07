@@ -105,9 +105,9 @@ pub use self::{
 use crate::{
     check_errors,
     command_buffer::pool::StandardCommandPool,
-    descriptor_set::pool::StdDescriptorPool,
+    descriptor_set::pool::StandardDescriptorPool,
     instance::{debug::DebugUtilsLabel, Instance},
-    memory::{pool::StdMemoryPool, ExternalMemoryHandleType},
+    memory::{pool::StandardMemoryPool, ExternalMemoryHandleType},
     Error, OomError, SynchronizedVulkanObject, Version, VulkanObject,
 };
 pub use crate::{
@@ -148,7 +148,7 @@ pub struct Device {
     api_version: Version,
 
     fns: DeviceFunctions,
-    standard_pool: Mutex<Weak<StdMemoryPool>>,
+    standard_pool: Mutex<Weak<StandardMemoryPool>>,
     enabled_extensions: DeviceExtensions,
     enabled_features: Features,
     active_queue_families: SmallVec<[u32; 2]>,
@@ -505,15 +505,15 @@ impl Device {
     }
 
     /// Returns the standard memory pool used by default if you don't provide any other pool.
-    pub fn standard_pool(me: &Arc<Self>) -> Arc<StdMemoryPool> {
-        let mut pool = me.standard_pool.lock().unwrap();
+    pub fn standard_memory_pool(self: &Arc<Self>) -> Arc<StandardMemoryPool> {
+        let mut pool = self.standard_pool.lock().unwrap();
 
         if let Some(p) = pool.upgrade() {
             return p;
         }
 
         // The weak pointer is empty, so we create the pool.
-        let new_pool = StdMemoryPool::new(me.clone());
+        let new_pool = StandardMemoryPool::new(self.clone());
         *pool = Arc::downgrade(&new_pool);
         new_pool
     }
@@ -529,11 +529,11 @@ impl Device {
     ///
     /// - Panics if called again from within the callback.
     pub fn with_standard_descriptor_pool<T>(
-        self: &Arc<Device>,
-        f: impl FnOnce(&mut StdDescriptorPool) -> T,
+        self: &Arc<Self>,
+        f: impl FnOnce(&mut StandardDescriptorPool) -> T,
     ) -> T {
         thread_local! {
-            static TLS: RefCell<HashMap<ash::vk::Device, StdDescriptorPool>> =
+            static TLS: RefCell<HashMap<ash::vk::Device, StandardDescriptorPool>> =
                 RefCell::new(HashMap::default());
         }
 
@@ -541,15 +541,15 @@ impl Device {
             let mut tls = tls.borrow_mut();
             let pool = match tls.entry(self.internal_object()) {
                 Entry::Occupied(entry) => entry.into_mut(),
-                Entry::Vacant(entry) => entry.insert(StdDescriptorPool::new(self.clone())),
+                Entry::Vacant(entry) => entry.insert(StandardDescriptorPool::new(self.clone())),
             };
 
             f(pool)
         })
     }
 
-    /// Returns the standard command buffer pool used by default if you don't provide any other
-    /// pool.
+    /// Gives you access to the standard command buffer pool used by default if you don't provide
+    /// any other pool.
     ///
     /// Pools are stored in thread-local storage to avoid locks, which means that a pool is only
     /// dropped once both the thread exits and all command buffers allocated from it are dropped.
@@ -559,10 +559,12 @@ impl Device {
     /// # Panics
     ///
     /// - Panics if the device and the queue family don't belong to the same physical device.
-    pub fn standard_command_pool(
-        me: &Arc<Self>,
+    /// - Panics if called again from within the callback.
+    pub fn with_standard_command_pool<T>(
+        self: &Arc<Self>,
         queue_family: QueueFamily,
-    ) -> Result<Arc<StandardCommandPool>, OomError> {
+        f: impl FnOnce(&Arc<StandardCommandPool>) -> T,
+    ) -> Result<T, OomError> {
         thread_local! {
             static TLS: RefCell<HashMap<(ash::vk::Device, u32), Arc<StandardCommandPool>>> =
                 RefCell::new(Default::default());
@@ -570,15 +572,15 @@ impl Device {
 
         TLS.with(|tls| {
             let mut tls = tls.borrow_mut();
-            let per_family = match tls.entry((me.internal_object(), queue_family.id())) {
+            let pool = match tls.entry((self.internal_object(), queue_family.id())) {
                 Entry::Occupied(entry) => entry.into_mut(),
                 Entry::Vacant(entry) => entry.insert(Arc::new(StandardCommandPool::new(
-                    me.clone(),
+                    self.clone(),
                     queue_family,
                 )?)),
             };
 
-            Ok(per_family.clone())
+            Ok(f(pool))
         })
     }
 
@@ -1222,9 +1224,10 @@ impl fmt::Display for DebugUtilsError {
 
 #[cfg(test)]
 mod tests {
-    use crate::device::physical::PhysicalDevice;
-    use crate::device::{Device, DeviceCreateInfo, DeviceCreationError, QueueCreateInfo};
-    use crate::device::{FeatureRestriction, FeatureRestrictionError, Features};
+    use crate::device::{
+        physical::PhysicalDevice, Device, DeviceCreateInfo, DeviceCreationError,
+        FeatureRestriction, FeatureRestrictionError, Features, QueueCreateInfo,
+    };
     use std::sync::Arc;
 
     #[test]

@@ -239,8 +239,7 @@ impl Default for EventCreateInfo {
 
 #[cfg(test)]
 mod tests {
-    use crate::sync::Event;
-    use crate::VulkanObject;
+    use crate::{sync::Event, VulkanObject};
 
     #[test]
     fn event_create() {

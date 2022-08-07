@@ -7,23 +7,15 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::{
+    check_errors,
+    device::{DeviceOwned, Queue},
+    swapchain::{PresentRegion, Swapchain},
+    sync::Semaphore,
+    Error, OomError, SynchronizedVulkanObject, VulkanObject,
+};
 use smallvec::SmallVec;
-use std::error;
-use std::fmt;
-use std::marker::PhantomData;
-use std::ptr;
-
-use crate::device::DeviceOwned;
-use crate::device::Queue;
-use crate::swapchain::PresentRegion;
-use crate::swapchain::Swapchain;
-use crate::sync::Semaphore;
-
-use crate::check_errors;
-use crate::Error;
-use crate::OomError;
-use crate::SynchronizedVulkanObject;
-use crate::VulkanObject;
+use std::{error, fmt, marker::PhantomData, ptr};
 
 /// Prototype for a submission that presents a swapchain on the screen.
 // TODO: example here

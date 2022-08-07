@@ -7,12 +7,11 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::{
+    command_buffer::submit::{SubmitCommandBufferBuilder, SubmitPresentBuilder},
+    sync::{PipelineStages, Semaphore},
+};
 use smallvec::SmallVec;
-
-use crate::command_buffer::submit::SubmitCommandBufferBuilder;
-use crate::command_buffer::submit::SubmitPresentBuilder;
-use crate::sync::PipelineStages;
-use crate::sync::Semaphore;
 
 /// Prototype for a submission that waits on semaphores.
 ///

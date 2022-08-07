@@ -7,20 +7,15 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::check_errors;
-use crate::command_buffer::sys::UnsafeCommandBuffer;
-use crate::device::Queue;
-use crate::sync::Fence;
-use crate::sync::PipelineStages;
-use crate::sync::Semaphore;
-use crate::Error;
-use crate::OomError;
-use crate::SynchronizedVulkanObject;
-use crate::VulkanObject;
+use crate::{
+    check_errors,
+    command_buffer::sys::UnsafeCommandBuffer,
+    device::Queue,
+    sync::{Fence, PipelineStages, Semaphore},
+    Error, OomError, SynchronizedVulkanObject, VulkanObject,
+};
 use smallvec::SmallVec;
-use std::error;
-use std::fmt;
-use std::marker::PhantomData;
+use std::{error, fmt, marker::PhantomData};
 
 /// Prototype for a submission that executes command buffers.
 // TODO: example here

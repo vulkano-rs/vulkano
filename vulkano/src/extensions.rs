@@ -8,8 +8,10 @@
 // according to those terms.
 
 use crate::Version;
-use std::error;
-use std::fmt::{Display, Error as FmtError, Formatter};
+use std::{
+    error,
+    fmt::{Display, Error as FmtError, Formatter},
+};
 
 /// An error that can happen when enabling an extension on an instance or device.
 #[derive(Clone, Copy, Debug)]

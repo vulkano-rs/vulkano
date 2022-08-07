@@ -9,11 +9,9 @@
 
 //! Extraction of information from SPIR-V modules, that is needed by the rest of Vulkano.
 
-use crate::descriptor_set::layout::DescriptorType;
-use crate::image::view::ImageViewType;
-use crate::shader::ShaderScalarType;
-use crate::DeviceSize;
 use crate::{
+    descriptor_set::layout::DescriptorType,
+    image::view::ImageViewType,
     pipeline::layout::PushConstantRange,
     shader::{
         spirv::{
@@ -22,11 +20,15 @@ use crate::{
         },
         DescriptorIdentifier, DescriptorRequirements, EntryPointInfo, GeometryShaderExecution,
         GeometryShaderInput, ShaderExecution, ShaderInterface, ShaderInterfaceEntry,
-        ShaderInterfaceEntryType, ShaderStage, SpecializationConstantRequirements,
+        ShaderInterfaceEntryType, ShaderScalarType, ShaderStage,
+        SpecializationConstantRequirements,
     },
+    DeviceSize,
 };
-use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
+use std::{
+    borrow::Cow,
+    collections::{HashMap, HashSet},
+};
 
 /// Returns an iterator of the capabilities used by `spirv`.
 pub fn spirv_capabilities<'a>(spirv: &'a Spirv) -> impl Iterator<Item = &'a Capability> {

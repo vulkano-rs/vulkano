@@ -317,33 +317,19 @@
 //! ```
 //!
 
-pub use self::present_region::PresentRegion;
-pub use self::present_region::RectangleLayer;
-pub use self::surface::ColorSpace;
-pub use self::surface::CompositeAlpha;
-pub use self::surface::PresentMode;
-pub use self::surface::SupportedCompositeAlpha;
-pub use self::surface::SupportedSurfaceTransforms;
-pub use self::surface::Surface;
-pub use self::surface::SurfaceApi;
-pub use self::surface::SurfaceCapabilities;
-pub use self::surface::SurfaceCreationError;
-pub use self::surface::SurfaceInfo;
-pub use self::surface::SurfaceTransform;
-pub use self::swapchain::acquire_next_image;
-pub use self::swapchain::acquire_next_image_raw;
-pub use self::swapchain::present;
-pub use self::swapchain::present_incremental;
-pub use self::swapchain::AcquireError;
-pub use self::swapchain::AcquiredImage;
-pub use self::swapchain::FullScreenExclusive;
-pub use self::swapchain::FullScreenExclusiveError;
-pub use self::swapchain::PresentFuture;
-pub use self::swapchain::Swapchain;
-pub use self::swapchain::SwapchainAcquireFuture;
-pub use self::swapchain::SwapchainCreateInfo;
-pub use self::swapchain::SwapchainCreationError;
-pub use self::swapchain::Win32Monitor;
+pub use self::{
+    present_region::{PresentRegion, RectangleLayer},
+    surface::{
+        ColorSpace, CompositeAlpha, PresentMode, SupportedCompositeAlpha,
+        SupportedSurfaceTransforms, Surface, SurfaceApi, SurfaceCapabilities, SurfaceCreationError,
+        SurfaceInfo, SurfaceTransform,
+    },
+    swapchain::{
+        acquire_next_image, acquire_next_image_raw, present, present_incremental, AcquireError,
+        AcquiredImage, FullScreenExclusive, FullScreenExclusiveError, PresentFuture, Swapchain,
+        SwapchainAcquireFuture, SwapchainCreateInfo, SwapchainCreationError, Win32Monitor,
+    },
+};
 use std::sync::atomic::AtomicBool;
 
 pub mod display;

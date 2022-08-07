@@ -17,32 +17,31 @@
 //! code. You are encouraged to use the `vulkano-shaders` crate that will generate Rust code that
 //! wraps around vulkano's shaders API.
 
-use crate::check_errors;
-use crate::descriptor_set::layout::DescriptorType;
-use crate::device::Device;
-use crate::format::{Format, NumericType};
-use crate::image::view::ImageViewType;
-use crate::pipeline::graphics::input_assembly::PrimitiveTopology;
-use crate::pipeline::layout::PushConstantRange;
-use crate::shader::spirv::{Capability, Spirv, SpirvError};
-use crate::sync::PipelineStages;
-use crate::DeviceSize;
-use crate::OomError;
-use crate::Version;
-use crate::VulkanObject;
-use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
-use std::error;
-use std::error::Error;
-use std::ffi::CStr;
-use std::ffi::CString;
-use std::fmt;
-use std::fmt::Display;
-use std::mem;
-use std::mem::MaybeUninit;
-use std::ops::BitOr;
-use std::ptr;
-use std::sync::Arc;
+use crate::{
+    check_errors,
+    descriptor_set::layout::DescriptorType,
+    device::Device,
+    format::{Format, NumericType},
+    image::view::ImageViewType,
+    pipeline::{graphics::input_assembly::PrimitiveTopology, layout::PushConstantRange},
+    shader::spirv::{Capability, Spirv, SpirvError},
+    sync::PipelineStages,
+    DeviceSize, OomError, Version, VulkanObject,
+};
+use std::{
+    borrow::Cow,
+    collections::{HashMap, HashSet},
+    error,
+    error::Error,
+    ffi::{CStr, CString},
+    fmt,
+    fmt::Display,
+    mem,
+    mem::MaybeUninit,
+    ops::BitOr,
+    ptr,
+    sync::Arc,
+};
 
 pub mod reflect;
 pub mod spirv;

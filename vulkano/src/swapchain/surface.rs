@@ -7,25 +7,25 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::FullScreenExclusive;
-use super::Win32Monitor;
-use crate::check_errors;
-use crate::image::ImageUsage;
-use crate::instance::Instance;
-use crate::swapchain::display::DisplayMode;
-use crate::swapchain::display::DisplayPlane;
-use crate::swapchain::SurfaceSwapchainLock;
-use crate::Error;
-use crate::OomError;
-use crate::VulkanObject;
-use std::error;
-use std::fmt;
-use std::hash::{Hash, Hasher};
-use std::mem::MaybeUninit;
-use std::os::raw::c_ulong;
-use std::ptr;
-use std::sync::atomic::AtomicBool;
-use std::sync::Arc;
+use super::{FullScreenExclusive, Win32Monitor};
+use crate::{
+    check_errors,
+    image::ImageUsage,
+    instance::Instance,
+    swapchain::{
+        display::{DisplayMode, DisplayPlane},
+        SurfaceSwapchainLock,
+    },
+    Error, OomError, VulkanObject,
+};
+use std::{
+    error, fmt,
+    hash::{Hash, Hasher},
+    mem::MaybeUninit,
+    os::raw::c_ulong,
+    ptr,
+    sync::{atomic::AtomicBool, Arc},
+};
 
 /// Represents a surface on the screen.
 ///
@@ -1272,8 +1272,7 @@ pub struct SurfaceCapabilities {
 
 #[cfg(test)]
 mod tests {
-    use crate::swapchain::Surface;
-    use crate::swapchain::SurfaceCreationError;
+    use crate::swapchain::{Surface, SurfaceCreationError};
     use std::ptr;
 
     #[test]

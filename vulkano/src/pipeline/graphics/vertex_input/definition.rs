@@ -50,12 +50,12 @@
 //! # }
 //! ```
 
-use crate::format::Format;
-use crate::pipeline::graphics::vertex_input::VertexInputState;
-use crate::pipeline::graphics::vertex_input::VertexMemberTy;
-use crate::shader::ShaderInterface;
-use std::error;
-use std::fmt;
+use crate::{
+    format::Format,
+    pipeline::graphics::vertex_input::{VertexInputState, VertexMemberTy},
+    shader::ShaderInterface,
+};
+use std::{error, fmt};
 
 /// Trait for types that can create a [`VertexInputState`] from a [`ShaderInterface`].
 pub unsafe trait VertexDefinition {

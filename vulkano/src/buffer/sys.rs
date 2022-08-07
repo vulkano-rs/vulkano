@@ -28,11 +28,11 @@ use super::{
     cpu_access::{ReadLockError, WriteLockError},
     BufferUsage,
 };
-use crate::range_map::RangeMap;
 use crate::{
     check_errors,
     device::{Device, DeviceOwned},
     memory::{DeviceMemory, DeviceMemoryAllocationError, MemoryRequirements},
+    range_map::RangeMap,
     sync::{AccessError, CurrentAccess, Sharing},
     DeviceSize, Error, OomError, Version, VulkanObject,
 };
@@ -782,13 +782,10 @@ struct BufferRangeState {
 
 #[cfg(test)]
 mod tests {
-    use super::BufferCreationError;
-    use super::BufferUsage;
-    use super::SparseLevel;
-    use super::UnsafeBuffer;
-    use super::UnsafeBufferCreateInfo;
-    use crate::device::Device;
-    use crate::device::DeviceOwned;
+    use super::{
+        BufferCreationError, BufferUsage, SparseLevel, UnsafeBuffer, UnsafeBufferCreateInfo,
+    };
+    use crate::device::{Device, DeviceOwned};
 
     #[test]
     fn create() {

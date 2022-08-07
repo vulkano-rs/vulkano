@@ -447,9 +447,10 @@ impl From<Error> for FenceWaitError {
 
 #[cfg(test)]
 mod tests {
-    use crate::sync::fence::FenceCreateInfo;
-    use crate::sync::Fence;
-    use crate::VulkanObject;
+    use crate::{
+        sync::{fence::FenceCreateInfo, Fence},
+        VulkanObject,
+    };
     use std::time::Duration;
 
     #[test]

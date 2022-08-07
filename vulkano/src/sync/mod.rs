@@ -103,9 +103,6 @@
 //! TODO: talk about fence + semaphore simultaneously
 //! TODO: talk about using fences to clean up
 
-use crate::device::Queue;
-use std::sync::Arc;
-
 pub use self::{
     event::{Event, EventCreateInfo},
     fence::{Fence, FenceCreateInfo, FenceWaitError},
@@ -122,6 +119,8 @@ pub use self::{
         ExternalSemaphoreProperties, Semaphore, SemaphoreCreateInfo, SemaphoreCreationError,
     },
 };
+use crate::device::Queue;
+use std::sync::Arc;
 
 mod event;
 mod fence;

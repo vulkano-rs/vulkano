@@ -25,10 +25,10 @@
 //! Consequently you can create graphics pipelines from a render pass object alone.
 //! A `Framebuffer` object is only needed when you actually add draw commands to a command buffer.
 
-pub use self::create::RenderPassCreationError;
-pub use self::framebuffer::Framebuffer;
-pub use self::framebuffer::FramebufferCreateInfo;
-pub use self::framebuffer::FramebufferCreationError;
+pub use self::{
+    create::RenderPassCreationError,
+    framebuffer::{Framebuffer, FramebufferCreateInfo, FramebufferCreationError},
+};
 use crate::{
     device::{Device, DeviceOwned},
     format::Format,
@@ -37,8 +37,8 @@ use crate::{
     sync::{AccessFlags, PipelineStages},
     Version, VulkanObject,
 };
-use std::cmp::max;
 use std::{
+    cmp::max,
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     ptr,
@@ -1228,9 +1228,10 @@ impl From<ash::vk::ResolveModeFlags> for ResolveModes {
 
 #[cfg(test)]
 mod tests {
-    use crate::format::Format;
-    use crate::render_pass::RenderPass;
-    use crate::render_pass::RenderPassCreationError;
+    use crate::{
+        format::Format,
+        render_pass::{RenderPass, RenderPassCreationError},
+    };
 
     #[test]
     fn empty() {

@@ -65,7 +65,7 @@
 //! - The `DescriptorPool` trait can be implemented on types from which you can allocate and free
 //!   descriptor sets. However it is different from Vulkan descriptor pools in the sense that an
 //!   implementation of the `DescriptorPool` trait can manage multiple Vulkan descriptor pools.
-//! - The `StdDescriptorPool` type is a default implementation of the `DescriptorPool` trait.
+//! - The `StandardDescriptorPool` type is a default implementation of the `DescriptorPool` trait.
 //! - The `DescriptorSet` trait is implemented on types that wrap around Vulkan descriptor sets in
 //!   a safe way. A Vulkan descriptor set is inherently unsafe, so we need safe wrappers around
 //!   them.
@@ -73,27 +73,29 @@
 //! - The `DescriptorSetsCollection` trait is implemented on collections of types that implement
 //!   `DescriptorSet`. It is what you pass to the draw functions.
 
-pub use self::collection::DescriptorSetsCollection;
-use self::layout::DescriptorSetLayout;
-pub use self::persistent::PersistentDescriptorSet;
-pub use self::single_layout_pool::SingleLayoutDescSetPool;
-use self::sys::UnsafeDescriptorSet;
 pub(crate) use self::update::{check_descriptor_write, DescriptorWriteInfo};
-pub use self::update::{DescriptorSetUpdateError, WriteDescriptorSet, WriteDescriptorSetElements};
-use crate::buffer::view::BufferViewAbstract;
-use crate::buffer::BufferAccess;
-use crate::descriptor_set::layout::DescriptorType;
-use crate::device::DeviceOwned;
-use crate::image::view::ImageViewAbstract;
-use crate::sampler::Sampler;
-use crate::OomError;
-use crate::VulkanObject;
+pub use self::{
+    collection::DescriptorSetsCollection,
+    persistent::PersistentDescriptorSet,
+    single_layout_pool::SingleLayoutDescSetPool,
+    update::{DescriptorSetUpdateError, WriteDescriptorSet, WriteDescriptorSetElements},
+};
+use self::{layout::DescriptorSetLayout, sys::UnsafeDescriptorSet};
+use crate::{
+    buffer::{view::BufferViewAbstract, BufferAccess},
+    descriptor_set::layout::DescriptorType,
+    device::DeviceOwned,
+    image::view::ImageViewAbstract,
+    sampler::Sampler,
+    OomError, VulkanObject,
+};
 use smallvec::{smallvec, SmallVec};
-use std::collections::HashMap;
-use std::hash::Hash;
-use std::hash::Hasher;
-use std::ptr;
-use std::sync::Arc;
+use std::{
+    collections::HashMap,
+    hash::{Hash, Hasher},
+    ptr,
+    sync::Arc,
+};
 
 mod collection;
 pub mod layout;

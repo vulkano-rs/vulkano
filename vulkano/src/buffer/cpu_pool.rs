@@ -17,7 +17,7 @@ use crate::{
     memory::{
         pool::{
             AllocFromRequirementsFilter, AllocLayout, MappingRequirement, MemoryPoolAlloc,
-            PotentialDedicatedAllocation, StdMemoryPool,
+            PotentialDedicatedAllocation, StandardMemoryPool,
         },
         DedicatedAllocation, DeviceMemoryAllocationError, MemoryPool,
     },
@@ -91,7 +91,7 @@ use std::{
 /// }
 /// ```
 ///
-pub struct CpuBufferPool<T, A = Arc<StdMemoryPool>>
+pub struct CpuBufferPool<T, A = Arc<StandardMemoryPool>>
 where
     [T]: BufferContents,
     A: MemoryPool,
@@ -196,11 +196,11 @@ where
     #[inline]
     pub fn new(device: Arc<Device>, usage: BufferUsage) -> CpuBufferPool<T> {
         assert!(size_of::<T>() > 0);
-        let pool = Device::standard_pool(&device);
+        let pool = device.standard_memory_pool();
 
         CpuBufferPool {
-            device: device,
-            pool: pool,
+            device,
+            pool,
             current_buffer: Mutex::new(None),
             usage: usage.clone(),
             marker: PhantomData,

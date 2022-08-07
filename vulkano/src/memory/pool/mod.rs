@@ -7,22 +7,22 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-pub use self::host_visible::StdHostVisibleMemoryTypePool;
-pub use self::host_visible::StdHostVisibleMemoryTypePoolAlloc;
-pub use self::non_host_visible::StdNonHostVisibleMemoryTypePool;
-pub use self::non_host_visible::StdNonHostVisibleMemoryTypePoolAlloc;
-pub use self::pool::StdMemoryPool;
-pub use self::pool::StdMemoryPoolAlloc;
-use crate::device::physical::MemoryType;
-use crate::device::{Device, DeviceOwned};
-use crate::memory::device_memory::MemoryAllocateInfo;
-use crate::memory::DedicatedAllocation;
-use crate::memory::DeviceMemory;
-use crate::memory::DeviceMemoryAllocationError;
-use crate::memory::ExternalMemoryHandleTypes;
-use crate::memory::MappedDeviceMemory;
-use crate::memory::MemoryRequirements;
-use crate::DeviceSize;
+pub use self::{
+    host_visible::{StandardHostVisibleMemoryTypePool, StandardHostVisibleMemoryTypePoolAlloc},
+    non_host_visible::{
+        StandardNonHostVisibleMemoryTypePool, StandardNonHostVisibleMemoryTypePoolAlloc,
+    },
+    pool::{StandardMemoryPool, StandardMemoryPoolAlloc},
+};
+use crate::{
+    device::{physical::MemoryType, Device, DeviceOwned},
+    memory::{
+        device_memory::MemoryAllocateInfo, DedicatedAllocation, DeviceMemory,
+        DeviceMemoryAllocationError, ExternalMemoryHandleTypes, MappedDeviceMemory,
+        MemoryRequirements,
+    },
+    DeviceSize,
+};
 use std::sync::Arc;
 
 mod host_visible;
@@ -77,7 +77,7 @@ pub(crate) fn alloc_dedicated_with_exportable_fd<F>(
     map: MappingRequirement,
     dedicated_allocation: DedicatedAllocation,
     filter: F,
-) -> Result<PotentialDedicatedAllocation<StdMemoryPoolAlloc>, DeviceMemoryAllocationError>
+) -> Result<PotentialDedicatedAllocation<StandardMemoryPoolAlloc>, DeviceMemoryAllocationError>
 where
     F: FnMut(MemoryType) -> AllocFromRequirementsFilter,
 {

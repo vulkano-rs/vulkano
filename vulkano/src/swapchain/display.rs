@@ -28,18 +28,11 @@
 #![allow(dead_code)] // TODO: this module isn't finished
 #![allow(unused_variables)] // TODO: this module isn't finished
 
-use crate::check_errors;
-use crate::device::physical::PhysicalDevice;
-use crate::instance::Instance;
-use crate::swapchain::SupportedSurfaceTransforms;
-use crate::OomError;
-use crate::Success;
-use crate::VulkanObject;
-use std::ffi::CStr;
-use std::fmt::Formatter;
-use std::sync::Arc;
-use std::vec::IntoIter;
-use std::{fmt, ptr};
+use crate::{
+    check_errors, device::physical::PhysicalDevice, instance::Instance,
+    swapchain::SupportedSurfaceTransforms, OomError, Success, VulkanObject,
+};
+use std::{ffi::CStr, fmt, fmt::Formatter, ptr, sync::Arc, vec::IntoIter};
 
 // TODO: extract this to a `display` module and solve the visibility problems
 

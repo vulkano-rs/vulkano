@@ -25,7 +25,7 @@ use crate::{
     memory::{
         pool::{
             AllocFromRequirementsFilter, AllocLayout, MappingRequirement, MemoryPoolAlloc,
-            PotentialDedicatedAllocation, StdMemoryPoolAlloc,
+            PotentialDedicatedAllocation, StandardMemoryPoolAlloc,
         },
         DedicatedAllocation, DeviceMemoryAllocationError, MemoryPool,
     },
@@ -50,7 +50,7 @@ use std::{
 /// memory caches GPU data on the CPU side. This can be more performant in cases where
 /// the cpu needs to read data coming off the GPU.
 #[derive(Debug)]
-pub struct CpuAccessibleBuffer<T, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>>
+pub struct CpuAccessibleBuffer<T, A = PotentialDedicatedAllocation<StandardMemoryPoolAlloc>>
 where
     T: BufferContents + ?Sized,
 {
@@ -252,7 +252,7 @@ where
         let mem_reqs = buffer.memory_requirements();
 
         let memory = MemoryPool::alloc_from_requirements(
-            &Device::standard_pool(&device),
+            &device.standard_memory_pool(),
             &mem_reqs,
             AllocLayout::Linear,
             MappingRequirement::Map,

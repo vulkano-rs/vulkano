@@ -724,13 +724,11 @@ impl From<Error> for FramebufferCreationError {
 
 #[cfg(test)]
 mod tests {
-    use crate::format::Format;
-    use crate::image::attachment::AttachmentImage;
-    use crate::image::view::ImageView;
-    use crate::render_pass::Framebuffer;
-    use crate::render_pass::FramebufferCreateInfo;
-    use crate::render_pass::FramebufferCreationError;
-    use crate::render_pass::RenderPass;
+    use crate::{
+        format::Format,
+        image::{attachment::AttachmentImage, view::ImageView},
+        render_pass::{Framebuffer, FramebufferCreateInfo, FramebufferCreationError, RenderPass},
+    };
 
     #[test]
     fn simple_create() {

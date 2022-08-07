@@ -11,16 +11,14 @@ use super::{
     sys::UnsafeImage, traits::ImageContent, ImageAccess, ImageCreateFlags, ImageCreationError,
     ImageDescriptorLayouts, ImageDimensions, ImageInner, ImageLayout, ImageUsage,
 };
-use crate::device::Queue;
-use crate::image::view::ImageView;
 use crate::{
-    device::{physical::QueueFamily, Device, DeviceOwned},
+    device::{physical::QueueFamily, Device, DeviceOwned, Queue},
     format::Format,
-    image::sys::UnsafeImageCreateInfo,
+    image::{sys::UnsafeImageCreateInfo, view::ImageView},
     memory::{
         pool::{
             alloc_dedicated_with_exportable_fd, AllocFromRequirementsFilter, AllocLayout,
-            MappingRequirement, MemoryPoolAlloc, PotentialDedicatedAllocation, StdMemoryPool,
+            MappingRequirement, MemoryPoolAlloc, PotentialDedicatedAllocation, StandardMemoryPool,
         },
         DedicatedAllocation, DeviceMemoryExportError, ExternalMemoryHandleType,
         ExternalMemoryHandleTypes, MemoryPool,
@@ -38,7 +36,7 @@ use std::{
 /// General-purpose image in device memory. Can be used for any usage, but will be slower than a
 /// specialized image.
 #[derive(Debug)]
-pub struct StorageImage<A = Arc<StdMemoryPool>>
+pub struct StorageImage<A = Arc<StandardMemoryPool>>
 where
     A: MemoryPool,
 {
@@ -130,7 +128,7 @@ impl StorageImage {
 
         let mem_reqs = image.memory_requirements();
         let memory = MemoryPool::alloc_from_requirements(
-            &Device::standard_pool(&device),
+            &device.standard_memory_pool(),
             &mem_reqs,
             AllocLayout::Optimal,
             MappingRequirement::DoNotMap,
@@ -352,9 +350,13 @@ where
 #[cfg(test)]
 mod tests {
     use super::StorageImage;
-    use crate::format::Format;
-    use crate::image::view::ImageViewCreationError;
-    use crate::image::{ImageAccess, ImageCreationError, ImageDimensions, ImageUsage};
+    use crate::{
+        format::Format,
+        image::{
+            view::ImageViewCreationError, ImageAccess, ImageCreationError, ImageDimensions,
+            ImageUsage,
+        },
+    };
 
     #[test]
     fn create() {

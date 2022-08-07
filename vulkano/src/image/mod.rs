@@ -839,11 +839,10 @@ impl From<ash::vk::ImageFormatProperties> for ImageFormatProperties {
 
 #[cfg(test)]
 mod tests {
-    use crate::format::Format;
-    use crate::image::ImageAccess;
-    use crate::image::ImageDimensions;
-    use crate::image::ImmutableImage;
-    use crate::image::MipmapsCount;
+    use crate::{
+        format::Format,
+        image::{ImageAccess, ImageDimensions, ImmutableImage, MipmapsCount},
+    };
 
     #[test]
     fn max_mip_levels() {

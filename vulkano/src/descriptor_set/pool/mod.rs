@@ -10,7 +10,7 @@
 //! A pool from which descriptor sets can be allocated.
 
 pub use self::{
-    standard::StdDescriptorPool,
+    standard::StandardDescriptorPool,
     sys::{
         DescriptorPoolAllocError, DescriptorSetAllocateInfo, UnsafeDescriptorPool,
         UnsafeDescriptorPoolCreateInfo,

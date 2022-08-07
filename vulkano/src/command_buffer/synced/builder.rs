@@ -14,7 +14,6 @@ pub use crate::command_buffer::commands::{
     },
     secondary::SyncCommandBufferBuilderExecuteCommands,
 };
-use crate::range_map::RangeMap;
 use crate::{
     buffer::{sys::UnsafeBuffer, BufferAccess},
     command_buffer::{
@@ -36,6 +35,7 @@ use crate::{
         },
         ComputePipeline, DynamicState, GraphicsPipeline, PipelineBindPoint, PipelineLayout,
     },
+    range_map::RangeMap,
     range_set::RangeSet,
     sync::{
         AccessFlags, BufferMemoryBarrier, DependencyInfo, ImageMemoryBarrier, PipelineMemoryAccess,

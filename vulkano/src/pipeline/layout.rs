@@ -1132,12 +1132,11 @@ impl Counter {
 #[cfg(test)]
 mod tests {
 
+    use super::PipelineLayout;
     use crate::{
         pipeline::layout::{PipelineLayoutCreateInfo, PushConstantRange},
         shader::ShaderStages,
     };
-
-    use super::PipelineLayout;
 
     #[test]
     fn push_constant_ranges_disjoint() {

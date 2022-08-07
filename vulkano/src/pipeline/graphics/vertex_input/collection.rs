@@ -82,12 +82,11 @@ impl_collection!(Z, Y, X, W, V, U, T, S, R, Q, P, O, N, M, L, K, J, I, H, G, F, 
 #[cfg(test)]
 mod tests {
     use super::VertexBuffersCollection;
-    use crate::buffer::BufferAccess;
-    use crate::buffer::BufferAccessObject;
-    use crate::buffer::BufferInner;
-    use crate::device::Device;
-    use crate::device::DeviceOwned;
-    use crate::DeviceSize;
+    use crate::{
+        buffer::{BufferAccess, BufferAccessObject, BufferInner},
+        device::{Device, DeviceOwned},
+        DeviceSize,
+    };
     use std::sync::Arc;
 
     struct DummyBufferA {}

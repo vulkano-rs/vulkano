@@ -462,9 +462,13 @@ impl Hash for dyn BufferViewAbstract {
 
 #[cfg(test)]
 mod tests {
-    use crate::buffer::view::{BufferView, BufferViewCreateInfo, BufferViewCreationError};
-    use crate::buffer::{BufferUsage, DeviceLocalBuffer};
-    use crate::format::Format;
+    use crate::{
+        buffer::{
+            view::{BufferView, BufferViewCreateInfo, BufferViewCreationError},
+            BufferUsage, DeviceLocalBuffer,
+        },
+        format::Format,
+    };
 
     #[test]
     fn create_uniform() {

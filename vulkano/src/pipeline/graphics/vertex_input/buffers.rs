@@ -8,15 +8,15 @@
 // according to those terms.
 
 use super::VertexMemberInfo;
-use crate::pipeline::graphics::vertex_input::IncompatibleVertexDefinitionError;
-use crate::pipeline::graphics::vertex_input::Vertex;
-use crate::pipeline::graphics::vertex_input::VertexDefinition;
-use crate::pipeline::graphics::vertex_input::VertexInputAttributeDescription;
-use crate::pipeline::graphics::vertex_input::VertexInputBindingDescription;
-use crate::pipeline::graphics::vertex_input::VertexInputRate;
-use crate::pipeline::graphics::vertex_input::VertexInputState;
-use crate::shader::ShaderInterface;
-use crate::DeviceSize;
+use crate::{
+    pipeline::graphics::vertex_input::{
+        IncompatibleVertexDefinitionError, Vertex, VertexDefinition,
+        VertexInputAttributeDescription, VertexInputBindingDescription, VertexInputRate,
+        VertexInputState,
+    },
+    shader::ShaderInterface,
+    DeviceSize,
+};
 use std::mem;
 
 /// A vertex definition for any number of vertex and instance buffers.

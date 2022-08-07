@@ -23,28 +23,21 @@
 //! command on the command buffer.
 
 use super::layout::PipelineLayoutCreateInfo;
-use crate::check_errors;
-use crate::descriptor_set::layout::{
-    DescriptorSetLayout, DescriptorSetLayoutCreateInfo, DescriptorSetLayoutCreationError,
+use crate::{
+    check_errors,
+    descriptor_set::layout::{
+        DescriptorSetLayout, DescriptorSetLayoutCreateInfo, DescriptorSetLayoutCreationError,
+    },
+    device::{Device, DeviceOwned},
+    pipeline::{
+        cache::PipelineCache,
+        layout::{PipelineLayout, PipelineLayoutCreationError, PipelineLayoutSupersetError},
+        Pipeline, PipelineBindPoint,
+    },
+    shader::{DescriptorRequirements, EntryPoint, SpecializationConstants},
+    DeviceSize, Error, OomError, VulkanObject,
 };
-use crate::device::{Device, DeviceOwned};
-use crate::pipeline::cache::PipelineCache;
-use crate::pipeline::layout::{
-    PipelineLayout, PipelineLayoutCreationError, PipelineLayoutSupersetError,
-};
-use crate::pipeline::{Pipeline, PipelineBindPoint};
-use crate::shader::{DescriptorRequirements, EntryPoint, SpecializationConstants};
-use crate::DeviceSize;
-use crate::Error;
-use crate::OomError;
-use crate::VulkanObject;
-use std::collections::HashMap;
-use std::error;
-use std::fmt;
-use std::mem;
-use std::mem::MaybeUninit;
-use std::ptr;
-use std::sync::Arc;
+use std::{collections::HashMap, error, fmt, mem, mem::MaybeUninit, ptr, sync::Arc};
 
 /// A pipeline object that describes to the Vulkan implementation how it should perform compute
 /// operations.
@@ -406,20 +399,14 @@ impl From<Error> for ComputePipelineCreationError {
 
 #[cfg(test)]
 mod tests {
-    use crate::buffer::BufferUsage;
-    use crate::buffer::CpuAccessibleBuffer;
-    use crate::command_buffer::AutoCommandBufferBuilder;
-    use crate::command_buffer::CommandBufferUsage;
-    use crate::descriptor_set::PersistentDescriptorSet;
-    use crate::descriptor_set::WriteDescriptorSet;
-    use crate::pipeline::ComputePipeline;
-    use crate::pipeline::Pipeline;
-    use crate::pipeline::PipelineBindPoint;
-    use crate::shader::ShaderModule;
-    use crate::shader::SpecializationConstants;
-    use crate::shader::SpecializationMapEntry;
-    use crate::sync::now;
-    use crate::sync::GpuFuture;
+    use crate::{
+        buffer::{BufferUsage, CpuAccessibleBuffer},
+        command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage},
+        descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
+        pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
+        shader::{ShaderModule, SpecializationConstants, SpecializationMapEntry},
+        sync::{now, GpuFuture},
+    };
 
     // TODO: test for basic creation
     // TODO: test for pipeline layout error

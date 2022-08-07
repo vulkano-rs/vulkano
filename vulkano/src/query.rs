@@ -759,10 +759,7 @@ impl From<QueryResultFlags> for ash::vk::QueryResultFlags {
 #[cfg(test)]
 mod tests {
     use super::QueryPoolCreateInfo;
-    use crate::query::QueryPipelineStatisticFlags;
-    use crate::query::QueryPool;
-    use crate::query::QueryPoolCreationError;
-    use crate::query::QueryType;
+    use crate::query::{QueryPipelineStatisticFlags, QueryPool, QueryPoolCreationError, QueryType};
 
     #[test]
     fn pipeline_statistics_feature() {

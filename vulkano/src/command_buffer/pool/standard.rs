@@ -228,34 +228,37 @@ impl Drop for StandardCommandPoolAlloc {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-    use std::thread;
-
-    use crate::command_buffer::pool::{CommandPool, CommandPoolBuilderAlloc};
-    use crate::command_buffer::CommandBufferLevel;
-    use crate::device::Device;
-    use crate::VulkanObject;
+    use crate::{
+        command_buffer::{
+            pool::{CommandPool, CommandPoolBuilderAlloc},
+            CommandBufferLevel,
+        },
+        VulkanObject,
+    };
+    use std::{sync::Arc, thread};
 
     #[test]
     fn reuse_command_buffers() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let pool = Device::standard_command_pool(&device, queue.family()).unwrap();
+        device
+            .with_standard_command_pool(queue.family(), |pool| {
+                let cb = pool
+                    .allocate(CommandBufferLevel::Primary, 1)
+                    .unwrap()
+                    .next()
+                    .unwrap();
+                let raw = cb.inner().internal_object();
+                drop(cb);
 
-        let cb = pool
-            .allocate(CommandBufferLevel::Primary, 1)
-            .unwrap()
-            .next()
+                let cb2 = pool
+                    .allocate(CommandBufferLevel::Primary, 1)
+                    .unwrap()
+                    .next()
+                    .unwrap();
+                assert_eq!(raw, cb2.inner().internal_object());
+            })
             .unwrap();
-        let raw = cb.inner().internal_object();
-        drop(cb);
-
-        let cb2 = pool
-            .allocate(CommandBufferLevel::Primary, 1)
-            .unwrap()
-            .next()
-            .unwrap();
-        assert_eq!(raw, cb2.inner().internal_object());
     }
 
     #[test]
@@ -265,13 +268,15 @@ mod tests {
         let thread = thread::spawn({
             let (device, queue) = (device.clone(), queue.clone());
             move || {
-                let pool = Device::standard_command_pool(&device, queue.family()).unwrap();
-
-                pool.allocate(CommandBufferLevel::Primary, 1)
+                device
+                    .with_standard_command_pool(queue.family(), |pool| {
+                        pool.allocate(CommandBufferLevel::Primary, 1)
+                            .unwrap()
+                            .next()
+                            .unwrap()
+                            .inner
+                    })
                     .unwrap()
-                    .next()
-                    .unwrap()
-                    .inner
             }
         });
 
