@@ -37,9 +37,9 @@ const MAX_POOLS: usize = 32;
 /// `VkDescriptorPool`. Its function is to provide access to pool(s) to allocate descriptor sets
 /// from and optimizes for a specific layout which must not have a variable descriptor count. If
 /// you need a variable descriptor count see [`SingleLayoutVariableDescSetPool`]. For a more general
-/// purpose pool see [`StdDescriptorPool`].
+/// purpose pool see [`StandardDescriptorPool`].
 ///
-/// [`StdDescriptorPool`]: super::pool::standard::StdDescriptorPool
+/// [`StandardDescriptorPool`]: super::pool::standard::StandardDescriptorPool
 #[derive(Debug)]
 pub struct SingleLayoutDescSetPool {
     // The `SingleLayoutPool` struct contains an actual Vulkan pool. Every time it is full we create
@@ -252,9 +252,9 @@ impl Hash for SingleLayoutDescSet {
 /// Much like [`SingleLayoutDescSetPool`], except that it allows you to allocate descriptor sets
 /// with a variable descriptor count. As this has more overhead, you should only use this pool if
 /// you need the functionality and prefer [`SingleLayoutDescSetPool`] otherwise. For a more general
-/// purpose pool see [`StdDescriptorPool`].
+/// purpose pool see [`StandardDescriptorPool`].
 ///
-/// [`StdDescriptorPool`]: super::pool::standard::StdDescriptorPool
+/// [`StandardDescriptorPool`]: super::pool::standard::StandardDescriptorPool
 #[derive(Debug)]
 pub struct SingleLayoutVariableDescSetPool {
     // The `SingleLayoutVariablePool` struct contains an actual Vulkan pool. Every time it is full

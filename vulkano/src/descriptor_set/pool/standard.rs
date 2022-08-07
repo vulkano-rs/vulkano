@@ -28,7 +28,7 @@ use std::sync::Arc;
 /// Interally, this implementation uses one [`SingleLayoutDescSetPool`] /
 /// [`SingleLayoutVariableDescSetPool`] per descriptor set layout.
 #[derive(Debug)]
-pub struct StdDescriptorPool {
+pub struct StandardDescriptorPool {
     device: Arc<Device>,
     pools: HashMap<Arc<DescriptorSetLayout>, Pool>,
 }
@@ -39,24 +39,24 @@ enum Pool {
     Variable(SingleLayoutVariableDescSetPool),
 }
 
-impl StdDescriptorPool {
-    /// Builds a new `StdDescriptorPool`.
-    pub fn new(device: Arc<Device>) -> StdDescriptorPool {
-        StdDescriptorPool {
+impl StandardDescriptorPool {
+    /// Builds a new `StandardDescriptorPool`.
+    pub fn new(device: Arc<Device>) -> StandardDescriptorPool {
+        StandardDescriptorPool {
             device,
             pools: HashMap::default(),
         }
     }
 }
 
-unsafe impl DescriptorPool for StdDescriptorPool {
-    type Alloc = StdDescriptorPoolAlloc;
+unsafe impl DescriptorPool for StandardDescriptorPool {
+    type Alloc = StandardDescriptorPoolAlloc;
 
     fn allocate(
         &mut self,
         layout: &Arc<DescriptorSetLayout>,
         variable_descriptor_count: u32,
-    ) -> Result<StdDescriptorPoolAlloc, OomError> {
+    ) -> Result<StandardDescriptorPoolAlloc, OomError> {
         assert!(
             !layout.push_descriptor(),
             "the provided descriptor set layout is for push descriptors, and cannot be used to \
@@ -94,20 +94,20 @@ unsafe impl DescriptorPool for StdDescriptorPool {
             }
         };
 
-        Ok(StdDescriptorPoolAlloc { inner })
+        Ok(StandardDescriptorPoolAlloc { inner })
     }
 }
 
-unsafe impl DeviceOwned for StdDescriptorPool {
+unsafe impl DeviceOwned for StandardDescriptorPool {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.device
     }
 }
 
-/// A descriptor set allocated from a `StdDescriptorPool`.
+/// A descriptor set allocated from a `StandardDescriptorPool`.
 #[derive(Debug)]
-pub struct StdDescriptorPoolAlloc {
+pub struct StandardDescriptorPoolAlloc {
     // The actual descriptor alloc.
     inner: PoolAlloc,
 }
@@ -118,7 +118,7 @@ enum PoolAlloc {
     Variable(SingleLayoutVariablePoolAlloc),
 }
 
-impl DescriptorPoolAlloc for StdDescriptorPoolAlloc {
+impl DescriptorPoolAlloc for StandardDescriptorPoolAlloc {
     #[inline]
     fn inner(&self) -> &UnsafeDescriptorSet {
         match &self.inner {

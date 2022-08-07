@@ -21,7 +21,7 @@
 //! # Example
 //! TODO:
 
-use crate::descriptor_set::pool::standard::StdDescriptorPoolAlloc;
+use crate::descriptor_set::pool::standard::StandardDescriptorPoolAlloc;
 use crate::descriptor_set::pool::{DescriptorPool, DescriptorPoolAlloc};
 use crate::descriptor_set::update::WriteDescriptorSet;
 use crate::descriptor_set::{
@@ -34,7 +34,7 @@ use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 /// A simple, immutable descriptor set that is expected to be long-lived.
-pub struct PersistentDescriptorSet<P = StdDescriptorPoolAlloc> {
+pub struct PersistentDescriptorSet<P = StandardDescriptorPoolAlloc> {
     alloc: P,
     inner: DescriptorSetInner,
 }

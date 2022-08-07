@@ -17,7 +17,7 @@ use crate::{
     memory::{
         pool::{
             AllocFromRequirementsFilter, AllocLayout, MappingRequirement, MemoryPoolAlloc,
-            PotentialDedicatedAllocation, StdMemoryPool,
+            PotentialDedicatedAllocation, StandardMemoryPool,
         },
         DedicatedAllocation, DeviceMemoryAllocationError, MemoryPool,
     },
@@ -91,7 +91,7 @@ use std::{
 /// }
 /// ```
 ///
-pub struct CpuBufferPool<T, A = Arc<StdMemoryPool>>
+pub struct CpuBufferPool<T, A = Arc<StandardMemoryPool>>
 where
     [T]: BufferContents,
     A: MemoryPool,

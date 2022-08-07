@@ -21,14 +21,14 @@ use std::sync::Mutex;
 
 /// Memory pool that operates on a given memory type.
 #[derive(Debug)]
-pub struct StdNonHostVisibleMemoryTypePool {
+pub struct StandardNonHostVisibleMemoryTypePool {
     device: Arc<Device>,
     memory_type: u32,
     // TODO: obviously very inefficient
     occupied: Mutex<Vec<(Arc<DeviceMemory>, Vec<Range<DeviceSize>>)>>,
 }
 
-impl StdNonHostVisibleMemoryTypePool {
+impl StandardNonHostVisibleMemoryTypePool {
     /// Creates a new pool that will operate on the given memory type.
     ///
     /// # Panic
@@ -39,7 +39,7 @@ impl StdNonHostVisibleMemoryTypePool {
     pub fn new(
         device: Arc<Device>,
         memory_type: MemoryType,
-    ) -> Arc<StdNonHostVisibleMemoryTypePool> {
+    ) -> Arc<StandardNonHostVisibleMemoryTypePool> {
         assert_eq!(
             &**device.physical_device().instance() as *const Instance,
             &**memory_type.physical_device().instance() as *const Instance
@@ -49,7 +49,7 @@ impl StdNonHostVisibleMemoryTypePool {
             memory_type.physical_device().index()
         );
 
-        Arc::new(StdNonHostVisibleMemoryTypePool {
+        Arc::new(StandardNonHostVisibleMemoryTypePool {
             device: device.clone(),
             memory_type: memory_type.id(),
             occupied: Mutex::new(Vec::new()),
@@ -67,7 +67,7 @@ impl StdNonHostVisibleMemoryTypePool {
         me: &Arc<Self>,
         size: DeviceSize,
         alignment: DeviceSize,
-    ) -> Result<StdNonHostVisibleMemoryTypePoolAlloc, DeviceMemoryAllocationError> {
+    ) -> Result<StandardNonHostVisibleMemoryTypePoolAlloc, DeviceMemoryAllocationError> {
         assert!(size != 0);
         assert!(alignment != 0);
 
@@ -88,7 +88,7 @@ impl StdNonHostVisibleMemoryTypePool {
                 let entry2 = entries[i + 1].clone();
                 if entry1_end + size <= entry2.start {
                     entries.insert(i + 1, entry1_end..entry1_end + size);
-                    return Ok(StdNonHostVisibleMemoryTypePoolAlloc {
+                    return Ok(StandardNonHostVisibleMemoryTypePoolAlloc {
                         pool: me.clone(),
                         memory: dev_mem.clone(),
                         offset: entry1_end,
@@ -101,7 +101,7 @@ impl StdNonHostVisibleMemoryTypePool {
             let last_end = entries.last().map(|e| align(e.end, alignment)).unwrap_or(0);
             if last_end + size <= dev_mem.allocation_size() {
                 entries.push(last_end..last_end + size);
-                return Ok(StdNonHostVisibleMemoryTypePoolAlloc {
+                return Ok(StandardNonHostVisibleMemoryTypePoolAlloc {
                     pool: me.clone(),
                     memory: dev_mem.clone(),
                     offset: last_end,
@@ -126,7 +126,7 @@ impl StdNonHostVisibleMemoryTypePool {
         };
 
         occupied.push((new_block.clone(), vec![0..size]));
-        Ok(StdNonHostVisibleMemoryTypePoolAlloc {
+        Ok(StandardNonHostVisibleMemoryTypePoolAlloc {
             pool: me.clone(),
             memory: new_block,
             offset: 0,
@@ -151,14 +151,14 @@ impl StdNonHostVisibleMemoryTypePool {
 }
 
 #[derive(Debug)]
-pub struct StdNonHostVisibleMemoryTypePoolAlloc {
-    pool: Arc<StdNonHostVisibleMemoryTypePool>,
+pub struct StandardNonHostVisibleMemoryTypePoolAlloc {
+    pool: Arc<StandardNonHostVisibleMemoryTypePool>,
     memory: Arc<DeviceMemory>,
     offset: DeviceSize,
     size: DeviceSize,
 }
 
-impl StdNonHostVisibleMemoryTypePoolAlloc {
+impl StandardNonHostVisibleMemoryTypePoolAlloc {
     #[inline]
     pub fn memory(&self) -> &DeviceMemory {
         &self.memory
@@ -175,7 +175,7 @@ impl StdNonHostVisibleMemoryTypePoolAlloc {
     }
 }
 
-impl Drop for StdNonHostVisibleMemoryTypePoolAlloc {
+impl Drop for StandardNonHostVisibleMemoryTypePoolAlloc {
     fn drop(&mut self) {
         let mut occupied = self.pool.occupied.lock().unwrap();
 

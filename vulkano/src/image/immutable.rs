@@ -25,7 +25,7 @@ use crate::{
     memory::{
         pool::{
             AllocFromRequirementsFilter, AllocLayout, MappingRequirement, MemoryPoolAlloc,
-            PotentialDedicatedAllocation, StdMemoryPoolAlloc,
+            PotentialDedicatedAllocation, StandardMemoryPoolAlloc,
         },
         DedicatedAllocation, DeviceMemoryAllocationError, MemoryPool,
     },
@@ -45,7 +45,7 @@ use std::{
 /// but then you must only ever read from it.
 // TODO: type (2D, 3D, array, etc.) as template parameter
 #[derive(Debug)]
-pub struct ImmutableImage<A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
+pub struct ImmutableImage<A = PotentialDedicatedAllocation<StandardMemoryPoolAlloc>> {
     image: Arc<UnsafeImage>,
     dimensions: ImageDimensions,
     memory: A,
@@ -411,7 +411,7 @@ where
 }
 
 // Must not implement Clone, as that would lead to multiple `used` values.
-pub struct ImmutableImageInitialization<A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
+pub struct ImmutableImageInitialization<A = PotentialDedicatedAllocation<StandardMemoryPoolAlloc>> {
     image: Arc<ImmutableImage<A>>,
     mip_levels_access: Range<u32>,
     array_layers_access: Range<u32>,

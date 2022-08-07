@@ -105,9 +105,9 @@ pub use self::{
 use crate::{
     check_errors,
     command_buffer::pool::StandardCommandPool,
-    descriptor_set::pool::StdDescriptorPool,
+    descriptor_set::pool::StandardDescriptorPool,
     instance::{debug::DebugUtilsLabel, Instance},
-    memory::{pool::StdMemoryPool, ExternalMemoryHandleType},
+    memory::{pool::StandardMemoryPool, ExternalMemoryHandleType},
     Error, OomError, SynchronizedVulkanObject, Version, VulkanObject,
 };
 pub use crate::{
@@ -148,7 +148,7 @@ pub struct Device {
     api_version: Version,
 
     fns: DeviceFunctions,
-    standard_pool: Mutex<Weak<StdMemoryPool>>,
+    standard_pool: Mutex<Weak<StandardMemoryPool>>,
     enabled_extensions: DeviceExtensions,
     enabled_features: Features,
     active_queue_families: SmallVec<[u32; 2]>,
@@ -505,7 +505,7 @@ impl Device {
     }
 
     /// Returns the standard memory pool used by default if you don't provide any other pool.
-    pub fn standard_pool(me: &Arc<Self>) -> Arc<StdMemoryPool> {
+    pub fn standard_pool(me: &Arc<Self>) -> Arc<StandardMemoryPool> {
         let mut pool = me.standard_pool.lock().unwrap();
 
         if let Some(p) = pool.upgrade() {
@@ -513,7 +513,7 @@ impl Device {
         }
 
         // The weak pointer is empty, so we create the pool.
-        let new_pool = StdMemoryPool::new(me.clone());
+        let new_pool = StandardMemoryPool::new(me.clone());
         *pool = Arc::downgrade(&new_pool);
         new_pool
     }
@@ -530,10 +530,10 @@ impl Device {
     /// - Panics if called again from within the callback.
     pub fn with_standard_descriptor_pool<T>(
         self: &Arc<Self>,
-        f: impl FnOnce(&mut StdDescriptorPool) -> T,
+        f: impl FnOnce(&mut StandardDescriptorPool) -> T,
     ) -> T {
         thread_local! {
-            static TLS: RefCell<HashMap<ash::vk::Device, StdDescriptorPool>> =
+            static TLS: RefCell<HashMap<ash::vk::Device, StandardDescriptorPool>> =
                 RefCell::new(HashMap::default());
         }
 
@@ -541,7 +541,7 @@ impl Device {
             let mut tls = tls.borrow_mut();
             let pool = match tls.entry(self.internal_object()) {
                 Entry::Occupied(entry) => entry.into_mut(),
-                Entry::Vacant(entry) => entry.insert(StdDescriptorPool::new(self.clone())),
+                Entry::Vacant(entry) => entry.insert(StandardDescriptorPool::new(self.clone())),
             };
 
             f(pool)

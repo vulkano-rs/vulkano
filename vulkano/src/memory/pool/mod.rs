@@ -7,12 +7,12 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-pub use self::host_visible::StdHostVisibleMemoryTypePool;
-pub use self::host_visible::StdHostVisibleMemoryTypePoolAlloc;
-pub use self::non_host_visible::StdNonHostVisibleMemoryTypePool;
-pub use self::non_host_visible::StdNonHostVisibleMemoryTypePoolAlloc;
-pub use self::pool::StdMemoryPool;
-pub use self::pool::StdMemoryPoolAlloc;
+pub use self::host_visible::StandardHostVisibleMemoryTypePool;
+pub use self::host_visible::StandardHostVisibleMemoryTypePoolAlloc;
+pub use self::non_host_visible::StandardNonHostVisibleMemoryTypePool;
+pub use self::non_host_visible::StandardNonHostVisibleMemoryTypePoolAlloc;
+pub use self::pool::StandardMemoryPool;
+pub use self::pool::StandardMemoryPoolAlloc;
 use crate::device::physical::MemoryType;
 use crate::device::{Device, DeviceOwned};
 use crate::memory::device_memory::MemoryAllocateInfo;
@@ -77,7 +77,7 @@ pub(crate) fn alloc_dedicated_with_exportable_fd<F>(
     map: MappingRequirement,
     dedicated_allocation: DedicatedAllocation,
     filter: F,
-) -> Result<PotentialDedicatedAllocation<StdMemoryPoolAlloc>, DeviceMemoryAllocationError>
+) -> Result<PotentialDedicatedAllocation<StandardMemoryPoolAlloc>, DeviceMemoryAllocationError>
 where
     F: FnMut(MemoryType) -> AllocFromRequirementsFilter,
 {

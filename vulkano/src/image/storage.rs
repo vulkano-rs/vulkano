@@ -20,7 +20,7 @@ use crate::{
     memory::{
         pool::{
             alloc_dedicated_with_exportable_fd, AllocFromRequirementsFilter, AllocLayout,
-            MappingRequirement, MemoryPoolAlloc, PotentialDedicatedAllocation, StdMemoryPool,
+            MappingRequirement, MemoryPoolAlloc, PotentialDedicatedAllocation, StandardMemoryPool,
         },
         DedicatedAllocation, DeviceMemoryExportError, ExternalMemoryHandleType,
         ExternalMemoryHandleTypes, MemoryPool,
@@ -38,7 +38,7 @@ use std::{
 /// General-purpose image in device memory. Can be used for any usage, but will be slower than a
 /// specialized image.
 #[derive(Debug)]
-pub struct StorageImage<A = Arc<StdMemoryPool>>
+pub struct StorageImage<A = Arc<StandardMemoryPool>>
 where
     A: MemoryPool,
 {

@@ -90,7 +90,7 @@
 //! A memory pool is any object that implements the `MemoryPool` trait. You can implement that
 //! trait on your own structure and then use it when you create buffers and images so that they
 //! get memory from that pool. By default if you don't specify any pool when creating a buffer or
-//! an image, an instance of `StdMemoryPool` that is shared by the `Device` object is used.
+//! an image, an instance of `StandardMemoryPool` that is shared by the `Device` object is used.
 
 pub use self::{
     device_memory::{

@@ -28,7 +28,8 @@ use crate::{
     memory::{
         pool::{
             alloc_dedicated_with_exportable_fd, AllocFromRequirementsFilter, AllocLayout,
-            MappingRequirement, MemoryPoolAlloc, PotentialDedicatedAllocation, StdMemoryPoolAlloc,
+            MappingRequirement, MemoryPoolAlloc, PotentialDedicatedAllocation,
+            StandardMemoryPoolAlloc,
         },
         DedicatedAllocation, DeviceMemoryAllocationError, DeviceMemoryExportError,
         ExternalMemoryHandleType, MemoryPool, MemoryRequirements,
@@ -122,7 +123,7 @@ use std::{
 /// ```
 ///
 #[derive(Debug)]
-pub struct DeviceLocalBuffer<T, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>>
+pub struct DeviceLocalBuffer<T, A = PotentialDedicatedAllocation<StandardMemoryPoolAlloc>>
 where
     T: BufferContents + ?Sized,
 {

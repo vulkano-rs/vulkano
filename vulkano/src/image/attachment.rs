@@ -18,7 +18,8 @@ use crate::{
     memory::{
         pool::{
             alloc_dedicated_with_exportable_fd, AllocFromRequirementsFilter, AllocLayout,
-            MappingRequirement, MemoryPoolAlloc, PotentialDedicatedAllocation, StdMemoryPoolAlloc,
+            MappingRequirement, MemoryPoolAlloc, PotentialDedicatedAllocation,
+            StandardMemoryPoolAlloc,
         },
         DedicatedAllocation, DeviceMemoryExportError, ExternalMemoryHandleType,
         ExternalMemoryHandleTypes, MemoryPool,
@@ -64,7 +65,7 @@ use std::{
 ///
 // TODO: forbid reading transient images outside render passes?
 #[derive(Debug)]
-pub struct AttachmentImage<A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
+pub struct AttachmentImage<A = PotentialDedicatedAllocation<StandardMemoryPoolAlloc>> {
     // Inner implementation.
     image: Arc<UnsafeImage>,
 

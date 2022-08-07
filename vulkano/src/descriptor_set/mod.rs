@@ -65,7 +65,7 @@
 //! - The `DescriptorPool` trait can be implemented on types from which you can allocate and free
 //!   descriptor sets. However it is different from Vulkan descriptor pools in the sense that an
 //!   implementation of the `DescriptorPool` trait can manage multiple Vulkan descriptor pools.
-//! - The `StdDescriptorPool` type is a default implementation of the `DescriptorPool` trait.
+//! - The `StandardDescriptorPool` type is a default implementation of the `DescriptorPool` trait.
 //! - The `DescriptorSet` trait is implemented on types that wrap around Vulkan descriptor sets in
 //!   a safe way. A Vulkan descriptor set is inherently unsafe, so we need safe wrappers around
 //!   them.
