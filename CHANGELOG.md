@@ -35,7 +35,7 @@
   - Added `SingleLayoutVariableDescSetPool`.
 - **Breaking** Changes to memory pools:
   - Renamed `StdMemoryPool[Alloc]`, `StdHostVisibleMemoryTypePool[Alloc]`, `StdNonHostVisibleMemoryTypePool[Alloc]` to `Standard{...}`.
-  - Removed `Device::standard_pool` in favor of `Device::standard_memory_pool`.
+  - Removed `Device::standard_pool` in favor of `Device::standard_memory_pool`, which returns `&Arc<StandardMemoryPool>`.
 - Bugs fixed:
   - [#1896](https://github.com/vulkano-rs/vulkano/issues/1896): Vulkano-shaders generates invalid struct definitions when struct field names are stripped out by the compiler.
 
