@@ -324,12 +324,12 @@ macro_rules! statically_linked_vulkan_loader {
 
         struct StaticallyLinkedVulkanLoader;
         unsafe impl Loader for StaticallyLinkedVulkanLoader {
-            fn get_instance_proc_addr(
+            unsafe fn get_instance_proc_addr(
                 &self,
                 instance: ash::vk::Instance,
                 name: *const c_char,
-            ) -> *const c_void {
-                unsafe { std::mem::transmute(vkGetInstanceProcAddr(instance, name)) }
+            ) -> ash::vk::PFN_vkVoidFunction {
+                unsafe { vkGetInstanceProcAddr(instance, name) }
             }
         }
 
