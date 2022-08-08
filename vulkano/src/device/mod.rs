@@ -125,7 +125,7 @@ use std::{
     fmt,
     fs::File,
     hash::{Hash, Hasher},
-    mem::{self, MaybeUninit},
+    mem::MaybeUninit,
     ops::Deref,
     ptr,
     sync::{Arc, Mutex, MutexGuard, Weak},
@@ -394,7 +394,8 @@ impl Device {
 
         // loading the function pointers of the newly-created device
         let fns = DeviceFunctions::load(|name| unsafe {
-            mem::transmute((fns_i.v1_0.get_device_proc_addr)(handle, name.as_ptr()))
+            (fns_i.v1_0.get_device_proc_addr)(handle, name.as_ptr())
+                .map_or(ptr::null(), |func| func as _)
         });
 
         let device = Arc::new(Device {

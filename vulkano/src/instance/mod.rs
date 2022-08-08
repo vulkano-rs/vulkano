@@ -439,7 +439,11 @@ impl Instance {
 
         // Loading the function pointers of the newly-created instance.
         let fns = {
-            InstanceFunctions::load(|name| library.get_instance_proc_addr(handle, name.as_ptr()))
+            InstanceFunctions::load(|name| {
+                library
+                    .get_instance_proc_addr(handle, name.as_ptr())
+                    .map_or(ptr::null(), |func| func as _)
+            })
         };
 
         let mut instance = Instance {
