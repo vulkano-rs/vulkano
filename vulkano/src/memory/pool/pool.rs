@@ -61,7 +61,7 @@ fn generic_allocation(
     match pools.entry((memory_type.id(), layout, map)) {
         Entry::Occupied(entry) => match entry.get() {
             &Pool::HostVisible(ref pool) => {
-                let alloc = StandardHostVisibleMemoryTypePool::alloc(&pool, size, alignment)?;
+                let alloc = pool.alloc(size, alignment)?;
                 let inner = StandardMemoryPoolAllocInner::HostVisible(alloc);
                 Ok(StandardMemoryPoolAlloc {
                     inner,
@@ -69,7 +69,7 @@ fn generic_allocation(
                 })
             }
             &Pool::NonHostVisible(ref pool) => {
-                let alloc = StandardNonHostVisibleMemoryTypePool::alloc(&pool, size, alignment)?;
+                let alloc = pool.alloc(size, alignment)?;
                 let inner = StandardMemoryPoolAllocInner::NonHostVisible(alloc);
                 Ok(StandardMemoryPoolAlloc {
                     inner,
@@ -83,7 +83,7 @@ fn generic_allocation(
                 let pool =
                     StandardHostVisibleMemoryTypePool::new(mem_pool.device.clone(), memory_type);
                 entry.insert(Pool::HostVisible(pool.clone()));
-                let alloc = StandardHostVisibleMemoryTypePool::alloc(&pool, size, alignment)?;
+                let alloc = pool.alloc(size, alignment)?;
                 let inner = StandardMemoryPoolAllocInner::HostVisible(alloc);
                 Ok(StandardMemoryPoolAlloc {
                     inner,
@@ -93,7 +93,7 @@ fn generic_allocation(
                 let pool =
                     StandardNonHostVisibleMemoryTypePool::new(mem_pool.device.clone(), memory_type);
                 entry.insert(Pool::NonHostVisible(pool.clone()));
-                let alloc = StandardNonHostVisibleMemoryTypePool::alloc(&pool, size, alignment)?;
+                let alloc = pool.alloc(size, alignment)?;
                 let inner = StandardMemoryPoolAllocInner::NonHostVisible(alloc);
                 Ok(StandardMemoryPoolAlloc {
                     inner,

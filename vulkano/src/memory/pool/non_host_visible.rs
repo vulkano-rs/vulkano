@@ -64,7 +64,7 @@ impl StandardNonHostVisibleMemoryTypePool {
     /// - Panics if `alignment` is 0.
     ///
     pub fn alloc(
-        me: &Arc<Self>,
+        self: &Arc<Self>,
         size: DeviceSize,
         alignment: DeviceSize,
     ) -> Result<StandardNonHostVisibleMemoryTypePoolAlloc, DeviceMemoryAllocationError> {
@@ -77,7 +77,7 @@ impl StandardNonHostVisibleMemoryTypePool {
         }
 
         // Find a location.
-        let mut occupied = me.occupied.lock().unwrap();
+        let mut occupied = self.occupied.lock().unwrap();
 
         // Try finding an entry in already-allocated chunks.
         for &mut (ref dev_mem, ref mut entries) in occupied.iter_mut() {
@@ -89,10 +89,10 @@ impl StandardNonHostVisibleMemoryTypePool {
                 if entry1_end + size <= entry2.start {
                     entries.insert(i + 1, entry1_end..entry1_end + size);
                     return Ok(StandardNonHostVisibleMemoryTypePoolAlloc {
-                        pool: me.clone(),
+                        pool: self.clone(),
                         memory: dev_mem.clone(),
                         offset: entry1_end,
-                        size: size,
+                        size,
                     });
                 }
             }
@@ -102,10 +102,10 @@ impl StandardNonHostVisibleMemoryTypePool {
             if last_end + size <= dev_mem.allocation_size() {
                 entries.push(last_end..last_end + size);
                 return Ok(StandardNonHostVisibleMemoryTypePoolAlloc {
-                    pool: me.clone(),
+                    pool: self.clone(),
                     memory: dev_mem.clone(),
                     offset: last_end,
-                    size: size,
+                    size,
                 });
             }
         }
@@ -115,10 +115,10 @@ impl StandardNonHostVisibleMemoryTypePool {
             const MIN_BLOCK_SIZE: DeviceSize = 8 * 1024 * 1024; // 8 MB
             let allocation_size = cmp::max(MIN_BLOCK_SIZE, size.next_power_of_two());
             let new_block = DeviceMemory::allocate(
-                me.device.clone(),
+                self.device.clone(),
                 MemoryAllocateInfo {
                     allocation_size,
-                    memory_type_index: me.memory_type().id(),
+                    memory_type_index: self.memory_type().id(),
                     ..Default::default()
                 },
             )?;
@@ -127,10 +127,10 @@ impl StandardNonHostVisibleMemoryTypePool {
 
         occupied.push((new_block.clone(), vec![0..size]));
         Ok(StandardNonHostVisibleMemoryTypePoolAlloc {
-            pool: me.clone(),
+            pool: self.clone(),
             memory: new_block,
             offset: 0,
-            size: size,
+            size,
         })
     }
 
