@@ -42,8 +42,8 @@ impl VulkanLibrary {
     pub fn new() -> Result<Arc<Self>, LoadingError> {
         #[cfg(target_os = "ios")]
         #[allow(non_snake_case)]
-        fn def_loader_impl() -> Result<Box<Loader>, LoadingError> {
-            let loader = statically_linked_vulkan_loader!();
+        fn def_loader_impl() -> Result<Box<dyn Loader>, LoadingError> {
+            let loader = crate::statically_linked_vulkan_loader!();
             Ok(Box::new(loader))
         }
 
@@ -84,7 +84,6 @@ impl VulkanLibrary {
                 .get_instance_proc_addr(ash::vk::Instance::null(), name.as_ptr())
                 .map_or(ptr::null(), |func| func as _)
         });
-
         // Per the Vulkan spec:
         // If the vkGetInstanceProcAddr returns NULL for vkEnumerateInstanceVersion, it is a
         // Vulkan 1.0 implementation. Otherwise, the application can call vkEnumerateInstanceVersion
@@ -329,8 +328,8 @@ macro_rules! statically_linked_vulkan_loader {
                 &self,
                 instance: ash::vk::Instance,
                 name: *const c_char,
-            ) -> extern "system" fn() -> () {
-                unsafe { vkGetInstanceProcAddr(instance, name) }
+            ) -> *const c_void {
+                unsafe { std::mem::transmute(vkGetInstanceProcAddr(instance, name)) }
             }
         }
 

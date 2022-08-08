@@ -123,7 +123,12 @@ unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
     }
 }
 
-#[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))]
+#[cfg(all(
+    unix,
+    not(target_os = "android"),
+    not(target_os = "macos"),
+    not(target_os = "ios")
+))]
 unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
     instance: Arc<Instance>,
     win: W,
@@ -157,36 +162,42 @@ unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
     }
 }
 
-#[cfg(target_os = "macos")]
-use cocoa::{
-    appkit::{NSView, NSWindow},
-    base::id as cocoa_id,
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+use objc::{
+    class, msg_send,
+    runtime::{Object, BOOL, NO},
+    sel, sel_impl,
 };
-#[cfg(target_os = "macos")]
-use metal::MetalLayer;
+
 #[cfg(target_os = "macos")]
 use objc::runtime::YES;
+
 #[cfg(target_os = "macos")]
-use std::mem;
+use core_graphics_types::base::CGFloat;
 
 /// Ensure `CAMetalLayer` (native rendering surface on MacOs) is used by the ns_view.
 /// This is necessary to be able to render on Mac.
 #[cfg(target_os = "macos")]
-unsafe fn set_ca_metal_layer_to_winit<W: SafeBorrow<Window>>(win: W) {
+unsafe fn get_metal_layer_macos<W: SafeBorrow<Window>>(win: W) -> *mut Object {
     use winit::platform::macos::WindowExtMacOS;
 
-    let wnd: cocoa_id = mem::transmute(win.borrow().ns_window());
-    let layer = MetalLayer::new();
-
-    layer.set_edge_antialiasing_mask(0);
-    layer.set_presents_with_transaction(false);
-    layer.remove_all_animations();
-
-    let view = wnd.contentView();
-
-    layer.set_contents_scale(view.backingScaleFactor());
-    view.setLayer(mem::transmute(layer.as_ref())); // Bombs here with out of memory
-    view.setWantsLayer(YES);
+    let view: *mut Object = std::mem::transmute(win.borrow().ns_view());
+    let main_layer: *mut Object = msg_send![view, layer];
+    let class = class!(CAMetalLayer);
+    let is_valid_layer: BOOL = msg_send![main_layer, isKindOfClass: class];
+    if is_valid_layer == NO {
+        let new_layer: *mut Object = msg_send![class, new];
+        let () = msg_send![view, setLayer: new_layer];
+        let () = msg_send![view, setWantsLayer: YES];
+        let window: *mut Object = msg_send![view, window];
+        if !window.is_null() {
+            let scale_factor: CGFloat = msg_send![window, backingScaleFactor];
+            let () = msg_send![new_layer, setContentsScale: scale_factor];
+        }
+        new_layer
+    } else {
+        main_layer
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -194,10 +205,40 @@ unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
     instance: Arc<Instance>,
     win: W,
 ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
-    use winit::platform::macos::WindowExtMacOS;
+    let layer = get_metal_layer_macos(win.borrow());
+    Surface::from_mac_os(instance, layer as *const (), win)
+}
 
-    set_ca_metal_layer_to_winit(win.borrow());
-    Surface::from_mac_os(instance, win.borrow().ns_view() as *const (), win)
+#[cfg(target_os = "ios")]
+unsafe fn get_metal_layer_ios<W: SafeBorrow<Window>>(win: W) -> *mut Object {
+    use core_graphics_types::{base::CGFloat, geometry::CGRect};
+    use winit::platform::ios::WindowExtIOS;
+
+    let view: *mut Object = std::mem::transmute(win.borrow().ui_view());
+    let main_layer: *mut Object = msg_send![view, layer];
+    let class = class!(CAMetalLayer);
+    let is_valid_layer: BOOL = msg_send![main_layer, isKindOfClass: class];
+    if is_valid_layer == NO {
+        let new_layer: *mut Object = msg_send![class, new];
+        let frame: CGRect = msg_send![main_layer, bounds];
+        let () = msg_send![new_layer, setFrame: frame];
+        let () = msg_send![main_layer, addSublayer: new_layer];
+        let screen: *mut Object = msg_send![class!(UIScreen), mainScreen];
+        let scale_factor: CGFloat = msg_send![screen, nativeScale];
+        let () = msg_send![view, setContentScaleFactor: scale_factor];
+        new_layer
+    } else {
+        main_layer
+    }
+}
+
+#[cfg(target_os = "ios")]
+unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
+    instance: Arc<Instance>,
+    win: W,
+) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
+    let layer = get_metal_layer_ios(win.borrow());
+    Surface::from_ios(instance, layer as *const (), win)
 }
 
 #[cfg(target_os = "windows")]
