@@ -17,7 +17,7 @@ winit_ = ["winit", "objc", "core-graphics-types"]
 raw-window-handle_ = ["raw-window-handle"]
 
 [dependencies]
-raw-window-handle = { version = "0.4", optional = true }
+raw-window-handle = { version = "0.5", optional = true }
 vulkano = { version = "0.30.0", path = "../vulkano" }
 winit = { version = "0.27", optional = true }
 

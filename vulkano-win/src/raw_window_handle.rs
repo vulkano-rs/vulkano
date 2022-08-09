@@ -2,7 +2,9 @@
 use crate::get_metal_layer_ios;
 #[cfg(target_os = "macos")]
 use crate::get_metal_layer_macos;
-use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
+use raw_window_handle::{
+    HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
+};
 use std::sync::Arc;
 use vulkano::instance::Instance;
 use vulkano::swapchain::Surface;
@@ -15,7 +17,7 @@ pub fn create_surface_from_handle<W>(
     instance: Arc<Instance>,
 ) -> Result<Arc<Surface<W>>, SurfaceCreationError>
 where
-    W: HasRawWindowHandle,
+    W: HasRawWindowHandle + HasRawDisplayHandle,
 {
     unsafe {
         match window.raw_window_handle() {
@@ -47,11 +49,27 @@ where
                 }
             }
             RawWindowHandle::Wayland(h) => {
-                Surface::from_wayland(instance, h.display, h.surface, window)
+                let d = match window.raw_display_handle() {
+                    RawDisplayHandle::Wayland(d) => d,
+                    _ => panic!("Invalid RawDisplayHandle"),
+                };
+                Surface::from_wayland(instance, d.display, h.surface, window)
             }
             RawWindowHandle::Win32(h) => Surface::from_win32(instance, h.hinstance, h.hwnd, window),
-            RawWindowHandle::Xcb(h) => Surface::from_xcb(instance, h.connection, h.window, window),
-            RawWindowHandle::Xlib(h) => Surface::from_xlib(instance, h.display, h.window, window),
+            RawWindowHandle::Xcb(h) => {
+                let d = match window.raw_display_handle() {
+                    RawDisplayHandle::Xcb(d) => d,
+                    _ => panic!("Invalid RawDisplayHandle"),
+                };
+                Surface::from_xcb(instance, d.connection, h.window, window)
+            }
+            RawWindowHandle::Xlib(h) => {
+                let d = match window.raw_display_handle() {
+                    RawDisplayHandle::Xlib(d) => d,
+                    _ => panic!("Invalid RawDisplayHandle"),
+                };
+                Surface::from_xlib(instance, d.display, h.window, window)
+            }
             RawWindowHandle::Web(_) => unimplemented!(),
             _ => unimplemented!(),
         }
