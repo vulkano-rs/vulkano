@@ -43,7 +43,7 @@ where
                 }
                 #[cfg(not(target_os = "macos"))]
                 {
-                    panic!("AppKit handle should only be used when target_os == 'ios'");
+                    panic!("AppKit handle should only be used when target_os == 'macos'");
                 }
             }
             RawWindowHandle::Wayland(h) => {
