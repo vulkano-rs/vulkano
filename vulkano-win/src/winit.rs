@@ -163,25 +163,17 @@ unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
 }
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
-use objc::{
-    class, msg_send,
-    runtime::{Object, BOOL, NO},
-    sel, sel_impl,
-};
+use objc::{class, msg_send, runtime::Object, sel, sel_impl};
 
-#[cfg(target_os = "macos")]
-use objc::runtime::YES;
-
-#[cfg(target_os = "macos")]
-use core_graphics_types::base::CGFloat;
-
-/// Ensure `CAMetalLayer` (native rendering surface on MacOs) is used by the ns_view.
+/// Get (and set) `CAMetalLayer` to ns_view.
 /// This is necessary to be able to render on Mac.
 #[cfg(target_os = "macos")]
-unsafe fn get_metal_layer_macos<W: SafeBorrow<Window>>(win: W) -> *mut Object {
-    use winit::platform::macos::WindowExtMacOS;
+pub(crate) unsafe fn get_metal_layer_macos(view: *mut std::ffi::c_void) -> *mut Object {
+    use core_graphics_types::base::CGFloat;
+    use objc::runtime::YES;
+    use objc::runtime::{BOOL, NO};
 
-    let view: *mut Object = std::mem::transmute(win.borrow().ns_view());
+    let view: *mut Object = std::mem::transmute(view);
     let main_layer: *mut Object = msg_send![view, layer];
     let class = class!(CAMetalLayer);
     let is_valid_layer: BOOL = msg_send![main_layer, isKindOfClass: class];
@@ -205,31 +197,30 @@ unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
     instance: Arc<Instance>,
     win: W,
 ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
-    let layer = get_metal_layer_macos(win.borrow());
+    use winit::platform::macos::WindowExtMacOS;
+    let layer = get_metal_layer_macos(win.borrow().ns_view());
     Surface::from_mac_os(instance, layer as *const (), win)
 }
 
 #[cfg(target_os = "ios")]
-unsafe fn get_metal_layer_ios<W: SafeBorrow<Window>>(win: W) -> *mut Object {
-    use core_graphics_types::{base::CGFloat, geometry::CGRect};
-    use winit::platform::ios::WindowExtIOS;
+use vulkano::swapchain::IOSMetalLayer;
 
-    let view: *mut Object = std::mem::transmute(win.borrow().ui_view());
+/// Get sublayer from iOS main view (ui_view). The sublayer is created as CAMetalLayer
+#[cfg(target_os = "ios")]
+pub(crate) unsafe fn get_metal_layer_ios(view: *mut std::ffi::c_void) -> IOSMetalLayer {
+    use core_graphics_types::{base::CGFloat, geometry::CGRect};
+
+    let view: *mut Object = std::mem::transmute(view);
     let main_layer: *mut Object = msg_send![view, layer];
     let class = class!(CAMetalLayer);
-    let is_valid_layer: BOOL = msg_send![main_layer, isKindOfClass: class];
-    if is_valid_layer == NO {
-        let new_layer: *mut Object = msg_send![class, new];
-        let frame: CGRect = msg_send![main_layer, bounds];
-        let () = msg_send![new_layer, setFrame: frame];
-        let () = msg_send![main_layer, addSublayer: new_layer];
-        let screen: *mut Object = msg_send![class!(UIScreen), mainScreen];
-        let scale_factor: CGFloat = msg_send![screen, nativeScale];
-        let () = msg_send![view, setContentScaleFactor: scale_factor];
-        new_layer
-    } else {
-        main_layer
-    }
+    let new_layer: *mut Object = msg_send![class, new];
+    let frame: CGRect = msg_send![main_layer, bounds];
+    let () = msg_send![new_layer, setFrame: frame];
+    let () = msg_send![main_layer, addSublayer: new_layer];
+    let screen: *mut Object = msg_send![class!(UIScreen), mainScreen];
+    let scale_factor: CGFloat = msg_send![screen, nativeScale];
+    let () = msg_send![view, setContentScaleFactor: scale_factor];
+    IOSMetalLayer::new(view, new_layer)
 }
 
 #[cfg(target_os = "ios")]
@@ -237,8 +228,9 @@ unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
     instance: Arc<Instance>,
     win: W,
 ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
-    let layer = get_metal_layer_ios(win.borrow());
-    Surface::from_ios(instance, layer as *const (), win)
+    use winit::platform::ios::WindowExtIOS;
+    let layer = get_metal_layer_ios(win.borrow().ui_view());
+    Surface::from_ios(instance, layer, win)
 }
 
 #[cfg(target_os = "windows")]

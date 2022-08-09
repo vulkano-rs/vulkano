@@ -329,7 +329,7 @@ macro_rules! statically_linked_vulkan_loader {
                 instance: ash::vk::Instance,
                 name: *const c_char,
             ) -> ash::vk::PFN_vkVoidFunction {
-                unsafe { vkGetInstanceProcAddr(instance, name) }
+                vkGetInstanceProcAddr(instance, name)
             }
         }
 

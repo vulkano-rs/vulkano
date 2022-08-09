@@ -26,6 +26,10 @@ once_cell = { version = "1.13", features = ["parking_lot"] }
 parking_lot = { version = "0.12", features = ["send_guard"] }
 smallvec = "1.8"
 
+[target.'cfg(target_os = "ios")'.dependencies]
+objc = "0.2.5"
+core-graphics-types = "0.1"
+
 [build-dependencies]
 heck = "0.4"
 indexmap = "1.8"

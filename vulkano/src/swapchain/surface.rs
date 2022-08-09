@@ -18,6 +18,10 @@ use crate::{
     },
     Error, OomError, VulkanObject,
 };
+
+#[cfg(target_os = "ios")]
+use objc::{class, msg_send, runtime::Object, sel, sel_impl};
+
 use std::{
     error, fmt,
     hash::{Hash, Hasher},
@@ -35,10 +39,11 @@ pub struct Surface<W> {
     instance: Arc<Instance>,
     api: SurfaceApi,
     window: W,
-
     // If true, a swapchain has been associated to this surface, and that any new swapchain
     // creation should be forbidden.
     has_swapchain: AtomicBool,
+    #[cfg(target_os = "ios")]
+    metal_layer: IOSMetalLayer,
 }
 
 impl<W> Surface<W> {
@@ -63,6 +68,8 @@ impl<W> Surface<W> {
             window: win,
 
             has_swapchain: AtomicBool::new(false),
+            #[cfg(target_os = "ios")]
+            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
         }
     }
 
@@ -131,6 +138,8 @@ impl<W> Surface<W> {
             window: (),
 
             has_swapchain: AtomicBool::new(false),
+            #[cfg(target_os = "ios")]
+            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
         }))
     }
 
@@ -177,6 +186,8 @@ impl<W> Surface<W> {
             window: win,
 
             has_swapchain: AtomicBool::new(false),
+            #[cfg(target_os = "ios")]
+            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
         }))
     }
 
@@ -188,9 +199,10 @@ impl<W> Surface<W> {
     /// - The object referred to by `view` must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.
     /// - The `UIView` must be backed by a `CALayer` instance of type `CAMetalLayer`.
-    pub unsafe fn from_ios<T>(
+    #[cfg(target_os = "ios")]
+    pub unsafe fn from_ios(
         instance: Arc<Instance>,
-        view: *const T,
+        metal_layer: IOSMetalLayer,
         win: W,
     ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
         if !instance.enabled_extensions().mvk_ios_surface {
@@ -201,7 +213,7 @@ impl<W> Surface<W> {
 
         let create_info = ash::vk::IOSSurfaceCreateInfoMVK {
             flags: ash::vk::IOSSurfaceCreateFlagsMVK::empty(),
-            p_view: view as *const _,
+            p_view: metal_layer.render_layer.0 as *const _,
             ..Default::default()
         };
 
@@ -224,6 +236,7 @@ impl<W> Surface<W> {
             window: win,
 
             has_swapchain: AtomicBool::new(false),
+            metal_layer,
         }))
     }
 
@@ -235,6 +248,7 @@ impl<W> Surface<W> {
     /// - The object referred to by `view` must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.
     /// - The `NSView` must be backed by a `CALayer` instance of type `CAMetalLayer`.
+    #[cfg(target_os = "macos")]
     pub unsafe fn from_mac_os<T>(
         instance: Arc<Instance>,
         view: *const T,
@@ -271,6 +285,8 @@ impl<W> Surface<W> {
             window: win,
 
             has_swapchain: AtomicBool::new(false),
+            #[cfg(target_os = "ios")]
+            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
         }))
     }
 
@@ -317,6 +333,8 @@ impl<W> Surface<W> {
             window: win,
 
             has_swapchain: AtomicBool::new(false),
+            #[cfg(target_os = "ios")]
+            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
         }))
     }
 
@@ -363,6 +381,8 @@ impl<W> Surface<W> {
             window: win,
 
             has_swapchain: AtomicBool::new(false),
+            #[cfg(target_os = "ios")]
+            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
         }))
     }
 
@@ -413,6 +433,8 @@ impl<W> Surface<W> {
             window: win,
 
             has_swapchain: AtomicBool::new(false),
+            #[cfg(target_os = "ios")]
+            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
         }))
     }
 
@@ -463,6 +485,8 @@ impl<W> Surface<W> {
             window: win,
 
             has_swapchain: AtomicBool::new(false),
+            #[cfg(target_os = "ios")]
+            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
         }))
     }
 
@@ -513,6 +537,8 @@ impl<W> Surface<W> {
             window: win,
 
             has_swapchain: AtomicBool::new(false),
+            #[cfg(target_os = "ios")]
+            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
         }))
     }
 
@@ -563,6 +589,8 @@ impl<W> Surface<W> {
             window: win,
 
             has_swapchain: AtomicBool::new(false),
+            #[cfg(target_os = "ios")]
+            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
         }))
     }
 
@@ -582,6 +610,22 @@ impl<W> Surface<W> {
     #[inline]
     pub fn window(&self) -> &W {
         &self.window
+    }
+
+    /// Resizes the sublayer bounds on iOS. This is to be called after resize has occurred.
+    ///
+    /// On iOS, we've created CAMetalLayer as a sublayer. However, when the view changes size,
+    /// its sublayers are not automatically resized, and we must resize
+    /// it here.
+    #[cfg(target_os = "ios")]
+    #[inline]
+    pub unsafe fn update_ios_sublayer_on_resize(&self) {
+        use core_graphics_types::geometry::CGRect;
+        let class = class!(CAMetalLayer);
+        let main_layer: *mut Object = self.metal_layer.main_layer.0;
+        let bounds: CGRect = msg_send![main_layer, bounds];
+        let render_layer: *mut Object = self.metal_layer.render_layer.0;
+        let () = msg_send![render_layer, setFrame: bounds];
     }
 }
 
@@ -616,8 +660,8 @@ impl<W> fmt::Debug for Surface<W> {
             instance,
             api,
             window: _,
-
             has_swapchain,
+            ..
         } = self;
 
         fmt.debug_struct("Surface")
@@ -1225,6 +1269,38 @@ impl Default for SurfaceInfo {
         }
     }
 }
+
+#[cfg(target_os = "ios")]
+struct LayerHandle(*mut Object);
+
+#[cfg(target_os = "ios")]
+unsafe impl Send for LayerHandle {}
+
+#[cfg(target_os = "ios")]
+unsafe impl Sync for LayerHandle {}
+
+/// Represents the metal layer for IOS
+#[cfg(target_os = "ios")]
+pub struct IOSMetalLayer {
+    main_layer: LayerHandle,
+    render_layer: LayerHandle,
+}
+
+#[cfg(target_os = "ios")]
+impl IOSMetalLayer {
+    pub fn new(main_layer: *mut Object, render_layer: *mut Object) -> Self {
+        Self {
+            main_layer: LayerHandle(main_layer),
+            render_layer: LayerHandle(render_layer),
+        }
+    }
+}
+
+#[cfg(target_os = "ios")]
+unsafe impl Send for IOSMetalLayer {}
+
+#[cfg(target_os = "ios")]
+unsafe impl Sync for IOSMetalLayer {}
 
 /// The capabilities of a surface when used by a physical device.
 ///
