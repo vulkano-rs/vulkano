@@ -36,6 +36,12 @@
 - **Breaking** Changes to memory pools:
   - Renamed `StdMemoryPool[Alloc]`, `StdHostVisibleMemoryTypePool[Alloc]`, `StdNonHostVisibleMemoryTypePool[Alloc]` to `Standard{...}`.
   - Removed `Device::standard_pool` in favor of `Device::standard_memory_pool`, which returns `&Arc<StandardMemoryPool>`.
+- **Potentially Breaking** Fix iOS compilation:
+  - Removed dependency to `cocoa` and `metal`
+  - Fixed iOS compilation errors
+  - Added `winit_to_surface` method for iOS, ensuring we can draw to a sub `CAMetalLayer` layer
+  - Added `Surface::update_ios_sublayer_on_resize` to ensure iOS sublayer is fullscreen if initial window size was not the same as device's
+  - Ensure both iOS and MacOS have `CAMetalLayer` when using `create_surface_from_handle`
 - Bugs fixed:
   - [#1896](https://github.com/vulkano-rs/vulkano/issues/1896): Vulkano-shaders generates invalid struct definitions when struct field names are stripped out by the compiler.
 

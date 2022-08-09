@@ -612,7 +612,9 @@ impl<W> Surface<W> {
         &self.window
     }
 
-    /// Resizes the sublayer bounds on iOS. This is to be called after resize has occurred.
+    /// Resizes the sublayer bounds on iOS.
+    /// It may not be necessary if original window size matches device's, but often it does not.
+    /// Thus this should be called after a resize has occurred abd swapchain has been recreated.
     ///
     /// On iOS, we've created CAMetalLayer as a sublayer. However, when the view changes size,
     /// its sublayers are not automatically resized, and we must resize
