@@ -179,6 +179,9 @@ pub(crate) unsafe fn get_metal_layer_macos(view: *mut std::ffi::c_void) -> *mut 
     let is_valid_layer: BOOL = msg_send![main_layer, isKindOfClass: class];
     if is_valid_layer == NO {
         let new_layer: *mut Object = msg_send![class, new];
+        let () = msg_send![new_layer, setEdgeAntialiasingMask: 0];
+        let () = msg_send![new_layer, setPresentsWithTransaction: false];
+        let () = msg_send![new_layer, removeAllAnimations];
         let () = msg_send![view, setLayer: new_layer];
         let () = msg_send![view, setWantsLayer: YES];
         let window: *mut Object = msg_send![view, window];
