@@ -68,11 +68,8 @@
 pub use ash::vk::Handle;
 pub use half;
 pub use library::VulkanLibrary;
-use std::{
-    error, fmt,
-    ops::Deref,
-    sync::{Arc, MutexGuard},
-};
+use parking_lot::MutexGuard;
+use std::{error, fmt, ops::Deref, sync::Arc};
 pub use version::Version;
 
 #[macro_use]

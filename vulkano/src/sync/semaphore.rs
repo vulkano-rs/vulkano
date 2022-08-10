@@ -120,7 +120,7 @@ impl Semaphore {
     /// For most applications, using the pool should be preferred,
     /// in order to avoid creating new semaphores every frame.
     pub fn from_pool(device: Arc<Device>) -> Result<Semaphore, SemaphoreCreationError> {
-        let handle = device.semaphore_pool().lock().unwrap().pop();
+        let handle = device.semaphore_pool().lock().pop();
         let semaphore = match handle {
             Some(handle) => Semaphore {
                 device,
@@ -216,7 +216,7 @@ impl Drop for Semaphore {
         unsafe {
             if self.must_put_in_pool {
                 let raw_sem = self.handle;
-                self.device.semaphore_pool().lock().unwrap().push(raw_sem);
+                self.device.semaphore_pool().lock().push(raw_sem);
             } else {
                 let fns = self.device.fns();
                 (fns.v1_0.destroy_semaphore)(
@@ -566,16 +566,16 @@ mod tests {
     fn semaphore_pool() {
         let (device, _) = gfx_dev_and_queue!();
 
-        assert_eq!(device.semaphore_pool().lock().unwrap().len(), 0);
+        assert_eq!(device.semaphore_pool().lock().len(), 0);
         let sem1_internal_obj = {
             let sem = Semaphore::from_pool(device.clone()).unwrap();
-            assert_eq!(device.semaphore_pool().lock().unwrap().len(), 0);
+            assert_eq!(device.semaphore_pool().lock().len(), 0);
             sem.internal_object()
         };
 
-        assert_eq!(device.semaphore_pool().lock().unwrap().len(), 1);
+        assert_eq!(device.semaphore_pool().lock().len(), 1);
         let sem2 = Semaphore::from_pool(device.clone()).unwrap();
-        assert_eq!(device.semaphore_pool().lock().unwrap().len(), 0);
+        assert_eq!(device.semaphore_pool().lock().len(), 0);
         assert_eq!(sem2.internal_object(), sem1_internal_obj);
     }
 

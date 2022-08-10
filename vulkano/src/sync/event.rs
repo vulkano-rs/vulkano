@@ -66,7 +66,7 @@ impl Event {
     /// For most applications, using the event pool should be preferred,
     /// in order to avoid creating new events every frame.
     pub fn from_pool(device: Arc<Device>) -> Result<Event, OomError> {
-        let handle = device.event_pool().lock().unwrap().pop();
+        let handle = device.event_pool().lock().pop();
         let event = match handle {
             Some(handle) => {
                 unsafe {
@@ -181,7 +181,7 @@ impl Drop for Event {
         unsafe {
             if self.must_put_in_pool {
                 let raw_event = self.handle;
-                self.device.event_pool().lock().unwrap().push(raw_event);
+                self.device.event_pool().lock().push(raw_event);
             } else {
                 let fns = self.device.fns();
                 (fns.v1_0.destroy_event)(self.device.internal_object(), self.handle, ptr::null());
@@ -274,16 +274,16 @@ mod tests {
     fn event_pool() {
         let (device, _) = gfx_dev_and_queue!();
 
-        assert_eq!(device.event_pool().lock().unwrap().len(), 0);
+        assert_eq!(device.event_pool().lock().len(), 0);
         let event1_internal_obj = {
             let event = Event::from_pool(device.clone()).unwrap();
-            assert_eq!(device.event_pool().lock().unwrap().len(), 0);
+            assert_eq!(device.event_pool().lock().len(), 0);
             event.internal_object()
         };
 
-        assert_eq!(device.event_pool().lock().unwrap().len(), 1);
+        assert_eq!(device.event_pool().lock().len(), 1);
         let event2 = Event::from_pool(device.clone()).unwrap();
-        assert_eq!(device.event_pool().lock().unwrap().len(), 0);
+        assert_eq!(device.event_pool().lock().len(), 0);
         assert_eq!(event2.internal_object(), event1_internal_obj);
     }
 }
