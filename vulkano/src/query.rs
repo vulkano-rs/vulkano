@@ -14,12 +14,11 @@
 //! pool and the slot id within that query pool.
 
 use crate::{
-    check_errors,
     device::{Device, DeviceOwned},
-    DeviceSize, Error, OomError, Success, VulkanObject,
+    DeviceSize, OomError, VulkanError, VulkanObject,
 };
 use std::{
-    error,
+    error::Error,
     ffi::c_void,
     fmt,
     hash::{Hash, Hasher},
@@ -84,12 +83,14 @@ impl QueryPool {
         let handle = unsafe {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors((fns.v1_0.create_query_pool)(
+            (fns.v1_0.create_query_pool)(
                 device.internal_object(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -243,9 +244,9 @@ pub enum QueryPoolCreationError {
     PipelineStatisticsQueryFeatureNotEnabled,
 }
 
-impl error::Error for QueryPoolCreationError {
+impl Error for QueryPoolCreationError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             QueryPoolCreationError::OomError(ref err) => Some(err),
             _ => None,
@@ -277,12 +278,16 @@ impl From<OomError> for QueryPoolCreationError {
     }
 }
 
-impl From<Error> for QueryPoolCreationError {
+impl From<VulkanError> for QueryPoolCreationError {
     #[inline]
-    fn from(err: Error) -> QueryPoolCreationError {
+    fn from(err: VulkanError) -> QueryPoolCreationError {
         match err {
-            err @ Error::OutOfHostMemory => QueryPoolCreationError::OomError(OomError::from(err)),
-            err @ Error::OutOfDeviceMemory => QueryPoolCreationError::OomError(OomError::from(err)),
+            err @ VulkanError::OutOfHostMemory => {
+                QueryPoolCreationError::OomError(OomError::from(err))
+            }
+            err @ VulkanError::OutOfDeviceMemory => {
+                QueryPoolCreationError::OomError(OomError::from(err))
+            }
             _ => panic!("unexpected error: {:?}", err),
         }
     }
@@ -360,7 +365,7 @@ impl<'a> QueriesRange<'a> {
 
         let result = unsafe {
             let fns = self.pool.device.fns();
-            check_errors((fns.v1_0.get_query_pool_results)(
+            (fns.v1_0.get_query_pool_results)(
                 self.pool.device.internal_object(),
                 self.pool.internal_object(),
                 self.range.start,
@@ -369,14 +374,14 @@ impl<'a> QueriesRange<'a> {
                 destination.as_mut_ptr() as *mut c_void,
                 stride,
                 ash::vk::QueryResultFlags::from(flags) | T::FLAG,
-            ))?
+            )
         };
 
-        Ok(match result {
-            Success::Success => true,
-            Success::NotReady => false,
-            s => panic!("unexpected success value: {:?}", s),
-        })
+        match result {
+            ash::vk::Result::SUCCESS => Ok(true),
+            ash::vk::Result::NOT_READY => Ok(false),
+            err => Err(VulkanError::from(err).into()),
+        }
     }
 
     pub(crate) fn check_query_pool_results<T>(
@@ -440,14 +445,14 @@ pub enum GetResultsError {
     OomError(OomError),
 }
 
-impl From<Error> for GetResultsError {
+impl From<VulkanError> for GetResultsError {
     #[inline]
-    fn from(err: Error) -> Self {
+    fn from(err: VulkanError) -> Self {
         match err {
-            Error::OutOfHostMemory | Error::OutOfDeviceMemory => {
+            VulkanError::OutOfHostMemory | VulkanError::OutOfDeviceMemory => {
                 Self::OomError(OomError::from(err))
             }
-            Error::DeviceLost => Self::DeviceLost,
+            VulkanError::DeviceLost => Self::DeviceLost,
             _ => panic!("unexpected error: {:?}", err),
         }
     }
@@ -480,9 +485,9 @@ impl fmt::Display for GetResultsError {
     }
 }
 
-impl error::Error for GetResultsError {
+impl Error for GetResultsError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             Self::OomError(ref err) => Some(err),
             _ => None,

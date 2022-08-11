@@ -23,7 +23,7 @@ use crate::{
     sync::{AccessFlags, PipelineMemoryAccess, PipelineStage, PipelineStages},
     DeviceSize, VulkanObject,
 };
-use std::{error, fmt, mem::size_of, ops::Range, sync::Arc};
+use std::{error::Error, fmt, mem::size_of, ops::Range, sync::Arc};
 
 /// # Commands related to queries.
 impl<L, P> AutoCommandBufferBuilder<L, P> {
@@ -827,7 +827,7 @@ pub enum QueryError {
     StageNotSupported,
 }
 
-impl error::Error for QueryError {}
+impl Error for QueryError {}
 
 impl fmt::Display for QueryError {
     #[inline]

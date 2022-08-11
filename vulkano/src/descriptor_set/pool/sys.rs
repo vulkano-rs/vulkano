@@ -8,18 +8,18 @@
 // according to those terms.
 
 use crate::{
-    check_errors,
     descriptor_set::{
         layout::{DescriptorSetLayout, DescriptorType},
         sys::UnsafeDescriptorSet,
     },
     device::{Device, DeviceOwned},
-    OomError, Version, VulkanObject,
+    OomError, Version, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{
     collections::HashMap,
-    error, fmt,
+    error::Error,
+    fmt,
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     ptr,
@@ -96,12 +96,14 @@ impl UnsafeDescriptorPool {
             unsafe {
                 let fns = device.fns();
                 let mut output = MaybeUninit::uninit();
-                check_errors((fns.v1_0.create_descriptor_pool)(
+                (fns.v1_0.create_descriptor_pool)(
                     device.internal_object(),
                     &create_info,
                     ptr::null(),
                     output.as_mut_ptr(),
-                ))?;
+                )
+                .result()
+                .map_err(VulkanError::from)?;
                 output.assume_init()
             }
         };
@@ -290,12 +292,14 @@ impl UnsafeDescriptorPool {
             .collect();
         if !sets.is_empty() {
             let fns = self.device.fns();
-            check_errors((fns.v1_0.free_descriptor_sets)(
+            (fns.v1_0.free_descriptor_sets)(
                 self.device.internal_object(),
                 self.handle,
                 sets.len() as u32,
                 sets.as_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
         }
 
         Ok(())
@@ -306,11 +310,13 @@ impl UnsafeDescriptorPool {
     /// This destroys all descriptor sets and empties the pool.
     pub unsafe fn reset(&mut self) -> Result<(), OomError> {
         let fns = self.device.fns();
-        check_errors((fns.v1_0.reset_descriptor_pool)(
+        (fns.v1_0.reset_descriptor_pool)(
             self.device.internal_object(),
             self.handle,
             ash::vk::DescriptorPoolResetFlags::empty(),
-        ))?;
+        )
+        .result()
+        .map_err(VulkanError::from)?;
         Ok(())
     }
 }
@@ -420,7 +426,7 @@ pub enum DescriptorPoolAllocError {
     OutOfPoolMemory,
 }
 
-impl error::Error for DescriptorPoolAllocError {}
+impl Error for DescriptorPoolAllocError {}
 
 impl fmt::Display for DescriptorPoolAllocError {
     #[inline]

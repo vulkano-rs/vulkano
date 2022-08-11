@@ -35,7 +35,8 @@ use crate::{
 };
 use smallvec::SmallVec;
 use std::{
-    error, fmt,
+    error::Error,
+    fmt,
     hash::{Hash, Hasher},
     ops::Range,
     sync::Arc,
@@ -477,9 +478,9 @@ pub enum ImmutableImageCreationError {
     CommandBufferBeginError(CommandBufferBeginError),
 }
 
-impl error::Error for ImmutableImageCreationError {
+impl Error for ImmutableImageCreationError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::ImageCreationError(err) => Some(err),
             Self::DeviceMemoryAllocationError(err) => Some(err),

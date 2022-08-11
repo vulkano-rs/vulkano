@@ -12,14 +12,13 @@ use super::{
     SubpassDependency, SubpassDescription,
 };
 use crate::{
-    check_errors,
     device::Device,
     image::{ImageAspects, ImageLayout, SampleCount},
     sync::PipelineStages,
-    Error, OomError, Version, VulkanObject,
+    OomError, Version, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{error, fmt, mem::MaybeUninit, ptr};
+use std::{error::Error, fmt, mem::MaybeUninit, ptr};
 
 impl RenderPass {
     pub(super) fn validate(
@@ -1051,7 +1050,7 @@ impl RenderPass {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
 
-            check_errors(if device.api_version() >= Version::V1_2 {
+            if device.api_version() >= Version::V1_2 {
                 (fns.v1_2.create_render_pass2)(
                     device.internal_object(),
                     &create_info,
@@ -1065,7 +1064,9 @@ impl RenderPass {
                     ptr::null(),
                     output.as_mut_ptr(),
                 )
-            })?;
+            }
+            .result()
+            .map_err(VulkanError::from)?;
 
             output.assume_init()
         })
@@ -1318,12 +1319,14 @@ impl RenderPass {
         Ok({
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors((fns.v1_0.create_render_pass)(
+            (fns.v1_0.create_render_pass)(
                 device.internal_object(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         })
     }
@@ -1499,9 +1502,9 @@ pub enum RenderPassCreationError {
     SubpassResolveAttachmentWithoutColorAttachment { subpass: u32 },
 }
 
-impl error::Error for RenderPassCreationError {
+impl Error for RenderPassCreationError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             RenderPassCreationError::OomError(ref err) => Some(err),
             _ => None,
@@ -1707,12 +1710,14 @@ impl From<OomError> for RenderPassCreationError {
     }
 }
 
-impl From<Error> for RenderPassCreationError {
+impl From<VulkanError> for RenderPassCreationError {
     #[inline]
-    fn from(err: Error) -> RenderPassCreationError {
+    fn from(err: VulkanError) -> RenderPassCreationError {
         match err {
-            err @ Error::OutOfHostMemory => RenderPassCreationError::OomError(OomError::from(err)),
-            err @ Error::OutOfDeviceMemory => {
+            err @ VulkanError::OutOfHostMemory => {
+                RenderPassCreationError::OomError(OomError::from(err))
+            }
+            err @ VulkanError::OutOfDeviceMemory => {
                 RenderPassCreationError::OomError(OomError::from(err))
             }
             _ => panic!("unexpected error: {:?}", err),

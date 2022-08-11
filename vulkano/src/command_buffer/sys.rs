@@ -16,13 +16,12 @@ use super::{
     CommandBufferUsage,
 };
 use crate::{
-    check_errors,
     command_buffer::{
         CommandBufferInheritanceRenderPassInfo, CommandBufferInheritanceRenderPassType,
         CommandBufferInheritanceRenderingInfo,
     },
     device::{Device, DeviceOwned},
-    OomError, VulkanObject,
+    OomError, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{ptr, sync::Arc};
@@ -178,10 +177,9 @@ impl UnsafeCommandBufferBuilder {
 
             let fns = device.fns();
 
-            check_errors((fns.v1_0.begin_command_buffer)(
-                pool_alloc.internal_object(),
-                &begin_info_vk,
-            ))?;
+            (fns.v1_0.begin_command_buffer)(pool_alloc.internal_object(), &begin_info_vk)
+                .result()
+                .map_err(VulkanError::from)?;
         }
 
         Ok(UnsafeCommandBufferBuilder {
@@ -196,7 +194,9 @@ impl UnsafeCommandBufferBuilder {
     pub fn build(self) -> Result<UnsafeCommandBuffer, OomError> {
         unsafe {
             let fns = self.device.fns();
-            check_errors((fns.v1_0.end_command_buffer)(self.handle))?;
+            (fns.v1_0.end_command_buffer)(self.handle)
+                .result()
+                .map_err(VulkanError::from)?;
 
             Ok(UnsafeCommandBuffer {
                 command_buffer: self.handle,

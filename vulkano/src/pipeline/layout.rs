@@ -64,15 +64,15 @@
 //! type. Each pipeline that you create holds a pipeline layout object.
 
 use crate::{
-    check_errors,
     descriptor_set::layout::{DescriptorRequirementsNotMet, DescriptorSetLayout, DescriptorType},
     device::{Device, DeviceOwned},
     shader::{DescriptorRequirements, ShaderStages},
-    Error, OomError, VulkanObject,
+    OomError, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{
-    error, fmt,
+    error::Error,
+    fmt,
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     ptr,
@@ -531,12 +531,14 @@ impl PipelineLayout {
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors((fns.v1_0.create_pipeline_layout)(
+            (fns.v1_0.create_pipeline_layout)(
                 device.internal_object(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -805,9 +807,9 @@ pub enum PipelineLayoutCreationError {
     SetLayoutsPushDescriptorMultiple,
 }
 
-impl error::Error for PipelineLayoutCreationError {
+impl Error for PipelineLayoutCreationError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             Self::OomError(ref err) => Some(err),
             _ => None,
@@ -924,14 +926,14 @@ impl From<OomError> for PipelineLayoutCreationError {
     }
 }
 
-impl From<Error> for PipelineLayoutCreationError {
+impl From<VulkanError> for PipelineLayoutCreationError {
     #[inline]
-    fn from(err: Error) -> PipelineLayoutCreationError {
+    fn from(err: VulkanError) -> PipelineLayoutCreationError {
         match err {
-            err @ Error::OutOfHostMemory => {
+            err @ VulkanError::OutOfHostMemory => {
                 PipelineLayoutCreationError::OomError(OomError::from(err))
             }
-            err @ Error::OutOfDeviceMemory => {
+            err @ VulkanError::OutOfDeviceMemory => {
                 PipelineLayoutCreationError::OomError(OomError::from(err))
             }
             _ => panic!("unexpected error: {:?}", err),
@@ -957,9 +959,9 @@ pub enum PipelineLayoutSupersetError {
     },
 }
 
-impl error::Error for PipelineLayoutSupersetError {
+impl Error for PipelineLayoutSupersetError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             PipelineLayoutSupersetError::DescriptorRequirementsNotMet { ref error, .. } => {
                 Some(error)

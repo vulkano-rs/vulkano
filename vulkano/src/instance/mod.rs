@@ -57,10 +57,9 @@
 use self::debug::{DebugUtilsMessengerCreateInfo, UserCallback};
 pub use self::{extensions::InstanceExtensions, layers::LayerProperties};
 use crate::{
-    check_errors,
     device::physical::{init_physical_devices, PhysicalDeviceInfo},
     instance::debug::{trampoline, DebugUtilsMessageSeverity, DebugUtilsMessageType},
-    Error, OomError, VulkanLibrary, VulkanObject,
+    OomError, VulkanError, VulkanLibrary, VulkanObject,
 };
 pub use crate::{
     extensions::{ExtensionRestriction, ExtensionRestrictionError},
@@ -69,7 +68,7 @@ pub use crate::{
 };
 use smallvec::SmallVec;
 use std::{
-    error,
+    error::Error,
     ffi::{c_void, CString},
     fmt,
     hash::{Hash, Hasher},
@@ -429,11 +428,9 @@ impl Instance {
         let handle = {
             let mut output = MaybeUninit::uninit();
             let fns = library.fns();
-            check_errors((fns.v1_0.create_instance)(
-                &create_info,
-                ptr::null(),
-                output.as_mut_ptr(),
-            ))?;
+            (fns.v1_0.create_instance)(&create_info, ptr::null(), output.as_mut_ptr())
+                .result()
+                .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -693,9 +690,9 @@ pub enum InstanceCreationError {
     },
 }
 
-impl error::Error for InstanceCreationError {
+impl Error for InstanceCreationError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             Self::OomError(ref err) => Some(err),
             _ => None,
@@ -736,16 +733,16 @@ impl From<ExtensionRestrictionError> for InstanceCreationError {
     }
 }
 
-impl From<Error> for InstanceCreationError {
+impl From<VulkanError> for InstanceCreationError {
     #[inline]
-    fn from(err: Error) -> Self {
+    fn from(err: VulkanError) -> Self {
         match err {
-            err @ Error::OutOfHostMemory => Self::OomError(OomError::from(err)),
-            err @ Error::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
-            Error::InitializationFailed => Self::InitializationFailed,
-            Error::LayerNotPresent => Self::LayerNotPresent,
-            Error::ExtensionNotPresent => Self::ExtensionNotPresent,
-            Error::IncompatibleDriver => Self::IncompatibleDriver,
+            err @ VulkanError::OutOfHostMemory => Self::OomError(OomError::from(err)),
+            err @ VulkanError::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
+            VulkanError::InitializationFailed => Self::InitializationFailed,
+            VulkanError::LayerNotPresent => Self::LayerNotPresent,
+            VulkanError::ExtensionNotPresent => Self::ExtensionNotPresent,
+            VulkanError::IncompatibleDriver => Self::IncompatibleDriver,
             _ => panic!("unexpected error: {:?}", err),
         }
     }

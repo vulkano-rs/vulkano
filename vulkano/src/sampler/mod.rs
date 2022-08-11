@@ -48,15 +48,15 @@ pub mod ycbcr;
 
 use self::ycbcr::SamplerYcbcrConversion;
 use crate::{
-    check_errors,
     device::{Device, DeviceOwned},
     image::{view::ImageViewType, ImageViewAbstract},
     pipeline::graphics::depth_stencil::CompareOp,
     shader::ShaderScalarType,
-    Error, OomError, VulkanObject,
+    OomError, VulkanError, VulkanObject,
 };
 use std::{
-    error, fmt,
+    error::Error,
+    fmt,
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     ops::RangeInclusive,
@@ -393,12 +393,14 @@ impl Sampler {
         let handle = unsafe {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors((fns.v1_0.create_sampler)(
+            (fns.v1_0.create_sampler)(
                 device.internal_object(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -840,9 +842,9 @@ pub enum SamplerCreationError {
     UnnormalizedCoordinatesNonzeroLod { lod: RangeInclusive<f32> },
 }
 
-impl error::Error for SamplerCreationError {
+impl Error for SamplerCreationError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             SamplerCreationError::OomError(ref err) => Some(err),
             _ => None,
@@ -916,13 +918,13 @@ impl From<OomError> for SamplerCreationError {
     }
 }
 
-impl From<Error> for SamplerCreationError {
+impl From<VulkanError> for SamplerCreationError {
     #[inline]
-    fn from(err: Error) -> Self {
+    fn from(err: VulkanError) -> Self {
         match err {
-            err @ Error::OutOfHostMemory => Self::OomError(OomError::from(err)),
-            err @ Error::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
-            Error::TooManyObjects => Self::TooManyObjects,
+            err @ VulkanError::OutOfHostMemory => Self::OomError(OomError::from(err)),
+            err @ VulkanError::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
+            VulkanError::TooManyObjects => Self::TooManyObjects,
             _ => panic!("unexpected error: {:?}", err),
         }
     }
@@ -1458,7 +1460,7 @@ pub enum SamplerImageViewIncompatibleError {
     UnnormalizedCoordinatesViewTypeNotCompatible,
 }
 
-impl error::Error for SamplerImageViewIncompatibleError {}
+impl Error for SamplerImageViewIncompatibleError {}
 
 impl fmt::Display for SamplerImageViewIncompatibleError {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {

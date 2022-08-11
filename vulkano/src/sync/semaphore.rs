@@ -8,11 +8,11 @@
 // according to those terms.
 
 use crate::{
-    check_errors,
     device::{Device, DeviceOwned},
-    Error, OomError, Version, VulkanObject,
+    OomError, Version, VulkanError, VulkanObject,
 };
 use std::{
+    error::Error,
     fmt,
     fs::File,
     hash::{Hash, Hasher},
@@ -95,12 +95,14 @@ impl Semaphore {
         let handle = unsafe {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors((fns.v1_0.create_semaphore)(
+            (fns.v1_0.create_semaphore)(
                 device.internal_object(),
                 &create_info.build(),
                 ptr::null(),
                 output.as_mut_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -197,11 +199,13 @@ impl Semaphore {
                 };
 
                 let mut output = MaybeUninit::uninit();
-                check_errors((fns.khr_external_semaphore_fd.get_semaphore_fd_khr)(
+                (fns.khr_external_semaphore_fd.get_semaphore_fd_khr)(
                     self.device.internal_object(),
                     &info,
                     output.as_mut_ptr(),
-                ))?;
+                )
+                .result()
+                .map_err(VulkanError::from)?;
                 output.assume_init()
             };
             let file = File::from_raw_fd(fd);
@@ -282,19 +286,21 @@ impl fmt::Display for SemaphoreCreationError {
     }
 }
 
-impl From<Error> for SemaphoreCreationError {
+impl From<VulkanError> for SemaphoreCreationError {
     #[inline]
-    fn from(err: Error) -> Self {
+    fn from(err: VulkanError) -> Self {
         match err {
-            e @ Error::OutOfHostMemory | e @ Error::OutOfDeviceMemory => Self::OomError(e.into()),
+            e @ VulkanError::OutOfHostMemory | e @ VulkanError::OutOfDeviceMemory => {
+                Self::OomError(e.into())
+            }
             _ => panic!("unexpected error: {:?}", err),
         }
     }
 }
 
-impl std::error::Error for SemaphoreCreationError {
+impl Error for SemaphoreCreationError {
     #[inline]
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             Self::OomError(ref err) => Some(err),
             _ => None,
@@ -518,19 +524,21 @@ impl fmt::Display for SemaphoreExportError {
     }
 }
 
-impl From<Error> for SemaphoreExportError {
+impl From<VulkanError> for SemaphoreExportError {
     #[inline]
-    fn from(err: Error) -> Self {
+    fn from(err: VulkanError) -> Self {
         match err {
-            e @ Error::OutOfHostMemory | e @ Error::OutOfDeviceMemory => Self::OomError(e.into()),
+            e @ VulkanError::OutOfHostMemory | e @ VulkanError::OutOfDeviceMemory => {
+                Self::OomError(e.into())
+            }
             _ => panic!("unexpected error: {:?}", err),
         }
     }
 }
 
-impl std::error::Error for SemaphoreExportError {
+impl Error for SemaphoreExportError {
     #[inline]
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             Self::OomError(ref err) => Some(err),
             _ => None,

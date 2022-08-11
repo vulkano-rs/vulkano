@@ -28,7 +28,7 @@ use crate::{
 };
 use parking_lot::Mutex;
 use smallvec::SmallVec;
-use std::{error, fmt, ops::RangeInclusive};
+use std::{error::Error, fmt, ops::RangeInclusive};
 
 /// # Commands to set dynamic state for pipelines.
 ///
@@ -2727,7 +2727,7 @@ enum SetDynamicStateError {
     PipelineHasFixedState,
 }
 
-impl error::Error for SetDynamicStateError {}
+impl Error for SetDynamicStateError {}
 
 impl fmt::Display for SetDynamicStateError {
     #[inline]

@@ -55,7 +55,7 @@ use crate::{
     pipeline::graphics::vertex_input::{VertexInputState, VertexMemberTy},
     shader::ShaderInterface,
 };
-use std::{error, fmt};
+use std::{error::Error, fmt};
 
 /// Trait for types that can create a [`VertexInputState`] from a [`ShaderInterface`].
 pub unsafe trait VertexDefinition {
@@ -97,7 +97,7 @@ pub enum IncompatibleVertexDefinitionError {
     },
 }
 
-impl error::Error for IncompatibleVertexDefinitionError {}
+impl Error for IncompatibleVertexDefinitionError {}
 
 impl fmt::Display for IncompatibleVertexDefinitionError {
     #[inline]

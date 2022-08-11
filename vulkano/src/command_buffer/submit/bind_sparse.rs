@@ -9,15 +9,14 @@
 
 use crate::{
     buffer::sys::UnsafeBuffer,
-    check_errors,
     device::Queue,
     image::sys::UnsafeImage,
     memory::DeviceMemory,
     sync::{Fence, Semaphore},
-    DeviceSize, Error, OomError, SynchronizedVulkanObject, VulkanObject,
+    DeviceSize, OomError, SynchronizedVulkanObject, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{error, fmt, marker::PhantomData};
+use std::{error::Error, fmt, marker::PhantomData};
 
 // TODO: correctly implement Debug on all the structs of this module
 
@@ -234,12 +233,14 @@ impl<'a> SubmitBindSparseBuilder<'a> {
             };
 
             // Finally executing the command.
-            check_errors((fns.v1_0.queue_bind_sparse)(
+            (fns.v1_0.queue_bind_sparse)(
                 *queue,
                 bs_infos.len() as u32,
                 bs_infos.as_ptr(),
                 self.fence,
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             Ok(())
         }
     }
@@ -469,9 +470,9 @@ pub enum SubmitBindSparseError {
     DeviceLost,
 }
 
-impl error::Error for SubmitBindSparseError {
+impl Error for SubmitBindSparseError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             SubmitBindSparseError::OomError(ref err) => Some(err),
             _ => None,
@@ -493,13 +494,17 @@ impl fmt::Display for SubmitBindSparseError {
     }
 }
 
-impl From<Error> for SubmitBindSparseError {
+impl From<VulkanError> for SubmitBindSparseError {
     #[inline]
-    fn from(err: Error) -> SubmitBindSparseError {
+    fn from(err: VulkanError) -> SubmitBindSparseError {
         match err {
-            err @ Error::OutOfHostMemory => SubmitBindSparseError::OomError(OomError::from(err)),
-            err @ Error::OutOfDeviceMemory => SubmitBindSparseError::OomError(OomError::from(err)),
-            Error::DeviceLost => SubmitBindSparseError::DeviceLost,
+            err @ VulkanError::OutOfHostMemory => {
+                SubmitBindSparseError::OomError(OomError::from(err))
+            }
+            err @ VulkanError::OutOfDeviceMemory => {
+                SubmitBindSparseError::OomError(OomError::from(err))
+            }
+            VulkanError::DeviceLost => SubmitBindSparseError::DeviceLost,
             _ => panic!("unexpected error: {:?}", err),
         }
     }

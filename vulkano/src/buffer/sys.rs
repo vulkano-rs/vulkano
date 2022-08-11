@@ -29,18 +29,18 @@ use super::{
     BufferUsage,
 };
 use crate::{
-    check_errors,
     device::{Device, DeviceOwned},
     memory::{DeviceMemory, DeviceMemoryAllocationError, MemoryRequirements},
     range_map::RangeMap,
     sync::{AccessError, CurrentAccess, Sharing},
-    DeviceSize, Error, OomError, Version, VulkanObject,
+    DeviceSize, OomError, Version, VulkanError, VulkanObject,
 };
 use ash::vk::Handle;
 use parking_lot::{Mutex, MutexGuard};
 use smallvec::SmallVec;
 use std::{
-    error, fmt,
+    error::Error,
+    fmt,
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     ops::Range,
@@ -160,12 +160,14 @@ impl UnsafeBuffer {
         let handle = unsafe {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors((fns.v1_0.create_buffer)(
+            (fns.v1_0.create_buffer)(
                 device.internal_object(),
                 &create_info.build(),
                 ptr::null(),
                 output.as_mut_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -334,12 +336,14 @@ impl UnsafeBuffer {
             }
         }
 
-        check_errors((fns.v1_0.bind_buffer_memory)(
+        (fns.v1_0.bind_buffer_memory)(
             self.device.internal_object(),
             self.handle,
             memory.internal_object(),
             offset,
-        ))?;
+        )
+        .result()
+        .map_err(VulkanError::from)?;
         Ok(())
     }
 
@@ -471,9 +475,9 @@ pub enum BufferCreationError {
     SharingInvalidQueueFamilyId { id: u32 },
 }
 
-impl error::Error for BufferCreationError {
+impl Error for BufferCreationError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             BufferCreationError::AllocError(ref err) => Some(err),
             _ => None,
@@ -512,14 +516,14 @@ impl From<OomError> for BufferCreationError {
     }
 }
 
-impl From<Error> for BufferCreationError {
+impl From<VulkanError> for BufferCreationError {
     #[inline]
-    fn from(err: Error) -> BufferCreationError {
+    fn from(err: VulkanError) -> BufferCreationError {
         match err {
-            err @ Error::OutOfHostMemory => {
+            err @ VulkanError::OutOfHostMemory => {
                 BufferCreationError::AllocError(DeviceMemoryAllocationError::from(err))
             }
-            err @ Error::OutOfDeviceMemory => {
+            err @ VulkanError::OutOfDeviceMemory => {
                 BufferCreationError::AllocError(DeviceMemoryAllocationError::from(err))
             }
             _ => panic!("unexpected error: {:?}", err),

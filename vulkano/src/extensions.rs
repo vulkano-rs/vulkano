@@ -9,7 +9,7 @@
 
 use crate::Version;
 use std::{
-    error,
+    error::Error,
     fmt::{Display, Error as FmtError, Formatter},
 };
 
@@ -22,7 +22,7 @@ pub struct ExtensionRestrictionError {
     pub restriction: ExtensionRestriction,
 }
 
-impl error::Error for ExtensionRestrictionError {}
+impl Error for ExtensionRestrictionError {}
 
 impl Display for ExtensionRestrictionError {
     #[inline]

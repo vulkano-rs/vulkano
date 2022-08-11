@@ -40,7 +40,7 @@ use crate::{
     sync::{AccessFlags, PipelineMemoryAccess, PipelineStages},
     DeviceSize, VulkanObject,
 };
-use std::{borrow::Cow, error, fmt, mem::size_of, ops::Range, sync::Arc};
+use std::{borrow::Cow, error::Error, fmt, mem::size_of, ops::Range, sync::Arc};
 
 /// # Commands to execute a bound pipeline.
 ///
@@ -348,7 +348,7 @@ pub enum CheckPipelineError {
     PipelineNotBound,
 }
 
-impl error::Error for CheckPipelineError {}
+impl Error for CheckPipelineError {}
 
 impl fmt::Display for CheckPipelineError {
     #[inline]
@@ -661,9 +661,9 @@ pub enum CheckDescriptorSetsValidityError {
     },
 }
 
-impl error::Error for CheckDescriptorSetsValidityError {
+impl Error for CheckDescriptorSetsValidityError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::InvalidDescriptorResource { error, .. } => Some(error),
             _ => None,
@@ -776,8 +776,8 @@ pub enum InvalidDescriptorResource {
     StorageWriteWithoutFormatNotSupported,
 }
 
-impl error::Error for InvalidDescriptorResource {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+impl Error for InvalidDescriptorResource {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::SamplerImageViewIncompatible { error, .. } => Some(error),
             _ => None,
@@ -889,7 +889,7 @@ pub enum CheckPushConstantsValidityError {
     MissingPushConstants,
 }
 
-impl error::Error for CheckPushConstantsValidityError {}
+impl Error for CheckPushConstantsValidityError {}
 
 impl fmt::Display for CheckPushConstantsValidityError {
     #[inline]
@@ -1274,7 +1274,7 @@ pub enum CheckDynamicStateValidityError {
     },
 }
 
-impl error::Error for CheckDynamicStateValidityError {}
+impl Error for CheckDynamicStateValidityError {}
 
 impl fmt::Display for CheckDynamicStateValidityError {
     #[inline]
@@ -1359,7 +1359,7 @@ pub enum CheckIndexBufferError {
     UnsupportIndexType,
 }
 
-impl error::Error for CheckIndexBufferError {}
+impl Error for CheckIndexBufferError {}
 
 impl fmt::Display for CheckIndexBufferError {
     #[inline]
@@ -1420,7 +1420,7 @@ pub enum CheckIndirectBufferError {
     },
 }
 
-impl error::Error for CheckIndirectBufferError {}
+impl Error for CheckIndirectBufferError {}
 
 impl fmt::Display for CheckIndirectBufferError {
     #[inline]
@@ -1577,7 +1577,7 @@ pub enum CheckVertexBufferError {
     },
 }
 
-impl error::Error for CheckVertexBufferError {}
+impl Error for CheckVertexBufferError {}
 
 impl fmt::Display for CheckVertexBufferError {
     #[inline]
@@ -1639,7 +1639,7 @@ pub enum CheckDispatchError {
     ZeroLengthDimensions,
 }
 
-impl error::Error for CheckDispatchError {}
+impl Error for CheckDispatchError {}
 
 impl fmt::Display for CheckDispatchError {
     #[inline]

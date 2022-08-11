@@ -40,7 +40,7 @@ use crate::{
 use core::fmt;
 use smallvec::SmallVec;
 use std::{
-    error,
+    error::Error,
     fs::File,
     hash::{Hash, Hasher},
     marker::PhantomData,
@@ -577,9 +577,9 @@ pub enum DeviceLocalBufferCreationError {
     CommandBufferBeginError(CommandBufferBeginError),
 }
 
-impl error::Error for DeviceLocalBufferCreationError {
+impl Error for DeviceLocalBufferCreationError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::DeviceMemoryAllocationError(err) => Some(err),
             Self::CommandBufferBeginError(err) => Some(err),

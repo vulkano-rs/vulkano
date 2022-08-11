@@ -10,7 +10,8 @@
 use super::{sys::UnsafeBuffer, BufferContents, BufferSlice, BufferUsage};
 use crate::{device::DeviceOwned, DeviceSize, SafeDeref, VulkanObject};
 use std::{
-    error, fmt,
+    error::Error,
+    fmt,
     hash::{Hash, Hasher},
     num::NonZeroU64,
     ops::Range,
@@ -199,7 +200,7 @@ pub enum BufferDeviceAddressError {
     FeatureNotEnabled,
 }
 
-impl error::Error for BufferDeviceAddressError {}
+impl Error for BufferDeviceAddressError {}
 
 impl fmt::Display for BufferDeviceAddressError {
     #[inline]

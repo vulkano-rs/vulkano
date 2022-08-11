@@ -20,12 +20,13 @@
 
 pub use crate::fns::EntryFunctions;
 use crate::{
-    check_errors,
     instance::{InstanceExtensions, LayerProperties},
-    Error, OomError, SafeDeref, Success, Version,
+    OomError, SafeDeref, Version, VulkanError,
 };
 use libloading::{Error as LibloadingError, Library};
-use std::{error, ffi::CStr, fmt, mem::transmute, os::raw::c_char, path::Path, ptr, sync::Arc};
+use std::{
+    error::Error, ffi::CStr, fmt, mem::transmute, os::raw::c_char, path::Path, ptr, sync::Arc,
+};
 
 /// A loaded library containing a valid Vulkan implementation.
 #[derive(Debug)]
@@ -95,7 +96,7 @@ impl VulkanLibrary {
             if let Some(func) = func {
                 let func: ash::vk::PFN_vkEnumerateInstanceVersion = transmute(func);
                 let mut api_version = 0;
-                check_errors(func(&mut api_version))?;
+                func(&mut api_version).result().map_err(VulkanError::from)?;
                 Version::from(api_version)
             } else {
                 Version {
@@ -109,22 +110,28 @@ impl VulkanLibrary {
         let supported_extensions = unsafe {
             let extension_properties = loop {
                 let mut count = 0;
-                check_errors((fns.v1_0.enumerate_instance_extension_properties)(
+                (fns.v1_0.enumerate_instance_extension_properties)(
                     ptr::null(),
                     &mut count,
                     ptr::null_mut(),
-                ))?;
+                )
+                .result()
+                .map_err(VulkanError::from)?;
 
                 let mut properties = Vec::with_capacity(count as usize);
-                let result = check_errors((fns.v1_0.enumerate_instance_extension_properties)(
+                let result = (fns.v1_0.enumerate_instance_extension_properties)(
                     ptr::null(),
                     &mut count,
                     properties.as_mut_ptr(),
-                ))?;
+                );
 
-                if !matches!(result, Success::Incomplete) {
-                    properties.set_len(count as usize);
-                    break properties;
+                match result {
+                    ash::vk::Result::SUCCESS => {
+                        properties.set_len(count as usize);
+                        break properties;
+                    }
+                    ash::vk::Result::INCOMPLETE => (),
+                    err => return Err(VulkanError::from(err).into()),
                 }
             };
 
@@ -191,22 +198,23 @@ impl VulkanLibrary {
         let layer_properties = unsafe {
             loop {
                 let mut count = 0;
-                check_errors((fns.v1_0.enumerate_instance_layer_properties)(
-                    &mut count,
-                    ptr::null_mut(),
-                ))?;
+                (fns.v1_0.enumerate_instance_layer_properties)(&mut count, ptr::null_mut())
+                    .result()
+                    .map_err(VulkanError::from)?;
 
                 let mut properties = Vec::with_capacity(count as usize);
-                let result = check_errors({
-                    (fns.v1_0.enumerate_instance_layer_properties)(
-                        &mut count,
-                        properties.as_mut_ptr(),
-                    )
-                })?;
+                let result = (fns.v1_0.enumerate_instance_layer_properties)(
+                    &mut count,
+                    properties.as_mut_ptr(),
+                );
 
-                if !matches!(result, Success::Incomplete) {
-                    properties.set_len(count as usize);
-                    break properties;
+                match result {
+                    ash::vk::Result::SUCCESS => {
+                        properties.set_len(count as usize);
+                        break properties;
+                    }
+                    ash::vk::Result::INCOMPLETE => (),
+                    err => return Err(VulkanError::from(err).into()),
                 }
             }
         };
@@ -347,9 +355,9 @@ pub enum LoadingError {
     OomError(OomError),
 }
 
-impl error::Error for LoadingError {
+impl Error for LoadingError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             //Self::LibraryLoadFailure(ref err) => Some(err),
             Self::OomError(ref err) => Some(err),
@@ -372,12 +380,12 @@ impl fmt::Display for LoadingError {
     }
 }
 
-impl From<Error> for LoadingError {
+impl From<VulkanError> for LoadingError {
     #[inline]
-    fn from(err: Error) -> Self {
+    fn from(err: VulkanError) -> Self {
         match err {
-            err @ Error::OutOfHostMemory => Self::OomError(OomError::from(err)),
-            err @ Error::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
+            err @ VulkanError::OutOfHostMemory => Self::OomError(OomError::from(err)),
+            err @ VulkanError::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
             _ => panic!("unexpected error: {:?}", err),
         }
     }

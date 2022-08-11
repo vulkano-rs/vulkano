@@ -16,7 +16,7 @@ use crate::{
     device::DeviceOwned,
     instance::debug::DebugUtilsLabel,
 };
-use std::{error, ffi::CString, fmt};
+use std::{error::Error, ffi::CString, fmt};
 
 /// # Commands for debugging.
 ///
@@ -293,7 +293,7 @@ pub enum DebugUtilsError {
     NotSupportedByQueueFamily,
 }
 
-impl error::Error for DebugUtilsError {}
+impl Error for DebugUtilsError {}
 
 impl fmt::Display for DebugUtilsError {
     #[inline]

@@ -24,7 +24,7 @@ use crate::{
     image::{ImageAspects, ImageLayout, SampleCount, SampleCounts},
     DeviceSize,
 };
-use std::{error, fmt};
+use std::{error::Error, fmt};
 
 /// Error that can happen when recording a copy command.
 #[derive(Clone, Debug)]
@@ -271,9 +271,9 @@ pub enum CopyError {
     },
 }
 
-impl error::Error for CopyError {
+impl Error for CopyError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::SyncCommandBufferBuilderError(err) => Some(err),
             _ => None,

@@ -13,9 +13,9 @@ use crate::{
     format::{Format, NumericType},
     pipeline::layout::{PipelineLayoutCreationError, PipelineLayoutSupersetError},
     shader::ShaderInterfaceMismatchError,
-    Error, OomError,
+    OomError, VulkanError,
 };
-use std::{error, fmt};
+use std::{error::Error, fmt};
 
 /// Error that can happen when creating a graphics pipeline.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -200,9 +200,9 @@ pub enum GraphicsPipelineCreationError {
     WrongStencilState,
 }
 
-impl error::Error for GraphicsPipelineCreationError {
+impl Error for GraphicsPipelineCreationError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             Self::OomError(ref err) => Some(err),
             Self::PipelineLayoutCreationError(ref err) => Some(err),
@@ -424,12 +424,12 @@ impl From<IncompatibleVertexDefinitionError> for GraphicsPipelineCreationError {
     }
 }
 
-impl From<Error> for GraphicsPipelineCreationError {
+impl From<VulkanError> for GraphicsPipelineCreationError {
     #[inline]
-    fn from(err: Error) -> Self {
+    fn from(err: VulkanError) -> Self {
         match err {
-            err @ Error::OutOfHostMemory => Self::OomError(OomError::from(err)),
-            err @ Error::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
+            err @ VulkanError::OutOfHostMemory => Self::OomError(OomError::from(err)),
+            err @ VulkanError::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
             _ => panic!("unexpected error: {:?}", err),
         }
     }

@@ -8,14 +8,14 @@
 // according to those terms.
 
 use crate::{
-    check_errors,
     command_buffer::CommandBufferLevel,
     device::{physical::QueueFamily, Device, DeviceOwned},
-    Error, OomError, Version, VulkanObject,
+    OomError, Version, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{
-    error, fmt,
+    error::Error,
+    fmt,
     hash::{Hash, Hasher},
     marker::PhantomData,
     mem::MaybeUninit,
@@ -155,12 +155,14 @@ impl UnsafeCommandPool {
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors((fns.v1_0.create_command_pool)(
+            (fns.v1_0.create_command_pool)(
                 device.internal_object(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -183,11 +185,9 @@ impl UnsafeCommandPool {
         };
 
         let fns = self.device.fns();
-        check_errors((fns.v1_0.reset_command_pool)(
-            self.device.internal_object(),
-            self.handle,
-            flags,
-        ))?;
+        (fns.v1_0.reset_command_pool)(self.device.internal_object(), self.handle, flags)
+            .result()
+            .map_err(VulkanError::from)?;
         Ok(())
     }
 
@@ -216,11 +216,13 @@ impl UnsafeCommandPool {
             unsafe {
                 let fns = self.device.fns();
                 let mut out = Vec::with_capacity(command_buffer_count as usize);
-                check_errors((fns.v1_0.allocate_command_buffers)(
+                (fns.v1_0.allocate_command_buffers)(
                     self.device.internal_object(),
                     &allocate_info,
                     out.as_mut_ptr(),
-                ))?;
+                )
+                .result()
+                .map_err(VulkanError::from)?;
                 out.set_len(command_buffer_count as usize);
                 out
             }
@@ -368,9 +370,9 @@ pub enum UnsafeCommandPoolCreationError {
     },
 }
 
-impl error::Error for UnsafeCommandPoolCreationError {
+impl Error for UnsafeCommandPoolCreationError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             Self::OomError(ref err) => Some(err),
             _ => None,
@@ -395,11 +397,11 @@ impl fmt::Display for UnsafeCommandPoolCreationError {
     }
 }
 
-impl From<Error> for UnsafeCommandPoolCreationError {
+impl From<VulkanError> for UnsafeCommandPoolCreationError {
     #[inline]
-    fn from(err: Error) -> Self {
+    fn from(err: VulkanError) -> Self {
         match err {
-            err @ Error::OutOfHostMemory => Self::OomError(OomError::from(err)),
+            err @ VulkanError::OutOfHostMemory => Self::OomError(OomError::from(err)),
             _ => panic!("unexpected error: {:?}", err),
         }
     }
@@ -523,7 +525,7 @@ pub enum CommandPoolTrimError {
     Maintenance1ExtensionNotEnabled,
 }
 
-impl error::Error for CommandPoolTrimError {}
+impl Error for CommandPoolTrimError {}
 
 impl fmt::Display for CommandPoolTrimError {
     #[inline]
@@ -540,9 +542,9 @@ impl fmt::Display for CommandPoolTrimError {
     }
 }
 
-impl From<Error> for CommandPoolTrimError {
+impl From<VulkanError> for CommandPoolTrimError {
     #[inline]
-    fn from(err: Error) -> CommandPoolTrimError {
+    fn from(err: VulkanError) -> CommandPoolTrimError {
         panic!("unexpected error: {:?}", err)
     }
 }

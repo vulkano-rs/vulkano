@@ -29,7 +29,6 @@ use super::{
     GraphicsPipeline, GraphicsPipelineCreationError,
 };
 use crate::{
-    check_errors,
     descriptor_set::layout::{DescriptorSetLayout, DescriptorSetLayoutCreateInfo},
     device::{Device, DeviceOwned},
     format::NumericType,
@@ -47,7 +46,7 @@ use crate::{
         DescriptorRequirements, EntryPoint, ShaderExecution, ShaderStage, SpecializationConstants,
         SpecializationMapEntry,
     },
-    DeviceSize, Version, VulkanObject,
+    DeviceSize, Version, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{
@@ -3195,14 +3194,16 @@ where
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors((fns.v1_0.create_graphics_pipelines)(
+            (fns.v1_0.create_graphics_pipelines)(
                 device.internal_object(),
                 cache_handle,
                 1,
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 

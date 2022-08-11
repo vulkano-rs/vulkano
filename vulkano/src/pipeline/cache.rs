@@ -21,7 +21,7 @@
 //! of [`get_data`](crate::pipeline::cache::PipelineCache::get_data) for example of how to store the data
 //! on the disk, and [`with_data`](crate::pipeline::cache::PipelineCache::with_data) for how to reload it.
 
-use crate::{check_errors, device::Device, OomError, Success, VulkanObject};
+use crate::{device::Device, OomError, VulkanError, VulkanObject};
 use std::{mem::MaybeUninit, ptr, sync::Arc};
 
 /// Opaque cache that contains pipeline objects.
@@ -114,12 +114,14 @@ impl PipelineCache {
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors((fns.v1_0.create_pipeline_cache)(
+            (fns.v1_0.create_pipeline_cache)(
                 device.internal_object(),
                 &infos,
                 ptr::null(),
                 output.as_mut_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -154,12 +156,14 @@ impl PipelineCache {
                 })
                 .collect::<Vec<_>>();
 
-            check_errors((fns.v1_0.merge_pipeline_caches)(
+            (fns.v1_0.merge_pipeline_caches)(
                 self.device.internal_object(),
                 self.cache,
                 pipelines.len() as u32,
                 pipelines.as_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
 
             Ok(())
         }
@@ -199,24 +203,30 @@ impl PipelineCache {
         let data = unsafe {
             loop {
                 let mut count = 0;
-                check_errors((fns.v1_0.get_pipeline_cache_data)(
+                (fns.v1_0.get_pipeline_cache_data)(
                     self.device.internal_object(),
                     self.cache,
                     &mut count,
                     ptr::null_mut(),
-                ))?;
+                )
+                .result()
+                .map_err(VulkanError::from)?;
 
                 let mut data: Vec<u8> = Vec::with_capacity(count as usize);
-                let result = check_errors((fns.v1_0.get_pipeline_cache_data)(
+                let result = (fns.v1_0.get_pipeline_cache_data)(
                     self.device.internal_object(),
                     self.cache,
                     &mut count,
                     data.as_mut_ptr() as *mut _,
-                ))?;
+                );
 
-                if !matches!(result, Success::Incomplete) {
-                    data.set_len(count as usize);
-                    break data;
+                match result {
+                    ash::vk::Result::SUCCESS => {
+                        data.set_len(count as usize);
+                        break data;
+                    }
+                    ash::vk::Result::INCOMPLETE => (),
+                    err => return Err(VulkanError::from(err).into()),
                 }
             }
         };

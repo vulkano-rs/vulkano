@@ -39,7 +39,8 @@ use crate::{
 };
 use std::{
     collections::HashMap,
-    error, fmt,
+    error::Error,
+    fmt,
     marker::PhantomData,
     ops::Range,
     sync::{
@@ -481,9 +482,9 @@ pub enum CommandBufferBeginError {
     StencilAttachmentFormatUsageNotSupported,
 }
 
-impl error::Error for CommandBufferBeginError {
+impl Error for CommandBufferBeginError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             Self::OomError(ref err) => Some(err),
             _ => None,
@@ -972,9 +973,9 @@ macro_rules! err_gen {
             )+
         }
 
-        impl error::Error for $name {
+        impl Error for $name {
             #[inline]
-            fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+            fn source(&self) -> Option<&(dyn Error + 'static)> {
                 match *self {
                     $(
                         $name::$err(ref err) => Some(err),
@@ -1111,7 +1112,7 @@ pub enum AutoCommandBufferBuilderContextError {
     WrongSubpassType,
 }
 
-impl error::Error for AutoCommandBufferBuilderContextError {}
+impl Error for AutoCommandBufferBuilderContextError {}
 
 impl fmt::Display for AutoCommandBufferBuilderContextError {
     #[inline]

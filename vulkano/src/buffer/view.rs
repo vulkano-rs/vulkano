@@ -44,13 +44,13 @@
 
 use super::{BufferAccess, BufferAccessObject, BufferInner};
 use crate::{
-    check_errors,
     device::{Device, DeviceOwned},
     format::{Format, FormatFeatures},
-    DeviceSize, Error, OomError, Version, VulkanObject,
+    DeviceSize, OomError, Version, VulkanError, VulkanObject,
 };
 use std::{
-    error, fmt,
+    error::Error,
+    fmt,
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     ops::Range,
@@ -207,12 +207,14 @@ where
         let handle = unsafe {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors((fns.v1_0.create_buffer_view)(
+            (fns.v1_0.create_buffer_view)(
                 device.internal_object(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -345,9 +347,9 @@ pub enum BufferViewCreationError {
     MaxTexelBufferElementsExceeded,
 }
 
-impl error::Error for BufferViewCreationError {
+impl Error for BufferViewCreationError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             BufferViewCreationError::OomError(ref err) => Some(err),
             _ => None,
@@ -394,9 +396,9 @@ impl From<OomError> for BufferViewCreationError {
     }
 }
 
-impl From<Error> for BufferViewCreationError {
+impl From<VulkanError> for BufferViewCreationError {
     #[inline]
-    fn from(err: Error) -> BufferViewCreationError {
+    fn from(err: VulkanError) -> BufferViewCreationError {
         OomError::from(err).into()
     }
 }

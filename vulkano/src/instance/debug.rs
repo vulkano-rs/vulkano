@@ -43,9 +43,9 @@
 //!
 
 use super::Instance;
-use crate::{check_errors, Error, VulkanObject};
+use crate::{VulkanError, VulkanObject};
 use std::{
-    error,
+    error::Error,
     ffi::{c_void, CStr},
     fmt,
     mem::MaybeUninit,
@@ -151,12 +151,14 @@ impl DebugUtilsMessenger {
 
         let handle = {
             let mut output = MaybeUninit::uninit();
-            check_errors((fns.ext_debug_utils.create_debug_utils_messenger_ext)(
+            (fns.ext_debug_utils.create_debug_utils_messenger_ext)(
                 instance.internal_object(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -240,7 +242,7 @@ pub enum DebugUtilsMessengerCreationError {
     },
 }
 
-impl error::Error for DebugUtilsMessengerCreationError {}
+impl Error for DebugUtilsMessengerCreationError {}
 
 impl fmt::Display for DebugUtilsMessengerCreationError {
     #[inline]
@@ -253,9 +255,9 @@ impl fmt::Display for DebugUtilsMessengerCreationError {
     }
 }
 
-impl From<Error> for DebugUtilsMessengerCreationError {
+impl From<VulkanError> for DebugUtilsMessengerCreationError {
     #[inline]
-    fn from(err: Error) -> DebugUtilsMessengerCreationError {
+    fn from(err: VulkanError) -> DebugUtilsMessengerCreationError {
         panic!("unexpected error: {:?}", err)
     }
 }

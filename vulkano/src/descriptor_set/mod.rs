@@ -92,6 +92,7 @@ use crate::{
 use smallvec::{smallvec, SmallVec};
 use std::{
     collections::HashMap,
+    error::Error,
     hash::{Hash, Hasher},
     ptr,
     sync::Arc,
@@ -504,9 +505,9 @@ pub enum DescriptorSetCreationError {
     OomError(OomError),
 }
 
-impl std::error::Error for DescriptorSetCreationError {
+impl Error for DescriptorSetCreationError {
     #[inline]
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::DescriptorSetUpdateError(err) => Some(err),
             Self::OomError(err) => Some(err),

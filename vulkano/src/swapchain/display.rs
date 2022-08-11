@@ -29,8 +29,8 @@
 #![allow(unused_variables)] // TODO: this module isn't finished
 
 use crate::{
-    check_errors, device::physical::PhysicalDevice, instance::Instance,
-    swapchain::SupportedSurfaceTransforms, OomError, Success, VulkanObject,
+    device::physical::PhysicalDevice, instance::Instance, swapchain::SupportedSurfaceTransforms,
+    OomError, VulkanError, VulkanObject,
 };
 use std::{ffi::CStr, fmt, fmt::Formatter, ptr, sync::Arc, vec::IntoIter};
 
@@ -57,26 +57,31 @@ impl DisplayPlane {
         let display_plane_properties = unsafe {
             loop {
                 let mut count = 0;
-                check_errors((fns
-                    .khr_display
+                (fns.khr_display
                     .get_physical_device_display_plane_properties_khr)(
                     device.internal_object(),
                     &mut count,
                     ptr::null_mut(),
-                ))?;
+                )
+                .result()
+                .map_err(VulkanError::from)?;
 
                 let mut properties = Vec::with_capacity(count as usize);
-                let result = check_errors((fns
+                let result = (fns
                     .khr_display
                     .get_physical_device_display_plane_properties_khr)(
                     device.internal_object(),
                     &mut count,
                     properties.as_mut_ptr(),
-                ))?;
+                );
 
-                if !matches!(result, Success::Incomplete) {
-                    properties.set_len(count as usize);
-                    break properties;
+                match result {
+                    ash::vk::Result::SUCCESS => {
+                        properties.set_len(count as usize);
+                        break properties;
+                    }
+                    ash::vk::Result::INCOMPLETE => (),
+                    err => return Err(VulkanError::from(err).into()),
                 }
             }
         };
@@ -88,28 +93,31 @@ impl DisplayPlane {
                 let supported_displays = unsafe {
                     loop {
                         let mut count = 0;
-                        check_errors((fns.khr_display.get_display_plane_supported_displays_khr)(
+                        (fns.khr_display.get_display_plane_supported_displays_khr)(
                             device.internal_object(),
                             index as u32,
                             &mut count,
                             ptr::null_mut(),
-                        ))
+                        )
+                        .result()
+                        .map_err(VulkanError::from)
                         .unwrap(); // TODO: shouldn't unwrap
 
                         let mut displays = Vec::with_capacity(count as usize);
-                        let result = check_errors((fns
-                            .khr_display
-                            .get_display_plane_supported_displays_khr)(
+                        let result = (fns.khr_display.get_display_plane_supported_displays_khr)(
                             device.internal_object(),
                             index as u32,
                             &mut count,
                             displays.as_mut_ptr(),
-                        ))
-                        .unwrap(); // TODO: shouldn't unwrap
+                        );
 
-                        if !matches!(result, Success::Incomplete) {
-                            displays.set_len(count as usize);
-                            break displays;
+                        match result {
+                            ash::vk::Result::SUCCESS => {
+                                displays.set_len(count as usize);
+                                break displays;
+                            }
+                            ash::vk::Result::INCOMPLETE => (),
+                            err => todo!(), // TODO: shouldn't panic
                         }
                     }
                 };
@@ -183,26 +191,28 @@ impl Display {
         let display_properties = unsafe {
             loop {
                 let mut count = 0;
-                check_errors(
-                    (fns.khr_display.get_physical_device_display_properties_khr)(
-                        device.internal_object(),
-                        &mut count,
-                        ptr::null_mut(),
-                    ),
-                )?;
+                (fns.khr_display.get_physical_device_display_properties_khr)(
+                    device.internal_object(),
+                    &mut count,
+                    ptr::null_mut(),
+                )
+                .result()
+                .map_err(VulkanError::from)?;
 
                 let mut properties = Vec::with_capacity(count as usize);
-                let result = check_errors((fns
-                    .khr_display
-                    .get_physical_device_display_properties_khr)(
+                let result = (fns.khr_display.get_physical_device_display_properties_khr)(
                     device.internal_object(),
                     &mut count,
                     properties.as_mut_ptr(),
-                ))?;
+                );
 
-                if !matches!(result, Success::Incomplete) {
-                    properties.set_len(count as usize);
-                    break properties;
+                match result {
+                    ash::vk::Result::SUCCESS => {
+                        properties.set_len(count as usize);
+                        break properties;
+                    }
+                    ash::vk::Result::INCOMPLETE => (),
+                    err => return Err(VulkanError::from(err).into()),
                 }
             }
         };
@@ -288,24 +298,30 @@ impl Display {
         let mode_properties = unsafe {
             loop {
                 let mut count = 0;
-                check_errors((fns.khr_display.get_display_mode_properties_khr)(
+                (fns.khr_display.get_display_mode_properties_khr)(
                     self.physical_device().internal_object(),
                     self.properties.display,
                     &mut count,
                     ptr::null_mut(),
-                ))?;
+                )
+                .result()
+                .map_err(VulkanError::from)?;
 
                 let mut properties = Vec::with_capacity(count as usize);
-                let result = check_errors((fns.khr_display.get_display_mode_properties_khr)(
+                let result = (fns.khr_display.get_display_mode_properties_khr)(
                     self.physical_device().internal_object(),
                     self.properties.display,
                     &mut count,
                     properties.as_mut_ptr(),
-                ))?;
+                );
 
-                if !matches!(result, Success::Incomplete) {
-                    properties.set_len(count as usize);
-                    break properties;
+                match result {
+                    ash::vk::Result::SUCCESS => {
+                        properties.set_len(count as usize);
+                        break properties;
+                    }
+                    ash::vk::Result::INCOMPLETE => (),
+                    err => return Err(VulkanError::from(err).into()),
                 }
             }
         };
@@ -370,9 +386,9 @@ impl DisplayMode {
             };
 
             let mut output = mem::uninitialized();
-            check_errors((fns.v1_0.CreateDisplayModeKHR)(display.device.internal_object(),
+            (fns.v1_0.CreateDisplayModeKHR)(display.device.internal_object(),
                                                       display.display, &infos, ptr::null(),
-                                                      &mut output))?;
+                                                      &mut output).result().map_err(VulkanError::from)?;
             output
         };
 
