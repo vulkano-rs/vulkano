@@ -8,9 +8,8 @@
 // according to those terms.
 
 use crate::{
-    check_errors,
     device::{Device, DeviceOwned},
-    OomError, Success, VulkanObject,
+    OomError, VulkanError, VulkanObject,
 };
 use std::{
     hash::{Hash, Hasher},
@@ -43,12 +42,14 @@ impl Event {
         let handle = unsafe {
             let mut output = MaybeUninit::uninit();
             let fns = device.fns();
-            check_errors((fns.v1_0.create_event)(
+            (fns.v1_0.create_event)(
                 device.internal_object(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -72,7 +73,9 @@ impl Event {
                 unsafe {
                     // Make sure the event isn't signaled
                     let fns = device.fns();
-                    check_errors((fns.v1_0.reset_event)(device.internal_object(), handle))?;
+                    (fns.v1_0.reset_event)(device.internal_object(), handle)
+                        .result()
+                        .map_err(VulkanError::from)?;
                 }
                 Event {
                     handle,
@@ -112,14 +115,11 @@ impl Event {
     pub fn signaled(&self) -> Result<bool, OomError> {
         unsafe {
             let fns = self.device.fns();
-            let result = check_errors((fns.v1_0.get_event_status)(
-                self.device.internal_object(),
-                self.handle,
-            ))?;
+            let result = (fns.v1_0.get_event_status)(self.device.internal_object(), self.handle);
             match result {
-                Success::EventSet => Ok(true),
-                Success::EventReset => Ok(false),
-                _ => unreachable!(),
+                ash::vk::Result::EVENT_SET => Ok(true),
+                ash::vk::Result::EVENT_RESET => Ok(false),
+                err => Err(VulkanError::from(err).into()),
             }
         }
     }
@@ -129,10 +129,9 @@ impl Event {
     pub fn set_raw(&mut self) -> Result<(), OomError> {
         unsafe {
             let fns = self.device.fns();
-            check_errors((fns.v1_0.set_event)(
-                self.device.internal_object(),
-                self.handle,
-            ))?;
+            (fns.v1_0.set_event)(self.device.internal_object(), self.handle)
+                .result()
+                .map_err(VulkanError::from)?;
             Ok(())
         }
     }
@@ -155,10 +154,9 @@ impl Event {
     pub fn reset_raw(&mut self) -> Result<(), OomError> {
         unsafe {
             let fns = self.device.fns();
-            check_errors((fns.v1_0.reset_event)(
-                self.device.internal_object(),
-                self.handle,
-            ))?;
+            (fns.v1_0.reset_event)(self.device.internal_object(), self.handle)
+                .result()
+                .map_err(VulkanError::from)?;
             Ok(())
         }
     }

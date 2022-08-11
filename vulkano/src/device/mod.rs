@@ -103,12 +103,11 @@ pub use self::{
     properties::Properties,
 };
 use crate::{
-    check_errors,
     command_buffer::pool::StandardCommandPool,
     descriptor_set::pool::StandardDescriptorPool,
     instance::{debug::DebugUtilsLabel, Instance},
     memory::{pool::StandardMemoryPool, ExternalMemoryHandleType},
-    Error, OomError, SynchronizedVulkanObject, Version, VulkanObject,
+    OomError, SynchronizedVulkanObject, Version, VulkanError, VulkanObject,
 };
 pub use crate::{
     device::extensions::DeviceExtensions,
@@ -122,7 +121,7 @@ use smallvec::SmallVec;
 use std::{
     cell::RefCell,
     collections::{hash_map::Entry, HashMap},
-    error,
+    error::Error,
     ffi::CString,
     fmt,
     fs::File,
@@ -385,12 +384,14 @@ impl Device {
 
         let handle = unsafe {
             let mut output = MaybeUninit::uninit();
-            check_errors((fns_i.v1_0.create_device)(
+            (fns_i.v1_0.create_device)(
                 physical_device.internal_object(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -467,7 +468,9 @@ impl Device {
     ///
     pub unsafe fn wait(&self) -> Result<(), OomError> {
         let fns = self.fns();
-        check_errors((fns.v1_0.device_wait_idle)(self.handle))?;
+        (fns.v1_0.device_wait_idle)(self.handle)
+            .result()
+            .map_err(VulkanError::from)?;
         Ok(())
     }
 
@@ -636,12 +639,14 @@ impl Device {
             let mut memory_fd_properties = ash::vk::MemoryFdPropertiesKHR::default();
 
             let fns = self.fns();
-            check_errors((fns.khr_external_memory_fd.get_memory_fd_properties_khr)(
+            (fns.khr_external_memory_fd.get_memory_fd_properties_khr)(
                 self.handle,
                 handle_type.into(),
                 file.into_raw_fd(),
                 &mut memory_fd_properties,
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
 
             Ok(MemoryFdProperties {
                 memory_type_bits: memory_fd_properties.memory_type_bits,
@@ -672,10 +677,9 @@ impl Device {
 
         unsafe {
             let fns = self.instance.fns();
-            check_errors((fns.ext_debug_utils.set_debug_utils_object_name_ext)(
-                self.handle,
-                &info,
-            ))?;
+            (fns.ext_debug_utils.set_debug_utils_object_name_ext)(self.handle, &info)
+                .result()
+                .map_err(VulkanError::from)?;
         }
 
         Ok(())
@@ -756,7 +760,7 @@ pub enum DeviceCreationError {
     FeatureRestrictionNotMet(FeatureRestrictionError),
 }
 
-impl error::Error for DeviceCreationError {}
+impl Error for DeviceCreationError {}
 
 impl fmt::Display for DeviceCreationError {
     #[inline]
@@ -800,18 +804,18 @@ impl fmt::Display for DeviceCreationError {
     }
 }
 
-impl From<Error> for DeviceCreationError {
+impl From<VulkanError> for DeviceCreationError {
     #[inline]
-    fn from(err: Error) -> Self {
+    fn from(err: VulkanError) -> Self {
         match err {
-            Error::InitializationFailed => Self::InitializationFailed,
-            Error::OutOfHostMemory => Self::OutOfHostMemory,
-            Error::OutOfDeviceMemory => Self::OutOfDeviceMemory,
-            Error::DeviceLost => Self::DeviceLost,
-            Error::ExtensionNotPresent => Self::ExtensionNotPresent,
-            Error::FeatureNotPresent => Self::FeatureNotPresent,
-            Error::TooManyObjects => Self::TooManyObjects,
-            _ => panic!("Unexpected error value: {}", err as i32),
+            VulkanError::InitializationFailed => Self::InitializationFailed,
+            VulkanError::OutOfHostMemory => Self::OutOfHostMemory,
+            VulkanError::OutOfDeviceMemory => Self::OutOfDeviceMemory,
+            VulkanError::DeviceLost => Self::DeviceLost,
+            VulkanError::ExtensionNotPresent => Self::ExtensionNotPresent,
+            VulkanError::FeatureNotPresent => Self::FeatureNotPresent,
+            VulkanError::TooManyObjects => Self::TooManyObjects,
+            _ => panic!("Unexpected error value"),
         }
     }
 }
@@ -940,7 +944,7 @@ pub enum MemoryFdPropertiesError {
     NotSupported,
 }
 
-impl error::Error for MemoryFdPropertiesError {}
+impl Error for MemoryFdPropertiesError {}
 
 impl fmt::Display for MemoryFdPropertiesError {
     #[inline]
@@ -961,13 +965,13 @@ impl fmt::Display for MemoryFdPropertiesError {
     }
 }
 
-impl From<Error> for MemoryFdPropertiesError {
+impl From<VulkanError> for MemoryFdPropertiesError {
     #[inline]
-    fn from(err: Error) -> Self {
+    fn from(err: VulkanError) -> Self {
         match err {
-            Error::OutOfHostMemory => Self::OutOfHostMemory,
-            Error::InvalidExternalHandle => Self::InvalidExternalHandle,
-            _ => panic!("Unexpected error value: {}", err as i32),
+            VulkanError::OutOfHostMemory => Self::OutOfHostMemory,
+            VulkanError::InvalidExternalHandle => Self::InvalidExternalHandle,
+            _ => panic!("Unexpected error value"),
         }
     }
 }
@@ -1012,7 +1016,9 @@ impl Queue {
         unsafe {
             let fns = self.device.fns();
             let handle = self.handle.lock();
-            check_errors((fns.v1_0.queue_wait_idle)(*handle))?;
+            (fns.v1_0.queue_wait_idle)(*handle)
+                .result()
+                .map_err(VulkanError::from)?;
             Ok(())
         }
     }
@@ -1204,7 +1210,7 @@ pub enum DebugUtilsError {
     },
 }
 
-impl error::Error for DebugUtilsError {}
+impl Error for DebugUtilsError {}
 
 impl fmt::Display for DebugUtilsError {
     #[inline]

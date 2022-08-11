@@ -27,7 +27,7 @@ use crate::{
     swapchain::{self, PresentFuture, PresentRegion, Swapchain},
     DeviceSize, OomError,
 };
-use std::{error, fmt, ops::Range, sync::Arc};
+use std::{error::Error, fmt, ops::Range, sync::Arc};
 
 mod fence_signal;
 mod join;
@@ -405,7 +405,7 @@ pub enum AccessError {
     SwapchainImageAcquireOnly,
 }
 
-impl error::Error for AccessError {}
+impl Error for AccessError {}
 
 impl fmt::Display for AccessError {
     #[inline]
@@ -446,7 +446,7 @@ pub enum AccessCheckError {
     Unknown,
 }
 
-impl error::Error for AccessCheckError {}
+impl Error for AccessCheckError {}
 
 impl fmt::Display for AccessCheckError {
     #[inline]
@@ -490,15 +490,15 @@ pub enum FlushError {
 
     /// The swapchain has lost or doesn't have full screen exclusivity possibly for
     /// implementation-specific reasons outside of the application’s control.
-    FullScreenExclusiveLost,
+    FullScreenExclusiveModeLost,
 
     /// The flush operation needed to block, but the timeout has elapsed.
     Timeout,
 }
 
-impl error::Error for FlushError {
+impl Error for FlushError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             FlushError::AccessError(ref err) => Some(err),
             FlushError::OomError(ref err) => Some(err),
@@ -519,7 +519,7 @@ impl fmt::Display for FlushError {
                 FlushError::DeviceLost => "the connection to the device has been lost",
                 FlushError::SurfaceLost => "the surface of this swapchain is no longer valid",
                 FlushError::OutOfDate => "the swapchain needs to be recreated",
-                FlushError::FullScreenExclusiveLost => {
+                FlushError::FullScreenExclusiveModeLost => {
                     "the swapchain no longer has full screen exclusivity"
                 }
                 FlushError::Timeout => {
@@ -546,7 +546,9 @@ impl From<SubmitPresentError> for FlushError {
             SubmitPresentError::DeviceLost => FlushError::DeviceLost,
             SubmitPresentError::SurfaceLost => FlushError::SurfaceLost,
             SubmitPresentError::OutOfDate => FlushError::OutOfDate,
-            SubmitPresentError::FullScreenExclusiveLost => FlushError::FullScreenExclusiveLost,
+            SubmitPresentError::FullScreenExclusiveModeLost => {
+                FlushError::FullScreenExclusiveModeLost
+            }
         }
     }
 }

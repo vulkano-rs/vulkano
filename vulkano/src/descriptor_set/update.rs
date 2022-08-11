@@ -16,7 +16,7 @@ use crate::{
     DeviceSize, VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{ptr, sync::Arc};
+use std::{error::Error, ptr, sync::Arc};
 
 /// Represents a single write operation to the binding of a descriptor set.
 ///
@@ -955,8 +955,8 @@ pub enum DescriptorSetUpdateError {
     SamplerIsImmutable { binding: u32 },
 }
 
-impl std::error::Error for DescriptorSetUpdateError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+impl Error for DescriptorSetUpdateError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::ImageViewIncompatibleSampler { error, .. } => Some(error),
             _ => None,

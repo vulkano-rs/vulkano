@@ -142,11 +142,11 @@
 //! and choose which values you are going to use.
 //!
 //! ```no_run
-//! # use std::sync::Arc;
+//! # use std::{error::Error, sync::Arc};
 //! # use vulkano::device::Device;
 //! # use vulkano::swapchain::Surface;
 //! # use std::cmp::{max, min};
-//! # fn choose_caps(device: Arc<Device>, surface: Arc<Surface<()>>) -> Result<(), Box<dyn std::error::Error>> {
+//! # fn choose_caps(device: Arc<Device>, surface: Arc<Surface<()>>) -> Result<(), Box<dyn Error>> {
 //! let surface_capabilities = device
 //!     .physical_device()
 //!     .surface_capabilities(&surface, Default::default())?;
@@ -174,7 +174,7 @@
 //! Then, call [`Swapchain::new`](crate::swapchain::Swapchain::new).
 //!
 //! ```no_run
-//! # use std::sync::Arc;
+//! # use std::{error::Error, sync::Arc};
 //! # use vulkano::device::{Device, Queue};
 //! # use vulkano::image::ImageUsage;
 //! # use vulkano::sync::SharingMode;
@@ -185,7 +185,7 @@
 //! #     min_image_count: u32, image_format: Format, image_extent: [u32; 2],
 //! #     pre_transform: SurfaceTransform, composite_alpha: CompositeAlpha,
 //! #     present_mode: PresentMode, full_screen_exclusive: FullScreenExclusive
-//! # ) -> Result<(), Box<dyn std::error::Error>> {
+//! # ) -> Result<(), Box<dyn Error>> {
 //! // The created swapchain will be used as a color attachment for rendering.
 //! let image_usage = ImageUsage {
 //!     color_attachment: true,

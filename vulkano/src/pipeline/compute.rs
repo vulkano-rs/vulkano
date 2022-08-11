@@ -24,7 +24,6 @@
 
 use super::layout::PipelineLayoutCreateInfo;
 use crate::{
-    check_errors,
     descriptor_set::layout::{
         DescriptorSetLayout, DescriptorSetLayoutCreateInfo, DescriptorSetLayoutCreationError,
     },
@@ -35,9 +34,9 @@ use crate::{
         Pipeline, PipelineBindPoint,
     },
     shader::{DescriptorRequirements, EntryPoint, SpecializationConstants},
-    DeviceSize, Error, OomError, VulkanObject,
+    DeviceSize, OomError, VulkanError, VulkanObject,
 };
-use std::{collections::HashMap, error, fmt, mem, mem::MaybeUninit, ptr, sync::Arc};
+use std::{collections::HashMap, error::Error, fmt, mem, mem::MaybeUninit, ptr, sync::Arc};
 
 /// A pipeline object that describes to the Vulkan implementation how it should perform compute
 /// operations.
@@ -198,14 +197,16 @@ impl ComputePipeline {
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors((fns.v1_0.create_compute_pipelines)(
+            (fns.v1_0.create_compute_pipelines)(
                 device.internal_object(),
                 cache_handle,
                 1,
                 &infos,
                 ptr::null(),
                 output.as_mut_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -320,9 +321,9 @@ pub enum ComputePipelineCreationError {
     IncompatibleSpecializationConstants,
 }
 
-impl error::Error for ComputePipelineCreationError {
+impl Error for ComputePipelineCreationError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             Self::OomError(ref err) => Some(err),
             Self::DescriptorSetLayoutCreationError(ref err) => Some(err),
@@ -386,12 +387,12 @@ impl From<PipelineLayoutSupersetError> for ComputePipelineCreationError {
     }
 }
 
-impl From<Error> for ComputePipelineCreationError {
+impl From<VulkanError> for ComputePipelineCreationError {
     #[inline]
-    fn from(err: Error) -> ComputePipelineCreationError {
+    fn from(err: VulkanError) -> ComputePipelineCreationError {
         match err {
-            err @ Error::OutOfHostMemory => Self::OomError(OomError::from(err)),
-            err @ Error::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
+            err @ VulkanError::OutOfHostMemory => Self::OomError(OomError::from(err)),
+            err @ VulkanError::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
             _ => panic!("unexpected error: {:?}", err),
         }
     }

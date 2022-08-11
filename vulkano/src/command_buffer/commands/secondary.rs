@@ -23,7 +23,7 @@ use crate::{
     SafeDeref, VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{error, fmt};
+use std::{error::Error, fmt};
 
 /// # Commands to execute a secondary command buffer inside a primary command buffer.
 ///
@@ -689,9 +689,9 @@ pub enum ExecuteCommandsError {
     },
 }
 
-impl error::Error for ExecuteCommandsError {
+impl Error for ExecuteCommandsError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::SyncCommandBufferBuilderError(err) => Some(err),
             _ => None,

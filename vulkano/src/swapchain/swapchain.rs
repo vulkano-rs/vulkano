@@ -13,7 +13,6 @@ use super::{
 };
 use crate::{
     buffer::sys::UnsafeBuffer,
-    check_errors,
     command_buffer::submit::{
         SubmitAnyBuilder, SubmitPresentBuilder, SubmitPresentError, SubmitSemaphoresWaitBuilder,
     },
@@ -28,12 +27,13 @@ use crate::{
         AccessCheckError, AccessError, AccessFlags, Fence, FlushError, GpuFuture, PipelineStages,
         Semaphore, SemaphoreCreationError, Sharing,
     },
-    DeviceSize, Error, OomError, Success, VulkanObject,
+    DeviceSize, OomError, VulkanError, VulkanObject,
 };
 use parking_lot::Mutex;
 use smallvec::SmallVec;
 use std::{
-    error, fmt,
+    error::Error,
+    fmt,
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     ops::Range,
@@ -581,35 +581,43 @@ impl<W> Swapchain<W> {
 
         let handle = {
             let mut output = MaybeUninit::uninit();
-            check_errors((fns.khr_swapchain.create_swapchain_khr)(
+            (fns.khr_swapchain.create_swapchain_khr)(
                 device.internal_object(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
         let image_handles = loop {
             let mut count = 0;
-            check_errors((fns.khr_swapchain.get_swapchain_images_khr)(
+            (fns.khr_swapchain.get_swapchain_images_khr)(
                 device.internal_object(),
                 handle,
                 &mut count,
                 ptr::null_mut(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
 
             let mut images = Vec::with_capacity(count as usize);
-            let result = check_errors((fns.khr_swapchain.get_swapchain_images_khr)(
+            let result = (fns.khr_swapchain.get_swapchain_images_khr)(
                 device.internal_object(),
                 handle,
                 &mut count,
                 images.as_mut_ptr(),
-            ))?;
+            );
 
-            if !matches!(result, Success::Incomplete) {
-                images.set_len(count as usize);
-                break images;
+            match result {
+                ash::vk::Result::SUCCESS => {
+                    images.set_len(count as usize);
+                    break images;
+                }
+                ash::vk::Result::INCOMPLETE => (),
+                err => return Err(VulkanError::from(err).into()),
             }
         };
 
@@ -776,12 +784,13 @@ impl<W> Swapchain<W> {
 
         unsafe {
             let fns = self.device.fns();
-            check_errors((fns
-                .ext_full_screen_exclusive
+            (fns.ext_full_screen_exclusive
                 .acquire_full_screen_exclusive_mode_ext)(
                 self.device.internal_object(),
                 self.handle,
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
         }
 
         Ok(())
@@ -805,12 +814,13 @@ impl<W> Swapchain<W> {
 
         unsafe {
             let fns = self.device.fns();
-            check_errors((fns
-                .ext_full_screen_exclusive
+            (fns.ext_full_screen_exclusive
                 .release_full_screen_exclusive_mode_ext)(
                 self.device.internal_object(),
                 self.handle,
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
         }
 
         Ok(())
@@ -1103,9 +1113,9 @@ pub enum SwapchainCreationError {
     Win32MonitorInvalid,
 }
 
-impl error::Error for SwapchainCreationError {
+impl Error for SwapchainCreationError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             Self::OomError(ref err) => Some(err),
             _ => None,
@@ -1193,15 +1203,15 @@ impl fmt::Display for SwapchainCreationError {
     }
 }
 
-impl From<Error> for SwapchainCreationError {
+impl From<VulkanError> for SwapchainCreationError {
     #[inline]
-    fn from(err: Error) -> SwapchainCreationError {
+    fn from(err: VulkanError) -> SwapchainCreationError {
         match err {
-            err @ Error::OutOfHostMemory => Self::OomError(OomError::from(err)),
-            err @ Error::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
-            Error::DeviceLost => Self::DeviceLost,
-            Error::SurfaceLost => Self::SurfaceLost,
-            Error::NativeWindowInUse => Self::NativeWindowInUse,
+            err @ VulkanError::OutOfHostMemory => Self::OomError(OomError::from(err)),
+            err @ VulkanError::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
+            VulkanError::DeviceLost => Self::DeviceLost,
+            VulkanError::SurfaceLost => Self::SurfaceLost,
+            VulkanError::NativeWindowInUse => Self::NativeWindowInUse,
             _ => panic!("unexpected error: {:?}", err),
         }
     }
@@ -1300,9 +1310,9 @@ pub enum FullScreenExclusiveError {
     NotApplicationControlled,
 }
 
-impl error::Error for FullScreenExclusiveError {
+impl Error for FullScreenExclusiveError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             FullScreenExclusiveError::OomError(ref err) => Some(err),
             _ => None,
@@ -1336,16 +1346,18 @@ impl fmt::Display for FullScreenExclusiveError {
     }
 }
 
-impl From<Error> for FullScreenExclusiveError {
+impl From<VulkanError> for FullScreenExclusiveError {
     #[inline]
-    fn from(err: Error) -> FullScreenExclusiveError {
+    fn from(err: VulkanError) -> FullScreenExclusiveError {
         match err {
-            err @ Error::OutOfHostMemory => FullScreenExclusiveError::OomError(OomError::from(err)),
-            err @ Error::OutOfDeviceMemory => {
+            err @ VulkanError::OutOfHostMemory => {
                 FullScreenExclusiveError::OomError(OomError::from(err))
             }
-            Error::SurfaceLost => FullScreenExclusiveError::SurfaceLost,
-            Error::InitializationFailed => FullScreenExclusiveError::InitializationFailed,
+            err @ VulkanError::OutOfDeviceMemory => {
+                FullScreenExclusiveError::OomError(OomError::from(err))
+            }
+            VulkanError::SurfaceLost => FullScreenExclusiveError::SurfaceLost,
+            VulkanError::InitializationFailed => FullScreenExclusiveError::InitializationFailed,
             _ => panic!("unexpected error: {:?}", err),
         }
     }
@@ -1389,7 +1401,7 @@ pub fn acquire_next_image<W>(
         let acquire_result =
             unsafe { acquire_next_image_raw(&swapchain, timeout, Some(&semaphore), Some(&fence)) };
 
-        if let &Err(AcquireError::FullScreenExclusiveLost) = &acquire_result {
+        if let &Err(AcquireError::FullScreenExclusiveModeLost) = &acquire_result {
             swapchain
                 .full_screen_exclusive_held
                 .store(false, Ordering::SeqCst);
@@ -1631,7 +1643,7 @@ pub enum AcquireError {
 
     /// The swapchain has lost or doesn't have full-screen exclusivity possibly for
     /// implementation-specific reasons outside of the application’s control.
-    FullScreenExclusiveLost,
+    FullScreenExclusiveModeLost,
 
     /// The surface has changed in a way that makes the swapchain unusable. You must query the
     /// surface's new properties and recreate a new swapchain if you want to continue drawing.
@@ -1641,9 +1653,9 @@ pub enum AcquireError {
     SemaphoreError(SemaphoreCreationError),
 }
 
-impl error::Error for AcquireError {
+impl Error for AcquireError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             AcquireError::OomError(ref err) => Some(err),
             _ => None,
@@ -1663,7 +1675,7 @@ impl fmt::Display for AcquireError {
                 AcquireError::Timeout => "no image is available for acquiring yet",
                 AcquireError::SurfaceLost => "the surface of this swapchain is no longer valid",
                 AcquireError::OutOfDate => "the swapchain needs to be recreated",
-                AcquireError::FullScreenExclusiveLost => {
+                AcquireError::FullScreenExclusiveModeLost => {
                     "the swapchain no longer has full-screen exclusivity"
                 }
                 AcquireError::SemaphoreError(_) => "error creating semaphore",
@@ -1685,16 +1697,16 @@ impl From<OomError> for AcquireError {
     }
 }
 
-impl From<Error> for AcquireError {
+impl From<VulkanError> for AcquireError {
     #[inline]
-    fn from(err: Error) -> AcquireError {
+    fn from(err: VulkanError) -> AcquireError {
         match err {
-            err @ Error::OutOfHostMemory => AcquireError::OomError(OomError::from(err)),
-            err @ Error::OutOfDeviceMemory => AcquireError::OomError(OomError::from(err)),
-            Error::DeviceLost => AcquireError::DeviceLost,
-            Error::SurfaceLost => AcquireError::SurfaceLost,
-            Error::OutOfDate => AcquireError::OutOfDate,
-            Error::FullScreenExclusiveLost => AcquireError::FullScreenExclusiveLost,
+            err @ VulkanError::OutOfHostMemory => AcquireError::OomError(OomError::from(err)),
+            err @ VulkanError::OutOfDeviceMemory => AcquireError::OomError(OomError::from(err)),
+            VulkanError::DeviceLost => AcquireError::DeviceLost,
+            VulkanError::SurfaceLost => AcquireError::SurfaceLost,
+            VulkanError::OutOfDate => AcquireError::OutOfDate,
+            VulkanError::FullScreenExclusiveModeLost => AcquireError::FullScreenExclusiveModeLost,
             _ => panic!("unexpected error: {:?}", err),
         }
     }
@@ -1819,7 +1831,7 @@ where
             let build_submission_result = self.build_submission();
             self.flushed.store(true, Ordering::SeqCst);
 
-            if let &Err(FlushError::FullScreenExclusiveLost) = &build_submission_result {
+            if let &Err(FlushError::FullScreenExclusiveModeLost) = &build_submission_result {
                 self.swapchain
                     .full_screen_exclusive_held
                     .store(false, Ordering::SeqCst);
@@ -1830,7 +1842,7 @@ where
                 SubmitAnyBuilder::QueuePresent(present) => {
                     let present_result = present.submit(&self.queue);
 
-                    if let &Err(SubmitPresentError::FullScreenExclusiveLost) = &present_result {
+                    if let &Err(SubmitPresentError::FullScreenExclusiveModeLost) = &present_result {
                         self.swapchain
                             .full_screen_exclusive_held
                             .store(false, Ordering::SeqCst);
@@ -1963,7 +1975,7 @@ pub unsafe fn acquire_next_image_raw<W>(
     };
 
     let mut out = MaybeUninit::uninit();
-    let r = check_errors((fns.khr_swapchain.acquire_next_image_khr)(
+    let result = (fns.khr_swapchain.acquire_next_image_khr)(
         swapchain.device.internal_object(),
         swapchain.handle,
         timeout_ns,
@@ -1974,16 +1986,18 @@ pub unsafe fn acquire_next_image_raw<W>(
             .map(|f| f.internal_object())
             .unwrap_or(ash::vk::Fence::null()),
         out.as_mut_ptr(),
-    ))?;
+    );
 
-    let out = out.assume_init();
-    let (id, suboptimal) = match r {
-        Success::Success => (out as usize, false),
-        Success::Suboptimal => (out as usize, true),
-        Success::NotReady => return Err(AcquireError::Timeout),
-        Success::Timeout => return Err(AcquireError::Timeout),
-        s => panic!("unexpected success value: {:?}", s),
+    let suboptimal = match result {
+        ash::vk::Result::SUCCESS => false,
+        ash::vk::Result::SUBOPTIMAL_KHR => true,
+        ash::vk::Result::NOT_READY => return Err(AcquireError::Timeout),
+        ash::vk::Result::TIMEOUT => return Err(AcquireError::Timeout),
+        err => return Err(VulkanError::from(err).into()),
     };
 
-    Ok(AcquiredImage { id, suboptimal })
+    Ok(AcquiredImage {
+        id: out.assume_init() as usize,
+        suboptimal,
+    })
 }

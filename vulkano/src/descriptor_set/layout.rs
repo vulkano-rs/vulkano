@@ -12,15 +12,15 @@
 //! When creating a new descriptor set, you must provide a *layout* object to create it from.
 
 use crate::{
-    check_errors,
     device::{Device, DeviceOwned},
     sampler::Sampler,
     shader::{DescriptorRequirements, ShaderStages},
-    OomError, Version, VulkanObject,
+    OomError, Version, VulkanError, VulkanObject,
 };
 use std::{
     collections::{BTreeMap, HashMap},
-    error, fmt,
+    error::Error,
+    fmt,
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     ptr,
@@ -338,13 +338,14 @@ impl DescriptorSetLayout {
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors((fns.v1_0.create_descriptor_set_layout)(
+            (fns.v1_0.create_descriptor_set_layout)(
                 device.internal_object(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
-            ))
-            .map_err(|e| OomError::from(e))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -495,13 +496,13 @@ pub enum DescriptorSetLayoutCreationError {
     VariableDescriptorCountDescriptorTypeIncompatible { binding_num: u32 },
 }
 
-impl From<OomError> for DescriptorSetLayoutCreationError {
-    fn from(error: OomError) -> Self {
-        Self::OomError(error)
+impl From<VulkanError> for DescriptorSetLayoutCreationError {
+    fn from(error: VulkanError) -> Self {
+        Self::OomError(error.into())
     }
 }
 
-impl std::error::Error for DescriptorSetLayoutCreationError {}
+impl Error for DescriptorSetLayoutCreationError {}
 
 impl std::fmt::Display for DescriptorSetLayoutCreationError {
     #[inline]
@@ -769,7 +770,7 @@ pub enum DescriptorRequirementsNotMet {
     },
 }
 
-impl error::Error for DescriptorRequirementsNotMet {}
+impl Error for DescriptorRequirementsNotMet {}
 
 impl fmt::Display for DescriptorRequirementsNotMet {
     #[inline]

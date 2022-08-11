@@ -34,7 +34,8 @@ use crate::{
 };
 use smallvec::SmallVec;
 use std::{
-    error, fmt,
+    error::Error,
+    fmt,
     hash::{Hash, Hasher},
     marker::PhantomData,
     mem::size_of,
@@ -583,7 +584,7 @@ pub enum ReadLockError {
     GpuWriteLocked,
 }
 
-impl error::Error for ReadLockError {}
+impl Error for ReadLockError {}
 
 impl fmt::Display for ReadLockError {
     #[inline]
@@ -612,7 +613,7 @@ pub enum WriteLockError {
     GpuLocked,
 }
 
-impl error::Error for WriteLockError {}
+impl Error for WriteLockError {}
 
 impl fmt::Display for WriteLockError {
     #[inline]

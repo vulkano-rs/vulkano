@@ -8,14 +8,13 @@
 // according to those terms.
 
 use crate::{
-    check_errors,
     device::{DeviceOwned, Queue},
     swapchain::{PresentRegion, Swapchain},
     sync::Semaphore,
-    Error, OomError, SynchronizedVulkanObject, VulkanObject,
+    OomError, SynchronizedVulkanObject, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{error, fmt, marker::PhantomData, ptr};
+use std::{error::Error, fmt, marker::PhantomData, ptr};
 
 /// Prototype for a submission that presents a swapchain on the screen.
 // TODO: example here
@@ -169,10 +168,12 @@ impl<'a> SubmitPresentBuilder<'a> {
                 ..Default::default()
             };
 
-            check_errors((fns.khr_swapchain.queue_present_khr)(*queue, &infos))?;
+            (fns.khr_swapchain.queue_present_khr)(*queue, &infos)
+                .result()
+                .map_err(VulkanError::from)?;
 
             for result in results {
-                check_errors(result)?;
+                result.result().map_err(VulkanError::from)?;
             }
 
             Ok(())
@@ -205,16 +206,16 @@ pub enum SubmitPresentError {
 
     /// The swapchain has lost or doesn't have full-screen exclusivity possibly for
     /// implementation-specific reasons outside of the application’s control.
-    FullScreenExclusiveLost,
+    FullScreenExclusiveModeLost,
 
     /// The surface has changed in a way that makes the swapchain unusable. You must query the
     /// surface's new properties and recreate a new swapchain if you want to continue drawing.
     OutOfDate,
 }
 
-impl error::Error for SubmitPresentError {
+impl Error for SubmitPresentError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             SubmitPresentError::OomError(ref err) => Some(err),
             _ => None,
@@ -234,7 +235,7 @@ impl fmt::Display for SubmitPresentError {
                 SubmitPresentError::SurfaceLost =>
                     "the surface of this swapchain is no longer valid",
                 SubmitPresentError::OutOfDate => "the swapchain needs to be recreated",
-                SubmitPresentError::FullScreenExclusiveLost => {
+                SubmitPresentError::FullScreenExclusiveModeLost => {
                     "the swapchain no longer has full-screen exclusivity"
                 }
             }
@@ -242,16 +243,20 @@ impl fmt::Display for SubmitPresentError {
     }
 }
 
-impl From<Error> for SubmitPresentError {
+impl From<VulkanError> for SubmitPresentError {
     #[inline]
-    fn from(err: Error) -> SubmitPresentError {
+    fn from(err: VulkanError) -> SubmitPresentError {
         match err {
-            err @ Error::OutOfHostMemory => SubmitPresentError::OomError(OomError::from(err)),
-            err @ Error::OutOfDeviceMemory => SubmitPresentError::OomError(OomError::from(err)),
-            Error::DeviceLost => SubmitPresentError::DeviceLost,
-            Error::SurfaceLost => SubmitPresentError::SurfaceLost,
-            Error::OutOfDate => SubmitPresentError::OutOfDate,
-            Error::FullScreenExclusiveLost => SubmitPresentError::FullScreenExclusiveLost,
+            err @ VulkanError::OutOfHostMemory => SubmitPresentError::OomError(OomError::from(err)),
+            err @ VulkanError::OutOfDeviceMemory => {
+                SubmitPresentError::OomError(OomError::from(err))
+            }
+            VulkanError::DeviceLost => SubmitPresentError::DeviceLost,
+            VulkanError::SurfaceLost => SubmitPresentError::SurfaceLost,
+            VulkanError::OutOfDate => SubmitPresentError::OutOfDate,
+            VulkanError::FullScreenExclusiveModeLost => {
+                SubmitPresentError::FullScreenExclusiveModeLost
+            }
             _ => panic!("unexpected error: {:?}", err),
         }
     }

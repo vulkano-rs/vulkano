@@ -85,14 +85,14 @@
 //! ```
 
 use crate::{
-    check_errors,
     device::{Device, DeviceOwned},
     format::{ChromaSampling, Format, NumericType},
     sampler::{ComponentMapping, ComponentSwizzle, Filter},
-    Error, OomError, Version, VulkanObject,
+    OomError, Version, VulkanError, VulkanObject,
 };
 use std::{
-    error, fmt,
+    error::Error,
+    fmt,
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     ptr,
@@ -294,12 +294,14 @@ impl SamplerYcbcrConversion {
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(create_sampler_ycbcr_conversion(
+            create_sampler_ycbcr_conversion(
                 device.internal_object(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -515,9 +517,9 @@ pub enum SamplerYcbcrConversionCreationError {
     YcbcrRangeFormatNotEnoughBits,
 }
 
-impl error::Error for SamplerYcbcrConversionCreationError {
+impl Error for SamplerYcbcrConversionCreationError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             SamplerYcbcrConversionCreationError::OomError(ref err) => Some(err),
             _ => None,
@@ -583,14 +585,14 @@ impl From<OomError> for SamplerYcbcrConversionCreationError {
     }
 }
 
-impl From<Error> for SamplerYcbcrConversionCreationError {
+impl From<VulkanError> for SamplerYcbcrConversionCreationError {
     #[inline]
-    fn from(err: Error) -> SamplerYcbcrConversionCreationError {
+    fn from(err: VulkanError) -> SamplerYcbcrConversionCreationError {
         match err {
-            err @ Error::OutOfHostMemory => {
+            err @ VulkanError::OutOfHostMemory => {
                 SamplerYcbcrConversionCreationError::OomError(OomError::from(err))
             }
-            err @ Error::OutOfDeviceMemory => {
+            err @ VulkanError::OutOfDeviceMemory => {
                 SamplerYcbcrConversionCreationError::OomError(OomError::from(err))
             }
             _ => panic!("unexpected error: {:?}", err),

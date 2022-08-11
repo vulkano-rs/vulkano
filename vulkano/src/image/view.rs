@@ -15,15 +15,15 @@
 
 use super::{ImageAccess, ImageDimensions, ImageFormatInfo, ImageSubresourceRange, ImageUsage};
 use crate::{
-    check_errors,
     device::{Device, DeviceOwned},
     format::{ChromaSampling, Format, FormatFeatures},
     image::{ImageAspects, ImageTiling, ImageType, SampleCount},
     sampler::{ycbcr::SamplerYcbcrConversion, ComponentMapping},
-    Error, OomError, VulkanObject,
+    OomError, VulkanError, VulkanObject,
 };
 use std::{
-    error, fmt,
+    error::Error,
+    fmt,
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     ptr,
@@ -525,12 +525,14 @@ where
         let handle = {
             let fns = image_inner.device().fns();
             let mut output = MaybeUninit::uninit();
-            check_errors((fns.v1_0.create_image_view)(
+            (fns.v1_0.create_image_view)(
                 image_inner.device().internal_object(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -795,9 +797,9 @@ pub enum ImageViewCreationError {
     TypeNonArrayedMultipleArrayLayers,
 }
 
-impl error::Error for ImageViewCreationError {
+impl Error for ImageViewCreationError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             ImageViewCreationError::OomError(ref err) => Some(err),
             _ => None,
@@ -915,12 +917,12 @@ impl From<OomError> for ImageViewCreationError {
     }
 }
 
-impl From<Error> for ImageViewCreationError {
+impl From<VulkanError> for ImageViewCreationError {
     #[inline]
-    fn from(err: Error) -> ImageViewCreationError {
+    fn from(err: VulkanError) -> ImageViewCreationError {
         match err {
-            err @ Error::OutOfHostMemory => OomError::from(err).into(),
-            err @ Error::OutOfDeviceMemory => OomError::from(err).into(),
+            err @ VulkanError::OutOfHostMemory => OomError::from(err).into(),
+            err @ VulkanError::OutOfDeviceMemory => OomError::from(err).into(),
             _ => panic!("unexpected error: {:?}", err),
         }
     }

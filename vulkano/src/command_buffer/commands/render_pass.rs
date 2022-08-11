@@ -27,7 +27,7 @@ use crate::{
     Version, VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{cmp::min, error, fmt, ops::Range, sync::Arc};
+use std::{cmp::min, error::Error, fmt, ops::Range, sync::Arc};
 
 /// # Commands for render passes.
 ///
@@ -2811,9 +2811,9 @@ pub enum RenderPassError {
     },
 }
 
-impl error::Error for RenderPassError {
+impl Error for RenderPassError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::SyncCommandBufferBuilderError(err) => Some(err),
             _ => None,

@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, error, fmt, rc::Rc, sync::Arc};
+use std::{borrow::Borrow, error::Error, fmt, rc::Rc, sync::Arc};
 use vulkano::{
     instance::{Instance, InstanceExtensions},
     swapchain::{Surface, SurfaceCreationError},
@@ -70,9 +70,9 @@ pub enum CreationError {
     WindowCreationError(WindowCreationError),
 }
 
-impl error::Error for CreationError {
+impl Error for CreationError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             CreationError::SurfaceCreationError(ref err) => Some(err),
             CreationError::WindowCreationError(ref err) => Some(err),

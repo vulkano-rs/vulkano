@@ -9,15 +9,15 @@
 
 use super::RenderPass;
 use crate::{
-    check_errors,
     device::{Device, DeviceOwned},
     format::Format,
     image::{view::ImageViewType, ImageDimensions, ImageViewAbstract, SampleCount},
-    Error, OomError, VulkanObject,
+    OomError, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{
-    error, fmt,
+    error::Error,
+    fmt,
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     ops::Range,
@@ -309,12 +309,14 @@ impl Framebuffer {
         let handle = unsafe {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors((fns.v1_0.create_framebuffer)(
+            (fns.v1_0.create_framebuffer)(
                 device.internal_object(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -590,9 +592,9 @@ impl From<OomError> for FramebufferCreationError {
     }
 }
 
-impl error::Error for FramebufferCreationError {
+impl Error for FramebufferCreationError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             Self::OomError(ref err) => Some(err),
             _ => None,
@@ -715,9 +717,9 @@ impl fmt::Display for FramebufferCreationError {
     }
 }
 
-impl From<Error> for FramebufferCreationError {
+impl From<VulkanError> for FramebufferCreationError {
     #[inline]
-    fn from(err: Error) -> Self {
+    fn from(err: VulkanError) -> Self {
         Self::from(OomError::from(err))
     }
 }

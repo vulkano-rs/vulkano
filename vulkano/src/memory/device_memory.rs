@@ -9,13 +9,12 @@
 
 use super::DedicatedAllocation;
 use crate::{
-    check_errors,
     device::{physical::MemoryType, Device, DeviceOwned},
-    DeviceSize, Error, OomError, Version, VulkanObject,
+    DeviceSize, OomError, Version, VulkanError, VulkanObject,
 };
 use parking_lot::Mutex;
 use std::{
-    error,
+    error::Error,
     ffi::c_void,
     fmt,
     fs::File,
@@ -387,12 +386,14 @@ impl DeviceMemory {
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors((fns.v1_0.allocate_memory)(
+            (fns.v1_0.allocate_memory)(
                 device.internal_object(),
                 &allocate_info.build(),
                 ptr::null(),
                 output.as_mut_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -459,11 +460,13 @@ impl DeviceMemory {
                 };
 
                 let mut output = MaybeUninit::uninit();
-                check_errors((fns.khr_external_memory_fd.get_memory_fd_khr)(
+                (fns.khr_external_memory_fd.get_memory_fd_khr)(
                     self.device.internal_object(),
                     &info,
                     output.as_mut_ptr(),
-                ))?;
+                )
+                .result()
+                .map_err(VulkanError::from)?;
                 output.assume_init()
             };
 
@@ -573,9 +576,9 @@ pub enum DeviceMemoryAllocationError {
     ImplicitSpecViolation(&'static str),
 }
 
-impl error::Error for DeviceMemoryAllocationError {
+impl Error for DeviceMemoryAllocationError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             Self::OomError(ref err) => Some(err),
             Self::MemoryMapError(ref err) => Some(err),
@@ -632,12 +635,14 @@ impl fmt::Display for DeviceMemoryAllocationError {
     }
 }
 
-impl From<Error> for DeviceMemoryAllocationError {
+impl From<VulkanError> for DeviceMemoryAllocationError {
     #[inline]
-    fn from(err: Error) -> Self {
+    fn from(err: VulkanError) -> Self {
         match err {
-            e @ Error::OutOfHostMemory | e @ Error::OutOfDeviceMemory => Self::OomError(e.into()),
-            Error::TooManyObjects => Self::TooManyObjects,
+            e @ VulkanError::OutOfHostMemory | e @ VulkanError::OutOfDeviceMemory => {
+                Self::OomError(e.into())
+            }
+            VulkanError::TooManyObjects => Self::TooManyObjects,
             _ => panic!("unexpected error: {:?}", err),
         }
     }
@@ -1004,9 +1009,9 @@ pub enum DeviceMemoryExportError {
     },
 }
 
-impl error::Error for DeviceMemoryExportError {
+impl Error for DeviceMemoryExportError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             Self::OomError(ref err) => Some(err),
             _ => None,
@@ -1033,12 +1038,14 @@ impl fmt::Display for DeviceMemoryExportError {
     }
 }
 
-impl From<Error> for DeviceMemoryExportError {
+impl From<VulkanError> for DeviceMemoryExportError {
     #[inline]
-    fn from(err: Error) -> Self {
+    fn from(err: VulkanError) -> Self {
         match err {
-            e @ Error::OutOfHostMemory | e @ Error::OutOfDeviceMemory => Self::OomError(e.into()),
-            Error::TooManyObjects => Self::TooManyObjects,
+            e @ VulkanError::OutOfHostMemory | e @ VulkanError::OutOfDeviceMemory => {
+                Self::OomError(e.into())
+            }
+            VulkanError::TooManyObjects => Self::TooManyObjects,
             _ => panic!("unexpected error: {:?}", err),
         }
     }
@@ -1154,14 +1161,16 @@ impl MappedDeviceMemory {
         let pointer = unsafe {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors((fns.v1_0.map_memory)(
+            (fns.v1_0.map_memory)(
                 device.internal_object(),
                 memory.handle,
                 range.start,
                 range.end - range.start,
                 ash::vk::MemoryMapFlags::empty(),
                 output.as_mut_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -1224,11 +1233,13 @@ impl MappedDeviceMemory {
         };
 
         let fns = self.memory.device().fns();
-        check_errors((fns.v1_0.invalidate_mapped_memory_ranges)(
+        (fns.v1_0.invalidate_mapped_memory_ranges)(
             self.memory.device().internal_object(),
             1,
             &range,
-        ))?;
+        )
+        .result()
+        .map_err(VulkanError::from)?;
 
         Ok(())
     }
@@ -1271,11 +1282,9 @@ impl MappedDeviceMemory {
         };
 
         let fns = self.device().fns();
-        check_errors((fns.v1_0.flush_mapped_memory_ranges)(
-            self.memory.device().internal_object(),
-            1,
-            &range,
-        ))?;
+        (fns.v1_0.flush_mapped_memory_ranges)(self.memory.device().internal_object(), 1, &range)
+            .result()
+            .map_err(VulkanError::from)?;
 
         Ok(())
     }
@@ -1418,9 +1427,9 @@ pub enum MemoryMapError {
     },
 }
 
-impl error::Error for MemoryMapError {
+impl Error for MemoryMapError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             Self::OomError(ref err) => Some(err),
             _ => None,
@@ -1452,12 +1461,14 @@ impl fmt::Display for MemoryMapError {
     }
 }
 
-impl From<Error> for MemoryMapError {
+impl From<VulkanError> for MemoryMapError {
     #[inline]
-    fn from(err: Error) -> Self {
+    fn from(err: VulkanError) -> Self {
         match err {
-            e @ Error::OutOfHostMemory | e @ Error::OutOfDeviceMemory => Self::OomError(e.into()),
-            Error::MemoryMapFailed => Self::MemoryMapFailed,
+            e @ VulkanError::OutOfHostMemory | e @ VulkanError::OutOfDeviceMemory => {
+                Self::OomError(e.into())
+            }
+            VulkanError::MemoryMapFailed => Self::MemoryMapFailed,
             _ => panic!("unexpected error: {:?}", err),
         }
     }

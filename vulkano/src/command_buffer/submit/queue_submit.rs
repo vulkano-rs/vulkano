@@ -8,14 +8,13 @@
 // according to those terms.
 
 use crate::{
-    check_errors,
     command_buffer::sys::UnsafeCommandBuffer,
     device::Queue,
     sync::{Fence, PipelineStages, Semaphore},
-    Error, OomError, SynchronizedVulkanObject, VulkanObject,
+    OomError, SynchronizedVulkanObject, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{error, fmt, marker::PhantomData};
+use std::{error::Error, fmt, marker::PhantomData};
 
 /// Prototype for a submission that executes command buffers.
 // TODO: example here
@@ -209,7 +208,9 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
                 ..Default::default()
             };
 
-            check_errors((fns.v1_0.queue_submit)(*queue, 1, &batch, self.fence))?;
+            (fns.v1_0.queue_submit)(*queue, 1, &batch, self.fence)
+                .result()
+                .map_err(VulkanError::from)?;
             Ok(())
         }
     }
@@ -250,9 +251,9 @@ pub enum SubmitCommandBufferError {
     DeviceLost,
 }
 
-impl error::Error for SubmitCommandBufferError {
+impl Error for SubmitCommandBufferError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             SubmitCommandBufferError::OomError(ref err) => Some(err),
             _ => None,
@@ -275,15 +276,17 @@ impl fmt::Display for SubmitCommandBufferError {
     }
 }
 
-impl From<Error> for SubmitCommandBufferError {
+impl From<VulkanError> for SubmitCommandBufferError {
     #[inline]
-    fn from(err: Error) -> SubmitCommandBufferError {
+    fn from(err: VulkanError) -> SubmitCommandBufferError {
         match err {
-            err @ Error::OutOfHostMemory => SubmitCommandBufferError::OomError(OomError::from(err)),
-            err @ Error::OutOfDeviceMemory => {
+            err @ VulkanError::OutOfHostMemory => {
                 SubmitCommandBufferError::OomError(OomError::from(err))
             }
-            Error::DeviceLost => SubmitCommandBufferError::DeviceLost,
+            err @ VulkanError::OutOfDeviceMemory => {
+                SubmitCommandBufferError::OomError(OomError::from(err))
+            }
+            VulkanError::DeviceLost => SubmitCommandBufferError::DeviceLost,
             _ => panic!("unexpected error: {:?}", err),
         }
     }

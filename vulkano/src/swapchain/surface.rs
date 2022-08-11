@@ -9,21 +9,21 @@
 
 use super::{FullScreenExclusive, Win32Monitor};
 use crate::{
-    check_errors,
     image::ImageUsage,
     instance::Instance,
     swapchain::{
         display::{DisplayMode, DisplayPlane},
         SurfaceSwapchainLock,
     },
-    Error, OomError, VulkanObject,
+    OomError, VulkanError, VulkanObject,
 };
 
 #[cfg(target_os = "ios")]
 use objc::{class, msg_send, runtime::Object, sel, sel_impl};
 
 use std::{
-    error, fmt,
+    error::Error,
+    fmt,
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     os::raw::c_ulong,
@@ -122,12 +122,14 @@ impl<W> Surface<W> {
         let handle = unsafe {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors((fns.khr_display.create_display_plane_surface_khr)(
+            (fns.khr_display.create_display_plane_surface_khr)(
                 instance.internal_object(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -170,12 +172,14 @@ impl<W> Surface<W> {
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors((fns.khr_android_surface.create_android_surface_khr)(
+            (fns.khr_android_surface.create_android_surface_khr)(
                 instance.internal_object(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -220,12 +224,14 @@ impl<W> Surface<W> {
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors((fns.mvk_ios_surface.create_ios_surface_mvk)(
+            (fns.mvk_ios_surface.create_ios_surface_mvk)(
                 instance.internal_object(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -269,12 +275,14 @@ impl<W> Surface<W> {
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors((fns.mvk_macos_surface.create_mac_os_surface_mvk)(
+            (fns.mvk_macos_surface.create_mac_os_surface_mvk)(
                 instance.internal_object(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -317,12 +325,14 @@ impl<W> Surface<W> {
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors((fns.ext_metal_surface.create_metal_surface_ext)(
+            (fns.ext_metal_surface.create_metal_surface_ext)(
                 instance.internal_object(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -365,12 +375,14 @@ impl<W> Surface<W> {
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors((fns.nn_vi_surface.create_vi_surface_nn)(
+            (fns.nn_vi_surface.create_vi_surface_nn)(
                 instance.internal_object(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -417,12 +429,14 @@ impl<W> Surface<W> {
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors((fns.khr_wayland_surface.create_wayland_surface_khr)(
+            (fns.khr_wayland_surface.create_wayland_surface_khr)(
                 instance.internal_object(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -469,12 +483,14 @@ impl<W> Surface<W> {
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors((fns.khr_win32_surface.create_win32_surface_khr)(
+            (fns.khr_win32_surface.create_win32_surface_khr)(
                 instance.internal_object(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -521,12 +537,14 @@ impl<W> Surface<W> {
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors((fns.khr_xcb_surface.create_xcb_surface_khr)(
+            (fns.khr_xcb_surface.create_xcb_surface_khr)(
                 instance.internal_object(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -573,12 +591,14 @@ impl<W> Surface<W> {
         let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors((fns.khr_xlib_surface.create_xlib_surface_khr)(
+            (fns.khr_xlib_surface.create_xlib_surface_khr)(
                 instance.internal_object(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -713,9 +733,9 @@ pub enum SurfaceCreationError {
     },
 }
 
-impl error::Error for SurfaceCreationError {
+impl Error for SurfaceCreationError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             SurfaceCreationError::OomError(ref err) => Some(err),
             _ => None,
@@ -746,12 +766,16 @@ impl From<OomError> for SurfaceCreationError {
     }
 }
 
-impl From<Error> for SurfaceCreationError {
+impl From<VulkanError> for SurfaceCreationError {
     #[inline]
-    fn from(err: Error) -> SurfaceCreationError {
+    fn from(err: VulkanError) -> SurfaceCreationError {
         match err {
-            err @ Error::OutOfHostMemory => SurfaceCreationError::OomError(OomError::from(err)),
-            err @ Error::OutOfDeviceMemory => SurfaceCreationError::OomError(OomError::from(err)),
+            err @ VulkanError::OutOfHostMemory => {
+                SurfaceCreationError::OomError(OomError::from(err))
+            }
+            err @ VulkanError::OutOfDeviceMemory => {
+                SurfaceCreationError::OomError(OomError::from(err))
+            }
             _ => panic!("unexpected error: {:?}", err),
         }
     }

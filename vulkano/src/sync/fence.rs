@@ -8,13 +8,13 @@
 // according to those terms.
 
 use crate::{
-    check_errors,
     device::{Device, DeviceOwned},
-    Error, OomError, Success, VulkanObject,
+    OomError, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{
-    error, fmt,
+    error::Error,
+    fmt,
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     ptr,
@@ -64,12 +64,14 @@ impl Fence {
         let handle = unsafe {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors((fns.v1_0.create_fence)(
+            (fns.v1_0.create_fence)(
                 device.internal_object(),
                 &create_info,
                 ptr::null(),
                 output.as_mut_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -94,11 +96,9 @@ impl Fence {
                 unsafe {
                     // Make sure the fence isn't signaled
                     let fns = device.fns();
-                    check_errors((fns.v1_0.reset_fences)(
-                        device.internal_object(),
-                        1,
-                        &handle,
-                    ))?;
+                    (fns.v1_0.reset_fences)(device.internal_object(), 1, &handle)
+                        .result()
+                        .map_err(VulkanError::from)?;
                 }
 
                 Fence {
@@ -147,17 +147,14 @@ impl Fence {
             }
 
             let fns = self.device.fns();
-            let result = check_errors((fns.v1_0.get_fence_status)(
-                self.device.internal_object(),
-                self.handle,
-            ))?;
+            let result = (fns.v1_0.get_fence_status)(self.device.internal_object(), self.handle);
             match result {
-                Success::Success => {
+                ash::vk::Result::SUCCESS => {
                     self.is_signaled.store(true, Ordering::Relaxed);
                     Ok(true)
                 }
-                Success::NotReady => Ok(false),
-                _ => unreachable!(),
+                ash::vk::Result::NOT_READY => Ok(false),
+                err => Err(VulkanError::from(err).into()),
             }
         }
     }
@@ -183,21 +180,21 @@ impl Fence {
             };
 
             let fns = self.device.fns();
-            let r = check_errors((fns.v1_0.wait_for_fences)(
+            let result = (fns.v1_0.wait_for_fences)(
                 self.device.internal_object(),
                 1,
                 &self.handle,
                 ash::vk::TRUE,
                 timeout_ns,
-            ))?;
+            );
 
-            match r {
-                Success::Success => {
+            match result {
+                ash::vk::Result::SUCCESS => {
                     self.is_signaled.store(true, Ordering::Relaxed);
                     Ok(())
                 }
-                Success::Timeout => Err(FenceWaitError::Timeout),
-                _ => unreachable!(),
+                ash::vk::Result::TIMEOUT => Err(FenceWaitError::Timeout),
+                err => Err(VulkanError::from(err).into()),
             }
         }
     }
@@ -243,25 +240,25 @@ impl Fence {
             u64::MAX
         };
 
-        let r = if let Some(device) = device {
+        let result = if let Some(device) = device {
             unsafe {
                 let fns = device.fns();
-                check_errors((fns.v1_0.wait_for_fences)(
+                (fns.v1_0.wait_for_fences)(
                     device.internal_object(),
                     fences.len() as u32,
                     fences.as_ptr(),
                     ash::vk::TRUE,
                     timeout_ns,
-                ))?
+                )
             }
         } else {
             return Ok(());
         };
 
-        match r {
-            Success::Success => Ok(()),
-            Success::Timeout => Err(FenceWaitError::Timeout),
-            _ => unreachable!(),
+        match result {
+            ash::vk::Result::SUCCESS => Ok(()),
+            ash::vk::Result::TIMEOUT => Err(FenceWaitError::Timeout),
+            err => Err(VulkanError::from(err).into()),
         }
     }
 
@@ -272,11 +269,9 @@ impl Fence {
     pub fn reset(&mut self) -> Result<(), OomError> {
         unsafe {
             let fns = self.device.fns();
-            check_errors((fns.v1_0.reset_fences)(
-                self.device.internal_object(),
-                1,
-                &self.handle,
-            ))?;
+            (fns.v1_0.reset_fences)(self.device.internal_object(), 1, &self.handle)
+                .result()
+                .map_err(VulkanError::from)?;
             self.is_signaled.store(false, Ordering::Relaxed);
             Ok(())
         }
@@ -315,11 +310,13 @@ impl Fence {
         if let Some(device) = device {
             unsafe {
                 let fns = device.fns();
-                check_errors((fns.v1_0.reset_fences)(
+                (fns.v1_0.reset_fences)(
                     device.internal_object(),
                     fences.len() as u32,
                     fences.as_ptr(),
-                ))?;
+                )
+                .result()
+                .map_err(VulkanError::from)?;
             }
         }
         Ok(())
@@ -408,9 +405,9 @@ pub enum FenceWaitError {
     DeviceLostError,
 }
 
-impl error::Error for FenceWaitError {
+impl Error for FenceWaitError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             FenceWaitError::OomError(ref err) => Some(err),
             _ => None,
@@ -433,14 +430,14 @@ impl fmt::Display for FenceWaitError {
     }
 }
 
-impl From<Error> for FenceWaitError {
+impl From<VulkanError> for FenceWaitError {
     #[inline]
-    fn from(err: Error) -> FenceWaitError {
+    fn from(err: VulkanError) -> FenceWaitError {
         match err {
-            Error::OutOfHostMemory => FenceWaitError::OomError(From::from(err)),
-            Error::OutOfDeviceMemory => FenceWaitError::OomError(From::from(err)),
-            Error::DeviceLost => FenceWaitError::DeviceLostError,
-            _ => panic!("Unexpected error value: {}", err as i32),
+            VulkanError::OutOfHostMemory => FenceWaitError::OomError(From::from(err)),
+            VulkanError::OutOfDeviceMemory => FenceWaitError::OomError(From::from(err)),
+            VulkanError::DeviceLost => FenceWaitError::DeviceLostError,
+            _ => panic!("Unexpected error value"),
         }
     }
 }

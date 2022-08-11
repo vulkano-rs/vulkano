@@ -20,7 +20,6 @@ use super::{
 };
 use crate::{
     buffer::cpu_access::{ReadLockError, WriteLockError},
-    check_errors,
     device::{Device, DeviceOwned},
     format::{ChromaSampling, Format, FormatFeatures, NumericType},
     image::{view::ImageViewCreationError, ImageFormatInfo, ImageFormatProperties, ImageType},
@@ -30,13 +29,14 @@ use crate::{
     },
     range_map::RangeMap,
     sync::{AccessError, CurrentAccess, Sharing},
-    DeviceSize, Error, OomError, Version, VulkanObject,
+    DeviceSize, OomError, Version, VulkanError, VulkanObject,
 };
 use ash::vk::Handle;
 use parking_lot::{Mutex, MutexGuard};
 use smallvec::{smallvec, SmallVec};
 use std::{
-    error, fmt,
+    error::Error,
+    fmt,
     hash::{Hash, Hasher},
     iter::{FusedIterator, Peekable},
     mem::MaybeUninit,
@@ -839,12 +839,14 @@ impl UnsafeImage {
         let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors((fns.v1_0.create_image)(
+            (fns.v1_0.create_image)(
                 device.internal_object(),
                 &create_info.build(),
                 ptr::null(),
                 output.as_mut_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -1000,12 +1002,14 @@ impl UnsafeImage {
                 && mem_reqs.memory_type_bits & (1 << memory.memory_type().id()) != 0
         });
 
-        check_errors((fns.v1_0.bind_image_memory)(
+        (fns.v1_0.bind_image_memory)(
             self.device.internal_object(),
             self.handle,
             memory.internal_object(),
             offset,
-        ))?;
+        )
+        .result()
+        .map_err(VulkanError::from)?;
         Ok(())
     }
 
@@ -1625,9 +1629,9 @@ pub enum ImageCreationError {
     DirectImageViewCreationFailed(ImageViewCreationError),
 }
 
-impl error::Error for ImageCreationError {
+impl Error for ImageCreationError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             ImageCreationError::AllocError(ref err) => Some(err),
             _ => None,
@@ -1777,12 +1781,12 @@ impl From<DeviceMemoryAllocationError> for ImageCreationError {
     }
 }
 
-impl From<Error> for ImageCreationError {
+impl From<VulkanError> for ImageCreationError {
     #[inline]
-    fn from(err: Error) -> Self {
+    fn from(err: VulkanError) -> Self {
         match err {
-            err @ Error::OutOfHostMemory => Self::AllocError(err.into()),
-            err @ Error::OutOfDeviceMemory => Self::AllocError(err.into()),
+            err @ VulkanError::OutOfHostMemory => Self::AllocError(err.into()),
+            err @ VulkanError::OutOfDeviceMemory => Self::AllocError(err.into()),
             _ => panic!("unexpected error: {:?}", err),
         }
     }

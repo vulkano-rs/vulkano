@@ -25,7 +25,8 @@ use crate::{
 use parking_lot::Mutex;
 use std::{
     borrow::Cow,
-    error, fmt,
+    error::Error,
+    fmt,
     ops::Range,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -529,9 +530,9 @@ pub enum CommandBufferExecError {
     // TODO: missing entries (eg. wrong queue family, secondary command buffer)
 }
 
-impl error::Error for CommandBufferExecError {
+impl Error for CommandBufferExecError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             CommandBufferExecError::AccessError { ref error, .. } => Some(error),
             _ => None,

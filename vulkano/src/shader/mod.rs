@@ -18,7 +18,6 @@
 //! wraps around vulkano's shaders API.
 
 use crate::{
-    check_errors,
     descriptor_set::layout::DescriptorType,
     device::Device,
     format::{Format, NumericType},
@@ -26,12 +25,11 @@ use crate::{
     pipeline::{graphics::input_assembly::PrimitiveTopology, layout::PushConstantRange},
     shader::spirv::{Capability, Spirv, SpirvError},
     sync::PipelineStages,
-    DeviceSize, OomError, Version, VulkanObject,
+    DeviceSize, OomError, Version, VulkanError, VulkanObject,
 };
 use std::{
     borrow::Cow,
     collections::{HashMap, HashSet},
-    error,
     error::Error,
     ffi::{CStr, CString},
     fmt,
@@ -152,12 +150,14 @@ impl ShaderModule {
 
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors((fns.v1_0.create_shader_module)(
+            (fns.v1_0.create_shader_module)(
                 device.internal_object(),
                 &infos,
                 ptr::null(),
                 output.as_mut_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             output.assume_init()
         };
 
@@ -296,7 +296,7 @@ pub enum ShaderCreationError {
 
 impl Error for ShaderCreationError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::OomError(err) => Some(err),
             Self::SpirvCapabilityNotSupported { reason, .. } => Some(reason),
@@ -331,8 +331,8 @@ impl Display for ShaderCreationError {
     }
 }
 
-impl From<crate::Error> for ShaderCreationError {
-    fn from(err: crate::Error) -> Self {
+impl From<VulkanError> for ShaderCreationError {
+    fn from(err: VulkanError) -> Self {
         Self::OomError(err.into())
     }
 }
@@ -1018,7 +1018,7 @@ pub enum ShaderInterfaceMismatchError {
     },
 }
 
-impl error::Error for ShaderInterfaceMismatchError {}
+impl Error for ShaderInterfaceMismatchError {}
 
 impl fmt::Display for ShaderInterfaceMismatchError {
     #[inline]

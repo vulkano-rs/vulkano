@@ -47,7 +47,8 @@ use smallvec::SmallVec;
 use std::{
     borrow::Cow,
     collections::{hash_map::Entry, HashMap},
-    error, fmt,
+    error::Error,
+    fmt,
     ops::{Range, RangeInclusive},
     sync::Arc,
 };
@@ -883,7 +884,7 @@ pub enum SyncCommandBufferBuilderError {
     ExecError(CommandBufferExecError),
 }
 
-impl error::Error for SyncCommandBufferBuilderError {}
+impl Error for SyncCommandBufferBuilderError {}
 
 impl fmt::Display for SyncCommandBufferBuilderError {
     #[inline]

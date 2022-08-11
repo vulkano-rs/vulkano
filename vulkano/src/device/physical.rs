@@ -9,7 +9,6 @@
 
 use crate::{
     buffer::{BufferUsage, ExternalBufferInfo, ExternalBufferProperties},
-    check_errors,
     device::{DeviceExtensions, Features, FeaturesFfi, Properties, PropertiesFfi},
     format::{Format, FormatProperties},
     image::{ImageCreateFlags, ImageFormatInfo, ImageFormatProperties, ImageUsage},
@@ -19,9 +18,9 @@ use crate::{
         SurfaceApi, SurfaceCapabilities, SurfaceInfo,
     },
     sync::{ExternalSemaphoreInfo, ExternalSemaphoreProperties, PipelineStage},
-    DeviceSize, Error, OomError, Success, Version, VulkanObject,
+    DeviceSize, OomError, Version, VulkanError, VulkanObject,
 };
-use std::{error, ffi::CStr, fmt, hash::Hash, mem::MaybeUninit, ptr, sync::Arc};
+use std::{error::Error, ffi::CStr, fmt, hash::Hash, mem::MaybeUninit, ptr, sync::Arc};
 
 #[derive(Clone, Debug)]
 pub(crate) struct PhysicalDeviceInfo {
@@ -43,22 +42,28 @@ pub(crate) fn init_physical_devices(
     let handles = unsafe {
         loop {
             let mut count = 0;
-            check_errors((fns.v1_0.enumerate_physical_devices)(
+            (fns.v1_0.enumerate_physical_devices)(
                 instance.internal_object(),
                 &mut count,
                 ptr::null_mut(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
 
             let mut handles = Vec::with_capacity(count as usize);
-            let result = check_errors((fns.v1_0.enumerate_physical_devices)(
+            let result = (fns.v1_0.enumerate_physical_devices)(
                 instance.internal_object(),
                 &mut count,
                 handles.as_mut_ptr(),
-            ))?;
+            );
 
-            if !matches!(result, Success::Incomplete) {
-                handles.set_len(count as usize);
-                break handles;
+            match result {
+                ash::vk::Result::SUCCESS => {
+                    handles.set_len(count as usize);
+                    break handles;
+                }
+                ash::vk::Result::INCOMPLETE => (),
+                err => return Err(VulkanError::from(err).into()),
             }
         }
     };
@@ -77,24 +82,30 @@ pub(crate) fn init_physical_devices(
             let extension_properties = unsafe {
                 loop {
                     let mut count = 0;
-                    check_errors((fns.v1_0.enumerate_device_extension_properties)(
+                    (fns.v1_0.enumerate_device_extension_properties)(
                         handle,
                         ptr::null(),
                         &mut count,
                         ptr::null_mut(),
-                    ))?;
+                    )
+                    .result()
+                    .map_err(VulkanError::from)?;
 
                     let mut properties = Vec::with_capacity(count as usize);
-                    let result = check_errors((fns.v1_0.enumerate_device_extension_properties)(
+                    let result = (fns.v1_0.enumerate_device_extension_properties)(
                         handle,
                         ptr::null(),
                         &mut count,
                         properties.as_mut_ptr(),
-                    ))?;
+                    );
 
-                    if !matches!(result, Success::Incomplete) {
-                        properties.set_len(count as usize);
-                        break properties;
+                    match result {
+                        ash::vk::Result::SUCCESS => {
+                            properties.set_len(count as usize);
+                            break properties;
+                        }
+                        ash::vk::Result::INCOMPLETE => (),
+                        err => return Err(VulkanError::from(err).into()),
                     }
                 }
             };
@@ -741,7 +752,7 @@ impl<'a> PhysicalDevice<'a> {
         let result = unsafe {
             let fns = self.instance.fns();
 
-            check_errors(if self.api_version() >= Version::V1_1 {
+            if self.api_version() >= Version::V1_1 {
                 (fns.v1_1.get_physical_device_image_format_properties2)(
                     self.info.handle,
                     &format_info2.build(),
@@ -773,7 +784,9 @@ impl<'a> PhysicalDevice<'a> {
                     format_info2.flags,
                     &mut image_format_properties2.image_format_properties,
                 )
-            })
+            }
+            .result()
+            .map_err(VulkanError::from)
         };
 
         match result {
@@ -791,7 +804,7 @@ impl<'a> PhysicalDevice<'a> {
                     }),
                 ..image_format_properties2.image_format_properties.into()
             })),
-            Err(Error::FormatNotSupported) => Ok(None),
+            Err(VulkanError::FormatNotSupported) => Ok(None),
             Err(err) => Err(err.into()),
         }
     }
@@ -986,21 +999,22 @@ impl<'a> PhysicalDevice<'a> {
                 .enabled_extensions()
                 .khr_get_surface_capabilities2
             {
-                check_errors((fns
-                    .khr_get_surface_capabilities2
+                (fns.khr_get_surface_capabilities2
                     .get_physical_device_surface_capabilities2_khr)(
                     self.internal_object(),
                     &surface_info2,
                     &mut surface_capabilities2,
-                ))?;
+                )
+                .result()
+                .map_err(VulkanError::from)?;
             } else {
-                check_errors((fns
-                    .khr_surface
-                    .get_physical_device_surface_capabilities_khr)(
+                (fns.khr_surface.get_physical_device_surface_capabilities_khr)(
                     self.internal_object(),
                     surface_info2.surface,
                     &mut surface_capabilities2.surface_capabilities,
-                ))?;
+                )
+                .result()
+                .map_err(VulkanError::from)?;
             };
         }
 
@@ -1173,29 +1187,34 @@ impl<'a> PhysicalDevice<'a> {
             let surface_format2s = unsafe {
                 loop {
                     let mut count = 0;
-                    check_errors((fns
-                        .khr_get_surface_capabilities2
+                    (fns.khr_get_surface_capabilities2
                         .get_physical_device_surface_formats2_khr)(
                         self.internal_object(),
                         &surface_info2,
                         &mut count,
                         ptr::null_mut(),
-                    ))?;
+                    )
+                    .result()
+                    .map_err(VulkanError::from)?;
 
                     let mut surface_format2s =
                         vec![ash::vk::SurfaceFormat2KHR::default(); count as usize];
-                    let result = check_errors((fns
+                    let result = (fns
                         .khr_get_surface_capabilities2
                         .get_physical_device_surface_formats2_khr)(
                         self.internal_object(),
                         &surface_info2,
                         &mut count,
                         surface_format2s.as_mut_ptr(),
-                    ))?;
+                    );
 
-                    if !matches!(result, Success::Incomplete) {
-                        surface_format2s.set_len(count as usize);
-                        break surface_format2s;
+                    match result {
+                        ash::vk::Result::SUCCESS => {
+                            surface_format2s.set_len(count as usize);
+                            break surface_format2s;
+                        }
+                        ash::vk::Result::INCOMPLETE => (),
+                        err => return Err(VulkanError::from(err).into()),
                     }
                 }
             };
@@ -1217,25 +1236,30 @@ impl<'a> PhysicalDevice<'a> {
             let surface_formats = unsafe {
                 loop {
                     let mut count = 0;
-                    check_errors((fns.khr_surface.get_physical_device_surface_formats_khr)(
+                    (fns.khr_surface.get_physical_device_surface_formats_khr)(
                         self.internal_object(),
                         surface.internal_object(),
                         &mut count,
                         ptr::null_mut(),
-                    ))?;
+                    )
+                    .result()
+                    .map_err(VulkanError::from)?;
 
                     let mut surface_formats = Vec::with_capacity(count as usize);
-                    let result =
-                        check_errors((fns.khr_surface.get_physical_device_surface_formats_khr)(
-                            self.internal_object(),
-                            surface.internal_object(),
-                            &mut count,
-                            surface_formats.as_mut_ptr(),
-                        ))?;
+                    let result = (fns.khr_surface.get_physical_device_surface_formats_khr)(
+                        self.internal_object(),
+                        surface.internal_object(),
+                        &mut count,
+                        surface_formats.as_mut_ptr(),
+                    );
 
-                    if !matches!(result, Success::Incomplete) {
-                        surface_formats.set_len(count as usize);
-                        break surface_formats;
+                    match result {
+                        ash::vk::Result::SUCCESS => {
+                            surface_formats.set_len(count as usize);
+                            break surface_formats;
+                        }
+                        ash::vk::Result::INCOMPLETE => (),
+                        err => return Err(VulkanError::from(err).into()),
                     }
                 }
             };
@@ -1269,28 +1293,33 @@ impl<'a> PhysicalDevice<'a> {
         let modes = unsafe {
             loop {
                 let mut count = 0;
-                check_errors((fns
-                    .khr_surface
+                (fns.khr_surface
                     .get_physical_device_surface_present_modes_khr)(
                     self.internal_object(),
                     surface.internal_object(),
                     &mut count,
                     ptr::null_mut(),
-                ))?;
+                )
+                .result()
+                .map_err(VulkanError::from)?;
 
                 let mut modes = Vec::with_capacity(count as usize);
-                let result = check_errors((fns
+                let result = (fns
                     .khr_surface
                     .get_physical_device_surface_present_modes_khr)(
                     self.internal_object(),
                     surface.internal_object(),
                     &mut count,
                     modes.as_mut_ptr(),
-                ))?;
+                );
 
-                if !matches!(result, Success::Incomplete) {
-                    modes.set_len(count as usize);
-                    break modes;
+                match result {
+                    ash::vk::Result::SUCCESS => {
+                        modes.set_len(count as usize);
+                        break modes;
+                    }
+                    ash::vk::Result::INCOMPLETE => (),
+                    err => return Err(VulkanError::from(err).into()),
                 }
             }
         };
@@ -1592,12 +1621,14 @@ impl<'a> QueueFamily<'a> {
             let fns = self.physical_device.instance.fns();
 
             let mut output = MaybeUninit::uninit();
-            check_errors((fns.khr_surface.get_physical_device_surface_support_khr)(
+            (fns.khr_surface.get_physical_device_surface_support_khr)(
                 self.physical_device.internal_object(),
                 self.id,
                 surface.internal_object(),
                 output.as_mut_ptr(),
-            ))?;
+            )
+            .result()
+            .map_err(VulkanError::from)?;
             Ok(output.assume_init() != 0)
         }
     }
@@ -1797,9 +1828,9 @@ pub enum SurfacePropertiesError {
     NotSupported,
 }
 
-impl error::Error for SurfacePropertiesError {
+impl Error for SurfacePropertiesError {
     #[inline]
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             Self::OomError(ref err) => Some(err),
             _ => None,
@@ -1829,13 +1860,13 @@ impl From<OomError> for SurfacePropertiesError {
     }
 }
 
-impl From<Error> for SurfacePropertiesError {
+impl From<VulkanError> for SurfacePropertiesError {
     #[inline]
-    fn from(err: Error) -> SurfacePropertiesError {
+    fn from(err: VulkanError) -> SurfacePropertiesError {
         match err {
-            err @ Error::OutOfHostMemory => Self::OomError(OomError::from(err)),
-            err @ Error::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
-            Error::SurfaceLost => Self::SurfaceLost,
+            err @ VulkanError::OutOfHostMemory => Self::OomError(OomError::from(err)),
+            err @ VulkanError::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
+            VulkanError::SurfaceLost => Self::SurfaceLost,
             _ => panic!("unexpected error: {:?}", err),
         }
     }

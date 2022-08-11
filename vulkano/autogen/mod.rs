@@ -21,10 +21,11 @@ use std::{
     process::Command,
 };
 use vk_parse::{
-    Extension, ExtensionChild, Feature, Format, InterfaceItem, Registry, RegistryChild,
-    SpirvExtOrCap, Type, TypeSpec, TypesChild,
+    Enum, EnumSpec, Enums, EnumsChild, Extension, ExtensionChild, Feature, Format, InterfaceItem,
+    Registry, RegistryChild, SpirvExtOrCap, Type, TypeSpec, TypesChild,
 };
 
+mod errors;
 mod extensions;
 mod features;
 mod fns;
@@ -40,6 +41,7 @@ pub fn autogen() {
     let vk_data = VkRegistryData::new(&registry);
     let spirv_grammar = get_spirv_grammar("spirv.core.grammar.json");
 
+    errors::write(&vk_data);
     extensions::write(&vk_data);
     features::write(&vk_data);
     formats::write(&vk_data);
@@ -85,6 +87,7 @@ fn get_vk_registry<P: AsRef<Path> + ?Sized>(path: &P) -> Registry {
 
 pub struct VkRegistryData<'r> {
     pub header_version: (u16, u16, u16),
+    pub errors: Vec<&'r str>,
     pub extensions: IndexMap<&'r str, &'r Extension>,
     pub features: IndexMap<&'r str, &'r Feature>,
     pub formats: Vec<&'r Format>,
@@ -101,11 +104,13 @@ impl<'r> VkRegistryData<'r> {
         let formats = Self::get_formats(&registry);
         let spirv_capabilities = Self::get_spirv_capabilities(registry);
         let spirv_extensions = Self::get_spirv_extensions(registry);
+        let errors = Self::get_errors(&registry, &features, &extensions);
         let types = Self::get_types(&registry, &aliases, &features, &extensions);
         let header_version = Self::get_header_version(&registry);
 
         VkRegistryData {
             header_version,
+            errors,
             extensions,
             features,
             formats,
@@ -168,6 +173,63 @@ impl<'r> VkRegistryData<'r> {
             })
             .flatten()
             .collect()
+    }
+
+    fn get_errors<'a>(
+        registry: &'a Registry,
+        features: &IndexMap<&'a str, &'a Feature>,
+        extensions: &IndexMap<&'a str, &'a Extension>,
+    ) -> Vec<&'a str> {
+        (registry
+            .0
+            .iter()
+            .filter_map(|child| match child {
+                RegistryChild::Enums(Enums {
+                    name: Some(name),
+                    children,
+                    ..
+                }) if name == "VkResult" => Some(children.iter().filter_map(|en| {
+                    if let EnumsChild::Enum(en) = en {
+                        if let EnumSpec::Value { value, .. } = &en.spec {
+                            if value.starts_with("-") {
+                                return Some(en.name.as_str());
+                            }
+                        }
+                    }
+                    None
+                })),
+                _ => None,
+            })
+            .flatten())
+        .chain(
+            (features.values().map(|feature| feature.children.iter()))
+                .chain(
+                    extensions
+                        .values()
+                        .map(|extension| extension.children.iter()),
+                )
+                .flatten()
+                .filter_map(|child| {
+                    if let ExtensionChild::Require { items, .. } = child {
+                        return Some(items.iter().filter_map(|item| match item {
+                            InterfaceItem::Enum(Enum {
+                                name,
+                                spec:
+                                    EnumSpec::Offset {
+                                        extends,
+                                        dir: false,
+                                        ..
+                                    },
+                                ..
+                            }) if extends == "VkResult" => Some(name.as_str()),
+                            _ => None,
+                        }));
+                    }
+                    None
+                })
+                .flatten(),
+        )
+        .collect()
     }
 
     fn get_extensions(registry: &Registry) -> IndexMap<&str, &Extension> {
