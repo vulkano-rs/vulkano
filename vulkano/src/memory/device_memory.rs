@@ -13,6 +13,7 @@ use crate::{
     device::{physical::MemoryType, Device, DeviceOwned},
     DeviceSize, Error, OomError, Version, VulkanObject,
 };
+use parking_lot::Mutex;
 use std::{
     error,
     ffi::c_void,
@@ -22,7 +23,7 @@ use std::{
     mem::MaybeUninit,
     ops::{BitOr, Range},
     ptr, slice,
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
 /// Represents memory that has been allocated from the device.
@@ -370,7 +371,7 @@ impl DeviceMemory {
             allocate_info = allocate_info.push_next(info);
         }
 
-        let mut allocation_count = device.allocation_count().lock().expect("Poisoned mutex");
+        let mut allocation_count = device.allocation_count().lock();
 
         // VUID-vkAllocateMemory-maxMemoryAllocationCount-04101
         // This is technically validation, but it must be atomic with the `allocate_memory` call.
@@ -478,11 +479,7 @@ impl Drop for DeviceMemory {
         unsafe {
             let fns = self.device.fns();
             (fns.v1_0.free_memory)(self.device.internal_object(), self.handle, ptr::null());
-            let mut allocation_count = self
-                .device
-                .allocation_count()
-                .lock()
-                .expect("Poisoned mutex");
+            let mut allocation_count = self.device.allocation_count().lock();
             *allocation_count -= 1;
         }
     }
@@ -1573,7 +1570,7 @@ mod tests {
     fn allocation_count() {
         let (device, _) = gfx_dev_and_queue!();
         let memory_type = device.physical_device().memory_types().next().unwrap();
-        assert_eq!(*device.allocation_count().lock().unwrap(), 0);
+        assert_eq!(*device.allocation_count().lock(), 0);
         let mem1 = DeviceMemory::allocate(
             device.clone(),
             MemoryAllocateInfo {
@@ -1583,7 +1580,7 @@ mod tests {
             },
         )
         .unwrap();
-        assert_eq!(*device.allocation_count().lock().unwrap(), 1);
+        assert_eq!(*device.allocation_count().lock(), 1);
         {
             let mem2 = DeviceMemory::allocate(
                 device.clone(),
@@ -1594,8 +1591,8 @@ mod tests {
                 },
             )
             .unwrap();
-            assert_eq!(*device.allocation_count().lock().unwrap(), 2);
+            assert_eq!(*device.allocation_count().lock(), 2);
         }
-        assert_eq!(*device.allocation_count().lock().unwrap(), 1);
+        assert_eq!(*device.allocation_count().lock(), 1);
     }
 }

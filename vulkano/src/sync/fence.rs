@@ -88,7 +88,7 @@ impl Fence {
     /// For most applications, using the fence pool should be preferred,
     /// in order to avoid creating new fences every frame.
     pub fn from_pool(device: Arc<Device>) -> Result<Fence, OomError> {
-        let handle = device.fence_pool().lock().unwrap().pop();
+        let handle = device.fence_pool().lock().pop();
         let fence = match handle {
             Some(handle) => {
                 unsafe {
@@ -332,7 +332,7 @@ impl Drop for Fence {
         unsafe {
             if self.must_put_in_pool {
                 let raw_fence = self.handle;
-                self.device.fence_pool().lock().unwrap().push(raw_fence);
+                self.device.fence_pool().lock().push(raw_fence);
             } else {
                 let fns = self.device.fns();
                 (fns.v1_0.destroy_fence)(self.device.internal_object(), self.handle, ptr::null());
@@ -576,16 +576,16 @@ mod tests {
     fn fence_pool() {
         let (device, _) = gfx_dev_and_queue!();
 
-        assert_eq!(device.fence_pool().lock().unwrap().len(), 0);
+        assert_eq!(device.fence_pool().lock().len(), 0);
         let fence1_internal_obj = {
             let fence = Fence::from_pool(device.clone()).unwrap();
-            assert_eq!(device.fence_pool().lock().unwrap().len(), 0);
+            assert_eq!(device.fence_pool().lock().len(), 0);
             fence.internal_object()
         };
 
-        assert_eq!(device.fence_pool().lock().unwrap().len(), 1);
+        assert_eq!(device.fence_pool().lock().len(), 1);
         let fence2 = Fence::from_pool(device.clone()).unwrap();
-        assert_eq!(device.fence_pool().lock().unwrap().len(), 0);
+        assert_eq!(device.fence_pool().lock().len(), 0);
         assert_eq!(fence2.internal_object(), fence1_internal_obj);
     }
 }

@@ -19,9 +19,10 @@ use crate::{
     },
     DeviceSize,
 };
+use parking_lot::Mutex;
 use std::{
     collections::{hash_map::Entry, HashMap},
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
 #[derive(Debug)]
@@ -53,7 +54,7 @@ fn generic_allocation(
     layout: AllocLayout,
     map: MappingRequirement,
 ) -> Result<StandardMemoryPoolAlloc, DeviceMemoryAllocationError> {
-    let mut pools = mem_pool.pools.lock().unwrap();
+    let mut pools = mem_pool.pools.lock();
 
     let memory_type_host_visible = memory_type.is_host_visible();
     assert!(memory_type_host_visible || map == MappingRequirement::DoNotMap);

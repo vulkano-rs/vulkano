@@ -443,7 +443,7 @@ impl AttachmentImage {
 
         let mem_reqs = image.memory_requirements();
         let memory = MemoryPool::alloc_from_requirements(
-            &device.standard_memory_pool(),
+            device.standard_memory_pool(),
             &mem_reqs,
             AllocLayout::Optimal,
             MappingRequirement::DoNotMap,

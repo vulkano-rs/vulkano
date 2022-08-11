@@ -196,7 +196,7 @@ where
     #[inline]
     pub fn new(device: Arc<Device>, usage: BufferUsage) -> CpuBufferPool<T> {
         assert!(size_of::<T>() > 0);
-        let pool = device.standard_memory_pool();
+        let pool = device.standard_memory_pool().clone();
 
         CpuBufferPool {
             device,

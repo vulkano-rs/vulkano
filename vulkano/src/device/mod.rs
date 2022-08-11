@@ -116,6 +116,8 @@ pub use crate::{
     fns::DeviceFunctions,
 };
 use ash::vk::Handle;
+use once_cell::sync::OnceCell;
+use parking_lot::{Mutex, MutexGuard};
 use smallvec::SmallVec;
 use std::{
     cell::RefCell,
@@ -128,7 +130,7 @@ use std::{
     mem::MaybeUninit,
     ops::Deref,
     ptr,
-    sync::{Arc, Mutex, MutexGuard, Weak},
+    sync::Arc,
 };
 
 pub(crate) mod extensions;
@@ -148,7 +150,7 @@ pub struct Device {
     api_version: Version,
 
     fns: DeviceFunctions,
-    standard_pool: Mutex<Weak<StandardMemoryPool>>,
+    standard_memory_pool: OnceCell<Arc<StandardMemoryPool>>,
     enabled_extensions: DeviceExtensions,
     enabled_features: Features,
     active_queue_families: SmallVec<[u32; 2]>,
@@ -404,7 +406,7 @@ impl Device {
             physical_device: physical_device.index(),
             api_version,
             fns,
-            standard_pool: Mutex::new(Weak::new()),
+            standard_memory_pool: OnceCell::new(),
             enabled_extensions,
             enabled_features,
             active_queue_families,
@@ -506,17 +508,9 @@ impl Device {
     }
 
     /// Returns the standard memory pool used by default if you don't provide any other pool.
-    pub fn standard_memory_pool(self: &Arc<Self>) -> Arc<StandardMemoryPool> {
-        let mut pool = self.standard_pool.lock().unwrap();
-
-        if let Some(p) = pool.upgrade() {
-            return p;
-        }
-
-        // The weak pointer is empty, so we create the pool.
-        let new_pool = StandardMemoryPool::new(self.clone());
-        *pool = Arc::downgrade(&new_pool);
-        new_pool
+    pub fn standard_memory_pool<'a>(self: &'a Arc<Self>) -> &'a Arc<StandardMemoryPool> {
+        self.standard_memory_pool
+            .get_or_init(|| StandardMemoryPool::new(self.clone()))
     }
 
     /// Gives you access to the standard descriptor pool that is used by default if you don't
@@ -694,13 +688,13 @@ impl Drop for Device {
         let fns = self.fns();
 
         unsafe {
-            for &raw_fence in self.fence_pool.lock().unwrap().iter() {
+            for &raw_fence in self.fence_pool.lock().iter() {
                 (fns.v1_0.destroy_fence)(self.handle, raw_fence, ptr::null());
             }
-            for &raw_sem in self.semaphore_pool.lock().unwrap().iter() {
+            for &raw_sem in self.semaphore_pool.lock().iter() {
                 (fns.v1_0.destroy_semaphore)(self.handle, raw_sem, ptr::null());
             }
-            for &raw_event in self.event_pool.lock().unwrap().iter() {
+            for &raw_event in self.event_pool.lock().iter() {
                 (fns.v1_0.destroy_event)(self.handle, raw_event, ptr::null());
             }
             (fns.v1_0.destroy_device)(self.handle, ptr::null());
@@ -1017,7 +1011,7 @@ impl Queue {
     pub fn wait(&self) -> Result<(), OomError> {
         unsafe {
             let fns = self.device.fns();
-            let handle = self.handle.lock().unwrap();
+            let handle = self.handle.lock();
             check_errors((fns.v1_0.queue_wait_idle)(*handle))?;
             Ok(())
         }
@@ -1049,7 +1043,7 @@ impl Queue {
 
         unsafe {
             let fns = self.device.instance().fns();
-            let handle = self.handle.lock().unwrap();
+            let handle = self.handle.lock();
             (fns.ext_debug_utils.queue_begin_debug_utils_label_ext)(*handle, &label_info);
         }
 
@@ -1090,7 +1084,7 @@ impl Queue {
 
         {
             let fns = self.device.instance().fns();
-            let handle = self.handle.lock().unwrap();
+            let handle = self.handle.lock();
             (fns.ext_debug_utils.queue_end_debug_utils_label_ext)(*handle);
         }
 
@@ -1142,7 +1136,7 @@ impl Queue {
 
         unsafe {
             let fns = self.device.instance().fns();
-            let handle = self.handle.lock().unwrap();
+            let handle = self.handle.lock();
             (fns.ext_debug_utils.queue_insert_debug_utils_label_ext)(*handle, &label_info);
         }
 
@@ -1174,7 +1168,7 @@ unsafe impl SynchronizedVulkanObject for Queue {
 
     #[inline]
     fn internal_object_guard(&self) -> MutexGuard<Self::Object> {
-        self.handle.lock().unwrap()
+        self.handle.lock()
     }
 }
 
