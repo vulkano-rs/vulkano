@@ -13,15 +13,14 @@ categories = ["rendering::graphics-api"]
 
 [features]
 default = ["winit_", "raw-window-handle_"]
-winit_ = ["winit", "metal", "cocoa", "objc"]
+winit_ = ["winit", "objc", "core-graphics-types"]
 raw-window-handle_ = ["raw-window-handle"]
 
 [dependencies]
-raw-window-handle = { version = "0.4", optional = true }
+raw-window-handle = { version = "0.5", optional = true }
 vulkano = { version = "0.30.0", path = "../vulkano" }
 winit = { version = "0.27", optional = true }
 
-[target.'cfg(target_os = "macos")'.dependencies]
-cocoa = { version = "0.24", optional = true }
-metal = { version = "0.23", optional = true }
-objc = { version = "0.2", optional = true }
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+objc = { version = "0.2.5", optional = true }
+core-graphics-types = { version = "0.1", optional = true }

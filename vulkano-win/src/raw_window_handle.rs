@@ -1,4 +1,10 @@
-use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
+#[cfg(target_os = "ios")]
+use crate::get_metal_layer_ios;
+#[cfg(target_os = "macos")]
+use crate::get_metal_layer_macos;
+use raw_window_handle::{
+    HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
+};
 use std::sync::Arc;
 use vulkano::instance::Instance;
 use vulkano::swapchain::Surface;
@@ -6,29 +12,64 @@ use vulkano::swapchain::SurfaceCreationError;
 
 /// Creates a vulkan surface from a generic window
 /// which implements HasRawWindowHandle and thus can reveal the os-dependent handle.
-/// - Note that if you wish to use this function with MacOS, you will need to ensure that the
-/// `CAMetalLayer` is set to the ns_view. An example of how one might do that can be found in
-/// `vulkano_win::set_ca_metal_layer_to_winit`
 pub fn create_surface_from_handle<W>(
     window: W,
     instance: Arc<Instance>,
 ) -> Result<Arc<Surface<W>>, SurfaceCreationError>
 where
-    W: HasRawWindowHandle,
+    W: HasRawWindowHandle + HasRawDisplayHandle,
 {
     unsafe {
         match window.raw_window_handle() {
             RawWindowHandle::AndroidNdk(h) => {
                 Surface::from_android(instance, h.a_native_window, window)
             }
-            RawWindowHandle::UiKit(h) => Surface::from_ios(instance, h.ui_view, window),
-            RawWindowHandle::AppKit(h) => Surface::from_mac_os(instance, h.ns_view, window),
+            RawWindowHandle::UiKit(_h) => {
+                #[cfg(target_os = "ios")]
+                {
+                    // Ensure the layer is CAMetalLayer
+                    let layer = get_metal_layer_ios(_h.ui_view);
+                    Surface::from_ios(instance, layer, window)
+                }
+                #[cfg(not(target_os = "ios"))]
+                {
+                    panic!("UiKit handle should only be used when target_os == 'ios'");
+                }
+            }
+            RawWindowHandle::AppKit(_h) => {
+                #[cfg(target_os = "macos")]
+                {
+                    // Ensure the layer is CAMetalLayer
+                    let layer = get_metal_layer_macos(_h.ns_view);
+                    Surface::from_mac_os(instance, layer as *const (), window)
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    panic!("AppKit handle should only be used when target_os == 'macos'");
+                }
+            }
             RawWindowHandle::Wayland(h) => {
-                Surface::from_wayland(instance, h.display, h.surface, window)
+                let d = match window.raw_display_handle() {
+                    RawDisplayHandle::Wayland(d) => d,
+                    _ => panic!("Invalid RawDisplayHandle"),
+                };
+                Surface::from_wayland(instance, d.display, h.surface, window)
             }
             RawWindowHandle::Win32(h) => Surface::from_win32(instance, h.hinstance, h.hwnd, window),
-            RawWindowHandle::Xcb(h) => Surface::from_xcb(instance, h.connection, h.window, window),
-            RawWindowHandle::Xlib(h) => Surface::from_xlib(instance, h.display, h.window, window),
+            RawWindowHandle::Xcb(h) => {
+                let d = match window.raw_display_handle() {
+                    RawDisplayHandle::Xcb(d) => d,
+                    _ => panic!("Invalid RawDisplayHandle"),
+                };
+                Surface::from_xcb(instance, d.connection, h.window, window)
+            }
+            RawWindowHandle::Xlib(h) => {
+                let d = match window.raw_display_handle() {
+                    RawDisplayHandle::Xlib(d) => d,
+                    _ => panic!("Invalid RawDisplayHandle"),
+                };
+                Surface::from_xlib(instance, d.display, h.window, window)
+            }
             RawWindowHandle::Web(_) => unimplemented!(),
             _ => unimplemented!(),
         }

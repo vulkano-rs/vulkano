@@ -330,6 +330,9 @@ pub use self::{
         SwapchainAcquireFuture, SwapchainCreateInfo, SwapchainCreationError, Win32Monitor,
     },
 };
+#[cfg(target_os = "ios")]
+pub use surface::IOSMetalLayer;
+
 use std::sync::atomic::AtomicBool;
 
 pub mod display;
