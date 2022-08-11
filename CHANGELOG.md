@@ -45,6 +45,7 @@
   - Ensure both iOS and MacOS have `CAMetalLayer` when using `create_surface_from_handle`
 - Bugs fixed:
   - [#1896](https://github.com/vulkano-rs/vulkano/issues/1896): Vulkano-shaders generates invalid struct definitions when struct field names are stripped out by the compiler.
+  - Fixed iOS support.
 
 # Version 0.30.0 (2022-07-20)
 
