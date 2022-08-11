@@ -117,6 +117,7 @@ pub use crate::{
 };
 use ash::vk::Handle;
 use once_cell::sync::OnceCell;
+use parking_lot::{Mutex, MutexGuard};
 use smallvec::SmallVec;
 use std::{
     cell::RefCell,
@@ -129,7 +130,7 @@ use std::{
     mem::MaybeUninit,
     ops::Deref,
     ptr,
-    sync::{Arc, Mutex, MutexGuard},
+    sync::Arc,
 };
 
 pub(crate) mod extensions;
@@ -687,13 +688,13 @@ impl Drop for Device {
         let fns = self.fns();
 
         unsafe {
-            for &raw_fence in self.fence_pool.lock().unwrap().iter() {
+            for &raw_fence in self.fence_pool.lock().iter() {
                 (fns.v1_0.destroy_fence)(self.handle, raw_fence, ptr::null());
             }
-            for &raw_sem in self.semaphore_pool.lock().unwrap().iter() {
+            for &raw_sem in self.semaphore_pool.lock().iter() {
                 (fns.v1_0.destroy_semaphore)(self.handle, raw_sem, ptr::null());
             }
-            for &raw_event in self.event_pool.lock().unwrap().iter() {
+            for &raw_event in self.event_pool.lock().iter() {
                 (fns.v1_0.destroy_event)(self.handle, raw_event, ptr::null());
             }
             (fns.v1_0.destroy_device)(self.handle, ptr::null());
@@ -1010,7 +1011,7 @@ impl Queue {
     pub fn wait(&self) -> Result<(), OomError> {
         unsafe {
             let fns = self.device.fns();
-            let handle = self.handle.lock().unwrap();
+            let handle = self.handle.lock();
             check_errors((fns.v1_0.queue_wait_idle)(*handle))?;
             Ok(())
         }
@@ -1042,7 +1043,7 @@ impl Queue {
 
         unsafe {
             let fns = self.device.instance().fns();
-            let handle = self.handle.lock().unwrap();
+            let handle = self.handle.lock();
             (fns.ext_debug_utils.queue_begin_debug_utils_label_ext)(*handle, &label_info);
         }
 
@@ -1083,7 +1084,7 @@ impl Queue {
 
         {
             let fns = self.device.instance().fns();
-            let handle = self.handle.lock().unwrap();
+            let handle = self.handle.lock();
             (fns.ext_debug_utils.queue_end_debug_utils_label_ext)(*handle);
         }
 
@@ -1135,7 +1136,7 @@ impl Queue {
 
         unsafe {
             let fns = self.device.instance().fns();
-            let handle = self.handle.lock().unwrap();
+            let handle = self.handle.lock();
             (fns.ext_debug_utils.queue_insert_debug_utils_label_ext)(*handle, &label_info);
         }
 
@@ -1167,7 +1168,7 @@ unsafe impl SynchronizedVulkanObject for Queue {
 
     #[inline]
     fn internal_object_guard(&self) -> MutexGuard<Self::Object> {
-        self.handle.lock().unwrap()
+        self.handle.lock()
     }
 }
 

@@ -13,11 +13,8 @@ use crate::{
     memory::{device_memory::MemoryAllocateInfo, DeviceMemory, DeviceMemoryAllocationError},
     DeviceSize,
 };
-use std::{
-    cmp,
-    ops::Range,
-    sync::{Arc, Mutex},
-};
+use parking_lot::Mutex;
+use std::{cmp, ops::Range, sync::Arc};
 
 /// Memory pool that operates on a given memory type.
 #[derive(Debug)]
@@ -77,7 +74,7 @@ impl StandardNonHostVisibleMemoryTypePool {
         }
 
         // Find a location.
-        let mut occupied = me.occupied.lock().unwrap();
+        let mut occupied = me.occupied.lock();
 
         // Try finding an entry in already-allocated chunks.
         for &mut (ref dev_mem, ref mut entries) in occupied.iter_mut() {
@@ -177,7 +174,7 @@ impl StandardNonHostVisibleMemoryTypePoolAlloc {
 
 impl Drop for StandardNonHostVisibleMemoryTypePoolAlloc {
     fn drop(&mut self) {
-        let mut occupied = self.pool.occupied.lock().unwrap();
+        let mut occupied = self.pool.occupied.lock();
 
         let entries = occupied
             .iter_mut()
