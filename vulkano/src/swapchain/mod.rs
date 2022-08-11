@@ -142,7 +142,7 @@
 //! and choose which values you are going to use.
 //!
 //! ```no_run
-//! # use std::sync::Arc;
+//! # use std::{error::Error, sync::Arc};
 //! # use vulkano::device::Device;
 //! # use vulkano::swapchain::Surface;
 //! # use std::cmp::{max, min};
@@ -174,7 +174,7 @@
 //! Then, call [`Swapchain::new`](crate::swapchain::Swapchain::new).
 //!
 //! ```no_run
-//! # use std::sync::Arc;
+//! # use std::{error::Error, sync::Arc};
 //! # use vulkano::device::{Device, Queue};
 //! # use vulkano::image::ImageUsage;
 //! # use vulkano::sync::SharingMode;
