@@ -45,10 +45,8 @@ impl<W> SwapchainImage<W> {
         swapchain: Arc<Swapchain<W>>,
         id: usize,
     ) -> Result<Arc<SwapchainImage<W>>, OomError> {
-        let image = swapchain.raw_image(id).unwrap();
-
         Ok(Arc::new(SwapchainImage {
-            swapchain: swapchain.clone(),
+            swapchain,
             image_offset: id,
         }))
     }

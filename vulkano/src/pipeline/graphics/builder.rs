@@ -184,8 +184,7 @@ where
 
             for (loc, reqs) in stages
                 .iter()
-                .map(|shader| shader.descriptor_requirements())
-                .flatten()
+                .flat_map(|shader| shader.descriptor_requirements())
             {
                 match descriptor_requirements.entry(loc) {
                     Entry::Occupied(entry) => {
@@ -292,22 +291,22 @@ where
         let has = {
             let &Self {
                 ref render_pass,
-                ref cache,
+                cache: _,
 
                 ref vertex_shader,
                 ref tessellation_shaders,
-                ref geometry_shader,
-                ref fragment_shader,
+                geometry_shader: _,
+                fragment_shader: _,
 
                 vertex_input_state: _,
-                ref input_assembly_state,
-                ref tessellation_state,
-                ref viewport_state,
-                ref discard_rectangle_state,
+                input_assembly_state: _,
+                tessellation_state: _,
+                viewport_state: _,
+                discard_rectangle_state: _,
                 ref rasterization_state,
-                ref multisample_state,
-                ref depth_stencil_state,
-                ref color_blend_state,
+                multisample_state: _,
+                depth_stencil_state: _,
+                color_blend_state: _,
             } = &self;
 
             let render_pass = render_pass.as_ref().expect("Missing render pass");
@@ -363,11 +362,11 @@ where
 
         let Self {
             mut render_pass,
-            cache,
-            vertex_shader,
-            tessellation_shaders,
-            geometry_shader,
-            fragment_shader,
+            cache: _,
+            vertex_shader: _,
+            tessellation_shaders: _,
+            geometry_shader: _,
+            fragment_shader: _,
             vertex_input_state: _,
             input_assembly_state,
             tessellation_state,
@@ -422,7 +421,7 @@ where
 
         let &Self {
             ref render_pass,
-            ref cache,
+            cache: _,
 
             ref vertex_shader,
             ref tessellation_shaders,
@@ -747,7 +746,7 @@ where
                         }
                         _ => (),
                     },
-                    PartialStateMode::Dynamic(topology_class) => {
+                    PartialStateMode::Dynamic(_topology_class) => {
                         // VUID?
                         if !(device.api_version() >= Version::V1_3
                             || device.enabled_features().extended_dynamic_state)
@@ -820,7 +819,7 @@ where
                 shader_stages.push(ShaderStageInfo {
                     entry_point,
                     specialization_map_entries: Vss::descriptors(),
-                    specialization_data: unsafe {
+                    _specialization_data: unsafe {
                         std::slice::from_raw_parts(
                             specialization_data as *const _ as *const u8,
                             size_of_val(specialization_data),
@@ -918,7 +917,7 @@ where
                     shader_stages.push(ShaderStageInfo {
                         entry_point,
                         specialization_map_entries: Tcss::descriptors(),
-                        specialization_data: unsafe {
+                        _specialization_data: unsafe {
                             std::slice::from_raw_parts(
                                 specialization_data as *const _ as *const u8,
                                 size_of_val(specialization_data),
@@ -938,7 +937,7 @@ where
                     shader_stages.push(ShaderStageInfo {
                         entry_point,
                         specialization_map_entries: Tess::descriptors(),
-                        specialization_data: unsafe {
+                        _specialization_data: unsafe {
                             std::slice::from_raw_parts(
                                 specialization_data as *const _ as *const u8,
                                 size_of_val(specialization_data),
@@ -985,7 +984,7 @@ where
                 shader_stages.push(ShaderStageInfo {
                     entry_point,
                     specialization_map_entries: Gss::descriptors(),
-                    specialization_data: unsafe {
+                    _specialization_data: unsafe {
                         std::slice::from_raw_parts(
                             specialization_data as *const _ as *const u8,
                             size_of_val(specialization_data),
@@ -1249,14 +1248,14 @@ where
             // Discard rectangle state
             {
                 let &DiscardRectangleState {
-                    mode,
+                    mode: _,
                     ref rectangles,
                 } = discard_rectangle_state;
 
                 if device.enabled_extensions().ext_discard_rectangles {
-                    let discard_rectangle_count = match rectangles {
-                        &PartialStateMode::Dynamic(count) => count,
-                        &PartialStateMode::Fixed(ref rectangles) => rectangles.len() as u32,
+                    let discard_rectangle_count = match *rectangles {
+                        PartialStateMode::Dynamic(count) => count,
+                        PartialStateMode::Fixed(ref rectangles) => rectangles.len() as u32,
                     };
 
                     // VUID-VkPipelineDiscardRectangleStateCreateInfoEXT-discardRectangleCount-00582
@@ -1269,9 +1268,9 @@ where
                         );
                     }
                 } else {
-                    let error = match rectangles {
-                        &PartialStateMode::Dynamic(_) => true,
-                        &PartialStateMode::Fixed(ref rectangles) => !rectangles.is_empty(),
+                    let error = match *rectangles {
+                        PartialStateMode::Dynamic(_) => true,
+                        PartialStateMode::Fixed(ref rectangles) => !rectangles.is_empty(),
                     };
 
                     if error {
@@ -1311,7 +1310,7 @@ where
             match patch_control_points {
                 StateMode::Fixed(patch_control_points) => {
                     // VUID-VkPipelineTessellationStateCreateInfo-patchControlPoints-01214
-                    if patch_control_points <= 0
+                    if patch_control_points == 0
                         || patch_control_points > properties.max_tessellation_patch_size
                     {
                         return Err(GraphicsPipelineCreationError::InvalidNumPatchControlPoints);
@@ -1336,8 +1335,8 @@ where
         // VUID-VkGraphicsPipelineCreateInfo-rasterizerDiscardEnable-00750
         // VUID-VkGraphicsPipelineCreateInfo-pViewportState-04892
         if has.viewport_state {
-            let (viewport_count, scissor_count) = match viewport_state {
-                &ViewportState::Fixed { ref data } => {
+            let (viewport_count, scissor_count) = match *viewport_state {
+                ViewportState::Fixed { ref data } => {
                     let count = data.len() as u32;
                     assert!(count != 0); // TODO: return error?
 
@@ -1365,7 +1364,7 @@ where
 
                     (count, count)
                 }
-                &ViewportState::FixedViewport {
+                ViewportState::FixedViewport {
                     ref viewports,
                     scissor_count_dynamic,
                 } => {
@@ -1411,7 +1410,7 @@ where
 
                     (viewport_count, scissor_count)
                 }
-                &ViewportState::FixedScissor {
+                ViewportState::FixedScissor {
                     ref scissors,
                     viewport_count_dynamic,
                 } => {
@@ -1443,7 +1442,7 @@ where
 
                     (viewport_count, scissor_count)
                 }
-                &ViewportState::Dynamic {
+                ViewportState::Dynamic {
                     count,
                     viewport_count_dynamic,
                     scissor_count_dynamic,
@@ -1532,7 +1531,7 @@ where
                 shader_stages.push(ShaderStageInfo {
                     entry_point,
                     specialization_map_entries: Fss::descriptors(),
-                    specialization_data: unsafe {
+                    _specialization_data: unsafe {
                         std::slice::from_raw_parts(
                             specialization_data as *const _ as *const u8,
                             size_of_val(specialization_data),
@@ -1779,8 +1778,8 @@ where
                 let &MultisampleState {
                     rasterization_samples,
                     sample_shading,
-                    sample_mask,
-                    alpha_to_coverage_enable,
+                    sample_mask: _,
+                    alpha_to_coverage_enable: _,
                     alpha_to_one_enable,
                 } = multisample_state;
 
@@ -1816,7 +1815,7 @@ where
 
                     // VUID-VkPipelineMultisampleStateCreateInfo-minSampleShading-00786
                     // TODO: return error?
-                    assert!(min_sample_shading >= 0.0 && min_sample_shading <= 1.0);
+                    assert!((0.0..=1.0).contains(&min_sample_shading));
                 }
 
                 // VUID-VkPipelineMultisampleStateCreateInfo-alphaToOneEnable-00785
@@ -1839,7 +1838,7 @@ where
             let &ColorBlendState {
                 logic_op,
                 ref attachments,
-                blend_constants,
+                blend_constants: _,
             } = color_blend_state;
 
             if let Some(logic_op) = logic_op {
@@ -1888,18 +1887,18 @@ where
                 // VUID-VkPipelineColorBlendStateCreateInfo-pAttachments-00605
                 if !iter.all(|state| state == first) {
                     return Err(
-                            GraphicsPipelineCreationError::FeatureNotEnabled {
-                                feature: "independent_blend",
-                                reason: "The blend and color_write_mask members of all elements of ColorBlendState::attachments were not identical",
-                            },
-                        );
+                        GraphicsPipelineCreationError::FeatureNotEnabled {
+                            feature: "independent_blend",
+                            reason: "The blend and color_write_mask members of all elements of ColorBlendState::attachments were not identical",
+                        },
+                    );
                 }
             }
 
             for (attachment_index, state) in attachments.iter().enumerate() {
                 let &ColorBlendAttachmentState {
                     blend,
-                    color_write_mask,
+                    color_write_mask: _,
                     color_write_enable,
                 } = state;
 
@@ -2566,13 +2565,13 @@ where
                     ref rectangles,
                 } = discard_rectangle_state;
 
-                let discard_rectangle_count = match rectangles {
-                    &PartialStateMode::Fixed(ref rectangles) => {
+                let discard_rectangle_count = match *rectangles {
+                    PartialStateMode::Fixed(ref rectangles) => {
                         dynamic_state.insert(DynamicState::DiscardRectangle, false);
                         discard_rectangles.extend(rectangles.iter().map(|&rect| rect.into()));
                         discard_rectangles.len() as u32
                     }
-                    &PartialStateMode::Dynamic(count) => {
+                    PartialStateMode::Dynamic(count) => {
                         dynamic_state.insert(DynamicState::DiscardRectangle, true);
                         count
                     }
@@ -2616,20 +2615,20 @@ where
 
         // Viewport state
         if has.viewport_state {
-            let (viewport_count, scissor_count) = match viewport_state {
-                &ViewportState::Fixed { ref data } => {
+            let (viewport_count, scissor_count) = match *viewport_state {
+                ViewportState::Fixed { ref data } => {
                     let count = data.len() as u32;
                     viewports_vk.extend(data.iter().map(|e| e.0.clone().into()));
                     dynamic_state.insert(DynamicState::Viewport, false);
                     dynamic_state.insert(DynamicState::ViewportWithCount, false);
 
-                    scissors_vk.extend(data.iter().map(|e| e.1.clone().into()));
+                    scissors_vk.extend(data.iter().map(|e| e.1.into()));
                     dynamic_state.insert(DynamicState::Scissor, false);
                     dynamic_state.insert(DynamicState::ScissorWithCount, false);
 
                     (count, count)
                 }
-                &ViewportState::FixedViewport {
+                ViewportState::FixedViewport {
                     ref viewports,
                     scissor_count_dynamic,
                 } => {
@@ -2650,12 +2649,12 @@ where
 
                     (viewport_count, scissor_count)
                 }
-                &ViewportState::FixedScissor {
+                ViewportState::FixedScissor {
                     ref scissors,
                     viewport_count_dynamic,
                 } => {
                     let scissor_count = scissors.len() as u32;
-                    scissors_vk.extend(scissors.iter().map(|e| e.clone().into()));
+                    scissors_vk.extend(scissors.iter().map(|e| (*e).into()));
                     dynamic_state.insert(DynamicState::Scissor, false);
                     dynamic_state.insert(DynamicState::ScissorWithCount, false);
 
@@ -2671,7 +2670,7 @@ where
 
                     (viewport_count, scissor_count)
                 }
-                &ViewportState::Dynamic {
+                ViewportState::Dynamic {
                     count,
                     viewport_count_dynamic,
                     scissor_count_dynamic,
@@ -3006,11 +3005,11 @@ where
                     let &ColorBlendAttachmentState {
                         blend,
                         color_write_mask,
-                        color_write_enable,
+                        color_write_enable: _,
                     } = color_blend_attachment_state;
 
                     let blend = if let Some(blend) = blend {
-                        blend.clone().into()
+                        blend.into()
                     } else {
                         Default::default()
                     };
@@ -3072,8 +3071,8 @@ where
                 color_write_enables_vk.extend(attachments.iter().map(
                     |color_blend_attachment_state| {
                         let &ColorBlendAttachmentState {
-                            blend,
-                            color_write_mask,
+                            blend: _,
+                            color_write_mask: _,
                             color_write_enable,
                         } = color_blend_attachment_state;
 
@@ -3223,7 +3222,7 @@ where
 struct ShaderStageInfo<'a> {
     entry_point: &'a EntryPoint<'a>,
     specialization_map_entries: &'a [SpecializationMapEntry],
-    specialization_data: &'a [u8],
+    _specialization_data: &'a [u8],
 }
 
 impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
@@ -3476,7 +3475,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     }
 
     /// Sets the tessellation shaders stage as disabled. This is the default.
-    #[deprecated(since = "0.27")]
+    #[deprecated(since = "0.27.0")]
     #[inline]
     pub fn tessellation_shaders_disabled(mut self) -> Self {
         self.tessellation_shaders = None;
@@ -3484,7 +3483,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     }
 
     /// Sets the geometry shader stage as disabled. This is the default.
-    #[deprecated(since = "0.27")]
+    #[deprecated(since = "0.27.0")]
     #[inline]
     pub fn geometry_shader_disabled(mut self) -> Self {
         self.geometry_shader = None;
@@ -3495,7 +3494,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// You will most likely need to explicitly specify the template parameter to the type of a
     /// vertex.
-    #[deprecated(since = "0.27", note = "Use `vertex_input_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `vertex_input_state` instead")]
     #[inline]
     pub fn vertex_input_single_buffer<V: Vertex>(
         self,
@@ -3516,7 +3515,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     }
 
     /// Sets whether primitive restart is enabled.
-    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn primitive_restart(mut self, enabled: bool) -> Self {
         self.input_assembly_state.primitive_restart_enable = StateMode::Fixed(enabled);
@@ -3524,7 +3523,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     }
 
     /// Sets the topology of the primitives that are expected by the pipeline.
-    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn primitive_topology(mut self, topology: PrimitiveTopology) -> Self {
         self.input_assembly_state.topology = PartialStateMode::Fixed(topology);
@@ -3535,7 +3534,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is equivalent to
     /// > `self.primitive_topology(PrimitiveTopology::PointList)`.
-    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn point_list(self) -> Self {
         self.primitive_topology(PrimitiveTopology::PointList)
@@ -3545,7 +3544,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is equivalent to
     /// > `self.primitive_topology(PrimitiveTopology::LineList)`.
-    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn line_list(self) -> Self {
         self.primitive_topology(PrimitiveTopology::LineList)
@@ -3555,7 +3554,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is equivalent to
     /// > `self.primitive_topology(PrimitiveTopology::LineStrip)`.
-    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn line_strip(self) -> Self {
         self.primitive_topology(PrimitiveTopology::LineStrip)
@@ -3565,7 +3564,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is equivalent to
     /// > `self.primitive_topology(PrimitiveTopology::TriangleList)`.
-    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn triangle_list(self) -> Self {
         self.primitive_topology(PrimitiveTopology::TriangleList)
@@ -3575,7 +3574,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is equivalent to
     /// > `self.primitive_topology(PrimitiveTopology::TriangleStrip)`.
-    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn triangle_strip(self) -> Self {
         self.primitive_topology(PrimitiveTopology::TriangleStrip)
@@ -3585,7 +3584,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is equivalent to
     /// > `self.primitive_topology(PrimitiveTopology::TriangleFan)`.
-    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn triangle_fan(self) -> Self {
         self.primitive_topology(PrimitiveTopology::TriangleFan)
@@ -3595,7 +3594,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is equivalent to
     /// > `self.primitive_topology(PrimitiveTopology::LineListWithAdjacency)`.
-    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn line_list_with_adjacency(self) -> Self {
         self.primitive_topology(PrimitiveTopology::LineListWithAdjacency)
@@ -3605,7 +3604,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is equivalent to
     /// > `self.primitive_topology(PrimitiveTopology::LineStripWithAdjacency)`.
-    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn line_strip_with_adjacency(self) -> Self {
         self.primitive_topology(PrimitiveTopology::LineStripWithAdjacency)
@@ -3615,7 +3614,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is equivalent to
     /// > `self.primitive_topology(PrimitiveTopology::TriangleListWithAdjacency)`.
-    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn triangle_list_with_adjacency(self) -> Self {
         self.primitive_topology(PrimitiveTopology::TriangleListWithAdjacency)
@@ -3625,7 +3624,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is equivalent to
     /// > `self.primitive_topology(PrimitiveTopology::TriangleStripWithAdjacency)`.
-    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn triangle_strip_with_adjacency(self) -> Self {
         self.primitive_topology(PrimitiveTopology::TriangleStripWithAdjacency)
@@ -3636,7 +3635,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is equivalent to
     /// > `self.primitive_topology(PrimitiveTopology::PatchList)`.
-    #[deprecated(since = "0.27", note = "Use `input_assembly_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `input_assembly_state` instead")]
     #[inline]
     pub fn patch_list(self) -> Self {
         self.primitive_topology(PrimitiveTopology::PatchList)
@@ -3644,7 +3643,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
 
     /// Sets the viewports to some value, and the scissor boxes to boxes that always cover the
     /// whole viewport.
-    #[deprecated(since = "0.27", note = "Use `viewport_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `viewport_state` instead")]
     #[inline]
     pub fn viewports<I>(self, viewports: I) -> Self
     where
@@ -3654,7 +3653,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     }
 
     /// Sets the characteristics of viewports and scissor boxes in advance.
-    #[deprecated(since = "0.27", note = "Use `viewport_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `viewport_state` instead")]
     #[inline]
     pub fn viewports_scissors<I>(mut self, viewports: I) -> Self
     where
@@ -3668,7 +3667,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
 
     /// Sets the scissor boxes to some values, and viewports to dynamic. The viewports will
     /// need to be set before drawing.
-    #[deprecated(since = "0.27", note = "Use `viewport_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `viewport_state` instead")]
     #[inline]
     pub fn viewports_dynamic_scissors_fixed<I>(mut self, scissors: I) -> Self
     where
@@ -3683,7 +3682,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
 
     /// Sets the viewports to dynamic, and the scissor boxes to boxes that always cover the whole
     /// viewport. The viewports will need to be set before drawing.
-    #[deprecated(since = "0.27", note = "Use `viewport_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `viewport_state` instead")]
     #[inline]
     pub fn viewports_dynamic_scissors_irrelevant(mut self, num: u32) -> Self {
         self.viewport_state = ViewportState::FixedScissor {
@@ -3695,7 +3694,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
 
     /// Sets the viewports to some values, and scissor boxes to dynamic. The scissor boxes will
     /// need to be set before drawing.
-    #[deprecated(since = "0.27", note = "Use `viewport_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `viewport_state` instead")]
     #[inline]
     pub fn viewports_fixed_scissors_dynamic<I>(mut self, viewports: I) -> Self
     where
@@ -3710,7 +3709,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
 
     /// Sets the viewports and scissor boxes to dynamic. They will both need to be set before
     /// drawing.
-    #[deprecated(since = "0.27", note = "Use `viewport_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `viewport_state` instead")]
     #[inline]
     pub fn viewports_scissors_dynamic(mut self, count: u32) -> Self {
         self.viewport_state = ViewportState::Dynamic {
@@ -3724,7 +3723,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     /// If true, then the depth value of the vertices will be clamped to the range `[0.0 ; 1.0]`.
     /// If false, fragments whose depth is outside of this range will be discarded before the
     /// fragment shader even runs.
-    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn depth_clamp(mut self, clamp: bool) -> Self {
         self.rasterization_state.depth_clamp_enable = clamp;
@@ -3735,7 +3734,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// Triangles whose vertices are oriented counter-clockwise on the screen will be considered
     /// as facing their front. Otherwise they will be considered as facing their back.
-    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn front_face_counter_clockwise(mut self) -> Self {
         self.rasterization_state.front_face = StateMode::Fixed(FrontFace::CounterClockwise);
@@ -3746,7 +3745,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// Triangles whose vertices are oriented clockwise on the screen will be considered
     /// as facing their front. Otherwise they will be considered as facing their back.
-    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn front_face_clockwise(mut self) -> Self {
         self.rasterization_state.front_face = StateMode::Fixed(FrontFace::Clockwise);
@@ -3754,7 +3753,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     }
 
     /// Sets backface culling as disabled. This is the default.
-    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn cull_mode_disabled(mut self) -> Self {
         self.rasterization_state.cull_mode = StateMode::Fixed(CullMode::None);
@@ -3763,7 +3762,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
 
     /// Sets backface culling to front faces. The front faces (as chosen with the `front_face_*`
     /// methods) will be discarded by the GPU when drawing.
-    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn cull_mode_front(mut self) -> Self {
         self.rasterization_state.cull_mode = StateMode::Fixed(CullMode::Front);
@@ -3772,7 +3771,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
 
     /// Sets backface culling to back faces. Faces that are not facing the front (as chosen with
     /// the `front_face_*` methods) will be discarded by the GPU when drawing.
-    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn cull_mode_back(mut self) -> Self {
         self.rasterization_state.cull_mode = StateMode::Fixed(CullMode::Back);
@@ -3783,7 +3782,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This option exists for the sake of completeness. It has no known practical
     /// > usage.
-    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn cull_mode_front_and_back(mut self) -> Self {
         self.rasterization_state.cull_mode = StateMode::Fixed(CullMode::FrontAndBack);
@@ -3791,7 +3790,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     }
 
     /// Sets the polygon mode to "fill". This is the default.
-    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn polygon_mode_fill(mut self) -> Self {
         self.rasterization_state.polygon_mode = PolygonMode::Fill;
@@ -3799,7 +3798,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     }
 
     /// Sets the polygon mode to "line". Triangles will each be turned into three lines.
-    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn polygon_mode_line(mut self) -> Self {
         self.rasterization_state.polygon_mode = PolygonMode::Line;
@@ -3807,7 +3806,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     }
 
     /// Sets the polygon mode to "point". Triangles and lines will each be turned into three points.
-    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn polygon_mode_point(mut self) -> Self {
         self.rasterization_state.polygon_mode = PolygonMode::Point;
@@ -3815,7 +3814,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     }
 
     /// Sets the width of the lines, if the GPU needs to draw lines. The default is `1.0`.
-    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn line_width(mut self, value: f32) -> Self {
         self.rasterization_state.line_width = StateMode::Fixed(value);
@@ -3824,7 +3823,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
 
     /// Sets the width of the lines as dynamic, which means that you will need to set this value
     /// when drawing.
-    #[deprecated(since = "0.27", note = "Use `rasterization_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `rasterization_state` instead")]
     #[inline]
     pub fn line_width_dynamic(mut self) -> Self {
         self.rasterization_state.line_width = StateMode::Dynamic;
@@ -3836,7 +3835,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     /// samples.
     ///
     /// Sample shading is disabled by default.
-    #[deprecated(since = "0.27", note = "Use `multisample_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `multisample_state` instead")]
     #[inline]
     pub fn sample_shading_disabled(mut self) -> Self {
         self.multisample_state.sample_shading = None;
@@ -3859,23 +3858,23 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// - Panics if `min_fract` is not between 0.0 and 1.0.
     ///
-    #[deprecated(since = "0.27", note = "Use `multisample_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `multisample_state` instead")]
     #[inline]
     pub fn sample_shading_enabled(mut self, min_fract: f32) -> Self {
-        assert!(min_fract >= 0.0 && min_fract <= 1.0);
+        assert!((0.0..=1.0).contains(&min_fract));
         self.multisample_state.sample_shading = Some(min_fract);
         self
     }
 
     // TODO: doc
-    #[deprecated(since = "0.27", note = "Use `multisample_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `multisample_state` instead")]
     pub fn alpha_to_coverage_disabled(mut self) -> Self {
         self.multisample_state.alpha_to_coverage_enable = false;
         self
     }
 
     // TODO: doc
-    #[deprecated(since = "0.27", note = "Use `multisample_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `multisample_state` instead")]
     pub fn alpha_to_coverage_enabled(mut self) -> Self {
         self.multisample_state.alpha_to_coverage_enable = true;
         self
@@ -3884,7 +3883,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     /// Disables alpha-to-one.
     ///
     /// Alpha-to-one is disabled by default.
-    #[deprecated(since = "0.27", note = "Use `multisample_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `multisample_state` instead")]
     #[inline]
     pub fn alpha_to_one_disabled(mut self) -> Self {
         self.multisample_state.alpha_to_one_enable = false;
@@ -3897,7 +3896,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     /// Enabling alpha-to-one requires the `alpha_to_one` feature to be enabled on the device.
     ///
     /// Alpha-to-one is disabled by default.
-    #[deprecated(since = "0.27", note = "Use `multisample_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `multisample_state` instead")]
     #[inline]
     pub fn alpha_to_one_enabled(mut self) -> Self {
         self.multisample_state.alpha_to_one_enable = true;
@@ -3905,7 +3904,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     }
 
     /// Sets the depth/stencil state.
-    #[deprecated(since = "0.27", note = "Use `depth_stencil_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `depth_stencil_state` instead")]
     #[inline]
     pub fn depth_stencil(self, depth_stencil_state: DepthStencilState) -> Self {
         self.depth_stencil_state(depth_stencil_state)
@@ -3915,7 +3914,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is a shortcut for all the other `depth_*` and `depth_stencil_*` methods
     /// > of the builder.
-    #[deprecated(since = "0.27", note = "Use `depth_stencil_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `depth_stencil_state` instead")]
     #[inline]
     pub fn depth_stencil_disabled(mut self) -> Self {
         self.depth_stencil_state = DepthStencilState::disabled();
@@ -3926,7 +3925,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     ///
     /// > **Note**: This is a shortcut for setting the depth test to `Less`, the depth write Into
     /// > ` true` and disable the stencil test.
-    #[deprecated(since = "0.27", note = "Use `depth_stencil_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `depth_stencil_state` instead")]
     #[inline]
     pub fn depth_stencil_simple_depth(mut self) -> Self {
         self.depth_stencil_state = DepthStencilState::simple_depth_test();
@@ -3934,7 +3933,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     }
 
     /// Sets whether the depth buffer will be written.
-    #[deprecated(since = "0.27", note = "Use `depth_stencil_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `depth_stencil_state` instead")]
     #[inline]
     pub fn depth_write(mut self, write: bool) -> Self {
         let depth_state = self
@@ -3945,7 +3944,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
         self
     }
 
-    #[deprecated(since = "0.27", note = "Use `color_blend_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `color_blend_state` instead")]
     // TODO: When this method is removed, also remove the special casing in `with_pipeline_layout`
     // for self.color_blend_state.attachments.len() == 1
     #[inline]
@@ -3958,7 +3957,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
         self
     }
 
-    #[deprecated(since = "0.27", note = "Use `color_blend_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `color_blend_state` instead")]
     #[inline]
     pub fn blend_individual<I>(mut self, blend: I) -> Self
     where
@@ -3977,7 +3976,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
 
     /// Each fragment shader output will have its value directly written to the framebuffer
     /// attachment. This is the default.
-    #[deprecated(since = "0.27", note = "Use `color_blend_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `color_blend_state` instead")]
     // TODO: When this method is removed, also remove the special casing in `with_pipeline_layout`
     // for self.color_blend_state.attachments.len() == 1
     #[inline]
@@ -3990,7 +3989,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
         self
     }
 
-    #[deprecated(since = "0.27", note = "Use `color_blend_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `color_blend_state` instead")]
     // TODO: When this method is removed, also remove the special casing in `with_pipeline_layout`
     // for self.color_blend_state.attachments.len() == 1
     #[inline]
@@ -4003,7 +4002,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
         self
     }
 
-    #[deprecated(since = "0.27", note = "Use `color_blend_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `color_blend_state` instead")]
     #[inline]
     pub fn blend_logic_op(mut self, logic_op: LogicOp) -> Self {
         self.color_blend_state.logic_op = Some(StateMode::Fixed(logic_op));
@@ -4011,7 +4010,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     }
 
     /// Sets the logic operation as disabled. This is the default.
-    #[deprecated(since = "0.27", note = "Use `color_blend_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `color_blend_state` instead")]
     #[inline]
     pub fn blend_logic_op_disabled(mut self) -> Self {
         self.color_blend_state.logic_op = None;
@@ -4021,7 +4020,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     /// Sets the blend constant. The default is `[0.0, 0.0, 0.0, 0.0]`.
     ///
     /// The blend constant is used for some blending calculations. It is irrelevant otherwise.
-    #[deprecated(since = "0.27", note = "Use `color_blend_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `color_blend_state` instead")]
     #[inline]
     pub fn blend_constants(mut self, constants: [f32; 4]) -> Self {
         self.color_blend_state.blend_constants = StateMode::Fixed(constants);
@@ -4031,7 +4030,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     /// Sets the blend constant value as dynamic. Its value will need to be set before drawing.
     ///
     /// The blend constant is used for some blending calculations. It is irrelevant otherwise.
-    #[deprecated(since = "0.27", note = "Use `color_blend_state` instead")]
+    #[deprecated(since = "0.27.0", note = "Use `color_blend_state` instead")]
     #[inline]
     pub fn blend_constants_dynamic(mut self) -> Self {
         self.color_blend_state.blend_constants = StateMode::Dynamic;

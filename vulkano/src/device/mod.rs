@@ -235,7 +235,7 @@ impl Device {
             // VUID-VkDeviceQueueCreateInfo-pQueuePriorities-00383
             assert!(queues
                 .iter()
-                .all(|&priority| priority >= 0.0 && priority <= 1.0));
+                .all(|&priority| (0.0..=1.0).contains(&priority)));
 
             if queues.len() > family.queues_count() {
                 return Err(DeviceCreationError::TooManyQueuesForFamily);
@@ -491,7 +491,7 @@ impl Device {
     /// > **Note**: Will return `-> impl ExactSizeIterator<Item = QueueFamily>` in the future.
     // TODO: ^
     #[inline]
-    pub fn active_queue_families<'a>(&'a self) -> impl ExactSizeIterator<Item = QueueFamily<'a>> {
+    pub fn active_queue_families(&self) -> impl ExactSizeIterator<Item = QueueFamily> {
         let physical_device = self.physical_device();
         self.active_queue_families
             .iter()
@@ -1058,7 +1058,7 @@ impl Queue {
 
     fn validate_begin_debug_utils_label(
         &self,
-        label_info: &mut DebugUtilsLabel,
+        _label_info: &mut DebugUtilsLabel,
     ) -> Result<(), DebugUtilsError> {
         if !self
             .device()
@@ -1151,7 +1151,7 @@ impl Queue {
 
     fn validate_insert_debug_utils_label(
         &self,
-        label_info: &mut DebugUtilsLabel,
+        _label_info: &mut DebugUtilsLabel,
     ) -> Result<(), DebugUtilsError> {
         if !self
             .device()
@@ -1246,7 +1246,7 @@ mod tests {
         };
 
         let family = physical.queue_families().next().unwrap();
-        let queues = (0..family.queues_count() + 1).map(|_| (family, 1.0));
+        let _queues = (0..family.queues_count() + 1).map(|_| (family, 1.0));
 
         match Device::new(
             physical,
@@ -1258,7 +1258,7 @@ mod tests {
                 ..Default::default()
             },
         ) {
-            Err(DeviceCreationError::TooManyQueuesForFamily) => return, // Success
+            Err(DeviceCreationError::TooManyQueuesForFamily) => (), // Success
             _ => panic!(),
         };
     }
@@ -1290,7 +1290,7 @@ mod tests {
             Err(DeviceCreationError::FeatureRestrictionNotMet(FeatureRestrictionError {
                 restriction: FeatureRestriction::NotSupported,
                 ..
-            })) => return, // Success
+            })) => (), // Success
             _ => panic!(),
         };
     }

@@ -117,12 +117,12 @@ impl QueryPool {
             query_count,
             _ne: _,
         } = create_info;
-        return Arc::new(QueryPool {
+        Arc::new(QueryPool {
             handle,
             device,
             query_type,
             query_count,
-        });
+        })
     }
 
     /// Returns the query type of the pool.
@@ -306,7 +306,7 @@ impl<'a> Query<'a> {
     /// Returns a reference to the query pool.
     #[inline]
     pub fn pool(&self) -> &'a QueryPool {
-        &self.pool
+        self.pool
     }
 
     /// Returns the index of the query represented.
@@ -329,7 +329,7 @@ impl<'a> QueriesRange<'a> {
     /// Returns a reference to the query pool.
     #[inline]
     pub fn pool(&self) -> &'a QueryPool {
-        &self.pool
+        self.pool
     }
 
     /// Returns the range of queries represented.

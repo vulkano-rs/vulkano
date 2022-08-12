@@ -164,7 +164,7 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
         CommandBufferBeginError,
     > {
         unsafe {
-            Ok(AutoCommandBufferBuilder::begin(
+            AutoCommandBufferBuilder::begin(
                 device,
                 queue_family,
                 CommandBufferLevel::Secondary,
@@ -173,7 +173,7 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
                     inheritance_info: Some(inheritance_info),
                     _ne: crate::NonExhaustive(()),
                 },
-            )?)
+            )
         }
     }
 }
@@ -203,8 +203,8 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
         if let Some(inheritance_info) = &inheritance_info {
             let &CommandBufferInheritanceInfo {
                 ref render_pass,
-                occlusion_query,
-                query_statistics_flags,
+                occlusion_query: _,
+                query_statistics_flags: _,
                 _ne: _,
             } = inheritance_info;
 
@@ -257,7 +257,7 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
 
     fn validate_begin(
         device: &Device,
-        queue_family: &QueueFamily,
+        _queue_family: &QueueFamily,
         level: CommandBufferLevel,
         begin_info: &CommandBufferBeginInfo,
     ) -> Result<(), CommandBufferBeginError> {
@@ -265,7 +265,7 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
         let properties = physical_device.properties();
 
         let &CommandBufferBeginInfo {
-            usage,
+            usage: _,
             ref inheritance_info,
             _ne: _,
         } = &begin_info;
@@ -317,7 +317,7 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
                             ref color_attachment_formats,
                             depth_attachment_format,
                             stencil_attachment_format,
-                            rasterization_samples,
+                            rasterization_samples: _, // TODO: ?
                         } = rendering_info;
 
                         // VUID-VkCommandBufferInheritanceRenderingInfo-multiview-06008
@@ -563,7 +563,7 @@ where
 
         Ok(PrimaryAutoCommandBuffer {
             inner: self.inner.build()?,
-            pool_alloc: self.pool_builder_alloc.into_alloc(),
+            _pool_alloc: self.pool_builder_alloc.into_alloc(),
             submit_state,
         })
     }
@@ -592,7 +592,7 @@ where
 
         Ok(SecondaryAutoCommandBuffer {
             inner: self.inner.build()?,
-            pool_alloc: self.pool_builder_alloc.into_alloc(),
+            _pool_alloc: self.pool_builder_alloc.into_alloc(),
             inheritance_info: self.inheritance_info.unwrap(),
             submit_state,
         })
@@ -641,13 +641,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 // Render passes must be compatible.
                 if !pipeline_subpass
                     .render_pass()
-                    .is_compatible_with(&state.subpass.render_pass())
+                    .is_compatible_with(state.subpass.render_pass())
                 {
                     return Err(AutoCommandBufferBuilderContextError::IncompatibleRenderPass);
                 }
             }
-            RenderPassStateType::BeginRendering(state) => {
-                let pipeline_rendering_info = match pipeline.render_pass() {
+            RenderPassStateType::BeginRendering(_state) => {
+                let _pipeline_rendering_info = match pipeline.render_pass() {
                     PipelineRenderPassType::BeginRenderPass(_) => todo!(),
                     PipelineRenderPassType::BeginRendering(rendering_info) => rendering_info,
                 };
@@ -677,7 +677,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                         // Render passes must be compatible.
                         if !pipeline_subpass
                             .render_pass()
-                            .is_compatible_with(&info.subpass.render_pass())
+                            .is_compatible_with(info.subpass.render_pass())
                         {
                             return Err(
                                 AutoCommandBufferBuilderContextError::IncompatibleRenderPass,
@@ -685,7 +685,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                         }
                     }
                     CommandBufferInheritanceRenderPassType::BeginRendering(_) => {
-                        let pipeline_rendering_info = match pipeline.render_pass() {
+                        let _pipeline_rendering_info = match pipeline.render_pass() {
                             PipelineRenderPassType::BeginRenderPass(_) => todo!(),
                             PipelineRenderPassType::BeginRendering(rendering_info) => {
                                 rendering_info
@@ -725,7 +725,7 @@ unsafe impl<L, P> DeviceOwned for AutoCommandBufferBuilder<L, P> {
 
 pub struct PrimaryAutoCommandBuffer<P = StandardCommandPoolAlloc> {
     inner: SyncCommandBuffer,
-    pool_alloc: P, // Safety: must be dropped after `inner`
+    _pool_alloc: P, // Safety: must be dropped after `inner`
 
     // Tracks usage of the command buffer on the GPU.
     submit_state: SubmitState,
@@ -839,7 +839,7 @@ where
 
 pub struct SecondaryAutoCommandBuffer<P = StandardCommandPoolAlloc> {
     inner: SyncCommandBuffer,
-    pool_alloc: P, // Safety: must be dropped after `inner`
+    _pool_alloc: P, // Safety: must be dropped after `inner`
     inheritance_info: CommandBufferInheritanceInfo,
 
     // Tracks usage of the command buffer on the GPU.
@@ -1216,7 +1216,7 @@ mod tests {
         .unwrap();
 
         let mut cbb = AutoCommandBufferBuilder::primary(
-            device.clone(),
+            device,
             queue.family(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -1230,14 +1230,14 @@ mod tests {
                 ..Default::default()
             }]
             .into(),
-            ..CopyBufferInfoTyped::buffers(source.clone(), destination.clone())
+            ..CopyBufferInfoTyped::buffers(source, destination.clone())
         })
         .unwrap();
 
         let cb = cbb.build().unwrap();
 
         let future = cb
-            .execute(queue.clone())
+            .execute(queue)
             .unwrap()
             .then_signal_fence_and_flush()
             .unwrap();
@@ -1296,7 +1296,7 @@ mod tests {
             let cb1 = builder.build().unwrap();
 
             let mut builder = AutoCommandBufferBuilder::primary(
-                device.clone(),
+                device,
                 queue.family(),
                 CommandBufferUsage::SimultaneousUse,
             )
@@ -1316,7 +1316,7 @@ mod tests {
             std::mem::drop(cb1);
 
             // Now that the first cb is dropped, we should be able to record.
-            builder.execute_commands(secondary.clone()).unwrap();
+            builder.execute_commands(secondary).unwrap();
         }
     }
 
@@ -1333,7 +1333,7 @@ mod tests {
         .unwrap();
 
         let mut builder = AutoCommandBufferBuilder::primary(
-            device.clone(),
+            device,
             queue.family(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -1355,7 +1355,7 @@ mod tests {
         let cb = builder.build().unwrap();
 
         let future = cb
-            .execute(queue.clone())
+            .execute(queue)
             .unwrap()
             .then_signal_fence_and_flush()
             .unwrap();
@@ -1379,7 +1379,7 @@ mod tests {
         .unwrap();
 
         let mut builder = AutoCommandBufferBuilder::primary(
-            device.clone(),
+            device,
             queue.family(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -1394,7 +1394,7 @@ mod tests {
                     ..Default::default()
                 }]
                 .into(),
-                ..CopyBufferInfoTyped::buffers(source.clone(), source.clone())
+                ..CopyBufferInfoTyped::buffers(source.clone(), source)
             }),
             Err(CopyError::OverlappingRegions {
                 src_region_index: 0,

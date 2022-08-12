@@ -148,9 +148,7 @@ impl Hash for dyn DescriptorSet {
 }
 
 pub(crate) struct DescriptorSetInner {
-    handle: ash::vk::DescriptorSet,
     layout: Arc<DescriptorSetLayout>,
-    variable_descriptor_count: u32,
     resources: DescriptorSetResources,
 }
 
@@ -225,20 +223,11 @@ impl DescriptorSetInner {
             );
         }
 
-        Ok(DescriptorSetInner {
-            handle,
-            layout,
-            variable_descriptor_count,
-            resources,
-        })
+        Ok(DescriptorSetInner { layout, resources })
     }
 
     pub(crate) fn layout(&self) -> &Arc<DescriptorSetLayout> {
         &self.layout
-    }
-
-    pub(crate) fn variable_descriptor_count(&self) -> u32 {
-        self.variable_descriptor_count
     }
 
     pub(crate) fn resources(&self) -> &DescriptorSetResources {
@@ -317,7 +306,7 @@ impl DescriptorSetResources {
     ///
     /// - Panics if the binding number of a write does not exist in the resources.
     /// - See also [`DescriptorBindingResources::update`].
-    pub fn update<'a>(&mut self, write: &WriteDescriptorSet) {
+    pub fn update(&mut self, write: &WriteDescriptorSet) {
         self.binding_resources
             .get_mut(&write.binding())
             .expect("descriptor write has invalid binding number")
@@ -460,13 +449,13 @@ impl DescriptorSetWithOffsets {
         }
 
         assert!(
-            !(dynamic_offsets.len() < dynamic_offset_index),
+            dynamic_offsets.len() >= dynamic_offset_index,
             "Too few dynamic offsets: got {}, expected {}",
             dynamic_offsets.len(),
             dynamic_offset_index
         );
         assert!(
-            !(dynamic_offsets.len() > dynamic_offset_index),
+            dynamic_offsets.len() <= dynamic_offset_index,
             "Too many dynamic offsets: got {}, expected {}",
             dynamic_offsets.len(),
             dynamic_offset_index
@@ -519,10 +508,10 @@ impl std::fmt::Display for DescriptorSetCreationError {
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::DescriptorSetUpdateError(err) => {
+            Self::DescriptorSetUpdateError(_) => {
                 write!(f, "an error occurred while updating the descriptor set")
             }
-            Self::OomError(err) => write!(f, "out of memory"),
+            Self::OomError(_) => write!(f, "out of memory"),
         }
     }
 }

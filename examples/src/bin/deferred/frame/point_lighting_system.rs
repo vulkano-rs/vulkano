@@ -126,6 +126,7 @@ impl PointLightingSystem {
     /// - `position` is the position of the spot light in world coordinates.
     /// - `color` is the color of the light.
     ///
+    #[allow(clippy::too_many_arguments)]
     pub fn draw(
         &self,
         viewport_dimensions: [u32; 2],
@@ -170,7 +171,7 @@ impl PointLightingSystem {
         )
         .unwrap();
         builder
-            .set_viewport(0, [viewport.clone()])
+            .set_viewport(0, [viewport])
             .bind_pipeline_graphics(self.pipeline.clone())
             .bind_descriptor_sets(
                 PipelineBindPoint::Graphics,

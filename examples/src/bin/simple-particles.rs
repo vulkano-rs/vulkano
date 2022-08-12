@@ -398,7 +398,7 @@ fn main() {
         .input_assembly_state(InputAssemblyState::new().topology(PrimitiveTopology::PointList)) // Vertices will be rendered as a list of points.
         .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([viewport]))
         .fragment_shader(fs.entry_point("main").unwrap(), ())
-        .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+        .render_pass(Subpass::from(render_pass, 0).unwrap())
         .build(device.clone())
         .unwrap();
 
@@ -406,7 +406,7 @@ fn main() {
     let mut previous_fence_index = 0;
 
     let start_time = SystemTime::now();
-    let mut last_frame_time = start_time.clone();
+    let mut last_frame_time = start_time;
     event_loop.run(move |event, _, control_flow| {
         match event {
             Event::WindowEvent {
@@ -445,8 +445,8 @@ fn main() {
                     };
 
                 // Since we disallow resizing, assert the swapchain and surface are optimally configured.
-                assert_eq!(
-                    suboptimal, false,
+                assert!(
+                    !suboptimal,
                     "Not handling sub-optimal swapchains in this sample code"
                 );
 

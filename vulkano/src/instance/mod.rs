@@ -241,7 +241,7 @@ pub struct Instance {
     enabled_layers: Vec<String>,
     library: Arc<VulkanLibrary>,
     max_api_version: Version,
-    user_callbacks: Vec<Box<UserCallback>>,
+    _user_callbacks: Vec<Box<UserCallback>>,
 }
 
 // TODO: fix the underlying cause instead
@@ -323,7 +323,7 @@ impl Instance {
         }
 
         // Check if the extensions are correct
-        enabled_extensions.check_requirements(&supported_extensions, api_version)?;
+        enabled_extensions.check_requirements(supported_extensions, api_version)?;
 
         // FIXME: check whether each layer is supported
         let enabled_layers_cstr: Vec<CString> = enabled_layers
@@ -453,7 +453,7 @@ impl Instance {
             enabled_layers,
             library,
             max_api_version,
-            user_callbacks,
+            _user_callbacks: user_callbacks,
         };
 
         // Enumerating all physical devices.
@@ -550,7 +550,7 @@ impl fmt::Debug for Instance {
             enabled_layers,
             library: function_pointers,
             max_api_version,
-            user_callbacks: _,
+            _user_callbacks: _,
         } = self;
 
         f.debug_struct("Instance")

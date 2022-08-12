@@ -115,7 +115,7 @@ fn main() {
     .unwrap();
 
     let data_buffer = {
-        let data_iter = (0..65536u32).map(|n| n);
+        let data_iter = 0..65536u32;
         CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, data_iter)
             .unwrap()
     };
@@ -151,15 +151,15 @@ fn main() {
             PipelineBindPoint::Compute,
             pipeline.layout().clone(),
             0,
-            set.clone(),
+            set,
         )
         .push_constants(pipeline.layout().clone(), 0, push_constants)
         .dispatch([1024, 1, 1])
         .unwrap();
     let command_buffer = builder.build().unwrap();
 
-    let future = sync::now(device.clone())
-        .then_execute(queue.clone(), command_buffer)
+    let future = sync::now(device)
+        .then_execute(queue, command_buffer)
         .unwrap()
         .then_signal_fence_and_flush()
         .unwrap();
@@ -168,7 +168,7 @@ fn main() {
 
     let data_buffer_content = data_buffer.read().unwrap();
     for n in 0..65536u32 {
-        assert_eq!(data_buffer_content[n as usize], n * 1 + 1);
+        assert_eq!(data_buffer_content[n as usize], n + 1);
     }
     println!("Success");
 }

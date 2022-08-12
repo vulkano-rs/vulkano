@@ -63,7 +63,7 @@ pub(super) type UserCallback = Arc<dyn Fn(&Message) + RefUnwindSafe + Send + Syn
 pub struct DebugUtilsMessenger {
     handle: ash::vk::DebugUtilsMessengerEXT,
     instance: Arc<Instance>,
-    user_callback: Box<UserCallback>,
+    _user_callback: Box<UserCallback>,
 }
 
 impl DebugUtilsMessenger {
@@ -86,7 +86,7 @@ impl DebugUtilsMessenger {
         Ok(DebugUtilsMessenger {
             handle,
             instance,
-            user_callback,
+            _user_callback: user_callback,
         })
     }
 
@@ -97,7 +97,7 @@ impl DebugUtilsMessenger {
         let &mut DebugUtilsMessengerCreateInfo {
             message_type,
             message_severity,
-            ref user_callback,
+            user_callback: _,
             _ne: _,
         } = create_info;
 
@@ -185,7 +185,7 @@ impl fmt::Debug for DebugUtilsMessenger {
         let Self {
             handle,
             instance,
-            user_callback: _,
+            _user_callback: _,
         } = self;
 
         f.debug_struct("DebugUtilsMessenger")

@@ -261,7 +261,7 @@ fn main() {
             },
         ]))
         .fragment_shader(fs.entry_point("main").unwrap(), ())
-        .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+        .render_pass(Subpass::from(render_pass, 0).unwrap())
         .build(device.clone())
         .unwrap();
 
@@ -291,12 +291,12 @@ fn main() {
         .begin_render_pass(
             RenderPassBeginInfo {
                 clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into())],
-                ..RenderPassBeginInfo::framebuffer(framebuffer.clone())
+                ..RenderPassBeginInfo::framebuffer(framebuffer)
             },
             SubpassContents::Inline,
         )
         .unwrap()
-        .bind_pipeline_graphics(pipeline.clone())
+        .bind_pipeline_graphics(pipeline)
         .bind_vertex_buffers(0, vertex_buffer.clone())
         .draw(vertex_buffer.len() as u32, 1, 0, 0)
         .unwrap()
@@ -335,7 +335,7 @@ fn main() {
     let command_buffer = builder.build().unwrap();
 
     let future = sync::now(device.clone())
-        .then_execute(queue.clone(), command_buffer)
+        .then_execute(queue, command_buffer)
         .unwrap()
         .then_signal_fence_and_flush()
         .unwrap();
@@ -366,7 +366,7 @@ fn write_image_buffer_to_file(
     let buffer_content = buffer.read().unwrap();
     let path = Path::new(path);
     let file = File::create(path).unwrap();
-    let ref mut w = BufWriter::new(file);
+    let w = &mut BufWriter::new(file);
     let mut encoder = png::Encoder::new(w, width, height);
     encoder.set_color(png::ColorType::Rgba);
     encoder.set_depth(png::BitDepth::Eight);

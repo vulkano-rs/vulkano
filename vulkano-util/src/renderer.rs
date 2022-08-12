@@ -335,7 +335,7 @@ impl VulkanoWindowRenderer {
             .collect::<Vec<usize>>();
         for i in resizable_views {
             let format = self.get_additional_image_view(i).format().unwrap();
-            let usage = self.get_additional_image_view(i).usage().clone();
+            let usage = *self.get_additional_image_view(i).usage();
             self.remove_additional_image_view(i);
             self.add_additional_image_view(i, format, usage);
         }

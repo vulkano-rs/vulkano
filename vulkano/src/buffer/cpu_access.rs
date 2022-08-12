@@ -41,7 +41,7 @@ use std::{
     mem::size_of,
     ops::{Deref, DerefMut, Range},
     ptr,
-    sync::{atomic::AtomicUsize, Arc},
+    sync::Arc,
 };
 
 /// Buffer whose content is accessible by the CPU.
@@ -66,18 +66,6 @@ where
 
     // Necessary to make it compile.
     marker: PhantomData<Box<T>>,
-}
-
-#[derive(Debug)]
-enum CurrentGpuAccess {
-    NonExclusive {
-        // Number of non-exclusive GPU accesses. Can be 0.
-        num: AtomicUsize,
-    },
-    Exclusive {
-        // Number of exclusive locks. Cannot be 0. If 0 is reached, we must jump to `NonExclusive`.
-        num: usize,
-    },
 }
 
 impl<T> CpuAccessibleBuffer<T>
@@ -344,13 +332,12 @@ where
             mapped_memory
                 .invalidate_range(memory_range.clone())
                 .unwrap();
-            mapped_memory.read(memory_range.clone()).unwrap()
+            mapped_memory.read(memory_range).unwrap()
         };
 
         Ok(ReadLock {
             inner: self,
             buffer_range,
-            memory_range,
             data: T::from_bytes(bytes).unwrap(),
         })
     }
@@ -483,7 +470,6 @@ where
 {
     inner: &'a CpuAccessibleBuffer<T, A>,
     buffer_range: Range<DeviceSize>,
-    memory_range: Range<DeviceSize>,
     data: &'a T,
 }
 
@@ -635,7 +621,7 @@ mod tests {
 
     #[test]
     fn create_empty_buffer() {
-        let (device, queue) = gfx_dev_and_queue!();
+        let (device, _queue) = gfx_dev_and_queue!();
 
         const EMPTY: [i32; 0] = [];
 

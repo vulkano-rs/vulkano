@@ -41,7 +41,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     fn validate_begin_debug_utils_label(
         &self,
-        label_info: &mut DebugUtilsLabel,
+        _label_info: &mut DebugUtilsLabel,
     ) -> Result<(), DebugUtilsError> {
         if !self
             .device()
@@ -123,7 +123,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     fn validate_insert_debug_utils_label(
         &self,
-        label_info: &mut DebugUtilsLabel,
+        _label_info: &mut DebugUtilsLabel,
     ) -> Result<(), DebugUtilsError> {
         if !self
             .device()

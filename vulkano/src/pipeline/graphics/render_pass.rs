@@ -7,7 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::GraphicsPipelineCreationError;
 use crate::{format::Format, render_pass::Subpass};
 
 /// Selects the type of render pass that a graphics pipeline is created for.
@@ -78,11 +77,5 @@ impl Default for PipelineRenderingCreateInfo {
             stencil_attachment_format: None,
             _ne: crate::NonExhaustive(()),
         }
-    }
-}
-
-impl PipelineRenderingCreateInfo {
-    pub(super) fn validate(&self) -> Result<(), GraphicsPipelineCreationError> {
-        Ok(())
     }
 }

@@ -215,8 +215,7 @@ impl Fence {
             .filter_map(|fence| {
                 match &mut device {
                     dev @ &mut None => *dev = Some(&*fence.device),
-                    &mut Some(ref dev)
-                        if &**dev as *const Device == &*fence.device as *const Device => {}
+                    &mut Some(dev) if std::ptr::eq(dev, &*fence.device) => {}
                     _ => panic!(
                         "Tried to wait for multiple fences that didn't belong to the \
                                  same device"
@@ -294,8 +293,7 @@ impl Fence {
             .map(|fence| {
                 match &mut device {
                     dev @ &mut None => *dev = Some(&*fence.device),
-                    &mut Some(ref dev)
-                        if &**dev as *const Device == &*fence.device as *const Device => {}
+                    &mut Some(dev) if std::ptr::eq(dev, &*fence.device) => {}
                     _ => panic!(
                         "Tried to reset multiple fences that didn't belong to the same \
                                  device"
@@ -454,7 +452,7 @@ mod tests {
     fn fence_create() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let fence = Fence::new(device.clone(), Default::default()).unwrap();
+        let fence = Fence::new(device, Default::default()).unwrap();
         assert!(!fence.is_signaled().unwrap());
     }
 
@@ -463,7 +461,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let fence = Fence::new(
-            device.clone(),
+            device,
             FenceCreateInfo {
                 signaled: true,
                 ..Default::default()
@@ -478,7 +476,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let fence = Fence::new(
-            device.clone(),
+            device,
             FenceCreateInfo {
                 signaled: true,
                 ..Default::default()
@@ -493,7 +491,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let mut fence = Fence::new(
-            device.clone(),
+            device,
             FenceCreateInfo {
                 signaled: true,
                 ..Default::default()

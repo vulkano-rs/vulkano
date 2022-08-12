@@ -60,8 +60,7 @@ where
         first_loop
             .chain(second_loop)
             .filter(|&(t, _)| (requirements.memory_type_bits & (1 << t.id())) != 0)
-            .filter(|&(t, rq)| filter(t) == rq)
-            .next()
+            .find(|&(t, rq)| filter(t) == rq)
             .expect("Couldn't find a memory type to allocate from")
             .0
     };
@@ -73,7 +72,7 @@ where
 pub(crate) fn alloc_dedicated_with_exportable_fd<F>(
     device: Arc<Device>,
     requirements: &MemoryRequirements,
-    layout: AllocLayout,
+    _layout: AllocLayout,
     map: MappingRequirement,
     dedicated_allocation: DedicatedAllocation,
     filter: F,

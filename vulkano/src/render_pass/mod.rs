@@ -182,7 +182,6 @@ impl RenderPass {
     pub unsafe fn from_handle(
         handle: ash::vk::RenderPass,
         create_info: RenderPassCreateInfo,
-        granularity: [u32; 2],
         device: Arc<Device>,
     ) -> Result<Arc<RenderPass>, RenderPassCreationError> {
         let views_used = create_info
@@ -495,7 +494,7 @@ impl RenderPass {
                     _ => return false,
                 };
 
-                let attachment_desc = &self.attachments[attachment_id as usize];
+                let _attachment_desc = &self.attachments[attachment_id as usize];
 
                 // FIXME: compare formats depending on the number of components and data type
                 /*if attachment_desc.format != element.format {
@@ -1248,7 +1247,7 @@ mod tests {
         }
 
         let rp = single_pass_renderpass! {
-            device.clone(),
+            device,
             attachments: {
                 a1: { load: Clear, store: DontCare, format: Format::R8G8B8A8_UNORM, samples: 1, },
                 a2: { load: Clear, store: DontCare, format: Format::R8G8B8A8_UNORM, samples: 1, },
@@ -1278,7 +1277,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let rp = single_pass_renderpass! {
-            device.clone(),
+            device,
             attachments: {
                 a: { load: Clear, store: DontCare, format: Format::R8G8B8A8_UNORM, samples: 1, }
             },

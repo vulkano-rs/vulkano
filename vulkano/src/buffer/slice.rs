@@ -74,7 +74,7 @@ impl<T: ?Sized, B> BufferSlice<T, B> {
             marker: PhantomData,
             resource: r,
             offset: 0,
-            size: size,
+            size,
         })
     }
 

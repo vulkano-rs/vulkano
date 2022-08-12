@@ -202,7 +202,7 @@ where
             device,
             pool,
             current_buffer: Mutex::new(None),
-            usage: usage.clone(),
+            usage,
             marker: PhantomData,
         }
     }
@@ -345,7 +345,7 @@ where
         I: IntoIterator<Item = T>,
         I::IntoIter: ExactSizeIterator,
     {
-        self.chunk_impl(data.into_iter()).map(|ok| Arc::new(ok))
+        self.chunk_impl(data.into_iter()).map(Arc::new)
     }
 
     fn chunk_impl(
@@ -435,7 +435,7 @@ where
                 memory: mem,
                 chunks_in_use: Mutex::new(vec![]),
                 next_index: AtomicU64::new(0),
-                capacity: capacity,
+                capacity,
             }));
 
             Ok(())
@@ -612,7 +612,7 @@ where
             device: self.device.clone(),
             pool: self.pool.clone(),
             current_buffer: Mutex::new(buf.clone()),
-            usage: self.usage.clone(),
+            usage: self.usage,
             marker: PhantomData,
         }
     }

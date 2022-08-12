@@ -385,7 +385,7 @@ fn main() {
                         PipelineBindPoint::Compute,
                         compute_pipeline.layout().clone(),
                         0,
-                        cs_desciptor_set.clone(),
+                        cs_desciptor_set,
                     )
                     .dispatch([1, 1, 1])
                     .unwrap()
@@ -401,8 +401,8 @@ fn main() {
                     // contain the arguments when the draw is executed on the GPU
                     .set_viewport(0, [viewport.clone()])
                     .bind_pipeline_graphics(render_pipeline.clone())
-                    .bind_vertex_buffers(0, vertices.clone())
-                    .draw_indirect(indirect_buffer.clone())
+                    .bind_vertex_buffers(0, vertices)
+                    .draw_indirect(indirect_buffer)
                     .unwrap()
                     .end_render_pass()
                     .unwrap();

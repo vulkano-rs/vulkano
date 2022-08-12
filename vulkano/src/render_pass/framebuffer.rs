@@ -753,7 +753,7 @@ mod tests {
         .unwrap();
 
         let view = ImageView::new_default(
-            AttachmentImage::new(device.clone(), [1024, 768], Format::R8G8B8A8_UNORM).unwrap(),
+            AttachmentImage::new(device, [1024, 768], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
         let _ = Framebuffer::new(
@@ -820,7 +820,7 @@ mod tests {
         .unwrap();
 
         let view = ImageView::new_default(
-            AttachmentImage::new(device.clone(), [1024, 768], Format::R8_UNORM).unwrap(),
+            AttachmentImage::new(device, [1024, 768], Format::R8_UNORM).unwrap(),
         )
         .unwrap();
 
@@ -859,7 +859,7 @@ mod tests {
         .unwrap();
 
         let view = ImageView::new_default(
-            AttachmentImage::new(device.clone(), [600, 600], Format::R8G8B8A8_UNORM).unwrap(),
+            AttachmentImage::new(device, [600, 600], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
 
@@ -896,7 +896,7 @@ mod tests {
         .unwrap();
 
         let view = ImageView::new_default(
-            AttachmentImage::new(device.clone(), [512, 700], Format::R8G8B8A8_UNORM).unwrap(),
+            AttachmentImage::new(device, [512, 700], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
 
@@ -945,7 +945,7 @@ mod tests {
         )
         .unwrap();
         let b = ImageView::new_default(
-            AttachmentImage::new(device.clone(), [512, 128], Format::R8G8B8A8_UNORM).unwrap(),
+            AttachmentImage::new(device, [512, 128], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
 
@@ -991,7 +991,7 @@ mod tests {
         .unwrap();
 
         let view = ImageView::new_default(
-            AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8_UNORM).unwrap(),
+            AttachmentImage::new(device, [256, 512], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
 
@@ -1037,7 +1037,7 @@ mod tests {
         )
         .unwrap();
         let b = ImageView::new_default(
-            AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8_UNORM).unwrap(),
+            AttachmentImage::new(device, [256, 512], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
 

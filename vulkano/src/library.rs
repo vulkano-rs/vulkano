@@ -264,14 +264,14 @@ where
 
 impl fmt::Debug for dyn Loader {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
         Ok(())
     }
 }
 
 /// Implementation of `Loader` that loads Vulkan from a dynamic library.
 pub struct DynamicLibraryLoader {
-    vk_lib: Library,
+    _vk_lib: Library,
     get_instance_proc_addr: ash::vk::PFN_vkGetInstanceProcAddr,
 }
 
@@ -294,7 +294,7 @@ impl DynamicLibraryLoader {
             .map_err(LoadingError::LibraryLoadFailure)?;
 
         Ok(DynamicLibraryLoader {
-            vk_lib,
+            _vk_lib: vk_lib,
             get_instance_proc_addr,
         })
     }

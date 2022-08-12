@@ -46,11 +46,11 @@ impl RenderPass {
         for (atch_num, attachment) in attachments.iter().enumerate() {
             let &AttachmentDescription {
                 format,
-                samples,
-                load_op,
-                store_op,
-                stencil_load_op,
-                stencil_store_op,
+                samples: _,
+                load_op: _,
+                store_op: _,
+                stencil_load_op: _,
+                stencil_store_op: _,
                 initial_layout,
                 final_layout,
                 _ne: _,
@@ -175,17 +175,17 @@ impl RenderPass {
             // Common checks for all attachment types
             let mut check_attachment = |atch_ref: &AttachmentReference| {
                 // VUID-VkRenderPassCreateInfo2-attachment-03051
-                let atch = attachments
-                    .get(atch_ref.attachment as usize)
-                    .ok_or_else(|| RenderPassCreationError::SubpassAttachmentOutOfRange {
+                let atch = attachments.get(atch_ref.attachment as usize).ok_or(
+                    RenderPassCreationError::SubpassAttachmentOutOfRange {
                         subpass: subpass_num,
                         attachment: atch_ref.attachment,
-                    })?;
+                    },
+                )?;
 
                 // VUID-VkSubpassDescription2-layout-02528
                 match &mut layouts[atch_ref.attachment as usize] {
                     Some(layout) if *layout == atch_ref.layout => (),
-                    Some(layout) => {
+                    Some(_) => {
                         return Err(RenderPassCreationError::SubpassAttachmentLayoutMismatch {
                             subpass: subpass_num,
                             attachment: atch_ref.attachment,
@@ -486,7 +486,7 @@ impl RenderPass {
                 }
 
                 // VUID-VkSubpassDescription2-pResolveAttachments-03065
-                let color_atch_ref = color_atch_ref.ok_or_else(|| {
+                let color_atch_ref = color_atch_ref.ok_or({
                     RenderPassCreationError::SubpassResolveAttachmentWithoutColorAttachment {
                         subpass: subpass_num,
                     }
@@ -732,6 +732,7 @@ impl RenderPass {
                                 ..
                             } = *source_stages;
 
+                            #[allow(clippy::identity_op)]
                             [
                                 draw_indirect as u8 * 1,
                                 // index_input as u8 * 2,
@@ -772,6 +773,7 @@ impl RenderPass {
                                 ..
                             } = *destination_stages;
 
+                            #[allow(clippy::identity_op)]
                             [
                                 draw_indirect as u8 * 1,
                                 // index_input as u8 * 2,
@@ -933,17 +935,14 @@ impl RenderPass {
             let out: SmallVec<[_; 4]> = subpasses
                 .iter()
                 .map(|subpass| {
-                    let input_attachments =
-                        attachment_references_vk.as_ptr().offset(ref_index as isize);
+                    let input_attachments = attachment_references_vk.as_ptr().add(ref_index);
                     ref_index += subpass.input_attachments.len();
-                    let color_attachments =
-                        attachment_references_vk.as_ptr().offset(ref_index as isize);
+                    let color_attachments = attachment_references_vk.as_ptr().add(ref_index);
                     ref_index += subpass.color_attachments.len();
-                    let resolve_attachments =
-                        attachment_references_vk.as_ptr().offset(ref_index as isize);
+                    let resolve_attachments = attachment_references_vk.as_ptr().add(ref_index);
                     ref_index += subpass.resolve_attachments.len();
                     let depth_stencil = if subpass.depth_stencil_attachment.is_some() {
-                        let a = attachment_references_vk.as_ptr().offset(ref_index as isize);
+                        let a = attachment_references_vk.as_ptr().add(ref_index);
                         ref_index += 1;
                         a
                     } else {
@@ -1132,17 +1131,14 @@ impl RenderPass {
             let out: SmallVec<[_; 4]> = subpasses
                 .iter()
                 .map(|subpass| {
-                    let input_attachments =
-                        attachment_references_vk.as_ptr().offset(ref_index as isize);
+                    let input_attachments = attachment_references_vk.as_ptr().add(ref_index);
                     ref_index += subpass.input_attachments.len();
-                    let color_attachments =
-                        attachment_references_vk.as_ptr().offset(ref_index as isize);
+                    let color_attachments = attachment_references_vk.as_ptr().add(ref_index);
                     ref_index += subpass.color_attachments.len();
-                    let resolve_attachments =
-                        attachment_references_vk.as_ptr().offset(ref_index as isize);
+                    let resolve_attachments = attachment_references_vk.as_ptr().add(ref_index);
                     ref_index += subpass.resolve_attachments.len();
                     let depth_stencil = if subpass.depth_stencil_attachment.is_some() {
-                        let a = attachment_references_vk.as_ptr().offset(ref_index as isize);
+                        let a = attachment_references_vk.as_ptr().add(ref_index);
                         ref_index += 1;
                         a
                     } else {

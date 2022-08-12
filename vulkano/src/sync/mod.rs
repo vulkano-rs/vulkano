@@ -144,7 +144,7 @@ pub enum SharingMode {
 
 impl<'a> From<&'a Arc<Queue>> for SharingMode {
     #[inline]
-    fn from(queue: &'a Arc<Queue>) -> SharingMode {
+    fn from(_queue: &'a Arc<Queue>) -> SharingMode {
         SharingMode::Exclusive
     }
 }

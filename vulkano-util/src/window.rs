@@ -202,19 +202,17 @@ impl VulkanoWindows {
         &mut self,
         id: winit::window::WindowId,
     ) -> Option<&mut VulkanoWindowRenderer> {
-        self.windows.get_mut(&id).and_then(|v| Some(v))
+        self.windows.get_mut(&id)
     }
 
     /// Get a reference to the renderer by winit window id
     pub fn get_renderer(&self, id: winit::window::WindowId) -> Option<&VulkanoWindowRenderer> {
-        self.windows.get(&id).and_then(|v| Some(v))
+        self.windows.get(&id)
     }
 
     /// Get a reference to the winit window by winit window id
     pub fn get_window(&self, id: winit::window::WindowId) -> Option<&winit::window::Window> {
-        self.windows
-            .get(&id)
-            .and_then(|v_window| Some(v_window.window()))
+        self.windows.get(&id).map(|v_window| v_window.window())
     }
 
     /// Return primary window id
@@ -294,7 +292,7 @@ fn get_best_videomode(monitor: &winit::monitor::MonitorHandle) -> winit::monitor
 }
 
 /// Defines the way a window is displayed.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WindowMode {
     /// Creates a window that uses the given size.
     Windowed,

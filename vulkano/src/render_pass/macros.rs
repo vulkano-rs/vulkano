@@ -233,7 +233,7 @@ mod tests {
     #[test]
     fn single_pass_resolve() {
         let (device, _) = gfx_dev_and_queue!();
-        let _ = single_pass_renderpass!(device.clone(),
+        let _ = single_pass_renderpass!(device,
             attachments: {
                 a: {
                     load: Clear,

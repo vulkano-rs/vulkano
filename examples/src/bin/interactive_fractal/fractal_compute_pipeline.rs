@@ -105,7 +105,7 @@ impl FractalComputePipeline {
         let set = PersistentDescriptorSet::new(
             desc_layout.clone(),
             [
-                WriteDescriptorSet::image_view(0, image.clone()),
+                WriteDescriptorSet::image_view(0, image),
                 WriteDescriptorSet::buffer(1, self.palette.clone()),
             ],
         )

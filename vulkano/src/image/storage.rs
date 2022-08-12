@@ -48,12 +48,6 @@ where
 
     // Dimensions of the image.
     dimensions: ImageDimensions,
-
-    // Format.
-    format: Format,
-
-    // Queue families allowed to access this image.
-    queue_families: SmallVec<[u32; 4]>,
 }
 
 impl StorageImage {
@@ -150,8 +144,6 @@ impl StorageImage {
             image,
             memory,
             dimensions,
-            format,
-            queue_families,
         }))
     }
 
@@ -196,7 +188,7 @@ impl StorageImage {
 
         let mem_reqs = image.memory_requirements();
         let memory = alloc_dedicated_with_exportable_fd(
-            device.clone(),
+            device,
             &mem_reqs,
             AllocLayout::Optimal,
             MappingRequirement::DoNotMap,
@@ -218,8 +210,6 @@ impl StorageImage {
             image,
             memory,
             dimensions,
-            format,
-            queue_families,
         }))
     }
 
@@ -376,7 +366,7 @@ mod tests {
 
     #[test]
     fn create_general_purpose_image_view() {
-        let (device, queue) = gfx_dev_and_queue!();
+        let (_device, queue) = gfx_dev_and_queue!();
         let usage = ImageUsage {
             transfer_src: true,
             transfer_dst: true,
@@ -384,7 +374,7 @@ mod tests {
             ..ImageUsage::none()
         };
         let img_view = StorageImage::general_purpose_image_view(
-            queue.clone(),
+            queue,
             [32, 32],
             Format::R8G8B8A8_UNORM,
             usage,
@@ -395,14 +385,14 @@ mod tests {
 
     #[test]
     fn create_general_purpose_image_view_failed() {
-        let (device, queue) = gfx_dev_and_queue!();
+        let (_device, queue) = gfx_dev_and_queue!();
         // Not valid for image view...
         let usage = ImageUsage {
             transfer_src: true,
             ..ImageUsage::none()
         };
         let img_result = StorageImage::general_purpose_image_view(
-            queue.clone(),
+            queue,
             [32, 32],
             Format::R8G8B8A8_UNORM,
             usage,

@@ -396,7 +396,7 @@ impl Spirv {
     /// - Panics if `id` is not defined in this module. This can in theory only happpen if you are
     ///   mixing `Id`s from different modules.
     #[inline]
-    pub fn id<'a>(&'a self, id: Id) -> IdInfo<'a> {
+    pub fn id(&self, id: Id) -> IdInfo {
         IdInfo {
             data_indices: &self.ids[&id],
             instructions: &self.instructions,
@@ -628,11 +628,13 @@ impl<'a> InstructionReader<'a> {
         Ok(word)
     }
 
+    /*
     /// Returns the next two words as a single `u64`.
     #[inline]
     fn next_u64(&mut self) -> Result<u64, ParseError> {
         Ok(self.next_u32()? as u64 | (self.next_u32()? as u64) << 32)
     }
+    */
 
     /// Reads a nul-terminated string.
     fn next_string(&mut self) -> Result<String, ParseError> {
@@ -771,7 +773,7 @@ impl Display for ParseErrors {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::FromUtf8Error(err) => write!(f, "invalid UTF-8 in string literal"),
+            Self::FromUtf8Error(_) => write!(f, "invalid UTF-8 in string literal"),
             Self::LeftoverOperands => write!(f, "unparsed operands remaining"),
             Self::MissingOperands => write!(f, "the instruction and its operands require more words than are present in the instruction"),
             Self::UnexpectedEOF => write!(f, "encountered unexpected end of file"),

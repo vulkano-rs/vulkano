@@ -658,7 +658,7 @@ impl SyncCommandBufferBuilder {
         let set_resources = match state
             .descriptor_sets
             .entry(set_num)
-            .or_insert(SetOrPush::Push(DescriptorSetResources::new(layout, 0)))
+            .or_insert_with(|| SetOrPush::Push(DescriptorSetResources::new(layout, 0)))
         {
             SetOrPush::Push(set_resources) => set_resources,
             _ => unreachable!(),
@@ -720,8 +720,7 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
                 let dynamic_offsets = self
                     .descriptor_sets
                     .iter()
-                    .map(|x| x.as_ref().1.iter().copied())
-                    .flatten();
+                    .flat_map(|x| x.as_ref().1.iter().copied());
 
                 out.bind_descriptor_sets(
                     self.pipeline_bind_point,
@@ -775,7 +774,7 @@ impl<'a> SyncCommandBufferBuilderBindVertexBuffer<'a> {
         struct Cmd {
             first_set: u32,
             inner: Mutex<Option<UnsafeCommandBufferBuilderBindVertexBuffer>>,
-            buffers: SmallVec<[Arc<dyn BufferAccess>; 4]>,
+            _buffers: SmallVec<[Arc<dyn BufferAccess>; 4]>,
         }
 
         impl Command for Cmd {
@@ -798,7 +797,7 @@ impl<'a> SyncCommandBufferBuilderBindVertexBuffer<'a> {
         self.builder.commands.push(Box::new(Cmd {
             first_set,
             inner: Mutex::new(Some(self.inner)),
-            buffers: self.buffers,
+            _buffers: self.buffers,
         }));
     }
 }

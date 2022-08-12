@@ -475,20 +475,17 @@ mod tests {
     #[test]
     fn create_uniform() {
         // `VK_FORMAT_R8G8B8A8_UNORM` guaranteed to be a supported format
-        let (device, queue) = gfx_dev_and_queue!();
+        let (_device, queue) = gfx_dev_and_queue!();
 
         let usage = BufferUsage {
             uniform_texel_buffer: true,
             ..BufferUsage::none()
         };
 
-        let (buffer, _) = DeviceLocalBuffer::<[[u8; 4]]>::from_iter(
-            (0..128).map(|_| [0; 4]),
-            usage,
-            queue.clone(),
-        )
-        .unwrap();
-        let view = BufferView::new(
+        let (buffer, _) =
+            DeviceLocalBuffer::<[[u8; 4]]>::from_iter((0..128).map(|_| [0; 4]), usage, queue)
+                .unwrap();
+        BufferView::new(
             buffer,
             BufferViewCreateInfo {
                 format: Some(Format::R8G8B8A8_UNORM),
@@ -501,19 +498,16 @@ mod tests {
     #[test]
     fn create_storage() {
         // `VK_FORMAT_R8G8B8A8_UNORM` guaranteed to be a supported format
-        let (device, queue) = gfx_dev_and_queue!();
+        let (_device, queue) = gfx_dev_and_queue!();
 
         let usage = BufferUsage {
             storage_texel_buffer: true,
             ..BufferUsage::none()
         };
 
-        let (buffer, _) = DeviceLocalBuffer::<[[u8; 4]]>::from_iter(
-            (0..128).map(|_| [0; 4]),
-            usage,
-            queue.clone(),
-        )
-        .unwrap();
+        let (buffer, _) =
+            DeviceLocalBuffer::<[[u8; 4]]>::from_iter((0..128).map(|_| [0; 4]), usage, queue)
+                .unwrap();
         BufferView::new(
             buffer,
             BufferViewCreateInfo {
@@ -527,7 +521,7 @@ mod tests {
     #[test]
     fn create_storage_atomic() {
         // `VK_FORMAT_R32_UINT` guaranteed to be a supported format for atomics
-        let (device, queue) = gfx_dev_and_queue!();
+        let (_device, queue) = gfx_dev_and_queue!();
 
         let usage = BufferUsage {
             storage_texel_buffer: true,
@@ -535,8 +529,7 @@ mod tests {
         };
 
         let (buffer, _) =
-            DeviceLocalBuffer::<[u32]>::from_iter((0..128).map(|_| 0), usage, queue.clone())
-                .unwrap();
+            DeviceLocalBuffer::<[u32]>::from_iter((0..128).map(|_| 0), usage, queue).unwrap();
         BufferView::new(
             buffer,
             BufferViewCreateInfo {
@@ -550,12 +543,12 @@ mod tests {
     #[test]
     fn wrong_usage() {
         // `VK_FORMAT_R8G8B8A8_UNORM` guaranteed to be a supported format
-        let (device, queue) = gfx_dev_and_queue!();
+        let (_device, queue) = gfx_dev_and_queue!();
 
         let (buffer, _) = DeviceLocalBuffer::<[[u8; 4]]>::from_iter(
             (0..128).map(|_| [0; 4]),
             BufferUsage::none(),
-            queue.clone(),
+            queue,
         )
         .unwrap();
 
@@ -573,7 +566,7 @@ mod tests {
 
     #[test]
     fn unsupported_format() {
-        let (device, queue) = gfx_dev_and_queue!();
+        let (_device, queue) = gfx_dev_and_queue!();
 
         let usage = BufferUsage {
             uniform_texel_buffer: true,
@@ -581,12 +574,9 @@ mod tests {
             ..BufferUsage::none()
         };
 
-        let (buffer, _) = DeviceLocalBuffer::<[[f64; 4]]>::from_iter(
-            (0..128).map(|_| [0.0; 4]),
-            usage,
-            queue.clone(),
-        )
-        .unwrap();
+        let (buffer, _) =
+            DeviceLocalBuffer::<[[f64; 4]]>::from_iter((0..128).map(|_| [0.0; 4]), usage, queue)
+                .unwrap();
 
         // TODO: what if R64G64B64A64_SFLOAT is supported?
         match BufferView::new(

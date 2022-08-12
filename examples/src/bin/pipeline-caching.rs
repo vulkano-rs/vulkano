@@ -145,7 +145,7 @@ fn main() {
 
     if let Ok(data) = pipeline_cache.get_data() {
         if let Ok(mut file) = File::create("pipeline_cache.bin.tmp") {
-            if let Ok(_) = file.write_all(&data) {
+            if file.write_all(&data).is_ok() {
                 let _ = rename("pipeline_cache.bin.tmp", "pipeline_cache.bin");
             } else {
                 let _ = remove_file("pipeline_cache.bin.tmp");
@@ -163,7 +163,7 @@ fn main() {
     let data = {
         if let Ok(mut file) = File::open("pipeline_cache.bin") {
             let mut data = Vec::new();
-            if let Ok(_) = file.read_to_end(&mut data) {
+            if file.read_to_end(&mut data).is_ok() {
                 Some(data)
             } else {
                 None
@@ -175,9 +175,9 @@ fn main() {
 
     let second_cache = if let Some(data) = data {
         // This is unsafe because there is no way to be sure that the file contains valid data.
-        unsafe { PipelineCache::with_data(device.clone(), &data).unwrap() }
+        unsafe { PipelineCache::with_data(device, &data).unwrap() }
     } else {
-        PipelineCache::empty(device.clone()).unwrap()
+        PipelineCache::empty(device).unwrap()
     };
 
     // As the PipelineCache of the Vulkan implementation saves an opaque blob of data,

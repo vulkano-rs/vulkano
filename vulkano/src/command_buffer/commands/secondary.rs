@@ -324,12 +324,11 @@ where
             match state.ty {
                 QueryType::Occlusion => {
                     // VUID-vkCmdExecuteCommands-commandBuffer-00102
-                    let inherited_flags = command_buffer
-                        .inheritance_info()
-                        .occlusion_query
-                        .ok_or_else(|| ExecuteCommandsError::OcclusionQueryInheritanceRequired {
+                    let inherited_flags = command_buffer.inheritance_info().occlusion_query.ok_or(
+                        ExecuteCommandsError::OcclusionQueryInheritanceRequired {
                             command_buffer_index,
-                        })?;
+                        },
+                    )?;
 
                     let inherited_flags_vk = ash::vk::QueryControlFlags::from(inherited_flags);
                     let state_flags_vk = ash::vk::QueryControlFlags::from(state.flags);

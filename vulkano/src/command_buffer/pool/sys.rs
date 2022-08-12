@@ -39,8 +39,8 @@ pub struct UnsafeCommandPool {
     dummy_avoid_sync: PhantomData<*const u8>,
 
     queue_family_index: u32,
-    transient: bool,
-    reset_command_buffer: bool,
+    _transient: bool,
+    _reset_command_buffer: bool,
 }
 
 unsafe impl Send for UnsafeCommandPool {}
@@ -67,8 +67,8 @@ impl UnsafeCommandPool {
             dummy_avoid_sync: PhantomData,
 
             queue_family_index,
-            transient,
-            reset_command_buffer,
+            _transient: transient,
+            _reset_command_buffer: reset_command_buffer,
         })
     }
 
@@ -94,8 +94,8 @@ impl UnsafeCommandPool {
             dummy_avoid_sync: PhantomData,
 
             queue_family_index,
-            transient,
-            reset_command_buffer,
+            _transient: transient,
+            _reset_command_buffer: reset_command_buffer,
         }
     }
 
@@ -105,8 +105,8 @@ impl UnsafeCommandPool {
     ) -> Result<(), UnsafeCommandPoolCreationError> {
         let &mut UnsafeCommandPoolCreateInfo {
             queue_family_index,
-            transient,
-            reset_command_buffer,
+            transient: _,
+            reset_command_buffer: _,
             _ne: _,
         } = create_info;
 
@@ -615,14 +615,18 @@ mod tests {
         .unwrap();
 
         if device.api_version() >= Version::V1_1 {
-            match pool.trim() {
-                Err(CommandPoolTrimError::Maintenance1ExtensionNotEnabled) => panic!(),
-                _ => (),
+            if matches!(
+                pool.trim(),
+                Err(CommandPoolTrimError::Maintenance1ExtensionNotEnabled)
+            ) {
+                panic!()
             }
         } else {
-            match pool.trim() {
-                Err(CommandPoolTrimError::Maintenance1ExtensionNotEnabled) => (),
-                _ => panic!(),
+            if !matches!(
+                pool.trim(),
+                Err(CommandPoolTrimError::Maintenance1ExtensionNotEnabled)
+            ) {
+                panic!()
             }
         }
     }

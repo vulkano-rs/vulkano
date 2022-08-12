@@ -46,12 +46,12 @@ impl<'a> SubmitSemaphoresWaitBuilder<'a> {
     }
 }
 
-impl<'a> Into<SubmitCommandBufferBuilder<'a>> for SubmitSemaphoresWaitBuilder<'a> {
+impl<'a> From<SubmitSemaphoresWaitBuilder<'a>> for SubmitCommandBufferBuilder<'a> {
     #[inline]
-    fn into(mut self) -> SubmitCommandBufferBuilder<'a> {
+    fn from(mut val: SubmitSemaphoresWaitBuilder<'a>) -> Self {
         unsafe {
             let mut builder = SubmitCommandBufferBuilder::new();
-            for sem in self.semaphores.drain(..) {
+            for sem in val.semaphores.drain(..) {
                 builder.add_wait_semaphore(
                     sem,
                     PipelineStages {
@@ -66,12 +66,12 @@ impl<'a> Into<SubmitCommandBufferBuilder<'a>> for SubmitSemaphoresWaitBuilder<'a
     }
 }
 
-impl<'a> Into<SubmitPresentBuilder<'a>> for SubmitSemaphoresWaitBuilder<'a> {
+impl<'a> From<SubmitSemaphoresWaitBuilder<'a>> for SubmitPresentBuilder<'a> {
     #[inline]
-    fn into(mut self) -> SubmitPresentBuilder<'a> {
+    fn from(mut val: SubmitSemaphoresWaitBuilder<'a>) -> Self {
         unsafe {
             let mut builder = SubmitPresentBuilder::new();
-            for sem in self.semaphores.drain(..) {
+            for sem in val.semaphores.drain(..) {
                 builder.add_wait_semaphore(sem);
             }
             builder

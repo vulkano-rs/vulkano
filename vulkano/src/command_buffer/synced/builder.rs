@@ -198,8 +198,8 @@ impl SyncCommandBufferBuilder {
     ) -> Result<(), SyncCommandBufferBuilderError> {
         let (resource_name, resource) = resource;
 
-        match resource {
-            &Resource::Buffer {
+        match *resource {
+            Resource::Buffer {
                 ref buffer,
                 ref range,
                 ref memory,
@@ -217,7 +217,7 @@ impl SyncCommandBufferBuilder {
                     });
                 }
             }
-            &Resource::Image {
+            Resource::Image {
                 ref image,
                 ref subresource_range,
                 ref memory,
@@ -266,7 +266,7 @@ impl SyncCommandBufferBuilder {
 
         let range_map = self.buffers2.get(inner.buffer)?;
 
-        for (range, state) in range_map
+        for (_range, state) in range_map
             .range(&range)
             .filter(|(_range, state)| !state.resource_uses.is_empty())
         {
@@ -297,7 +297,7 @@ impl SyncCommandBufferBuilder {
         mut subresource_range: ImageSubresourceRange,
         memory: &PipelineMemoryAccess,
         start_layout: ImageLayout,
-        end_layout: ImageLayout,
+        _end_layout: ImageLayout,
     ) -> Option<&ImageUse> {
         // Barriers work differently in render passes, so if we're in one, we can only insert a
         // barrier before the start of the render pass.
@@ -313,7 +313,7 @@ impl SyncCommandBufferBuilder {
         let range_map = self.images2.get(inner.image)?;
 
         for range in inner.image.iter_ranges(subresource_range) {
-            for (range, state) in range_map
+            for (_range, state) in range_map
                 .range(&range)
                 .filter(|(_range, state)| !state.resource_uses.is_empty())
             {
@@ -851,7 +851,7 @@ impl SyncCommandBufferBuilder {
             buffers2,
             images2,
             commands: self.commands,
-            barriers: self.barriers,
+            _barriers: self.barriers,
         })
     }
 }

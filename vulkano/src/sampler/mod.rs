@@ -198,8 +198,8 @@ impl Sampler {
                 .any(|filter| filter == Filter::Cubic)
             {
                 return Err(SamplerCreationError::AnisotropyInvalidFilter {
-                    mag_filter: mag_filter,
-                    min_filter: min_filter,
+                    mag_filter,
+                    min_filter,
                 });
             }
 
@@ -235,12 +235,10 @@ impl Sampler {
             }
 
             if lod != (0.0..=0.0) {
-                return Err(SamplerCreationError::UnnormalizedCoordinatesNonzeroLod {
-                    lod: lod.clone(),
-                });
+                return Err(SamplerCreationError::UnnormalizedCoordinatesNonzeroLod { lod });
             }
 
-            if address_mode[0..2].into_iter().any(|mode| {
+            if address_mode[0..2].iter().any(|mode| {
                 !matches!(
                     mode,
                     SamplerAddressMode::ClampToEdge | SamplerAddressMode::ClampToBorder
@@ -366,7 +364,7 @@ impl Sampler {
             address_mode_u: address_mode[0].into(),
             address_mode_v: address_mode[1].into(),
             address_mode_w: address_mode[2].into(),
-            mip_lod_bias: mip_lod_bias,
+            mip_lod_bias,
             anisotropy_enable,
             max_anisotropy,
             compare_enable,
@@ -1491,7 +1489,7 @@ mod tests {
 
     #[test]
     fn create_regular() {
-        let (device, queue) = gfx_dev_and_queue!();
+        let (device, _queue) = gfx_dev_and_queue!();
 
         let s = Sampler::new(
             device,
@@ -1505,13 +1503,13 @@ mod tests {
             },
         )
         .unwrap();
-        assert!(!s.compare().is_some());
+        assert!(s.compare().is_none());
         assert!(!s.unnormalized_coordinates());
     }
 
     #[test]
     fn create_compare() {
-        let (device, queue) = gfx_dev_and_queue!();
+        let (device, _queue) = gfx_dev_and_queue!();
 
         let s = Sampler::new(
             device,
@@ -1532,7 +1530,7 @@ mod tests {
 
     #[test]
     fn create_unnormalized() {
-        let (device, queue) = gfx_dev_and_queue!();
+        let (device, _queue) = gfx_dev_and_queue!();
 
         let s = Sampler::new(
             device,
@@ -1544,25 +1542,25 @@ mod tests {
             },
         )
         .unwrap();
-        assert!(!s.compare().is_some());
+        assert!(s.compare().is_none());
         assert!(s.unnormalized_coordinates());
     }
 
     #[test]
     fn simple_repeat_linear() {
-        let (device, queue) = gfx_dev_and_queue!();
+        let (device, _queue) = gfx_dev_and_queue!();
         let _ = Sampler::new(device, SamplerCreateInfo::simple_repeat_linear());
     }
 
     #[test]
     fn simple_repeat_linear_no_mipmap() {
-        let (device, queue) = gfx_dev_and_queue!();
+        let (device, _queue) = gfx_dev_and_queue!();
         let _ = Sampler::new(device, SamplerCreateInfo::simple_repeat_linear_no_mipmap());
     }
 
     #[test]
     fn min_lod_inferior() {
-        let (device, queue) = gfx_dev_and_queue!();
+        let (device, _queue) = gfx_dev_and_queue!();
 
         assert_should_panic!({
             let _ = Sampler::new(
@@ -1581,7 +1579,7 @@ mod tests {
 
     #[test]
     fn max_anisotropy() {
-        let (device, queue) = gfx_dev_and_queue!();
+        let (device, _queue) = gfx_dev_and_queue!();
 
         assert_should_panic!({
             let _ = Sampler::new(
@@ -1601,7 +1599,7 @@ mod tests {
 
     #[test]
     fn anisotropy_feature() {
-        let (device, queue) = gfx_dev_and_queue!();
+        let (device, _queue) = gfx_dev_and_queue!();
 
         let r = Sampler::new(
             device,
@@ -1627,7 +1625,7 @@ mod tests {
 
     #[test]
     fn anisotropy_limit() {
-        let (device, queue) = gfx_dev_and_queue!(sampler_anisotropy);
+        let (device, _queue) = gfx_dev_and_queue!(sampler_anisotropy);
 
         let r = Sampler::new(
             device,
@@ -1650,7 +1648,7 @@ mod tests {
 
     #[test]
     fn mip_lod_bias_limit() {
-        let (device, queue) = gfx_dev_and_queue!();
+        let (device, _queue) = gfx_dev_and_queue!();
 
         let r = Sampler::new(
             device,
@@ -1672,7 +1670,7 @@ mod tests {
 
     #[test]
     fn sampler_mirror_clamp_to_edge_extension() {
-        let (device, queue) = gfx_dev_and_queue!();
+        let (device, _queue) = gfx_dev_and_queue!();
 
         let r = Sampler::new(
             device,
@@ -1703,7 +1701,7 @@ mod tests {
 
     #[test]
     fn sampler_filter_minmax_extension() {
-        let (device, queue) = gfx_dev_and_queue!();
+        let (device, _queue) = gfx_dev_and_queue!();
 
         let r = Sampler::new(
             device,

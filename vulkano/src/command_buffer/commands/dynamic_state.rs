@@ -59,7 +59,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     fn validate_set_blend_constants(
         &self,
-        constants: [f32; 4],
+        _constants: [f32; 4],
     ) -> Result<(), SetDynamicStateError> {
         if self.has_fixed_state(DynamicState::BlendConstants) {
             return Err(SetDynamicStateError::PipelineHasFixedState);
@@ -162,7 +162,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         self
     }
 
-    fn validate_set_cull_mode(&self, cull_mode: CullMode) -> Result<(), SetDynamicStateError> {
+    fn validate_set_cull_mode(&self, _cull_mode: CullMode) -> Result<(), SetDynamicStateError> {
         if self.has_fixed_state(DynamicState::CullMode) {
             return Err(SetDynamicStateError::PipelineHasFixedState);
         }
@@ -213,9 +213,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     fn validate_set_depth_bias(
         &self,
-        constant_factor: f32,
+        _constant_factor: f32,
         clamp: f32,
-        slope_factor: f32,
+        _slope_factor: f32,
     ) -> Result<(), SetDynamicStateError> {
         if self.has_fixed_state(DynamicState::DepthBias) {
             return Err(SetDynamicStateError::PipelineHasFixedState);
@@ -257,7 +257,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         self
     }
 
-    fn validate_set_depth_bias_enable(&self, enable: bool) -> Result<(), SetDynamicStateError> {
+    fn validate_set_depth_bias_enable(&self, _enable: bool) -> Result<(), SetDynamicStateError> {
         if self.has_fixed_state(DynamicState::DepthBiasEnable) {
             return Err(SetDynamicStateError::PipelineHasFixedState);
         }
@@ -352,7 +352,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     fn validate_set_depth_bounds_test_enable(
         &self,
-        enable: bool,
+        _enable: bool,
     ) -> Result<(), SetDynamicStateError> {
         if self.has_fixed_state(DynamicState::DepthBoundsTestEnable) {
             return Err(SetDynamicStateError::PipelineHasFixedState);
@@ -398,7 +398,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     fn validate_set_depth_compare_op(
         &self,
-        compare_op: CompareOp,
+        _compare_op: CompareOp,
     ) -> Result<(), SetDynamicStateError> {
         if self.has_fixed_state(DynamicState::DepthCompareOp) {
             return Err(SetDynamicStateError::PipelineHasFixedState);
@@ -442,7 +442,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         self
     }
 
-    fn validate_set_depth_test_enable(&self, enable: bool) -> Result<(), SetDynamicStateError> {
+    fn validate_set_depth_test_enable(&self, _enable: bool) -> Result<(), SetDynamicStateError> {
         if self.has_fixed_state(DynamicState::DepthTestEnable) {
             return Err(SetDynamicStateError::PipelineHasFixedState);
         }
@@ -485,7 +485,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         self
     }
 
-    fn validate_set_depth_write_enable(&self, enable: bool) -> Result<(), SetDynamicStateError> {
+    fn validate_set_depth_write_enable(&self, _enable: bool) -> Result<(), SetDynamicStateError> {
         if self.has_fixed_state(DynamicState::DepthWriteEnable) {
             return Err(SetDynamicStateError::PipelineHasFixedState);
         }
@@ -600,7 +600,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         self
     }
 
-    fn validate_set_front_face(&self, face: FrontFace) -> Result<(), SetDynamicStateError> {
+    fn validate_set_front_face(&self, _face: FrontFace) -> Result<(), SetDynamicStateError> {
         if self.has_fixed_state(DynamicState::FrontFace) {
             return Err(SetDynamicStateError::PipelineHasFixedState);
         }
@@ -646,7 +646,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     fn validate_set_line_stipple(
         &self,
         factor: u32,
-        pattern: u16,
+        _pattern: u16,
     ) -> Result<(), SetDynamicStateError> {
         if self.has_fixed_state(DynamicState::LineStipple) {
             return Err(SetDynamicStateError::PipelineHasFixedState);
@@ -731,7 +731,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         self
     }
 
-    fn validate_set_logic_op(&self, logic_op: LogicOp) -> Result<(), SetDynamicStateError> {
+    fn validate_set_logic_op(&self, _logic_op: LogicOp) -> Result<(), SetDynamicStateError> {
         if self.has_fixed_state(DynamicState::LogicOp) {
             return Err(SetDynamicStateError::PipelineHasFixedState);
         }
@@ -848,7 +848,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     fn validate_set_primitive_restart_enable(
         &self,
-        enable: bool,
+        _enable: bool,
     ) -> Result<(), SetDynamicStateError> {
         if self.has_fixed_state(DynamicState::PrimitiveRestartEnable) {
             return Err(SetDynamicStateError::PipelineHasFixedState);
@@ -970,7 +970,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     fn validate_set_rasterizer_discard_enable(
         &self,
-        enable: bool,
+        _enable: bool,
     ) -> Result<(), SetDynamicStateError> {
         if self.has_fixed_state(DynamicState::RasterizerDiscardEnable) {
             return Err(SetDynamicStateError::PipelineHasFixedState);
@@ -1156,8 +1156,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     fn validate_set_stencil_compare_mask(
         &self,
-        faces: StencilFaces,
-        compare_mask: u32,
+        _faces: StencilFaces,
+        _compare_mask: u32,
     ) -> Result<(), SetDynamicStateError> {
         if self.has_fixed_state(DynamicState::StencilCompareMask) {
             return Err(SetDynamicStateError::PipelineHasFixedState);
@@ -1202,11 +1202,11 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     fn validate_set_stencil_op(
         &self,
-        faces: StencilFaces,
-        fail_op: StencilOp,
-        pass_op: StencilOp,
-        depth_fail_op: StencilOp,
-        compare_op: CompareOp,
+        _faces: StencilFaces,
+        _fail_op: StencilOp,
+        _pass_op: StencilOp,
+        _depth_fail_op: StencilOp,
+        _compare_op: CompareOp,
     ) -> Result<(), SetDynamicStateError> {
         if self.has_fixed_state(DynamicState::StencilOp) {
             return Err(SetDynamicStateError::PipelineHasFixedState);
@@ -1249,8 +1249,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     fn validate_set_stencil_reference(
         &self,
-        faces: StencilFaces,
-        reference: u32,
+        _faces: StencilFaces,
+        _reference: u32,
     ) -> Result<(), SetDynamicStateError> {
         if self.has_fixed_state(DynamicState::StencilReference) {
             return Err(SetDynamicStateError::PipelineHasFixedState);
@@ -1284,7 +1284,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         self
     }
 
-    fn validate_set_stencil_test_enable(&self, enable: bool) -> Result<(), SetDynamicStateError> {
+    fn validate_set_stencil_test_enable(&self, _enable: bool) -> Result<(), SetDynamicStateError> {
         if self.has_fixed_state(DynamicState::StencilTestEnable) {
             return Err(SetDynamicStateError::PipelineHasFixedState);
         }
@@ -1326,8 +1326,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     fn validate_set_stencil_write_mask(
         &self,
-        faces: StencilFaces,
-        write_mask: u32,
+        _faces: StencilFaces,
+        _write_mask: u32,
     ) -> Result<(), SetDynamicStateError> {
         if self.has_fixed_state(DynamicState::StencilWriteMask) {
             return Err(SetDynamicStateError::PipelineHasFixedState);
@@ -1743,9 +1743,7 @@ impl SyncCommandBufferBuilder {
 
         for (num, rectangle) in rectangles.iter().enumerate() {
             let num = num as u32 + first_rectangle;
-            self.current_state
-                .discard_rectangle
-                .insert(num, rectangle.clone());
+            self.current_state.discard_rectangle.insert(num, *rectangle);
         }
 
         self.commands.push(Box::new(Cmd {
@@ -2130,7 +2128,7 @@ impl SyncCommandBufferBuilder {
 
         for (num, scissor) in scissors.iter().enumerate() {
             let num = num as u32 + first_scissor;
-            self.current_state.scissor.insert(num, scissor.clone());
+            self.current_state.scissor.insert(num, *scissor);
         }
 
         self.commands.push(Box::new(Cmd {
@@ -2379,7 +2377,7 @@ impl UnsafeCommandBufferBuilder {
 
         let rectangles = rectangles
             .into_iter()
-            .map(|v| v.clone().into())
+            .map(|v| v.into())
             .collect::<SmallVec<[_; 2]>>();
         if rectangles.is_empty() {
             return;
@@ -2577,7 +2575,7 @@ impl UnsafeCommandBufferBuilder {
     ) {
         let scissors = scissors
             .into_iter()
-            .map(|v| ash::vk::Rect2D::from(v.clone()))
+            .map(ash::vk::Rect2D::from)
             .collect::<SmallVec<[_; 2]>>();
         if scissors.is_empty() {
             return;
@@ -2599,7 +2597,7 @@ impl UnsafeCommandBufferBuilder {
     pub unsafe fn set_scissor_with_count(&mut self, scissors: impl IntoIterator<Item = Scissor>) {
         let scissors = scissors
             .into_iter()
-            .map(|v| ash::vk::Rect2D::from(v.clone()))
+            .map(ash::vk::Rect2D::from)
             .collect::<SmallVec<[_; 2]>>();
         if scissors.is_empty() {
             return;
@@ -2635,7 +2633,7 @@ impl UnsafeCommandBufferBuilder {
     ) {
         let viewports = viewports
             .into_iter()
-            .map(|v| v.clone().into())
+            .map(|v| v.into())
             .collect::<SmallVec<[_; 2]>>();
         if viewports.is_empty() {
             return;
@@ -2660,7 +2658,7 @@ impl UnsafeCommandBufferBuilder {
     ) {
         let viewports = viewports
             .into_iter()
-            .map(|v| v.clone().into())
+            .map(|v| v.into())
             .collect::<SmallVec<[_; 2]>>();
         if viewports.is_empty() {
             return;
@@ -2687,6 +2685,7 @@ impl UnsafeCommandBufferBuilder {
 }
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 enum SetDynamicStateError {
     ExtensionNotEnabled {
         extension: &'static str,

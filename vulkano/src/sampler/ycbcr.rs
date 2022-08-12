@@ -475,7 +475,7 @@ impl Hash for SamplerYcbcrConversion {
 }
 
 /// Error that can happen when creating a `SamplerYcbcrConversion`.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SamplerYcbcrConversionCreationError {
     /// Not enough memory.
     OomError(OomError),
@@ -765,7 +765,7 @@ mod tests {
 
     #[test]
     fn feature_not_enabled() {
-        let (device, queue) = gfx_dev_and_queue!();
+        let (device, _queue) = gfx_dev_and_queue!();
 
         let r = SamplerYcbcrConversion::new(device, Default::default());
 

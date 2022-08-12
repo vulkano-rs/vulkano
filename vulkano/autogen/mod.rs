@@ -63,7 +63,7 @@ fn write_file(file: impl AsRef<Path>, source: impl AsRef<str>, content: impl Dis
         // It should not be edited manually. Changes should be made by editing autogen.\n\
         \n\n{}",
         source.as_ref(),
-        content.to_string(),
+        content,
     )
     .unwrap();
 
@@ -98,15 +98,15 @@ pub struct VkRegistryData<'r> {
 
 impl<'r> VkRegistryData<'r> {
     fn new(registry: &'r Registry) -> Self {
-        let aliases = Self::get_aliases(&registry);
-        let extensions = Self::get_extensions(&registry);
-        let features = Self::get_features(&registry);
-        let formats = Self::get_formats(&registry);
+        let aliases = Self::get_aliases(registry);
+        let extensions = Self::get_extensions(registry);
+        let features = Self::get_features(registry);
+        let formats = Self::get_formats(registry);
         let spirv_capabilities = Self::get_spirv_capabilities(registry);
         let spirv_extensions = Self::get_spirv_extensions(registry);
-        let errors = Self::get_errors(&registry, &features, &extensions);
-        let types = Self::get_types(&registry, &aliases, &features, &extensions);
-        let header_version = Self::get_header_version(&registry);
+        let errors = Self::get_errors(registry, &features, &extensions);
+        let types = Self::get_types(registry, &aliases, &features, &extensions);
+        let header_version = Self::get_header_version(registry);
 
         VkRegistryData {
             header_version,
@@ -162,7 +162,7 @@ impl<'r> VkRegistryData<'r> {
                 if let RegistryChild::Types(types) = child {
                     return Some(types.children.iter().filter_map(|ty| {
                         if let TypesChild::Type(ty) = ty {
-                            if let Some(alias) = ty.alias.as_ref().map(|s| s.as_str()) {
+                            if let Some(alias) = ty.alias.as_deref() {
                                 return Some((ty.name.as_ref().unwrap().as_str(), alias));
                             }
                         }
@@ -191,7 +191,7 @@ impl<'r> VkRegistryData<'r> {
                 }) if name == "VkResult" => Some(children.iter().filter_map(|en| {
                     if let EnumsChild::Enum(en) = en {
                         if let EnumSpec::Value { value, .. } = &en.spec {
-                            if value.starts_with("-") {
+                            if value.starts_with('-') {
                                 return Some(en.name.as_str());
                             }
                         }
@@ -238,13 +238,11 @@ impl<'r> VkRegistryData<'r> {
             .iter()
             .filter_map(|child| {
                 if let RegistryChild::Extensions(ext) = child {
-                    return Some(ext.children.iter().filter_map(|ext| {
-                        if ext.supported.as_ref().map(|s| s.as_str()) == Some("vulkan")
-                            && ext.obsoletedby.is_none()
-                        {
-                            return Some(ext);
+                    return Some(ext.children.iter().filter(|ext| {
+                        if ext.supported.as_deref() == Some("vulkan") && ext.obsoletedby.is_none() {
+                            return true;
                         }
-                        None
+                        false
                     }));
                 }
                 None
@@ -281,7 +279,7 @@ impl<'r> VkRegistryData<'r> {
             .collect()
     }
 
-    fn get_formats<'a>(registry: &'a Registry) -> Vec<&'a Format> {
+    fn get_formats(registry: &Registry) -> Vec<&Format> {
         registry
             .0
             .iter()
@@ -295,7 +293,7 @@ impl<'r> VkRegistryData<'r> {
             .collect()
     }
 
-    fn get_spirv_capabilities<'a>(registry: &'a Registry) -> Vec<&'a SpirvExtOrCap> {
+    fn get_spirv_capabilities(registry: &Registry) -> Vec<&SpirvExtOrCap> {
         registry
             .0
             .iter()
@@ -309,7 +307,7 @@ impl<'r> VkRegistryData<'r> {
             .collect()
     }
 
-    fn get_spirv_extensions<'a>(registry: &'a Registry) -> Vec<&'a SpirvExtOrCap> {
+    fn get_spirv_extensions(registry: &Registry) -> Vec<&SpirvExtOrCap> {
         registry
             .0
             .iter()

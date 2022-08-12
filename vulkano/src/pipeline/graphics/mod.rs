@@ -123,7 +123,7 @@ pub struct GraphicsPipeline {
 impl GraphicsPipeline {
     /// Starts the building process of a graphics pipeline. Returns a builder object that you can
     /// fill with the various parameters.
-    pub fn start<'a>() -> GraphicsPipelineBuilder<
+    pub fn start() -> GraphicsPipelineBuilder<
         'static,
         'static,
         'static,

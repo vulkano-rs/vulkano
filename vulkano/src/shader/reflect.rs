@@ -31,7 +31,7 @@ use std::{
 };
 
 /// Returns an iterator of the capabilities used by `spirv`.
-pub fn spirv_capabilities<'a>(spirv: &'a Spirv) -> impl Iterator<Item = &'a Capability> {
+pub fn spirv_capabilities(spirv: &Spirv) -> impl Iterator<Item = &Capability> {
     spirv
         .iter_capability()
         .filter_map(|instruction| match instruction {
@@ -41,7 +41,7 @@ pub fn spirv_capabilities<'a>(spirv: &'a Spirv) -> impl Iterator<Item = &'a Capa
 }
 
 /// Returns an iterator of the extensions used by `spirv`.
-pub fn spirv_extensions<'a>(spirv: &'a Spirv) -> impl Iterator<Item = &'a str> {
+pub fn spirv_extensions(spirv: &Spirv) -> impl Iterator<Item = &str> {
     spirv
         .iter_extension()
         .filter_map(|instruction| match instruction {
@@ -51,9 +51,9 @@ pub fn spirv_extensions<'a>(spirv: &'a Spirv) -> impl Iterator<Item = &'a str> {
 }
 
 /// Returns an iterator over all entry points in `spirv`, with information about the entry point.
-pub fn entry_points<'a>(
-    spirv: &'a Spirv,
-) -> impl Iterator<Item = (String, ExecutionModel, EntryPointInfo)> + 'a {
+pub fn entry_points(
+    spirv: &Spirv,
+) -> impl Iterator<Item = (String, ExecutionModel, EntryPointInfo)> + '_ {
     let interface_variables = interface_variables(spirv);
 
     spirv.iter_entry_point().filter_map(move |instruction| {
@@ -68,7 +68,7 @@ pub fn entry_points<'a>(
             _ => return None,
         };
 
-        let execution = shader_execution(&spirv, execution_model, function_id);
+        let execution = shader_execution(spirv, execution_model, function_id);
         let stage = ShaderStage::from(execution);
 
         let mut descriptor_requirements =
@@ -78,10 +78,10 @@ pub fn entry_points<'a>(
             reqs.stages = stage.into();
         }
 
-        let push_constant_requirements = push_constant_requirements(&spirv, stage);
-        let specialization_constant_requirements = specialization_constant_requirements(&spirv);
+        let push_constant_requirements = push_constant_requirements(spirv, stage);
+        let specialization_constant_requirements = specialization_constant_requirements(spirv);
         let input_interface = shader_interface(
-            &spirv,
+            spirv,
             interface,
             StorageClass::Input,
             matches!(
@@ -92,7 +92,7 @@ pub fn entry_points<'a>(
             ),
         );
         let output_interface = shader_interface(
-            &spirv,
+            spirv,
             interface,
             StorageClass::Output,
             matches!(execution_model, ExecutionModel::TessellationControl),
@@ -184,13 +184,14 @@ fn interface_variables(spirv: &Spirv) -> InterfaceVariables {
     let mut variables = InterfaceVariables::default();
 
     for instruction in spirv.iter_global() {
-        match instruction {
-            Instruction::Variable {
-                result_id,
-                result_type_id,
-                storage_class,
-                ..
-            } => match storage_class {
+        if let Instruction::Variable {
+            result_id,
+            result_type_id: _,
+            storage_class,
+            ..
+        } = instruction
+        {
+            match storage_class {
                 StorageClass::StorageBuffer
                 | StorageClass::Uniform
                 | StorageClass::UniformConstant => {
@@ -199,8 +200,7 @@ fn interface_variables(spirv: &Spirv) -> InterfaceVariables {
                         .insert(*result_id, descriptor_requirements_of(spirv, *result_id));
                 }
                 _ => (),
-            },
-            _ => (),
+            }
         }
     }
 
@@ -608,9 +608,7 @@ fn inspect_entry_point(
                         }
                     }
 
-                    &Instruction::ImageTexelPointer {
-                        result_id, image, ..
-                    } => {
+                    &Instruction::ImageTexelPointer { image, .. } => {
                         instruction_chain(result, global, spirv, [], image);
                     }
 
@@ -682,7 +680,7 @@ fn inspect_entry_point(
     );
     result
         .into_iter()
-        .map(|(variable_id, variable)| ((variable.set, variable.binding), variable.reqs))
+        .map(|(_, variable)| ((variable.set, variable.binding), variable.reqs))
         .collect()
 }
 
@@ -771,8 +769,8 @@ fn descriptor_requirements_of(spirv: &Spirv, variable_id: Id) -> DescriptorVaria
                 assert!(sampled != 0, "Vulkan requires that variables of type OpTypeImage have a Sampled operand of 1 or 2");
                 reqs.image_format = image_format.clone().into();
                 reqs.image_multisampled = ms != 0;
-                reqs.image_scalar_type = Some(match spirv.id(sampled_type).instruction() {
-                    &Instruction::TypeInt {
+                reqs.image_scalar_type = Some(match *spirv.id(sampled_type).instruction() {
+                    Instruction::TypeInt {
                         width, signedness, ..
                     } => {
                         assert!(width == 32); // TODO: 64-bit components
@@ -782,7 +780,7 @@ fn descriptor_requirements_of(spirv: &Spirv, variable_id: Id) -> DescriptorVaria
                             _ => unreachable!(),
                         }
                     }
-                    &Instruction::TypeFloat { width, .. } => {
+                    Instruction::TypeFloat { width, .. } => {
                         assert!(width == 32); // TODO: 64-bit components
                         ShaderScalarType::Float
                     }
@@ -869,7 +867,7 @@ fn descriptor_requirements_of(spirv: &Spirv, variable_id: Id) -> DescriptorVaria
                 Some(element_type)
             }
 
-            &Instruction::TypeAccelerationStructureKHR { result_id } => None, // FIXME temporary workaround
+            &Instruction::TypeAccelerationStructureKHR { .. } => None, // FIXME temporary workaround
 
             _ => {
                 let name = variable_id_info
@@ -976,7 +974,7 @@ fn specialization_constant_requirements(
                         } => Some(*specialization_constant_id),
                         _ => None,
                     })
-                    .and_then(|constant_id| {
+                    .map(|constant_id| {
                         let size = match spirv.id(result_type_id).instruction() {
                             Instruction::TypeBool { .. } => {
                                 // Translate bool to Bool32
@@ -985,7 +983,7 @@ fn specialization_constant_requirements(
                             _ => size_of_type(spirv, result_type_id)
                                 .expect("Found runtime-sized specialization constant"),
                         };
-                        Some((constant_id, SpecializationConstantRequirements { size }))
+                        (constant_id, SpecializationConstantRequirements { size })
                     }),
                 _ => None,
             }
@@ -1184,7 +1182,7 @@ fn offset_of_struct(spirv: &Spirv, id: Id) -> u32 {
     spirv
         .id(id)
         .iter_members()
-        .map(|member_info| {
+        .filter_map(|member_info| {
             member_info
                 .iter_decoration()
                 .find_map(|instruction| match instruction {
@@ -1195,7 +1193,6 @@ fn offset_of_struct(spirv: &Spirv, id: Id) -> u32 {
                     _ => None,
                 })
         })
-        .flatten()
         .min()
         .unwrap_or(0)
 }
@@ -1208,8 +1205,8 @@ fn shader_interface_type_of(
     id: Id,
     ignore_first_array: bool,
 ) -> ShaderInterfaceEntryType {
-    match spirv.id(id).instruction() {
-        &Instruction::TypeInt {
+    match *spirv.id(id).instruction() {
+        Instruction::TypeInt {
             width, signedness, ..
         } => {
             assert!(!ignore_first_array);
@@ -1228,7 +1225,7 @@ fn shader_interface_type_of(
                 },
             }
         }
-        &Instruction::TypeFloat { width, .. } => {
+        Instruction::TypeFloat { width, .. } => {
             assert!(!ignore_first_array);
             ShaderInterfaceEntryType {
                 base_type: ShaderScalarType::Float,
@@ -1241,7 +1238,7 @@ fn shader_interface_type_of(
                 },
             }
         }
-        &Instruction::TypeVector {
+        Instruction::TypeVector {
             component_type,
             component_count,
             ..
@@ -1252,7 +1249,7 @@ fn shader_interface_type_of(
                 ..shader_interface_type_of(spirv, component_type, false)
             }
         }
-        &Instruction::TypeMatrix {
+        Instruction::TypeMatrix {
             column_type,
             column_count,
             ..
@@ -1263,7 +1260,7 @@ fn shader_interface_type_of(
                 ..shader_interface_type_of(spirv, column_type, false)
             }
         }
-        &Instruction::TypeArray {
+        Instruction::TypeArray {
             element_type,
             length,
             ..
@@ -1293,7 +1290,7 @@ fn shader_interface_type_of(
                 ty
             }
         }
-        &Instruction::TypePointer { ty, .. } => {
+        Instruction::TypePointer { ty, .. } => {
             shader_interface_type_of(spirv, ty, ignore_first_array)
         }
         _ => panic!("Type {} not found or invalid", id),

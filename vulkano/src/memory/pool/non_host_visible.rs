@@ -47,7 +47,7 @@ impl StandardNonHostVisibleMemoryTypePool {
         );
 
         Arc::new(StandardNonHostVisibleMemoryTypePool {
-            device: device.clone(),
+            device,
             memory_type: memory_type.id(),
             occupied: Mutex::new(Vec::new()),
         })

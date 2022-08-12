@@ -71,7 +71,7 @@ pub unsafe trait VertexDefinition {
 unsafe impl VertexDefinition for VertexInputState {
     fn definition(
         &self,
-        interface: &ShaderInterface,
+        _interface: &ShaderInterface,
     ) -> Result<VertexInputState, IncompatibleVertexDefinitionError> {
         Ok(self.clone())
     }

@@ -203,18 +203,22 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
                     quote! { self.#ffi_member.as_mut().map(|s| &mut s #ffi_member_field .#ffi_name) }
                 });
                 quote! {
-                    [
+                    if let Some(f) = [
                         #(#ffi_members),*
-                    ].into_iter().flatten().next().map(|f| *f = features.#name as ash::vk::Bool32);
+                    ].into_iter().flatten().next() {
+                        *f = features.#name as ash::vk::Bool32;
+                    }
                 }
             } else {
                 let ffi_members = ffi_members.iter().map(|(ffi_member, ffi_member_field)| {
                     quote! { &mut self.#ffi_member #ffi_member_field .#ffi_name }
                 });
                 quote! {
-                    [
+                    if let Some(f) = [
                         #(#ffi_members),*
-                    ].into_iter().next().map(|f| *f = features.#name as ash::vk::Bool32);
+                    ].into_iter().next() {
+                        *f = features.#name as ash::vk::Bool32;
+                    }
                 }
             }
         },
@@ -378,8 +382,8 @@ fn features_members(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<FeaturesMe
     std::iter::once(&types["VkPhysicalDeviceFeatures"])
         .chain(sorted_structs(types).into_iter())
         .filter(|(ty, _)| {
-            ty.name.as_ref().map(|s| s.as_str()) == Some("VkPhysicalDeviceFeatures")
-                || ty.structextends.as_ref().map(|s| s.as_str())
+            ty.name.as_deref() == Some("VkPhysicalDeviceFeatures")
+                || ty.structextends.as_deref()
                     == Some("VkPhysicalDeviceFeatures2,VkDeviceCreateInfo")
         })
         .for_each(|(ty, _)| {
@@ -411,11 +415,11 @@ fn features_members(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<FeaturesMe
                             ffi_name: format_ident!("{}", name),
                             ffi_members: vec![ty_name.clone()],
                             requires_features: requires_features
-                                .into_iter()
+                                .iter()
                                 .map(|&s| format_ident!("{}", s.to_snake_case()))
                                 .collect(),
                             conflicts_features: conflicts_features
-                                .into_iter()
+                                .iter()
                                 .map(|&s| format_ident!("{}", s.to_snake_case()))
                                 .collect(),
                             required_by_extensions: required_by_extensions
@@ -558,7 +562,7 @@ fn features_ffi_output(members: &[FeaturesFfiMember]) -> TokenStream {
                 &mut self,
                 api_version: Version,
                 device_extensions: &DeviceExtensions,
-                instance_extensions: &InstanceExtensions,
+                _instance_extensions: &InstanceExtensions,
             ) {
                 self.features_vulkan10 = Default::default();
                 let head = &mut self.features_vulkan10;
@@ -646,8 +650,7 @@ fn sorted_structs<'a>(
     let mut structs: Vec<_> = types
         .values()
         .filter(|(ty, _)| {
-            ty.structextends.as_ref().map(|s| s.as_str())
-                == Some("VkPhysicalDeviceFeatures2,VkDeviceCreateInfo")
+            ty.structextends.as_deref() == Some("VkPhysicalDeviceFeatures2,VkDeviceCreateInfo")
         })
         .collect();
     let regex = Regex::new(r"^VkPhysicalDeviceVulkan\d+Features$").unwrap();
@@ -661,17 +664,9 @@ fn sorted_structs<'a>(
             {
                 let (major, minor) = version.split_once('_').unwrap();
                 major.parse::<i32>().unwrap() << 22 | minor.parse::<i32>().unwrap() << 12
-            } else if provided_by
-                .iter()
-                .find(|s| s.starts_with("VK_KHR_"))
-                .is_some()
-            {
+            } else if provided_by.iter().any(|s| s.starts_with("VK_KHR_")) {
                 i32::MAX - 2
-            } else if provided_by
-                .iter()
-                .find(|s| s.starts_with("VK_EXT_"))
-                .is_some()
-            {
+            } else if provided_by.iter().any(|s| s.starts_with("VK_EXT_")) {
                 i32::MAX - 1
             } else {
                 i32::MAX

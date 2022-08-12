@@ -126,9 +126,9 @@ impl UnsafeImage {
             samples,
             tiling,
             usage,
-            sharing,
+            sharing: _,
             initial_layout,
-            external_memory_handle_types,
+            external_memory_handle_types: _,
             mutable_format,
             cube_compatible,
             array_2d_compatible,
@@ -218,7 +218,7 @@ impl UnsafeImage {
                     color_attachment: false,
                     depth_stencil_attachment: false,
                     input_attachment: false,
-                    ..usage.clone()
+                    ..usage
                 } == ImageUsage::none()
             )
         }
@@ -230,7 +230,7 @@ impl UnsafeImage {
         ));
 
         // VUID-VkImageCreateInfo-flags-01573
-        assert!(!(block_texel_view_compatible && !mutable_format));
+        assert!(!block_texel_view_compatible || mutable_format);
 
         // Get format features
         let format_features = {
@@ -340,7 +340,7 @@ impl UnsafeImage {
                 ChromaSampling::Mode444 => (),
                 ChromaSampling::Mode422 => {
                     // VUID-VkImageCreateInfo-format-04712
-                    if !(extent[0] % 2 == 0) {
+                    if extent[0] % 2 != 0 {
                         return Err(ImageCreationError::YcbcrFormatInvalidDimensions);
                     }
                 }
@@ -653,7 +653,7 @@ impl UnsafeImage {
                     && ImageUsage {
                         transfer_src: false,
                         transfer_dst: false,
-                        ..usage.clone()
+                        ..usage
                     } == ImageUsage::none())
             } else {
                 false
@@ -673,10 +673,7 @@ impl UnsafeImage {
                 if !external_memory_handle_types.is_empty() {
                     // If external memory handles are used, the properties need to be queried
                     // individually for each handle type.
-                    external_memory_handle_types
-                        .iter()
-                        .map(|handle_type| Some(handle_type))
-                        .collect()
+                    external_memory_handle_types.iter().map(Some).collect()
                 } else {
                     smallvec![None]
                 };
@@ -703,7 +700,7 @@ impl UnsafeImage {
                     max_mip_levels,
                     max_array_layers,
                     sample_counts,
-                    max_resource_size,
+                    max_resource_size: _,
                     ..
                 } = match image_format_properties {
                     Some(x) => x,
@@ -894,7 +891,7 @@ impl UnsafeImage {
 
         let image = UnsafeImage {
             handle,
-            device: device.clone(),
+            device,
 
             dimensions,
             format: Some(format),
@@ -1328,7 +1325,7 @@ impl UnsafeImage {
 
         let subresource = ash::vk::ImageSubresource {
             aspect_mask: ash::vk::ImageAspectFlags::from(aspect),
-            mip_level: mip_level,
+            mip_level,
             array_layer: 0,
         };
 
@@ -1685,7 +1682,7 @@ impl fmt::Display for ImageCreationError {
             Self::FormatNotSupported => {
                 write!(fmt, "the given format was not supported by the device")
             }
-            Self::FormatUsageNotSupported { usage } => {
+            Self::FormatUsageNotSupported { .. } => {
                 write!(
                     fmt,
                     "a requested usage flag was not supported by the given format"
@@ -1694,16 +1691,16 @@ impl fmt::Display for ImageCreationError {
             Self::ImageFormatPropertiesNotSupported => {
                 write!(fmt, "the image configuration as queried through the `image_format_properties` function was not supported by the device")
             }
-            Self::MaxArrayLayersExceeded { array_layers, max } => {
+            Self::MaxArrayLayersExceeded { .. } => {
                 write!(fmt, "the number of array layers exceeds the maximum supported by the device for this image configuration")
             }
-            Self::MaxDimensionsExceeded { extent, max } => {
+            Self::MaxDimensionsExceeded { .. } => {
                 write!(fmt, "the specified dimensions exceed the maximum supported by the device for this image configuration")
             }
-            Self::MaxFramebufferDimensionsExceeded { extent, max } => {
+            Self::MaxFramebufferDimensionsExceeded { .. } => {
                 write!(fmt, "the usage included one of the attachment types, and the specified width and height exceeded the `max_framebuffer_width` or `max_framebuffer_height` limits")
             }
-            Self::MaxMipLevelsExceeded { mip_levels, max } => {
+            Self::MaxMipLevelsExceeded { .. } => {
                 write!(
                     fmt,
                     "the maximum number of mip levels for the given dimensions has been exceeded"
@@ -1730,13 +1727,13 @@ impl fmt::Display for ImageCreationError {
                     "multisampling was enabled, but the image type was not 2D"
                 )
             }
-            Self::SampleCountNotSupported { samples, supported } => {
+            Self::SampleCountNotSupported { .. } => {
                 write!(
                     fmt,
                     "the sample count is not supported by the device for this image configuration"
                 )
             }
-            Self::SharingInvalidQueueFamilyId { id } => {
+            Self::SharingInvalidQueueFamilyId { .. } => {
                 write!(fmt, "the sharing mode was set to `Concurrent`, but one of the specified queue family ids was not valid")
             }
             Self::YcbcrFormatInvalidDimensions => {
@@ -1761,7 +1758,7 @@ impl fmt::Display for ImageCreationError {
                 )
             }
             Self::DirectImageViewCreationFailed(e) => {
-                write!(fmt, "Image view creation failed {}", e.to_string())
+                write!(fmt, "Image view creation failed {}", e)
             }
         }
     }
@@ -1840,6 +1837,7 @@ impl ImageState {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn check_cpu_read(&mut self, range: Range<DeviceSize>) -> Result<(), ReadLockError> {
         for (_range, state) in self.ranges.range(&range) {
             match &state.current_access {
@@ -1852,6 +1850,7 @@ impl ImageState {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub(crate) unsafe fn cpu_read_lock(&mut self, range: Range<DeviceSize>) {
         self.ranges.split_at(&range.start);
         self.ranges.split_at(&range.end);
@@ -1866,6 +1865,7 @@ impl ImageState {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) unsafe fn cpu_read_unlock(&mut self, range: Range<DeviceSize>) {
         self.ranges.split_at(&range.start);
         self.ranges.split_at(&range.end);
@@ -1878,6 +1878,7 @@ impl ImageState {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn check_cpu_write(
         &mut self,
         range: Range<DeviceSize>,
@@ -1900,6 +1901,7 @@ impl ImageState {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub(crate) unsafe fn cpu_write_lock(&mut self, range: Range<DeviceSize>) {
         self.ranges.split_at(&range.start);
         self.ranges.split_at(&range.end);
@@ -1909,6 +1911,7 @@ impl ImageState {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) unsafe fn cpu_write_unlock(&mut self, range: Range<DeviceSize>) {
         self.ranges.split_at(&range.start);
         self.ranges.split_at(&range.end);
@@ -2285,7 +2288,7 @@ mod tests {
                     array_layers: 1,
                 },
                 format: Some(Format::R8G8B8A8_UNORM),
-                mip_levels: u32::MAX.into(),
+                mip_levels: u32::MAX,
                 usage: ImageUsage {
                     sampled: true,
                     ..ImageUsage::none()
@@ -2417,6 +2420,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::erasing_op, clippy::identity_op)]
     fn subresource_range_iterator() {
         // A fictitious set of aspects that no real image would actually ever have.
         let image_aspect_list: SmallVec<[ImageAspect; 4]> = ImageAspects {
@@ -2453,6 +2457,7 @@ mod tests {
             mip,
             image_array_layers,
         );
+
         assert_eq!(iter.next(), Some(0 * asp..4 * asp));
         assert_eq!(iter.next(), None);
 
@@ -2475,6 +2480,7 @@ mod tests {
             mip,
             image_array_layers,
         );
+
         assert_eq!(iter.next(), Some(0 * asp..2 * asp));
         assert_eq!(iter.next(), Some(3 * asp..4 * asp));
         assert_eq!(iter.next(), None);
@@ -2521,6 +2527,7 @@ mod tests {
             mip,
             image_array_layers,
         );
+
         assert_eq!(
             iter.next(),
             Some(0 * asp + 0 * mip + 2..0 * asp + 0 * mip + 4)

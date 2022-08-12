@@ -946,7 +946,7 @@ mod tests {
 
     #[test]
     fn mipmap_working_immutable_image() {
-        let (device, queue) = gfx_dev_and_queue!();
+        let (_device, queue) = gfx_dev_and_queue!();
 
         let dimensions = ImageDimensions::Dim2d {
             width: 512,
@@ -978,7 +978,7 @@ mod tests {
                 dimensions,
                 MipmapsCount::Log2,
                 Format::R8_UNORM,
-                queue.clone(),
+                queue,
             )
             .unwrap();
             assert_eq!(image.mip_levels(), 10);

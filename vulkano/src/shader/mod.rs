@@ -164,7 +164,7 @@ impl ShaderModule {
         let entries = entry_points.into_iter().collect::<Vec<_>>();
         let entry_points = entries
             .iter()
-            .filter_map(|(name, _, _)| Some(name))
+            .map(|(name, _, _)| name)
             .collect::<HashSet<_>>()
             .iter()
             .map(|name| {
@@ -607,7 +607,7 @@ impl DescriptorRequirements {
             .descriptor_types
             .iter()
             .copied()
-            .filter(|ty| other.descriptor_types.contains(&ty))
+            .filter(|ty| other.descriptor_types.contains(ty))
             .collect();
 
         if descriptor_types.is_empty() {

@@ -59,10 +59,10 @@ unsafe impl GpuFuture for NowFuture {
     #[inline]
     fn check_buffer_access(
         &self,
-        buffer: &UnsafeBuffer,
-        range: Range<DeviceSize>,
-        exclusive: bool,
-        queue: &Queue,
+        _buffer: &UnsafeBuffer,
+        _range: Range<DeviceSize>,
+        _exclusive: bool,
+        _queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         Err(AccessCheckError::Unknown)
     }
@@ -70,11 +70,11 @@ unsafe impl GpuFuture for NowFuture {
     #[inline]
     fn check_image_access(
         &self,
-        image: &UnsafeImage,
-        range: Range<DeviceSize>,
-        exclusive: bool,
-        expected_layout: ImageLayout,
-        queue: &Queue,
+        _image: &UnsafeImage,
+        _range: Range<DeviceSize>,
+        _exclusive: bool,
+        _expected_layout: ImageLayout,
+        _queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         Err(AccessCheckError::Unknown)
     }

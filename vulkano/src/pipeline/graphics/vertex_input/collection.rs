@@ -56,18 +56,10 @@ macro_rules! impl_collection {
                   $(, $others: BufferAccessObject)*
         {
             #[inline]
+            #[allow(non_snake_case)]
             fn into_vec(self) -> Vec<Arc<dyn BufferAccess>> {
-                #![allow(non_snake_case)]
-
                 let ($first, $($others,)*) = self;
-                let mut list = Vec::new();
-                list.push($first.as_buffer_access_object());
-
-                $(
-                    list.push($others.as_buffer_access_object());
-                )+
-
-                list
+                vec![$first.as_buffer_access_object() $(, $others.as_buffer_access_object())+]
             }
         }
 
@@ -166,12 +158,9 @@ mod tests {
         takes_collection(vec![dynamic_a.clone(), concrete_b.clone()]);
 
         // Arrays are similar to Vecs
-        takes_collection([concrete_a.clone(), concrete_aa.clone()]);
+        takes_collection([concrete_a.clone(), concrete_aa]);
         takes_collection([dynamic_a.clone(), dynamic_b.clone()]);
-        takes_collection([
-            concrete_a.clone() as Arc<dyn BufferAccess>,
-            concrete_b.clone(),
-        ]);
-        takes_collection([dynamic_a.clone(), concrete_b.clone()]);
+        takes_collection([concrete_a as Arc<dyn BufferAccess>, concrete_b.clone()]);
+        takes_collection([dynamic_a.clone(), concrete_b]);
     }
 }

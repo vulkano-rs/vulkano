@@ -68,10 +68,10 @@ pub(crate) fn init_physical_devices(
         }
     };
 
-    Ok(handles
+    handles
         .into_iter()
         .enumerate()
-        .map(|(index, handle)| -> Result<_, InstanceCreationError> {
+        .map(|(_index, handle)| -> Result<_, InstanceCreationError> {
             let api_version = unsafe {
                 let mut output = MaybeUninit::uninit();
                 (fns.v1_0.get_physical_device_properties)(handle, output.as_mut_ptr());
@@ -138,7 +138,7 @@ pub(crate) fn init_physical_devices(
 
             Ok(info)
         })
-        .collect::<Result<_, _>>()?)
+        .collect::<Result<_, _>>()
 }
 
 fn init_info(instance: &Instance, info: &mut PhysicalDeviceInfo) {
@@ -391,7 +391,7 @@ impl<'a> PhysicalDevice<'a> {
     /// ```
     #[inline]
     pub fn instance(&self) -> &'a Arc<Instance> {
-        &self.instance
+        self.instance
     }
 
     /// Returns the index of the physical device in the physical devices list.
@@ -1324,11 +1324,8 @@ impl<'a> PhysicalDevice<'a> {
             }
         };
 
-        debug_assert!(modes.len() > 0);
-        debug_assert!(modes
-            .iter()
-            .find(|&&m| m == ash::vk::PresentModeKHR::FIFO)
-            .is_some());
+        debug_assert!(!modes.is_empty());
+        debug_assert!(modes.iter().any(|&m| m == ash::vk::PresentModeKHR::FIFO));
 
         Ok(modes
             .into_iter()
@@ -1564,7 +1561,7 @@ impl<'a> QueueFamily<'a> {
     /// of `[width, height, depth]`
     #[inline]
     pub fn min_image_transfer_granularity(&self) -> [u32; 3] {
-        let ref granularity = self.properties.min_image_transfer_granularity;
+        let granularity = &self.properties.min_image_transfer_granularity;
         [granularity.width, granularity.height, granularity.depth]
     }
 
@@ -1809,7 +1806,7 @@ pub struct ShaderCoreProperties {}
 
 impl From<ash::vk::ShaderCorePropertiesFlagsAMD> for ShaderCoreProperties {
     #[inline]
-    fn from(val: ash::vk::ShaderCorePropertiesFlagsAMD) -> Self {
+    fn from(_val: ash::vk::ShaderCorePropertiesFlagsAMD) -> Self {
         Self {}
     }
 }

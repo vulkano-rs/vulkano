@@ -116,7 +116,7 @@ impl PipelineStages {
         }
 
         let PipelineStages {
-            top_of_pipe,
+            top_of_pipe: _,
             mut draw_indirect,
             mut vertex_input,
             mut vertex_shader,
@@ -129,10 +129,10 @@ impl PipelineStages {
             mut color_attachment_output,
             compute_shader,
             transfer,
-            bottom_of_pipe,
+            bottom_of_pipe: _,
             host,
             all_graphics,
-            all_commands,
+            all_commands: _,
             ray_tracing_shader,
         } = *self;
 

@@ -244,7 +244,7 @@ impl PipelineLayout {
 
                 if set_layout.push_descriptor() {
                     // VUID-VkPipelineLayoutCreateInfo-pSetLayouts-00293
-                    if let Some(num) = push_descriptor_set {
+                    if push_descriptor_set.is_some() {
                         return Err(PipelineLayoutCreationError::SetLayoutsPushDescriptorMultiple);
                     } else {
                         push_descriptor_set = Some(set_num);

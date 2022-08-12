@@ -100,7 +100,7 @@ pub struct SyncCommandBuffer {
 
     // Locations within commands that pipeline barriers were inserted. For debugging purposes.
     // TODO: present only in cfg(debug_assertions)?
-    barriers: Vec<usize>,
+    _barriers: Vec<usize>,
 
     // State of all the resources used by this command buffer.
     buffers2: HashMap<Arc<UnsafeBuffer>, RangeMap<DeviceSize, BufferFinalState>>,
@@ -311,7 +311,7 @@ impl SyncCommandBuffer {
         buffer: &UnsafeBuffer,
         range: Range<DeviceSize>,
         exclusive: bool,
-        queue: &Queue,
+        _queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         let range_map = match self.buffers2.get(buffer) {
             Some(x) => x,
@@ -345,7 +345,7 @@ impl SyncCommandBuffer {
         range: Range<DeviceSize>,
         exclusive: bool,
         expected_layout: ImageLayout,
-        queue: &Queue,
+        _queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         let range_map = match self.images2.get(image) {
             Some(x) => x,
@@ -556,7 +556,7 @@ mod tests {
                 .unwrap();
 
             SyncCommandBufferBuilder::new(
-                &pool_builder_alloc.inner(),
+                pool_builder_alloc.inner(),
                 CommandBufferBeginInfo {
                     usage: CommandBufferUsage::MultipleSubmit,
                     ..Default::default()
@@ -635,7 +635,7 @@ mod tests {
 
                 // Ensure that the builder added a barrier between the two writes
                 assert_eq!(&names, &["execute_commands", "execute_commands"]);
-                assert_eq!(&primary.barriers, &[0, 1]);
+                assert_eq!(&primary._barriers, &[0, 1]);
             }
 
             {
@@ -672,7 +672,7 @@ mod tests {
                 })
                 .unwrap();
             let mut sync = SyncCommandBufferBuilder::new(
-                &pool_builder_alloc.inner(),
+                pool_builder_alloc.inner(),
                 CommandBufferBeginInfo {
                     usage: CommandBufferUsage::MultipleSubmit,
                     ..Default::default()
@@ -705,7 +705,7 @@ mod tests {
                 })
                 .unwrap();
             let mut sync = SyncCommandBufferBuilder::new(
-                &pool_builder_alloc.inner(),
+                pool_builder_alloc.inner(),
                 CommandBufferBeginInfo {
                     usage: CommandBufferUsage::MultipleSubmit,
                     ..Default::default()
@@ -794,7 +794,7 @@ mod tests {
             .unwrap();
 
             let set = PersistentDescriptorSet::new(
-                set_layout.clone(),
+                set_layout,
                 [WriteDescriptorSet::sampler(
                     0,
                     Sampler::new(device, SamplerCreateInfo::simple_repeat_linear()).unwrap(),

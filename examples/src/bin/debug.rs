@@ -53,8 +53,8 @@ fn main() {
     // and you should verify that list for safety - Vulkano will return an error if you specify
     // any layers that are not installed on this system. That code to do could look like this:
     println!("List of Vulkan debugging layers available to use:");
-    let mut layers = library.layer_properties().unwrap();
-    while let Some(l) = layers.next() {
+    let layers = library.layer_properties().unwrap();
+    for l in layers {
         println!("\t{}", l.name());
     }
 
@@ -140,13 +140,11 @@ fn main() {
     };
     let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
         .filter(|&p| p.supported_extensions().is_superset_of(&device_extensions))
-        .filter_map(|p| {
-            Some(
-                p.queue_families()
-                    .next()
-                    .map(|q| (p, q))
-                    .expect("couldn't find a queue family"),
-            )
+        .map(|p| {
+            p.queue_families()
+                .next()
+                .map(|q| (p, q))
+                .expect("couldn't find a queue family")
         })
         .min_by_key(|(p, _)| match p.properties().device_type {
             PhysicalDeviceType::DiscreteGpu => 0,
@@ -181,7 +179,7 @@ fn main() {
         dimensions,
         MipmapsCount::One,
         pixel_format,
-        queue.clone(),
+        queue,
     )
     .unwrap();
 

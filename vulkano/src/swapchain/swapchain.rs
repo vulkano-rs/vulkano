@@ -289,7 +289,7 @@ impl<W> Swapchain<W> {
             pre_transform,
             composite_alpha,
             present_mode,
-            clipped,
+            clipped: _,
             full_screen_exclusive,
             win32_monitor,
             _ne: _,
@@ -322,7 +322,7 @@ impl<W> Swapchain<W> {
         // VUID-VkSwapchainCreateInfoKHR-surface-01270
         *image_format = Some({
             let surface_formats = device.physical_device().surface_formats(
-                &surface,
+                surface,
                 SurfaceInfo {
                     full_screen_exclusive,
                     win32_monitor,
@@ -347,12 +347,12 @@ impl<W> Swapchain<W> {
                             && [Format::R8G8B8A8_UNORM, Format::B8G8R8A8_UNORM].contains(&f))
                         .then(|| f)
                     })
-                    .ok_or_else(|| SwapchainCreationError::FormatColorSpaceNotSupported)?
+                    .ok_or(SwapchainCreationError::FormatColorSpaceNotSupported)?
             }
         });
 
         let surface_capabilities = device.physical_device().surface_capabilities(
-            &surface,
+            surface,
             SurfaceInfo {
                 full_screen_exclusive,
                 win32_monitor,
@@ -463,7 +463,7 @@ impl<W> Swapchain<W> {
         // VUID-VkSwapchainCreateInfoKHR-presentMode-01281
         if !device
             .physical_device()
-            .surface_present_modes(&surface)?
+            .surface_present_modes(surface)?
             .any(|mode| mode == present_mode)
         {
             return Err(SwapchainCreationError::PresentModeNotSupported);
@@ -634,7 +634,7 @@ impl<W> Swapchain<W> {
             image_extent,
             image_array_layers,
             image_usage,
-            ref image_sharing, // TODO: put this in the image too
+            image_sharing: _, // TODO: put this in the image too
             ..
         } = create_info;
 
@@ -844,14 +844,14 @@ impl<W> Swapchain<W> {
     // See the `ImageAccess::layout_initialized` method documentation for more details.
     pub(crate) fn image_layout_initialized(&self, image_offset: usize) {
         let image_entry = self.images.get(image_offset);
-        if let Some(ref image_entry) = image_entry {
+        if let Some(image_entry) = image_entry {
             image_entry.undefined_layout.store(false, Ordering::SeqCst);
         }
     }
 
     pub(crate) fn is_image_layout_initialized(&self, image_offset: usize) -> bool {
         let image_entry = self.images.get(image_offset);
-        if let Some(ref image_entry) = image_entry {
+        if let Some(image_entry) = image_entry {
             !image_entry.undefined_layout.load(Ordering::SeqCst)
         } else {
             false
@@ -1531,7 +1531,7 @@ unsafe impl<W> GpuFuture for SwapchainAcquireFuture<W> {
     unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
         if let Some(ref semaphore) = self.semaphore {
             let mut sem = SubmitSemaphoresWaitBuilder::new();
-            sem.add_wait_semaphore(&semaphore);
+            sem.add_wait_semaphore(semaphore);
             Ok(SubmitAnyBuilder::SemaphoresWait(sem))
         } else {
             Ok(SubmitAnyBuilder::Empty)
@@ -1561,10 +1561,10 @@ unsafe impl<W> GpuFuture for SwapchainAcquireFuture<W> {
     #[inline]
     fn check_buffer_access(
         &self,
-        buffer: &UnsafeBuffer,
-        range: Range<DeviceSize>,
-        exclusive: bool,
-        queue: &Queue,
+        _buffer: &UnsafeBuffer,
+        _range: Range<DeviceSize>,
+        _exclusive: bool,
+        _queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         Err(AccessCheckError::Unknown)
     }
@@ -1573,10 +1573,10 @@ unsafe impl<W> GpuFuture for SwapchainAcquireFuture<W> {
     fn check_image_access(
         &self,
         image: &UnsafeImage,
-        range: Range<DeviceSize>,
-        exclusive: bool,
+        _range: Range<DeviceSize>,
+        _exclusive: bool,
         expected_layout: ImageLayout,
-        queue: &Queue,
+        _queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         let swapchain_image = self.swapchain.raw_image(self.image_id).unwrap();
         if swapchain_image.image.internal_object() != image.internal_object() {
@@ -1763,7 +1763,7 @@ where
             return Ok(SubmitAnyBuilder::Empty);
         }
 
-        let queue = self.previous.queue().map(|q| q.clone());
+        let _queue = self.previous.queue();
 
         // TODO: if the swapchain image layout is not PRESENT, should add a transition command
         // buffer
@@ -1787,7 +1787,7 @@ where
                 );
                 SubmitAnyBuilder::QueuePresent(builder)
             }
-            SubmitAnyBuilder::CommandBuffer(cb) => {
+            SubmitAnyBuilder::CommandBuffer(_) => {
                 // submit the command buffer by flushing previous.
                 // Since the implementation should remember being flushed it's safe to call build_submission multiple times
                 self.previous.flush()?;
@@ -1800,7 +1800,7 @@ where
                 );
                 SubmitAnyBuilder::QueuePresent(builder)
             }
-            SubmitAnyBuilder::BindSparse(cb) => {
+            SubmitAnyBuilder::BindSparse(_) => {
                 // submit the command buffer by flushing previous.
                 // Since the implementation should remember being flushed it's safe to call build_submission multiple times
                 self.previous.flush()?;
@@ -1813,7 +1813,7 @@ where
                 );
                 SubmitAnyBuilder::QueuePresent(builder)
             }
-            SubmitAnyBuilder::QueuePresent(present) => {
+            SubmitAnyBuilder::QueuePresent(_present) => {
                 unimplemented!() // TODO:
                                  /*present.submit();
                                  let mut builder = SubmitPresentBuilder::new();

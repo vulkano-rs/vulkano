@@ -140,13 +140,6 @@ where
     marker: PhantomData<Box<T>>,
 }
 
-#[derive(Debug, Copy, Clone)]
-enum GpuAccess {
-    None,
-    NonExclusive { num: u32 },
-    Exclusive { num: u32 },
-}
-
 impl<T> DeviceLocalBuffer<T>
 where
     T: BufferContents,
@@ -408,7 +401,7 @@ where
         let (buffer, mem_reqs) = Self::build_buffer(&device, size, usage, &queue_families)?;
 
         let memory = alloc_dedicated_with_exportable_fd(
-            device.clone(),
+            device,
             &mem_reqs,
             AllocLayout::Linear,
             MappingRequirement::DoNotMap,
@@ -627,7 +620,7 @@ mod tests {
             CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), false, 0).unwrap();
 
         let mut cbb = AutoCommandBufferBuilder::primary(
-            device.clone(),
+            device,
             queue.family(),
             CommandBufferUsage::MultipleSubmit,
         )
@@ -637,7 +630,7 @@ mod tests {
         let _ = cbb
             .build()
             .unwrap()
-            .execute(queue.clone())
+            .execute(queue)
             .unwrap()
             .then_signal_fence_and_flush()
             .unwrap();
@@ -666,7 +659,7 @@ mod tests {
         .unwrap();
 
         let mut cbb = AutoCommandBufferBuilder::primary(
-            device.clone(),
+            device,
             queue.family(),
             CommandBufferUsage::MultipleSubmit,
         )
@@ -676,7 +669,7 @@ mod tests {
         let _ = cbb
             .build()
             .unwrap()
-            .execute(queue.clone())
+            .execute(queue)
             .unwrap()
             .then_signal_fence_and_flush()
             .unwrap();

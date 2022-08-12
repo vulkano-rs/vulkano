@@ -117,7 +117,7 @@ impl SingleLayoutDescSetPool {
 struct SingleLayoutPool {
     // The actual Vulkan descriptor pool. This field isn't actually used anywhere, but we need to
     // keep the pool alive in order to keep the descriptor sets valid.
-    inner: UnsafeDescriptorPool,
+    _inner: UnsafeDescriptorPool,
     // List of descriptor sets. When `alloc` is called, a descriptor will be extracted from this
     // list. When a `SingleLayoutPoolAlloc` is dropped, its descriptor set is put back in this list.
     reserve: ArrayQueue<UnsafeDescriptorSet>,
@@ -169,7 +169,10 @@ impl SingleLayoutPool {
             }
         };
 
-        Ok(Arc::new(Self { inner, reserve }))
+        Ok(Arc::new(Self {
+            _inner: inner,
+            reserve,
+        }))
     }
 }
 
@@ -372,7 +375,7 @@ impl SingleLayoutVariableDescSetPool {
 
         Ok(SingleLayoutVariablePoolAlloc {
             inner,
-            pool: self.inner.clone(),
+            _pool: self.inner.clone(),
         })
     }
 }
@@ -430,7 +433,7 @@ pub(crate) struct SingleLayoutVariablePoolAlloc {
     // The `SingleLayoutVariablePool` where we allocated from. We need to keep a copy of it in each
     // allocation so that we can put back the pool in the reserve once all allocations have been
     // dropped.
-    pool: Arc<SingleLayoutVariablePool>,
+    _pool: Arc<SingleLayoutVariablePool>,
 }
 
 unsafe impl Send for SingleLayoutVariablePoolAlloc {}

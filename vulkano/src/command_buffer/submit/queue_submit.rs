@@ -300,7 +300,7 @@ mod tests {
 
     #[test]
     fn empty_submit() {
-        let (device, queue) = gfx_dev_and_queue!();
+        let (_device, queue) = gfx_dev_and_queue!();
         let builder = SubmitCommandBufferBuilder::new();
         builder.submit(&queue).unwrap();
     }
@@ -310,7 +310,7 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
-            let fence = Fence::new(device.clone(), Default::default()).unwrap();
+            let fence = Fence::new(device, Default::default()).unwrap();
             assert!(!fence.is_signaled().unwrap());
 
             let mut builder = SubmitCommandBufferBuilder::new();
@@ -325,9 +325,9 @@ mod tests {
     #[test]
     fn has_fence() {
         unsafe {
-            let (device, queue) = gfx_dev_and_queue!();
+            let (device, _queue) = gfx_dev_and_queue!();
 
-            let fence = Fence::new(device.clone(), Default::default()).unwrap();
+            let fence = Fence::new(device, Default::default()).unwrap();
 
             let mut builder = SubmitCommandBufferBuilder::new();
             assert!(!builder.has_fence());
@@ -342,7 +342,7 @@ mod tests {
             let (device, _) = gfx_dev_and_queue!();
 
             let fence1 = Fence::new(device.clone(), Default::default()).unwrap();
-            let fence2 = Fence::new(device.clone(), Default::default()).unwrap();
+            let fence2 = Fence::new(device, Default::default()).unwrap();
 
             let mut builder1 = SubmitCommandBufferBuilder::new();
             builder1.set_fence_signal(&fence1);

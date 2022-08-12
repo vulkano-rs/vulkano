@@ -43,6 +43,7 @@ pub enum FenceSignalFutureBehavior {
     /// Continue execution on the same queue.
     Continue,
     /// Wait for the fence to be signalled before submitting any further operation.
+    #[allow(dead_code)] // TODO: why is this never constructed?
     Block {
         /// How long to block the current thread.
         timeout: Option<Duration>,
@@ -219,7 +220,7 @@ where
             };
 
             // TODO: meh for unwrap
-            let queue = previous.queue().unwrap().clone();
+            let queue = previous.queue().unwrap();
 
             // There are three possible outcomes for the flush operation: success, partial success
             // in which case `result` will contain `Err(OutcomeErr::Partial)`, or total failure
@@ -365,11 +366,7 @@ where
         match self.behavior {
             FenceSignalFutureBehavior::Continue => {
                 let state = self.state.lock();
-                if state.get_prev().is_some() {
-                    false
-                } else {
-                    true
-                }
+                state.get_prev().is_none()
             }
             FenceSignalFutureBehavior::Block { .. } => true,
         }

@@ -48,17 +48,10 @@ macro_rules! impl_collection {
                   $(, $others: Into<DescriptorSetWithOffsets>)*
         {
             #[inline]
+            #[allow(non_snake_case)]
             fn into_vec(self) -> Vec<DescriptorSetWithOffsets> {
-                #![allow(non_snake_case)]
-
                 let ($first, $($others,)*) = self;
-
-                let mut list = Vec::new();
-                list.push($first.into());
-                $(
-                    list.push($others.into());
-                )+
-                list
+                vec![$first.into() $(, $others.into())+]
             }
         }
 

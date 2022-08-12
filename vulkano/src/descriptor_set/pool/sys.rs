@@ -205,7 +205,7 @@ impl UnsafeDescriptorPool {
                 })
                 .unzip();
 
-        let output = if layouts.len() == 0 {
+        let output = if layouts.is_empty() {
             vec![]
         } else {
             let variable_desc_count_alloc_info = if (self.device.api_version() >= Version::V1_2
@@ -265,9 +265,7 @@ impl UnsafeDescriptorPool {
             output
         };
 
-        Ok(output
-            .into_iter()
-            .map(|handle| UnsafeDescriptorSet::new(handle)))
+        Ok(output.into_iter().map(UnsafeDescriptorSet::new))
     }
 
     /// Frees some descriptor sets.
