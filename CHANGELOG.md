@@ -45,6 +45,9 @@
   - Ensure both iOS and MacOS have `CAMetalLayer` when using `create_surface_from_handle`
 - Bugs fixed:
   - [#1896](https://github.com/vulkano-rs/vulkano/issues/1896): Vulkano-shaders generates invalid struct definitions when struct field names are stripped out by the compiler.
+- Improvements to compiler linting:
+  - Most clippy warnings and errors have been fixed, and the remainder is explicitly allowed in each crate root. Some of these may be re-enabled in the future if desired.
+  - Warnings for dead code and unused variables have been re-enabled and fixed.
 
 # Version 0.30.0 (2022-07-20)
 
