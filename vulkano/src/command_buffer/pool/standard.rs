@@ -266,7 +266,7 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
 
         let thread = thread::spawn({
-            let (device, queue) = (device.clone(), queue.clone());
+            let (device, queue) = (device, queue);
             move || {
                 device
                     .with_standard_command_pool(queue.family(), |pool| {

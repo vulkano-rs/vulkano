@@ -567,7 +567,7 @@ mod tests {
     #[test]
     fn semaphore_create() {
         let (device, _) = gfx_dev_and_queue!();
-        let _ = Semaphore::new(device.clone(), Default::default());
+        let _ = Semaphore::new(device, Default::default());
     }
 
     #[test]
@@ -629,13 +629,13 @@ mod tests {
         };
 
         let sem = Semaphore::new(
-            device.clone(),
+            device,
             SemaphoreCreateInfo {
                 export_handle_types: ExternalSemaphoreHandleTypes::posix(),
                 ..Default::default()
             },
         )
         .unwrap();
-        let fd = unsafe { sem.export_opaque_fd().unwrap() };
+        let _fd = unsafe { sem.export_opaque_fd().unwrap() };
     }
 }

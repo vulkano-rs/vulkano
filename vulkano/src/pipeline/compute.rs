@@ -512,8 +512,8 @@ mod tests {
             .unwrap();
         let cb = cbb.build().unwrap();
 
-        let future = now(device.clone())
-            .then_execute(queue.clone(), cb)
+        let future = now(device)
+            .then_execute(queue, cb)
             .unwrap()
             .then_signal_fence_and_flush()
             .unwrap();

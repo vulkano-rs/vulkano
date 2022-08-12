@@ -201,11 +201,9 @@ fn main() {
     let view = ImageView::new_default(image.clone()).unwrap();
 
     let layout = pipeline.layout().set_layouts().get(0).unwrap();
-    let set = PersistentDescriptorSet::new(
-        layout.clone(),
-        [WriteDescriptorSet::image_view(0, view.clone())],
-    )
-    .unwrap();
+    let set =
+        PersistentDescriptorSet::new(layout.clone(), [WriteDescriptorSet::image_view(0, view)])
+            .unwrap();
 
     let buf = CpuAccessibleBuffer::from_iter(
         device.clone(),
@@ -227,7 +225,7 @@ fn main() {
             PipelineBindPoint::Compute,
             pipeline.layout().clone(),
             0,
-            set.clone(),
+            set,
         )
         .dispatch([
             1024 / local_size_x, // Note that dispatch dimensions must be
@@ -235,15 +233,12 @@ fn main() {
             1,
         ])
         .unwrap()
-        .copy_image_to_buffer(CopyImageToBufferInfo::image_buffer(
-            image.clone(),
-            buf.clone(),
-        ))
+        .copy_image_to_buffer(CopyImageToBufferInfo::image_buffer(image, buf.clone()))
         .unwrap();
     let command_buffer = builder.build().unwrap();
 
-    let future = sync::now(device.clone())
-        .then_execute(queue.clone(), command_buffer)
+    let future = sync::now(device)
+        .then_execute(queue, command_buffer)
         .unwrap()
         .then_signal_fence_and_flush()
         .unwrap();
@@ -255,7 +250,7 @@ fn main() {
     let buffer_content = buf.read().unwrap();
     let path = Path::new("mandelbrot.png");
     let file = File::create(path).unwrap();
-    let ref mut w = BufWriter::new(file);
+    let w = &mut BufWriter::new(file);
     let mut encoder = png::Encoder::new(w, 1024, 1024);
     encoder.set_color(png::ColorType::Rgba);
     encoder.set_depth(png::BitDepth::Eight);

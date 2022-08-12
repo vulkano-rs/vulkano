@@ -32,6 +32,7 @@ pub(super) fn path_to_str(path: &Path) -> &str {
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn include_callback(
     requested_source_path_raw: &str,
     directive_type: IncludeType,
@@ -143,6 +144,7 @@ fn include_callback(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn compile(
     path: Option<String>,
     base_path: &impl AsRef<Path>,
@@ -197,7 +199,7 @@ pub fn compile(
     compile_options.set_generate_debug_info();
 
     let content = compiler
-        .compile_into_spirv(&code, ty, root_source_path, "main", Some(&compile_options))
+        .compile_into_spirv(code, ty, root_source_path, "main", Some(&compile_options))
         .map_err(|e| e.to_string())?;
 
     let includes = includes_tracker.borrow().clone();
@@ -703,7 +705,7 @@ mod tests {
         // Check first entrypoint
         let e1_descriptors = descriptors.get(0).expect("Could not find entrypoint1");
         let mut e1_bindings = Vec::new();
-        for (loc, _reqs) in e1_descriptors {
+        for loc in e1_descriptors.keys() {
             e1_bindings.push(*loc);
         }
         assert_eq!(e1_bindings.len(), 5);
@@ -716,7 +718,7 @@ mod tests {
         // Check second entrypoint
         let e2_descriptors = descriptors.get(1).expect("Could not find entrypoint2");
         let mut e2_bindings = Vec::new();
-        for (loc, _reqs) in e2_descriptors {
+        for loc in e2_descriptors.keys() {
             e2_bindings.push(*loc);
         }
         assert_eq!(e2_bindings.len(), 3);
@@ -767,7 +769,7 @@ mod tests {
         .unwrap();
         let spirv = Spirv::new(comp.as_binary()).unwrap();
 
-        for (_, _, info) in reflect::entry_points(&spirv) {
+        if let Some((_, _, info)) = reflect::entry_points(&spirv).next() {
             let mut bindings = Vec::new();
             for (loc, _reqs) in info.descriptor_requirements {
                 bindings.push(loc);

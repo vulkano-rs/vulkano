@@ -35,10 +35,7 @@ where
         assert!(first.queue().unwrap() == second.queue().unwrap());
     }
 
-    JoinFuture {
-        first: first,
-        second: second,
-    }
+    JoinFuture { first, second }
 }
 
 /// Two futures joined into one.
@@ -99,27 +96,27 @@ where
                 a.merge(b);
                 SubmitAnyBuilder::SemaphoresWait(a)
             }
-            (SubmitAnyBuilder::SemaphoresWait(a), SubmitAnyBuilder::CommandBuffer(b)) => {
+            (SubmitAnyBuilder::SemaphoresWait(a), SubmitAnyBuilder::CommandBuffer(_)) => {
                 self.second.flush()?;
                 SubmitAnyBuilder::SemaphoresWait(a)
             }
-            (SubmitAnyBuilder::CommandBuffer(a), SubmitAnyBuilder::SemaphoresWait(b)) => {
+            (SubmitAnyBuilder::CommandBuffer(_), SubmitAnyBuilder::SemaphoresWait(b)) => {
                 self.first.flush()?;
                 SubmitAnyBuilder::SemaphoresWait(b)
             }
-            (SubmitAnyBuilder::SemaphoresWait(a), SubmitAnyBuilder::QueuePresent(b)) => {
+            (SubmitAnyBuilder::SemaphoresWait(a), SubmitAnyBuilder::QueuePresent(_)) => {
                 self.second.flush()?;
                 SubmitAnyBuilder::SemaphoresWait(a)
             }
-            (SubmitAnyBuilder::QueuePresent(a), SubmitAnyBuilder::SemaphoresWait(b)) => {
+            (SubmitAnyBuilder::QueuePresent(_), SubmitAnyBuilder::SemaphoresWait(b)) => {
                 self.first.flush()?;
                 SubmitAnyBuilder::SemaphoresWait(b)
             }
-            (SubmitAnyBuilder::SemaphoresWait(a), SubmitAnyBuilder::BindSparse(b)) => {
+            (SubmitAnyBuilder::SemaphoresWait(a), SubmitAnyBuilder::BindSparse(_)) => {
                 self.second.flush()?;
                 SubmitAnyBuilder::SemaphoresWait(a)
             }
-            (SubmitAnyBuilder::BindSparse(a), SubmitAnyBuilder::SemaphoresWait(b)) => {
+            (SubmitAnyBuilder::BindSparse(_), SubmitAnyBuilder::SemaphoresWait(b)) => {
                 self.first.flush()?;
                 SubmitAnyBuilder::SemaphoresWait(b)
             }
@@ -128,27 +125,27 @@ where
                 let new = a.merge(b);
                 SubmitAnyBuilder::CommandBuffer(new)
             }
-            (SubmitAnyBuilder::QueuePresent(a), SubmitAnyBuilder::QueuePresent(b)) => {
+            (SubmitAnyBuilder::QueuePresent(_), SubmitAnyBuilder::QueuePresent(_)) => {
                 self.first.flush()?;
                 self.second.flush()?;
                 SubmitAnyBuilder::Empty
             }
-            (SubmitAnyBuilder::CommandBuffer(a), SubmitAnyBuilder::QueuePresent(b)) => {
+            (SubmitAnyBuilder::CommandBuffer(_), SubmitAnyBuilder::QueuePresent(_)) => {
                 unimplemented!()
             }
-            (SubmitAnyBuilder::QueuePresent(a), SubmitAnyBuilder::CommandBuffer(b)) => {
+            (SubmitAnyBuilder::QueuePresent(_), SubmitAnyBuilder::CommandBuffer(_)) => {
                 unimplemented!()
             }
-            (SubmitAnyBuilder::BindSparse(a), SubmitAnyBuilder::QueuePresent(b)) => {
+            (SubmitAnyBuilder::BindSparse(_), SubmitAnyBuilder::QueuePresent(_)) => {
                 unimplemented!()
             }
-            (SubmitAnyBuilder::QueuePresent(a), SubmitAnyBuilder::BindSparse(b)) => {
+            (SubmitAnyBuilder::QueuePresent(_), SubmitAnyBuilder::BindSparse(_)) => {
                 unimplemented!()
             }
-            (SubmitAnyBuilder::BindSparse(a), SubmitAnyBuilder::CommandBuffer(b)) => {
+            (SubmitAnyBuilder::BindSparse(_), SubmitAnyBuilder::CommandBuffer(_)) => {
                 unimplemented!()
             }
-            (SubmitAnyBuilder::CommandBuffer(a), SubmitAnyBuilder::BindSparse(b)) => {
+            (SubmitAnyBuilder::CommandBuffer(_), SubmitAnyBuilder::BindSparse(_)) => {
                 unimplemented!()
             }
             (SubmitAnyBuilder::BindSparse(mut a), SubmitAnyBuilder::BindSparse(b)) => {
@@ -210,13 +207,13 @@ where
             .second
             .check_buffer_access(buffer, range, exclusive, queue);
         debug_assert!(
-            !exclusive || !(first.is_ok() && second.is_ok()),
+            !(exclusive && first.is_ok() && second.is_ok()),
             "Two futures gave exclusive access to the same resource"
         );
         match (first, second) {
             (v, Err(AccessCheckError::Unknown)) => v,
             (Err(AccessCheckError::Unknown), v) => v,
-            (Err(AccessCheckError::Denied(e1)), Err(AccessCheckError::Denied(e2))) => {
+            (Err(AccessCheckError::Denied(e1)), Err(AccessCheckError::Denied(_))) => {
                 Err(AccessCheckError::Denied(e1))
             } // TODO: which one?
             (Ok(_), Err(AccessCheckError::Denied(_)))
@@ -246,13 +243,13 @@ where
             self.second
                 .check_image_access(image, range, exclusive, expected_layout, queue);
         debug_assert!(
-            !exclusive || !(first.is_ok() && second.is_ok()),
+            !(exclusive && first.is_ok() && second.is_ok()),
             "Two futures gave exclusive access to the same resource"
         );
         match (first, second) {
             (v, Err(AccessCheckError::Unknown)) => v,
             (Err(AccessCheckError::Unknown), v) => v,
-            (Err(AccessCheckError::Denied(e1)), Err(AccessCheckError::Denied(e2))) => {
+            (Err(AccessCheckError::Denied(e1)), Err(AccessCheckError::Denied(_))) => {
                 Err(AccessCheckError::Denied(e1))
             } // TODO: which one?
             (Ok(_), Err(AccessCheckError::Denied(_)))

@@ -301,7 +301,7 @@ fn main() {
                         PipelineBindPoint::Graphics,
                         pipeline.layout().clone(),
                         0,
-                        set.clone(),
+                        set,
                     )
                     .bind_vertex_buffers(0, (vertex_buffer.clone(), normals_buffer.clone()))
                     .bind_index_buffer(index_buffer.clone())
@@ -390,8 +390,8 @@ fn window_size_dependent_setup(
         ]))
         .fragment_shader(fs.entry_point("main").unwrap(), ())
         .depth_stencil_state(DepthStencilState::simple_depth_test())
-        .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-        .build(device.clone())
+        .render_pass(Subpass::from(render_pass, 0).unwrap())
+        .build(device)
         .unwrap();
 
     (pipeline, framebuffers)

@@ -178,7 +178,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
         Self: Sized,
         Cb: PrimaryCommandBuffer + 'static,
     {
-        let queue = self.queue().unwrap().clone();
+        let queue = self.queue().unwrap();
         command_buffer.execute_after(self, queue)
     }
 

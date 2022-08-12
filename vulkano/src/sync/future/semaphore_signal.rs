@@ -88,7 +88,7 @@ where
                 return Ok(());
             }
 
-            let queue = self.previous.queue().unwrap().clone();
+            let queue = self.previous.queue().unwrap();
 
             match self.previous.build_submission()? {
                 SubmitAnyBuilder::Empty => {

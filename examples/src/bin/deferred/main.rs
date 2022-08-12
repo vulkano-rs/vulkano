@@ -141,7 +141,7 @@ fn main() {
         .unwrap();
         let images = images
             .into_iter()
-            .map(|image| ImageView::new_default(image.clone()).unwrap())
+            .map(|image| ImageView::new_default(image).unwrap())
             .collect::<Vec<_>>();
         (swapchain, images)
     };
@@ -186,7 +186,7 @@ fn main() {
                 };
                 let new_images = new_images
                     .into_iter()
-                    .map(|image| ImageView::new_default(image.clone()).unwrap())
+                    .map(|image| ImageView::new_default(image).unwrap())
                     .collect::<Vec<_>>();
 
                 swapchain = new_swapchain;

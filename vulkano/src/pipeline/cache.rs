@@ -127,7 +127,7 @@ impl PipelineCache {
 
         Ok(Arc::new(PipelineCache {
             device: device.clone(),
-            cache: cache,
+            cache,
         }))
     }
 
@@ -151,7 +151,7 @@ impl PipelineCache {
             let pipelines = pipelines
                 .into_iter()
                 .map(|pipeline| {
-                    assert!(&***pipeline as *const _ != &*self as *const _);
+                    assert!(&***pipeline as *const _ != self as *const _);
                     pipeline.cache
                 })
                 .collect::<Vec<_>>();
@@ -264,11 +264,10 @@ mod tests {
         pipeline::{cache::PipelineCache, ComputePipeline},
         shader::ShaderModule,
     };
-    use std::sync::Arc;
 
     #[test]
     fn merge_self_forbidden() {
-        let (device, queue) = gfx_dev_and_queue!();
+        let (device, _queue) = gfx_dev_and_queue!();
         let pipeline = PipelineCache::empty(device).unwrap();
         assert_should_panic!({
             pipeline.merge(&[&pipeline]).unwrap();
@@ -277,7 +276,7 @@ mod tests {
 
     #[test]
     fn cache_returns_same_data() {
-        let (device, queue) = gfx_dev_and_queue!();
+        let (device, _queue) = gfx_dev_and_queue!();
 
         let cache = PipelineCache::empty(device.clone()).unwrap();
 
@@ -300,16 +299,14 @@ mod tests {
             ShaderModule::from_bytes(device.clone(), &MODULE).unwrap()
         };
 
-        let pipeline = Arc::new(
-            ComputePipeline::new(
-                device.clone(),
-                module.entry_point("main").unwrap(),
-                &(),
-                Some(cache.clone()),
-                |_| {},
-            )
-            .unwrap(),
-        );
+        let _pipeline = ComputePipeline::new(
+            device,
+            module.entry_point("main").unwrap(),
+            &(),
+            Some(cache.clone()),
+            |_| {},
+        )
+        .unwrap();
 
         let cache_data = cache.get_data().unwrap();
         let second_data = cache.get_data().unwrap();
@@ -319,7 +316,7 @@ mod tests {
 
     #[test]
     fn cache_returns_different_data() {
-        let (device, queue) = gfx_dev_and_queue!();
+        let (device, _queue) = gfx_dev_and_queue!();
 
         let cache = PipelineCache::empty(device.clone()).unwrap();
 
@@ -373,29 +370,25 @@ mod tests {
             ShaderModule::from_bytes(device.clone(), &SECOND_MODULE).unwrap()
         };
 
-        let pipeline = Arc::new(
-            ComputePipeline::new(
-                device.clone(),
-                first_module.entry_point("main").unwrap(),
-                &(),
-                Some(cache.clone()),
-                |_| {},
-            )
-            .unwrap(),
-        );
+        let _pipeline = ComputePipeline::new(
+            device.clone(),
+            first_module.entry_point("main").unwrap(),
+            &(),
+            Some(cache.clone()),
+            |_| {},
+        )
+        .unwrap();
 
         let cache_data = cache.get_data().unwrap();
 
-        let second_pipeline = Arc::new(
-            ComputePipeline::new(
-                device.clone(),
-                second_module.entry_point("main").unwrap(),
-                &(),
-                Some(cache.clone()),
-                |_| {},
-            )
-            .unwrap(),
-        );
+        let _second_pipeline = ComputePipeline::new(
+            device,
+            second_module.entry_point("main").unwrap(),
+            &(),
+            Some(cache.clone()),
+            |_| {},
+        )
+        .unwrap();
 
         let second_data = cache.get_data().unwrap();
 
@@ -408,7 +401,7 @@ mod tests {
 
     #[test]
     fn cache_data_does_not_change() {
-        let (device, queue) = gfx_dev_and_queue!();
+        let (device, _queue) = gfx_dev_and_queue!();
 
         let cache = PipelineCache::empty(device.clone()).unwrap();
 
@@ -431,29 +424,25 @@ mod tests {
             ShaderModule::from_bytes(device.clone(), &MODULE).unwrap()
         };
 
-        let pipeline = Arc::new(
-            ComputePipeline::new(
-                device.clone(),
-                module.entry_point("main").unwrap(),
-                &(),
-                Some(cache.clone()),
-                |_| {},
-            )
-            .unwrap(),
-        );
+        let _pipeline = ComputePipeline::new(
+            device.clone(),
+            module.entry_point("main").unwrap(),
+            &(),
+            Some(cache.clone()),
+            |_| {},
+        )
+        .unwrap();
 
         let cache_data = cache.get_data().unwrap();
 
-        let second_pipeline = Arc::new(
-            ComputePipeline::new(
-                device.clone(),
-                module.entry_point("main").unwrap(),
-                &(),
-                Some(cache.clone()),
-                |_| {},
-            )
-            .unwrap(),
-        );
+        let _second_pipeline = ComputePipeline::new(
+            device,
+            module.entry_point("main").unwrap(),
+            &(),
+            Some(cache.clone()),
+            |_| {},
+        )
+        .unwrap();
 
         let second_data = cache.get_data().unwrap();
 

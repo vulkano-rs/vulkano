@@ -221,13 +221,14 @@ fn instruction_output(members: &[InstructionMember], spec_constant: bool) -> Tok
     };
 
     quote! {
-        #[derive(Clone, Debug, PartialEq)]
+        #[derive(Clone, Debug, PartialEq, Eq)]
         #[doc=#doc]
         pub enum #enum_name {
             #(#struct_items)*
         }
 
         impl #enum_name {
+            #[allow(dead_code)]
             fn parse(reader: &mut InstructionReader) -> Result<Self, ParseError> {
                 let opcode = (reader.next_u32()? & 0xffff) as u16;
 
@@ -264,7 +265,7 @@ fn instruction_members(grammar: &SpirvGrammar) -> Vec<InstructionMember> {
                         has_result_type_id = true;
                         format_ident!("result_type_id")
                     } else {
-                        to_member_name(&operand.kind, operand.name.as_ref().map(|x| x.as_str()))
+                        to_member_name(&operand.kind, operand.name.as_deref())
                     };
 
                     *operand_names.entry(name.clone()).or_insert(0) += 1;
@@ -293,11 +294,7 @@ fn instruction_members(grammar: &SpirvGrammar) -> Vec<InstructionMember> {
                         _ => parse.clone(),
                     };
 
-                    OperandMember {
-                        name,
-                        ty,
-                        parse: parse.clone(),
-                    }
+                    OperandMember { name, ty, parse }
                 })
                 .collect::<Vec<_>>();
 
@@ -387,13 +384,14 @@ fn bit_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
         );
 
         quote! {
-            #[derive(Clone, Debug, PartialEq)]
+            #[derive(Clone, Debug, PartialEq, Eq)]
             #[allow(non_camel_case_types)]
             pub struct #name {
                 #(#members_items)*
             }
 
             impl #name {
+                #[allow(dead_code)]
                 fn parse(reader: &mut InstructionReader) -> Result<#name, ParseError> {
                     let value = reader.next_u32()?;
 
@@ -453,10 +451,7 @@ fn bit_enum_members(grammar: &SpirvGrammar) -> Vec<(Ident, Vec<KindEnumMember>)>
                         .parameters
                         .iter()
                         .map(|param| {
-                            let name = to_member_name(
-                                &param.kind,
-                                param.name.as_ref().map(|x| x.as_str()),
-                            );
+                            let name = to_member_name(&param.kind, param.name.as_deref());
                             let (ty, parse) = parameter_kinds[param.kind.as_str()].clone();
 
                             OperandMember { name, ty, parse }
@@ -529,7 +524,7 @@ fn value_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
 
         let derives = match name_string.as_str() {
             "ExecutionModel" => quote! { #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)] },
-            _ => quote! { #[derive(Clone, Debug, PartialEq)] },
+            _ => quote! { #[derive(Clone, Debug, PartialEq, Eq)] },
         };
 
         quote! {
@@ -540,6 +535,7 @@ fn value_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
             }
 
             impl #name {
+                #[allow(dead_code)]
                 fn parse(reader: &mut InstructionReader) -> Result<#name, ParseError> {
                     Ok(match reader.next_u32()? {
                         #(#parse_items)*
@@ -586,10 +582,7 @@ fn value_enum_members(grammar: &SpirvGrammar) -> Vec<(Ident, Vec<KindEnumMember>
                         .parameters
                         .iter()
                         .map(|param| {
-                            let name = to_member_name(
-                                &param.kind,
-                                param.name.as_ref().map(|x| x.as_str()),
-                            );
+                            let name = to_member_name(&param.kind, param.name.as_deref());
                             let (ty, parse) = parameter_kinds[param.kind.as_str()].clone();
 
                             OperandMember { name, ty, parse }

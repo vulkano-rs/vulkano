@@ -771,7 +771,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                     for (dst_region_index, dst_region) in regions.iter().enumerate() {
                         let &ImageCopy {
                             ref dst_subresource,
-                            dst_offset,
+                            dst_offset: _,
                             ..
                         } = dst_region;
 
@@ -1729,7 +1729,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
 
         let &mut FillBufferInfo {
-            data,
+            data: _,
             ref dst_buffer,
             dst_offset,
             size,
@@ -1895,25 +1895,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 }
 
-/// Computes the minimum required len in elements for buffer with image data in specified
-/// format of specified size.
-fn required_size_for_format(format: Format, extent: [u32; 3], layer_count: u32) -> DeviceSize {
-    let num_blocks = extent
-        .into_iter()
-        .zip(format.block_extent())
-        .map(|(extent, block_extent)| {
-            let extent = extent as DeviceSize;
-            let block_extent = block_extent as DeviceSize;
-            (extent + block_extent - 1) / block_extent
-        })
-        .product::<DeviceSize>()
-        * layer_count as DeviceSize;
-    let block_size = format
-        .block_size()
-        .expect("this format cannot accept pixels");
-    num_blocks * block_size
-}
-
 impl SyncCommandBufferBuilder {
     /// Calls `vkCmdCopyBuffer` on the builder.
     ///
@@ -2046,10 +2027,10 @@ impl SyncCommandBufferBuilder {
             .flat_map(|region| {
                 let &ImageCopy {
                     ref src_subresource,
-                    src_offset,
+                    src_offset: _,
                     ref dst_subresource,
-                    dst_offset,
-                    extent,
+                    dst_offset: _,
+                    extent: _,
                     _ne: _,
                 } = region;
 
@@ -2147,11 +2128,11 @@ impl SyncCommandBufferBuilder {
             .flat_map(|region| {
                 let &BufferImageCopy {
                     buffer_offset,
-                    buffer_row_length,
-                    buffer_image_height,
+                    buffer_row_length: _,
+                    buffer_image_height: _,
                     ref image_subresource,
-                    image_offset,
-                    image_extent,
+                    image_offset: _,
+                    image_extent: _,
                     _ne: _,
                 } = region;
 
@@ -2250,11 +2231,11 @@ impl SyncCommandBufferBuilder {
             .flat_map(|region| {
                 let &BufferImageCopy {
                     buffer_offset,
-                    buffer_row_length,
-                    buffer_image_height,
+                    buffer_row_length: _,
+                    buffer_image_height: _,
                     ref image_subresource,
-                    image_offset,
-                    image_extent,
+                    image_offset: _,
+                    image_extent: _,
                     _ne: _,
                 } = region;
 
@@ -2338,7 +2319,7 @@ impl SyncCommandBufferBuilder {
         }
 
         let &FillBufferInfo {
-            data,
+            data: _,
             ref dst_buffer,
             dst_offset,
             size,
@@ -3565,6 +3546,25 @@ impl FillBufferInfo {
 mod tests {
     use super::*;
     use crate::format::Format;
+
+    /// Computes the minimum required len in elements for buffer with image data in specified
+    /// format of specified size.
+    fn required_size_for_format(format: Format, extent: [u32; 3], layer_count: u32) -> DeviceSize {
+        let num_blocks = extent
+            .into_iter()
+            .zip(format.block_extent())
+            .map(|(extent, block_extent)| {
+                let extent = extent as DeviceSize;
+                let block_extent = block_extent as DeviceSize;
+                (extent + block_extent - 1) / block_extent
+            })
+            .product::<DeviceSize>()
+            * layer_count as DeviceSize;
+        let block_size = format
+            .block_size()
+            .expect("this format cannot accept pixels");
+        num_blocks * block_size
+    }
 
     #[test]
     fn test_required_len_for_format() {

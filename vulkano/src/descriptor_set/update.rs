@@ -372,27 +372,6 @@ pub(crate) enum DescriptorWriteInfo {
     BufferView(SmallVec<[ash::vk::BufferView; 1]>),
 }
 
-impl DescriptorWriteInfo {
-    fn set_info(&self, write: &mut ash::vk::WriteDescriptorSet) {
-        match self {
-            DescriptorWriteInfo::Image(info) => {
-                write.descriptor_count = info.len() as u32;
-                write.p_image_info = info.as_ptr();
-            }
-            DescriptorWriteInfo::Buffer(info) => {
-                write.descriptor_count = info.len() as u32;
-                write.p_buffer_info = info.as_ptr();
-            }
-            DescriptorWriteInfo::BufferView(info) => {
-                write.descriptor_count = info.len() as u32;
-                write.p_texel_buffer_view = info.as_ptr();
-            }
-        }
-
-        debug_assert!(write.descriptor_count != 0);
-    }
-}
-
 pub(crate) fn check_descriptor_write<'a>(
     write: &WriteDescriptorSet,
     layout: &'a DescriptorSetLayout,
@@ -429,7 +408,7 @@ pub(crate) fn check_descriptor_write<'a>(
     }
 
     match elements {
-        WriteDescriptorSetElements::None(num_elements) => match layout_binding.descriptor_type {
+        WriteDescriptorSetElements::None(_num_elements) => match layout_binding.descriptor_type {
             DescriptorType::Sampler
                 if layout.push_descriptor() && !layout_binding.immutable_samplers.is_empty() => {}
             _ => {

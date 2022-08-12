@@ -391,7 +391,7 @@ fn check_descriptor_sets_validity<'a, P: Pipeline>(
         let layout_binding =
             &pipeline.layout().set_layouts()[set_num as usize].bindings()[&binding_num];
 
-        let check_buffer = |index: u32, buffer: &Arc<dyn BufferAccess>| Ok(());
+        let check_buffer = |_index: u32, _buffer: &Arc<dyn BufferAccess>| Ok(());
 
         let check_buffer_view = |index: u32, buffer_view: &Arc<dyn BufferViewAbstract>| {
             if layout_binding.descriptor_type == DescriptorType::StorageTexelBuffer {
@@ -804,12 +804,7 @@ impl fmt::Display for InvalidDescriptorResource {
             Self::Missing => {
                 write!(fmt, "no resource was bound")
             }
-            Self::SamplerImageViewIncompatible {
-                image_view_set_num,
-                image_view_binding_num,
-                image_view_index,
-                ..
-            } => {
+            Self::SamplerImageViewIncompatible { .. } => {
                 write!(
                     fmt,
                     "the bound sampler samples an image view that is not compatible with it"
@@ -1331,8 +1326,7 @@ fn check_index_buffer(
             return Err(CheckIndexBufferError::TooManyIndices {
                 index_count,
                 max_index_count,
-            }
-            .into());
+            });
         }
     }
 
@@ -1432,10 +1426,7 @@ impl fmt::Display for CheckIndirectBufferError {
                 CheckIndirectBufferError::BufferMissingUsage => {
                     "the indirect buffer usage must be enabled on the indirect buffer"
                 }
-                CheckIndirectBufferError::MaxDrawIndirectCountLimitExceeded {
-                    limit,
-                    requested,
-                } => {
+                CheckIndirectBufferError::MaxDrawIndirectCountLimitExceeded { .. } => {
                     "the maximum number of indirect draws has been exceeded"
                 }
             }
@@ -1511,8 +1502,7 @@ fn check_vertex_buffers(
                 return Err(CheckVertexBufferError::TooManyInstances {
                     instance_count,
                     max_instance_count,
-                }
-                .into());
+                });
             }
         }
 
@@ -1536,8 +1526,7 @@ fn check_vertex_buffers(
                 return Err(CheckVertexBufferError::TooManyInstances {
                     instance_count,
                     max_instance_count: max_instance_index + 1, // TODO: this can overflow
-                }
-                .into());
+                });
             }
         }
     }

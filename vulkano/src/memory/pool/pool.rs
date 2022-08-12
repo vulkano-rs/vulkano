@@ -40,7 +40,7 @@ impl StandardMemoryPool {
         let cap = device.physical_device().memory_types().len();
 
         Arc::new(StandardMemoryPool {
-            device: device.clone(),
+            device,
             pools: Mutex::new(HashMap::with_capacity(cap)),
         })
     }
@@ -60,21 +60,21 @@ fn generic_allocation(
     assert!(memory_type_host_visible || map == MappingRequirement::DoNotMap);
 
     match pools.entry((memory_type.id(), layout, map)) {
-        Entry::Occupied(entry) => match entry.get() {
-            &Pool::HostVisible(ref pool) => {
+        Entry::Occupied(entry) => match *entry.get() {
+            Pool::HostVisible(ref pool) => {
                 let alloc = pool.alloc(size, alignment)?;
                 let inner = StandardMemoryPoolAllocInner::HostVisible(alloc);
                 Ok(StandardMemoryPoolAlloc {
                     inner,
-                    pool: mem_pool.clone(),
+                    _pool: mem_pool.clone(),
                 })
             }
-            &Pool::NonHostVisible(ref pool) => {
+            Pool::NonHostVisible(ref pool) => {
                 let alloc = pool.alloc(size, alignment)?;
                 let inner = StandardMemoryPoolAllocInner::NonHostVisible(alloc);
                 Ok(StandardMemoryPoolAlloc {
                     inner,
-                    pool: mem_pool.clone(),
+                    _pool: mem_pool.clone(),
                 })
             }
         },
@@ -88,7 +88,7 @@ fn generic_allocation(
                 let inner = StandardMemoryPoolAllocInner::HostVisible(alloc);
                 Ok(StandardMemoryPoolAlloc {
                     inner,
-                    pool: mem_pool.clone(),
+                    _pool: mem_pool.clone(),
                 })
             } else {
                 let pool =
@@ -98,7 +98,7 @@ fn generic_allocation(
                 let inner = StandardMemoryPoolAllocInner::NonHostVisible(alloc);
                 Ok(StandardMemoryPoolAlloc {
                     inner,
-                    pool: mem_pool.clone(),
+                    _pool: mem_pool.clone(),
                 })
             }
         }
@@ -136,7 +136,7 @@ enum Pool {
 #[derive(Debug)]
 pub struct StandardMemoryPoolAlloc {
     inner: StandardMemoryPoolAllocInner,
-    pool: Arc<StandardMemoryPool>,
+    _pool: Arc<StandardMemoryPool>,
 }
 
 impl StandardMemoryPoolAlloc {

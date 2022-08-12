@@ -328,7 +328,7 @@ fn main() {
 
         let set_layouts = layout_create_infos
             .into_iter()
-            .map(|desc| Ok(DescriptorSetLayout::new(device.clone(), desc.clone())?))
+            .map(|desc| DescriptorSetLayout::new(device.clone(), desc))
             .collect::<Result<Vec<_>, DescriptorSetLayoutCreationError>>()
             .unwrap();
 
@@ -368,8 +368,8 @@ fn main() {
             0,
             0,
             [
-                (mascot_texture.clone() as _, sampler.clone()),
-                (vulkano_texture.clone() as _, sampler.clone()),
+                (mascot_texture as _, sampler.clone()),
+                (vulkano_texture as _, sampler),
             ],
         )],
     )

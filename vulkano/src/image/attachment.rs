@@ -30,7 +30,7 @@ use std::{
     fs::File,
     hash::{Hash, Hasher},
     sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicBool, Ordering},
         Arc,
     },
 };
@@ -72,9 +72,6 @@ pub struct AttachmentImage<A = PotentialDedicatedAllocation<StandardMemoryPoolAl
     // Memory used to back the image.
     memory: A,
 
-    // Format.
-    format: Format,
-
     // Layout to use when the image is used as a framebuffer attachment.
     // Must be either "depth-stencil optimal" or "color optimal".
     attachment_layout: ImageLayout,
@@ -82,9 +79,6 @@ pub struct AttachmentImage<A = PotentialDedicatedAllocation<StandardMemoryPoolAl
     // If true, then the image is in the layout of `attachment_layout` (above). If false, then it
     // is still `Undefined`.
     initialized: AtomicBool,
-
-    // Number of times this image is locked on the GPU side.
-    gpu_lock: AtomicUsize,
 }
 
 impl AttachmentImage {
@@ -464,14 +458,12 @@ impl AttachmentImage {
         Ok(Arc::new(AttachmentImage {
             image,
             memory,
-            format,
             attachment_layout: if is_depth {
                 ImageLayout::DepthStencilAttachmentOptimal
             } else {
                 ImageLayout::ColorAttachmentOptimal
             },
             initialized: AtomicBool::new(false),
-            gpu_lock: AtomicUsize::new(0),
         }))
     }
 
@@ -547,14 +539,12 @@ impl AttachmentImage {
         Ok(Arc::new(AttachmentImage {
             image,
             memory,
-            format,
             attachment_layout: if is_depth {
                 ImageLayout::DepthStencilAttachmentOptimal
             } else {
                 ImageLayout::ColorAttachmentOptimal
             },
             initialized: AtomicBool::new(false),
-            gpu_lock: AtomicUsize::new(0),
         }))
     }
 

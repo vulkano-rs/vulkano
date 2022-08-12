@@ -67,7 +67,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ) -> Result<(), QueryError> {
         // VUID-vkCmdBeginQuery-commandBuffer-cmdpool
         if !(self.queue_family().supports_graphics() || self.queue_family().supports_compute()) {
-            return Err(QueryError::NotSupportedByQueueFamily.into());
+            return Err(QueryError::NotSupportedByQueueFamily);
         }
 
         let device = self.device();
@@ -175,7 +175,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     fn validate_end_query(&self, query_pool: &QueryPool, query: u32) -> Result<(), QueryError> {
         // VUID-vkCmdEndQuery-commandBuffer-cmdpool
         if !(self.queue_family().supports_graphics() || self.queue_family().supports_compute()) {
-            return Err(QueryError::NotSupportedByQueueFamily.into());
+            return Err(QueryError::NotSupportedByQueueFamily);
         }
 
         let device = self.device();
@@ -191,7 +191,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 state.query_pool == query_pool.internal_object() && state.query == query
             })
         {
-            return Err(QueryError::QueryNotActive.into());
+            return Err(QueryError::QueryNotActive);
         }
 
         // VUID-vkCmdEndQuery-query-00810
@@ -256,7 +256,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             || self.queue_family().supports_graphics()
             || self.queue_family().supports_compute())
         {
-            return Err(QueryError::NotSupportedByQueueFamily.into());
+            return Err(QueryError::NotSupportedByQueueFamily);
         }
 
         let device = self.device();
@@ -391,7 +391,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     {
         // VUID-vkCmdCopyQueryPoolResults-commandBuffer-cmdpool
         if !(self.queue_family().supports_graphics() || self.queue_family().supports_compute()) {
-            return Err(QueryError::NotSupportedByQueueFamily.into());
+            return Err(QueryError::NotSupportedByQueueFamily);
         }
 
         // VUID-vkCmdCopyQueryPoolResults-renderpass
@@ -476,7 +476,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
         // VUID-vkCmdResetQueryPool-commandBuffer-cmdpool
         if !(self.queue_family().supports_graphics() || self.queue_family().supports_compute()) {
-            return Err(QueryError::NotSupportedByQueueFamily.into());
+            return Err(QueryError::NotSupportedByQueueFamily);
         }
 
         let device = self.device();
@@ -494,7 +494,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         if self.query_state.values().any(|state| {
             state.query_pool == query_pool.internal_object() && queries.contains(&state.query)
         }) {
-            return Err(QueryError::QueryIsActive.into());
+            return Err(QueryError::QueryIsActive);
         }
 
         Ok(())

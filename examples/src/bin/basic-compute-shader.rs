@@ -137,7 +137,7 @@ fn main() {
     // We start by creating the buffer that will store the data.
     let data_buffer = {
         // Iterator that produces the data.
-        let data_iter = (0..65536u32).map(|n| n);
+        let data_iter = 0..65536u32;
         // Builds the buffer and fills it with this iterator.
         CpuAccessibleBuffer::from_iter(
             device.clone(),
@@ -186,7 +186,7 @@ fn main() {
             PipelineBindPoint::Compute,
             pipeline.layout().clone(),
             0,
-            set.clone(),
+            set,
         )
         .dispatch([1024, 1, 1])
         .unwrap();
@@ -195,8 +195,8 @@ fn main() {
 
     // Let's execute this command buffer now.
     // To do so, we TODO: this is a bit clumsy, probably needs a shortcut
-    let future = sync::now(device.clone())
-        .then_execute(queue.clone(), command_buffer)
+    let future = sync::now(device)
+        .then_execute(queue, command_buffer)
         .unwrap()
         // This line instructs the GPU to signal a *fence* once the command buffer has finished
         // execution. A fence is a Vulkan object that allows the CPU to know when the GPU has

@@ -81,7 +81,7 @@ impl DescriptorSetLayout {
         } = create_info;
 
         let mut descriptor_counts = HashMap::default();
-        for (&binding_num, binding) in bindings.iter() {
+        for binding in bindings.values() {
             if binding.descriptor_count != 0 {
                 *descriptor_counts
                     .entry(binding.descriptor_type)
@@ -699,18 +699,18 @@ impl DescriptorSetLayoutBinding {
         let DescriptorRequirements {
             descriptor_types,
             descriptor_count,
-            image_format,
-            image_multisampled,
-            image_scalar_type,
-            image_view_type,
-            sampler_compare,
-            sampler_no_unnormalized_coordinates,
-            sampler_no_ycbcr_conversion,
-            sampler_with_images,
+            image_format: _,
+            image_multisampled: _,
+            image_scalar_type: _,
+            image_view_type: _,
+            sampler_compare: _,
+            sampler_no_unnormalized_coordinates: _,
+            sampler_no_ycbcr_conversion: _,
+            sampler_with_images: _,
             stages,
-            storage_image_atomic,
-            storage_read,
-            storage_write,
+            storage_image_atomic: _,
+            storage_read: _,
+            storage_write: _,
         } = descriptor_requirements;
 
         if !descriptor_types.contains(&self.descriptor_type) {
@@ -786,7 +786,7 @@ impl fmt::Display for DescriptorRequirementsNotMet {
                 "the descriptor count ({}) is less than what is required ({})",
                 obtained, required
             ),
-            Self::ShaderStages { required, obtained } => write!(
+            Self::ShaderStages { .. } => write!(
                 fmt,
                 "the descriptor's shader stages do not contain the stages that are required",
             ),
@@ -869,7 +869,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let sl = DescriptorSetLayout::new(
-            device.clone(),
+            device,
             DescriptorSetLayoutCreateInfo {
                 bindings: [(
                     0,

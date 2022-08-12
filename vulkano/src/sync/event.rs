@@ -33,7 +33,7 @@ pub struct Event {
 
 impl Event {
     /// Creates a new `Event`.
-    pub fn new(device: Arc<Device>, create_info: EventCreateInfo) -> Result<Event, OomError> {
+    pub fn new(device: Arc<Device>, _create_info: EventCreateInfo) -> Result<Event, OomError> {
         let create_info = ash::vk::EventCreateInfo {
             flags: ash::vk::EventCreateFlags::empty(),
             ..Default::default()
@@ -100,7 +100,7 @@ impl Event {
     /// the `create_info` must match the info used to create said object
     pub unsafe fn from_handle(
         handle: ash::vk::Event,
-        create_info: EventCreateInfo,
+        _create_info: EventCreateInfo,
         device: Arc<Device>,
     ) -> Event {
         Event {

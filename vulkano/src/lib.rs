@@ -62,8 +62,24 @@
 //!
 
 //#![warn(missing_docs)]        // TODO: activate
-#![allow(dead_code)] // TODO: remove
-#![allow(unused_variables)] // TODO: remove
+
+// These lints are a bit too pedantic, so they're disabled here.
+#![allow(
+    clippy::collapsible_else_if,
+    clippy::collapsible_if,
+    clippy::large_enum_variant,
+    clippy::len_without_is_empty,
+    clippy::missing_safety_doc, // TODO: remove
+    clippy::module_inception,
+    clippy::mutable_key_type,
+    clippy::new_without_default,
+    clippy::nonminimal_bool,
+    clippy::op_ref, // Seems to be bugged, the fixed code triggers a compile error
+    clippy::too_many_arguments,
+    clippy::type_complexity,
+    clippy::vec_box,
+    clippy::wrong_self_convention
+)]
 
 pub use ash::vk::Handle;
 pub use half;

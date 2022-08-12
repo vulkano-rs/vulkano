@@ -38,7 +38,6 @@ use std::{
     error::Error,
     fmt,
     hash::{Hash, Hasher},
-    ops::Range,
     sync::Arc,
 };
 
@@ -49,8 +48,7 @@ use std::{
 pub struct ImmutableImage<A = PotentialDedicatedAllocation<StandardMemoryPoolAlloc>> {
     image: Arc<UnsafeImage>,
     dimensions: ImageDimensions,
-    memory: A,
-    format: Format,
+    _memory: A,
     layout: ImageLayout,
 }
 
@@ -66,7 +64,7 @@ fn generate_mipmaps<L>(
     cbb: &mut AutoCommandBufferBuilder<L>,
     image: Arc<dyn ImageAccess>,
     dimensions: ImageDimensions,
-    layout: ImageLayout,
+    _layout: ImageLayout,
 ) {
     for level in 1..image.mip_levels() {
         let src_size = dimensions
@@ -225,16 +223,13 @@ impl ImmutableImage {
 
         let image = Arc::new(ImmutableImage {
             image,
-            memory,
+            _memory: memory,
             dimensions,
-            format,
             layout,
         });
 
         let init = Arc::new(ImmutableImageInitialization {
             image: image.clone(),
-            mip_levels_access: 0..image.mip_levels(),
-            array_layers_access: 0..image.dimensions().array_layers(),
         });
 
         Ok((image, init))
@@ -414,8 +409,6 @@ where
 // Must not implement Clone, as that would lead to multiple `used` values.
 pub struct ImmutableImageInitialization<A = PotentialDedicatedAllocation<StandardMemoryPoolAlloc>> {
     image: Arc<ImmutableImage<A>>,
-    mip_levels_access: Range<u32>,
-    array_layers_access: Range<u32>,
 }
 
 unsafe impl<A> DeviceOwned for ImmutableImageInitialization<A> {

@@ -134,19 +134,18 @@ impl VulkanoContext {
             .union(&config.instance_create_info.enabled_extensions);
 
         // Create instance
-        let instance = Instance::new(library.clone(), config.instance_create_info)
-            .expect("Failed to create instance");
+        let instance =
+            Instance::new(library, config.instance_create_info).expect("Failed to create instance");
 
         // Create debug callback
-        let _debug_utils_messenger = if let Some(dbg_create_info) = config.debug_create_info.take()
-        {
-            Some(unsafe {
-                DebugUtilsMessenger::new(instance.clone(), dbg_create_info)
-                    .expect("Failed to create debug callback")
-            })
-        } else {
-            None
-        };
+        let _debug_utils_messenger =
+            config
+                .debug_create_info
+                .take()
+                .map(|dbg_create_info| unsafe {
+                    DebugUtilsMessenger::new(instance.clone(), dbg_create_info)
+                        .expect("Failed to create debug callback")
+                });
 
         // Get prioritized device
         let physical_device = PhysicalDevice::enumerate(&instance)

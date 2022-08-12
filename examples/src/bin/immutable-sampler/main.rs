@@ -250,11 +250,9 @@ fn main() {
     let layout = pipeline.layout().set_layouts().get(0).unwrap();
 
     // Use `image_view` instead of `image_view_sampler`, since the sampler is already in the layout.
-    let set = PersistentDescriptorSet::new(
-        layout.clone(),
-        [WriteDescriptorSet::image_view(0, texture.clone())],
-    )
-    .unwrap();
+    let set =
+        PersistentDescriptorSet::new(layout.clone(), [WriteDescriptorSet::image_view(0, texture)])
+            .unwrap();
 
     let mut viewport = Viewport {
         origin: [0.0, 0.0],

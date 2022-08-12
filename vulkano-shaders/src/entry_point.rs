@@ -87,7 +87,7 @@ fn write_shader_execution(execution: &ShaderExecution) -> TokenStream {
 fn write_descriptor_requirements(
     descriptor_requirements: &HashMap<(u32, u32), DescriptorRequirements>,
 ) -> TokenStream {
-    let descriptor_requirements = descriptor_requirements.into_iter().map(|(loc, reqs)| {
+    let descriptor_requirements = descriptor_requirements.iter().map(|(loc, reqs)| {
         let (set_num, binding_num) = loc;
         let DescriptorRequirements {
             descriptor_types,
@@ -106,7 +106,7 @@ fn write_descriptor_requirements(
             storage_write,
         } = reqs;
 
-        let descriptor_types = descriptor_types.into_iter().map(|ty| {
+        let descriptor_types = descriptor_types.iter().map(|ty| {
             let ident = format_ident!("{}", format!("{:?}", ty));
             quote! { ::vulkano::descriptor_set::layout::DescriptorType::#ident }
         });
@@ -286,19 +286,20 @@ fn write_push_constant_requirements(
 fn write_specialization_constant_requirements(
     specialization_constant_requirements: &HashMap<u32, SpecializationConstantRequirements>,
 ) -> TokenStream {
-    let specialization_constant_requirements = specialization_constant_requirements
-        .into_iter()
-        .map(|(&constant_id, reqs)| {
-            let SpecializationConstantRequirements { size } = reqs;
-            quote! {
-                (
-                    #constant_id,
-                    ::vulkano::shader::SpecializationConstantRequirements {
-                        size: #size,
-                    },
-                ),
-            }
-        });
+    let specialization_constant_requirements =
+        specialization_constant_requirements
+            .iter()
+            .map(|(&constant_id, reqs)| {
+                let SpecializationConstantRequirements { size } = reqs;
+                quote! {
+                    (
+                        #constant_id,
+                        ::vulkano::shader::SpecializationConstantRequirements {
+                            size: #size,
+                        },
+                    ),
+                }
+            });
 
     quote! {
         [

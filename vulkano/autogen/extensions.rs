@@ -17,6 +17,7 @@ use vk_parse::Extension;
 
 // This is not included in vk.xml, so it's added here manually
 fn required_if_supported(name: &str) -> bool {
+    #[allow(clippy::match_like_matches_macro)]
     match name {
         "VK_KHR_portability_subset" => true,
         _ => false,
@@ -172,18 +173,6 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
         }
     });
 
-    let required_if_supported_extensions_items = members.iter().map(
-        |ExtensionsMember {
-             name,
-             required_if_supported,
-             ..
-         }| {
-            quote! {
-                #name: #required_if_supported,
-            }
-        },
-    );
-
     quote! {
         #common
 
@@ -198,13 +187,6 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                 let device_extensions = self;
                 #(#check_requirements_items)*
                 Ok(())
-            }
-
-            pub(crate) fn required_if_supported_extensions() -> Self {
-                Self {
-                    #(#required_if_supported_extensions_items)*
-                    _ne: crate::NonExhaustive(()),
-                }
             }
         }
     }
@@ -354,7 +336,7 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
     let from_extensions_for_vec_cstring_items =
         members.iter().map(|ExtensionsMember { name, raw, .. }| {
             quote! {
-                if x.#name { data.push(CString::new(&#raw[..]).unwrap()); }
+                if x.#name { data.push(CString::new(#raw).unwrap()); }
             }
         });
 
@@ -482,7 +464,7 @@ fn extensions_members(ty: &str, extensions: &IndexMap<&str, &Extension>) -> Vec<
                             );
                             let extension = extensions[vk_name];
 
-                            match extension.ext_type.as_ref().map(|s| s.as_str()) {
+                            match extension.ext_type.as_deref() {
                                 Some("device") => &mut dependencies.device_extensions,
                                 Some("instance") => &mut dependencies.instance_extensions,
                                 _ => unreachable!(),
@@ -518,8 +500,7 @@ fn extensions_members(ty: &str, extensions: &IndexMap<&str, &Extension>) -> Vec<
                     .collect(),
                 status: ext
                     .promotedto
-                    .as_ref()
-                    .map(|s| s.as_str())
+                    .as_deref()
                     .and_then(|pr| {
                         if let Some(version) = pr.strip_prefix("VK_VERSION_") {
                             let (major, minor) = version.split_once('_').unwrap();
@@ -541,35 +522,28 @@ fn extensions_members(ty: &str, extensions: &IndexMap<&str, &Extension>) -> Vec<
                         }
                     })
                     .or_else(|| {
-                        ext.deprecatedby
-                            .as_ref()
-                            .map(|s| s.as_str())
-                            .and_then(|depr| {
-                                if depr.is_empty() {
-                                    Some(ExtensionStatus::Deprecated(None))
-                                } else if let Some(version) = depr.strip_prefix("VK_VERSION_") {
-                                    let (major, minor) = version.split_once('_').unwrap();
-                                    Some(ExtensionStatus::Deprecated(Some(Replacement::Core((
-                                        major.parse().unwrap(),
-                                        minor.parse().unwrap(),
-                                    )))))
-                                } else {
-                                    let member = depr.strip_prefix("VK_").unwrap().to_snake_case();
-                                    match extensions[depr].ext_type.as_ref().unwrap().as_str() {
-                                        "device" => Some(ExtensionStatus::Deprecated(Some(
-                                            Replacement::DeviceExtension(format_ident!(
-                                                "{}", member
-                                            )),
-                                        ))),
-                                        "instance" => Some(ExtensionStatus::Deprecated(Some(
-                                            Replacement::InstanceExtension(format_ident!(
-                                                "{}", member
-                                            )),
-                                        ))),
-                                        _ => unreachable!(),
-                                    }
+                        ext.deprecatedby.as_deref().and_then(|depr| {
+                            if depr.is_empty() {
+                                Some(ExtensionStatus::Deprecated(None))
+                            } else if let Some(version) = depr.strip_prefix("VK_VERSION_") {
+                                let (major, minor) = version.split_once('_').unwrap();
+                                Some(ExtensionStatus::Deprecated(Some(Replacement::Core((
+                                    major.parse().unwrap(),
+                                    minor.parse().unwrap(),
+                                )))))
+                            } else {
+                                let member = depr.strip_prefix("VK_").unwrap().to_snake_case();
+                                match extensions[depr].ext_type.as_ref().unwrap().as_str() {
+                                    "device" => Some(ExtensionStatus::Deprecated(Some(
+                                        Replacement::DeviceExtension(format_ident!("{}", member)),
+                                    ))),
+                                    "instance" => Some(ExtensionStatus::Deprecated(Some(
+                                        Replacement::InstanceExtension(format_ident!("{}", member)),
+                                    ))),
+                                    _ => unreachable!(),
                                 }
-                            })
+                            }
+                        })
                     }),
             };
             make_doc(&mut member);

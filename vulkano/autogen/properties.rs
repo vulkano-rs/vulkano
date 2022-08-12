@@ -92,7 +92,7 @@ fn properties_output(members: &[PropertiesMember]) -> TokenStream {
                 quote! {
                     #name: [
                         #(#ffi_members),*
-                    ].into_iter().flatten().next().and_then(|x| <#ty>::from_vulkan(x)),
+                    ].into_iter().flatten().next().and_then(<#ty>::from_vulkan),
                 }
             } else {
                 let ffi_members = ffi_members.iter().map(|(ffi_member, ffi_member_field)| {
@@ -102,7 +102,7 @@ fn properties_output(members: &[PropertiesMember]) -> TokenStream {
                 quote! {
                     #name: [
                         #(#ffi_members),*
-                    ].into_iter().next().and_then(|x| <#ty>::from_vulkan(x)).unwrap(),
+                    ].into_iter().next().and_then(<#ty>::from_vulkan).unwrap(),
                 }
             }
         },
@@ -151,11 +151,11 @@ fn properties_members(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<Properti
     .into_iter()
     .chain(sorted_structs(types).into_iter())
     .filter(|(ty, _)| {
-        let name = ty.name.as_ref().map(|s| s.as_str());
+        let name = ty.name.as_deref();
         name == Some("VkPhysicalDeviceProperties")
             || name == Some("VkPhysicalDeviceLimits")
             || name == Some("VkPhysicalDeviceSparseProperties")
-            || ty.structextends.as_ref().map(|s| s.as_str()) == Some("VkPhysicalDeviceProperties2")
+            || ty.structextends.as_deref() == Some("VkPhysicalDeviceProperties2")
     })
     .for_each(|(ty, _)| {
         let vulkan_ty_name = ty.name.as_ref().unwrap();
@@ -287,10 +287,6 @@ fn properties_ffi_output(members: &[PropertiesFfiMember]) -> TokenStream {
                 #(#make_chain_items)*
             }
 
-            pub(crate) fn head_as_ref(&self) -> &ash::vk::PhysicalDeviceProperties2KHR {
-                &self.properties_vulkan10
-            }
-
             pub(crate) fn head_as_mut(&mut self) -> &mut ash::vk::PhysicalDeviceProperties2KHR {
                 &mut self.properties_vulkan10
             }
@@ -367,9 +363,7 @@ fn sorted_structs<'a>(
 ) -> Vec<&'a (&'a Type, Vec<&'a str>)> {
     let mut structs: Vec<_> = types
         .values()
-        .filter(|(ty, _)| {
-            ty.structextends.as_ref().map(|s| s.as_str()) == Some("VkPhysicalDeviceProperties2")
-        })
+        .filter(|(ty, _)| ty.structextends.as_deref() == Some("VkPhysicalDeviceProperties2"))
         .collect();
     let regex = Regex::new(r"^VkPhysicalDeviceVulkan\d+Properties$").unwrap();
     structs.sort_unstable_by_key(|&(ty, provided_by)| {
@@ -382,17 +376,9 @@ fn sorted_structs<'a>(
             {
                 let (major, minor) = version.split_once('_').unwrap();
                 major.parse::<i32>().unwrap() << 22 | minor.parse::<i32>().unwrap() << 12
-            } else if provided_by
-                .iter()
-                .find(|s| s.starts_with("VK_KHR_"))
-                .is_some()
-            {
+            } else if provided_by.iter().any(|s| s.starts_with("VK_KHR_")) {
                 i32::MAX - 2
-            } else if provided_by
-                .iter()
-                .find(|s| s.starts_with("VK_EXT_"))
-                .is_some()
-            {
+            } else if provided_by.iter().any(|s| s.starts_with("VK_EXT_")) {
                 i32::MAX - 1
             } else {
                 i32::MAX

@@ -7,6 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+#![allow(clippy::missing_safety_doc)]
+
 pub mod context;
 pub mod renderer;
 pub mod window;

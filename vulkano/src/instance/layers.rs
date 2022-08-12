@@ -118,11 +118,11 @@ mod tests {
             Err(_) => return,
         };
 
-        let mut list = match library.layer_properties() {
+        let list = match library.layer_properties() {
             Ok(l) => l,
             Err(_) => return,
         };
 
-        while let Some(_) = list.next() {}
+        for _ in list {}
     }
 }

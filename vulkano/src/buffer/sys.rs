@@ -502,7 +502,7 @@ impl fmt::Display for BufferCreationError {
                 fmt,
                 "the specified size exceeded the value of the `max_buffer_size` limit"
             ),
-            Self::SharingInvalidQueueFamilyId { id } => {
+            Self::SharingInvalidQueueFamilyId { .. } => {
                 write!(fmt, "the sharing mode was set to `Concurrent`, but one of the specified queue family ids was not valid")
             }
         }

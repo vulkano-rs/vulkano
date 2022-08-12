@@ -475,8 +475,8 @@ fn formats_members(formats: &[&Format]) -> Vec<FormatMember> {
             let name = format_ident!("{}", parts.join("_"));
 
             let mut member = FormatMember {
-                name: name.clone(),
-                ffi_name: ffi_name.clone(),
+                name,
+                ffi_name,
 
                 aspect_color: false,
                 aspect_depth: false,
@@ -489,13 +489,13 @@ fn formats_members(formats: &[&Format]) -> Vec<FormatMember> {
                 block_size: None,
                 compatibility: format_ident!(
                     "Class_{}",
-                    format.class.replace("-", "").replace(" ", "_")
+                    format.class.replace('-', "").replace(' ', "_")
                 ),
                 components: [0u8; 4],
                 compression: format
                     .compressed
                     .as_ref()
-                    .map(|c| format_ident!("{}", c.replace(" ", "_"))),
+                    .map(|c| format_ident!("{}", c.replace(' ', "_"))),
                 planes: vec![],
                 rust_type: None,
                 texels_per_block: format.texelsPerBlock,
@@ -585,7 +585,7 @@ fn formats_members(formats: &[&Format]) -> Vec<FormatMember> {
                     captures.get(3).unwrap().as_str().parse().unwrap(),
                 ];
             } else {
-                match format.chroma.as_ref().map(|s| s.as_str()) {
+                match format.chroma.as_deref() {
                     Some("420") => member.block_extent = [2, 2, 1],
                     Some("422") => member.block_extent = [2, 1, 1],
                     _ => (),

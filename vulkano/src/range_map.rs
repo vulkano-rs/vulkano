@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::{
     cmp,
     cmp::Ordering,
@@ -72,13 +74,13 @@ where
 
     /// Returns `true` if any part of the provided range overlaps with a range in the map.
     #[inline]
-    pub fn contains_any<'a>(&self, range: &'a Range<K>) -> bool {
+    pub fn contains_any(&self, range: &Range<K>) -> bool {
         self.range(range).next().is_some()
     }
 
     /// Returns `true` if all of the provided range is covered by ranges in the map.
     #[inline]
-    pub fn contains_all<'a>(&self, range: &'a Range<K>) -> bool {
+    pub fn contains_all(&self, range: &Range<K>) -> bool {
         self.gaps(range).next().is_none()
     }
 

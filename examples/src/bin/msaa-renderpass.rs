@@ -214,7 +214,7 @@ fn main() {
     let framebuffer = Framebuffer::new(
         render_pass.clone(),
         FramebufferCreateInfo {
-            attachments: vec![intermediary.clone(), view.clone()],
+            attachments: vec![intermediary, view],
             ..Default::default()
         },
     )
@@ -281,7 +281,7 @@ fn main() {
         CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, vertices)
             .unwrap();
 
-    let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
+    let subpass = Subpass::from(render_pass, 0).unwrap();
     let pipeline = GraphicsPipeline::start()
         .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
         .vertex_shader(vs.entry_point("main").unwrap(), ())
@@ -310,7 +310,7 @@ fn main() {
     .unwrap();
 
     let mut builder = AutoCommandBufferBuilder::primary(
-        device.clone(),
+        device,
         queue.family(),
         CommandBufferUsage::OneTimeSubmit,
     )
@@ -319,26 +319,23 @@ fn main() {
         .begin_render_pass(
             RenderPassBeginInfo {
                 clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into()), None],
-                ..RenderPassBeginInfo::framebuffer(framebuffer.clone())
+                ..RenderPassBeginInfo::framebuffer(framebuffer)
             },
             SubpassContents::Inline,
         )
         .unwrap()
-        .set_viewport(0, [viewport.clone()])
-        .bind_pipeline_graphics(pipeline.clone())
+        .set_viewport(0, [viewport])
+        .bind_pipeline_graphics(pipeline)
         .bind_vertex_buffers(0, vertex_buffer.clone())
         .draw(vertex_buffer.len() as u32, 1, 0, 0)
         .unwrap()
         .end_render_pass()
         .unwrap()
-        .copy_image_to_buffer(CopyImageToBufferInfo::image_buffer(
-            image.clone(),
-            buf.clone(),
-        ))
+        .copy_image_to_buffer(CopyImageToBufferInfo::image_buffer(image, buf.clone()))
         .unwrap();
     let command_buffer = builder.build().unwrap();
 
-    let finished = command_buffer.execute(queue.clone()).unwrap();
+    let finished = command_buffer.execute(queue).unwrap();
     finished
         .then_signal_fence_and_flush()
         .unwrap()
@@ -348,7 +345,7 @@ fn main() {
     let buffer_content = buf.read().unwrap();
     let path = Path::new("triangle.png");
     let file = File::create(path).unwrap();
-    let ref mut w = BufWriter::new(file);
+    let w = &mut BufWriter::new(file);
     let mut encoder = png::Encoder::new(w, 1024, 1024); // Width is 2 pixels and height is 1.
     encoder.set_color(png::ColorType::Rgba);
     encoder.set_depth(png::BitDepth::Eight);

@@ -64,7 +64,7 @@ pub(super) fn write_structs<'a>(
 
             Some(if is_sized {
                 let derives = write_derives(types_meta);
-                let impls = write_impls(types_meta, &struct_name, &rust_members);
+                let impls = write_impls(types_meta, struct_name, &rust_members);
                 quote! {
                     #derives
                     #struct_body
@@ -414,12 +414,12 @@ pub(super) fn type_from_id(
                     data: i8,
                     after: u8,
                 }
-                return (
+                (
                     quote! {i8},
                     Cow::from("i8"),
                     Some(std::mem::size_of::<i8>()),
                     mem::align_of::<Foo>(),
-                );
+                )
             }
             (8, 0) => {
                 #[repr(C)]
@@ -427,12 +427,12 @@ pub(super) fn type_from_id(
                     data: u8,
                     after: u8,
                 }
-                return (
+                (
                     quote! {u8},
                     Cow::from("u8"),
                     Some(std::mem::size_of::<u8>()),
                     mem::align_of::<Foo>(),
-                );
+                )
             }
             (16, 1) => {
                 #[repr(C)]
@@ -440,12 +440,12 @@ pub(super) fn type_from_id(
                     data: i16,
                     after: u8,
                 }
-                return (
+                (
                     quote! {i16},
                     Cow::from("i16"),
                     Some(std::mem::size_of::<i16>()),
                     mem::align_of::<Foo>(),
-                );
+                )
             }
             (16, 0) => {
                 #[repr(C)]
@@ -453,12 +453,12 @@ pub(super) fn type_from_id(
                     data: u16,
                     after: u8,
                 }
-                return (
+                (
                     quote! {u16},
                     Cow::from("u16"),
                     Some(std::mem::size_of::<u16>()),
                     mem::align_of::<Foo>(),
-                );
+                )
             }
             (32, 1) => {
                 #[repr(C)]
@@ -466,12 +466,12 @@ pub(super) fn type_from_id(
                     data: i32,
                     after: u8,
                 }
-                return (
+                (
                     quote! {i32},
                     Cow::from("i32"),
                     Some(std::mem::size_of::<i32>()),
                     mem::align_of::<Foo>(),
-                );
+                )
             }
             (32, 0) => {
                 #[repr(C)]
@@ -479,12 +479,12 @@ pub(super) fn type_from_id(
                     data: u32,
                     after: u8,
                 }
-                return (
+                (
                     quote! {u32},
                     Cow::from("u32"),
                     Some(std::mem::size_of::<u32>()),
                     mem::align_of::<Foo>(),
-                );
+                )
             }
             (64, 1) => {
                 #[repr(C)]
@@ -492,12 +492,12 @@ pub(super) fn type_from_id(
                     data: i64,
                     after: u8,
                 }
-                return (
+                (
                     quote! {i64},
                     Cow::from("i64"),
                     Some(std::mem::size_of::<i64>()),
                     mem::align_of::<Foo>(),
-                );
+                )
             }
             (64, 0) => {
                 #[repr(C)]
@@ -505,12 +505,12 @@ pub(super) fn type_from_id(
                     data: u64,
                     after: u8,
                 }
-                return (
+                (
                     quote! {u64},
                     Cow::from("u64"),
                     Some(std::mem::size_of::<u64>()),
                     mem::align_of::<Foo>(),
-                );
+                )
             }
             _ => panic!("No Rust equivalent for an integer of width {}", width),
         },
@@ -521,12 +521,12 @@ pub(super) fn type_from_id(
                     data: f32,
                     after: u8,
                 }
-                return (
+                (
                     quote! {f32},
                     Cow::from("f32"),
                     Some(std::mem::size_of::<f32>()),
                     mem::align_of::<Foo>(),
-                );
+                )
             }
             64 => {
                 #[repr(C)]
@@ -534,12 +534,12 @@ pub(super) fn type_from_id(
                     data: f64,
                     after: u8,
                 }
-                return (
+                (
                     quote! {f64},
                     Cow::from("f64"),
                     Some(std::mem::size_of::<f64>()),
                     mem::align_of::<Foo>(),
-                );
+                )
             }
             _ => panic!("No Rust equivalent for a floating-point of width {}", width),
         },
@@ -552,12 +552,12 @@ pub(super) fn type_from_id(
             let (ty, item, t_size, t_align) = type_from_id(shader, spirv, component_type);
             let array_length = component_count as usize;
             let size = t_size.map(|s| s * component_count as usize);
-            return (
+            (
                 quote! { [#ty; #array_length] },
                 Cow::from(format!("[{}; {}]", item, array_length)),
                 size,
                 t_align,
-            );
+            )
         }
         &Instruction::TypeMatrix {
             column_type,
@@ -569,12 +569,12 @@ pub(super) fn type_from_id(
             let (ty, item, t_size, t_align) = type_from_id(shader, spirv, column_type);
             let array_length = column_count as usize;
             let size = t_size.map(|s| s * column_count as usize);
-            return (
+            (
                 quote! { [#ty; #array_length] },
                 Cow::from(format!("[{}; {}]", item, array_length)),
                 size,
                 t_align,
-            );
+            )
         }
         &Instruction::TypeArray {
             element_type,
@@ -611,12 +611,12 @@ pub(super) fn type_from_id(
                             (e.g. increase a vec3 to a vec4)")
             }
 
-            return (
+            (
                 quote! { [#element_type; #array_length] },
                 Cow::from(format!("[{}; {}]", element_type_string, array_length)),
                 Some(element_size * array_length as usize),
                 element_align,
-            );
+            )
         }
         &Instruction::TypeRuntimeArray { element_type, .. } => {
             debug_assert_eq!(mem::align_of::<[u32; 3]>(), mem::align_of::<u32>());
@@ -624,12 +624,12 @@ pub(super) fn type_from_id(
             let (element_type, element_type_string, _, element_align) =
                 type_from_id(shader, spirv, element_type);
 
-            return (
+            (
                 quote! { [#element_type] },
                 Cow::from(format!("[{}]", element_type_string)),
                 None,
                 element_align,
-            );
+            )
         }
         Instruction::TypeStruct { member_types, .. } => {
             // TODO: take the Offset member decorate into account?
@@ -676,13 +676,13 @@ pub(super) fn type_from_id(
                     Instruction::Name { name, .. } => Some(Cow::from(name.clone())),
                     _ => None,
                 })
-                .unwrap_or(Cow::from("__unnamed"));
+                .unwrap_or_else(|| Cow::from("__unnamed"));
             let name = {
                 let name = format_ident!("{}", name_string);
                 quote! { #name }
             };
 
-            return (name, name_string, size, align);
+            (name, name_string, size, align)
         }
         _ => panic!("Type #{} not found", type_id),
     }
@@ -709,18 +709,18 @@ pub(super) fn write_specialization_constants<'a>(
     let mut spec_consts = Vec::new();
 
     for instruction in spirv.iter_global() {
-        let (result_type_id, result_id, default_value) = match instruction {
-            &Instruction::SpecConstantTrue {
+        let (result_type_id, result_id, default_value) = match *instruction {
+            Instruction::SpecConstantTrue {
                 result_type_id,
                 result_id,
             } => (result_type_id, result_id, quote! {1u32}),
 
-            &Instruction::SpecConstantFalse {
+            Instruction::SpecConstantFalse {
                 result_type_id,
                 result_id,
             } => (result_type_id, result_id, quote! {0u32}),
 
-            &Instruction::SpecConstant {
+            Instruction::SpecConstant {
                 result_type_id,
                 result_id,
                 ref value,
@@ -730,7 +730,8 @@ pub(super) fn write_specialization_constants<'a>(
                 };
                 (result_type_id, result_id, def_val)
             }
-            &Instruction::SpecConstantComposite {
+
+            Instruction::SpecConstantComposite {
                 result_type_id,
                 result_id,
                 ref constituents,
@@ -741,6 +742,7 @@ pub(super) fn write_specialization_constants<'a>(
                 };
                 (result_type_id, result_id, def_val)
             }
+
             _ => continue,
         };
 

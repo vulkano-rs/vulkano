@@ -599,7 +599,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         let &mut ClearColorImageInfo {
             ref image,
             image_layout,
-            clear_value,
+            clear_value: _,
             ref regions,
             _ne: _,
         } = clear_info;
@@ -1070,7 +1070,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             assert!(extent[0] != 0 && extent[1] != 0 && extent[2] != 0);
 
             let check_offset_extent = |resource: CopyErrorResource,
-                                       image_type: ImageType,
+                                       _image_type: ImageType,
                                        subresource_extent: [u32; 3],
                                        offset: [u32; 3]|
              -> Result<_, CopyError> {
@@ -1153,7 +1153,7 @@ impl SyncCommandBufferBuilder {
             ref dst_image,
             dst_image_layout,
             ref regions,
-            filter,
+            filter: _,
             _ne: _,
         } = &blit_image_info;
 
@@ -1162,9 +1162,9 @@ impl SyncCommandBufferBuilder {
             .flat_map(|region| {
                 let &ImageBlit {
                     ref src_subresource,
-                    src_offsets,
+                    src_offsets: _,
                     ref dst_subresource,
-                    dst_offsets,
+                    dst_offsets: _,
                     _ne: _,
                 } = region;
 
@@ -1251,7 +1251,7 @@ impl SyncCommandBufferBuilder {
         let &ClearColorImageInfo {
             ref image,
             image_layout,
-            clear_value,
+            clear_value: _,
             ref regions,
             _ne: _,
         } = &clear_info;
@@ -1321,7 +1321,7 @@ impl SyncCommandBufferBuilder {
         let &ClearDepthStencilImageInfo {
             ref image,
             image_layout,
-            clear_value,
+            clear_value: _,
             ref regions,
             _ne: _,
         } = &clear_info;
@@ -1403,10 +1403,10 @@ impl SyncCommandBufferBuilder {
             .flat_map(|region| {
                 let &ImageResolve {
                     ref src_subresource,
-                    src_offset,
+                    src_offset: _,
                     ref dst_subresource,
-                    dst_offset,
-                    extent,
+                    dst_offset: _,
+                    extent: _,
                     _ne: _,
                 } = region;
 

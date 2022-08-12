@@ -25,6 +25,6 @@ mod tests {
     #[test]
     fn empty_extensions() {
         let d: Vec<CString> = (&DeviceExtensions::none()).into();
-        assert!(d.iter().next().is_none());
+        assert!(d.get(0).is_none());
     }
 }

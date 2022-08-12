@@ -84,7 +84,7 @@ where
     fn validate_begin_render_pass(
         &self,
         render_pass_begin_info: &mut RenderPassBeginInfo,
-        contents: SubpassContents,
+        _contents: SubpassContents,
     ) -> Result<(), RenderPassError> {
         let device = self.device();
 
@@ -407,12 +407,12 @@ where
         Ok(self)
     }
 
-    fn validate_next_subpass(&self, contents: SubpassContents) -> Result<(), RenderPassError> {
+    fn validate_next_subpass(&self, _contents: SubpassContents) -> Result<(), RenderPassError> {
         // VUID-vkCmdNextSubpass2-renderpass
         let render_pass_state = self
             .render_pass_state
             .as_ref()
-            .ok_or_else(|| RenderPassError::ForbiddenOutsideRenderPass)?;
+            .ok_or(RenderPassError::ForbiddenOutsideRenderPass)?;
 
         let begin_render_pass_state = match &render_pass_state.render_pass {
             RenderPassStateType::BeginRenderPass(state) => state,
@@ -463,7 +463,7 @@ where
         let render_pass_state = self
             .render_pass_state
             .as_ref()
-            .ok_or_else(|| RenderPassError::ForbiddenOutsideRenderPass)?;
+            .ok_or(RenderPassError::ForbiddenOutsideRenderPass)?;
 
         let begin_render_pass_state = match &render_pass_state.render_pass {
             RenderPassStateType::BeginRenderPass(state) => state,
@@ -518,7 +518,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 ref color_attachments,
                 ref depth_attachment,
                 ref stencil_attachment,
-                contents,
+                contents: _,
                 _ne: _,
             } = &mut rendering_info;
 
@@ -597,7 +597,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             let &RenderingInfo {
                 render_area_offset,
                 render_area_extent,
-                layer_count,
+                layer_count: _,
                 view_mask,
                 ref color_attachments,
                 ref depth_attachment,
@@ -717,9 +717,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 ref image_view,
                 image_layout,
                 ref resolve_info,
-                load_op,
-                store_op,
-                clear_value,
+                load_op: _,
+                store_op: _,
+                clear_value: _,
                 _ne: _,
             } = attachment_info;
 
@@ -742,7 +742,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             // VUID-VkRenderingInfo-imageView-06070
             match samples {
                 Some(samples) if samples == image.samples() => (),
-                Some(samples) => {
+                Some(_) => {
                     return Err(RenderPassError::ColorAttachmentSamplesMismatch {
                         attachment_index,
                     });
@@ -851,9 +851,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 ref image_view,
                 image_layout,
                 ref resolve_info,
-                load_op,
-                store_op,
-                clear_value,
+                load_op: _,
+                store_op: _,
+                clear_value: _,
                 _ne: _,
             } = attachment_info;
 
@@ -883,7 +883,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             // VUID-VkRenderingInfo-imageView-06070
             match samples {
                 Some(samples) if samples == image.samples() => (),
-                Some(samples) => {
+                Some(_) => {
                     return Err(RenderPassError::DepthAttachmentSamplesMismatch);
                 }
                 None => samples = Some(image.samples()),
@@ -961,9 +961,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 ref image_view,
                 image_layout,
                 ref resolve_info,
-                load_op,
-                store_op,
-                clear_value,
+                load_op: _,
+                store_op: _,
+                clear_value: _,
                 _ne: _,
             } = attachment_info;
 
@@ -993,7 +993,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             // VUID-VkRenderingInfo-imageView-06070
             match samples {
                 Some(samples) if samples == image.samples() => (),
-                Some(samples) => {
+                Some(_) => {
                     return Err(RenderPassError::StencilAttachmentSamplesMismatch);
                 }
                 None => (),
@@ -1123,13 +1123,11 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     fn validate_end_rendering(&self) -> Result<(), RenderPassError> {
-        let device = self.device();
-
         // VUID-vkCmdEndRendering-renderpass
         let render_pass_state = self
             .render_pass_state
             .as_ref()
-            .ok_or_else(|| RenderPassError::ForbiddenOutsideRenderPass)?;
+            .ok_or(RenderPassError::ForbiddenOutsideRenderPass)?;
 
         // VUID-vkCmdEndRendering-None-06161
         // VUID-vkCmdEndRendering-commandBuffer-06162
@@ -1228,12 +1226,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                     let attachment_format = match &render_pass_state.render_pass {
                         RenderPassStateType::BeginRenderPass(state) => {
                             let color_attachments = &state.subpass.subpass_desc().color_attachments;
-                            let atch_ref = color_attachments
-                                .get(color_attachment as usize)
-                                .ok_or_else(|| RenderPassError::ColorAttachmentIndexOutOfRange {
+                            let atch_ref = color_attachments.get(color_attachment as usize).ok_or(
+                                RenderPassError::ColorAttachmentIndexOutOfRange {
                                     color_attachment_index: color_attachment,
                                     num_color_attachments: color_attachments.len() as u32,
-                                })?;
+                                },
+                            )?;
 
                             atch_ref.as_ref().map(|atch_ref| {
                                 let image_view =
@@ -1251,7 +1249,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                         RenderPassStateType::BeginRendering(state) => state
                             .color_attachments
                             .get(color_attachment as usize)
-                            .ok_or_else(|| RenderPassError::ColorAttachmentIndexOutOfRange {
+                            .ok_or(RenderPassError::ColorAttachmentIndexOutOfRange {
                                 color_attachment_index: color_attachment,
                                 num_color_attachments: state.color_attachments.len() as u32,
                             })?
@@ -1278,7 +1276,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                                         &info.subpass.subpass_desc().color_attachments;
                                     let atch_ref = color_attachments
                                         .get(color_attachment as usize)
-                                        .ok_or_else(|| {
+                                        .ok_or({
                                             RenderPassError::ColorAttachmentIndexOutOfRange {
                                                 color_attachment_index: color_attachment,
                                                 num_color_attachments: color_attachments.len()
@@ -1309,7 +1307,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                                     *info
                                         .color_attachment_formats
                                         .get(color_attachment as usize)
-                                        .ok_or_else(|| {
+                                        .ok_or({
                                             RenderPassError::ColorAttachmentIndexOutOfRange {
                                                 color_attachment_index: color_attachment,
                                                 num_color_attachments: info
@@ -1533,9 +1531,9 @@ impl SyncCommandBufferBuilder {
         let &RenderPassBeginInfo {
             ref render_pass,
             ref framebuffer,
-            render_area_offset,
-            render_area_extent,
-            ref clear_values,
+            render_area_offset: _,
+            render_area_extent: _,
+            clear_values: _,
             _ne: _,
         } = &render_pass_begin_info;
 
@@ -1652,14 +1650,14 @@ impl SyncCommandBufferBuilder {
         }
 
         let &RenderingInfo {
-            render_area_offset,
-            render_area_extent,
-            layer_count,
-            view_mask,
+            render_area_offset: _,
+            render_area_extent: _,
+            layer_count: _,
+            view_mask: _,
             ref color_attachments,
             ref depth_attachment,
             ref stencil_attachment,
-            contents,
+            contents: _,
             _ne,
         } = &rendering_info;
 
@@ -1675,10 +1673,10 @@ impl SyncCommandBufferBuilder {
                 let &RenderingAttachmentInfo {
                     ref image_view,
                     image_layout,
-                    resolve_info: ref resolve,
-                    load_op,
-                    store_op,
-                    clear_value,
+                    ref resolve_info,
+                    load_op: _,
+                    store_op: _,
+                    clear_value: _,
                     _ne: _,
                 } = attachment_info;
 
@@ -1704,9 +1702,9 @@ impl SyncCommandBufferBuilder {
                             end_layout: image_layout,
                         },
                     )),
-                    attachment_info.resolve_info.as_ref().map(|resolve_info| {
+                    resolve_info.as_ref().map(|resolve_info| {
                         let &RenderingAttachmentResolveInfo {
-                            mode,
+                            mode: _,
                             ref image_view,
                             image_layout,
                         } = resolve_info;
@@ -1714,11 +1712,8 @@ impl SyncCommandBufferBuilder {
                         (
                             format!("color resolve attachment {}", index).into(),
                             Resource::Image {
-                                image: resolve_info.image_view.image(),
-                                subresource_range: resolve_info
-                                    .image_view
-                                    .subresource_range()
-                                    .clone(),
+                                image: image_view.image(),
+                                subresource_range: image_view.subresource_range().clone(),
                                 memory: PipelineMemoryAccess {
                                     stages: PipelineStages {
                                         all_commands: true,
@@ -1731,8 +1726,8 @@ impl SyncCommandBufferBuilder {
                                     }, // TODO: suboptimal
                                     exclusive: true, // TODO: suboptimal
                                 },
-                                start_layout: resolve_info.image_layout,
-                                end_layout: resolve_info.image_layout,
+                                start_layout: image_layout,
+                                end_layout: image_layout,
                             },
                         )
                     }),
@@ -1744,10 +1739,10 @@ impl SyncCommandBufferBuilder {
             let &RenderingAttachmentInfo {
                 ref image_view,
                 image_layout,
-                resolve_info: ref resolve,
-                load_op,
-                store_op,
-                clear_value,
+                ref resolve_info,
+                load_op: _,
+                store_op: _,
+                clear_value: _,
                 _ne: _,
             } = attachment_info;
 
@@ -1773,9 +1768,9 @@ impl SyncCommandBufferBuilder {
                         end_layout: image_layout,
                     },
                 )),
-                attachment_info.resolve_info.as_ref().map(|resolve_info| {
+                resolve_info.as_ref().map(|resolve_info| {
                     let &RenderingAttachmentResolveInfo {
-                        mode,
+                        mode: _,
                         ref image_view,
                         image_layout,
                     } = resolve_info;
@@ -1783,8 +1778,8 @@ impl SyncCommandBufferBuilder {
                     (
                         "depth resolve attachment".into(),
                         Resource::Image {
-                            image: resolve_info.image_view.image(),
-                            subresource_range: resolve_info.image_view.subresource_range().clone(),
+                            image: image_view.image(),
+                            subresource_range: image_view.subresource_range().clone(),
                             memory: PipelineMemoryAccess {
                                 stages: PipelineStages {
                                     all_commands: true,
@@ -1797,8 +1792,8 @@ impl SyncCommandBufferBuilder {
                                 }, // TODO: suboptimal
                                 exclusive: true, // TODO: suboptimal
                             },
-                            start_layout: resolve_info.image_layout,
-                            end_layout: resolve_info.image_layout,
+                            start_layout: image_layout,
+                            end_layout: image_layout,
                         },
                     )
                 }),
@@ -1810,10 +1805,10 @@ impl SyncCommandBufferBuilder {
             let &RenderingAttachmentInfo {
                 ref image_view,
                 image_layout,
-                resolve_info: ref resolve,
-                load_op,
-                store_op,
-                clear_value,
+                ref resolve_info,
+                load_op: _,
+                store_op: _,
+                clear_value: _,
                 _ne: _,
             } = attachment_info;
 
@@ -1839,9 +1834,9 @@ impl SyncCommandBufferBuilder {
                         end_layout: image_layout,
                     },
                 )),
-                attachment_info.resolve_info.as_ref().map(|resolve_info| {
+                resolve_info.as_ref().map(|resolve_info| {
                     let &RenderingAttachmentResolveInfo {
-                        mode,
+                        mode: _,
                         ref image_view,
                         image_layout,
                     } = resolve_info;
@@ -1849,8 +1844,8 @@ impl SyncCommandBufferBuilder {
                     (
                         "stencil resolve attachment".into(),
                         Resource::Image {
-                            image: resolve_info.image_view.image(),
-                            subresource_range: resolve_info.image_view.subresource_range().clone(),
+                            image: image_view.image(),
+                            subresource_range: image_view.subresource_range().clone(),
                             memory: PipelineMemoryAccess {
                                 stages: PipelineStages {
                                     all_commands: true,
@@ -1863,8 +1858,8 @@ impl SyncCommandBufferBuilder {
                                 }, // TODO: suboptimal
                                 exclusive: true, // TODO: suboptimal
                             },
-                            start_layout: resolve_info.image_layout,
-                            end_layout: resolve_info.image_layout,
+                            start_layout: image_layout,
+                            end_layout: image_layout,
                         },
                     )
                 }),
@@ -1957,7 +1952,7 @@ impl UnsafeCommandBufferBuilder {
         } = render_pass_begin_info;
 
         let clear_values_vk: SmallVec<[_; 4]> = clear_values
-            .into_iter()
+            .iter()
             .copied()
             .map(|clear_value| clear_value.map(Into::into).unwrap_or_default())
             .collect();
@@ -2042,7 +2037,7 @@ impl UnsafeCommandBufferBuilder {
             debug_assert!(subpass_begin_info.p_next.is_null());
             debug_assert!(subpass_end_info.p_next.is_null());
 
-            (fns.v1_0.cmd_next_subpass)(self.handle, subpass_begin_info.contents.into());
+            (fns.v1_0.cmd_next_subpass)(self.handle, subpass_begin_info.contents);
         }
     }
 
@@ -2190,7 +2185,7 @@ impl UnsafeCommandBufferBuilder {
     /// Does nothing if the list of attachments or the list of rects is empty, as it would be a
     /// no-op and isn't a valid usage of the command anyway.
     #[inline]
-    pub unsafe fn clear_attachments<'a>(
+    pub unsafe fn clear_attachments(
         &mut self,
         attachments: impl IntoIterator<Item = ClearAttachment>,
         rects: impl IntoIterator<Item = ClearRect>,

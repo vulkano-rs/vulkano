@@ -168,8 +168,7 @@ impl DisplayPlane {
 
         self.supported_displays
             .iter()
-            .find(|&&d| d == display.internal_object())
-            .is_some()
+            .any(|&d| d == display.internal_object())
     }
 }
 
@@ -259,7 +258,7 @@ impl Display {
     /// Returns the physical dimensions of the display in millimeters.
     #[inline]
     pub fn physical_dimensions(&self) -> [u32; 2] {
-        let ref r = self.properties.physical_dimensions;
+        let r = &self.properties.physical_dimensions;
         [r.width, r.height]
     }
 
@@ -269,7 +268,7 @@ impl Display {
     /// > only the "best" resolution.
     #[inline]
     pub fn physical_resolution(&self) -> [u32; 2] {
-        let ref r = self.properties.physical_resolution;
+        let r = &self.properties.physical_resolution;
         [r.width, r.height]
     }
 
@@ -408,7 +407,7 @@ impl DisplayMode {
     /// Returns the dimensions of the region that is visible on the monitor.
     #[inline]
     pub fn visible_region(&self) -> [u32; 2] {
-        let ref d = self.parameters.visible_region;
+        let d = &self.parameters.visible_region;
         [d.width, d.height]
     }
 

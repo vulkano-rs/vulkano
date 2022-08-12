@@ -12,7 +12,6 @@ use crate::{
     device::{physical::MemoryType, Device, DeviceOwned},
     DeviceSize, OomError, Version, VulkanError, VulkanObject,
 };
-use parking_lot::Mutex;
 use std::{
     error::Error,
     ffi::c_void,
@@ -55,8 +54,6 @@ pub struct DeviceMemory {
     allocation_size: DeviceSize,
     memory_type_index: u32,
     export_handle_types: ExternalMemoryHandleTypes,
-
-    mapped: Mutex<bool>,
 }
 
 impl DeviceMemory {
@@ -80,7 +77,7 @@ impl DeviceMemory {
         let MemoryAllocateInfo {
             allocation_size,
             memory_type_index,
-            dedicated_allocation,
+            dedicated_allocation: _,
             export_handle_types,
             _ne: _,
         } = allocate_info;
@@ -92,8 +89,6 @@ impl DeviceMemory {
             allocation_size,
             memory_type_index,
             export_handle_types,
-
-            mapped: Mutex::new(false),
         })
     }
 
@@ -119,7 +114,7 @@ impl DeviceMemory {
         let MemoryAllocateInfo {
             allocation_size,
             memory_type_index,
-            dedicated_allocation,
+            dedicated_allocation: _,
             export_handle_types,
             _ne: _,
         } = allocate_info;
@@ -131,8 +126,6 @@ impl DeviceMemory {
             allocation_size,
             memory_type_index,
             export_handle_types,
-
-            mapped: Mutex::new(false),
         })
     }
 
@@ -246,7 +239,7 @@ impl DeviceMemory {
             match import_info {
                 &mut MemoryImportInfo::Fd {
                     handle_type,
-                    ref file,
+                    file: _,
                 } => {
                     if !device.enabled_extensions().khr_external_memory_fd {
                         return Err(DeviceMemoryAllocationError::ExtensionNotEnabled {
@@ -319,8 +312,8 @@ impl DeviceMemory {
             .memory_type_index(memory_type_index);
 
         // VUID-VkMemoryDedicatedAllocateInfo-image-01432
-        let mut dedicated_allocate_info = if let Some(dedicated_allocation) = dedicated_allocation {
-            Some(match dedicated_allocation {
+        let mut dedicated_allocate_info =
+            dedicated_allocation.map(|dedicated_allocation| match dedicated_allocation {
                 DedicatedAllocation::Buffer(buffer) => ash::vk::MemoryDedicatedAllocateInfo {
                     buffer: buffer.internal_object(),
                     ..Default::default()
@@ -329,10 +322,7 @@ impl DeviceMemory {
                     image: image.internal_object(),
                     ..Default::default()
                 },
-            })
-        } else {
-            None
-        };
+            });
 
         if let Some(info) = dedicated_allocate_info.as_mut() {
             allocate_info = allocate_info.push_next(info);
@@ -1528,8 +1518,7 @@ mod tests {
         let memory_type = device
             .physical_device()
             .memory_types()
-            .filter(|m| !m.is_lazily_allocated())
-            .next()
+            .find(|m| !m.is_lazily_allocated())
             .unwrap();
 
         match DeviceMemory::allocate(
@@ -1552,8 +1541,7 @@ mod tests {
         let memory_type = device
             .physical_device()
             .memory_types()
-            .filter(|m| !m.is_lazily_allocated())
-            .next()
+            .find(|m| !m.is_lazily_allocated())
             .unwrap();
         let heap_size = memory_type.heap().size();
 
@@ -1582,7 +1570,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
         let memory_type = device.physical_device().memory_types().next().unwrap();
         assert_eq!(*device.allocation_count().lock(), 0);
-        let mem1 = DeviceMemory::allocate(
+        let _mem1 = DeviceMemory::allocate(
             device.clone(),
             MemoryAllocateInfo {
                 allocation_size: 256,
@@ -1593,7 +1581,7 @@ mod tests {
         .unwrap();
         assert_eq!(*device.allocation_count().lock(), 1);
         {
-            let mem2 = DeviceMemory::allocate(
+            let _mem2 = DeviceMemory::allocate(
                 device.clone(),
                 MemoryAllocateInfo {
                     allocation_size: 256,

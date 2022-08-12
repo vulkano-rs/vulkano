@@ -14,7 +14,7 @@
 // offset into the buffer to read object data from, without having to
 // rebind descriptor sets.
 
-use std::mem::size_of;
+use std::{iter::repeat, mem::size_of};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage},
@@ -139,16 +139,14 @@ fn main() {
     let align = (size_of::<u32>() + min_dynamic_align - 1) & !(min_dynamic_align - 1);
     let aligned_data = {
         let mut aligned_data = Vec::with_capacity(align * data.len());
-        for i in 0..data.len() {
-            let bytes = data[i].to_ne_bytes();
+        for elem in data {
+            let bytes = elem.to_ne_bytes();
             // Fill up the buffer with data
-            for bi in 0..bytes.len() {
-                aligned_data.push(bytes[bi]);
+            for b in bytes {
+                aligned_data.push(b);
             }
             // Zero out any padding needed for alignment
-            for _ in 0..align - bytes.len() {
-                aligned_data.push(0);
-            }
+            aligned_data.extend(repeat(0).take(align - bytes.len()));
         }
         aligned_data
     };
@@ -173,7 +171,7 @@ fn main() {
     let set = PersistentDescriptorSet::new(
         layout.clone(),
         [
-            WriteDescriptorSet::buffer(0, input_buffer.clone()),
+            WriteDescriptorSet::buffer(0, input_buffer),
             WriteDescriptorSet::buffer(1, output_buffer.clone()),
         ],
     )
@@ -186,6 +184,8 @@ fn main() {
         CommandBufferUsage::OneTimeSubmit,
     )
     .unwrap();
+
+    #[allow(clippy::erasing_op, clippy::identity_op)]
     builder
         .bind_pipeline_compute(pipeline.clone())
         .bind_descriptor_sets(
@@ -208,14 +208,14 @@ fn main() {
             PipelineBindPoint::Compute,
             pipeline.layout().clone(),
             0,
-            set.clone().offsets([2 * align as u32]),
+            set.offsets([2 * align as u32]),
         )
         .dispatch([12, 1, 1])
         .unwrap();
     let command_buffer = builder.build().unwrap();
 
-    let future = sync::now(device.clone())
-        .then_execute(queue.clone(), command_buffer)
+    let future = sync::now(device)
+        .then_execute(queue, command_buffer)
         .unwrap()
         .then_signal_fence_and_flush()
         .unwrap();

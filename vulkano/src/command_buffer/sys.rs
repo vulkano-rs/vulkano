@@ -101,7 +101,7 @@ impl UnsafeCommandBufferBuilder {
                         ..Default::default()
                     });
 
-                if let Some(flags) = inheritance_info.occlusion_query {
+                if let Some(flags) = occlusion_query {
                     inheritance_info_vk.occlusion_query_enable = ash::vk::TRUE;
 
                     if flags.precise {

@@ -186,7 +186,7 @@ fn main() {
         let layout = pipeline.layout().set_layouts().get(0).unwrap();
         let set = PersistentDescriptorSet::new(
             layout.clone(),
-            [WriteDescriptorSet::buffer(0, data_buffer.clone())],
+            [WriteDescriptorSet::buffer(0, data_buffer)],
         )
         .unwrap();
 
@@ -202,7 +202,7 @@ fn main() {
                 PipelineBindPoint::Compute,
                 pipeline.layout().clone(),
                 0,
-                set.clone(),
+                set,
             )
             .push_constants(pipeline.layout().clone(), 0, parameters)
             .dispatch([1024, 1, 1])
@@ -220,7 +220,7 @@ fn main() {
 
     // Preparing test data array `[0, 1, 2, 3....]`
     let data_buffer = {
-        let data_iter = (0..65536u32).map(|n| n);
+        let data_iter = 0..65536u32;
         CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, data_iter)
             .unwrap()
     };
@@ -241,7 +241,7 @@ fn main() {
     // Loading the second shader, and creating a Pipeline for the shader
     let add_pipeline = ComputePipeline::new(
         device.clone(),
-        shaders::load_add(device.clone())
+        shaders::load_add(device)
             .unwrap()
             .entry_point("main")
             .unwrap(),
@@ -270,7 +270,7 @@ fn main() {
     // Then multiply each value by 3
     run_shader(
         mult_pipeline,
-        queue.clone(),
+        queue,
         data_buffer.clone(),
         shaders::ty::Parameters { value: 3 },
     );

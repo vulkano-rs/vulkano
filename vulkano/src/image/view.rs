@@ -508,14 +508,13 @@ where
             ..Default::default()
         };
 
-        let mut sampler_ycbcr_conversion_info = if let Some(conversion) = sampler_ycbcr_conversion {
-            Some(ash::vk::SamplerYcbcrConversionInfo {
-                conversion: conversion.internal_object(),
-                ..Default::default()
-            })
-        } else {
-            None
-        };
+        let mut sampler_ycbcr_conversion_info =
+            sampler_ycbcr_conversion.as_ref().map(|conversion| {
+                ash::vk::SamplerYcbcrConversionInfo {
+                    conversion: conversion.internal_object(),
+                    ..Default::default()
+                }
+            });
 
         if let Some(sampler_ycbcr_conversion_info) = sampler_ycbcr_conversion_info.as_mut() {
             sampler_ycbcr_conversion_info.p_next = create_info.p_next;
@@ -811,7 +810,7 @@ impl fmt::Display for ImageViewCreationError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match *self {
-            Self::OomError(err) => write!(
+            Self::OomError(_) => write!(
                 fmt,
                 "allocating memory failed",
             ),
@@ -854,7 +853,7 @@ impl fmt::Display for ImageViewCreationError {
                 fmt,
                 "the format requires a sampler YCbCr conversion, but none was provided",
             ),
-            Self::FormatUsageNotSupported { usage } => write!(
+            Self::FormatUsageNotSupported { .. } => write!(
                 fmt,
                 "a requested usage flag was not supported by the given format"
             ),

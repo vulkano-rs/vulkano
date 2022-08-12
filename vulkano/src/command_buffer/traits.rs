@@ -387,7 +387,7 @@ where
             return Ok(SubmitAnyBuilder::Empty);
         }
 
-        return self.build_submission_impl();
+        self.build_submission_impl()
     }
 
     #[inline]
@@ -416,7 +416,7 @@ where
 
     #[inline]
     unsafe fn signal_finished(&self) {
-        if self.finished.swap(true, Ordering::SeqCst) == false {
+        if !self.finished.swap(true, Ordering::SeqCst) {
             self.command_buffer.unlock();
         }
 

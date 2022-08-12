@@ -217,6 +217,7 @@
 
 #![doc(html_logo_url = "https://raw.githubusercontent.com/vulkano-rs/vulkano/master/logo.png")]
 #![recursion_limit = "1024"]
+
 #[macro_use]
 extern crate quote;
 #[macro_use]
@@ -779,7 +780,7 @@ impl Parse for MacroInput {
                 })
                 .collect(),
             spirv_version,
-            types_meta: types_meta.unwrap_or_else(|| TypesMeta::default()),
+            types_meta: types_meta.unwrap_or_default(),
             vulkan_version,
         })
     }
@@ -796,7 +797,7 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as MacroInput);
 
     let is_single = input.shaders.len() == 1;
-    let root = env::var("CARGO_MANIFEST_DIR").unwrap_or(".".into());
+    let root = env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".into());
     let root_path = Path::new(&root);
 
     let mut shaders_code = Vec::with_capacity(input.shaders.len());
@@ -808,7 +809,8 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             let full_path = root_path.join(&path);
 
             let bytes = if full_path.is_file() {
-                fs::read(full_path).expect(&format!("Error reading source from {:?}", path))
+                fs::read(full_path)
+                    .unwrap_or_else(|_| panic!("Error reading source from {:?}", path))
             } else {
                 panic!(
                     "File {:?} was not found; note that the path must be relative to your Cargo.toml",
@@ -828,14 +830,13 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 &mut types_registry,
             )
             .unwrap()
-            .into()
         } else {
             let (path, full_path, source_code) = match shader_source {
                 SourceKind::Src(source) => (None, None, source),
                 SourceKind::Path(path) => {
                     let full_path = root_path.join(&path);
                     let source_code = read_file_to_string(&full_path)
-                        .expect(&format!("Error reading source from {:?}", path));
+                        .unwrap_or_else(|_| panic!("Error reading source from {:?}", path));
 
                     if full_path.is_file() {
                         (Some(path.clone()), Some(full_path), source_code)
@@ -877,12 +878,10 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 }
             };
 
-            let input_paths = includes.iter().map(|s| s.as_ref()).chain(
-                full_path
-                    .as_ref()
-                    .map(|p| p.as_path())
-                    .map(codegen::path_to_str),
-            );
+            let input_paths = includes
+                .iter()
+                .map(|s| s.as_ref())
+                .chain(full_path.as_deref().map(codegen::path_to_str));
 
             codegen::reflect(
                 prefix.as_str(),
@@ -893,7 +892,6 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 &mut types_registry,
             )
             .unwrap()
-            .into()
         };
 
         shaders_code.push(code);
@@ -917,7 +915,7 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     };
 
     if input.dump {
-        println!("{}", result.to_string());
+        println!("{}", result);
         panic!("`shader!` rust codegen dumped") // TODO: use span from dump
     }
 

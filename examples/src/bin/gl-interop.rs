@@ -212,9 +212,7 @@ mod linux {
         let set = PersistentDescriptorSet::new(
             layout.clone(),
             [WriteDescriptorSet::image_view_sampler(
-                0,
-                image_view,
-                sampler.clone(),
+                0, image_view, sampler,
             )],
         )
         .unwrap();
@@ -363,6 +361,7 @@ mod linux {
     }
     impl_vertex!(Vertex, position);
 
+    #[allow(clippy::type_complexity)]
     fn vk_setup(
         display: glium::HeadlessRenderer,
     ) -> (
