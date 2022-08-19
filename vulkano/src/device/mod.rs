@@ -103,8 +103,8 @@ pub use self::{
     properties::Properties,
 };
 use crate::{
-    command_buffer::pool::StandardCommandBufferAllocator,
-    descriptor_set::pool::StandardDescriptorSetAllocator,
+    command_buffer::allocator::StandardCommandBufferAllocator,
+    descriptor_set::allocator::StandardDescriptorSetAllocator,
     instance::{debug::DebugUtilsLabel, Instance},
     memory::{pool::StandardMemoryPool, ExternalMemoryHandleType},
     OomError, SynchronizedVulkanObject, Version, VulkanError, VulkanObject,

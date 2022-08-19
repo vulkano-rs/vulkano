@@ -9,8 +9,8 @@
 
 use crate::{
     command_buffer::{
+        allocator::CommandBufferBuilderAlloc,
         auto::RenderPassStateType,
-        pool::CommandBufferBuilderAlloc,
         synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder, CommandBufferExecError, CommandBufferInheritanceRenderPassType,

@@ -9,19 +9,12 @@
 
 //! A pool from which descriptor sets can be allocated.
 
-pub use self::{
-    standard::StandardDescriptorSetAllocator,
-    sys::{
-        DescriptorPoolAllocError, DescriptorSetAllocateInfo, UnsafeDescriptorPool,
-        UnsafeDescriptorPoolCreateInfo,
-    },
-};
+pub use self::standard::StandardDescriptorSetAllocator;
 use super::{layout::DescriptorSetLayout, sys::UnsafeDescriptorSet};
 use crate::{device::DeviceOwned, OomError};
 use std::sync::Arc;
 
 pub mod standard;
-mod sys;
 
 /// A pool from which descriptor sets can be allocated.
 pub unsafe trait DescriptorSetAllocator: DeviceOwned {

@@ -525,7 +525,7 @@ mod tests {
     use crate::{
         buffer::{BufferUsage, CpuAccessibleBuffer, DeviceLocalBuffer},
         command_buffer::{
-            pool::{CommandBufferAllocator, CommandBufferBuilderAlloc},
+            allocator::{CommandBufferAllocator, CommandBufferBuilderAlloc},
             sys::CommandBufferBeginInfo,
             AutoCommandBufferBuilder, CommandBufferLevel, CommandBufferUsage, FillBufferInfo,
         },

@@ -98,6 +98,7 @@ use std::{
     sync::Arc,
 };
 
+pub mod allocator;
 mod collection;
 pub mod layout;
 pub mod persistent;

@@ -16,21 +16,14 @@
 //! trait. By default vulkano will use the `StandardCommandPool` struct, but you can implement
 //! this trait yourself by wrapping around the `UnsafeCommandPool` type.
 
-pub use self::{
-    standard::StandardCommandBufferAllocator,
-    sys::{
-        CommandPoolTrimError, UnsafeCommandPool, UnsafeCommandPoolAlloc,
-        UnsafeCommandPoolCreateInfo, UnsafeCommandPoolCreationError,
-    },
-};
-use super::CommandBufferLevel;
+pub use self::standard::StandardCommandBufferAllocator;
+use super::{pool::UnsafeCommandPoolAlloc, CommandBufferLevel};
 use crate::{
     device::{physical::QueueFamily, DeviceOwned},
     OomError,
 };
 
 pub mod standard;
-mod sys;
 
 /// Types that manage the memory of command buffers.
 ///

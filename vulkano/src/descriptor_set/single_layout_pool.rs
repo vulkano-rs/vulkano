@@ -8,10 +8,11 @@
 // according to those terms.
 
 use super::{
+    allocator::DescriptorSetAlloc,
     layout::DescriptorSetLayout,
     pool::{
-        DescriptorPoolAllocError, DescriptorSetAlloc, DescriptorSetAllocateInfo,
-        UnsafeDescriptorPool, UnsafeDescriptorPoolCreateInfo,
+        DescriptorPoolAllocError, DescriptorSetAllocateInfo, UnsafeDescriptorPool,
+        UnsafeDescriptorPoolCreateInfo,
     },
     sys::UnsafeDescriptorSet,
     DescriptorSet, DescriptorSetCreationError, DescriptorSetInner, DescriptorSetResources,

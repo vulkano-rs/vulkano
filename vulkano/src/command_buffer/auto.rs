@@ -8,14 +8,14 @@
 // according to those terms.
 
 use super::{
+    allocator::{
+        standard::{StandardCommandBufferAlloc, StandardCommandBufferBuilderAlloc},
+        CommandBufferAlloc, CommandBufferAllocator, CommandBufferBuilderAlloc,
+    },
     commands::pipeline::{
         CheckDescriptorSetsValidityError, CheckDispatchError, CheckDynamicStateValidityError,
         CheckIndexBufferError, CheckIndirectBufferError, CheckPipelineError,
         CheckPushConstantsValidityError, CheckVertexBufferError,
-    },
-    pool::{
-        standard::{StandardCommandBufferAlloc, StandardCommandBufferBuilderAlloc},
-        CommandBufferAlloc, CommandBufferAllocator, CommandBufferBuilderAlloc,
     },
     synced::{
         CommandBufferState, SyncCommandBuffer, SyncCommandBufferBuilder,

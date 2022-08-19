@@ -1,16 +1,3 @@
-use super::{
-    sys::{CommandBufferAllocateInfo, UnsafeCommandPoolCreateInfo, UnsafeCommandPoolCreationError},
-    CommandBufferAlloc, CommandBufferAllocator, CommandBufferBuilderAlloc, UnsafeCommandPool,
-    UnsafeCommandPoolAlloc,
-};
-use crate::{
-    command_buffer::CommandBufferLevel,
-    device::{physical::QueueFamily, Device, DeviceOwned},
-    OomError, VulkanObject,
-};
-use crossbeam_queue::SegQueue;
-use std::{marker::PhantomData, mem::ManuallyDrop, ptr, sync::Arc, vec::IntoIter as VecIntoIter};
-
 // Copyright (c) 2016 The vulkano developers
 // Licensed under the Apache License, Version 2.0
 // <LICENSE-APACHE or
@@ -19,6 +6,23 @@ use std::{marker::PhantomData, mem::ManuallyDrop, ptr, sync::Arc, vec::IntoIter 
 // at your option. All files in the project carrying such
 // notice may not be copied, modified, or distributed except
 // according to those terms.
+
+use super::{
+    CommandBufferAlloc, CommandBufferAllocator, CommandBufferBuilderAlloc, UnsafeCommandPoolAlloc,
+};
+use crate::{
+    command_buffer::{
+        pool::{
+            CommandBufferAllocateInfo, UnsafeCommandPool, UnsafeCommandPoolCreateInfo,
+            UnsafeCommandPoolCreationError,
+        },
+        CommandBufferLevel,
+    },
+    device::{physical::QueueFamily, Device, DeviceOwned},
+    OomError, VulkanObject,
+};
+use crossbeam_queue::SegQueue;
+use std::{marker::PhantomData, mem::ManuallyDrop, ptr, sync::Arc, vec::IntoIter as VecIntoIter};
 
 /// Standard implementation of a command pool.
 ///
@@ -230,7 +234,7 @@ impl Drop for StandardCommandBufferAlloc {
 mod tests {
     use crate::{
         command_buffer::{
-            pool::{CommandBufferAllocator, CommandBufferBuilderAlloc},
+            allocator::{CommandBufferAllocator, CommandBufferBuilderAlloc},
             CommandBufferLevel,
         },
         VulkanObject,

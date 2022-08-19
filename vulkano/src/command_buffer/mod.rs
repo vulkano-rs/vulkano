@@ -133,6 +133,7 @@ use crate::{
 use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
 
+pub mod allocator;
 mod auto;
 mod commands;
 pub mod pool;

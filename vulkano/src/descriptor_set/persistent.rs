@@ -23,7 +23,9 @@
 
 use crate::{
     descriptor_set::{
-        pool::{standard::StandardDescriptorSetAlloc, DescriptorSetAlloc, DescriptorSetAllocator},
+        allocator::{
+            standard::StandardDescriptorSetAlloc, DescriptorSetAlloc, DescriptorSetAllocator,
+        },
         update::WriteDescriptorSet,
         DescriptorSet, DescriptorSetCreationError, DescriptorSetInner, DescriptorSetLayout,
         DescriptorSetResources, UnsafeDescriptorSet,

@@ -556,7 +556,7 @@ mod tests {
         UnsafeCommandPoolCreationError,
     };
     use crate::{
-        command_buffer::{pool::sys::CommandBufferAllocateInfo, CommandBufferLevel},
+        command_buffer::{pool::CommandBufferAllocateInfo, CommandBufferLevel},
         Version,
     };
 
