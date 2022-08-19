@@ -49,33 +49,15 @@ impl PersistentDescriptorSet {
     ///
     /// See `new_with_pool` for more.
     #[inline]
-    pub fn new(
+    pub fn new<A>(
+        allocator: &mut A,
         layout: Arc<DescriptorSetLayout>,
         descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
-    ) -> Result<Arc<PersistentDescriptorSet>, DescriptorSetCreationError> {
-        layout
-            .device()
-            .clone()
-            .with_standard_descriptor_pool(|pool| {
-                Self::new_with_pool(layout, 0, pool, descriptor_writes)
-            })
-    }
-
-    /// Creates and returns a new descriptor set with the requested variable descriptor count.
-    ///
-    /// See `new_with_pool` for more.
-    #[inline]
-    pub fn new_variable(
-        layout: Arc<DescriptorSetLayout>,
-        variable_descriptor_count: u32,
-        descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
-    ) -> Result<Arc<PersistentDescriptorSet>, DescriptorSetCreationError> {
-        layout
-            .device()
-            .clone()
-            .with_standard_descriptor_pool(|pool| {
-                Self::new_with_pool(layout, variable_descriptor_count, pool, descriptor_writes)
-            })
+    ) -> Result<Arc<PersistentDescriptorSet<A::Alloc>>, DescriptorSetCreationError>
+    where
+        A: DescriptorSetAllocator + ?Sized,
+    {
+        Self::new_variable(allocator, layout, 0, descriptor_writes)
     }
 
     /// Creates and returns a new descriptor set with the requested variable descriptor count,
@@ -85,14 +67,14 @@ impl PersistentDescriptorSet {
     ///
     /// - Panics if `layout` was created for push descriptors rather than descriptor sets.
     /// - Panics if `variable_descriptor_count` is too large for the given `layout`.
-    pub fn new_with_pool<P>(
+    pub fn new_variable<A>(
+        allocator: &mut A,
         layout: Arc<DescriptorSetLayout>,
         variable_descriptor_count: u32,
-        pool: &mut P,
         descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
-    ) -> Result<Arc<PersistentDescriptorSet<P::Alloc>>, DescriptorSetCreationError>
+    ) -> Result<Arc<PersistentDescriptorSet<A::Alloc>>, DescriptorSetCreationError>
     where
-        P: ?Sized + DescriptorSetAllocator,
+        A: DescriptorSetAllocator + ?Sized,
     {
         assert!(
             !layout.push_descriptor(),
@@ -110,7 +92,7 @@ impl PersistentDescriptorSet {
             max_count,
         );
 
-        let alloc = pool.allocate(&layout, variable_descriptor_count)?;
+        let alloc = allocator.allocate(&layout, variable_descriptor_count)?;
         let inner = DescriptorSetInner::new(
             alloc.inner().internal_object(),
             layout,

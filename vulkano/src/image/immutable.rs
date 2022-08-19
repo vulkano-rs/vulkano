@@ -15,9 +15,9 @@ use super::{
 use crate::{
     buffer::{BufferAccess, BufferContents, BufferUsage, CpuAccessibleBuffer},
     command_buffer::{
-        AutoCommandBufferBuilder, BlitImageInfo, CommandBufferBeginError, CommandBufferExecFuture,
-        CommandBufferUsage, CopyBufferToImageInfo, ImageBlit, PrimaryAutoCommandBuffer,
-        PrimaryCommandBuffer,
+        allocator::CommandBufferAllocator, AutoCommandBufferBuilder, BlitImageInfo,
+        CommandBufferBeginError, CommandBufferExecFuture, CommandBufferUsage,
+        CopyBufferToImageInfo, ImageBlit, PrimaryAutoCommandBuffer, PrimaryCommandBuffer,
     },
     device::{physical::QueueFamily, Device, DeviceOwned, Queue},
     format::Format,
@@ -60,12 +60,14 @@ fn has_mipmaps(mipmaps: MipmapsCount) -> bool {
     }
 }
 
-fn generate_mipmaps<L>(
-    cbb: &mut AutoCommandBufferBuilder<L>,
+fn generate_mipmaps<L, Cba>(
+    cbb: &mut AutoCommandBufferBuilder<L, Cba>,
     image: Arc<dyn ImageAccess>,
     dimensions: ImageDimensions,
     _layout: ImageLayout,
-) {
+) where
+    Cba: CommandBufferAllocator,
+{
     for level in 1..image.mip_levels() {
         let src_size = dimensions
             .mip_level_dimensions(level - 1)
@@ -99,62 +101,6 @@ fn generate_mipmaps<L>(
 }
 
 impl ImmutableImage {
-    #[deprecated(note = "use ImmutableImage::uninitialized instead")]
-    #[inline]
-    pub fn new<'a, I>(
-        device: Arc<Device>,
-        dimensions: ImageDimensions,
-        format: Format,
-        queue_families: I,
-    ) -> Result<Arc<ImmutableImage>, ImmutableImageCreationError>
-    where
-        I: IntoIterator<Item = QueueFamily<'a>>,
-    {
-        #[allow(deprecated)]
-        ImmutableImage::with_mipmaps(
-            device,
-            dimensions,
-            format,
-            MipmapsCount::One,
-            queue_families,
-        )
-    }
-
-    #[deprecated(note = "use ImmutableImage::uninitialized instead")]
-    #[inline]
-    pub fn with_mipmaps<'a, I, M>(
-        device: Arc<Device>,
-        dimensions: ImageDimensions,
-        format: Format,
-        mip_levels: M,
-        queue_families: I,
-    ) -> Result<Arc<ImmutableImage>, ImmutableImageCreationError>
-    where
-        I: IntoIterator<Item = QueueFamily<'a>>,
-        M: Into<MipmapsCount>,
-    {
-        let usage = ImageUsage {
-            transfer_src: true, // for blits
-            transfer_dst: true,
-            sampled: true,
-            ..ImageUsage::none()
-        };
-
-        let flags = ImageCreateFlags::none();
-
-        let (image, _) = ImmutableImage::uninitialized(
-            device,
-            dimensions,
-            format,
-            mip_levels,
-            usage,
-            flags,
-            ImageLayout::ShaderReadOnlyOptimal,
-            queue_families,
-        )?;
-        Ok(image)
-    }
-
     /// Builds an uninitialized immutable image.
     ///
     /// Returns two things: the image, and a special access that should be used for the initial upload to the image.
@@ -237,16 +183,17 @@ impl ImmutableImage {
 
     /// Construct an ImmutableImage from the contents of `iter`.
     #[inline]
-    pub fn from_iter<Px, I>(
+    pub fn from_iter<Px, I, Cba>(
         iter: I,
         dimensions: ImageDimensions,
         mip_levels: MipmapsCount,
         format: Format,
+        command_buffer_allocator: &Cba,
         queue: Arc<Queue>,
     ) -> Result<
         (
             Arc<Self>,
-            CommandBufferExecFuture<NowFuture, PrimaryAutoCommandBuffer>,
+            CommandBufferExecFuture<NowFuture, PrimaryAutoCommandBuffer<Cba::Alloc>>,
         ),
         ImmutableImageCreationError,
     >
@@ -254,6 +201,7 @@ impl ImmutableImage {
         [Px]: BufferContents,
         I: IntoIterator<Item = Px>,
         I::IntoIter: ExactSizeIterator,
+        Cba: CommandBufferAllocator,
     {
         let source = CpuAccessibleBuffer::from_iter(
             queue.device().clone(),
@@ -261,23 +209,34 @@ impl ImmutableImage {
             false,
             iter,
         )?;
-        ImmutableImage::from_buffer(source, dimensions, mip_levels, format, queue)
+        ImmutableImage::from_buffer(
+            source,
+            dimensions,
+            mip_levels,
+            format,
+            command_buffer_allocator,
+            queue,
+        )
     }
 
     /// Construct an ImmutableImage containing a copy of the data in `source`.
-    pub fn from_buffer(
+    pub fn from_buffer<Cba>(
         source: Arc<dyn BufferAccess>,
         dimensions: ImageDimensions,
         mip_levels: MipmapsCount,
         format: Format,
+        command_buffer_allocator: &Cba,
         queue: Arc<Queue>,
     ) -> Result<
         (
             Arc<Self>,
-            CommandBufferExecFuture<NowFuture, PrimaryAutoCommandBuffer>,
+            CommandBufferExecFuture<NowFuture, PrimaryAutoCommandBuffer<Cba::Alloc>>,
         ),
         ImmutableImageCreationError,
-    > {
+    >
+    where
+        Cba: CommandBufferAllocator,
+    {
         let need_to_generate_mipmaps = has_mipmaps(mip_levels);
         let usage = ImageUsage {
             transfer_dst: true,
@@ -300,7 +259,7 @@ impl ImmutableImage {
         )?;
 
         let mut cbb = AutoCommandBufferBuilder::primary(
-            source.device().clone(),
+            command_buffer_allocator,
             queue.family(),
             CommandBufferUsage::MultipleSubmit,
         )?;

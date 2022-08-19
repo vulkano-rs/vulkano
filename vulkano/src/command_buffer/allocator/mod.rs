@@ -93,7 +93,7 @@ pub unsafe trait CommandBufferBuilderAlloc: DeviceOwned {
 ///
 /// See `CommandPool` for information about safety.
 ///
-pub unsafe trait CommandBufferAlloc: DeviceOwned + Send + Sync {
+pub unsafe trait CommandBufferAlloc: DeviceOwned + Send + Sync + 'static {
     /// Returns the internal object that contains the command buffer.
     fn inner(&self) -> &CommandPoolAlloc;
 

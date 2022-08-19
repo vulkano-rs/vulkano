@@ -9,12 +9,12 @@
 
 use crate::{
     command_buffer::{
-        allocator::CommandBufferBuilderAlloc,
+        allocator::CommandBufferAllocator,
         auto::RenderPassStateType,
         synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder, CommandBufferExecError, CommandBufferInheritanceRenderPassType,
-        CommandBufferUsage, PrimaryAutoCommandBuffer, SecondaryCommandBuffer, SubpassContents,
+        CommandBufferUsage, SecondaryCommandBuffer, SubpassContents,
     },
     device::DeviceOwned,
     format::Format,
@@ -29,9 +29,9 @@ use std::{error::Error, fmt};
 ///
 /// These commands can be called on any queue that can execute the commands recorded in the
 /// secondary command buffer.
-impl<P> AutoCommandBufferBuilder<PrimaryAutoCommandBuffer<P::Alloc>, P>
+impl<L, A> AutoCommandBufferBuilder<L, A>
 where
-    P: CommandBufferBuilderAlloc,
+    A: CommandBufferAllocator,
 {
     /// Executes a secondary command buffer.
     ///

@@ -49,7 +49,7 @@ impl StandardCommandBufferAllocator {
     pub fn new(
         device: Arc<Device>,
         queue_family: QueueFamily,
-    ) -> Result<StandardCommandBufferAllocator, OomError> {
+    ) -> Result<Arc<StandardCommandBufferAllocator>, OomError> {
         assert_eq!(
             device.physical_device().internal_object(),
             queue_family.physical_device().internal_object()
@@ -68,11 +68,11 @@ impl StandardCommandBufferAllocator {
             _ => panic!("Unexpected error: {}", err),
         })?;
 
-        Ok(StandardCommandBufferAllocator {
+        Ok(Arc::new(StandardCommandBufferAllocator {
             inner,
             available_primary_command_buffers: Default::default(),
             available_secondary_command_buffers: Default::default(),
-        })
+        }))
     }
 }
 
@@ -231,63 +231,30 @@ impl Drop for StandardCommandBufferAlloc {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        command_buffer::{
-            allocator::{CommandBufferAllocator, CommandBufferBuilderAlloc},
-            CommandBufferLevel,
-        },
-        VulkanObject,
+    use super::{
+        CommandBufferAllocator, CommandBufferBuilderAlloc, StandardCommandBufferAllocator,
     };
-    use std::{sync::Arc, thread};
+    use crate::{command_buffer::CommandBufferLevel, VulkanObject};
 
     #[test]
     fn reuse_command_buffers() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        device
-            .with_standard_command_pool(queue.family(), |pool| {
-                let cb = pool
-                    .allocate(CommandBufferLevel::Primary, 1)
-                    .unwrap()
-                    .next()
-                    .unwrap();
-                let raw = cb.inner().internal_object();
-                drop(cb);
+        let allocator = StandardCommandBufferAllocator::new(device, queue.family()).unwrap();
 
-                let cb2 = pool
-                    .allocate(CommandBufferLevel::Primary, 1)
-                    .unwrap()
-                    .next()
-                    .unwrap();
-                assert_eq!(raw, cb2.inner().internal_object());
-            })
+        let cb = allocator
+            .allocate(CommandBufferLevel::Primary, 1)
+            .unwrap()
+            .next()
             .unwrap();
-    }
-
-    #[test]
-    fn pool_kept_alive_by_thread() {
-        let (device, queue) = gfx_dev_and_queue!();
-
-        let thread = thread::spawn({
-            let (device, queue) = (device, queue);
-            move || {
-                device
-                    .with_standard_command_pool(queue.family(), |pool| {
-                        pool.allocate(CommandBufferLevel::Primary, 1)
-                            .unwrap()
-                            .next()
-                            .unwrap()
-                            .inner
-                    })
-                    .unwrap()
-            }
-        });
-
-        // The thread-local storage should drop its reference to the pool here
-        let cb = thread.join().unwrap();
-
-        let pool_weak = Arc::downgrade(&cb.pool);
+        let raw = cb.inner().internal_object();
         drop(cb);
-        assert!(pool_weak.upgrade().is_none());
+
+        let cb2 = allocator
+            .allocate(CommandBufferLevel::Primary, 1)
+            .unwrap()
+            .next()
+            .unwrap();
+        assert_eq!(raw, cb2.inner().internal_object());
     }
 }

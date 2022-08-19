@@ -525,11 +525,14 @@ mod tests {
     use crate::{
         buffer::{BufferUsage, CpuAccessibleBuffer, DeviceLocalBuffer},
         command_buffer::{
-            allocator::{CommandBufferAllocator, CommandBufferBuilderAlloc},
+            allocator::{
+                CommandBufferAllocator, CommandBufferBuilderAlloc, StandardCommandBufferAllocator,
+            },
             sys::CommandBufferBeginInfo,
             AutoCommandBufferBuilder, CommandBufferLevel, CommandBufferUsage, FillBufferInfo,
         },
         descriptor_set::{
+            allocator::StandardDescriptorSetAllocator,
             layout::{
                 DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
                 DescriptorType,
@@ -546,17 +549,16 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
-            let pool_builder_alloc = device
-                .with_standard_command_pool(queue.family(), |pool| {
-                    pool.allocate(CommandBufferLevel::Primary, 1)
-                        .unwrap()
-                        .next()
-                        .unwrap()
-                })
+            let allocator = StandardCommandBufferAllocator::new(device, queue.family()).unwrap();
+
+            let builder_alloc = allocator
+                .allocate(CommandBufferLevel::Primary, 1)
+                .unwrap()
+                .next()
                 .unwrap();
 
             SyncCommandBufferBuilder::new(
-                pool_builder_alloc.inner(),
+                builder_alloc.inner(),
                 CommandBufferBeginInfo {
                     usage: CommandBufferUsage::MultipleSubmit,
                     ..Default::default()
@@ -571,10 +573,17 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
+            let allocator =
+                StandardCommandBufferAllocator::new(device.clone(), queue.family()).unwrap();
+
             // Create a tiny test buffer
-            let (buf, future) =
-                DeviceLocalBuffer::from_data(0u32, BufferUsage::transfer_dst(), queue.clone())
-                    .unwrap();
+            let (buf, future) = DeviceLocalBuffer::from_data(
+                0u32,
+                BufferUsage::transfer_dst(),
+                &allocator,
+                queue.clone(),
+            )
+            .unwrap();
             future
                 .then_signal_fence_and_flush()
                 .unwrap()
@@ -585,7 +594,7 @@ mod tests {
             let secondary = (0..2)
                 .map(|_| {
                     let mut builder = AutoCommandBufferBuilder::secondary(
-                        device.clone(),
+                        &allocator,
                         queue.family(),
                         CommandBufferUsage::SimultaneousUse,
                         Default::default(),
@@ -601,13 +610,10 @@ mod tests {
                 })
                 .collect::<Vec<_>>();
 
-            let allocs = device
-                .with_standard_command_pool(queue.family(), |pool| {
-                    pool.allocate(CommandBufferLevel::Primary, 2)
-                        .unwrap()
-                        .collect::<Vec<_>>()
-                })
-                .unwrap();
+            let allocs = allocator
+                .allocate(CommandBufferLevel::Primary, 2)
+                .unwrap()
+                .collect::<Vec<_>>();
 
             {
                 let mut builder = SyncCommandBufferBuilder::new(
@@ -663,16 +669,16 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
-            let pool_builder_alloc = device
-                .with_standard_command_pool(queue.family(), |pool| {
-                    pool.allocate(CommandBufferLevel::Primary, 1)
-                        .unwrap()
-                        .next()
-                        .unwrap()
-                })
+            let allocator =
+                StandardCommandBufferAllocator::new(device.clone(), queue.family()).unwrap();
+
+            let builder_alloc = allocator
+                .allocate(CommandBufferLevel::Primary, 1)
+                .unwrap()
+                .next()
                 .unwrap();
             let mut sync = SyncCommandBufferBuilder::new(
-                pool_builder_alloc.inner(),
+                builder_alloc.inner(),
                 CommandBufferBeginInfo {
                     usage: CommandBufferUsage::MultipleSubmit,
                     ..Default::default()
@@ -696,16 +702,15 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
-            let pool_builder_alloc = device
-                .with_standard_command_pool(queue.family(), |pool| {
-                    pool.allocate(CommandBufferLevel::Primary, 1)
-                        .unwrap()
-                        .next()
-                        .unwrap()
-                })
+            let cb_allocator =
+                StandardCommandBufferAllocator::new(device.clone(), queue.family()).unwrap();
+            let builder_alloc = cb_allocator
+                .allocate(CommandBufferLevel::Primary, 1)
+                .unwrap()
+                .next()
                 .unwrap();
             let mut sync = SyncCommandBufferBuilder::new(
-                pool_builder_alloc.inner(),
+                builder_alloc.inner(),
                 CommandBufferBeginInfo {
                     usage: CommandBufferUsage::MultipleSubmit,
                     ..Default::default()
@@ -736,7 +741,10 @@ mod tests {
             )
             .unwrap();
 
+            let mut ds_allocator = StandardDescriptorSetAllocator::new(device.clone());
+
             let set = PersistentDescriptorSet::new(
+                &mut ds_allocator,
                 set_layout.clone(),
                 [WriteDescriptorSet::sampler(
                     0,
@@ -794,6 +802,7 @@ mod tests {
             .unwrap();
 
             let set = PersistentDescriptorSet::new(
+                &mut ds_allocator,
                 set_layout,
                 [WriteDescriptorSet::sampler(
                     0,

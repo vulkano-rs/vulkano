@@ -840,6 +840,7 @@ impl From<ash::vk::ImageFormatProperties> for ImageFormatProperties {
 #[cfg(test)]
 mod tests {
     use crate::{
+        command_buffer::allocator::StandardCommandBufferAllocator,
         format::Format,
         image::{ImageAccess, ImageDimensions, ImmutableImage, MipmapsCount},
     };
@@ -946,7 +947,9 @@ mod tests {
 
     #[test]
     fn mipmap_working_immutable_image() {
-        let (_device, queue) = gfx_dev_and_queue!();
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let cb_allocator = StandardCommandBufferAllocator::new(device, queue.family()).unwrap();
 
         let dimensions = ImageDimensions::Dim2d {
             width: 512,
@@ -963,6 +966,7 @@ mod tests {
                 dimensions,
                 MipmapsCount::One,
                 Format::R8_UNORM,
+                &cb_allocator,
                 queue.clone(),
             )
             .unwrap();
@@ -978,6 +982,7 @@ mod tests {
                 dimensions,
                 MipmapsCount::Log2,
                 Format::R8_UNORM,
+                &cb_allocator,
                 queue,
             )
             .unwrap();

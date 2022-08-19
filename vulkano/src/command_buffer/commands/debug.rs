@@ -9,6 +9,7 @@
 
 use crate::{
     command_buffer::{
+        allocator::CommandBufferAllocator,
         synced::{Command, SyncCommandBufferBuilder},
         sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder,
@@ -23,7 +24,10 @@ use std::{error::Error, ffi::CString, fmt};
 /// These commands all require the
 /// [`ext_debug_utils`](crate::instance::InstanceExtensions::ext_debug_utils) to be enabled on the
 /// instance.
-impl<L, P> AutoCommandBufferBuilder<L, P> {
+impl<L, A> AutoCommandBufferBuilder<L, A>
+where
+    A: CommandBufferAllocator,
+{
     /// Opens a command buffer debug label region.
     #[inline]
     pub fn begin_debug_utils_label(

@@ -102,25 +102,21 @@ pub use self::{
     features::{FeatureRestriction, FeatureRestrictionError, Features},
     properties::Properties,
 };
-use crate::{
-    command_buffer::allocator::StandardCommandBufferAllocator,
-    descriptor_set::allocator::StandardDescriptorSetAllocator,
-    instance::{debug::DebugUtilsLabel, Instance},
-    memory::{pool::StandardMemoryPool, ExternalMemoryHandleType},
-    OomError, SynchronizedVulkanObject, Version, VulkanError, VulkanObject,
-};
 pub use crate::{
     device::extensions::DeviceExtensions,
     extensions::{ExtensionRestriction, ExtensionRestrictionError},
     fns::DeviceFunctions,
+};
+use crate::{
+    instance::{debug::DebugUtilsLabel, Instance},
+    memory::{pool::StandardMemoryPool, ExternalMemoryHandleType},
+    OomError, SynchronizedVulkanObject, Version, VulkanError, VulkanObject,
 };
 use ash::vk::Handle;
 use once_cell::sync::OnceCell;
 use parking_lot::{Mutex, MutexGuard};
 use smallvec::SmallVec;
 use std::{
-    cell::RefCell,
-    collections::{hash_map::Entry, HashMap},
     error::Error,
     ffi::CString,
     fmt,
@@ -514,73 +510,6 @@ impl Device {
     pub fn standard_memory_pool<'a>(self: &'a Arc<Self>) -> &'a Arc<StandardMemoryPool> {
         self.standard_memory_pool
             .get_or_init(|| StandardMemoryPool::new(self.clone()))
-    }
-
-    /// Gives you access to the standard descriptor pool that is used by default if you don't
-    /// provide any other pool.
-    ///
-    /// Pools are stored in thread-local storage to avoid locks, which means that a pool is only
-    /// dropped once both the thread exits and all descriptor sets allocated from it are dropped.
-    /// A pool is created lazily for each thread.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if called again from within the callback.
-    pub fn with_standard_descriptor_pool<T>(
-        self: &Arc<Self>,
-        f: impl FnOnce(&mut StandardDescriptorSetAllocator) -> T,
-    ) -> T {
-        thread_local! {
-            static TLS: RefCell<HashMap<ash::vk::Device, StandardDescriptorSetAllocator>> =
-                RefCell::new(HashMap::default());
-        }
-
-        TLS.with(|tls| {
-            let mut tls = tls.borrow_mut();
-            let pool = match tls.entry(self.internal_object()) {
-                Entry::Occupied(entry) => entry.into_mut(),
-                Entry::Vacant(entry) => {
-                    entry.insert(StandardDescriptorSetAllocator::new(self.clone()))
-                }
-            };
-
-            f(pool)
-        })
-    }
-
-    /// Gives you access to the standard command buffer pool used by default if you don't provide
-    /// any other pool.
-    ///
-    /// Pools are stored in thread-local storage to avoid locks, which means that a pool is only
-    /// dropped once both the thread exits and all command buffers allocated from it are dropped.
-    /// A pool is created lazily for each thread, device and queue family combination as needed,
-    /// which is why this function might return an `OomError`.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the device and the queue family don't belong to the same physical device.
-    /// - Panics if called again from within the callback.
-    pub fn with_standard_command_pool<T>(
-        self: &Arc<Self>,
-        queue_family: QueueFamily,
-        f: impl FnOnce(&Arc<StandardCommandBufferAllocator>) -> T,
-    ) -> Result<T, OomError> {
-        thread_local! {
-            static TLS: RefCell<HashMap<(ash::vk::Device, u32), Arc<StandardCommandBufferAllocator>>> =
-                RefCell::new(Default::default());
-        }
-
-        TLS.with(|tls| {
-            let mut tls = tls.borrow_mut();
-            let pool = match tls.entry((self.internal_object(), queue_family.id())) {
-                Entry::Occupied(entry) => entry.into_mut(),
-                Entry::Vacant(entry) => entry.insert(Arc::new(
-                    StandardCommandBufferAllocator::new(self.clone(), queue_family)?,
-                )),
-            };
-
-            Ok(f(pool))
-        })
     }
 
     /// Used to track the number of allocations on this device.

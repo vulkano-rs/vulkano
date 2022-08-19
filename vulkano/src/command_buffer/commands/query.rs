@@ -10,6 +10,7 @@
 use crate::{
     buffer::TypedBufferAccess,
     command_buffer::{
+        allocator::CommandBufferAllocator,
         auto::{QueryState, RenderPassStateType},
         synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
@@ -26,7 +27,10 @@ use crate::{
 use std::{error::Error, fmt, mem::size_of, ops::Range, sync::Arc};
 
 /// # Commands related to queries.
-impl<L, P> AutoCommandBufferBuilder<L, P> {
+impl<L, A> AutoCommandBufferBuilder<L, A>
+where
+    A: CommandBufferAllocator,
+{
     /// Begins a query.
     ///
     /// The query will be active until [`end_query`](Self::end_query) is called for the same query.

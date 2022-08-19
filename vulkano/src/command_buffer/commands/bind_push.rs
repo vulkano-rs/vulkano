@@ -10,6 +10,7 @@
 use crate::{
     buffer::{BufferAccess, BufferContents, TypedBufferAccess},
     command_buffer::{
+        allocator::CommandBufferAllocator,
         synced::{Command, SetOrPush, SyncCommandBufferBuilder},
         sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder,
@@ -41,7 +42,10 @@ use std::{
 /// # Commands to bind or push state for pipeline execution commands.
 ///
 /// These commands require a queue with a pipeline type that uses the given state.
-impl<L, P> AutoCommandBufferBuilder<L, P> {
+impl<L, A> AutoCommandBufferBuilder<L, A>
+where
+    A: CommandBufferAllocator,
+{
     /// Binds descriptor sets for future dispatch or draw calls.
     ///
     /// # Panics
