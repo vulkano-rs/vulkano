@@ -23,7 +23,7 @@
 
 use crate::{
     descriptor_set::{
-        pool::{standard::StandardDescriptorPoolAlloc, DescriptorPool, DescriptorPoolAlloc},
+        pool::{standard::StandardDescriptorSetAlloc, DescriptorSetAlloc, DescriptorSetAllocator},
         update::WriteDescriptorSet,
         DescriptorSet, DescriptorSetCreationError, DescriptorSetInner, DescriptorSetLayout,
         DescriptorSetResources, UnsafeDescriptorSet,
@@ -37,7 +37,7 @@ use std::{
 };
 
 /// A simple, immutable descriptor set that is expected to be long-lived.
-pub struct PersistentDescriptorSet<P = StandardDescriptorPoolAlloc> {
+pub struct PersistentDescriptorSet<P = StandardDescriptorSetAlloc> {
     alloc: P,
     inner: DescriptorSetInner,
 }
@@ -90,7 +90,7 @@ impl PersistentDescriptorSet {
         descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
     ) -> Result<Arc<PersistentDescriptorSet<P::Alloc>>, DescriptorSetCreationError>
     where
-        P: ?Sized + DescriptorPool,
+        P: ?Sized + DescriptorSetAllocator,
     {
         assert!(
             !layout.push_descriptor(),
@@ -122,7 +122,7 @@ impl PersistentDescriptorSet {
 
 unsafe impl<P> DescriptorSet for PersistentDescriptorSet<P>
 where
-    P: DescriptorPoolAlloc,
+    P: DescriptorSetAlloc,
 {
     #[inline]
     fn inner(&self) -> &UnsafeDescriptorSet {
@@ -142,7 +142,7 @@ where
 
 unsafe impl<P> DeviceOwned for PersistentDescriptorSet<P>
 where
-    P: DescriptorPoolAlloc,
+    P: DescriptorSetAlloc,
 {
     #[inline]
     fn device(&self) -> &Arc<Device> {
@@ -152,7 +152,7 @@ where
 
 impl<P> PartialEq for PersistentDescriptorSet<P>
 where
-    P: DescriptorPoolAlloc,
+    P: DescriptorSetAlloc,
 {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
@@ -161,11 +161,11 @@ where
     }
 }
 
-impl<P> Eq for PersistentDescriptorSet<P> where P: DescriptorPoolAlloc {}
+impl<P> Eq for PersistentDescriptorSet<P> where P: DescriptorSetAlloc {}
 
 impl<P> Hash for PersistentDescriptorSet<P>
 where
-    P: DescriptorPoolAlloc,
+    P: DescriptorSetAlloc,
 {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {

@@ -17,7 +17,7 @@
 //! this trait yourself by wrapping around the `UnsafeCommandPool` type.
 
 pub use self::{
-    standard::StandardCommandPool,
+    standard::StandardCommandBufferAllocator,
     sys::{
         CommandPoolTrimError, UnsafeCommandPool, UnsafeCommandPoolAlloc,
         UnsafeCommandPoolCreateInfo, UnsafeCommandPoolCreationError,
@@ -52,14 +52,14 @@ mod sys;
 /// If the implementation frees or resets the command buffer, it must not forget that this
 /// operation must lock the pool.
 ///
-pub unsafe trait CommandPool: DeviceOwned {
+pub unsafe trait CommandBufferAllocator: DeviceOwned {
     /// See `alloc()`.
     type Iter: Iterator<Item = Self::Builder>;
     /// Represents a command buffer that has been allocated and that is currently being built.
-    type Builder: CommandPoolBuilderAlloc<Alloc = Self::Alloc>;
+    type Builder: CommandBufferBuilderAlloc<Alloc = Self::Alloc>;
     /// Represents a command buffer that has been allocated and that is pending execution or is
     /// being executed.
-    type Alloc: CommandPoolAlloc;
+    type Alloc: CommandBufferAlloc;
 
     /// Allocates command buffers from this pool.
     ///
@@ -80,9 +80,9 @@ pub unsafe trait CommandPool: DeviceOwned {
 ///
 /// See `CommandPool` for information about safety.
 ///
-pub unsafe trait CommandPoolBuilderAlloc: DeviceOwned {
+pub unsafe trait CommandBufferBuilderAlloc: DeviceOwned {
     /// Return type of `into_alloc`.
-    type Alloc: CommandPoolAlloc;
+    type Alloc: CommandBufferAlloc;
 
     /// Returns the internal object that contains the command buffer.
     fn inner(&self) -> &UnsafeCommandPoolAlloc;
@@ -100,7 +100,7 @@ pub unsafe trait CommandPoolBuilderAlloc: DeviceOwned {
 ///
 /// See `CommandPool` for information about safety.
 ///
-pub unsafe trait CommandPoolAlloc: DeviceOwned + Send + Sync {
+pub unsafe trait CommandBufferAlloc: DeviceOwned + Send + Sync {
     /// Returns the internal object that contains the command buffer.
     fn inner(&self) -> &UnsafeCommandPoolAlloc;
 

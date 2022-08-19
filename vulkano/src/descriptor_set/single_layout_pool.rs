@@ -10,7 +10,7 @@
 use super::{
     layout::DescriptorSetLayout,
     pool::{
-        DescriptorPoolAlloc, DescriptorPoolAllocError, DescriptorSetAllocateInfo,
+        DescriptorPoolAllocError, DescriptorSetAlloc, DescriptorSetAllocateInfo,
         UnsafeDescriptorPool, UnsafeDescriptorPoolCreateInfo,
     },
     sys::UnsafeDescriptorSet,
@@ -185,7 +185,7 @@ pub(crate) struct SingleLayoutPoolAlloc {
     pool: Arc<SingleLayoutPool>,
 }
 
-impl DescriptorPoolAlloc for SingleLayoutPoolAlloc {
+impl DescriptorSetAlloc for SingleLayoutPoolAlloc {
     #[inline]
     fn inner(&self) -> &UnsafeDescriptorSet {
         &self.inner
@@ -439,7 +439,7 @@ pub(crate) struct SingleLayoutVariablePoolAlloc {
 unsafe impl Send for SingleLayoutVariablePoolAlloc {}
 unsafe impl Sync for SingleLayoutVariablePoolAlloc {}
 
-impl DescriptorPoolAlloc for SingleLayoutVariablePoolAlloc {
+impl DescriptorSetAlloc for SingleLayoutVariablePoolAlloc {
     #[inline]
     fn inner(&self) -> &UnsafeDescriptorSet {
         &self.inner

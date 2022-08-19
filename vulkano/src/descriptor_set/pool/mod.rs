@@ -10,7 +10,7 @@
 //! A pool from which descriptor sets can be allocated.
 
 pub use self::{
-    standard::StandardDescriptorPool,
+    standard::StandardDescriptorSetAllocator,
     sys::{
         DescriptorPoolAllocError, DescriptorSetAllocateInfo, UnsafeDescriptorPool,
         UnsafeDescriptorPoolCreateInfo,
@@ -24,11 +24,11 @@ pub mod standard;
 mod sys;
 
 /// A pool from which descriptor sets can be allocated.
-pub unsafe trait DescriptorPool: DeviceOwned {
+pub unsafe trait DescriptorSetAllocator: DeviceOwned {
     /// Object that represented an allocated descriptor set.
     ///
     /// The destructor of this object should free the descriptor set.
-    type Alloc: DescriptorPoolAlloc;
+    type Alloc: DescriptorSetAlloc;
 
     /// Allocates a descriptor set.
     fn allocate(
@@ -39,7 +39,7 @@ pub unsafe trait DescriptorPool: DeviceOwned {
 }
 
 /// An allocated descriptor set.
-pub trait DescriptorPoolAlloc: Send + Sync {
+pub trait DescriptorSetAlloc: Send + Sync {
     /// Returns the inner unsafe descriptor set object.
     fn inner(&self) -> &UnsafeDescriptorSet;
 

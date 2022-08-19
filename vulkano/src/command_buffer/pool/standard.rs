@@ -1,6 +1,6 @@
 use super::{
     sys::{CommandBufferAllocateInfo, UnsafeCommandPoolCreateInfo, UnsafeCommandPoolCreationError},
-    CommandPool, CommandPoolAlloc, CommandPoolBuilderAlloc, UnsafeCommandPool,
+    CommandBufferAlloc, CommandBufferAllocator, CommandBufferBuilderAlloc, UnsafeCommandPool,
     UnsafeCommandPoolAlloc,
 };
 use crate::{
@@ -28,7 +28,7 @@ use std::{marker::PhantomData, mem::ManuallyDrop, ptr, sync::Arc, vec::IntoIter 
 /// finished command buffers can. When a command buffer is dropped, it is returned back to the pool
 /// for reuse.
 #[derive(Debug)]
-pub struct StandardCommandPool {
+pub struct StandardCommandBufferAllocator {
     // The Vulkan pool specific to a device's queue family.
     inner: UnsafeCommandPool,
     // List of existing primary command buffers that are available for reuse.
@@ -37,7 +37,7 @@ pub struct StandardCommandPool {
     available_secondary_command_buffers: SegQueue<UnsafeCommandPoolAlloc>,
 }
 
-impl StandardCommandPool {
+impl StandardCommandBufferAllocator {
     /// Builds a new pool.
     ///
     /// # Panics
@@ -46,7 +46,7 @@ impl StandardCommandPool {
     pub fn new(
         device: Arc<Device>,
         queue_family: QueueFamily,
-    ) -> Result<StandardCommandPool, OomError> {
+    ) -> Result<StandardCommandBufferAllocator, OomError> {
         assert_eq!(
             device.physical_device().internal_object(),
             queue_family.physical_device().internal_object()
@@ -65,7 +65,7 @@ impl StandardCommandPool {
             _ => panic!("Unexpected error: {}", err),
         })?;
 
-        Ok(StandardCommandPool {
+        Ok(StandardCommandBufferAllocator {
             inner,
             available_primary_command_buffers: Default::default(),
             available_secondary_command_buffers: Default::default(),
@@ -73,10 +73,10 @@ impl StandardCommandPool {
     }
 }
 
-unsafe impl CommandPool for Arc<StandardCommandPool> {
-    type Iter = VecIntoIter<StandardCommandPoolBuilder>;
-    type Builder = StandardCommandPoolBuilder;
-    type Alloc = StandardCommandPoolAlloc;
+unsafe impl CommandBufferAllocator for Arc<StandardCommandBufferAllocator> {
+    type Iter = VecIntoIter<StandardCommandBufferBuilderAlloc>;
+    type Builder = StandardCommandBufferBuilderAlloc;
+    type Alloc = StandardCommandBufferAlloc;
 
     fn allocate(
         &self,
@@ -95,8 +95,8 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
 
             for _ in 0..command_buffer_count as usize {
                 if let Some(cmd) = existing.pop() {
-                    output.push(StandardCommandPoolBuilder {
-                        inner: StandardCommandPoolAlloc {
+                    output.push(StandardCommandBufferBuilderAlloc {
+                        inner: StandardCommandBufferAlloc {
                             cmd: ManuallyDrop::new(cmd),
                             pool: self.clone(),
                         },
@@ -120,8 +120,8 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
                     ..Default::default()
                 })?
             {
-                output.push(StandardCommandPoolBuilder {
-                    inner: StandardCommandPoolAlloc {
+                output.push(StandardCommandBufferBuilderAlloc {
+                    inner: StandardCommandBufferAlloc {
                         cmd: ManuallyDrop::new(cmd),
                         pool: self.clone(),
                     },
@@ -140,7 +140,7 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
     }
 }
 
-unsafe impl DeviceOwned for StandardCommandPool {
+unsafe impl DeviceOwned for StandardCommandBufferAllocator {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
@@ -148,16 +148,16 @@ unsafe impl DeviceOwned for StandardCommandPool {
 }
 
 /// Command buffer allocated from a `StandardCommandPool` that is currently being built.
-pub struct StandardCommandPoolBuilder {
+pub struct StandardCommandBufferBuilderAlloc {
     // The only difference between a `StandardCommandPoolBuilder` and a `StandardCommandPoolAlloc`
     // is that the former must not implement `Send` and `Sync`. Therefore we just share the structs.
-    inner: StandardCommandPoolAlloc,
+    inner: StandardCommandBufferAlloc,
     // Unimplemented `Send` and `Sync` from the builder.
     dummy_avoid_send_sync: PhantomData<*const u8>,
 }
 
-unsafe impl CommandPoolBuilderAlloc for StandardCommandPoolBuilder {
-    type Alloc = StandardCommandPoolAlloc;
+unsafe impl CommandBufferBuilderAlloc for StandardCommandBufferBuilderAlloc {
+    type Alloc = StandardCommandBufferAlloc;
 
     #[inline]
     fn inner(&self) -> &UnsafeCommandPoolAlloc {
@@ -175,7 +175,7 @@ unsafe impl CommandPoolBuilderAlloc for StandardCommandPoolBuilder {
     }
 }
 
-unsafe impl DeviceOwned for StandardCommandPoolBuilder {
+unsafe impl DeviceOwned for StandardCommandBufferBuilderAlloc {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
@@ -183,17 +183,17 @@ unsafe impl DeviceOwned for StandardCommandPoolBuilder {
 }
 
 /// Command buffer allocated from a `StandardCommandPool`.
-pub struct StandardCommandPoolAlloc {
+pub struct StandardCommandBufferAlloc {
     // The actual command buffer. Extracted in the `Drop` implementation.
     cmd: ManuallyDrop<UnsafeCommandPoolAlloc>,
     // We hold a reference to the command pool for our destructor.
-    pool: Arc<StandardCommandPool>,
+    pool: Arc<StandardCommandBufferAllocator>,
 }
 
-unsafe impl Send for StandardCommandPoolAlloc {}
-unsafe impl Sync for StandardCommandPoolAlloc {}
+unsafe impl Send for StandardCommandBufferAlloc {}
+unsafe impl Sync for StandardCommandBufferAlloc {}
 
-unsafe impl CommandPoolAlloc for StandardCommandPoolAlloc {
+unsafe impl CommandBufferAlloc for StandardCommandBufferAlloc {
     #[inline]
     fn inner(&self) -> &UnsafeCommandPoolAlloc {
         &*self.cmd
@@ -205,14 +205,14 @@ unsafe impl CommandPoolAlloc for StandardCommandPoolAlloc {
     }
 }
 
-unsafe impl DeviceOwned for StandardCommandPoolAlloc {
+unsafe impl DeviceOwned for StandardCommandBufferAlloc {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.pool.device()
     }
 }
 
-impl Drop for StandardCommandPoolAlloc {
+impl Drop for StandardCommandBufferAlloc {
     fn drop(&mut self) {
         // Safe because `self.cmd` is wrapped in a `ManuallyDrop`.
         let cmd: UnsafeCommandPoolAlloc = unsafe { ptr::read(&*self.cmd) };
@@ -230,7 +230,7 @@ impl Drop for StandardCommandPoolAlloc {
 mod tests {
     use crate::{
         command_buffer::{
-            pool::{CommandPool, CommandPoolBuilderAlloc},
+            pool::{CommandBufferAllocator, CommandBufferBuilderAlloc},
             CommandBufferLevel,
         },
         VulkanObject,

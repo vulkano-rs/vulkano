@@ -103,8 +103,8 @@ pub use self::{
     properties::Properties,
 };
 use crate::{
-    command_buffer::pool::StandardCommandPool,
-    descriptor_set::pool::StandardDescriptorPool,
+    command_buffer::pool::StandardCommandBufferAllocator,
+    descriptor_set::pool::StandardDescriptorSetAllocator,
     instance::{debug::DebugUtilsLabel, Instance},
     memory::{pool::StandardMemoryPool, ExternalMemoryHandleType},
     OomError, SynchronizedVulkanObject, Version, VulkanError, VulkanObject,
@@ -528,10 +528,10 @@ impl Device {
     /// - Panics if called again from within the callback.
     pub fn with_standard_descriptor_pool<T>(
         self: &Arc<Self>,
-        f: impl FnOnce(&mut StandardDescriptorPool) -> T,
+        f: impl FnOnce(&mut StandardDescriptorSetAllocator) -> T,
     ) -> T {
         thread_local! {
-            static TLS: RefCell<HashMap<ash::vk::Device, StandardDescriptorPool>> =
+            static TLS: RefCell<HashMap<ash::vk::Device, StandardDescriptorSetAllocator>> =
                 RefCell::new(HashMap::default());
         }
 
@@ -539,7 +539,9 @@ impl Device {
             let mut tls = tls.borrow_mut();
             let pool = match tls.entry(self.internal_object()) {
                 Entry::Occupied(entry) => entry.into_mut(),
-                Entry::Vacant(entry) => entry.insert(StandardDescriptorPool::new(self.clone())),
+                Entry::Vacant(entry) => {
+                    entry.insert(StandardDescriptorSetAllocator::new(self.clone()))
+                }
             };
 
             f(pool)
@@ -561,10 +563,10 @@ impl Device {
     pub fn with_standard_command_pool<T>(
         self: &Arc<Self>,
         queue_family: QueueFamily,
-        f: impl FnOnce(&Arc<StandardCommandPool>) -> T,
+        f: impl FnOnce(&Arc<StandardCommandBufferAllocator>) -> T,
     ) -> Result<T, OomError> {
         thread_local! {
-            static TLS: RefCell<HashMap<(ash::vk::Device, u32), Arc<StandardCommandPool>>> =
+            static TLS: RefCell<HashMap<(ash::vk::Device, u32), Arc<StandardCommandBufferAllocator>>> =
                 RefCell::new(Default::default());
         }
 
@@ -572,10 +574,9 @@ impl Device {
             let mut tls = tls.borrow_mut();
             let pool = match tls.entry((self.internal_object(), queue_family.id())) {
                 Entry::Occupied(entry) => entry.into_mut(),
-                Entry::Vacant(entry) => entry.insert(Arc::new(StandardCommandPool::new(
-                    self.clone(),
-                    queue_family,
-                )?)),
+                Entry::Vacant(entry) => entry.insert(Arc::new(
+                    StandardCommandBufferAllocator::new(self.clone(), queue_family)?,
+                )),
             };
 
             Ok(f(pool))

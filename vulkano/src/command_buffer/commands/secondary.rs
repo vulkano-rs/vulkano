@@ -10,7 +10,7 @@
 use crate::{
     command_buffer::{
         auto::RenderPassStateType,
-        pool::CommandPoolBuilderAlloc,
+        pool::CommandBufferBuilderAlloc,
         synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder, CommandBufferExecError, CommandBufferInheritanceRenderPassType,
@@ -31,7 +31,7 @@ use std::{error::Error, fmt};
 /// secondary command buffer.
 impl<P> AutoCommandBufferBuilder<PrimaryAutoCommandBuffer<P::Alloc>, P>
 where
-    P: CommandPoolBuilderAlloc,
+    P: CommandBufferBuilderAlloc,
 {
     /// Executes a secondary command buffer.
     ///

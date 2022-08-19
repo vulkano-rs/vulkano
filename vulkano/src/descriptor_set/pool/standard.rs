@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{DescriptorPool, DescriptorPoolAlloc};
+use super::{DescriptorSetAlloc, DescriptorSetAllocator};
 use crate::{
     descriptor_set::{
         layout::DescriptorSetLayout,
@@ -27,7 +27,7 @@ use std::{collections::HashMap, sync::Arc};
 /// Interally, this implementation uses one [`SingleLayoutDescSetPool`] /
 /// [`SingleLayoutVariableDescSetPool`] per descriptor set layout.
 #[derive(Debug)]
-pub struct StandardDescriptorPool {
+pub struct StandardDescriptorSetAllocator {
     device: Arc<Device>,
     pools: HashMap<Arc<DescriptorSetLayout>, Pool>,
 }
@@ -38,24 +38,24 @@ enum Pool {
     Variable(SingleLayoutVariableDescSetPool),
 }
 
-impl StandardDescriptorPool {
+impl StandardDescriptorSetAllocator {
     /// Builds a new `StandardDescriptorPool`.
-    pub fn new(device: Arc<Device>) -> StandardDescriptorPool {
-        StandardDescriptorPool {
+    pub fn new(device: Arc<Device>) -> StandardDescriptorSetAllocator {
+        StandardDescriptorSetAllocator {
             device,
             pools: HashMap::default(),
         }
     }
 }
 
-unsafe impl DescriptorPool for StandardDescriptorPool {
-    type Alloc = StandardDescriptorPoolAlloc;
+unsafe impl DescriptorSetAllocator for StandardDescriptorSetAllocator {
+    type Alloc = StandardDescriptorSetAlloc;
 
     fn allocate(
         &mut self,
         layout: &Arc<DescriptorSetLayout>,
         variable_descriptor_count: u32,
-    ) -> Result<StandardDescriptorPoolAlloc, OomError> {
+    ) -> Result<StandardDescriptorSetAlloc, OomError> {
         assert!(
             !layout.push_descriptor(),
             "the provided descriptor set layout is for push descriptors, and cannot be used to \
@@ -93,11 +93,11 @@ unsafe impl DescriptorPool for StandardDescriptorPool {
             }
         };
 
-        Ok(StandardDescriptorPoolAlloc { inner })
+        Ok(StandardDescriptorSetAlloc { inner })
     }
 }
 
-unsafe impl DeviceOwned for StandardDescriptorPool {
+unsafe impl DeviceOwned for StandardDescriptorSetAllocator {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.device
@@ -106,7 +106,7 @@ unsafe impl DeviceOwned for StandardDescriptorPool {
 
 /// A descriptor set allocated from a `StandardDescriptorPool`.
 #[derive(Debug)]
-pub struct StandardDescriptorPoolAlloc {
+pub struct StandardDescriptorSetAlloc {
     // The actual descriptor alloc.
     inner: PoolAlloc,
 }
@@ -117,7 +117,7 @@ enum PoolAlloc {
     Variable(SingleLayoutVariablePoolAlloc),
 }
 
-impl DescriptorPoolAlloc for StandardDescriptorPoolAlloc {
+impl DescriptorSetAlloc for StandardDescriptorSetAlloc {
     #[inline]
     fn inner(&self) -> &UnsafeDescriptorSet {
         match &self.inner {

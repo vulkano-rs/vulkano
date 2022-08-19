@@ -14,8 +14,8 @@ use super::{
         CheckPushConstantsValidityError, CheckVertexBufferError,
     },
     pool::{
-        standard::{StandardCommandPoolAlloc, StandardCommandPoolBuilder},
-        CommandPool, CommandPoolAlloc, CommandPoolBuilderAlloc,
+        standard::{StandardCommandBufferAlloc, StandardCommandBufferBuilderAlloc},
+        CommandBufferAlloc, CommandBufferAllocator, CommandBufferBuilderAlloc,
     },
     synced::{
         CommandBufferState, SyncCommandBuffer, SyncCommandBufferBuilder,
@@ -53,7 +53,7 @@ use std::{
 /// don't implement the `Send` and `Sync` traits. If you use this pool, then the
 /// `AutoCommandBufferBuilder` will not implement `Send` and `Sync` either. Once a command buffer
 /// is built, however, it *does* implement `Send` and `Sync`.
-pub struct AutoCommandBufferBuilder<L, P = StandardCommandPoolBuilder> {
+pub struct AutoCommandBufferBuilder<L, P = StandardCommandBufferBuilderAlloc> {
     pub(super) inner: SyncCommandBufferBuilder,
     pool_builder_alloc: P, // Safety: must be dropped after `inner`
 
@@ -125,7 +125,7 @@ pub(super) struct QueryState {
     pub(super) in_subpass: bool,
 }
 
-impl AutoCommandBufferBuilder<PrimaryAutoCommandBuffer, StandardCommandPoolBuilder> {
+impl AutoCommandBufferBuilder<PrimaryAutoCommandBuffer, StandardCommandBufferBuilderAlloc> {
     /// Starts recording a primary command buffer.
     #[inline]
     pub fn primary(
@@ -133,7 +133,7 @@ impl AutoCommandBufferBuilder<PrimaryAutoCommandBuffer, StandardCommandPoolBuild
         queue_family: QueueFamily,
         usage: CommandBufferUsage,
     ) -> Result<
-        AutoCommandBufferBuilder<PrimaryAutoCommandBuffer, StandardCommandPoolBuilder>,
+        AutoCommandBufferBuilder<PrimaryAutoCommandBuffer, StandardCommandBufferBuilderAlloc>,
         CommandBufferBeginError,
     > {
         unsafe {
@@ -151,7 +151,7 @@ impl AutoCommandBufferBuilder<PrimaryAutoCommandBuffer, StandardCommandPoolBuild
     }
 }
 
-impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder> {
+impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandBufferBuilderAlloc> {
     /// Starts recording a secondary command buffer.
     #[inline]
     pub fn secondary(
@@ -160,7 +160,7 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
         usage: CommandBufferUsage,
         inheritance_info: CommandBufferInheritanceInfo,
     ) -> Result<
-        AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
+        AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandBufferBuilderAlloc>,
         CommandBufferBeginError,
     > {
         unsafe {
@@ -178,7 +178,7 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
     }
 }
 
-impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
+impl<L> AutoCommandBufferBuilder<L, StandardCommandBufferBuilderAlloc> {
     // Actual constructor. Private.
     //
     // `begin_info.inheritance_info` must match `level`.
@@ -187,8 +187,10 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
         queue_family: QueueFamily,
         level: CommandBufferLevel,
         begin_info: CommandBufferBeginInfo,
-    ) -> Result<AutoCommandBufferBuilder<L, StandardCommandPoolBuilder>, CommandBufferBeginError>
-    {
+    ) -> Result<
+        AutoCommandBufferBuilder<L, StandardCommandBufferBuilderAlloc>,
+        CommandBufferBeginError,
+    > {
         Self::validate_begin(&device, &queue_family, level, &begin_info)?;
 
         let &CommandBufferBeginInfo {
@@ -538,7 +540,7 @@ impl From<OomError> for CommandBufferBeginError {
 
 impl<P> AutoCommandBufferBuilder<PrimaryAutoCommandBuffer<P::Alloc>, P>
 where
-    P: CommandPoolBuilderAlloc,
+    P: CommandBufferBuilderAlloc,
 {
     /// Builds the command buffer.
     #[inline]
@@ -571,7 +573,7 @@ where
 
 impl<P> AutoCommandBufferBuilder<SecondaryAutoCommandBuffer<P::Alloc>, P>
 where
-    P: CommandPoolBuilderAlloc,
+    P: CommandBufferBuilderAlloc,
 {
     /// Builds the command buffer.
     #[inline]
@@ -723,7 +725,7 @@ unsafe impl<L, P> DeviceOwned for AutoCommandBufferBuilder<L, P> {
     }
 }
 
-pub struct PrimaryAutoCommandBuffer<P = StandardCommandPoolAlloc> {
+pub struct PrimaryAutoCommandBuffer<P = StandardCommandBufferAlloc> {
     inner: SyncCommandBuffer,
     _pool_alloc: P, // Safety: must be dropped after `inner`
 
@@ -740,7 +742,7 @@ unsafe impl<P> DeviceOwned for PrimaryAutoCommandBuffer<P> {
 
 unsafe impl<P> PrimaryCommandBuffer for PrimaryAutoCommandBuffer<P>
 where
-    P: CommandPoolAlloc,
+    P: CommandBufferAlloc,
 {
     #[inline]
     fn inner(&self) -> &UnsafeCommandBuffer {
@@ -837,7 +839,7 @@ where
     }
 }
 
-pub struct SecondaryAutoCommandBuffer<P = StandardCommandPoolAlloc> {
+pub struct SecondaryAutoCommandBuffer<P = StandardCommandBufferAlloc> {
     inner: SyncCommandBuffer,
     _pool_alloc: P, // Safety: must be dropped after `inner`
     inheritance_info: CommandBufferInheritanceInfo,
@@ -855,7 +857,7 @@ unsafe impl<P> DeviceOwned for SecondaryAutoCommandBuffer<P> {
 
 unsafe impl<P> SecondaryCommandBuffer for SecondaryAutoCommandBuffer<P>
 where
-    P: CommandPoolAlloc,
+    P: CommandBufferAlloc,
 {
     #[inline]
     fn inner(&self) -> &UnsafeCommandBuffer {

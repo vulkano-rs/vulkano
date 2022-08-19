@@ -10,7 +10,7 @@
 use crate::{
     command_buffer::{
         auto::{BeginRenderPassState, BeginRenderingState, RenderPassState, RenderPassStateType},
-        pool::CommandPoolBuilderAlloc,
+        pool::CommandBufferBuilderAlloc,
         synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder, CommandBufferInheritanceRenderPassType, PrimaryAutoCommandBuffer,
@@ -34,7 +34,7 @@ use std::{cmp::min, error::Error, fmt, ops::Range, sync::Arc};
 /// These commands require a graphics queue.
 impl<P> AutoCommandBufferBuilder<PrimaryAutoCommandBuffer<P::Alloc>, P>
 where
-    P: CommandPoolBuilderAlloc,
+    P: CommandBufferBuilderAlloc,
 {
     /// Begins a render pass using a render pass object and framebuffer.
     ///
