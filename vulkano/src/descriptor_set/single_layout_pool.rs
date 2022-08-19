@@ -11,8 +11,8 @@ use super::{
     allocator::DescriptorSetAlloc,
     layout::DescriptorSetLayout,
     pool::{
-        DescriptorPoolAllocError, DescriptorSetAllocateInfo, UnsafeDescriptorPool,
-        UnsafeDescriptorPoolCreateInfo,
+        DescriptorPool, DescriptorPoolAllocError, DescriptorPoolCreateInfo,
+        DescriptorSetAllocateInfo,
     },
     sys::UnsafeDescriptorSet,
     DescriptorSet, DescriptorSetCreationError, DescriptorSetInner, DescriptorSetResources,
@@ -118,7 +118,7 @@ impl SingleLayoutDescSetPool {
 struct SingleLayoutPool {
     // The actual Vulkan descriptor pool. This field isn't actually used anywhere, but we need to
     // keep the pool alive in order to keep the descriptor sets valid.
-    _inner: UnsafeDescriptorPool,
+    _inner: DescriptorPool,
     // List of descriptor sets. When `alloc` is called, a descriptor will be extracted from this
     // list. When a `SingleLayoutPoolAlloc` is dropped, its descriptor set is put back in this list.
     reserve: ArrayQueue<UnsafeDescriptorSet>,
@@ -126,9 +126,9 @@ struct SingleLayoutPool {
 
 impl SingleLayoutPool {
     fn new(layout: &Arc<DescriptorSetLayout>, set_count: usize) -> Result<Arc<Self>, OomError> {
-        let mut inner = UnsafeDescriptorPool::new(
+        let mut inner = DescriptorPool::new(
             layout.device().clone(),
-            UnsafeDescriptorPoolCreateInfo {
+            DescriptorPoolCreateInfo {
                 max_sets: set_count as u32,
                 pool_sizes: layout
                     .descriptor_counts()
@@ -265,7 +265,7 @@ pub struct SingleLayoutVariableDescSetPool {
     // we grab one from the reserve, or create a new pool if there are none.
     inner: Arc<SingleLayoutVariablePool>,
     // When a `SingleLayoutVariablePool` is dropped, it returns its Vulkan pool here for reuse.
-    reserve: Arc<ArrayQueue<UnsafeDescriptorPool>>,
+    reserve: Arc<ArrayQueue<DescriptorPool>>,
     // The descriptor set layout that this pool is for.
     layout: Arc<DescriptorSetLayout>,
     // The number of sets currently allocated from the Vulkan pool.
@@ -384,19 +384,19 @@ impl SingleLayoutVariableDescSetPool {
 #[derive(Debug)]
 struct SingleLayoutVariablePool {
     // The actual Vulkan descriptor pool.
-    inner: UnsafeCell<ManuallyDrop<UnsafeDescriptorPool>>,
+    inner: UnsafeCell<ManuallyDrop<DescriptorPool>>,
     // Where we return the Vulkan descriptor pool in our `Drop` impl.
-    reserve: Arc<ArrayQueue<UnsafeDescriptorPool>>,
+    reserve: Arc<ArrayQueue<DescriptorPool>>,
 }
 
 impl SingleLayoutVariablePool {
     fn new(
         layout: &Arc<DescriptorSetLayout>,
-        reserve: Arc<ArrayQueue<UnsafeDescriptorPool>>,
+        reserve: Arc<ArrayQueue<DescriptorPool>>,
     ) -> Result<Arc<Self>, OomError> {
-        let unsafe_pool = UnsafeDescriptorPool::new(
+        let unsafe_pool = DescriptorPool::new(
             layout.device().clone(),
-            UnsafeDescriptorPoolCreateInfo {
+            DescriptorPoolCreateInfo {
                 max_sets: MAX_SETS as u32,
                 pool_sizes: layout
                     .descriptor_counts()

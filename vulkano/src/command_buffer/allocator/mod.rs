@@ -17,7 +17,7 @@
 //! this trait yourself by wrapping around the `UnsafeCommandPool` type.
 
 pub use self::standard::StandardCommandBufferAllocator;
-use super::{pool::UnsafeCommandPoolAlloc, CommandBufferLevel};
+use super::{pool::CommandPoolAlloc, CommandBufferLevel};
 use crate::{
     device::{physical::QueueFamily, DeviceOwned},
     OomError,
@@ -78,7 +78,7 @@ pub unsafe trait CommandBufferBuilderAlloc: DeviceOwned {
     type Alloc: CommandBufferAlloc;
 
     /// Returns the internal object that contains the command buffer.
-    fn inner(&self) -> &UnsafeCommandPoolAlloc;
+    fn inner(&self) -> &CommandPoolAlloc;
 
     /// Turns this builder into a command buffer that is pending execution.
     fn into_alloc(self) -> Self::Alloc;
@@ -95,7 +95,7 @@ pub unsafe trait CommandBufferBuilderAlloc: DeviceOwned {
 ///
 pub unsafe trait CommandBufferAlloc: DeviceOwned + Send + Sync {
     /// Returns the internal object that contains the command buffer.
-    fn inner(&self) -> &UnsafeCommandPoolAlloc;
+    fn inner(&self) -> &CommandPoolAlloc;
 
     /// Returns the queue family that the pool targets.
     fn queue_family(&self) -> QueueFamily;

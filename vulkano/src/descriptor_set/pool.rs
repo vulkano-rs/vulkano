@@ -31,7 +31,7 @@ use std::{
 /// A pool has a maximum number of descriptor sets and a maximum number of descriptors (one value
 /// per descriptor type) it can allocate.
 #[derive(Debug)]
-pub struct UnsafeDescriptorPool {
+pub struct DescriptorPool {
     handle: ash::vk::DescriptorPool,
     device: Arc<Device>,
 
@@ -40,7 +40,7 @@ pub struct UnsafeDescriptorPool {
     can_free_descriptor_sets: bool,
 }
 
-impl UnsafeDescriptorPool {
+impl DescriptorPool {
     /// Creates a new `UnsafeDescriptorPool`.
     ///
     /// # Panics
@@ -50,9 +50,9 @@ impl UnsafeDescriptorPool {
     /// - Panics if `create_info.pool_sizes` contains a descriptor type with a count of `0`.
     pub fn new(
         device: Arc<Device>,
-        create_info: UnsafeDescriptorPoolCreateInfo,
-    ) -> Result<UnsafeDescriptorPool, OomError> {
-        let UnsafeDescriptorPoolCreateInfo {
+        create_info: DescriptorPoolCreateInfo,
+    ) -> Result<DescriptorPool, OomError> {
+        let DescriptorPoolCreateInfo {
             max_sets,
             pool_sizes,
             can_free_descriptor_sets,
@@ -108,7 +108,7 @@ impl UnsafeDescriptorPool {
             }
         };
 
-        Ok(UnsafeDescriptorPool {
+        Ok(DescriptorPool {
             handle,
             device,
 
@@ -124,17 +124,17 @@ impl UnsafeDescriptorPool {
     /// the `create_info` must match the info used to create said object
     pub unsafe fn from_handle(
         handle: ash::vk::DescriptorPool,
-        create_info: UnsafeDescriptorPoolCreateInfo,
+        create_info: DescriptorPoolCreateInfo,
         device: Arc<Device>,
-    ) -> UnsafeDescriptorPool {
-        let UnsafeDescriptorPoolCreateInfo {
+    ) -> DescriptorPool {
+        let DescriptorPoolCreateInfo {
             max_sets,
             pool_sizes,
             can_free_descriptor_sets,
             _ne: _,
         } = create_info;
 
-        UnsafeDescriptorPool {
+        DescriptorPool {
             handle,
             device,
 
@@ -319,7 +319,7 @@ impl UnsafeDescriptorPool {
     }
 }
 
-impl Drop for UnsafeDescriptorPool {
+impl Drop for DescriptorPool {
     #[inline]
     fn drop(&mut self) {
         unsafe {
@@ -333,7 +333,7 @@ impl Drop for UnsafeDescriptorPool {
     }
 }
 
-unsafe impl VulkanObject for UnsafeDescriptorPool {
+unsafe impl VulkanObject for DescriptorPool {
     type Object = ash::vk::DescriptorPool;
 
     #[inline]
@@ -342,23 +342,23 @@ unsafe impl VulkanObject for UnsafeDescriptorPool {
     }
 }
 
-unsafe impl DeviceOwned for UnsafeDescriptorPool {
+unsafe impl DeviceOwned for DescriptorPool {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.device
     }
 }
 
-impl PartialEq for UnsafeDescriptorPool {
+impl PartialEq for DescriptorPool {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.handle == other.handle && self.device() == other.device()
     }
 }
 
-impl Eq for UnsafeDescriptorPool {}
+impl Eq for DescriptorPool {}
 
-impl Hash for UnsafeDescriptorPool {
+impl Hash for DescriptorPool {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
@@ -368,7 +368,7 @@ impl Hash for UnsafeDescriptorPool {
 
 /// Parameters to create a new `UnsafeDescriptorPool`.
 #[derive(Clone, Debug)]
-pub struct UnsafeDescriptorPoolCreateInfo {
+pub struct DescriptorPoolCreateInfo {
     /// The maximum number of descriptor sets that can be allocated from the pool.
     ///
     /// The default value is `0`, which must be overridden.
@@ -388,7 +388,7 @@ pub struct UnsafeDescriptorPoolCreateInfo {
     pub _ne: crate::NonExhaustive,
 }
 
-impl Default for UnsafeDescriptorPoolCreateInfo {
+impl Default for DescriptorPoolCreateInfo {
     #[inline]
     fn default() -> Self {
         Self {
@@ -450,7 +450,7 @@ impl fmt::Display for DescriptorPoolAllocError {
 
 #[cfg(test)]
 mod tests {
-    use super::{UnsafeDescriptorPool, UnsafeDescriptorPoolCreateInfo};
+    use super::{DescriptorPool, DescriptorPoolCreateInfo};
     use crate::{
         descriptor_set::{
             layout::{
@@ -466,9 +466,9 @@ mod tests {
     fn pool_create() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let _ = UnsafeDescriptorPool::new(
+        let _ = DescriptorPool::new(
             device,
-            UnsafeDescriptorPoolCreateInfo {
+            DescriptorPoolCreateInfo {
                 max_sets: 10,
                 pool_sizes: [(DescriptorType::UniformBuffer, 1)].into_iter().collect(),
                 ..Default::default()
@@ -482,9 +482,9 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         assert_should_panic!({
-            let _ = UnsafeDescriptorPool::new(
+            let _ = DescriptorPool::new(
                 device,
-                UnsafeDescriptorPoolCreateInfo {
+                DescriptorPoolCreateInfo {
                     max_sets: 0,
                     pool_sizes: [(DescriptorType::UniformBuffer, 1)].into_iter().collect(),
                     ..Default::default()
@@ -498,9 +498,9 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         assert_should_panic!({
-            let _ = UnsafeDescriptorPool::new(
+            let _ = DescriptorPool::new(
                 device,
-                UnsafeDescriptorPoolCreateInfo {
+                DescriptorPoolCreateInfo {
                     max_sets: 10,
                     ..Default::default()
                 },
@@ -528,9 +528,9 @@ mod tests {
         )
         .unwrap();
 
-        let mut pool = UnsafeDescriptorPool::new(
+        let mut pool = DescriptorPool::new(
             device,
-            UnsafeDescriptorPoolCreateInfo {
+            DescriptorPoolCreateInfo {
                 max_sets: 10,
                 pool_sizes: [(DescriptorType::UniformBuffer, 10)].into_iter().collect(),
                 ..Default::default()
@@ -570,9 +570,9 @@ mod tests {
         .unwrap();
 
         assert_should_panic!({
-            let mut pool = UnsafeDescriptorPool::new(
+            let mut pool = DescriptorPool::new(
                 device2,
-                UnsafeDescriptorPoolCreateInfo {
+                DescriptorPoolCreateInfo {
                     max_sets: 10,
                     pool_sizes: [(DescriptorType::UniformBuffer, 10)].into_iter().collect(),
                     ..Default::default()
@@ -593,9 +593,9 @@ mod tests {
     fn alloc_zero() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let mut pool = UnsafeDescriptorPool::new(
+        let mut pool = DescriptorPool::new(
             device,
-            UnsafeDescriptorPoolCreateInfo {
+            DescriptorPoolCreateInfo {
                 max_sets: 1,
                 pool_sizes: [(DescriptorType::UniformBuffer, 1)].into_iter().collect(),
                 ..Default::default()

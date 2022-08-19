@@ -8,13 +8,12 @@
 // according to those terms.
 
 use super::{
-    CommandBufferAlloc, CommandBufferAllocator, CommandBufferBuilderAlloc, UnsafeCommandPoolAlloc,
+    CommandBufferAlloc, CommandBufferAllocator, CommandBufferBuilderAlloc, CommandPoolAlloc,
 };
 use crate::{
     command_buffer::{
         pool::{
-            CommandBufferAllocateInfo, UnsafeCommandPool, UnsafeCommandPoolCreateInfo,
-            UnsafeCommandPoolCreationError,
+            CommandBufferAllocateInfo, CommandPool, CommandPoolCreateInfo, CommandPoolCreationError,
         },
         CommandBufferLevel,
     },
@@ -34,11 +33,11 @@ use std::{marker::PhantomData, mem::ManuallyDrop, ptr, sync::Arc, vec::IntoIter 
 #[derive(Debug)]
 pub struct StandardCommandBufferAllocator {
     // The Vulkan pool specific to a device's queue family.
-    inner: UnsafeCommandPool,
+    inner: CommandPool,
     // List of existing primary command buffers that are available for reuse.
-    available_primary_command_buffers: SegQueue<UnsafeCommandPoolAlloc>,
+    available_primary_command_buffers: SegQueue<CommandPoolAlloc>,
     // List of existing secondary command buffers that are available for reuse.
-    available_secondary_command_buffers: SegQueue<UnsafeCommandPoolAlloc>,
+    available_secondary_command_buffers: SegQueue<CommandPoolAlloc>,
 }
 
 impl StandardCommandBufferAllocator {
@@ -56,16 +55,16 @@ impl StandardCommandBufferAllocator {
             queue_family.physical_device().internal_object()
         );
 
-        let inner = UnsafeCommandPool::new(
+        let inner = CommandPool::new(
             device,
-            UnsafeCommandPoolCreateInfo {
+            CommandPoolCreateInfo {
                 queue_family_index: queue_family.id(),
                 reset_command_buffer: true,
                 ..Default::default()
             },
         )
         .map_err(|err| match err {
-            UnsafeCommandPoolCreationError::OomError(err) => err,
+            CommandPoolCreationError::OomError(err) => err,
             _ => panic!("Unexpected error: {}", err),
         })?;
 
@@ -164,7 +163,7 @@ unsafe impl CommandBufferBuilderAlloc for StandardCommandBufferBuilderAlloc {
     type Alloc = StandardCommandBufferAlloc;
 
     #[inline]
-    fn inner(&self) -> &UnsafeCommandPoolAlloc {
+    fn inner(&self) -> &CommandPoolAlloc {
         self.inner.inner()
     }
 
@@ -189,7 +188,7 @@ unsafe impl DeviceOwned for StandardCommandBufferBuilderAlloc {
 /// Command buffer allocated from a `StandardCommandPool`.
 pub struct StandardCommandBufferAlloc {
     // The actual command buffer. Extracted in the `Drop` implementation.
-    cmd: ManuallyDrop<UnsafeCommandPoolAlloc>,
+    cmd: ManuallyDrop<CommandPoolAlloc>,
     // We hold a reference to the command pool for our destructor.
     pool: Arc<StandardCommandBufferAllocator>,
 }
@@ -199,7 +198,7 @@ unsafe impl Sync for StandardCommandBufferAlloc {}
 
 unsafe impl CommandBufferAlloc for StandardCommandBufferAlloc {
     #[inline]
-    fn inner(&self) -> &UnsafeCommandPoolAlloc {
+    fn inner(&self) -> &CommandPoolAlloc {
         &*self.cmd
     }
 
@@ -219,7 +218,7 @@ unsafe impl DeviceOwned for StandardCommandBufferAlloc {
 impl Drop for StandardCommandBufferAlloc {
     fn drop(&mut self) {
         // Safe because `self.cmd` is wrapped in a `ManuallyDrop`.
-        let cmd: UnsafeCommandPoolAlloc = unsafe { ptr::read(&*self.cmd) };
+        let cmd: CommandPoolAlloc = unsafe { ptr::read(&*self.cmd) };
 
         match cmd.level() {
             CommandBufferLevel::Primary => self.pool.available_primary_command_buffers.push(cmd),
