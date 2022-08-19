@@ -67,6 +67,7 @@ use std::{
 /// use vulkano::sync::GpuFuture;
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
 /// # let queue: std::sync::Arc<vulkano::device::Queue> = return;
+/// # let cb_allocator: std::sync::Arc<vulkano::command_buffer::allocator::StandardCommandBufferAllocator> = return;
 ///
 /// // Create the ring buffer.
 /// let buffer = CpuBufferPool::upload(device.clone());
@@ -77,7 +78,7 @@ use std::{
 ///     let sub_buffer = buffer.next(data).unwrap();
 ///
 ///     // You can then use `sub_buffer` as if it was an entirely separate buffer.
-///     AutoCommandBufferBuilder::primary(device.clone(), queue.family(), CommandBufferUsage::OneTimeSubmit)
+///     AutoCommandBufferBuilder::primary(&cb_allocator, queue.family(), CommandBufferUsage::OneTimeSubmit)
 ///         .unwrap()
 ///         // For the sake of the example we just call `update_buffer` on the buffer, even though
 ///         // it is pointless to do that.

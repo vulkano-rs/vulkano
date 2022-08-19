@@ -26,13 +26,18 @@
 //!
 //! # let device: Arc<vulkano::device::Device> = return;
 //! # let queue: Arc<vulkano::device::Queue> = return;
+//! # let cb_allocator: Arc<vulkano::command_buffer::allocator::StandardCommandBufferAllocator> = return;
 //! let usage = BufferUsage {
 //!     storage_texel_buffer: true,
 //!     .. BufferUsage::none()
 //! };
 //!
-//! let (buffer, _future) = DeviceLocalBuffer::<[u32]>::from_iter((0..128).map(|n| n), usage,
-//!                                                             queue.clone()).unwrap();
+//! let (buffer, _future) = DeviceLocalBuffer::<[u32]>::from_iter(
+//!     (0..128).map(|n| n),
+//!     usage,
+//!     &cb_allocator,
+//!     queue.clone()
+//! ).unwrap();
 //! let _view = BufferView::new(
 //!     buffer,
 //!     BufferViewCreateInfo {

@@ -78,6 +78,7 @@ use std::{
 /// use vulkano::sync::GpuFuture;
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
 /// # let queue: std::sync::Arc<vulkano::device::Queue> = return;
+/// # let cb_allocator: std::sync::Arc<vulkano::command_buffer::allocator::StandardCommandBufferAllocator> = return;
 ///
 /// // Simple iterator to construct test data.
 /// let data = (0..10_000).map(|i| i as f32);
@@ -102,7 +103,7 @@ use std::{
 ///
 /// // Create a one-time command to copy between the buffers.
 /// let mut cbb = AutoCommandBufferBuilder::primary(
-///     device.clone(),
+///     &cb_allocator,
 ///     queue.family(),
 ///     CommandBufferUsage::OneTimeSubmit,
 /// )

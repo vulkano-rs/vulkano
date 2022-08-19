@@ -61,8 +61,9 @@
 //! # let vertex_buffer: std::sync::Arc<vulkano::buffer::CpuAccessibleBuffer<[Vertex]>> = return;
 //! # let render_pass_begin_info: vulkano::command_buffer::RenderPassBeginInfo = return;
 //! # let graphics_pipeline: std::sync::Arc<vulkano::pipeline::graphics::GraphicsPipeline> = return;
+//! # let cb_allocator: std::sync::Arc<vulkano::command_buffer::allocator::StandardCommandBufferAllocator> = return;
 //! let cb = AutoCommandBufferBuilder::primary(
-//!     device.clone(),
+//!     &cb_allocator,
 //!     queue.family(),
 //!     CommandBufferUsage::MultipleSubmit
 //! ).unwrap()
