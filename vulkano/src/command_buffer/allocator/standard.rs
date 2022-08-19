@@ -23,13 +23,14 @@ use crate::{
 use crossbeam_queue::SegQueue;
 use std::{marker::PhantomData, mem::ManuallyDrop, ptr, sync::Arc, vec::IntoIter as VecIntoIter};
 
-/// Standard implementation of a command pool.
+/// Standard implementation of a command buffer allocator.
 ///
-/// A thread can have as many `Arc<StandardCommandPool>`s as needed, but none of them can escape the
-/// thread they were created on. This is done so that there are no locks involved when creating
-/// command buffers. Command buffers can't be moved between threads during the building process, but
-/// finished command buffers can. When a command buffer is dropped, it is returned back to the pool
-/// for reuse.
+/// A thread can have as many `Arc<StandardCommandBufferAllocator>`s as needed, but they can't be
+/// shared between threads. This is done so that there are no locks involved when creating command
+/// buffers. You are encouraged to create one allocator per frame in flight per thread.
+///
+/// Command buffers can't be moved between threads during the building process, but finished command
+/// buffers can. When a command buffer is dropped, it is returned back to the pool for reuse.
 #[derive(Debug)]
 pub struct StandardCommandBufferAllocator {
     // The Vulkan pool specific to a device's queue family.
@@ -41,7 +42,7 @@ pub struct StandardCommandBufferAllocator {
 }
 
 impl StandardCommandBufferAllocator {
-    /// Builds a new pool.
+    /// Builds a new allocator.
     ///
     /// # Panics
     ///
@@ -150,10 +151,12 @@ unsafe impl DeviceOwned for StandardCommandBufferAllocator {
     }
 }
 
-/// Command buffer allocated from a `StandardCommandPool` that is currently being built.
+/// Command buffer allocated from a [`StandardCommandBufferAllocator`] that is currently being
+/// built.
 pub struct StandardCommandBufferBuilderAlloc {
-    // The only difference between a `StandardCommandPoolBuilder` and a `StandardCommandPoolAlloc`
-    // is that the former must not implement `Send` and `Sync`. Therefore we just share the structs.
+    // The only difference between a `StandardCommandBufferBuilder` and a
+    // `StandardCommandBufferAlloc` is that the former must not implement `Send` and `Sync`.
+    // Therefore we just share the structs.
     inner: StandardCommandBufferAlloc,
     // Unimplemented `Send` and `Sync` from the builder.
     dummy_avoid_send_sync: PhantomData<*const u8>,
@@ -185,7 +188,7 @@ unsafe impl DeviceOwned for StandardCommandBufferBuilderAlloc {
     }
 }
 
-/// Command buffer allocated from a `StandardCommandPool`.
+/// Command buffer allocated from a [`StandardCommandBufferAllocator`].
 pub struct StandardCommandBufferAlloc {
     // The actual command buffer. Extracted in the `Drop` implementation.
     cmd: ManuallyDrop<CommandPoolAlloc>,

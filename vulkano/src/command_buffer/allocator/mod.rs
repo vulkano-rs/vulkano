@@ -12,9 +12,9 @@
 //! A command pool holds and manages the memory of one or more command buffers. If you destroy a
 //! command pool, all of its command buffers are automatically destroyed.
 //!
-//! In vulkano, creating a command buffer requires passing an implementation of the `CommandPool`
-//! trait. By default vulkano will use the `StandardCommandPool` struct, but you can implement
-//! this trait yourself by wrapping around the `UnsafeCommandPool` type.
+//! In vulkano, creating a command buffer requires passing an implementation of the
+//! [`CommandBufferAllocator`] trait, which you can implement yourself or use the vulkano-provided
+//! [`StandardCommandBufferAllocator`].
 
 pub use self::standard::StandardCommandBufferAllocator;
 use super::{pool::CommandPoolAlloc, CommandBufferLevel};
@@ -30,33 +30,28 @@ pub mod standard;
 /// # Safety
 ///
 /// A Vulkan command pool must be externally synchronized as if it owned the command buffers that
-/// were allocated from it. This includes allocating from the pool, freeing from the pool,
-/// resetting the pool or individual command buffers, and most importantly recording commands to
-/// command buffers.
+/// were allocated from it. This includes allocating from the pool, freeing from the pool, resetting
+/// the pool or individual command buffers, and most importantly recording commands to command
+/// buffers. The implementation of `CommandBufferAllocator` is expected to manage this.
 ///
-/// The implementation of `CommandPool` is expected to manage this. For as long as a `Builder`
-/// is alive, the trait implementation is expected to lock the pool that allocated the `Builder`
-/// for the current thread.
-///
-/// > **Note**: This may be modified in the future to allow different implementation strategies.
-///
-/// The destructors of the `CommandPoolBuilderAlloc` and the `CommandPoolAlloc` are expected to
-/// free the command buffer, reset the command buffer, or add it to a pool so that it gets reused.
-/// If the implementation frees or resets the command buffer, it must not forget that this
-/// operation must lock the pool.
-///
+/// The destructors of the [`CommandBufferBuilderAlloc`] and the [`CommandBufferAlloc`] are expected
+/// to free the command buffer, reset the command buffer, or add it to a pool so that it gets
+/// reused. If the implementation frees or resets the command buffer, it must not forget that this
+/// operation must be externally synchronized.
 pub unsafe trait CommandBufferAllocator: DeviceOwned {
-    /// See `alloc()`.
+    /// See [`allocate`](Self::allocate).
     type Iter: Iterator<Item = Self::Builder>;
+
     /// Represents a command buffer that has been allocated and that is currently being built.
     type Builder: CommandBufferBuilderAlloc<Alloc = Self::Alloc>;
+
     /// Represents a command buffer that has been allocated and that is pending execution or is
     /// being executed.
     type Alloc: CommandBufferAlloc;
 
-    /// Allocates command buffers from this pool.
+    /// Allocates command buffers.
     ///
-    /// Returns an iterator that contains an bunch of allocated command buffers.
+    /// Returns an iterator that contains the requested amount of allocated command buffers.
     fn allocate(
         &self,
         level: CommandBufferLevel,
@@ -71,8 +66,7 @@ pub unsafe trait CommandBufferAllocator: DeviceOwned {
 ///
 /// # Safety
 ///
-/// See `CommandPool` for information about safety.
-///
+/// See [`CommandBufferAllocator`] for information about safety.
 pub unsafe trait CommandBufferBuilderAlloc: DeviceOwned {
     /// Return type of `into_alloc`.
     type Alloc: CommandBufferAlloc;
@@ -91,8 +85,7 @@ pub unsafe trait CommandBufferBuilderAlloc: DeviceOwned {
 ///
 /// # Safety
 ///
-/// See `CommandPool` for information about safety.
-///
+/// See [`CommandBufferAllocator`] for information about safety.
 pub unsafe trait CommandBufferAlloc: DeviceOwned + Send + Sync + 'static {
     /// Returns the internal object that contains the command buffer.
     fn inner(&self) -> &CommandPoolAlloc;

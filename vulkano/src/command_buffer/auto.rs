@@ -49,10 +49,10 @@ use std::{
     },
 };
 
-/// Note that command buffers allocated from the default command pool (`Arc<StandardCommandPool>`)
-/// don't implement the `Send` and `Sync` traits. If you use this pool, then the
-/// `AutoCommandBufferBuilder` will not implement `Send` and `Sync` either. Once a command buffer
-/// is built, however, it *does* implement `Send` and `Sync`.
+/// Note that command buffers allocated from `Arc<StandardCommandBufferAllocator>` don't implement
+/// the `Send` and `Sync` traits. If you use this allocator, then the `AutoCommandBufferBuilder`
+/// will not implement `Send` and `Sync` either. Once a command buffer is built, however, it *does*
+/// implement `Send` and `Sync`.
 pub struct AutoCommandBufferBuilder<L, A = Arc<StandardCommandBufferAllocator>>
 where
     A: CommandBufferAllocator,

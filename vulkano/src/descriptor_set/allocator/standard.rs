@@ -22,7 +22,7 @@ use crate::{
 };
 use std::{collections::HashMap, sync::Arc};
 
-/// Standard implementation of a descriptor pool.
+/// Standard implementation of a descriptor set allocator.
 ///
 /// Interally, this implementation uses one [`SingleLayoutDescSetPool`] /
 /// [`SingleLayoutVariableDescSetPool`] per descriptor set layout.
@@ -39,7 +39,7 @@ enum Pool {
 }
 
 impl StandardDescriptorSetAllocator {
-    /// Builds a new `StandardDescriptorPool`.
+    /// Builds a new `StandardDescriptorSetAllocator`.
     pub fn new(device: Arc<Device>) -> StandardDescriptorSetAllocator {
         StandardDescriptorSetAllocator {
             device,
@@ -104,7 +104,7 @@ unsafe impl DeviceOwned for StandardDescriptorSetAllocator {
     }
 }
 
-/// A descriptor set allocated from a `StandardDescriptorPool`.
+/// A descriptor set allocated from a [`StandardDescriptorSetAllocator`].
 #[derive(Debug)]
 pub struct StandardDescriptorSetAlloc {
     // The actual descriptor alloc.

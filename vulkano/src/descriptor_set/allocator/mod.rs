@@ -7,7 +7,14 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! A pool from which descriptor sets can be allocated.
+//! In the Vulkan API, descriptor sets must be allocated from *descriptor pools*.
+//!
+//! A descriptor pool holds and manages the memory of one or more descriptor sets. If you destroy a
+//! descriptor pool, all of its descriptor sets are automatically destroyed.
+//!
+//! In vulkano, creating a descriptor set requires passing an implementation of the
+//! [`DescriptorSetAllocator`] trait, which you can implement yourself or use the vulkano-provided
+//! [`StandardDescriptorSetAllocator`].
 
 pub use self::standard::StandardDescriptorSetAllocator;
 use super::{layout::DescriptorSetLayout, sys::UnsafeDescriptorSet};
@@ -16,7 +23,19 @@ use std::sync::Arc;
 
 pub mod standard;
 
-/// A pool from which descriptor sets can be allocated.
+/// Types that manage the memory of descriptor sets.
+///
+/// # Safety
+///
+/// A Vulkan descriptor pool must be externally synchronized as if it owned the descriptor sets that
+/// were allocated from it. This includes allocating from the pool, freeing from the pool and
+/// resetting the pool or individual descriptor sets. The implementation of `DescriptorSetAllocator`
+/// is expected to manage this.
+///
+/// The destructor of the [`DescriptorSetAlloc`] is expected to free the descriptor set, reset the
+/// descriptor set, or add it to a pool so that it gets reused. If the implementation frees or
+/// resets the descriptor set, it must not forget that this operation must be externally
+/// synchronized.
 pub unsafe trait DescriptorSetAllocator: DeviceOwned {
     /// Object that represented an allocated descriptor set.
     ///

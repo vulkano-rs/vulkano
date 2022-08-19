@@ -23,7 +23,7 @@ use std::{
     sync::Arc,
 };
 
-/// Low-level implementation of a command pool.
+/// Represents a Vulkan command pool.
 ///
 /// A command pool is always tied to a specific queue family. Command buffers allocated from a pool
 /// can only be executed on the corresponding queue family.
@@ -34,7 +34,7 @@ use std::{
 pub struct CommandPool {
     handle: ash::vk::CommandPool,
     device: Arc<Device>,
-    // We don't want `UnsafeCommandPool` to implement Sync.
+    // We don't want `CommandPool` to implement Sync.
     // This marker unimplements both Send and Sync, but we reimplement Send manually right under.
     dummy_avoid_sync: PhantomData<*const u8>,
 
@@ -46,7 +46,7 @@ pub struct CommandPool {
 unsafe impl Send for CommandPool {}
 
 impl CommandPool {
-    /// Creates a new `UnsafeCommandPool`.
+    /// Creates a new `CommandPool`.
     pub fn new(
         device: Arc<Device>,
         mut create_info: CommandPoolCreateInfo,
@@ -72,10 +72,12 @@ impl CommandPool {
         })
     }
 
-    /// Creates a new `UnsafeCommandPool` from an ash-handle
+    /// Creates a new `CommandPool` from an ash-handle.
+    ///
     /// # Safety
-    /// The `handle` has to be a valid vulkan object handle and
-    /// the `create_info` must match the info used to create said object
+    ///
+    /// - The `handle` has to be a valid vulkan object handle.
+    /// - The `create_info` must match the info used to create said object.
     pub unsafe fn from_handle(
         handle: ash::vk::CommandPool,
         create_info: CommandPoolCreateInfo,
@@ -354,7 +356,7 @@ impl Hash for CommandPool {
     }
 }
 
-/// Error that can happen when creating an `UnsafeCommandPool`.
+/// Error that can happen when creating an `CommandPool`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CommandPoolCreationError {
     /// Not enough memory.
@@ -405,7 +407,7 @@ impl From<VulkanError> for CommandPoolCreationError {
     }
 }
 
-/// Parameters to create an `UnsafeCommandPool`.
+/// Parameters to create an `CommandPool`.
 #[derive(Clone, Debug)]
 pub struct CommandPoolCreateInfo {
     /// The index of the queue family that this pool is created for. All command buffers allocated
