@@ -17,8 +17,13 @@
 use std::{fs::File, io::BufWriter, path::Path};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
-    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, CopyImageToBufferInfo},
-    descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
+    command_buffer::{
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+        CopyImageToBufferInfo,
+    },
+    descriptor_set::{
+        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+    },
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
         Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
@@ -187,6 +192,10 @@ fn main() {
     )
     .unwrap();
 
+    let mut descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
+    let command_buffer_allocator =
+        StandardCommandBufferAllocator::new(device.clone(), queue.family()).unwrap();
+
     let image = StorageImage::new(
         device.clone(),
         ImageDimensions::Dim2d {
@@ -201,9 +210,12 @@ fn main() {
     let view = ImageView::new_default(image.clone()).unwrap();
 
     let layout = pipeline.layout().set_layouts().get(0).unwrap();
-    let set =
-        PersistentDescriptorSet::new(layout.clone(), [WriteDescriptorSet::image_view(0, view)])
-            .unwrap();
+    let set = PersistentDescriptorSet::new(
+        &mut descriptor_set_allocator,
+        layout.clone(),
+        [WriteDescriptorSet::image_view(0, view)],
+    )
+    .unwrap();
 
     let buf = CpuAccessibleBuffer::from_iter(
         device.clone(),
@@ -214,7 +226,7 @@ fn main() {
     .unwrap();
 
     let mut builder = AutoCommandBufferBuilder::primary(
-        device.clone(),
+        &command_buffer_allocator,
         queue.family(),
         CommandBufferUsage::OneTimeSubmit,
     )

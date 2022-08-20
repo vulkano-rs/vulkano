@@ -30,8 +30,12 @@
 use std::sync::Arc;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
-    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage},
-    descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
+    command_buffer::{
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+    },
+    descriptor_set::{
+        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+    },
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
         Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo,
@@ -182,16 +186,19 @@ fn main() {
         queue: Arc<Queue>,
         data_buffer: Arc<CpuAccessibleBuffer<[u32]>>,
         parameters: shaders::ty::Parameters,
+        command_buffer_allocator: &Arc<StandardCommandBufferAllocator>,
+        descriptor_set_allocator: &mut StandardDescriptorSetAllocator,
     ) {
         let layout = pipeline.layout().set_layouts().get(0).unwrap();
         let set = PersistentDescriptorSet::new(
+            descriptor_set_allocator,
             layout.clone(),
             [WriteDescriptorSet::buffer(0, data_buffer)],
         )
         .unwrap();
 
         let mut builder = AutoCommandBufferBuilder::primary(
-            queue.device().clone(),
+            command_buffer_allocator,
             queue.family(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -217,6 +224,10 @@ fn main() {
 
         future.wait(None).unwrap();
     }
+
+    let command_buffer_allocator =
+        StandardCommandBufferAllocator::new(device.clone(), queue.family()).unwrap();
+    let mut descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
 
     // Preparing test data array `[0, 1, 2, 3....]`
     let data_buffer = {
@@ -257,6 +268,8 @@ fn main() {
         queue.clone(),
         data_buffer.clone(),
         shaders::ty::Parameters { value: 2 },
+        &command_buffer_allocator,
+        &mut descriptor_set_allocator,
     );
 
     // Then add 1 to each value
@@ -265,6 +278,8 @@ fn main() {
         queue.clone(),
         data_buffer.clone(),
         shaders::ty::Parameters { value: 1 },
+        &command_buffer_allocator,
+        &mut descriptor_set_allocator,
     );
 
     // Then multiply each value by 3
@@ -273,6 +288,8 @@ fn main() {
         queue,
         data_buffer.clone(),
         shaders::ty::Parameters { value: 3 },
+        &command_buffer_allocator,
+        &mut descriptor_set_allocator,
     );
 
     let data_buffer_content = data_buffer.read().unwrap();

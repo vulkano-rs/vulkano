@@ -17,9 +17,12 @@
 use std::{iter::repeat, mem::size_of};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
-    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage},
+    command_buffer::{
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+    },
     descriptor_set::{
-        layout::DescriptorType, DescriptorSet, PersistentDescriptorSet, WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator, layout::DescriptorType, DescriptorSet,
+        PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
@@ -122,6 +125,10 @@ fn main() {
     )
     .unwrap();
 
+    let mut descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
+    let command_buffer_allocator =
+        StandardCommandBufferAllocator::new(device.clone(), queue.family()).unwrap();
+
     // Declare input buffer.
     // Data in a dynamic buffer **MUST** be aligned to min_uniform_buffer_offset_align
     // or min_storage_buffer_offset_align, depending on the type of buffer.
@@ -169,6 +176,7 @@ fn main() {
 
     let layout = pipeline.layout().set_layouts().get(0).unwrap();
     let set = PersistentDescriptorSet::new(
+        &mut descriptor_set_allocator,
         layout.clone(),
         [
             WriteDescriptorSet::buffer(0, input_buffer),
@@ -179,7 +187,7 @@ fn main() {
 
     // Build the command buffer, using different offsets for each call.
     let mut builder = AutoCommandBufferBuilder::primary(
-        device.clone(),
+        &command_buffer_allocator,
         queue.family(),
         CommandBufferUsage::OneTimeSubmit,
     )

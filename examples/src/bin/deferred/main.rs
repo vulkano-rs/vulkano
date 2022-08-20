@@ -31,6 +31,7 @@ use crate::{
 };
 use cgmath::{Matrix4, SquareMatrix, Vector3};
 use vulkano::{
+    command_buffer::allocator::StandardCommandBufferAllocator,
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
         Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
@@ -146,10 +147,20 @@ fn main() {
         (swapchain, images)
     };
 
+    let command_buffer_allocator =
+        StandardCommandBufferAllocator::new(device.clone(), queue.family()).unwrap();
+
     // Here is the basic initialization for the deferred system.
-    let mut frame_system = FrameSystem::new(queue.clone(), swapchain.image_format());
-    let triangle_draw_system =
-        TriangleDrawSystem::new(queue.clone(), frame_system.deferred_subpass());
+    let mut frame_system = FrameSystem::new(
+        queue.clone(),
+        swapchain.image_format(),
+        command_buffer_allocator.clone(),
+    );
+    let triangle_draw_system = TriangleDrawSystem::new(
+        queue.clone(),
+        frame_system.deferred_subpass(),
+        command_buffer_allocator.clone(),
+    );
 
     let mut recreate_swapchain = false;
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());

@@ -16,7 +16,8 @@ use std::sync::Arc;
 use vulkano::{
     buffer::{BufferAccess, BufferUsage, CpuAccessibleBuffer},
     command_buffer::{
-        AutoCommandBufferBuilder, CommandBufferUsage, RenderPassBeginInfo, SubpassContents,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+        RenderPassBeginInfo, SubpassContents,
     },
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
@@ -298,6 +299,9 @@ fn main() {
         depth_range: 0.0..1.0,
     };
 
+    let command_buffer_allocator =
+        StandardCommandBufferAllocator::new(device.clone(), queue.family()).unwrap();
+
     let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
 
     let mut recreate_swapchain = false;
@@ -355,7 +359,7 @@ fn main() {
             }
 
             let mut builder = AutoCommandBufferBuilder::primary(
-                device.clone(),
+                &command_buffer_allocator,
                 queue.family(),
                 CommandBufferUsage::OneTimeSubmit,
             )

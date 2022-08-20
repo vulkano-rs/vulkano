@@ -13,9 +13,12 @@ use std::{sync::Arc, time::Instant};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, TypedBufferAccess},
     command_buffer::{
-        AutoCommandBufferBuilder, CommandBufferUsage, RenderPassBeginInfo, SubpassContents,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+        RenderPassBeginInfo, SubpassContents,
     },
-    descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
+    descriptor_set::{
+        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+    },
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
         Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
@@ -179,6 +182,10 @@ fn main() {
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
     let rotation_start = Instant::now();
 
+    let mut descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
+    let command_buffer_allocator =
+        StandardCommandBufferAllocator::new(device.clone(), queue.family()).unwrap();
+
     event_loop.run(move |event, _, control_flow| {
         match event {
             Event::WindowEvent {
@@ -259,6 +266,7 @@ fn main() {
 
                 let layout = pipeline.layout().set_layouts().get(0).unwrap();
                 let set = PersistentDescriptorSet::new(
+                    &mut descriptor_set_allocator,
                     layout.clone(),
                     [WriteDescriptorSet::buffer(0, uniform_buffer_subbuffer)],
                 )
@@ -279,7 +287,7 @@ fn main() {
                 }
 
                 let mut builder = AutoCommandBufferBuilder::primary(
-                    device.clone(),
+                    &command_buffer_allocator,
                     queue.family(),
                     CommandBufferUsage::OneTimeSubmit,
                 )

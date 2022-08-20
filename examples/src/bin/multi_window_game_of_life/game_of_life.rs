@@ -10,6 +10,8 @@
 use cgmath::Vector2;
 use rand::Rng;
 use std::sync::Arc;
+use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
+use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
 use vulkano::image::{ImageUsage, StorageImage};
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
@@ -31,6 +33,8 @@ use vulkano_util::renderer::DeviceImageView;
 pub struct GameOfLifeComputePipeline {
     compute_queue: Arc<Queue>,
     compute_life_pipeline: Arc<ComputePipeline>,
+    command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+    descriptor_set_allocator: StandardDescriptorSetAllocator,
     life_in: Arc<CpuAccessibleBuffer<[u32]>>,
     life_out: Arc<CpuAccessibleBuffer<[u32]>>,
     image: DeviceImageView,
@@ -78,9 +82,21 @@ impl GameOfLifeComputePipeline {
             },
         )
         .unwrap();
+
+        let command_buffer_allocator = StandardCommandBufferAllocator::new(
+            compute_queue.device().clone(),
+            compute_queue.family(),
+        )
+        .unwrap();
+
+        let descriptor_set_allocator =
+            StandardDescriptorSetAllocator::new(compute_queue.device().clone());
+
         GameOfLifeComputePipeline {
             compute_queue,
             compute_life_pipeline,
+            command_buffer_allocator,
+            descriptor_set_allocator,
             life_in,
             life_out,
             image,
@@ -108,7 +124,7 @@ impl GameOfLifeComputePipeline {
         dead_color: [f32; 4],
     ) -> Box<dyn GpuFuture> {
         let mut builder = AutoCommandBufferBuilder::primary(
-            self.compute_queue.device().clone(),
+            &self.command_buffer_allocator,
             self.compute_queue.family(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -149,6 +165,7 @@ impl GameOfLifeComputePipeline {
         let pipeline_layout = self.compute_life_pipeline.layout();
         let desc_layout = pipeline_layout.set_layouts().get(0).unwrap();
         let set = PersistentDescriptorSet::new(
+            &mut self.descriptor_set_allocator,
             desc_layout.clone(),
             [
                 WriteDescriptorSet::image_view(0, self.image.clone()),
@@ -199,7 +216,7 @@ int get_index(ivec2 pos) {
 void compute_life() {
     ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
     int index = get_index(pos);
-    
+
     ivec2 up_left = pos + ivec2(-1, 1);
     ivec2 up = pos + ivec2(0, 1);
     ivec2 up_right = pos + ivec2(1, 1);
@@ -227,7 +244,7 @@ void compute_life() {
         life_out[index] = 0;
     } // Else Do nothing
     else {
-       
+
         life_out[index] = life_in[index];
     }
 }

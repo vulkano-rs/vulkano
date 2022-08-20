@@ -11,7 +11,8 @@ use crate::pixels_draw_pipeline::PixelsDrawPipeline;
 use std::sync::Arc;
 use vulkano::{
     command_buffer::{
-        AutoCommandBufferBuilder, CommandBufferUsage, RenderPassBeginInfo, SubpassContents,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
+        RenderPassBeginInfo, SubpassContents,
     },
     device::Queue,
     format::Format,
@@ -26,6 +27,7 @@ pub struct RenderPassPlaceOverFrame {
     gfx_queue: Arc<Queue>,
     render_pass: Arc<RenderPass>,
     pixels_draw_pipeline: PixelsDrawPipeline,
+    command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
 }
 
 impl RenderPassPlaceOverFrame {
@@ -46,11 +48,17 @@ impl RenderPassPlaceOverFrame {
         )
         .unwrap();
         let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
-        let pixels_draw_pipeline = PixelsDrawPipeline::new(gfx_queue.clone(), subpass);
+        let command_buffer_allocator =
+            StandardCommandBufferAllocator::new(gfx_queue.device().clone(), gfx_queue.family())
+                .unwrap();
+        let pixels_draw_pipeline =
+            PixelsDrawPipeline::new(gfx_queue.clone(), subpass, command_buffer_allocator.clone());
+
         RenderPassPlaceOverFrame {
             gfx_queue,
             render_pass,
             pixels_draw_pipeline,
+            command_buffer_allocator,
         }
     }
 
@@ -78,7 +86,7 @@ impl RenderPassPlaceOverFrame {
         .unwrap();
         // Create primary command buffer builder
         let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
-            self.gfx_queue.device().clone(),
+            &self.command_buffer_allocator,
             self.gfx_queue.family(),
             CommandBufferUsage::OneTimeSubmit,
         )

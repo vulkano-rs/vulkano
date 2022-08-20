@@ -12,10 +12,12 @@ use std::sync::Arc;
 use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
     command_buffer::{
-        AutoCommandBufferBuilder, CommandBufferInheritanceInfo, CommandBufferUsage,
-        SecondaryAutoCommandBuffer,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder,
+        CommandBufferInheritanceInfo, CommandBufferUsage, SecondaryAutoCommandBuffer,
     },
-    descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
+    descriptor_set::{
+        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+    },
     device::Queue,
     image::ImageViewAbstract,
     impl_vertex,
@@ -37,11 +39,17 @@ pub struct AmbientLightingSystem {
     vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
     subpass: Subpass,
     pipeline: Arc<GraphicsPipeline>,
+    command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+    descriptor_set_allocator: StandardDescriptorSetAllocator,
 }
 
 impl AmbientLightingSystem {
     /// Initializes the ambient lighting system.
-    pub fn new(gfx_queue: Arc<Queue>, subpass: Subpass) -> AmbientLightingSystem {
+    pub fn new(
+        gfx_queue: Arc<Queue>,
+        subpass: Subpass,
+        command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+    ) -> AmbientLightingSystem {
         // TODO: vulkano doesn't allow us to draw without a vertex buffer, otherwise we could
         //       hard-code these values in the shader
         let vertices = [
@@ -90,11 +98,16 @@ impl AmbientLightingSystem {
                 .unwrap()
         };
 
+        let descriptor_set_allocator =
+            StandardDescriptorSetAllocator::new(gfx_queue.device().clone());
+
         AmbientLightingSystem {
             gfx_queue,
             vertex_buffer,
             subpass,
             pipeline,
+            command_buffer_allocator,
+            descriptor_set_allocator,
         }
     }
 
@@ -111,7 +124,7 @@ impl AmbientLightingSystem {
     /// - `ambient_color` is the color to apply.
     ///
     pub fn draw(
-        &self,
+        &mut self,
         viewport_dimensions: [u32; 2],
         color_input: Arc<dyn ImageViewAbstract + 'static>,
         ambient_color: [f32; 3],
@@ -122,6 +135,7 @@ impl AmbientLightingSystem {
 
         let layout = self.pipeline.layout().set_layouts().get(0).unwrap();
         let descriptor_set = PersistentDescriptorSet::new(
+            &mut self.descriptor_set_allocator,
             layout.clone(),
             [WriteDescriptorSet::image_view(0, color_input)],
         )
@@ -134,7 +148,7 @@ impl AmbientLightingSystem {
         };
 
         let mut builder = AutoCommandBufferBuilder::secondary(
-            self.gfx_queue.device().clone(),
+            &self.command_buffer_allocator,
             self.gfx_queue.family(),
             CommandBufferUsage::MultipleSubmit,
             CommandBufferInheritanceInfo {

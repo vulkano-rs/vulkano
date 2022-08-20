@@ -9,6 +9,7 @@
 
 use std::sync::Arc;
 use vulkano::{
+    command_buffer::allocator::StandardCommandBufferAllocator,
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
         Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
@@ -155,7 +156,7 @@ fn main() {
         })
         .expect("no device available");
 
-    let (_, mut queues) = Device::new(
+    let (device, mut queues) = Device::new(
         physical_device,
         DeviceCreateInfo {
             enabled_extensions: device_extensions,
@@ -165,6 +166,9 @@ fn main() {
     )
     .expect("failed to create device");
     let queue = queues.next().unwrap();
+
+    let command_buffer_allocator =
+        StandardCommandBufferAllocator::new(device.clone(), queue.family()).unwrap();
 
     // Create an image in order to generate some additional logging:
     let pixel_format = Format::R8G8B8A8_UINT;
@@ -179,6 +183,7 @@ fn main() {
         dimensions,
         MipmapsCount::One,
         pixel_format,
+        &command_buffer_allocator,
         queue,
     )
     .unwrap();
