@@ -184,6 +184,10 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_KHR_display`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_display.html)
 	- `vkCreateDisplayModeKHR` / `VkDisplayModeCreateInfoKHR` / `VkDisplayModeParametersKHR`
 	- `vkGetDisplayPlaneCapabilitiesKHR` / `VkDisplayPlaneCapabilitiesKHR`
+- [`VK_KHR_external_memory_win32`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_memory_win32.html)
+	- `vkGetMemoryWin32HandleKHR`
+	- `vkGetMemoryWin32HandlePropertiesKHR`
+	- `VkExportMemoryWin32HandleInfoKHR`
 - [`VK_KHR_external_semaphore_fd`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_semaphore_fd.html)
 	- `vkImportSemaphoreFdKHR` / `VkImportSemaphoreFdInfoKHR`
 - [`VK_KHR_wayland_surface`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_wayland_surface.html)
