@@ -288,6 +288,48 @@ impl DeviceMemory {
                         // Can't validate, must be ensured by user
                     }
                 }
+                &mut MemoryImportInfo::Win32 {
+                    handle_type,
+                    handle: _,
+                } => {
+                    if !device.enabled_extensions().khr_external_memory_win32 {
+                        return Err(DeviceMemoryAllocationError::ExtensionNotEnabled {
+                            extension: "khr_external_memory_win32",
+                            reason: "`import_info` was `MemoryImportInfo::Win32`",
+                        });
+                    }
+
+                    #[cfg(not(windows))]
+                    unreachable!(
+                        "`khr_external_memory_win32` was somehow enabled on a non-Windows system"
+                    );
+
+                    #[cfg(windows)]
+                    {
+                        // VUID-VkImportMemoryWin32HandleInfoKHR-handleType-00660
+                        match handle_type {
+                            ExternalMemoryHandleType::OpaqueWin32
+                            | ExternalMemoryHandleType::OpaqueWin32Kmt => {
+                                // VUID-VkMemoryAllocateInfo-allocationSize-01742
+                                // Can't validate, must be ensured by user
+
+                                // VUID-VkMemoryDedicatedAllocateInfo-buffer-01879
+                                // Can't validate, must be ensured by user
+
+                                // VUID-VkMemoryDedicatedAllocateInfo-image-01878
+                                // Can't validate, must be ensured by user
+                            }
+                            _ => return Err(
+                                DeviceMemoryAllocationError::ImportWin32HandleTypeNotSupported {
+                                    handle_type,
+                                },
+                            ),
+                        }
+
+                        // VUID-VkMemoryAllocateInfo-memoryTypeIndex-00645
+                        // Can't validate, must be ensured by user
+                    }
+                }
             }
         }
 
@@ -357,6 +399,24 @@ impl DeviceMemory {
 
         #[cfg(unix)]
         if let Some(info) = import_fd_info.as_mut() {
+            allocate_info = allocate_info.push_next(info);
+        }
+
+        #[cfg(windows)]
+        let mut import_win32_handle_info = match import_info {
+            Some(MemoryImportInfo::Win32 {
+                handle_type,
+                handle,
+            }) => Some(ash::vk::ImportMemoryWin32HandleInfoKHR {
+                handle_type: handle_type.into(),
+                handle,
+                ..Default::default()
+            }),
+            _ => None,
+        };
+
+        #[cfg(windows)]
+        if let Some(info) = import_win32_handle_info.as_mut() {
             allocate_info = allocate_info.push_next(info);
         }
 
@@ -544,6 +604,11 @@ pub enum DeviceMemoryAllocationError {
         handle_type: ExternalMemoryHandleType,
     },
 
+    /// The provided `MemoryImportInfo::Win32::handle_type` is not supported.
+    ImportWin32HandleTypeNotSupported {
+        handle_type: ExternalMemoryHandleType,
+    },
+
     /// The provided `allocation_size` was greater than the memory type's heap size.
     MemoryTypeHeapSizeExceeded {
         allocation_size: DeviceSize,
@@ -602,6 +667,11 @@ impl fmt::Display for DeviceMemoryAllocationError {
             Self::ImportFdHandleTypeNotSupported { handle_type } => write!(
                 fmt,
                 "the provided `MemoryImportInfo::Fd::handle_type` ({:?}) is not supported for file descriptors",
+                handle_type,
+            ),
+            Self::ImportWin32HandleTypeNotSupported { handle_type } => write!(
+                fmt,
+                "the provided `MemoryImportInfo::Win32::handle_type` ({:?}) is not supported",
                 handle_type,
             ),
             Self::MemoryTypeHeapSizeExceeded { allocation_size, heap_size } => write!(
@@ -732,6 +802,29 @@ pub enum MemoryImportInfo {
     Fd {
         handle_type: ExternalMemoryHandleType,
         file: File,
+    },
+    /// Import memory from a Windows handle.
+    ///
+    /// `handle_type` must be either [`ExternalMemoryHandleType::OpaqueWin32`] or
+    /// [`ExternalMemoryHandleType::OpaqueWin32Kmt`].
+    ///
+    /// # Safety
+    ///
+    /// - `handle` must be a valid Windows handle.
+    /// - Vulkan will not take ownership of `handle`.
+    /// - If `handle_type` is [`ExternalMemoryHandleType::OpaqueWin32`], it owns a reference
+    ///   to the underlying resource and must eventually be closed by the caller.
+    /// - If `handle_type` is [`ExternalMemoryHandleType::OpaqueWin32Kmt`], it does not own a
+    ///   reference to the underlying resource.
+    /// - `handle` must be created by the Vulkan API.
+    /// - [`MemoryAllocateInfo::allocation_size`] and [`MemoryAllocateInfo::memory_type_index`]
+    ///   must match those of the original memory allocation.
+    /// - If the original memory allocation used [`MemoryAllocateInfo::dedicated_allocation`],
+    ///   the imported one must also use it, and the associated buffer or image must be defined
+    ///   identically to the original.
+    Win32 {
+        handle_type: ExternalMemoryHandleType,
+        handle: ash::vk::HANDLE,
     },
 }
 
