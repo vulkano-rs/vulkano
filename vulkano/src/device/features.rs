@@ -8,6 +8,7 @@
 // according to those terms.
 
 use crate::{device::DeviceExtensions, instance::InstanceExtensions, Version};
+use core::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, Not, Sub, SubAssign};
 use std::fmt::Display;
 use std::{error::Error, fmt, fmt::Formatter};
 

@@ -9,6 +9,7 @@
 
 pub use crate::extensions::{ExtensionRestriction, ExtensionRestrictionError, OneOfRequirements};
 use crate::{instance::InstanceExtensions, Version};
+use core::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, Not, Sub, SubAssign};
 use std::{
     ffi::{CStr, CString},
     fmt::Formatter,
