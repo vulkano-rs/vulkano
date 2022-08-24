@@ -83,6 +83,7 @@ pub fn write(vk_data: &VkRegistryData) {
 struct FeaturesMember {
     name: Ident,
     doc: String,
+    raw: String,
     ffi_name: Ident,
     ffi_members: Vec<(Ident, TokenStream)>,
     requires_features: Vec<Ident>,
@@ -190,6 +191,16 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
         }
     });
 
+    let debug_items = members.iter().map(|FeaturesMember { name, raw, .. }| {
+        quote! {
+            if self.#name {
+                if !first { write!(f, ", ")? }
+                else { first = false; }
+                f.write_str(#raw)?;
+            }
+        }
+    });
+
     let write_items = members.iter().map(
         |FeaturesMember {
              name,
@@ -285,7 +296,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
         /// let features_to_request = optimal_features.intersection(physical_device.supported_features());
         /// ```
         ///
-        #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+        #[derive(Clone, PartialEq, Eq, Hash)]
         pub struct Features {
             #(#struct_items)*
             pub _ne: crate::NonExhaustive,
@@ -359,6 +370,18 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             }
         }
 
+        impl std::fmt::Debug for Features {
+            #[allow(unused_assignments)]
+            fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+                write!(f, "[")?;
+
+                let mut first = true;
+                #(#debug_items)*
+
+                write!(f, "]")
+            }
+        }
+
         impl FeaturesFfi {
             pub(crate) fn write(&mut self, features: &Features) {
                 #(#write_items)*
@@ -413,6 +436,7 @@ fn features_members(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<FeaturesMe
                             name: format_ident!("{}", name),
                             doc: String::new(),
                             ffi_name: format_ident!("{}", name),
+                            raw: name,
                             ffi_members: vec![ty_name.clone()],
                             requires_features: requires_features
                                 .iter()
