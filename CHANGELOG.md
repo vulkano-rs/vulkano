@@ -49,6 +49,7 @@
   - Most clippy warnings and errors have been fixed, and the remainder is explicitly allowed in each crate root. Some of these may be re-enabled in the future if desired.
   - Warnings for dead code and unused variables have been re-enabled and fixed.
 - Added support for importing `OpaqueWin32` / `OpaqueWin32Kmt` memory handles.
+- `InstanceExtensions`, `DeviceExtensions` and `Features` got binary operators not, and, or, sub and impl `Default`.
 
 # Version 0.30.0 (2022-07-20)
 
