@@ -291,6 +291,12 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
         }
     });
 
+    let not_items = members.iter().map(|ExtensionsMember { name, .. }| {
+        quote! {
+            #name: !self.#name,
+        }
+    });
+
     let is_superset_of_items = members.iter().map(|ExtensionsMember { name, .. }| {
         quote! {
             (self.#name || !other.#name)
@@ -349,6 +355,13 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
             pub _ne: crate::NonExhaustive,
         }
 
+        impl Default for #struct_name {
+            #[inline]
+            fn default() -> Self {
+                Self::none()
+            }
+        }
+
         impl #struct_name {
             /// Returns an `Extensions` object with all members set to `false`.
             #[inline]
@@ -365,6 +378,15 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
             /// in self is true as well.
             pub fn is_superset_of(&self, other: &Self) -> bool {
                 #(#is_superset_of_items)&&*
+            }
+
+            /// Returns the not of this list.
+            #[inline]
+            pub const fn not_const(&self) -> Self {
+                Self {
+                    #(#not_items)*
+                    _ne: crate::NonExhaustive(()),
+                }
             }
 
             /// Returns the union of this list and another list.
@@ -392,6 +414,56 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
                     #(#difference_items)*
                     _ne: crate::NonExhaustive(()),
                 }
+            }
+        }
+
+        impl Not for #struct_name {
+            type Output = #struct_name;
+
+            fn not(self) -> Self::Output {
+                self.not_const()
+            }
+        }
+
+        impl BitAnd for #struct_name {
+            type Output = #struct_name;
+
+            fn bitand(self, rhs: Self) -> Self::Output {
+                self.union(&rhs)
+            }
+        }
+
+        impl BitAndAssign for #struct_name {
+            fn bitand_assign(&mut self, rhs: Self) {
+                *self = self.union(&rhs);
+            }
+        }
+
+        impl BitOr for #struct_name {
+            type Output = #struct_name;
+
+            fn bitor(self, rhs: Self) -> Self::Output {
+                self.intersection(&rhs)
+            }
+        }
+
+        impl BitOrAssign for #struct_name {
+            fn bitor_assign(&mut self, rhs: Self) {
+                *self = self.intersection(&rhs);
+            }
+        }
+
+        impl Sub for #struct_name {
+            type Output = #struct_name;
+
+            fn sub(self, rhs: Self) -> Self::Output {
+                self.difference(&rhs)
+            }
+        }
+
+        impl SubAssign for #struct_name {
+            fn sub_assign(&mut self, rhs: Self) {
+                *self = self.difference(&rhs);
             }
         }
 

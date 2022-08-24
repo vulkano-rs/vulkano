@@ -83,6 +83,7 @@ pub fn write(vk_data: &VkRegistryData) {
 struct FeaturesMember {
     name: Ident,
     doc: String,
+    raw: String,
     ffi_name: Ident,
     ffi_members: Vec<(Ident, TokenStream)>,
     requires_features: Vec<Ident>,
@@ -178,6 +179,18 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
         }
     });
 
+    let not_items = members.iter().map(|FeaturesMember { name, .. }| {
+        quote! {
+            #name: !self.#name,
+        }
+    });
+
+    let union_items = members.iter().map(|FeaturesMember { name, .. }| {
+        quote! {
+            #name: self.#name || other.#name,
+        }
+    });
+
     let intersection_items = members.iter().map(|FeaturesMember { name, .. }| {
         quote! {
             #name: self.#name && other.#name,
@@ -187,6 +200,16 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
     let difference_items = members.iter().map(|FeaturesMember { name, .. }| {
         quote! {
             #name: self.#name && !other.#name,
+        }
+    });
+
+    let debug_items = members.iter().map(|FeaturesMember { name, raw, .. }| {
+        quote! {
+            if self.#name {
+                if !first { write!(f, ", ")? }
+                else { first = false; }
+                f.write_str(#raw)?;
+            }
         }
     });
 
@@ -285,7 +308,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
         /// let features_to_request = optimal_features.intersection(physical_device.supported_features());
         /// ```
         ///
-        #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+        #[derive(Copy, Clone, PartialEq, Eq, Hash)]
         pub struct Features {
             #(#struct_items)*
             pub _ne: crate::NonExhaustive,
@@ -311,7 +334,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             }
 
             /// Builds a `Features` object with all values to false.
-            pub const fn none() -> Features {
+            pub const fn none() -> Self {
                 Features {
                     #(#none_items)*
                     _ne: crate::NonExhaustive(()),
@@ -322,7 +345,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             ///
             /// > **Note**: This function is used for testing purposes, and is probably useless in
             /// > a real code.
-            pub const fn all() -> Features {
+            pub(crate) const fn all() -> Features {
                 Features {
                     #(#all_items)*
                     _ne: crate::NonExhaustive(()),
@@ -333,16 +356,33 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             ///
             /// That is, for each feature of the parameter that is true, the corresponding value
             /// in self is true as well.
-            pub const fn is_superset_of(&self, other: &Features) -> bool {
+            pub const fn is_superset_of(&self, other: &Self) -> bool {
                 #(#is_superset_of_items)&&*
+            }
+
+            /// Returns the not of this list.
+            pub const fn not_const(self) -> Self {
+                Self {
+                    #(#not_items)*
+                    _ne: crate::NonExhaustive(()),
+                }
+            }
+
+            /// Returns the union of this list and another list.
+            #[inline]
+            pub const fn union(&self, other: &Self) -> Self {
+                Self {
+                    #(#union_items)*
+                    _ne: crate::NonExhaustive(()),
+                }
             }
 
             /// Builds a `Features` that is the intersection of `self` and another `Features`
             /// object.
             ///
             /// The result's field will be true if it is also true in both `self` and `other`.
-            pub const fn intersection(&self, other: &Features) -> Features {
-                Features {
+            pub const fn intersection(&self, other: &Self) -> Self {
+                Self {
                     #(#intersection_items)*
                     _ne: crate::NonExhaustive(()),
                 }
@@ -351,11 +391,73 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             /// Builds a `Features` that is the difference of another `Features` object from `self`.
             ///
             /// The result's field will be true if it is true in `self` but not `other`.
-            pub const fn difference(&self, other: &Features) -> Features {
-                Features {
+            pub const fn difference(&self, other: &Self) -> Self {
+                Self {
                     #(#difference_items)*
                     _ne: crate::NonExhaustive(()),
                 }
+            }
+        }
+
+        impl Not for Features {
+            type Output = Features;
+
+            fn not(self) -> Self::Output {
+                self.not_const()
+            }
+        }
+
+        impl BitOr for Features {
+            type Output = Features;
+
+            fn bitor(self, rhs: Self) -> Self::Output {
+                self.union(&rhs)
+            }
+        }
+
+        impl BitOrAssign for Features {
+            fn bitor_assign(&mut self, rhs: Self) {
+                *self = self.union(&rhs);
+            }
+        }
+
+        impl BitAnd for Features {
+            type Output = Features;
+
+            fn bitand(self, rhs: Self) -> Self::Output {
+                self.intersection(&rhs)
+            }
+        }
+
+        impl BitAndAssign for Features {
+            fn bitand_assign(&mut self, rhs: Self) {
+                *self = self.intersection(&rhs);
+            }
+        }
+
+        impl Sub for Features {
+            type Output = Features;
+
+            fn sub(self, rhs: Self) -> Self::Output {
+                self.difference(&rhs)
+            }
+        }
+
+        impl SubAssign for Features {
+            fn sub_assign(&mut self, rhs: Self) {
+                *self = self.difference(&rhs);
+            }
+        }
+
+        impl std::fmt::Debug for Features {
+            #[allow(unused_assignments)]
+            fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+                write!(f, "[")?;
+
+                let mut first = true;
+                #(#debug_items)*
+
+                write!(f, "]")
             }
         }
 
@@ -413,6 +515,7 @@ fn features_members(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<FeaturesMe
                             name: format_ident!("{}", name),
                             doc: String::new(),
                             ffi_name: format_ident!("{}", name),
+                            raw: name,
                             ffi_members: vec![ty_name.clone()],
                             requires_features: requires_features
                                 .iter()

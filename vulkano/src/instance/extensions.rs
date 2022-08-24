@@ -11,6 +11,7 @@ pub use crate::{
     extensions::{ExtensionRestriction, ExtensionRestrictionError, OneOfRequirements},
     Version,
 };
+use core::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, Not, Sub, SubAssign};
 use std::{
     ffi::{CStr, CString},
     fmt::Formatter,
