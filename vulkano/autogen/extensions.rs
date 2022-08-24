@@ -349,6 +349,13 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
             pub _ne: crate::NonExhaustive,
         }
 
+        impl Default for #struct_name {
+            #[inline]
+            fn default() -> Self {
+                Self::none()
+            }
+        }
+
         impl #struct_name {
             /// Returns an `Extensions` object with all members set to `false`.
             #[inline]
