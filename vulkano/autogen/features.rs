@@ -345,7 +345,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             ///
             /// > **Note**: This function is used for testing purposes, and is probably useless in
             /// > a real code.
-            pub const fn all() -> Features {
+            pub(crate) const fn all() -> Features {
                 Features {
                     #(#all_items)*
                     _ne: crate::NonExhaustive(()),
