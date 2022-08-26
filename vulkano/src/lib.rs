@@ -83,7 +83,7 @@
 
 pub use ash::vk::Handle;
 pub use half;
-pub use library::VulkanLibrary;
+pub use library::{LoadingError, VulkanLibrary};
 use parking_lot::MutexGuard;
 use std::{error::Error, fmt, ops::Deref, sync::Arc};
 pub use version::Version;
