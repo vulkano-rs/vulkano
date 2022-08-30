@@ -259,6 +259,11 @@ void main() {
     vec3 in_diffuse = subpassLoad(u_diffuse).rgb;
     f_color.rgb = push_constants.color.rgb * light_percent * in_diffuse;
     f_color.a = 1.0;
-}"
+}",
+        types_meta: {
+            use bytemuck::{Pod, Zeroable};
+
+            #[derive(Clone, Copy, Zeroable, Pod)]
+        },
     }
 }

@@ -164,7 +164,12 @@ fn main() {
                         }
                     "
                 }
-            }
+            },
+            types_meta: {
+                use bytemuck::{Pod, Zeroable};
+
+                #[derive(Clone, Copy, Zeroable, Pod)]
+            },
         }
 
         // The macro will create the following things in this module:
