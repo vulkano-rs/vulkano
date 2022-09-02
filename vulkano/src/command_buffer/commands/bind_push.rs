@@ -16,8 +16,8 @@ use crate::{
     },
     descriptor_set::{
         check_descriptor_write, sys::UnsafeDescriptorSet, DescriptorSetResources,
-        DescriptorSetWithOffsets, DescriptorSetsCollection, DescriptorWriteInfo,
-        WriteDescriptorSet,
+        DescriptorSetUpdateError, DescriptorSetWithOffsets, DescriptorSetsCollection,
+        DescriptorWriteInfo, WriteDescriptorSet,
     },
     device::DeviceOwned,
     pipeline::{
@@ -33,6 +33,7 @@ use crate::{
 use parking_lot::Mutex;
 use smallvec::SmallVec;
 use std::{
+    error, fmt,
     mem::{size_of, size_of_val},
     ptr, slice,
     sync::Arc,
@@ -60,47 +61,14 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     where
         S: DescriptorSetsCollection,
     {
-        match pipeline_bind_point {
-            PipelineBindPoint::Compute => assert!(
-                self.queue_family().supports_compute(),
-                "the queue family of the command buffer must support compute operations"
-            ),
-            PipelineBindPoint::Graphics => assert!(
-                self.queue_family().supports_graphics(),
-                "the queue family of the command buffer must support graphics operations"
-            ),
-        }
-
         let descriptor_sets = descriptor_sets.into_vec();
-
-        assert!(
-            first_set as usize + descriptor_sets.len()
-                <= pipeline_layout.set_layouts().len(),
-            "the highest descriptor set slot being bound must be less than the number of sets in pipeline_layout"
-        );
-
-        for (num, set) in descriptor_sets.iter().enumerate() {
-            assert_eq!(
-                set.as_ref().0.device().internal_object(),
-                self.device().internal_object()
-            );
-
-            let pipeline_set = &pipeline_layout.set_layouts()[first_set as usize + num];
-            assert!(
-                pipeline_set.is_compatible_with(set.as_ref().0.layout()),
-                "the element of descriptor_sets being bound to slot {} is not compatible with the corresponding slot in pipeline_layout",
-                first_set as usize + num,
-            );
-
-            // TODO: see https://github.com/vulkano-rs/vulkano/issues/1643
-            // For each dynamic uniform or storage buffer binding in pDescriptorSets, the sum of the
-            // effective offset, as defined above, and the range of the binding must be less than or
-            // equal to the size of the buffer
-
-            // TODO:
-            // Each element of pDescriptorSets must not have been allocated from a VkDescriptorPool
-            // with the VK_DESCRIPTOR_POOL_CREATE_HOST_ONLY_BIT_VALVE flag set
-        }
+        self.validate_bind_descriptor_sets(
+            pipeline_bind_point,
+            &pipeline_layout,
+            first_set,
+            &descriptor_sets,
+        )
+        .unwrap();
 
         unsafe {
             let mut sets_binder = self.inner.bind_descriptor_sets();
@@ -111,6 +79,59 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
 
         self
+    }
+
+    fn validate_bind_descriptor_sets(
+        &self,
+        pipeline_bind_point: PipelineBindPoint,
+        pipeline_layout: &PipelineLayout,
+        first_set: u32,
+        descriptor_sets: &[DescriptorSetWithOffsets],
+    ) -> Result<(), BindPushError> {
+        // VUID-vkCmdBindDescriptorSets-commandBuffer-cmdpool
+        // VUID-vkCmdBindDescriptorSets-pipelineBindPoint-00361
+        match pipeline_bind_point {
+            PipelineBindPoint::Compute => {
+                if !self.queue_family().supports_compute() {
+                    return Err(BindPushError::NotSupportedByQueueFamily);
+                }
+            }
+            PipelineBindPoint::Graphics => {
+                if !self.queue_family().supports_graphics() {
+                    return Err(BindPushError::NotSupportedByQueueFamily);
+                }
+            }
+        }
+
+        // VUID-vkCmdBindDescriptorSets-firstSet-00360
+        if first_set + descriptor_sets.len() as u32 > pipeline_layout.set_layouts().len() as u32 {
+            return Err(BindPushError::DescriptorSetOutOfRange {
+                set_num: first_set + descriptor_sets.len() as u32,
+                pipeline_layout_set_count: pipeline_layout.set_layouts().len() as u32,
+            });
+        }
+
+        for (i, set) in descriptor_sets.iter().enumerate() {
+            let set_num = first_set + i as u32;
+
+            // VUID-vkCmdBindDescriptorSets-commonparent
+            assert_eq!(self.device(), set.as_ref().0.device());
+
+            let pipeline_layout_set = &pipeline_layout.set_layouts()[set_num as usize];
+
+            // VUID-vkCmdBindDescriptorSets-pDescriptorSets-00358
+            if !pipeline_layout_set.is_compatible_with(set.as_ref().0.layout()) {
+                return Err(BindPushError::DescriptorSetNotCompatible { set_num });
+            }
+
+            // TODO: see https://github.com/vulkano-rs/vulkano/issues/1643
+            // VUID-vkCmdBindDescriptorSets-pDynamicOffsets-01971
+            // VUID-vkCmdBindDescriptorSets-pDynamicOffsets-01972
+            // VUID-vkCmdBindDescriptorSets-pDescriptorSets-01979
+            // VUID-vkCmdBindDescriptorSets-pDescriptorSets-06715
+        }
+
+        Ok(())
     }
 
     /// Binds an index buffer for future indexed draw calls.
@@ -129,38 +150,46 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         Ib: TypedBufferAccess<Content = [I]> + 'static,
         I: Index + 'static,
     {
-        assert!(
-            self.queue_family().supports_graphics(),
-            "the queue family of the command buffer must support graphics operations"
-        );
-
-        assert_eq!(
-            index_buffer.device().internal_object(),
-            self.device().internal_object()
-        );
-
-        // TODO:
-        // The sum of offset and the address of the range of VkDeviceMemory object that is backing
-        // buffer, must be a multiple of the type indicated by indexType
-
-        assert!(
-            index_buffer.inner().buffer.usage().index_buffer,
-            "index_buffer must have the index_buffer usage enabled"
-        );
-
-        // TODO:
-        // If buffer is non-sparse then it must be bound completely and contiguously to a single
-        // VkDeviceMemory object
-
-        if !self.device().enabled_features().index_type_uint8 {
-            assert!(I::ty() != IndexType::U8, "if the index buffer contains u8 indices, the index_type_uint8 feature must be enabled on the device");
-        }
+        self.validate_bind_index_buffer(&index_buffer, I::ty())
+            .unwrap();
 
         unsafe {
             self.inner.bind_index_buffer(index_buffer, I::ty());
         }
 
         self
+    }
+
+    fn validate_bind_index_buffer(
+        &self,
+        index_buffer: &dyn BufferAccess,
+        index_type: IndexType,
+    ) -> Result<(), BindPushError> {
+        // VUID-vkCmdBindIndexBuffer-commandBuffer-cmdpool
+        if !self.queue_family().supports_graphics() {
+            return Err(BindPushError::NotSupportedByQueueFamily);
+        }
+
+        // VUID-vkCmdBindIndexBuffer-commonparent
+        assert_eq!(self.device(), index_buffer.device());
+
+        // VUID-vkCmdBindIndexBuffer-buffer-00433
+        if !index_buffer.usage().index_buffer {
+            return Err(BindPushError::IndexBufferMissingUsage);
+        }
+
+        // VUID-vkCmdBindIndexBuffer-indexType-02765
+        if index_type == IndexType::U8 && !self.device().enabled_features().index_type_uint8 {
+            return Err(BindPushError::FeatureNotEnabled {
+                feature: "index_type_uint8",
+                reason: "index_buffer's index type was U8",
+            });
+        }
+
+        // TODO:
+        // VUID-vkCmdBindIndexBuffer-offset-00432
+
+        Ok(())
     }
 
     /// Binds a compute pipeline for future dispatch calls.
@@ -170,27 +199,28 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// - Panics if the queue family of the command buffer does not support compute operations.
     /// - Panics if `self` and `pipeline` do not belong to the same device.
     pub fn bind_pipeline_compute(&mut self, pipeline: Arc<ComputePipeline>) -> &mut Self {
-        assert!(
-            self.queue_family().supports_compute(),
-            "the queue family of the command buffer must support compute operations"
-        );
-
-        assert_eq!(
-            pipeline.device().internal_object(),
-            self.device().internal_object()
-        );
-
-        // TODO:
-        // This command must not be recorded when transform feedback is active
-
-        // TODO:
-        // pipeline must not have been created with VK_PIPELINE_CREATE_LIBRARY_BIT_KHR set
+        self.validate_bind_pipeline_compute(&pipeline).unwrap();
 
         unsafe {
             self.inner.bind_pipeline_compute(pipeline);
         }
 
         self
+    }
+
+    fn validate_bind_pipeline_compute(
+        &self,
+        pipeline: &ComputePipeline,
+    ) -> Result<(), BindPushError> {
+        // VUID-vkCmdBindPipeline-pipelineBindPoint-00777
+        if !self.queue_family().supports_compute() {
+            return Err(BindPushError::NotSupportedByQueueFamily);
+        }
+
+        // VUID-vkCmdBindPipeline-commonparent
+        assert_eq!(self.device(), pipeline.device());
+
+        Ok(())
     }
 
     /// Binds a graphics pipeline for future draw calls.
@@ -200,59 +230,35 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// - Panics if the queue family of the command buffer does not support graphics operations.
     /// - Panics if `self` and `pipeline` do not belong to the same device.
     pub fn bind_pipeline_graphics(&mut self, pipeline: Arc<GraphicsPipeline>) -> &mut Self {
-        assert!(
-            self.queue_family().supports_graphics(),
-            "the queue family of the command buffer must support graphics operations"
-        );
-
-        assert_eq!(
-            pipeline.device().internal_object(),
-            self.device().internal_object()
-        );
-
-        // TODO:
-        // If the variable multisample rate feature is not supported, pipeline is a graphics
-        // pipeline, the current subpass uses no attachments, and this is not the first call to
-        // this function with a graphics pipeline after transitioning to the current subpass, then
-        // the sample count specified by this pipeline must match that set in the previous pipeline
-
-        // TODO:
-        // If VkPhysicalDeviceSampleLocationsPropertiesEXT::variableSampleLocations is VK_FALSE, and
-        // pipeline is a graphics pipeline created with a
-        // VkPipelineSampleLocationsStateCreateInfoEXT structure having its sampleLocationsEnable
-        // member set to VK_TRUE but without VK_DYNAMIC_STATE_SAMPLE_LOCATIONS_EXT enabled then the
-        // current render pass instance must have been begun by specifying a
-        // VkRenderPassSampleLocationsBeginInfoEXT structure whose pPostSubpassSampleLocations
-        // member contains an element with a subpassIndex matching the current subpass index and the
-        // sampleLocationsInfo member of that element must match the sampleLocationsInfo specified
-        // in VkPipelineSampleLocationsStateCreateInfoEXT when the pipeline was created
-
-        // TODO:
-        // This command must not be recorded when transform feedback is active
-
-        // TODO:
-        // pipeline must not have been created with VK_PIPELINE_CREATE_LIBRARY_BIT_KHR set
-
-        // TODO:
-        // If commandBuffer is a secondary command buffer with
-        // VkCommandBufferInheritanceViewportScissorInfoNV::viewportScissor2D enabled and
-        // pipelineBindPoint is VK_PIPELINE_BIND_POINT_GRAPHICS, then the pipeline must have been
-        // created with VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT_EXT or VK_DYNAMIC_STATE_VIEWPORT, and
-        // VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT_EXT or VK_DYNAMIC_STATE_SCISSOR enabled
-
-        // TODO:
-        // If pipelineBindPoint is VK_PIPELINE_BIND_POINT_GRAPHICS and the
-        // provokingVertexModePerPipeline limit is VK_FALSE, then pipeline’s
-        // VkPipelineRasterizationProvokingVertexStateCreateInfoEXT::provokingVertexMode must be the
-        // same as that of any other pipelines previously bound to this bind point within the
-        // current renderpass instance, including any pipeline already bound when beginning the
-        // renderpass instance
+        self.validate_bind_pipeline_graphics(&pipeline).unwrap();
 
         unsafe {
             self.inner.bind_pipeline_graphics(pipeline);
         }
 
         self
+    }
+
+    fn validate_bind_pipeline_graphics(
+        &self,
+        pipeline: &GraphicsPipeline,
+    ) -> Result<(), BindPushError> {
+        // VUID-vkCmdBindPipeline-pipelineBindPoint-00778
+        if !self.queue_family().supports_graphics() {
+            return Err(BindPushError::NotSupportedByQueueFamily);
+        }
+
+        // VUID-vkCmdBindPipeline-commonparent
+        assert_eq!(self.device(), pipeline.device());
+
+        // TODO:
+        // VUID-vkCmdBindPipeline-pipeline-00781
+        // VUID-vkCmdBindPipeline-pipeline-06195
+        // VUID-vkCmdBindPipeline-pipeline-06196
+        // VUID-vkCmdBindPipeline-pipeline-06197
+        // VUID-vkCmdBindPipeline-pipeline-06194
+
+        Ok(())
     }
 
     /// Binds vertex buffers for future draw calls.
@@ -270,47 +276,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     where
         V: VertexBuffersCollection,
     {
-        assert!(
-            self.queue_family().supports_graphics(),
-            "the queue family of the command buffer must support graphics operations"
-        );
-
         let vertex_buffers = vertex_buffers.into_vec();
-
-        assert!(
-            first_binding + vertex_buffers.len() as u32
-                <= self
-                    .device()
-                    .physical_device()
-                    .properties()
-                    .max_vertex_input_bindings,
-            "the highest vertex buffer binding being bound must not be higher than the max_vertex_input_bindings device property"
-        );
-
-        for (num, buf) in vertex_buffers.iter().enumerate() {
-            assert_eq!(
-                buf.device().internal_object(),
-                self.device().internal_object()
-            );
-
-            assert!(
-                buf.inner().buffer.usage().vertex_buffer,
-                "vertex_buffers element {} must have the vertex_buffer usage",
-                num
-            );
-
-            // TODO:
-            // Each element of pBuffers that is non-sparse must be bound completely and contiguously
-            // to a single VkDeviceMemory object
-
-            // TODO:
-            // If the nullDescriptor feature is not enabled, all elements of pBuffers must not be
-            // VK_NULL_HANDLE
-
-            // TODO:
-            // If an element of pBuffers is VK_NULL_HANDLE, then the corresponding element of
-            // pOffsets must be zero
-        }
+        self.validate_bind_vertex_buffers(first_binding, &vertex_buffers)
+            .unwrap();
 
         unsafe {
             let mut binder = self.inner.bind_vertex_buffers();
@@ -321,6 +289,48 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
 
         self
+    }
+
+    fn validate_bind_vertex_buffers(
+        &self,
+        first_binding: u32,
+        vertex_buffers: &[Arc<dyn BufferAccess>],
+    ) -> Result<(), BindPushError> {
+        // VUID-vkCmdBindVertexBuffers-commandBuffer-cmdpool
+        if !self.queue_family().supports_graphics() {
+            return Err(BindPushError::NotSupportedByQueueFamily);
+        }
+
+        // VUID-vkCmdBindVertexBuffers-firstBinding-00624
+        // VUID-vkCmdBindVertexBuffers-firstBinding-00625
+        if first_binding + vertex_buffers.len() as u32
+            > self
+                .device()
+                .physical_device()
+                .properties()
+                .max_vertex_input_bindings
+        {
+            return Err(BindPushError::MaxVertexInputBindingsExceeded {
+                _binding_count: first_binding + vertex_buffers.len() as u32,
+                _max: self
+                    .device()
+                    .physical_device()
+                    .properties()
+                    .max_vertex_input_bindings,
+            });
+        }
+
+        for buffer in vertex_buffers {
+            // VUID-vkCmdBindVertexBuffers-commonparent
+            assert_eq!(self.device(), buffer.device());
+
+            // VUID-vkCmdBindVertexBuffers-pBuffers-00627
+            if !buffer.usage().vertex_buffer {
+                return Err(BindPushError::VertexBufferMissingUsage);
+            }
+        }
+
+        Ok(())
     }
 
     /// Sets push constants for future dispatch or draw calls.
@@ -336,24 +346,24 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         pipeline_layout: Arc<PipelineLayout>,
         offset: u32,
         push_constants: Pc,
-    ) -> &mut Self {
+    ) -> &mut Self
+    where
+        Pc: BufferContents,
+    {
         let size = size_of::<Pc>() as u32;
 
         if size == 0 {
             return self;
         }
 
-        assert!(offset % 4 == 0, "the offset must be a multiple of 4");
-        assert!(
-            size % 4 == 0,
-            "the size of push_constants must be a multiple of 4"
-        );
-
         // SAFETY: `&push_constants` is a valid pointer, and the size of the struct is `size`,
         //         thus, getting a slice of the whole struct is safe if its not modified.
-        let whole_data = unsafe {
+        let push_constants = unsafe {
             slice::from_raw_parts(&push_constants as *const Pc as *const u8, size as usize)
         };
+
+        self.validate_push_constants(&pipeline_layout, offset, push_constants)
+            .unwrap();
 
         let mut current_offset = offset;
         let mut remaining_size = size;
@@ -377,7 +387,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                     range.stages,
                     current_offset,
                     push_size,
-                    &whole_data[data_offset..(data_offset + push_size as usize)],
+                    &push_constants[data_offset..(data_offset + push_size as usize)],
                 );
             }
             current_offset += push_size;
@@ -388,13 +398,55 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             }
         }
 
-        assert!(
-            remaining_size == 0,
-            "There exists data at offset {} that is not included in any range",
-            current_offset,
-        );
+        debug_assert!(remaining_size == 0);
 
         self
+    }
+
+    fn validate_push_constants(
+        &self,
+        pipeline_layout: &PipelineLayout,
+        offset: u32,
+        push_constants: &[u8],
+    ) -> Result<(), BindPushError> {
+        if offset % 4 != 0 {
+            return Err(BindPushError::PushConstantsOffsetNotAligned);
+        }
+
+        if push_constants.len() % 4 != 0 {
+            return Err(BindPushError::PushConstantsSizeNotAligned);
+        }
+
+        let mut current_offset = offset;
+        let mut remaining_size = push_constants.len() as u32;
+        for range in pipeline_layout
+            .push_constant_ranges_disjoint()
+            .iter()
+            .skip_while(|range| range.offset + range.size <= offset)
+        {
+            // there is a gap between ranges, but the passed push_constants contains
+            // some bytes in this gap, exit the loop and report error
+            if range.offset > current_offset {
+                break;
+            }
+
+            // push the minimum of the whole remaining data, and the part until the end of this range
+            let push_size = remaining_size.min(range.offset + range.size - current_offset);
+            current_offset += push_size;
+            remaining_size -= push_size;
+
+            if remaining_size == 0 {
+                break;
+            }
+        }
+
+        if remaining_size != 0 {
+            return Err(BindPushError::PushConstantsDataOutOfRange {
+                offset: current_offset,
+            });
+        }
+
+        Ok(())
     }
 
     /// Pushes descriptor data directly into the command buffer for future dispatch or draw calls.
@@ -414,32 +466,14 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         set_num: u32,
         descriptor_writes: impl IntoIterator<Item = WriteDescriptorSet>,
     ) -> &mut Self {
-        match pipeline_bind_point {
-            PipelineBindPoint::Compute => assert!(
-                self.queue_family().supports_compute(),
-                "the queue family of the command buffer must support compute operations"
-            ),
-            PipelineBindPoint::Graphics => assert!(
-                self.queue_family().supports_graphics(),
-                "the queue family of the command buffer must support graphics operations"
-            ),
-        }
-
-        assert!(
-            self.device().enabled_extensions().khr_push_descriptor,
-            "the khr_push_descriptor extension must be enabled on the device"
-        );
-        assert!(
-            set_num as usize <= pipeline_layout.set_layouts().len(),
-            "the descriptor set slot being bound must be less than the number of sets in pipeline_layout"
-        );
-
         let descriptor_writes: SmallVec<[_; 8]> = descriptor_writes.into_iter().collect();
-        let descriptor_set_layout = &pipeline_layout.set_layouts()[set_num as usize];
-
-        for write in &descriptor_writes {
-            check_descriptor_write(write, descriptor_set_layout, 0).unwrap();
-        }
+        self.validate_push_descriptor_set(
+            pipeline_bind_point,
+            &pipeline_layout,
+            set_num,
+            &descriptor_writes,
+        )
+        .unwrap();
 
         unsafe {
             self.inner.push_descriptor_set(
@@ -451,6 +485,60 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
 
         self
+    }
+
+    fn validate_push_descriptor_set(
+        &self,
+        pipeline_bind_point: PipelineBindPoint,
+        pipeline_layout: &PipelineLayout,
+        set_num: u32,
+        descriptor_writes: &[WriteDescriptorSet],
+    ) -> Result<(), BindPushError> {
+        if !self.device().enabled_extensions().khr_push_descriptor {
+            return Err(BindPushError::ExtensionNotEnabled {
+                extension: "khr_push_descriptor",
+                reason: "called validate_push_descriptor_set",
+            });
+        }
+
+        // VUID-vkCmdPushDescriptorSetKHR-commandBuffer-cmdpool
+        // VUID-vkCmdPushDescriptorSetKHR-pipelineBindPoint-00363
+        match pipeline_bind_point {
+            PipelineBindPoint::Compute => {
+                if !self.queue_family().supports_compute() {
+                    return Err(BindPushError::NotSupportedByQueueFamily);
+                }
+            }
+            PipelineBindPoint::Graphics => {
+                if !self.queue_family().supports_graphics() {
+                    return Err(BindPushError::NotSupportedByQueueFamily);
+                }
+            }
+        }
+
+        // VUID-vkCmdPushDescriptorSetKHR-commonparent
+        assert_eq!(self.device(), pipeline_layout.device());
+
+        // VUID-vkCmdPushDescriptorSetKHR-set-00364
+        if set_num as usize > pipeline_layout.set_layouts().len() {
+            return Err(BindPushError::DescriptorSetOutOfRange {
+                set_num,
+                pipeline_layout_set_count: pipeline_layout.set_layouts().len() as u32,
+            });
+        }
+
+        let descriptor_set_layout = &pipeline_layout.set_layouts()[set_num as usize];
+
+        // VUID-vkCmdPushDescriptorSetKHR-set-00365
+        if !descriptor_set_layout.push_descriptor() {
+            return Err(BindPushError::DescriptorSetNotPush { set_num });
+        }
+
+        for write in descriptor_writes {
+            check_descriptor_write(write, descriptor_set_layout, 0)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -467,10 +555,14 @@ impl SyncCommandBufferBuilder {
 
     /// Calls `vkCmdBindIndexBuffer` on the builder.
     #[inline]
-    pub unsafe fn bind_index_buffer(&mut self, buffer: Arc<dyn BufferAccess>, index_ty: IndexType) {
+    pub unsafe fn bind_index_buffer(
+        &mut self,
+        buffer: Arc<dyn BufferAccess>,
+        index_type: IndexType,
+    ) {
         struct Cmd {
             buffer: Arc<dyn BufferAccess>,
-            index_ty: IndexType,
+            index_type: IndexType,
         }
 
         impl Command for Cmd {
@@ -479,12 +571,12 @@ impl SyncCommandBufferBuilder {
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.bind_index_buffer(self.buffer.as_ref(), self.index_ty);
+                out.bind_index_buffer(self.buffer.as_ref(), self.index_type);
             }
         }
 
-        self.current_state.index_buffer = Some((buffer.clone(), index_ty));
-        self.commands.push(Box::new(Cmd { buffer, index_ty }));
+        self.current_state.index_buffer = Some((buffer.clone(), index_type));
+        self.commands.push(Box::new(Cmd { buffer, index_type }));
     }
 
     /// Calls `vkCmdBindPipeline` on the builder with a compute pipeline.
@@ -841,7 +933,7 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdBindIndexBuffer` on the builder.
     #[inline]
-    pub unsafe fn bind_index_buffer(&mut self, buffer: &dyn BufferAccess, index_ty: IndexType) {
+    pub unsafe fn bind_index_buffer(&mut self, buffer: &dyn BufferAccess, index_type: IndexType) {
         let fns = self.device.fns();
 
         let inner = buffer.inner();
@@ -852,7 +944,7 @@ impl UnsafeCommandBufferBuilder {
             self.handle,
             inner.buffer.internal_object(),
             inner.offset,
-            index_ty.into(),
+            index_type.into(),
         );
     }
 
@@ -1035,5 +1127,150 @@ impl UnsafeCommandBufferBuilderBindVertexBuffer {
         debug_assert!(inner.buffer.usage().vertex_buffer);
         self.raw_buffers.push(inner.buffer.internal_object());
         self.offsets.push(inner.offset);
+    }
+}
+
+#[derive(Clone, Debug)]
+enum BindPushError {
+    DescriptorSetUpdateError(DescriptorSetUpdateError),
+
+    ExtensionNotEnabled {
+        extension: &'static str,
+        reason: &'static str,
+    },
+    FeatureNotEnabled {
+        feature: &'static str,
+        reason: &'static str,
+    },
+
+    /// The element of `descriptor_sets` being bound to a slot is not compatible with the
+    /// corresponding slot in `pipeline_layout`.
+    DescriptorSetNotCompatible {
+        set_num: u32,
+    },
+
+    /// The descriptor set number being pushed is not defined for push descriptor sets in the
+    /// pipeline layout.
+    DescriptorSetNotPush {
+        set_num: u32,
+    },
+
+    /// The highest descriptor set slot being bound is greater than the number of sets in
+    /// `pipeline_layout`.
+    DescriptorSetOutOfRange {
+        set_num: u32,
+        pipeline_layout_set_count: u32,
+    },
+
+    /// An index buffer is missing the `index_buffer` usage.
+    IndexBufferMissingUsage,
+
+    /// The `max_vertex_input_bindings` limit has been exceeded.
+    MaxVertexInputBindingsExceeded {
+        _binding_count: u32,
+        _max: u32,
+    },
+
+    /// The queue family doesn't allow this operation.
+    NotSupportedByQueueFamily,
+
+    /// The push constants data to be written at an offset is not included in any push constant
+    /// range of the pipeline layout.
+    PushConstantsDataOutOfRange {
+        offset: u32,
+    },
+
+    /// The push constants offset is not a multiple of 4.
+    PushConstantsOffsetNotAligned,
+
+    /// The push constants size is not a multiple of 4.
+    PushConstantsSizeNotAligned,
+
+    /// A vertex buffer is missing the `vertex_buffer` usage.
+    VertexBufferMissingUsage,
+}
+
+impl error::Error for BindPushError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            BindPushError::DescriptorSetUpdateError(err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for BindPushError {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match self {
+            Self::ExtensionNotEnabled { extension, reason } => write!(
+                f,
+                "the extension {} must be enabled: {}",
+                extension, reason
+            ),
+            Self::FeatureNotEnabled { feature, reason } => write!(
+                f,
+                "the feature {} must be enabled: {}",
+                feature, reason,
+            ),
+            Self::DescriptorSetUpdateError(_) => write!(
+                f,
+                "a DescriptorSetUpdateError",
+            ),
+
+            Self::DescriptorSetNotCompatible { set_num } => write!(
+                f,
+                "the element of `descriptor_sets` being bound to slot {} is not compatible with the corresponding slot in `pipeline_layout`",
+                set_num,
+            ),
+            Self::DescriptorSetNotPush { set_num } => write!(
+                f,
+                "the descriptor set number being pushed ({}) is not defined for push descriptor sets in the pipeline layout",
+                set_num,
+            ),
+            Self::DescriptorSetOutOfRange { set_num, pipeline_layout_set_count } => write!(
+                f,
+                "the highest descriptor set slot being bound ({}) is greater than the number of sets in `pipeline_layout` ({})",
+                set_num, pipeline_layout_set_count,
+            ),
+            Self::IndexBufferMissingUsage => write!(
+                f,
+                "an index buffer is missing the `index_buffer` usage",
+            ),
+            Self::MaxVertexInputBindingsExceeded { .. } => write!(
+                f,
+                "the `max_vertex_input_bindings` limit has been exceeded",
+            ),
+            Self::NotSupportedByQueueFamily => write!(
+                f,
+                "the queue family doesn't allow this operation",
+            ),
+            Self::PushConstantsDataOutOfRange {
+                offset,
+            } => write!(
+                f,
+                "the push constants data to be written at offset {} is not included in any push constant range of the pipeline layout",
+                offset,
+            ),
+            Self::PushConstantsOffsetNotAligned => write!(
+                f,
+                "the push constants offset is not a multiple of 4",
+            ),
+            Self::PushConstantsSizeNotAligned => write!(
+                f,
+                "the push constants size is not a multiple of 4",
+            ),
+            Self::VertexBufferMissingUsage => write!(
+                f,
+                "a vertex buffer is missing the `vertex_buffer` usage",
+            ),
+        }
+    }
+}
+
+impl From<DescriptorSetUpdateError> for BindPushError {
+    #[inline]
+    fn from(err: DescriptorSetUpdateError) -> Self {
+        Self::DescriptorSetUpdateError(err)
     }
 }

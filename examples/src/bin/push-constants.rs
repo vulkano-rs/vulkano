@@ -100,7 +100,12 @@ fn main() {
                         data.data[idx] += uint(pc.addend);
                     }
                 }
-            "
+            ",
+            types_meta: {
+                use bytemuck::{Pod, Zeroable};
+
+                #[derive(Clone, Copy, Zeroable, Pod)]
+            },
         }
     }
 

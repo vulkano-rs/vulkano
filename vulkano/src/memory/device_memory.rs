@@ -236,9 +236,12 @@ impl DeviceMemory {
         }
 
         if let Some(import_info) = import_info {
-            match import_info {
-                &mut MemoryImportInfo::Fd {
+            match *import_info {
+                MemoryImportInfo::Fd {
+                    #[cfg(unix)]
                     handle_type,
+                    #[cfg(not(unix))]
+                        handle_type: _,
                     file: _,
                 } => {
                     if !device.enabled_extensions().khr_external_memory_fd {
@@ -288,8 +291,11 @@ impl DeviceMemory {
                         // Can't validate, must be ensured by user
                     }
                 }
-                &mut MemoryImportInfo::Win32 {
+                MemoryImportInfo::Win32 {
+                    #[cfg(windows)]
                     handle_type,
+                    #[cfg(not(windows))]
+                        handle_type: _,
                     handle: _,
                 } => {
                     if !device.enabled_extensions().khr_external_memory_win32 {
