@@ -35,10 +35,18 @@ use std::{error::Error, fmt, ops::RangeInclusive};
 /// These commands require a queue with a pipeline type that uses the given state.
 impl<L, P> AutoCommandBufferBuilder<L, P> {
     // Helper function for dynamic state setting.
-    fn has_fixed_state(&self, state: DynamicState) -> bool {
-        self.state().pipeline_graphics().map_or(false, |pipeline| {
+    fn validate_pipeline_fixed_state(
+        &self,
+        state: DynamicState,
+    ) -> Result<(), SetDynamicStateError> {
+        // VUID-vkCmdDispatch-None-02859
+        if self.state().pipeline_graphics().map_or(false, |pipeline| {
             matches!(pipeline.dynamic_state(state), Some(false))
-        })
+        }) {
+            return Err(SetDynamicStateError::PipelineHasFixedState);
+        }
+
+        Ok(())
     }
 
     /// Sets the dynamic blend constants for future draw calls.
@@ -61,9 +69,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         &self,
         _constants: [f32; 4],
     ) -> Result<(), SetDynamicStateError> {
-        if self.has_fixed_state(DynamicState::BlendConstants) {
-            return Err(SetDynamicStateError::PipelineHasFixedState);
-        }
+        self.validate_pipeline_fixed_state(DynamicState::BlendConstants)?;
 
         // VUID-vkCmdSetBlendConstants-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -105,9 +111,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         &self,
         enables: &impl ExactSizeIterator,
     ) -> Result<(), SetDynamicStateError> {
-        if self.has_fixed_state(DynamicState::ColorWriteEnable) {
-            return Err(SetDynamicStateError::PipelineHasFixedState);
-        }
+        self.validate_pipeline_fixed_state(DynamicState::ColorWriteEnable)?;
 
         // VUID-vkCmdSetColorWriteEnableEXT-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -163,9 +167,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     fn validate_set_cull_mode(&self, _cull_mode: CullMode) -> Result<(), SetDynamicStateError> {
-        if self.has_fixed_state(DynamicState::CullMode) {
-            return Err(SetDynamicStateError::PipelineHasFixedState);
-        }
+        self.validate_pipeline_fixed_state(DynamicState::CullMode)?;
 
         // VUID-vkCmdSetCullMode-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -217,9 +219,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         clamp: f32,
         _slope_factor: f32,
     ) -> Result<(), SetDynamicStateError> {
-        if self.has_fixed_state(DynamicState::DepthBias) {
-            return Err(SetDynamicStateError::PipelineHasFixedState);
-        }
+        self.validate_pipeline_fixed_state(DynamicState::DepthBias)?;
 
         // VUID-vkCmdSetDepthBias-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -258,9 +258,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     fn validate_set_depth_bias_enable(&self, _enable: bool) -> Result<(), SetDynamicStateError> {
-        if self.has_fixed_state(DynamicState::DepthBiasEnable) {
-            return Err(SetDynamicStateError::PipelineHasFixedState);
-        }
+        self.validate_pipeline_fixed_state(DynamicState::DepthBiasEnable)?;
 
         // VUID-vkCmdSetDepthBiasEnable-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -304,9 +302,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         &self,
         bounds: RangeInclusive<f32>,
     ) -> Result<(), SetDynamicStateError> {
-        if self.has_fixed_state(DynamicState::DepthBounds) {
-            return Err(SetDynamicStateError::PipelineHasFixedState);
-        }
+        self.validate_pipeline_fixed_state(DynamicState::DepthBounds)?;
 
         // VUID-vkCmdSetDepthBounds-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -354,9 +350,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         &self,
         _enable: bool,
     ) -> Result<(), SetDynamicStateError> {
-        if self.has_fixed_state(DynamicState::DepthBoundsTestEnable) {
-            return Err(SetDynamicStateError::PipelineHasFixedState);
-        }
+        self.validate_pipeline_fixed_state(DynamicState::DepthBoundsTestEnable)?;
 
         // VUID-vkCmdSetDepthBoundsTestEnable-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -400,9 +394,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         &self,
         _compare_op: CompareOp,
     ) -> Result<(), SetDynamicStateError> {
-        if self.has_fixed_state(DynamicState::DepthCompareOp) {
-            return Err(SetDynamicStateError::PipelineHasFixedState);
-        }
+        self.validate_pipeline_fixed_state(DynamicState::DepthCompareOp)?;
 
         // VUID-vkCmdSetDepthCompareOp-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -443,9 +435,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     fn validate_set_depth_test_enable(&self, _enable: bool) -> Result<(), SetDynamicStateError> {
-        if self.has_fixed_state(DynamicState::DepthTestEnable) {
-            return Err(SetDynamicStateError::PipelineHasFixedState);
-        }
+        self.validate_pipeline_fixed_state(DynamicState::DepthTestEnable)?;
 
         // VUID-vkCmdSetDepthTestEnable-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -486,9 +476,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     fn validate_set_depth_write_enable(&self, _enable: bool) -> Result<(), SetDynamicStateError> {
-        if self.has_fixed_state(DynamicState::DepthWriteEnable) {
-            return Err(SetDynamicStateError::PipelineHasFixedState);
-        }
+        self.validate_pipeline_fixed_state(DynamicState::DepthWriteEnable)?;
 
         // VUID-vkCmdSetDepthWriteEnable-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -541,9 +529,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         first_rectangle: u32,
         rectangles: &[Scissor],
     ) -> Result<(), SetDynamicStateError> {
-        if self.has_fixed_state(DynamicState::DiscardRectangle) {
-            return Err(SetDynamicStateError::PipelineHasFixedState);
-        }
+        self.validate_pipeline_fixed_state(DynamicState::DiscardRectangle)?;
 
         // VUID-vkCmdSetDiscardRectangle-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -601,9 +587,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     fn validate_set_front_face(&self, _face: FrontFace) -> Result<(), SetDynamicStateError> {
-        if self.has_fixed_state(DynamicState::FrontFace) {
-            return Err(SetDynamicStateError::PipelineHasFixedState);
-        }
+        self.validate_pipeline_fixed_state(DynamicState::FrontFace)?;
 
         // VUID-vkCmdSetFrontFace-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -648,9 +632,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         factor: u32,
         _pattern: u16,
     ) -> Result<(), SetDynamicStateError> {
-        if self.has_fixed_state(DynamicState::LineStipple) {
-            return Err(SetDynamicStateError::PipelineHasFixedState);
-        }
+        self.validate_pipeline_fixed_state(DynamicState::LineStipple)?;
 
         // VUID-vkCmdSetLineStippleEXT-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -691,9 +673,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     fn validate_set_line_width(&self, line_width: f32) -> Result<(), SetDynamicStateError> {
-        if self.has_fixed_state(DynamicState::LineWidth) {
-            return Err(SetDynamicStateError::PipelineHasFixedState);
-        }
+        self.validate_pipeline_fixed_state(DynamicState::LineWidth)?;
 
         // VUID-vkCmdSetLineWidth-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -732,9 +712,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     fn validate_set_logic_op(&self, _logic_op: LogicOp) -> Result<(), SetDynamicStateError> {
-        if self.has_fixed_state(DynamicState::LogicOp) {
-            return Err(SetDynamicStateError::PipelineHasFixedState);
-        }
+        self.validate_pipeline_fixed_state(DynamicState::LogicOp)?;
 
         // VUID-vkCmdSetLogicOpEXT-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -781,9 +759,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     fn validate_set_patch_control_points(&self, num: u32) -> Result<(), SetDynamicStateError> {
-        if self.has_fixed_state(DynamicState::PatchControlPoints) {
-            return Err(SetDynamicStateError::PipelineHasFixedState);
-        }
+        self.validate_pipeline_fixed_state(DynamicState::PatchControlPoints)?;
 
         // VUID-vkCmdSetPatchControlPointsEXT-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -850,9 +826,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         &self,
         _enable: bool,
     ) -> Result<(), SetDynamicStateError> {
-        if self.has_fixed_state(DynamicState::PrimitiveRestartEnable) {
-            return Err(SetDynamicStateError::PipelineHasFixedState);
-        }
+        self.validate_pipeline_fixed_state(DynamicState::PrimitiveRestartEnable)?;
 
         // VUID-vkCmdSetPrimitiveRestartEnable-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -900,9 +874,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         &self,
         topology: PrimitiveTopology,
     ) -> Result<(), SetDynamicStateError> {
-        if self.has_fixed_state(DynamicState::PrimitiveTopology) {
-            return Err(SetDynamicStateError::PipelineHasFixedState);
-        }
+        self.validate_pipeline_fixed_state(DynamicState::PrimitiveTopology)?;
 
         // VUID-vkCmdSetPrimitiveTopology-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -972,9 +944,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         &self,
         _enable: bool,
     ) -> Result<(), SetDynamicStateError> {
-        if self.has_fixed_state(DynamicState::RasterizerDiscardEnable) {
-            return Err(SetDynamicStateError::PipelineHasFixedState);
-        }
+        self.validate_pipeline_fixed_state(DynamicState::RasterizerDiscardEnable)?;
 
         // VUID-vkCmdSetRasterizerDiscardEnable-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -1023,9 +993,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         first_scissor: u32,
         scissors: &[Scissor],
     ) -> Result<(), SetDynamicStateError> {
-        if self.has_fixed_state(DynamicState::Scissor) {
-            return Err(SetDynamicStateError::PipelineHasFixedState);
-        }
+        self.validate_pipeline_fixed_state(DynamicState::Scissor)?;
 
         // VUID-vkCmdSetScissor-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -1095,9 +1063,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         &self,
         scissors: &[Scissor],
     ) -> Result<(), SetDynamicStateError> {
-        if self.has_fixed_state(DynamicState::ScissorWithCount) {
-            return Err(SetDynamicStateError::PipelineHasFixedState);
-        }
+        self.validate_pipeline_fixed_state(DynamicState::ScissorWithCount)?;
 
         // VUID-vkCmdSetScissorWithCount-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -1159,9 +1125,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         _faces: StencilFaces,
         _compare_mask: u32,
     ) -> Result<(), SetDynamicStateError> {
-        if self.has_fixed_state(DynamicState::StencilCompareMask) {
-            return Err(SetDynamicStateError::PipelineHasFixedState);
-        }
+        self.validate_pipeline_fixed_state(DynamicState::StencilCompareMask)?;
 
         // VUID-vkCmdSetStencilCompareMask-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -1208,9 +1172,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         _depth_fail_op: StencilOp,
         _compare_op: CompareOp,
     ) -> Result<(), SetDynamicStateError> {
-        if self.has_fixed_state(DynamicState::StencilOp) {
-            return Err(SetDynamicStateError::PipelineHasFixedState);
-        }
+        self.validate_pipeline_fixed_state(DynamicState::StencilOp)?;
 
         // VUID-vkCmdSetStencilOp-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -1252,9 +1214,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         _faces: StencilFaces,
         _reference: u32,
     ) -> Result<(), SetDynamicStateError> {
-        if self.has_fixed_state(DynamicState::StencilReference) {
-            return Err(SetDynamicStateError::PipelineHasFixedState);
-        }
+        self.validate_pipeline_fixed_state(DynamicState::StencilReference)?;
 
         // VUID-vkCmdSetStencilReference-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -1285,9 +1245,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     fn validate_set_stencil_test_enable(&self, _enable: bool) -> Result<(), SetDynamicStateError> {
-        if self.has_fixed_state(DynamicState::StencilTestEnable) {
-            return Err(SetDynamicStateError::PipelineHasFixedState);
-        }
+        self.validate_pipeline_fixed_state(DynamicState::StencilTestEnable)?;
 
         // VUID-vkCmdSetStencilTestEnable-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -1329,9 +1287,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         _faces: StencilFaces,
         _write_mask: u32,
     ) -> Result<(), SetDynamicStateError> {
-        if self.has_fixed_state(DynamicState::StencilWriteMask) {
-            return Err(SetDynamicStateError::PipelineHasFixedState);
-        }
+        self.validate_pipeline_fixed_state(DynamicState::StencilWriteMask)?;
 
         // VUID-vkCmdSetStencilWriteMask-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -1371,9 +1327,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         first_viewport: u32,
         viewports: &[Viewport],
     ) -> Result<(), SetDynamicStateError> {
-        if self.has_fixed_state(DynamicState::Viewport) {
-            return Err(SetDynamicStateError::PipelineHasFixedState);
-        }
+        self.validate_pipeline_fixed_state(DynamicState::Viewport)?;
 
         // VUID-vkCmdSetViewport-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -1443,9 +1397,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         &self,
         viewports: &[Viewport],
     ) -> Result<(), SetDynamicStateError> {
-        if self.has_fixed_state(DynamicState::ViewportWithCount) {
-            return Err(SetDynamicStateError::PipelineHasFixedState);
-        }
+        self.validate_pipeline_fixed_state(DynamicState::ViewportWithCount)?;
 
         // VUID-vkCmdSetViewportWithCount-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {

@@ -9,12 +9,14 @@
 
 use crate::{
     command_buffer::{
-        auto::{BeginRenderPassState, BeginRenderingState, RenderPassState, RenderPassStateType},
+        auto::{
+            BeginRenderPassState, BeginRenderingAttachments, BeginRenderingState, RenderPassState,
+            RenderPassStateType,
+        },
         pool::CommandPoolBuilderAlloc,
         synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
-        AutoCommandBufferBuilder, CommandBufferInheritanceRenderPassType, PrimaryAutoCommandBuffer,
-        SubpassContents,
+        AutoCommandBufferBuilder, PrimaryAutoCommandBuffer, SubpassContents,
     },
     device::DeviceOwned,
     format::{ClearColorValue, ClearValue, Format, NumericType},
@@ -61,6 +63,7 @@ where
             } = &render_pass_begin_info;
 
             let subpass = render_pass.clone().first_subpass();
+            let view_mask = subpass.subpass_desc().view_mask;
 
             let render_pass_state = RenderPassState {
                 contents,
@@ -68,9 +71,10 @@ where
                 render_area_extent,
                 render_pass: BeginRenderPassState {
                     subpass,
-                    framebuffer: framebuffer.clone(),
+                    framebuffer: Some(framebuffer.clone()),
                 }
                 .into(),
+                view_mask,
             };
 
             self.inner
@@ -394,8 +398,9 @@ where
 
             begin_render_pass_state.subpass.next_subpass();
             render_pass_state.contents = contents;
+            render_pass_state.view_mask = begin_render_pass_state.subpass.subpass_desc().view_mask;
 
-            if begin_render_pass_state.subpass.render_pass().views_used() != 0 {
+            if render_pass_state.view_mask != 0 {
                 // When multiview is enabled, at the beginning of each subpass, all
                 // non-render pass state is undefined.
                 self.inner.reset_state();
@@ -419,7 +424,6 @@ where
             RenderPassStateType::BeginRendering(_) => {
                 return Err(RenderPassError::ForbiddenWithBeginRendering)
             }
-            RenderPassStateType::Inherited => unreachable!("This function is only callable on a primary command buffer, so there should be no inheritance"),
         };
 
         // VUID-vkCmdNextSubpass2-None-03102
@@ -470,7 +474,6 @@ where
             RenderPassStateType::BeginRendering(_) => {
                 return Err(RenderPassError::ForbiddenWithBeginRendering)
             }
-            RenderPassStateType::Inherited => unreachable!("This function is only callable on a primary command buffer, so there should be no inheritance"),
         };
 
         // VUID-vkCmdEndRenderPass2-None-03103
@@ -611,12 +614,25 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 render_area_offset,
                 render_area_extent,
                 render_pass: BeginRenderingState {
-                    view_mask,
-                    color_attachments: color_attachments.clone(),
-                    depth_attachment: depth_attachment.clone(),
-                    stencil_attachment: stencil_attachment.clone(),
+                    attachments: Some(BeginRenderingAttachments {
+                        color_attachments: color_attachments.clone(),
+                        depth_attachment: depth_attachment.clone(),
+                        stencil_attachment: stencil_attachment.clone(),
+                    }),
+                    color_attachment_formats: color_attachments
+                        .iter()
+                        .map(|a| a.as_ref().map(|a| a.image_view.format().unwrap()))
+                        .collect(),
+                    depth_attachment_format: depth_attachment
+                        .as_ref()
+                        .map(|a| a.image_view.format().unwrap()),
+                    stencil_attachment_format: stencil_attachment
+                        .as_ref()
+                        .map(|a| a.image_view.format().unwrap()),
+                    pipeline_used: false,
                 }
                 .into(),
+                view_mask,
             };
 
             self.inner.begin_rendering(rendering_info)?;
@@ -1129,6 +1145,11 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             .as_ref()
             .ok_or(RenderPassError::ForbiddenOutsideRenderPass)?;
 
+        // VUID?
+        if self.inheritance_info.is_some() {
+            return Err(RenderPassError::ForbiddenWithInheritedRenderPass);
+        }
+
         // VUID-vkCmdEndRendering-None-06161
         // VUID-vkCmdEndRendering-commandBuffer-06162
         match &render_pass_state.render_pass {
@@ -1136,9 +1157,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 return Err(RenderPassError::ForbiddenWithBeginRenderPass)
             }
             RenderPassStateType::BeginRendering(_) => (),
-            RenderPassStateType::Inherited => {
-                return Err(RenderPassError::ForbiddenWithInheritedRenderPass)
-            }
         }
 
         // VUID-vkCmdEndRendering-commandBuffer-cmdpool
@@ -1195,26 +1213,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
         //let subpass_desc = begin_render_pass_state.subpass.subpass_desc();
         //let render_pass = begin_render_pass_state.subpass.render_pass();
-        let is_multiview = match &render_pass_state.render_pass {
-            RenderPassStateType::BeginRenderPass(state) => {
-                state.subpass.render_pass().views_used() != 0
-            }
-            RenderPassStateType::BeginRendering(state) => state.view_mask != 0,
-            RenderPassStateType::Inherited => match self
-                .inheritance_info
-                .as_ref()
-                .unwrap()
-                .render_pass
-                .as_ref()
-                .unwrap()
-            {
-                CommandBufferInheritanceRenderPassType::BeginRenderPass(info) => {
-                    info.subpass.render_pass().views_used() != 0
-                }
-                CommandBufferInheritanceRenderPassType::BeginRendering(info) => info.view_mask != 0,
-            },
-        };
-
+        let is_multiview = render_pass_state.view_mask != 0;
         let mut layer_count = u32::MAX;
 
         for &clear_attachment in attachments {
@@ -1234,92 +1233,19 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                             )?;
 
                             atch_ref.as_ref().map(|atch_ref| {
-                                let image_view =
-                                    &state.framebuffer.attachments()[atch_ref.attachment as usize];
-                                let array_layers = &image_view.subresource_range().array_layers;
-                                layer_count =
-                                    min(layer_count, array_layers.end - array_layers.start);
-
                                 state.subpass.render_pass().attachments()
                                     [atch_ref.attachment as usize]
                                     .format
                                     .unwrap()
                             })
                         }
-                        RenderPassStateType::BeginRendering(state) => state
-                            .color_attachments
+                        RenderPassStateType::BeginRendering(state) => *state
+                            .color_attachment_formats
                             .get(color_attachment as usize)
                             .ok_or(RenderPassError::ColorAttachmentIndexOutOfRange {
                                 color_attachment_index: color_attachment,
-                                num_color_attachments: state.color_attachments.len() as u32,
-                            })?
-                            .as_ref()
-                            .and_then(|attachment_info| {
-                                let image_view = &attachment_info.image_view;
-                                let array_layers = &image_view.subresource_range().array_layers;
-                                layer_count =
-                                    min(layer_count, array_layers.end - array_layers.start);
-
-                                attachment_info.image_view.format()
-                            }),
-                        RenderPassStateType::Inherited => {
-                            match self
-                                .inheritance_info
-                                .as_ref()
-                                .unwrap()
-                                .render_pass
-                                .as_ref()
-                                .unwrap()
-                            {
-                                CommandBufferInheritanceRenderPassType::BeginRenderPass(info) => {
-                                    let color_attachments =
-                                        &info.subpass.subpass_desc().color_attachments;
-                                    let atch_ref = color_attachments
-                                        .get(color_attachment as usize)
-                                        .ok_or({
-                                            RenderPassError::ColorAttachmentIndexOutOfRange {
-                                                color_attachment_index: color_attachment,
-                                                num_color_attachments: color_attachments.len()
-                                                    as u32,
-                                            }
-                                        })?;
-
-                                    atch_ref.as_ref().map(|atch_ref| {
-                                        // Only know the layer count if a framebuffer was given.
-                                        if let Some(framebuffer) = &info.framebuffer {
-                                            let image_view = &framebuffer.attachments()
-                                                [atch_ref.attachment as usize];
-                                            let array_layers =
-                                                &image_view.subresource_range().array_layers;
-                                            layer_count = min(
-                                                layer_count,
-                                                array_layers.end - array_layers.start,
-                                            );
-                                        }
-
-                                        info.subpass.render_pass().attachments()
-                                            [atch_ref.attachment as usize]
-                                            .format
-                                            .unwrap()
-                                    })
-                                }
-                                CommandBufferInheritanceRenderPassType::BeginRendering(info) => {
-                                    *info
-                                        .color_attachment_formats
-                                        .get(color_attachment as usize)
-                                        .ok_or({
-                                            RenderPassError::ColorAttachmentIndexOutOfRange {
-                                                color_attachment_index: color_attachment,
-                                                num_color_attachments: info
-                                                    .color_attachment_formats
-                                                    .len()
-                                                    as u32,
-                                            }
-                                        })?
-                                    // Don't know the layer count.
-                                }
-                            }
-                        }
+                                num_color_attachments: state.color_attachment_formats.len() as u32,
+                            })?,
                     };
 
                     // VUID-vkCmdClearAttachments-aspectMask-02501
@@ -1344,6 +1270,31 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                             attachment_format,
                         });
                     }
+
+                    let image_view = match &render_pass_state.render_pass {
+                        RenderPassStateType::BeginRenderPass(state) => (state.framebuffer.as_ref())
+                            .zip(
+                                state.subpass.subpass_desc().color_attachments
+                                    [color_attachment as usize]
+                                    .as_ref(),
+                            )
+                            .map(|(framebuffer, atch_ref)| {
+                                &framebuffer.attachments()[atch_ref.attachment as usize]
+                            }),
+                        RenderPassStateType::BeginRendering(state) => state
+                            .attachments
+                            .as_ref()
+                            .and_then(|attachments| {
+                                attachments.color_attachments[color_attachment as usize].as_ref()
+                            })
+                            .map(|attachment_info| &attachment_info.image_view),
+                    };
+
+                    // We only know the layer count if we have a known attachment image.
+                    if let Some(image_view) = image_view {
+                        let array_layers = &image_view.subresource_range().array_layers;
+                        layer_count = min(layer_count, array_layers.end - array_layers.start);
+                    }
                 }
                 ClearAttachment::Depth(_)
                 | ClearAttachment::Stencil(_)
@@ -1355,80 +1306,16 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                             .depth_stencil_attachment
                             .as_ref()
                             .map_or((None, None), |atch_ref| {
-                                let image_view =
-                                    &state.framebuffer.attachments()[atch_ref.attachment as usize];
-                                let array_layers = &image_view.subresource_range().array_layers;
-                                layer_count =
-                                    min(layer_count, array_layers.end - array_layers.start);
-
                                 let format = state.subpass.render_pass().attachments()
                                     [atch_ref.attachment as usize]
                                     .format
                                     .unwrap();
                                 (Some(format), Some(format))
                             }),
-                        RenderPassStateType::BeginRendering(state) => {
-                            if let Some(image_view) = state
-                                .depth_attachment
-                                .as_ref()
-                                .or(state.stencil_attachment.as_ref())
-                                .map(|attachment_info| &attachment_info.image_view)
-                            {
-                                let array_layers = &image_view.subresource_range().array_layers;
-                                layer_count =
-                                    min(layer_count, array_layers.end - array_layers.start);
-                            }
-
-                            (
-                                state.depth_attachment.as_ref().map(|attachment_info| {
-                                    attachment_info.image_view.format().unwrap()
-                                }),
-                                state.stencil_attachment.as_ref().map(|attachment_info| {
-                                    attachment_info.image_view.format().unwrap()
-                                }),
-                            )
-                        }
-                        RenderPassStateType::Inherited => {
-                            match self
-                                .inheritance_info
-                                .as_ref()
-                                .unwrap()
-                                .render_pass
-                                .as_ref()
-                                .unwrap()
-                            {
-                                CommandBufferInheritanceRenderPassType::BeginRenderPass(info) => {
-                                    info.subpass
-                                        .subpass_desc()
-                                        .depth_stencil_attachment
-                                        .as_ref()
-                                        .map_or((None, None), |atch_ref| {
-                                            // Only know the layer count if a framebuffer was given.
-                                            if let Some(framebuffer) = &info.framebuffer {
-                                                let image_view = &framebuffer.attachments()
-                                                    [atch_ref.attachment as usize];
-                                                let array_layers =
-                                                    &image_view.subresource_range().array_layers;
-                                                layer_count = min(
-                                                    layer_count,
-                                                    array_layers.end - array_layers.start,
-                                                );
-                                            }
-
-                                            let format = info.subpass.render_pass().attachments()
-                                                [atch_ref.attachment as usize]
-                                                .format
-                                                .unwrap();
-                                            (Some(format), Some(format))
-                                        })
-                                }
-                                CommandBufferInheritanceRenderPassType::BeginRendering(info) => {
-                                    // Don't know the layer count.
-
-                                    (info.depth_attachment_format, info.stencil_attachment_format)
-                                }
-                            }
-                        }
+                        RenderPassStateType::BeginRendering(state) => (
+                            state.depth_attachment_format,
+                            state.stencil_attachment_format,
+                        ),
                     };
 
                     // VUID-vkCmdClearAttachments-aspectMask-02502
@@ -1453,6 +1340,31 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                             clear_attachment,
                             attachment_format: None,
                         });
+                    }
+
+                    let image_view = match &render_pass_state.render_pass {
+                        RenderPassStateType::BeginRenderPass(state) => (state.framebuffer.as_ref())
+                            .zip(
+                                state
+                                    .subpass
+                                    .subpass_desc()
+                                    .depth_stencil_attachment
+                                    .as_ref(),
+                            )
+                            .map(|(framebuffer, atch_ref)| {
+                                &framebuffer.attachments()[atch_ref.attachment as usize]
+                            }),
+                        RenderPassStateType::BeginRendering(state) => state
+                            .attachments
+                            .as_ref()
+                            .and_then(|attachments| attachments.depth_attachment.as_ref())
+                            .map(|attachment_info| &attachment_info.image_view),
+                    };
+
+                    // We only know the layer count if we have a known attachment image.
+                    if let Some(image_view) = image_view {
+                        let array_layers = &image_view.subresource_range().array_layers;
+                        layer_count = min(layer_count, array_layers.end - array_layers.start);
                     }
                 }
             }

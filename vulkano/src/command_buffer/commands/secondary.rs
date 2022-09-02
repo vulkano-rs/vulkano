@@ -167,7 +167,7 @@ where
 
                     // VUID-vkCmdExecuteCommands-pCommandBuffers-00099
                     if let Some(framebuffer) = &inheritance_info.framebuffer {
-                        if framebuffer != &state.framebuffer {
+                        if framebuffer != state.framebuffer.as_ref().unwrap() {
                             return Err(ExecuteCommandsError::RenderPassFramebufferMismatch {
                                 command_buffer_index,
                             });
@@ -178,35 +178,39 @@ where
                     RenderPassStateType::BeginRendering(state),
                     CommandBufferInheritanceRenderPassType::BeginRendering(inheritance_info),
                 ) => {
+                    let attachments = state.attachments.as_ref().unwrap();
+
                     // VUID-vkCmdExecuteCommands-colorAttachmentCount-06027
                     if inheritance_info.color_attachment_formats.len()
-                        != state.color_attachments.len()
+                        != attachments.color_attachments.len()
                     {
                         return Err(
                             ExecuteCommandsError::RenderPassColorAttachmentCountMismatch {
                                 command_buffer_index,
-                                required_count: state.color_attachments.len() as u32,
+                                required_count: attachments.color_attachments.len() as u32,
                                 inherited_count: inheritance_info.color_attachment_formats.len()
                                     as u32,
                             },
                         );
                     }
 
-                    for (color_attachment_index, image_view, format) in state
+                    for (color_attachment_index, image_view, inherited_format) in attachments
                         .color_attachments
                         .iter()
                         .zip(inheritance_info.color_attachment_formats.iter().copied())
                         .enumerate()
                         .filter_map(|(i, (a, f))| a.as_ref().map(|a| (i as u32, &a.image_view, f)))
                     {
+                        let required_format = image_view.format().unwrap();
+
                         // VUID-vkCmdExecuteCommands-imageView-06028
-                        if Some(image_view.format().unwrap()) != format {
+                        if Some(required_format) != inherited_format {
                             return Err(
                                 ExecuteCommandsError::RenderPassColorAttachmentFormatMismatch {
                                     command_buffer_index,
                                     color_attachment_index,
-                                    required_format: image_view.format().unwrap(),
-                                    inherited_format: format,
+                                    required_format,
+                                    inherited_format,
                                 },
                             );
                         }
@@ -224,7 +228,7 @@ where
                         }
                     }
 
-                    if let Some((image_view, format)) = state
+                    if let Some((image_view, format)) = attachments
                         .depth_attachment
                         .as_ref()
                         .map(|a| (&a.image_view, inheritance_info.depth_attachment_format))
@@ -252,7 +256,7 @@ where
                         }
                     }
 
-                    if let Some((image_view, format)) = state
+                    if let Some((image_view, format)) = attachments
                         .stencil_attachment
                         .as_ref()
                         .map(|a| (&a.image_view, inheritance_info.stencil_attachment_format))
@@ -281,15 +285,14 @@ where
                     }
 
                     // VUID-vkCmdExecuteCommands-viewMask-06031
-                    if inheritance_info.view_mask != state.view_mask {
+                    if inheritance_info.view_mask != render_pass_state.view_mask {
                         return Err(ExecuteCommandsError::RenderPassViewMaskMismatch {
                             command_buffer_index,
-                            required_view_mask: state.view_mask,
+                            required_view_mask: render_pass_state.view_mask,
                             inherited_view_mask: inheritance_info.view_mask,
                         });
                     }
                 }
-                (RenderPassStateType::Inherited, _) => unreachable!(),
                 _ => {
                     // VUID-vkCmdExecuteCommands-pBeginInfo-06025
                     return Err(ExecuteCommandsError::RenderPassTypeMismatch {
