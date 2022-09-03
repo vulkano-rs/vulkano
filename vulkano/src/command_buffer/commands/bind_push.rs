@@ -10,6 +10,7 @@
 use crate::{
     buffer::{BufferAccess, BufferContents, TypedBufferAccess},
     command_buffer::{
+        auto::RenderPassStateType,
         synced::{Command, SetOrPush, SyncCommandBufferBuilder},
         sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder,
@@ -23,6 +24,7 @@ use crate::{
     pipeline::{
         graphics::{
             input_assembly::{Index, IndexType},
+            render_pass::PipelineRenderPassType,
             vertex_input::VertexBuffersCollection,
         },
         ComputePipeline, GraphicsPipeline, PipelineBindPoint, PipelineLayout,
@@ -251,12 +253,46 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         // VUID-vkCmdBindPipeline-commonparent
         assert_eq!(self.device(), pipeline.device());
 
-        // TODO:
+        if let Some(last_pipeline) = self
+            .render_pass_state
+            .as_ref()
+            .and_then(|render_pass_state| match &render_pass_state.render_pass {
+                RenderPassStateType::BeginRendering(state) if state.pipeline_used => {
+                    self.state().pipeline_graphics()
+                }
+                _ => None,
+            })
+        {
+            if let (
+                PipelineRenderPassType::BeginRendering(pipeline_rendering_info),
+                PipelineRenderPassType::BeginRendering(last_pipeline_rendering_info),
+            ) = (pipeline.render_pass(), last_pipeline.render_pass())
+            {
+                // VUID-vkCmdBindPipeline-pipeline-06195
+                // VUID-vkCmdBindPipeline-pipeline-06196
+                if pipeline_rendering_info.color_attachment_formats
+                    != last_pipeline_rendering_info.color_attachment_formats
+                {
+                    todo!()
+                }
+
+                // VUID-vkCmdBindPipeline-pipeline-06197
+                if pipeline_rendering_info.depth_attachment_format
+                    != last_pipeline_rendering_info.depth_attachment_format
+                {
+                    todo!()
+                }
+
+                // VUID-vkCmdBindPipeline-pipeline-06194
+                if pipeline_rendering_info.stencil_attachment_format
+                    != last_pipeline_rendering_info.stencil_attachment_format
+                {
+                    todo!()
+                }
+            }
+        }
+
         // VUID-vkCmdBindPipeline-pipeline-00781
-        // VUID-vkCmdBindPipeline-pipeline-06195
-        // VUID-vkCmdBindPipeline-pipeline-06196
-        // VUID-vkCmdBindPipeline-pipeline-06197
-        // VUID-vkCmdBindPipeline-pipeline-06194
 
         Ok(())
     }

@@ -10,10 +10,10 @@
 use crate::{
     buffer::TypedBufferAccess,
     command_buffer::{
-        auto::{QueryState, RenderPassStateType},
+        auto::QueryState,
         synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
-        AutoCommandBufferBuilder, CommandBufferInheritanceRenderPassType,
+        AutoCommandBufferBuilder,
     },
     device::{physical::QueueFamily, DeviceOwned},
     query::{
@@ -121,29 +121,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             return Err(QueryError::QueryIsActive);
         }
 
-        if let Some(state) = &self.render_pass_state {
-            let view_mask = match &state.render_pass {
-                RenderPassStateType::BeginRenderPass(state) => {
-                    state.subpass.subpass_desc().view_mask
-                }
-                RenderPassStateType::BeginRendering(state) => state.view_mask,
-                RenderPassStateType::Inherited => match self
-                    .inheritance_info
-                    .as_ref()
-                    .unwrap()
-                    .render_pass
-                    .as_ref()
-                    .unwrap()
-                {
-                    CommandBufferInheritanceRenderPassType::BeginRenderPass(info) => {
-                        info.subpass.subpass_desc().view_mask
-                    }
-                    CommandBufferInheritanceRenderPassType::BeginRendering(info) => info.view_mask,
-                },
-            };
-
+        if let Some(render_pass_state) = &self.render_pass_state {
             // VUID-vkCmdBeginQuery-query-00808
-            if query + view_mask.count_ones() > query_pool.query_count() {
+            if query + render_pass_state.view_mask.count_ones() > query_pool.query_count() {
                 return Err(QueryError::OutOfRangeMultiview);
             }
         }
@@ -197,29 +177,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         // VUID-vkCmdEndQuery-query-00810
         query_pool.query(query).ok_or(QueryError::OutOfRange)?;
 
-        if let Some(state) = &self.render_pass_state {
-            let view_mask = match &state.render_pass {
-                RenderPassStateType::BeginRenderPass(state) => {
-                    state.subpass.subpass_desc().view_mask
-                }
-                RenderPassStateType::BeginRendering(state) => state.view_mask,
-                RenderPassStateType::Inherited => match self
-                    .inheritance_info
-                    .as_ref()
-                    .unwrap()
-                    .render_pass
-                    .as_ref()
-                    .unwrap()
-                {
-                    CommandBufferInheritanceRenderPassType::BeginRenderPass(info) => {
-                        info.subpass.subpass_desc().view_mask
-                    }
-                    CommandBufferInheritanceRenderPassType::BeginRendering(info) => info.view_mask,
-                },
-            };
-
+        if let Some(render_pass_state) = &self.render_pass_state {
             // VUID-vkCmdEndQuery-query-00812
-            if query + view_mask.count_ones() > query_pool.query_count() {
+            if query + render_pass_state.view_mask.count_ones() > query_pool.query_count() {
                 return Err(QueryError::OutOfRangeMultiview);
             }
         }
@@ -306,29 +266,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         // VUID-vkCmdWriteTimestamp-query-04904
         query_pool.query(query).ok_or(QueryError::OutOfRange)?;
 
-        if let Some(state) = &self.render_pass_state {
-            let view_mask = match &state.render_pass {
-                RenderPassStateType::BeginRenderPass(state) => {
-                    state.subpass.subpass_desc().view_mask
-                }
-                RenderPassStateType::BeginRendering(state) => state.view_mask,
-                RenderPassStateType::Inherited => match self
-                    .inheritance_info
-                    .as_ref()
-                    .unwrap()
-                    .render_pass
-                    .as_ref()
-                    .unwrap()
-                {
-                    CommandBufferInheritanceRenderPassType::BeginRenderPass(info) => {
-                        info.subpass.subpass_desc().view_mask
-                    }
-                    CommandBufferInheritanceRenderPassType::BeginRendering(info) => info.view_mask,
-                },
-            };
-
+        if let Some(render_pass_state) = &self.render_pass_state {
             // VUID-vkCmdWriteTimestamp-query-00831
-            if query + view_mask.count_ones() > query_pool.query_count() {
+            if query + render_pass_state.view_mask.count_ones() > query_pool.query_count() {
                 return Err(QueryError::OutOfRangeMultiview);
             }
         }

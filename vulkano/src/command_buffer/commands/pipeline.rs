@@ -10,37 +10,33 @@
 use crate::{
     buffer::{view::BufferViewAbstract, BufferAccess, TypedBufferAccess},
     command_buffer::{
-        synced::{
-            Command, CommandBufferState, Resource, SyncCommandBufferBuilder,
-            SyncCommandBufferBuilderError,
-        },
+        auto::{RenderPassState, RenderPassStateType},
+        synced::{Command, Resource, SyncCommandBufferBuilder, SyncCommandBufferBuilderError},
         sys::UnsafeCommandBufferBuilder,
-        AutoCommandBufferBuilder, AutoCommandBufferBuilderContextError, DispatchError,
-        DispatchIndirectCommand, DispatchIndirectError, DrawError, DrawIndexedError,
-        DrawIndexedIndirectCommand, DrawIndexedIndirectError, DrawIndirectCommand,
-        DrawIndirectError,
+        AutoCommandBufferBuilder, DispatchIndirectCommand, DrawIndexedIndirectCommand,
+        DrawIndirectCommand, SubpassContents,
     },
     descriptor_set::{layout::DescriptorType, DescriptorBindingResources},
-    device::{Device, DeviceOwned},
+    device::DeviceOwned,
     format::Format,
     image::{
         view::ImageViewType, ImageAccess, ImageSubresourceRange, ImageViewAbstract, SampleCount,
     },
     pipeline::{
         graphics::{
-            input_assembly::PrimitiveTopology,
+            input_assembly::{PrimitiveTopology, PrimitiveTopologyClass},
             render_pass::PipelineRenderPassType,
             vertex_input::{VertexInputRate, VertexInputState},
         },
-        ComputePipeline, DynamicState, GraphicsPipeline, PartialStateMode, Pipeline,
-        PipelineBindPoint, PipelineLayout,
+        DynamicState, GraphicsPipeline, PartialStateMode, Pipeline, PipelineBindPoint,
+        PipelineLayout,
     },
     sampler::{Sampler, SamplerImageViewIncompatibleError},
     shader::{DescriptorRequirements, ShaderScalarType, ShaderStage},
     sync::{AccessFlags, PipelineMemoryAccess, PipelineStages},
     DeviceSize, VulkanObject,
 };
-use std::{borrow::Cow, error::Error, fmt, mem::size_of, ops::Range, sync::Arc};
+use std::{borrow::Cow, cmp::min, error::Error, fmt, mem::size_of, ops::Range, sync::Arc};
 
 /// # Commands to execute a bound pipeline.
 ///
@@ -52,22 +48,56 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// [`bind_pipeline_compute`](Self::bind_pipeline_compute). Any resources used by the compute
     /// pipeline, such as descriptor sets, must have been set beforehand.
     #[inline]
-    pub fn dispatch(&mut self, group_counts: [u32; 3]) -> Result<&mut Self, DispatchError> {
-        if !self.queue_family().supports_compute() {
-            return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
-        }
-
-        let pipeline = check_pipeline_compute(self.state())?;
-        self.ensure_outside_render_pass()?;
-        check_descriptor_sets_validity(self.state(), pipeline, pipeline.descriptor_requirements())?;
-        check_push_constants_validity(self.state(), pipeline.layout())?;
-        check_dispatch(self.device(), group_counts)?;
+    pub fn dispatch(
+        &mut self,
+        group_counts: [u32; 3],
+    ) -> Result<&mut Self, PipelineExecutionError> {
+        self.validate_dispatch(group_counts)?;
 
         unsafe {
             self.inner.dispatch(group_counts)?;
         }
 
         Ok(self)
+    }
+
+    fn validate_dispatch(&self, group_counts: [u32; 3]) -> Result<(), PipelineExecutionError> {
+        // VUID-vkCmdDispatch-commandBuffer-cmdpool
+        if !self.queue_family().supports_compute() {
+            return Err(PipelineExecutionError::NotSupportedByQueueFamily);
+        }
+
+        // VUID-vkCmdDispatch-renderpass
+        if self.render_pass_state.is_some() {
+            return Err(PipelineExecutionError::ForbiddenInsideRenderPass);
+        }
+
+        // VUID-vkCmdDispatch-None-02700
+        let pipeline = match self.state().pipeline_compute() {
+            Some(x) => x.as_ref(),
+            None => return Err(PipelineExecutionError::PipelineNotBound),
+        };
+
+        self.validate_pipeline_descriptor_sets(pipeline, pipeline.descriptor_requirements())?;
+        self.validate_pipeline_push_constants(pipeline.layout())?;
+
+        let max = self
+            .device()
+            .physical_device()
+            .properties()
+            .max_compute_work_group_count;
+
+        // VUID-vkCmdDispatch-groupCountX-00386
+        // VUID-vkCmdDispatch-groupCountY-00387
+        // VUID-vkCmdDispatch-groupCountZ-00388
+        if group_counts[0] > max[0] || group_counts[1] > max[1] || group_counts[2] > max[2] {
+            return Err(PipelineExecutionError::MaxComputeWorkGroupCountExceeded {
+                requested: group_counts,
+                max,
+            });
+        }
+
+        Ok(())
     }
 
     /// Perform multiple compute operations using a compute pipeline. One dispatch is performed for
@@ -80,25 +110,44 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     pub fn dispatch_indirect<Inb>(
         &mut self,
         indirect_buffer: Arc<Inb>,
-    ) -> Result<&mut Self, DispatchIndirectError>
+    ) -> Result<&mut Self, PipelineExecutionError>
     where
         Inb: TypedBufferAccess<Content = [DispatchIndirectCommand]> + 'static,
     {
-        if !self.queue_family().supports_compute() {
-            return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
-        }
-
-        let pipeline = check_pipeline_compute(self.state())?;
-        self.ensure_outside_render_pass()?;
-        check_descriptor_sets_validity(self.state(), pipeline, pipeline.descriptor_requirements())?;
-        check_push_constants_validity(self.state(), pipeline.layout())?;
-        check_indirect_buffer(self.device(), indirect_buffer.as_ref())?;
+        self.validate_dispatch_indirect(&indirect_buffer)?;
 
         unsafe {
             self.inner.dispatch_indirect(indirect_buffer)?;
         }
 
         Ok(self)
+    }
+
+    fn validate_dispatch_indirect(
+        &self,
+        indirect_buffer: &dyn BufferAccess,
+    ) -> Result<(), PipelineExecutionError> {
+        // VUID-vkCmdDispatchIndirect-commandBuffer-cmdpool
+        if !self.queue_family().supports_compute() {
+            return Err(PipelineExecutionError::NotSupportedByQueueFamily);
+        }
+
+        // VUID-vkCmdDispatchIndirect-renderpass
+        if self.render_pass_state.is_some() {
+            return Err(PipelineExecutionError::ForbiddenInsideRenderPass);
+        }
+
+        // VUID-vkCmdDispatchIndirect-None-02700
+        let pipeline = match self.state().pipeline_compute() {
+            Some(x) => x.as_ref(),
+            None => return Err(PipelineExecutionError::PipelineNotBound),
+        };
+
+        self.validate_pipeline_descriptor_sets(pipeline, pipeline.descriptor_requirements())?;
+        self.validate_pipeline_push_constants(pipeline.layout())?;
+        self.validate_indirect_buffer(indirect_buffer)?;
+
+        Ok(())
     }
 
     /// Perform a single draw operation using a graphics pipeline.
@@ -119,25 +168,53 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         instance_count: u32,
         first_vertex: u32,
         first_instance: u32,
-    ) -> Result<&mut Self, DrawError> {
-        let pipeline = check_pipeline_graphics(self.state())?;
-        self.ensure_inside_render_pass_inline(pipeline)?;
-        check_dynamic_state_validity(self.state(), pipeline)?;
-        check_descriptor_sets_validity(self.state(), pipeline, pipeline.descriptor_requirements())?;
-        check_push_constants_validity(self.state(), pipeline.layout())?;
-        check_vertex_buffers(
-            self.state(),
-            pipeline,
-            Some((first_vertex, vertex_count)),
-            Some((first_instance, instance_count)),
-        )?;
+    ) -> Result<&mut Self, PipelineExecutionError> {
+        self.validate_draw(vertex_count, instance_count, first_vertex, first_instance)?;
 
         unsafe {
             self.inner
                 .draw(vertex_count, instance_count, first_vertex, first_instance)?;
         }
 
+        if let RenderPassStateType::BeginRendering(state) =
+            &mut self.render_pass_state.as_mut().unwrap().render_pass
+        {
+            state.pipeline_used = true;
+        }
+
         Ok(self)
+    }
+
+    fn validate_draw(
+        &self,
+        vertex_count: u32,
+        instance_count: u32,
+        first_vertex: u32,
+        first_instance: u32,
+    ) -> Result<(), PipelineExecutionError> {
+        // VUID-vkCmdDraw-renderpass
+        let render_pass_state = self
+            .render_pass_state
+            .as_ref()
+            .ok_or(PipelineExecutionError::ForbiddenOutsideRenderPass)?;
+
+        // VUID-vkCmdDraw-None-02700
+        let pipeline = match self.state().pipeline_graphics() {
+            Some(x) => x.as_ref(),
+            None => return Err(PipelineExecutionError::PipelineNotBound),
+        };
+
+        self.validate_pipeline_descriptor_sets(pipeline, pipeline.descriptor_requirements())?;
+        self.validate_pipeline_push_constants(pipeline.layout())?;
+        self.validate_pipeline_graphics_dynamic_state(pipeline)?;
+        self.validate_pipeline_graphics_render_pass(pipeline, render_pass_state)?;
+        self.validate_pipeline_graphics_vertex_buffers(
+            pipeline,
+            Some((first_vertex, vertex_count)),
+            Some((first_instance, instance_count)),
+        )?;
+
+        Ok(())
     }
 
     /// Perform multiple draw operations using a graphics pipeline.
@@ -159,44 +236,77 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     pub fn draw_indirect<Inb>(
         &mut self,
         indirect_buffer: Arc<Inb>,
-    ) -> Result<&mut Self, DrawIndirectError>
+    ) -> Result<&mut Self, PipelineExecutionError>
     where
         Inb: TypedBufferAccess<Content = [DrawIndirectCommand]> + Send + Sync + 'static,
     {
-        let pipeline = check_pipeline_graphics(self.state())?;
-        self.ensure_inside_render_pass_inline(pipeline)?;
-        check_dynamic_state_validity(self.state(), pipeline)?;
-        check_descriptor_sets_validity(self.state(), pipeline, pipeline.descriptor_requirements())?;
-        check_push_constants_validity(self.state(), pipeline.layout())?;
-        check_vertex_buffers(self.state(), pipeline, None, None)?;
-        check_indirect_buffer(self.device(), indirect_buffer.as_ref())?;
-
         let draw_count = indirect_buffer.len() as u32;
-        let limit = self
+        let stride = size_of::<DrawIndirectCommand>() as u32;
+        self.validate_draw_indirect(&indirect_buffer, draw_count, stride)?;
+
+        unsafe {
+            self.inner
+                .draw_indirect(indirect_buffer, draw_count, stride)?;
+        }
+
+        if let RenderPassStateType::BeginRendering(state) =
+            &mut self.render_pass_state.as_mut().unwrap().render_pass
+        {
+            state.pipeline_used = true;
+        }
+
+        Ok(self)
+    }
+
+    fn validate_draw_indirect(
+        &self,
+        indirect_buffer: &dyn BufferAccess,
+        draw_count: u32,
+        _stride: u32,
+    ) -> Result<(), PipelineExecutionError> {
+        // VUID-vkCmdDrawIndirect-renderpass
+        let render_pass_state = self
+            .render_pass_state
+            .as_ref()
+            .ok_or(PipelineExecutionError::ForbiddenOutsideRenderPass)?;
+
+        // VUID-vkCmdDrawIndirect-None-02700
+        let pipeline = match self.state().pipeline_graphics() {
+            Some(x) => x.as_ref(),
+            None => return Err(PipelineExecutionError::PipelineNotBound),
+        };
+
+        self.validate_pipeline_descriptor_sets(pipeline, pipeline.descriptor_requirements())?;
+        self.validate_pipeline_push_constants(pipeline.layout())?;
+        self.validate_pipeline_graphics_dynamic_state(pipeline)?;
+        self.validate_pipeline_graphics_render_pass(pipeline, render_pass_state)?;
+        self.validate_pipeline_graphics_vertex_buffers(pipeline, None, None)?;
+
+        self.validate_indirect_buffer(indirect_buffer)?;
+
+        // VUID-vkCmdDrawIndirect-drawCount-02718
+        if draw_count > 1 && !self.device().enabled_features().multi_draw_indirect {
+            return Err(PipelineExecutionError::FeatureNotEnabled {
+                feature: "multi_draw_indirect",
+                reason: "draw_count was greater than 1",
+            });
+        }
+
+        let max = self
             .device()
             .physical_device()
             .properties()
             .max_draw_indirect_count;
 
-        if draw_count > limit {
-            return Err(
-                CheckIndirectBufferError::MaxDrawIndirectCountLimitExceeded {
-                    limit,
-                    requested: draw_count,
-                }
-                .into(),
-            );
+        // VUID-vkCmdDrawIndirect-drawCount-02719
+        if draw_count > max {
+            return Err(PipelineExecutionError::MaxDrawIndirectCountExceeded {
+                provided: draw_count,
+                max,
+            });
         }
 
-        unsafe {
-            self.inner.draw_indirect(
-                indirect_buffer,
-                draw_count,
-                size_of::<DrawIndirectCommand>() as u32,
-            )?;
-        }
-
-        Ok(self)
+        Ok(())
     }
 
     /// Perform a single draw operation using a graphics pipeline, using an index buffer.
@@ -225,20 +335,14 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         first_index: u32,
         vertex_offset: i32,
         first_instance: u32,
-    ) -> Result<&mut Self, DrawIndexedError> {
-        // TODO: how to handle an index out of range of the vertex buffers?
-        let pipeline = check_pipeline_graphics(self.state())?;
-        self.ensure_inside_render_pass_inline(pipeline)?;
-        check_dynamic_state_validity(self.state(), pipeline)?;
-        check_descriptor_sets_validity(self.state(), pipeline, pipeline.descriptor_requirements())?;
-        check_push_constants_validity(self.state(), pipeline.layout())?;
-        check_vertex_buffers(
-            self.state(),
-            pipeline,
-            None,
-            Some((first_instance, instance_count)),
+    ) -> Result<&mut Self, PipelineExecutionError> {
+        self.validate_draw_indexed(
+            index_count,
+            instance_count,
+            first_index,
+            vertex_offset,
+            first_instance,
         )?;
-        check_index_buffer(self.state(), Some((first_index, index_count)))?;
 
         unsafe {
             self.inner.draw_indexed(
@@ -250,7 +354,50 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             )?;
         }
 
+        if let RenderPassStateType::BeginRendering(state) =
+            &mut self.render_pass_state.as_mut().unwrap().render_pass
+        {
+            state.pipeline_used = true;
+        }
+
         Ok(self)
+    }
+
+    fn validate_draw_indexed(
+        &self,
+        index_count: u32,
+        instance_count: u32,
+        first_index: u32,
+        _vertex_offset: i32,
+        first_instance: u32,
+    ) -> Result<(), PipelineExecutionError> {
+        // TODO: how to handle an index out of range of the vertex buffers?
+
+        // VUID-vkCmdDrawIndexed-renderpass
+        let render_pass_state = self
+            .render_pass_state
+            .as_ref()
+            .ok_or(PipelineExecutionError::ForbiddenOutsideRenderPass)?;
+
+        // VUID-vkCmdDrawIndexed-None-02700
+        let pipeline = match self.state().pipeline_graphics() {
+            Some(x) => x.as_ref(),
+            None => return Err(PipelineExecutionError::PipelineNotBound),
+        };
+
+        self.validate_pipeline_descriptor_sets(pipeline, pipeline.descriptor_requirements())?;
+        self.validate_pipeline_push_constants(pipeline.layout())?;
+        self.validate_pipeline_graphics_dynamic_state(pipeline)?;
+        self.validate_pipeline_graphics_render_pass(pipeline, render_pass_state)?;
+        self.validate_pipeline_graphics_vertex_buffers(
+            pipeline,
+            None,
+            Some((first_instance, instance_count)),
+        )?;
+
+        self.validate_index_buffer(Some((first_index, index_count)))?;
+
+        Ok(())
     }
 
     /// Perform multiple draw operations using a graphics pipeline, using an index buffer.
@@ -277,1374 +424,1121 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     pub fn draw_indexed_indirect<Inb>(
         &mut self,
         indirect_buffer: Arc<Inb>,
-    ) -> Result<&mut Self, DrawIndexedIndirectError>
+    ) -> Result<&mut Self, PipelineExecutionError>
     where
         Inb: TypedBufferAccess<Content = [DrawIndexedIndirectCommand]> + 'static,
     {
-        let pipeline = check_pipeline_graphics(self.state())?;
-        self.ensure_inside_render_pass_inline(pipeline)?;
-        check_dynamic_state_validity(self.state(), pipeline)?;
-        check_descriptor_sets_validity(self.state(), pipeline, pipeline.descriptor_requirements())?;
-        check_push_constants_validity(self.state(), pipeline.layout())?;
-        check_vertex_buffers(self.state(), pipeline, None, None)?;
-        check_index_buffer(self.state(), None)?;
-        check_indirect_buffer(self.device(), indirect_buffer.as_ref())?;
-
         let draw_count = indirect_buffer.len() as u32;
-        let limit = self
+        let stride = size_of::<DrawIndexedIndirectCommand>() as u32;
+        self.validate_draw_indexed_indirect(&indirect_buffer, draw_count, stride)?;
+
+        unsafe {
+            self.inner
+                .draw_indexed_indirect(indirect_buffer, draw_count, stride)?;
+        }
+
+        if let RenderPassStateType::BeginRendering(state) =
+            &mut self.render_pass_state.as_mut().unwrap().render_pass
+        {
+            state.pipeline_used = true;
+        }
+
+        Ok(self)
+    }
+
+    fn validate_draw_indexed_indirect(
+        &self,
+        indirect_buffer: &dyn BufferAccess,
+        draw_count: u32,
+        _stride: u32,
+    ) -> Result<(), PipelineExecutionError> {
+        // VUID-vkCmdDrawIndexedIndirect-renderpass
+        let render_pass_state = self
+            .render_pass_state
+            .as_ref()
+            .ok_or(PipelineExecutionError::ForbiddenOutsideRenderPass)?;
+
+        // VUID-vkCmdDrawIndexedIndirect-None-02700
+        let pipeline = match self.state().pipeline_graphics() {
+            Some(x) => x.as_ref(),
+            None => return Err(PipelineExecutionError::PipelineNotBound),
+        };
+
+        self.validate_pipeline_descriptor_sets(pipeline, pipeline.descriptor_requirements())?;
+        self.validate_pipeline_push_constants(pipeline.layout())?;
+        self.validate_pipeline_graphics_dynamic_state(pipeline)?;
+        self.validate_pipeline_graphics_render_pass(pipeline, render_pass_state)?;
+        self.validate_pipeline_graphics_vertex_buffers(pipeline, None, None)?;
+
+        self.validate_index_buffer(None)?;
+        self.validate_indirect_buffer(indirect_buffer)?;
+
+        // VUID-vkCmdDrawIndexedIndirect-drawCount-02718
+        if draw_count > 1 && !self.device().enabled_features().multi_draw_indirect {
+            return Err(PipelineExecutionError::FeatureNotEnabled {
+                feature: "multi_draw_indirect",
+                reason: "draw_count was greater than 1",
+            });
+        }
+
+        let max = self
             .device()
             .physical_device()
             .properties()
             .max_draw_indirect_count;
 
-        if draw_count > limit {
-            return Err(
-                CheckIndirectBufferError::MaxDrawIndirectCountLimitExceeded {
-                    limit,
-                    requested: draw_count,
-                }
-                .into(),
-            );
+        // VUID-vkCmdDrawIndexedIndirect-drawCount-02719
+        if draw_count > max {
+            return Err(PipelineExecutionError::MaxDrawIndirectCountExceeded {
+                provided: draw_count,
+                max,
+            });
         }
 
-        unsafe {
-            self.inner.draw_indexed_indirect(
-                indirect_buffer,
-                draw_count,
-                size_of::<DrawIndexedIndirectCommand>() as u32,
-            )?;
-        }
-
-        Ok(self)
-    }
-}
-
-fn check_pipeline_compute(
-    current_state: CommandBufferState,
-) -> Result<&ComputePipeline, CheckPipelineError> {
-    let pipeline = match current_state.pipeline_compute() {
-        Some(x) => x,
-        None => return Err(CheckPipelineError::PipelineNotBound),
-    };
-
-    Ok(pipeline)
-}
-
-fn check_pipeline_graphics(
-    current_state: CommandBufferState,
-) -> Result<&GraphicsPipeline, CheckPipelineError> {
-    let pipeline = match current_state.pipeline_graphics() {
-        Some(x) => x,
-        None => return Err(CheckPipelineError::PipelineNotBound),
-    };
-
-    Ok(pipeline)
-}
-
-/// Error that can happen when checking whether the pipeline is valid.
-#[derive(Debug, Copy, Clone)]
-pub enum CheckPipelineError {
-    /// No pipeline was bound to the bind point used by the operation.
-    PipelineNotBound,
-}
-
-impl Error for CheckPipelineError {}
-
-impl fmt::Display for CheckPipelineError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match *self {
-            CheckPipelineError::PipelineNotBound => write!(
-                fmt,
-                "no pipeline was bound to the bind point used by the operation",
-            ),
-        }
-    }
-}
-
-/// Checks whether descriptor sets are compatible with the pipeline.
-fn check_descriptor_sets_validity<'a, P: Pipeline>(
-    current_state: CommandBufferState,
-    pipeline: &P,
-    descriptor_requirements: impl IntoIterator<Item = ((u32, u32), &'a DescriptorRequirements)>,
-) -> Result<(), CheckDescriptorSetsValidityError> {
-    if pipeline.num_used_descriptor_sets() == 0 {
-        return Ok(());
+        Ok(())
     }
 
-    // VUID-vkCmdDispatch-None-02697
-    let bindings_pipeline_layout =
-        match current_state.descriptor_sets_pipeline_layout(pipeline.bind_point()) {
+    fn validate_index_buffer(
+        &self,
+        indices: Option<(u32, u32)>,
+    ) -> Result<(), PipelineExecutionError> {
+        let current_state = self.state();
+
+        // VUID?
+        let (index_buffer, index_type) = match current_state.index_buffer() {
             Some(x) => x,
-            None => return Err(CheckDescriptorSetsValidityError::IncompatiblePipelineLayout),
+            None => return Err(PipelineExecutionError::IndexBufferNotBound),
         };
 
-    // VUID-vkCmdDispatch-None-02697
-    if !pipeline.layout().is_compatible_with(
-        bindings_pipeline_layout,
-        pipeline.num_used_descriptor_sets(),
-    ) {
-        return Err(CheckDescriptorSetsValidityError::IncompatiblePipelineLayout);
+        if let Some((first_index, index_count)) = indices {
+            let max_index_count = (index_buffer.size() / index_type.size()) as u32;
+
+            // // VUID-vkCmdDrawIndexed-firstIndex-04932
+            if first_index + index_count > max_index_count {
+                return Err(PipelineExecutionError::IndexBufferRangeOutOfBounds {
+                    highest_index: first_index + index_count,
+                    max_index_count,
+                });
+            }
+        }
+
+        Ok(())
     }
 
-    for ((set_num, binding_num), reqs) in descriptor_requirements {
-        let layout_binding =
-            &pipeline.layout().set_layouts()[set_num as usize].bindings()[&binding_num];
+    fn validate_indirect_buffer(
+        &self,
+        buffer: &dyn BufferAccess,
+    ) -> Result<(), PipelineExecutionError> {
+        // VUID-vkCmdDispatchIndirect-commonparent
+        assert_eq!(self.device(), buffer.device());
 
-        let check_buffer = |_index: u32, _buffer: &Arc<dyn BufferAccess>| Ok(());
+        // VUID-vkCmdDispatchIndirect-buffer-02709
+        if !buffer.inner().buffer.usage().indirect_buffer {
+            return Err(PipelineExecutionError::IndirectBufferMissingUsage);
+        }
 
-        let check_buffer_view = |index: u32, buffer_view: &Arc<dyn BufferViewAbstract>| {
-            if layout_binding.descriptor_type == DescriptorType::StorageTexelBuffer {
-                // VUID-vkCmdDispatch-OpTypeImage-06423
-                if reqs.image_format.is_none()
-                    && reqs.storage_write.contains(&index)
-                    && !buffer_view.format_features().storage_write_without_format
-                {
-                    return Err(InvalidDescriptorResource::StorageWriteWithoutFormatNotSupported);
-                }
+        // VUID-vkCmdDispatchIndirect-offset-02710
+        // TODO:
 
-                // VUID-vkCmdDispatch-OpTypeImage-06424
-                if reqs.image_format.is_none()
-                    && reqs.storage_read.contains(&index)
-                    && !buffer_view.format_features().storage_read_without_format
-                {
-                    return Err(InvalidDescriptorResource::StorageReadWithoutFormatNotSupported);
-                }
-            }
+        Ok(())
+    }
 
-            Ok(())
-        };
-
-        let check_image_view_common = |index: u32, image_view: &Arc<dyn ImageViewAbstract>| {
-            // VUID-vkCmdDispatch-None-02691
-            if reqs.storage_image_atomic.contains(&index)
-                && !image_view.format_features().storage_image_atomic
+    fn validate_pipeline_descriptor_sets<'a, Pl: Pipeline>(
+        &self,
+        pipeline: &Pl,
+        descriptor_requirements: impl IntoIterator<Item = ((u32, u32), &'a DescriptorRequirements)>,
+    ) -> Result<(), PipelineExecutionError> {
+        fn validate_resources<T>(
+            set_num: u32,
+            binding_num: u32,
+            reqs: &DescriptorRequirements,
+            elements: &[Option<T>],
+            mut extra_check: impl FnMut(u32, &T) -> Result<(), DescriptorResourceInvalidError>,
+        ) -> Result<(), PipelineExecutionError> {
+            for (index, element) in elements[0..reqs.descriptor_count as usize]
+                .iter()
+                .enumerate()
             {
-                return Err(InvalidDescriptorResource::StorageImageAtomicNotSupported);
-            }
+                let index = index as u32;
 
-            if layout_binding.descriptor_type == DescriptorType::StorageImage {
-                // VUID-vkCmdDispatch-OpTypeImage-06423
-                if reqs.image_format.is_none()
-                    && reqs.storage_write.contains(&index)
-                    && !image_view.format_features().storage_write_without_format
-                {
-                    return Err(InvalidDescriptorResource::StorageWriteWithoutFormatNotSupported);
-                }
+                // VUID-vkCmdDispatch-None-02699
+                let element = match element {
+                    Some(x) => x,
+                    None => {
+                        return Err(PipelineExecutionError::DescriptorResourceInvalid {
+                            set_num,
+                            binding_num,
+                            index,
+                            error: DescriptorResourceInvalidError::Missing,
+                        })
+                    }
+                };
 
-                // VUID-vkCmdDispatch-OpTypeImage-06424
-                if reqs.image_format.is_none()
-                    && reqs.storage_read.contains(&index)
-                    && !image_view.format_features().storage_read_without_format
-                {
-                    return Err(InvalidDescriptorResource::StorageReadWithoutFormatNotSupported);
-                }
-            }
-
-            /*
-               Instruction/Sampler/Image View Validation
-               https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap16.html#textures-input-validation
-            */
-
-            // The SPIR-V Image Format is not compatible with the image view’s format.
-            if let Some(format) = reqs.image_format {
-                if image_view.format() != Some(format) {
-                    return Err(InvalidDescriptorResource::ImageViewFormatMismatch {
-                        required: format,
-                        obtained: image_view.format(),
-                    });
-                }
-            }
-
-            // Rules for viewType
-            if let Some(image_view_type) = reqs.image_view_type {
-                if image_view.view_type() != image_view_type {
-                    return Err(InvalidDescriptorResource::ImageViewTypeMismatch {
-                        required: image_view_type,
-                        obtained: image_view.view_type(),
-                    });
-                }
-            }
-
-            // - If the image was created with VkImageCreateInfo::samples equal to
-            //   VK_SAMPLE_COUNT_1_BIT, the instruction must have MS = 0.
-            // - If the image was created with VkImageCreateInfo::samples not equal to
-            //   VK_SAMPLE_COUNT_1_BIT, the instruction must have MS = 1.
-            if reqs.image_multisampled != (image_view.image().samples() != SampleCount::Sample1) {
-                return Err(InvalidDescriptorResource::ImageViewMultisampledMismatch {
-                    required: reqs.image_multisampled,
-                    obtained: image_view.image().samples() != SampleCount::Sample1,
-                });
-            }
-
-            // - If the Sampled Type of the OpTypeImage does not match the numeric format of the
-            //   image, as shown in the SPIR-V Sampled Type column of the
-            //   Interpretation of Numeric Format table.
-            // - If the signedness of any read or sample operation does not match the signedness of
-            //   the image’s format.
-            if let Some(scalar_type) = reqs.image_scalar_type {
-                let aspects = image_view.subresource_range().aspects;
-                let view_scalar_type = ShaderScalarType::from(
-                    if aspects.color || aspects.plane0 || aspects.plane1 || aspects.plane2 {
-                        image_view.format().unwrap().type_color().unwrap()
-                    } else if aspects.depth {
-                        image_view.format().unwrap().type_depth().unwrap()
-                    } else if aspects.stencil {
-                        image_view.format().unwrap().type_stencil().unwrap()
-                    } else {
-                        // Per `ImageViewBuilder::aspects` and
-                        // VUID-VkDescriptorImageInfo-imageView-01976
-                        unreachable!()
-                    },
-                );
-
-                if scalar_type != view_scalar_type {
-                    return Err(InvalidDescriptorResource::ImageViewScalarTypeMismatch {
-                        required: scalar_type,
-                        obtained: view_scalar_type,
+                if let Err(error) = extra_check(index, element) {
+                    return Err(PipelineExecutionError::DescriptorResourceInvalid {
+                        set_num,
+                        binding_num,
+                        index,
+                        error,
                     });
                 }
             }
 
             Ok(())
-        };
+        }
 
-        let check_sampler_common = |index: u32, sampler: &Arc<Sampler>| {
-            // VUID-vkCmdDispatch-None-02703
-            // VUID-vkCmdDispatch-None-02704
-            if reqs.sampler_no_unnormalized_coordinates.contains(&index)
-                && sampler.unnormalized_coordinates()
-            {
-                return Err(InvalidDescriptorResource::SamplerUnnormalizedCoordinatesNotAllowed);
-            }
+        if pipeline.num_used_descriptor_sets() == 0 {
+            return Ok(());
+        }
 
-            // - OpImageFetch, OpImageSparseFetch, OpImage*Gather, and OpImageSparse*Gather must not
-            //   be used with a sampler that enables sampler Y′CBCR conversion.
-            // - The ConstOffset and Offset operands must not be used with a sampler that enables
-            //   sampler Y′CBCR conversion.
-            if reqs.sampler_no_ycbcr_conversion.contains(&index)
-                && sampler.sampler_ycbcr_conversion().is_some()
-            {
-                return Err(InvalidDescriptorResource::SamplerYcbcrConversionNotAllowed);
-            }
+        let current_state = self.state();
 
-            /*
-                Instruction/Sampler/Image View Validation
-                https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap16.html#textures-input-validation
-            */
+        // VUID-vkCmdDispatch-None-02697
+        let bindings_pipeline_layout =
+            match current_state.descriptor_sets_pipeline_layout(pipeline.bind_point()) {
+                Some(x) => x,
+                None => return Err(PipelineExecutionError::PipelineLayoutNotCompatible),
+            };
 
-            // - The SPIR-V instruction is one of the OpImage*Dref* instructions and the sampler
-            //   compareEnable is VK_FALSE
-            // - The SPIR-V instruction is not one of the OpImage*Dref* instructions and the sampler
-            //   compareEnable is VK_TRUE
-            if reqs.sampler_compare.contains(&index) != sampler.compare().is_some() {
-                return Err(InvalidDescriptorResource::SamplerCompareMismatch {
-                    required: reqs.sampler_compare.contains(&index),
-                    obtained: sampler.compare().is_some(),
-                });
-            }
+        // VUID-vkCmdDispatch-None-02697
+        if !pipeline.layout().is_compatible_with(
+            bindings_pipeline_layout,
+            pipeline.num_used_descriptor_sets(),
+        ) {
+            return Err(PipelineExecutionError::PipelineLayoutNotCompatible);
+        }
 
-            Ok(())
-        };
+        for ((set_num, binding_num), reqs) in descriptor_requirements {
+            let layout_binding =
+                &pipeline.layout().set_layouts()[set_num as usize].bindings()[&binding_num];
 
-        let check_image_view = |index: u32, image_view: &Arc<dyn ImageViewAbstract>| {
-            check_image_view_common(index, image_view)?;
+            let check_buffer = |_index: u32, _buffer: &Arc<dyn BufferAccess>| Ok(());
 
-            if let Some(sampler) = layout_binding.immutable_samplers.get(index as usize) {
-                check_sampler_common(index, sampler)?;
-            }
+            let check_buffer_view = |index: u32, buffer_view: &Arc<dyn BufferViewAbstract>| {
+                if layout_binding.descriptor_type == DescriptorType::StorageTexelBuffer {
+                    // VUID-vkCmdDispatch-OpTypeImage-06423
+                    if reqs.image_format.is_none()
+                        && reqs.storage_write.contains(&index)
+                        && !buffer_view.format_features().storage_write_without_format
+                    {
+                        return Err(
+                            DescriptorResourceInvalidError::StorageWriteWithoutFormatNotSupported,
+                        );
+                    }
 
-            Ok(())
-        };
-
-        let check_image_view_sampler =
-            |index: u32, (image_view, sampler): &(Arc<dyn ImageViewAbstract>, Arc<Sampler>)| {
-                check_image_view_common(index, image_view)?;
-                check_sampler_common(index, sampler)?;
+                    // VUID-vkCmdDispatch-OpTypeImage-06424
+                    if reqs.image_format.is_none()
+                        && reqs.storage_read.contains(&index)
+                        && !buffer_view.format_features().storage_read_without_format
+                    {
+                        return Err(
+                            DescriptorResourceInvalidError::StorageReadWithoutFormatNotSupported,
+                        );
+                    }
+                }
 
                 Ok(())
             };
 
-        let check_sampler = |index: u32, sampler: &Arc<Sampler>| {
-            check_sampler_common(index, sampler)?;
+            let check_image_view_common = |index: u32, image_view: &Arc<dyn ImageViewAbstract>| {
+                // VUID-vkCmdDispatch-None-02691
+                if reqs.storage_image_atomic.contains(&index)
+                    && !image_view.format_features().storage_image_atomic
+                {
+                    return Err(DescriptorResourceInvalidError::StorageImageAtomicNotSupported);
+                }
 
-            // Check sampler-image compatibility. Only done for separate samplers; combined image
-            // samplers are checked when updating the descriptor set.
-            if let Some(with_images) = reqs.sampler_with_images.get(&index) {
-                // If the image view isn't actually present in the resources, then just skip it.
-                // It will be caught later by check_resources.
-                let iter = with_images.iter().filter_map(|id| {
-                    current_state
-                        .descriptor_set(pipeline.bind_point(), id.set)
-                        .and_then(|set| set.resources().binding(id.binding))
-                        .and_then(|res| match res {
-                            DescriptorBindingResources::ImageView(elements) => elements
-                                .get(id.index as usize)
-                                .and_then(|opt| opt.as_ref().map(|opt| (id, opt))),
-                            _ => None,
-                        })
-                });
+                if layout_binding.descriptor_type == DescriptorType::StorageImage {
+                    // VUID-vkCmdDispatch-OpTypeImage-06423
+                    if reqs.image_format.is_none()
+                        && reqs.storage_write.contains(&index)
+                        && !image_view.format_features().storage_write_without_format
+                    {
+                        return Err(
+                            DescriptorResourceInvalidError::StorageWriteWithoutFormatNotSupported,
+                        );
+                    }
 
-                for (id, image_view) in iter {
-                    if let Err(error) = sampler.check_can_sample(image_view.as_ref()) {
-                        return Err(InvalidDescriptorResource::SamplerImageViewIncompatible {
-                            image_view_set_num: id.set,
-                            image_view_binding_num: id.binding,
-                            image_view_index: id.index,
-                            error,
+                    // VUID-vkCmdDispatch-OpTypeImage-06424
+                    if reqs.image_format.is_none()
+                        && reqs.storage_read.contains(&index)
+                        && !image_view.format_features().storage_read_without_format
+                    {
+                        return Err(
+                            DescriptorResourceInvalidError::StorageReadWithoutFormatNotSupported,
+                        );
+                    }
+                }
+
+                /*
+                   Instruction/Sampler/Image View Validation
+                   https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap16.html#textures-input-validation
+                */
+
+                // The SPIR-V Image Format is not compatible with the image view’s format.
+                if let Some(format) = reqs.image_format {
+                    if image_view.format() != Some(format) {
+                        return Err(DescriptorResourceInvalidError::ImageViewFormatMismatch {
+                            required: format,
+                            provided: image_view.format(),
                         });
                     }
                 }
-            }
 
-            Ok(())
-        };
-
-        let check_none = |index: u32, _: &()| {
-            if let Some(sampler) = layout_binding.immutable_samplers.get(index as usize) {
-                check_sampler(index, sampler)?;
-            }
-
-            Ok(())
-        };
-
-        let set_resources = match current_state.descriptor_set(pipeline.bind_point(), set_num) {
-            Some(x) => x.resources(),
-            None => return Err(CheckDescriptorSetsValidityError::MissingDescriptorSet { set_num }),
-        };
-
-        let binding_resources = set_resources.binding(binding_num).unwrap();
-
-        match binding_resources {
-            DescriptorBindingResources::None(elements) => {
-                check_resources(set_num, binding_num, reqs, elements, check_none)?;
-            }
-            DescriptorBindingResources::Buffer(elements) => {
-                check_resources(set_num, binding_num, reqs, elements, check_buffer)?;
-            }
-            DescriptorBindingResources::BufferView(elements) => {
-                check_resources(set_num, binding_num, reqs, elements, check_buffer_view)?;
-            }
-            DescriptorBindingResources::ImageView(elements) => {
-                check_resources(set_num, binding_num, reqs, elements, check_image_view)?;
-            }
-            DescriptorBindingResources::ImageViewSampler(elements) => {
-                check_resources(
-                    set_num,
-                    binding_num,
-                    reqs,
-                    elements,
-                    check_image_view_sampler,
-                )?;
-            }
-            DescriptorBindingResources::Sampler(elements) => {
-                check_resources(set_num, binding_num, reqs, elements, check_sampler)?;
-            }
-        }
-    }
-
-    Ok(())
-}
-
-/// Error that can happen when checking descriptor sets validity.
-#[derive(Clone, Debug)]
-pub enum CheckDescriptorSetsValidityError {
-    IncompatiblePipelineLayout,
-    InvalidDescriptorResource {
-        set_num: u32,
-        binding_num: u32,
-        index: u32,
-        error: InvalidDescriptorResource,
-    },
-    MissingDescriptorSet {
-        set_num: u32,
-    },
-}
-
-impl Error for CheckDescriptorSetsValidityError {
-    #[inline]
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::InvalidDescriptorResource { error, .. } => Some(error),
-            _ => None,
-        }
-    }
-}
-
-impl fmt::Display for CheckDescriptorSetsValidityError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match self {
-            Self::IncompatiblePipelineLayout => {
-                write!(fmt, "the bound pipeline is not compatible with the layout used to bind the descriptor sets")
-            }
-            Self::InvalidDescriptorResource {
-                set_num,
-                binding_num,
-                index,
-                ..
-            } => {
-                write!(
-                    fmt,
-                    "the resource bound to descriptor set {} binding {} index {} was not valid",
-                    set_num, binding_num, index,
-                )
-            }
-            Self::MissingDescriptorSet { set_num } => {
-                write!(fmt, "descriptor set {} has not been not bound, but is required by the pipeline layout", set_num)
-            }
-        }
-    }
-}
-
-fn check_resources<T>(
-    set_num: u32,
-    binding_num: u32,
-    reqs: &DescriptorRequirements,
-    elements: &[Option<T>],
-    mut extra_check: impl FnMut(u32, &T) -> Result<(), InvalidDescriptorResource>,
-) -> Result<(), CheckDescriptorSetsValidityError> {
-    for (index, element) in elements[0..reqs.descriptor_count as usize]
-        .iter()
-        .enumerate()
-    {
-        let index = index as u32;
-
-        // VUID-vkCmdDispatch-None-02699
-        let element = match element {
-            Some(x) => x,
-            None => {
-                return Err(
-                    CheckDescriptorSetsValidityError::InvalidDescriptorResource {
-                        set_num,
-                        binding_num,
-                        index,
-                        error: InvalidDescriptorResource::Missing,
-                    },
-                )
-            }
-        };
-
-        if let Err(error) = extra_check(index, element) {
-            return Err(
-                CheckDescriptorSetsValidityError::InvalidDescriptorResource {
-                    set_num,
-                    binding_num,
-                    index,
-                    error,
-                },
-            );
-        }
-    }
-
-    Ok(())
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum InvalidDescriptorResource {
-    ImageViewFormatMismatch {
-        required: Format,
-        obtained: Option<Format>,
-    },
-    ImageViewMultisampledMismatch {
-        required: bool,
-        obtained: bool,
-    },
-    ImageViewScalarTypeMismatch {
-        required: ShaderScalarType,
-        obtained: ShaderScalarType,
-    },
-    ImageViewTypeMismatch {
-        required: ImageViewType,
-        obtained: ImageViewType,
-    },
-    Missing,
-    SamplerCompareMismatch {
-        required: bool,
-        obtained: bool,
-    },
-    SamplerImageViewIncompatible {
-        image_view_set_num: u32,
-        image_view_binding_num: u32,
-        image_view_index: u32,
-        error: SamplerImageViewIncompatibleError,
-    },
-    SamplerUnnormalizedCoordinatesNotAllowed,
-    SamplerYcbcrConversionNotAllowed,
-    StorageImageAtomicNotSupported,
-    StorageReadWithoutFormatNotSupported,
-    StorageWriteWithoutFormatNotSupported,
-}
-
-impl Error for InvalidDescriptorResource {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::SamplerImageViewIncompatible { error, .. } => Some(error),
-            _ => None,
-        }
-    }
-}
-
-impl fmt::Display for InvalidDescriptorResource {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match self {
-            Self::ImageViewFormatMismatch { required, obtained } => {
-                write!(fmt, "the bound image view did not have the required format; required {:?}, obtained {:?}", required, obtained)
-            }
-            Self::ImageViewMultisampledMismatch { required, obtained } => {
-                write!(fmt, "the bound image did not have the required multisampling; required {}, obtained {}", required, obtained)
-            }
-            Self::ImageViewScalarTypeMismatch { required, obtained } => {
-                write!(fmt, "the bound image view did not have a format and aspect with the required scalar type; required {:?}, obtained {:?}", required, obtained)
-            }
-            Self::ImageViewTypeMismatch { required, obtained } => {
-                write!(fmt, "the bound image view did not have the required type; required {:?}, obtained {:?}", required, obtained)
-            }
-            Self::Missing => {
-                write!(fmt, "no resource was bound")
-            }
-            Self::SamplerImageViewIncompatible { .. } => {
-                write!(
-                    fmt,
-                    "the bound sampler samples an image view that is not compatible with it"
-                )
-            }
-            Self::SamplerCompareMismatch { required, obtained } => {
-                write!(
-                    fmt,
-                    "the bound sampler did not have the required depth comparison state; required {}, obtained {}", required, obtained
-                )
-            }
-            Self::SamplerUnnormalizedCoordinatesNotAllowed => {
-                write!(
-                    fmt,
-                    "the bound sampler is required to have unnormalized coordinates disabled"
-                )
-            }
-            Self::SamplerYcbcrConversionNotAllowed => {
-                write!(
-                    fmt,
-                    "the bound sampler is required to have no attached sampler YCbCr conversion"
-                )
-            }
-            Self::StorageImageAtomicNotSupported => {
-                write!(fmt, "the bound image view did not support the `storage_image_atomic` format feature")
-            }
-            Self::StorageReadWithoutFormatNotSupported => {
-                write!(fmt, "the bound image view or buffer view did not support the `storage_read_without_format` format feature")
-            }
-            Self::StorageWriteWithoutFormatNotSupported => {
-                write!(fmt, "the bound image view or buffer view did not support the `storage_write_without_format` format feature")
-            }
-        }
-    }
-}
-
-/// Checks whether push constants are compatible with the pipeline.
-fn check_push_constants_validity(
-    current_state: CommandBufferState,
-    pipeline_layout: &PipelineLayout,
-) -> Result<(), CheckPushConstantsValidityError> {
-    if pipeline_layout.push_constant_ranges().is_empty() {
-        return Ok(());
-    }
-
-    let constants_pipeline_layout = match current_state.push_constants_pipeline_layout() {
-        Some(x) => x,
-        None => return Err(CheckPushConstantsValidityError::MissingPushConstants),
-    };
-
-    if pipeline_layout.internal_object() != constants_pipeline_layout.internal_object()
-        && pipeline_layout.push_constant_ranges()
-            != constants_pipeline_layout.push_constant_ranges()
-    {
-        return Err(CheckPushConstantsValidityError::IncompatiblePushConstants);
-    }
-
-    let set_bytes = current_state.push_constants();
-
-    if !pipeline_layout
-        .push_constant_ranges()
-        .iter()
-        .all(|pc_range| set_bytes.contains(pc_range.offset..pc_range.offset + pc_range.size))
-    {
-        return Err(CheckPushConstantsValidityError::MissingPushConstants);
-    }
-
-    Ok(())
-}
-
-/// Error that can happen when checking push constants validity.
-#[derive(Debug, Copy, Clone)]
-pub enum CheckPushConstantsValidityError {
-    /// The push constants are incompatible with the pipeline layout.
-    IncompatiblePushConstants,
-    /// Not all push constants used by the pipeline have been set.
-    MissingPushConstants,
-}
-
-impl Error for CheckPushConstantsValidityError {}
-
-impl fmt::Display for CheckPushConstantsValidityError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match *self {
-            CheckPushConstantsValidityError::IncompatiblePushConstants => {
-                write!(
-                    fmt,
-                    "the push constants are incompatible with the pipeline layout"
-                )
-            }
-            CheckPushConstantsValidityError::MissingPushConstants => {
-                write!(
-                    fmt,
-                    "not all push constants used by the pipeline have been set"
-                )
-            }
-        }
-    }
-}
-
-/// Checks whether states that are about to be set are correct.
-fn check_dynamic_state_validity(
-    current_state: CommandBufferState,
-    pipeline: &GraphicsPipeline,
-) -> Result<(), CheckDynamicStateValidityError> {
-    let device = pipeline.device();
-
-    for dynamic_state in pipeline
-        .dynamic_states()
-        .filter(|(_, d)| *d)
-        .map(|(s, _)| s)
-    {
-        match dynamic_state {
-            DynamicState::BlendConstants => {
-                if current_state.blend_constants().is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
+                // Rules for viewType
+                if let Some(image_view_type) = reqs.image_view_type {
+                    if image_view.view_type() != image_view_type {
+                        return Err(DescriptorResourceInvalidError::ImageViewTypeMismatch {
+                            required: image_view_type,
+                            provided: image_view.view_type(),
+                        });
+                    }
                 }
-            }
-            DynamicState::ColorWriteEnable => {
-                let enables = if let Some(enables) = current_state.color_write_enable() {
-                    enables
-                } else {
-                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
-                };
 
-                if enables.len() < pipeline.color_blend_state().unwrap().attachments.len() {
-                    return Err(CheckDynamicStateValidityError::NotEnoughColorWriteEnable {
-                        color_write_enable_count: enables.len() as u32,
-                        attachment_count: pipeline.color_blend_state().unwrap().attachments.len()
-                            as u32,
+                // - If the image was created with VkImageCreateInfo::samples equal to
+                //   VK_SAMPLE_COUNT_1_BIT, the instruction must have MS = 0.
+                // - If the image was created with VkImageCreateInfo::samples not equal to
+                //   VK_SAMPLE_COUNT_1_BIT, the instruction must have MS = 1.
+                if reqs.image_multisampled != (image_view.image().samples() != SampleCount::Sample1)
+                {
+                    return Err(
+                        DescriptorResourceInvalidError::ImageViewMultisampledMismatch {
+                            required: reqs.image_multisampled,
+                            provided: image_view.image().samples() != SampleCount::Sample1,
+                        },
+                    );
+                }
+
+                // - If the Sampled Type of the OpTypeImage does not match the numeric format of the
+                //   image, as shown in the SPIR-V Sampled Type column of the
+                //   Interpretation of Numeric Format table.
+                // - If the signedness of any read or sample operation does not match the signedness of
+                //   the image’s format.
+                if let Some(scalar_type) = reqs.image_scalar_type {
+                    let aspects = image_view.subresource_range().aspects;
+                    let view_scalar_type = ShaderScalarType::from(
+                        if aspects.color || aspects.plane0 || aspects.plane1 || aspects.plane2 {
+                            image_view.format().unwrap().type_color().unwrap()
+                        } else if aspects.depth {
+                            image_view.format().unwrap().type_depth().unwrap()
+                        } else if aspects.stencil {
+                            image_view.format().unwrap().type_stencil().unwrap()
+                        } else {
+                            // Per `ImageViewBuilder::aspects` and
+                            // VUID-VkDescriptorImageInfo-imageView-01976
+                            unreachable!()
+                        },
+                    );
+
+                    if scalar_type != view_scalar_type {
+                        return Err(
+                            DescriptorResourceInvalidError::ImageViewScalarTypeMismatch {
+                                required: scalar_type,
+                                provided: view_scalar_type,
+                            },
+                        );
+                    }
+                }
+
+                Ok(())
+            };
+
+            let check_sampler_common = |index: u32, sampler: &Arc<Sampler>| {
+                // VUID-vkCmdDispatch-None-02703
+                // VUID-vkCmdDispatch-None-02704
+                if reqs.sampler_no_unnormalized_coordinates.contains(&index)
+                    && sampler.unnormalized_coordinates()
+                {
+                    return Err(
+                        DescriptorResourceInvalidError::SamplerUnnormalizedCoordinatesNotAllowed,
+                    );
+                }
+
+                // - OpImageFetch, OpImageSparseFetch, OpImage*Gather, and OpImageSparse*Gather must not
+                //   be used with a sampler that enables sampler Y′CBCR conversion.
+                // - The ConstOffset and Offset operands must not be used with a sampler that enables
+                //   sampler Y′CBCR conversion.
+                if reqs.sampler_no_ycbcr_conversion.contains(&index)
+                    && sampler.sampler_ycbcr_conversion().is_some()
+                {
+                    return Err(DescriptorResourceInvalidError::SamplerYcbcrConversionNotAllowed);
+                }
+
+                /*
+                    Instruction/Sampler/Image View Validation
+                    https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap16.html#textures-input-validation
+                */
+
+                // - The SPIR-V instruction is one of the OpImage*Dref* instructions and the sampler
+                //   compareEnable is VK_FALSE
+                // - The SPIR-V instruction is not one of the OpImage*Dref* instructions and the sampler
+                //   compareEnable is VK_TRUE
+                if reqs.sampler_compare.contains(&index) != sampler.compare().is_some() {
+                    return Err(DescriptorResourceInvalidError::SamplerCompareMismatch {
+                        required: reqs.sampler_compare.contains(&index),
+                        provided: sampler.compare().is_some(),
                     });
                 }
-            }
-            DynamicState::CullMode => {
-                if current_state.cull_mode().is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
-                }
-            }
-            DynamicState::DepthBias => {
-                if current_state.depth_bias().is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
-                }
-            }
-            DynamicState::DepthBiasEnable => {
-                if current_state.depth_bias_enable().is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
-                }
-            }
-            DynamicState::DepthBounds => {
-                if current_state.depth_bounds().is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
-                }
-            }
-            DynamicState::DepthBoundsTestEnable => {
-                if current_state.depth_bounds_test_enable().is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
-                }
-            }
-            DynamicState::DepthCompareOp => {
-                if current_state.depth_compare_op().is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
-                }
-            }
-            DynamicState::DepthTestEnable => {
-                if current_state.depth_test_enable().is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
-                }
-            }
-            DynamicState::DepthWriteEnable => {
-                if current_state.depth_write_enable().is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
+
+                Ok(())
+            };
+
+            let check_image_view = |index: u32, image_view: &Arc<dyn ImageViewAbstract>| {
+                check_image_view_common(index, image_view)?;
+
+                if let Some(sampler) = layout_binding.immutable_samplers.get(index as usize) {
+                    check_sampler_common(index, sampler)?;
                 }
 
-                // TODO: Check if the depth buffer is writable
+                Ok(())
+            };
+
+            let check_image_view_sampler =
+                |index: u32, (image_view, sampler): &(Arc<dyn ImageViewAbstract>, Arc<Sampler>)| {
+                    check_image_view_common(index, image_view)?;
+                    check_sampler_common(index, sampler)?;
+
+                    Ok(())
+                };
+
+            let check_sampler = |index: u32, sampler: &Arc<Sampler>| {
+                check_sampler_common(index, sampler)?;
+
+                // Check sampler-image compatibility. Only done for separate samplers; combined image
+                // samplers are checked when updating the descriptor set.
+                if let Some(with_images) = reqs.sampler_with_images.get(&index) {
+                    // If the image view isn't actually present in the resources, then just skip it.
+                    // It will be caught later by check_resources.
+                    let iter = with_images.iter().filter_map(|id| {
+                        current_state
+                            .descriptor_set(pipeline.bind_point(), id.set)
+                            .and_then(|set| set.resources().binding(id.binding))
+                            .and_then(|res| match res {
+                                DescriptorBindingResources::ImageView(elements) => elements
+                                    .get(id.index as usize)
+                                    .and_then(|opt| opt.as_ref().map(|opt| (id, opt))),
+                                _ => None,
+                            })
+                    });
+
+                    for (id, image_view) in iter {
+                        if let Err(error) = sampler.check_can_sample(image_view.as_ref()) {
+                            return Err(
+                                DescriptorResourceInvalidError::SamplerImageViewIncompatible {
+                                    image_view_set_num: id.set,
+                                    image_view_binding_num: id.binding,
+                                    image_view_index: id.index,
+                                    error,
+                                },
+                            );
+                        }
+                    }
+                }
+
+                Ok(())
+            };
+
+            let check_none = |index: u32, _: &()| {
+                if let Some(sampler) = layout_binding.immutable_samplers.get(index as usize) {
+                    check_sampler(index, sampler)?;
+                }
+
+                Ok(())
+            };
+
+            let set_resources = match current_state.descriptor_set(pipeline.bind_point(), set_num) {
+                Some(x) => x.resources(),
+                None => return Err(PipelineExecutionError::DescriptorSetNotBound { set_num }),
+            };
+
+            let binding_resources = set_resources.binding(binding_num).unwrap();
+
+            match binding_resources {
+                DescriptorBindingResources::None(elements) => {
+                    validate_resources(set_num, binding_num, reqs, elements, check_none)?;
+                }
+                DescriptorBindingResources::Buffer(elements) => {
+                    validate_resources(set_num, binding_num, reqs, elements, check_buffer)?;
+                }
+                DescriptorBindingResources::BufferView(elements) => {
+                    validate_resources(set_num, binding_num, reqs, elements, check_buffer_view)?;
+                }
+                DescriptorBindingResources::ImageView(elements) => {
+                    validate_resources(set_num, binding_num, reqs, elements, check_image_view)?;
+                }
+                DescriptorBindingResources::ImageViewSampler(elements) => {
+                    validate_resources(
+                        set_num,
+                        binding_num,
+                        reqs,
+                        elements,
+                        check_image_view_sampler,
+                    )?;
+                }
+                DescriptorBindingResources::Sampler(elements) => {
+                    validate_resources(set_num, binding_num, reqs, elements, check_sampler)?;
+                }
             }
-            DynamicState::DiscardRectangle => {
-                let discard_rectangle_count =
-                    match pipeline.discard_rectangle_state().unwrap().rectangles {
-                        PartialStateMode::Dynamic(count) => count,
+        }
+
+        Ok(())
+    }
+
+    fn validate_pipeline_push_constants(
+        &self,
+        pipeline_layout: &PipelineLayout,
+    ) -> Result<(), PipelineExecutionError> {
+        if pipeline_layout.push_constant_ranges().is_empty()
+            || self.device().enabled_features().maintenance4
+        {
+            return Ok(());
+        }
+
+        let current_state = self.state();
+
+        // VUID-vkCmdDispatch-maintenance4-06425
+        let constants_pipeline_layout = match current_state.push_constants_pipeline_layout() {
+            Some(x) => x,
+            None => return Err(PipelineExecutionError::PushConstantsMissing),
+        };
+
+        // VUID-vkCmdDispatch-maintenance4-06425
+        if pipeline_layout.internal_object() != constants_pipeline_layout.internal_object()
+            && pipeline_layout.push_constant_ranges()
+                != constants_pipeline_layout.push_constant_ranges()
+        {
+            return Err(PipelineExecutionError::PushConstantsNotCompatible);
+        }
+
+        let set_bytes = current_state.push_constants();
+
+        // VUID-vkCmdDispatch-maintenance4-06425
+        if !pipeline_layout
+            .push_constant_ranges()
+            .iter()
+            .all(|pc_range| set_bytes.contains(pc_range.offset..pc_range.offset + pc_range.size))
+        {
+            return Err(PipelineExecutionError::PushConstantsMissing);
+        }
+
+        Ok(())
+    }
+
+    fn validate_pipeline_graphics_dynamic_state(
+        &self,
+        pipeline: &GraphicsPipeline,
+    ) -> Result<(), PipelineExecutionError> {
+        let device = pipeline.device();
+        let current_state = self.state();
+
+        // VUID-vkCmdDraw-commandBuffer-02701
+        for dynamic_state in pipeline
+            .dynamic_states()
+            .filter(|(_, d)| *d)
+            .map(|(s, _)| s)
+        {
+            match dynamic_state {
+                DynamicState::BlendConstants => {
+                    // VUID?
+                    if current_state.blend_constants().is_none() {
+                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                    }
+                }
+                DynamicState::ColorWriteEnable => {
+                    // VUID-vkCmdDraw-attachmentCount-06667
+                    let enables = if let Some(enables) = current_state.color_write_enable() {
+                        enables
+                    } else {
+                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                    };
+
+                    // VUID-vkCmdDraw-attachmentCount-06667
+                    if enables.len() < pipeline.color_blend_state().unwrap().attachments.len() {
+                        return Err(
+                            PipelineExecutionError::DynamicColorWriteEnableNotEnoughValues {
+                                color_write_enable_count: enables.len() as u32,
+                                attachment_count: pipeline
+                                    .color_blend_state()
+                                    .unwrap()
+                                    .attachments
+                                    .len() as u32,
+                            },
+                        );
+                    }
+                }
+                DynamicState::CullMode => {
+                    // VUID?
+                    if current_state.cull_mode().is_none() {
+                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                    }
+                }
+                DynamicState::DepthBias => {
+                    // VUID?
+                    if current_state.depth_bias().is_none() {
+                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                    }
+                }
+                DynamicState::DepthBiasEnable => {
+                    // VUID-vkCmdDraw-None-04877
+                    if current_state.depth_bias_enable().is_none() {
+                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                    }
+                }
+                DynamicState::DepthBounds => {
+                    // VUID?
+                    if current_state.depth_bounds().is_none() {
+                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                    }
+                }
+                DynamicState::DepthBoundsTestEnable => {
+                    // VUID?
+                    if current_state.depth_bounds_test_enable().is_none() {
+                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                    }
+                }
+                DynamicState::DepthCompareOp => {
+                    // VUID?
+                    if current_state.depth_compare_op().is_none() {
+                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                    }
+                }
+                DynamicState::DepthTestEnable => {
+                    // VUID?
+                    if current_state.depth_test_enable().is_none() {
+                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                    }
+                }
+                DynamicState::DepthWriteEnable => {
+                    // VUID?
+                    if current_state.depth_write_enable().is_none() {
+                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                    }
+
+                    // TODO: Check if the depth buffer is writable
+                }
+                DynamicState::DiscardRectangle => {
+                    let discard_rectangle_count =
+                        match pipeline.discard_rectangle_state().unwrap().rectangles {
+                            PartialStateMode::Dynamic(count) => count,
+                            _ => unreachable!(),
+                        };
+
+                    for num in 0..discard_rectangle_count {
+                        // VUID?
+                        if current_state.discard_rectangle(num).is_none() {
+                            return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                        }
+                    }
+                }
+                DynamicState::ExclusiveScissor => todo!(),
+                DynamicState::FragmentShadingRate => todo!(),
+                DynamicState::FrontFace => {
+                    // VUID?
+                    if current_state.front_face().is_none() {
+                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                    }
+                }
+                DynamicState::LineStipple => {
+                    // VUID?
+                    if current_state.line_stipple().is_none() {
+                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                    }
+                }
+                DynamicState::LineWidth => {
+                    // VUID?
+                    if current_state.line_width().is_none() {
+                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                    }
+                }
+                DynamicState::LogicOp => {
+                    // VUID-vkCmdDraw-logicOp-04878
+                    if current_state.logic_op().is_none() {
+                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                    }
+                }
+                DynamicState::PatchControlPoints => {
+                    // VUID-vkCmdDraw-None-04875
+                    if current_state.patch_control_points().is_none() {
+                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                    }
+                }
+                DynamicState::PrimitiveRestartEnable => {
+                    // VUID-vkCmdDraw-None-04879
+                    let primitive_restart_enable =
+                        if let Some(enable) = current_state.primitive_restart_enable() {
+                            enable
+                        } else {
+                            return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                        };
+
+                    if primitive_restart_enable {
+                        let topology = match pipeline.input_assembly_state().topology {
+                            PartialStateMode::Fixed(topology) => topology,
+                            PartialStateMode::Dynamic(_) => {
+                                if let Some(topology) = current_state.primitive_topology() {
+                                    topology
+                                } else {
+                                    return Err(PipelineExecutionError::DynamicStateNotSet {
+                                        dynamic_state: DynamicState::PrimitiveTopology,
+                                    });
+                                }
+                            }
+                        };
+
+                        match topology {
+                            PrimitiveTopology::PointList
+                            | PrimitiveTopology::LineList
+                            | PrimitiveTopology::TriangleList
+                            | PrimitiveTopology::LineListWithAdjacency
+                            | PrimitiveTopology::TriangleListWithAdjacency => {
+                                // VUID?
+                                if !device.enabled_features().primitive_topology_list_restart {
+                                    return Err(PipelineExecutionError::FeatureNotEnabled {
+                                        feature: "primitive_topology_list_restart",
+                                        reason: "the PrimitiveRestartEnable dynamic state was true in combination with a List PrimitiveTopology",
+                                    });
+                                }
+                            }
+                            PrimitiveTopology::PatchList => {
+                                // VUID?
+                                if !device
+                                    .enabled_features()
+                                    .primitive_topology_patch_list_restart
+                                {
+                                    return Err(PipelineExecutionError::FeatureNotEnabled {
+                                        feature: "primitive_topology_patch_list_restart",
+                                        reason: "the PrimitiveRestartEnable dynamic state was true in combination with PrimitiveTopology::PatchList",
+                                    });
+                                }
+                            }
+                            _ => (),
+                        }
+                    }
+                }
+                DynamicState::PrimitiveTopology => {
+                    // VUID-vkCmdDraw-primitiveTopology-03420
+                    let topology = if let Some(topology) = current_state.primitive_topology() {
+                        topology
+                    } else {
+                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                    };
+
+                    if pipeline.shader(ShaderStage::TessellationControl).is_some() {
+                        // VUID?
+                        if !matches!(topology, PrimitiveTopology::PatchList) {
+                            return Err(PipelineExecutionError::DynamicPrimitiveTopologyInvalid {
+                                topology,
+                            });
+                        }
+                    } else {
+                        // VUID?
+                        if matches!(topology, PrimitiveTopology::PatchList) {
+                            return Err(PipelineExecutionError::DynamicPrimitiveTopologyInvalid {
+                                topology,
+                            });
+                        }
+                    }
+
+                    let required_topology_class = match pipeline.input_assembly_state().topology {
+                        PartialStateMode::Dynamic(topology_class) => topology_class,
                         _ => unreachable!(),
                     };
 
-                for num in 0..discard_rectangle_count {
-                    if current_state.discard_rectangle(num).is_none() {
-                        return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
+                    // VUID-vkCmdDraw-primitiveTopology-03420
+                    if topology.class() != required_topology_class {
+                        return Err(
+                            PipelineExecutionError::DynamicPrimitiveTopologyClassMismatch {
+                                provided_class: topology.class(),
+                                required_class: required_topology_class,
+                            },
+                        );
+                    }
+
+                    // TODO: check that the topology matches the geometry shader
+                }
+                DynamicState::RasterizerDiscardEnable => {
+                    // VUID-vkCmdDraw-None-04876
+                    if current_state.rasterizer_discard_enable().is_none() {
+                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                     }
                 }
-            }
-            DynamicState::ExclusiveScissor => todo!(),
-            DynamicState::FragmentShadingRate => todo!(),
-            DynamicState::FrontFace => {
-                if current_state.front_face().is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
+                DynamicState::RayTracingPipelineStackSize => unreachable!(
+                    "RayTracingPipelineStackSize dynamic state should not occur on a graphics pipeline"
+                ),
+                DynamicState::SampleLocations => todo!(),
+                DynamicState::Scissor => {
+                    for num in 0..pipeline.viewport_state().unwrap().count().unwrap() {
+                        // VUID?
+                        if current_state.scissor(num).is_none() {
+                            return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                        }
+                    }
                 }
-            }
-            DynamicState::LineStipple => {
-                if current_state.line_stipple().is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
-                }
-            }
-            DynamicState::LineWidth => {
-                if current_state.line_width().is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
-                }
-            }
-            DynamicState::LogicOp => {
-                if current_state.logic_op().is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
-                }
-            }
-            DynamicState::PatchControlPoints => {
-                if current_state.patch_control_points().is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
-                }
-            }
-            DynamicState::PrimitiveRestartEnable => {
-                let primitive_restart_enable =
-                    if let Some(enable) = current_state.primitive_restart_enable() {
-                        enable
+                DynamicState::ScissorWithCount => {
+                    // VUID-vkCmdDraw-scissorCount-03418
+                    // VUID-vkCmdDraw-viewportCount-03419
+                    let scissor_count = if let Some(scissors) = current_state.scissor_with_count() {
+                        scissors.len() as u32
                     } else {
-                        return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
+                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                     };
 
-                if primitive_restart_enable {
-                    let topology = match pipeline.input_assembly_state().topology {
-                        PartialStateMode::Fixed(topology) => topology,
-                        PartialStateMode::Dynamic(_) => {
-                            if let Some(topology) = current_state.primitive_topology() {
-                                topology
-                            } else {
-                                return Err(CheckDynamicStateValidityError::NotSet {
-                                    dynamic_state: DynamicState::PrimitiveTopology,
-                                });
-                            }
+                    // Check if the counts match, but only if the viewport count is fixed.
+                    // If the viewport count is also dynamic, then the
+                    // DynamicState::ViewportWithCount match arm will handle it.
+                    if let Some(viewport_count) = pipeline.viewport_state().unwrap().count() {
+                        // VUID-vkCmdDraw-scissorCount-03418
+                        if viewport_count != scissor_count {
+                            return Err(
+                                PipelineExecutionError::DynamicViewportScissorCountMismatch {
+                                    viewport_count,
+                                    scissor_count,
+                                },
+                            );
+                        }
+                    }
+                }
+                DynamicState::StencilCompareMask => {
+                    let state = current_state.stencil_compare_mask();
+
+                    // VUID?
+                    if state.front.is_none() || state.back.is_none() {
+                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                    }
+                }
+                DynamicState::StencilOp => {
+                    let state = current_state.stencil_op();
+
+                    // VUID?
+                    if state.front.is_none() || state.back.is_none() {
+                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                    }
+                }
+                DynamicState::StencilReference => {
+                    let state = current_state.stencil_reference();
+
+                    // VUID?
+                    if state.front.is_none() || state.back.is_none() {
+                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                    }
+                }
+                DynamicState::StencilTestEnable => {
+                    // VUID?
+                    if current_state.stencil_test_enable().is_none() {
+                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                    }
+
+                    // TODO: Check if the stencil buffer is writable
+                }
+                DynamicState::StencilWriteMask => {
+                    let state = current_state.stencil_write_mask();
+
+                    // VUID?
+                    if state.front.is_none() || state.back.is_none() {
+                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                    }
+                }
+                DynamicState::VertexInput => todo!(),
+                DynamicState::VertexInputBindingStride => todo!(),
+                DynamicState::Viewport => {
+                    for num in 0..pipeline.viewport_state().unwrap().count().unwrap() {
+                        // VUID?
+                        if current_state.viewport(num).is_none() {
+                            return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                        }
+                    }
+                }
+                DynamicState::ViewportCoarseSampleOrder => todo!(),
+                DynamicState::ViewportShadingRatePalette => todo!(),
+                DynamicState::ViewportWithCount => {
+                    // VUID-vkCmdDraw-viewportCount-03417
+                    let viewport_count = if let Some(viewports) = current_state.viewport_with_count() {
+                        viewports.len() as u32
+                    } else {
+                        return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
+                    };
+
+                    let scissor_count = if let Some(scissor_count) =
+                        pipeline.viewport_state().unwrap().count()
+                    {
+                        // The scissor count is fixed.
+                        scissor_count
+                    } else {
+                        // VUID-vkCmdDraw-viewportCount-03419
+                        // The scissor count is also dynamic.
+                        if let Some(scissors) = current_state.scissor_with_count() {
+                            scissors.len() as u32
+                        } else {
+                            return Err(PipelineExecutionError::DynamicStateNotSet { dynamic_state });
                         }
                     };
 
-                    match topology {
-                        PrimitiveTopology::PointList
-                        | PrimitiveTopology::LineList
-                        | PrimitiveTopology::TriangleList
-                        | PrimitiveTopology::LineListWithAdjacency
-                        | PrimitiveTopology::TriangleListWithAdjacency => {
-                            if !device.enabled_features().primitive_topology_list_restart {
-                                return Err(CheckDynamicStateValidityError::FeatureNotEnabled {
-                                    feature: "primitive_topology_list_restart",
-                                    reason: "the PrimitiveRestartEnable dynamic state was true in combination with a List PrimitiveTopology",
-                                });
-                            }
-                        }
-                        PrimitiveTopology::PatchList => {
-                            if !device
-                                .enabled_features()
-                                .primitive_topology_patch_list_restart
-                            {
-                                return Err(CheckDynamicStateValidityError::FeatureNotEnabled {
-                                    feature: "primitive_topology_patch_list_restart",
-                                    reason: "the PrimitiveRestartEnable dynamic state was true in combination with PrimitiveTopology::PatchList",
-                                });
-                            }
-                        }
-                        _ => (),
-                    }
-                }
-            }
-            DynamicState::PrimitiveTopology => {
-                let topology = if let Some(topology) = current_state.primitive_topology() {
-                    topology
-                } else {
-                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
-                };
-
-                if pipeline.shader(ShaderStage::TessellationControl).is_some() {
-                    if !matches!(topology, PrimitiveTopology::PatchList) {
-                        return Err(CheckDynamicStateValidityError::InvalidPrimitiveTopology {
-                            topology,
-                            reason: "the graphics pipeline includes tessellation shaders, so the topology must be PatchList",
-                        });
-                    }
-                } else {
-                    if matches!(topology, PrimitiveTopology::PatchList) {
-                        return Err(CheckDynamicStateValidityError::InvalidPrimitiveTopology {
-                            topology,
-                            reason: "the graphics pipeline doesn't include tessellation shaders",
-                        });
-                    }
-                }
-
-                let topology_class = match pipeline.input_assembly_state().topology {
-                    PartialStateMode::Dynamic(topology_class) => topology_class,
-                    _ => unreachable!(),
-                };
-
-                if topology.class() != topology_class {
-                    return Err(CheckDynamicStateValidityError::InvalidPrimitiveTopology {
-                        topology,
-                        reason: "the topology class does not match the class the pipeline was created for",
-                    });
-                }
-
-                // TODO: check that the topology matches the geometry shader
-            }
-            DynamicState::RasterizerDiscardEnable => {
-                if current_state.rasterizer_discard_enable().is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
-                }
-            }
-            DynamicState::RayTracingPipelineStackSize => unreachable!(
-                "RayTracingPipelineStackSize dynamic state should not occur on a graphics pipeline"
-            ),
-            DynamicState::SampleLocations => todo!(),
-            DynamicState::Scissor => {
-                for num in 0..pipeline.viewport_state().unwrap().count().unwrap() {
-                    if current_state.scissor(num).is_none() {
-                        return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
-                    }
-                }
-            }
-            DynamicState::ScissorWithCount => {
-                let scissor_count = if let Some(scissors) = current_state.scissor_with_count() {
-                    scissors.len() as u32
-                } else {
-                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
-                };
-
-                // Check if the counts match, but only if the viewport count is fixed.
-                // If the viewport count is also dynamic, then the DynamicState::ViewportWithCount
-                // match arm will handle it.
-                if let Some(viewport_count) = pipeline.viewport_state().unwrap().count() {
+                    // VUID-vkCmdDraw-viewportCount-03417
+                    // VUID-vkCmdDraw-viewportCount-03419
                     if viewport_count != scissor_count {
                         return Err(
-                            CheckDynamicStateValidityError::ViewportScissorCountMismatch {
+                            PipelineExecutionError::DynamicViewportScissorCountMismatch {
                                 viewport_count,
                                 scissor_count,
                             },
                         );
                     }
+
+                    // TODO: VUID-vkCmdDrawIndexed-primitiveFragmentShadingRateWithMultipleViewports-04552
+                    // If the primitiveFragmentShadingRateWithMultipleViewports limit is not supported,
+                    // the bound graphics pipeline was created with the
+                    // VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT_EXT dynamic state enabled, and any of the
+                    // shader stages of the bound graphics pipeline write to the PrimitiveShadingRateKHR
+                    // built-in, then vkCmdSetViewportWithCountEXT must have been called in the current
+                    // command buffer prior to this drawing command, and the viewportCount parameter of
+                    // vkCmdSetViewportWithCountEXT must be 1
+                }
+                DynamicState::ViewportWScaling => todo!(),
+            }
+        }
+
+        Ok(())
+    }
+
+    fn validate_pipeline_graphics_render_pass(
+        &self,
+        pipeline: &GraphicsPipeline,
+        render_pass_state: &RenderPassState,
+    ) -> Result<(), PipelineExecutionError> {
+        // VUID?
+        if render_pass_state.contents != SubpassContents::Inline {
+            return Err(PipelineExecutionError::ForbiddenWithSubpassContents {
+                subpass_contents: render_pass_state.contents,
+            });
+        }
+
+        match (&render_pass_state.render_pass, pipeline.render_pass()) {
+            (
+                RenderPassStateType::BeginRenderPass(state),
+                PipelineRenderPassType::BeginRenderPass(pipeline_subpass),
+            ) => {
+                // VUID-vkCmdDraw-renderPass-02684
+                if !pipeline_subpass
+                    .render_pass()
+                    .is_compatible_with(state.subpass.render_pass())
+                {
+                    return Err(PipelineExecutionError::PipelineRenderPassNotCompatible);
+                }
+
+                // VUID-vkCmdDraw-subpass-02685
+                if pipeline_subpass.index() != state.subpass.index() {
+                    return Err(PipelineExecutionError::PipelineSubpassMismatch {
+                        pipeline: pipeline_subpass.index(),
+                        current: state.subpass.index(),
+                    });
                 }
             }
-            DynamicState::StencilCompareMask => {
-                let state = current_state.stencil_compare_mask();
-
-                if state.front.is_none() || state.back.is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
-                }
-            }
-            DynamicState::StencilOp => {
-                let state = current_state.stencil_op();
-
-                if state.front.is_none() || state.back.is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
-                }
-            }
-            DynamicState::StencilReference => {
-                let state = current_state.stencil_reference();
-
-                if state.front.is_none() || state.back.is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
-                }
-            }
-            DynamicState::StencilTestEnable => {
-                if current_state.stencil_test_enable().is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
+            (
+                RenderPassStateType::BeginRendering(current_rendering_info),
+                PipelineRenderPassType::BeginRendering(pipeline_rendering_info),
+            ) => {
+                // VUID-vkCmdDraw-viewMask-06178
+                if pipeline_rendering_info.view_mask != render_pass_state.view_mask {
+                    return Err(PipelineExecutionError::PipelineViewMaskMismatch {
+                        pipeline_view_mask: pipeline_rendering_info.view_mask,
+                        required_view_mask: render_pass_state.view_mask,
+                    });
                 }
 
-                // TODO: Check if the stencil buffer is writable
-            }
-            DynamicState::StencilWriteMask => {
-                let state = current_state.stencil_write_mask();
-
-                if state.front.is_none() || state.back.is_none() {
-                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
-                }
-            }
-            DynamicState::VertexInput => todo!(),
-            DynamicState::VertexInputBindingStride => todo!(),
-            DynamicState::Viewport => {
-                for num in 0..pipeline.viewport_state().unwrap().count().unwrap() {
-                    if current_state.viewport(num).is_none() {
-                        return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
-                    }
-                }
-            }
-            DynamicState::ViewportCoarseSampleOrder => todo!(),
-            DynamicState::ViewportShadingRatePalette => todo!(),
-            DynamicState::ViewportWithCount => {
-                let viewport_count = if let Some(viewports) = current_state.viewport_with_count() {
-                    viewports.len() as u32
-                } else {
-                    return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
-                };
-
-                let scissor_count =
-                    if let Some(scissor_count) = pipeline.viewport_state().unwrap().count() {
-                        // The scissor count is fixed.
-                        scissor_count
-                    } else {
-                        // The scissor count is also dynamic.
-                        if let Some(scissors) = current_state.scissor_with_count() {
-                            scissors.len() as u32
-                        } else {
-                            return Err(CheckDynamicStateValidityError::NotSet { dynamic_state });
-                        }
-                    };
-
-                if viewport_count != scissor_count {
+                // VUID-vkCmdDraw-colorAttachmentCount-06179
+                if pipeline_rendering_info.color_attachment_formats.len()
+                    != current_rendering_info.color_attachment_formats.len()
+                {
                     return Err(
-                        CheckDynamicStateValidityError::ViewportScissorCountMismatch {
-                            viewport_count,
-                            scissor_count,
+                        PipelineExecutionError::PipelineColorAttachmentCountMismatch {
+                            pipeline_count: pipeline_rendering_info.color_attachment_formats.len()
+                                as u32,
+                            required_count: current_rendering_info.color_attachment_formats.len()
+                                as u32,
                         },
                     );
                 }
 
-                // TODO: VUID-vkCmdDrawIndexed-primitiveFragmentShadingRateWithMultipleViewports-04552
-                // If the primitiveFragmentShadingRateWithMultipleViewports limit is not supported,
-                // the bound graphics pipeline was created with the
-                // VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT_EXT dynamic state enabled, and any of the
-                // shader stages of the bound graphics pipeline write to the PrimitiveShadingRateKHR
-                // built-in, then vkCmdSetViewportWithCountEXT must have been called in the current
-                // command buffer prior to this drawing command, and the viewportCount parameter of
-                // vkCmdSetViewportWithCountEXT must be 1
-            }
-            DynamicState::ViewportWScaling => todo!(),
-        }
-    }
-
-    Ok(())
-}
-
-/// Error that can happen when validating dynamic states.
-#[derive(Debug, Copy, Clone)]
-pub enum CheckDynamicStateValidityError {
-    /// A device feature that was required for a particular dynamic state value was not enabled.
-    FeatureNotEnabled {
-        feature: &'static str,
-        reason: &'static str,
-    },
-
-    /// The provided dynamic primitive topology is not compatible with the pipeline.
-    InvalidPrimitiveTopology {
-        topology: PrimitiveTopology,
-        reason: &'static str,
-    },
-
-    /// The number of ColorWriteEnable values was less than the number of attachments in the
-    /// color blend state of the pipeline.
-    NotEnoughColorWriteEnable {
-        color_write_enable_count: u32,
-        attachment_count: u32,
-    },
-
-    /// The pipeline requires a particular state to be set dynamically, but the value was not or
-    /// only partially set.
-    NotSet { dynamic_state: DynamicState },
-
-    /// The viewport count and scissor count do not match.
-    ViewportScissorCountMismatch {
-        viewport_count: u32,
-        scissor_count: u32,
-    },
-}
-
-impl Error for CheckDynamicStateValidityError {}
-
-impl fmt::Display for CheckDynamicStateValidityError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match *self {
-            Self::FeatureNotEnabled { feature, reason } => {
-                write!(fmt, "the feature {} must be enabled: {}", feature, reason)
-            }
-            Self::InvalidPrimitiveTopology { topology, reason } => {
-                write!(
-                    fmt,
-                    "invalid dynamic PrimitiveTypology::{:?}: {}",
-                    topology, reason
-                )
-            }
-            Self::NotEnoughColorWriteEnable {
-                color_write_enable_count,
-                attachment_count,
-            } => {
-                write!(fmt, "the number of ColorWriteEnable values ({}) was less than the number of attachments ({}) in the color blend state of the pipeline", color_write_enable_count, attachment_count)
-            }
-            Self::NotSet { dynamic_state } => {
-                write!(fmt, "the pipeline requires the dynamic state {:?} to be set, but the value was not or only partially set", dynamic_state)
-            }
-            Self::ViewportScissorCountMismatch {
-                viewport_count,
-                scissor_count,
-            } => {
-                write!(fmt, "the viewport count and scissor count do not match; viewport count is {}, scissor count is {}", viewport_count, scissor_count)
-            }
-        }
-    }
-}
-
-/// Checks whether an index buffer can be bound.
-///
-/// # Panic
-///
-/// - Panics if the buffer was not created with `device`.
-///
-fn check_index_buffer(
-    current_state: CommandBufferState,
-    indices: Option<(u32, u32)>,
-) -> Result<(), CheckIndexBufferError> {
-    let (index_buffer, index_type) = match current_state.index_buffer() {
-        Some(x) => x,
-        None => return Err(CheckIndexBufferError::BufferNotBound),
-    };
-
-    if let Some((first_index, index_count)) = indices {
-        let max_index_count = (index_buffer.size() / index_type.size()) as u32;
-
-        if first_index + index_count > max_index_count {
-            return Err(CheckIndexBufferError::TooManyIndices {
-                index_count,
-                max_index_count,
-            });
-        }
-    }
-
-    Ok(())
-}
-
-/// Error that can happen when checking whether binding an index buffer is valid.
-#[derive(Debug, Copy, Clone)]
-pub enum CheckIndexBufferError {
-    /// No index buffer was bound.
-    BufferNotBound,
-    /// A draw command requested too many indices.
-    TooManyIndices {
-        /// The used amount of indices.
-        index_count: u32,
-        /// The allowed amount of indices.
-        max_index_count: u32,
-    },
-    /// The "index buffer" usage must be enabled on the index buffer.
-    BufferMissingUsage,
-    /// The data or size must be 4-bytes aligned.
-    WrongAlignment,
-    /// The type of the indices is not supported by the device.
-    UnsupportIndexType,
-}
-
-impl Error for CheckIndexBufferError {}
-
-impl fmt::Display for CheckIndexBufferError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                CheckIndexBufferError::BufferNotBound => {
-                    "no index buffer was bound"
-                }
-                CheckIndexBufferError::TooManyIndices { .. } => {
-                    "the draw command requested too many indices"
-                }
-                CheckIndexBufferError::BufferMissingUsage => {
-                    "the index buffer usage must be enabled on the index buffer"
-                }
-                CheckIndexBufferError::WrongAlignment => {
-                    "the sum of offset and the address of the range of VkDeviceMemory object that is \
-                 backing buffer, must be a multiple of the type indicated by indexType"
-                }
-                CheckIndexBufferError::UnsupportIndexType => {
-                    "the type of the indices is not supported by the device"
-                }
-            }
-        )
-    }
-}
-
-/// Checks whether an indirect buffer can be bound.
-fn check_indirect_buffer(
-    device: &Device,
-    buffer: &dyn BufferAccess,
-) -> Result<(), CheckIndirectBufferError> {
-    assert_eq!(
-        buffer.inner().buffer.device().internal_object(),
-        device.internal_object()
-    );
-
-    if !buffer.inner().buffer.usage().indirect_buffer {
-        return Err(CheckIndirectBufferError::BufferMissingUsage);
-    }
-
-    Ok(())
-}
-
-/// Error that can happen when checking whether binding an indirect buffer is valid.
-#[derive(Debug, Copy, Clone)]
-pub enum CheckIndirectBufferError {
-    /// The "indirect buffer" usage must be enabled on the indirect buffer.
-    BufferMissingUsage,
-    /// The maximum number of indirect draws has been exceeded.
-    MaxDrawIndirectCountLimitExceeded {
-        /// The limit that must be fulfilled.
-        limit: u32,
-        /// What was requested.
-        requested: u32,
-    },
-}
-
-impl Error for CheckIndirectBufferError {}
-
-impl fmt::Display for CheckIndirectBufferError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                CheckIndirectBufferError::BufferMissingUsage => {
-                    "the indirect buffer usage must be enabled on the indirect buffer"
-                }
-                CheckIndirectBufferError::MaxDrawIndirectCountLimitExceeded { .. } => {
-                    "the maximum number of indirect draws has been exceeded"
-                }
-            }
-        )
-    }
-}
-
-fn check_vertex_buffers(
-    current_state: CommandBufferState,
-    pipeline: &GraphicsPipeline,
-    vertices: Option<(u32, u32)>,
-    instances: Option<(u32, u32)>,
-) -> Result<(), CheckVertexBufferError> {
-    let vertex_input = pipeline.vertex_input_state();
-    let mut max_vertex_count: Option<u32> = None;
-    let mut max_instance_count: Option<u32> = None;
-
-    for (&binding_num, binding_desc) in &vertex_input.bindings {
-        let vertex_buffer = match current_state.vertex_buffer(binding_num) {
-            Some(x) => x,
-            None => return Err(CheckVertexBufferError::BufferNotBound { binding_num }),
-        };
-
-        let mut num_elements = (vertex_buffer.size() / binding_desc.stride as DeviceSize)
-            .try_into()
-            .unwrap_or(u32::MAX);
-
-        match binding_desc.input_rate {
-            VertexInputRate::Vertex => {
-                max_vertex_count = Some(if let Some(x) = max_vertex_count {
-                    x.min(num_elements)
-                } else {
-                    num_elements
-                });
-            }
-            VertexInputRate::Instance { divisor } => {
-                if divisor == 0 {
-                    // A divisor of 0 means the same instance data is used for all instances,
-                    // so we can draw any number of instances from a single element.
-                    // The buffer must contain at least one element though.
-                    if num_elements != 0 {
-                        num_elements = u32::MAX;
+                for (color_attachment_index, required_format, pipeline_format) in
+                    current_rendering_info
+                        .color_attachment_formats
+                        .iter()
+                        .zip(
+                            pipeline_rendering_info
+                                .color_attachment_formats
+                                .iter()
+                                .copied(),
+                        )
+                        .enumerate()
+                        .filter_map(|(i, (r, p))| r.map(|r| (i as u32, r, p)))
+                {
+                    // VUID-vkCmdDraw-colorAttachmentCount-06180
+                    if Some(required_format) != pipeline_format {
+                        return Err(
+                            PipelineExecutionError::PipelineColorAttachmentFormatMismatch {
+                                color_attachment_index,
+                                pipeline_format,
+                                required_format,
+                            },
+                        );
                     }
-                } else {
-                    // If divisor is 2, we use only half the amount of data from the source buffer,
-                    // so the number of instances that can be drawn is twice as large.
-                    num_elements = num_elements.saturating_mul(divisor);
                 }
 
-                max_instance_count = Some(if let Some(x) = max_instance_count {
-                    x.min(num_elements)
-                } else {
-                    num_elements
-                });
+                if let Some((required_format, pipeline_format)) = current_rendering_info
+                    .depth_attachment_format
+                    .map(|r| (r, pipeline_rendering_info.depth_attachment_format))
+                {
+                    // VUID-vkCmdDraw-pDepthAttachment-06181
+                    if Some(required_format) != pipeline_format {
+                        return Err(
+                            PipelineExecutionError::PipelineDepthAttachmentFormatMismatch {
+                                pipeline_format,
+                                required_format,
+                            },
+                        );
+                    }
+                }
+
+                if let Some((required_format, pipeline_format)) = current_rendering_info
+                    .stencil_attachment_format
+                    .map(|r| (r, pipeline_rendering_info.stencil_attachment_format))
+                {
+                    // VUID-vkCmdDraw-pStencilAttachment-06182
+                    if Some(required_format) != pipeline_format {
+                        return Err(
+                            PipelineExecutionError::PipelineStencilAttachmentFormatMismatch {
+                                pipeline_format,
+                                required_format,
+                            },
+                        );
+                    }
+                }
+
+                // VUID-vkCmdDraw-imageView-06172
+                // VUID-vkCmdDraw-imageView-06173
+                // VUID-vkCmdDraw-imageView-06174
+                // VUID-vkCmdDraw-imageView-06175
+                // VUID-vkCmdDraw-imageView-06176
+                // VUID-vkCmdDraw-imageView-06177
+                // TODO:
             }
-        };
+            _ => return Err(PipelineExecutionError::PipelineRenderPassTypeMismatch),
+        }
+
+        // VUID-vkCmdDraw-None-02686
+        // TODO:
+
+        Ok(())
     }
 
-    if let Some((first_vertex, vertex_count)) = vertices {
-        if let Some(max_vertex_count) = max_vertex_count {
-            if first_vertex + vertex_count > max_vertex_count {
-                return Err(CheckVertexBufferError::TooManyVertices {
-                    vertex_count,
-                    max_vertex_count,
-                });
+    fn validate_pipeline_graphics_vertex_buffers(
+        &self,
+        pipeline: &GraphicsPipeline,
+        vertices: Option<(u32, u32)>,
+        instances: Option<(u32, u32)>,
+    ) -> Result<(), PipelineExecutionError> {
+        let vertex_input = pipeline.vertex_input_state();
+        let mut vertices_in_buffers: Option<u64> = None;
+        let mut instances_in_buffers: Option<u64> = None;
+        let current_state = self.state();
+
+        for (&binding_num, binding_desc) in &vertex_input.bindings {
+            // VUID-vkCmdDraw-None-04007
+            let vertex_buffer = match current_state.vertex_buffer(binding_num) {
+                Some(x) => x,
+                None => return Err(PipelineExecutionError::VertexBufferNotBound { binding_num }),
+            };
+
+            let mut num_elements = vertex_buffer.size() as u64 / binding_desc.stride as u64;
+
+            match binding_desc.input_rate {
+                VertexInputRate::Vertex => {
+                    vertices_in_buffers = Some(if let Some(x) = vertices_in_buffers {
+                        min(x, num_elements)
+                    } else {
+                        num_elements
+                    });
+                }
+                VertexInputRate::Instance { divisor } => {
+                    if divisor == 0 {
+                        // A divisor of 0 means the same instance data is used for all instances,
+                        // so we can draw any number of instances from a single element.
+                        // The buffer must contain at least one element though.
+                        if num_elements != 0 {
+                            num_elements = u64::MAX;
+                        }
+                    } else {
+                        // If divisor is e.g. 2, we use only half the amount of data from the source
+                        // buffer, so the number of instances that can be drawn is twice as large.
+                        num_elements = num_elements.saturating_mul(divisor as u64);
+                    }
+
+                    instances_in_buffers = Some(if let Some(x) = instances_in_buffers {
+                        min(x, num_elements)
+                    } else {
+                        num_elements
+                    });
+                }
+            };
+        }
+
+        if let Some((first_vertex, vertex_count)) = vertices {
+            let vertices_needed = first_vertex as u64 + vertex_count as u64;
+
+            if let Some(vertices_in_buffers) = vertices_in_buffers {
+                // VUID-vkCmdDraw-None-02721
+                if vertices_needed > vertices_in_buffers {
+                    return Err(PipelineExecutionError::VertexBufferVertexRangeOutOfBounds {
+                        vertices_needed,
+                        vertices_in_buffers,
+                    });
+                }
             }
         }
-    }
 
-    if let Some((first_instance, instance_count)) = instances {
-        if let Some(max_instance_count) = max_instance_count {
-            if first_instance + instance_count > max_instance_count {
-                return Err(CheckVertexBufferError::TooManyInstances {
-                    instance_count,
-                    max_instance_count,
-                });
+        if let Some((first_instance, instance_count)) = instances {
+            let instances_needed = first_instance as u64 + instance_count as u64;
+
+            if let Some(instances_in_buffers) = instances_in_buffers {
+                // VUID-vkCmdDraw-None-02721
+                if instances_needed > instances_in_buffers {
+                    return Err(
+                        PipelineExecutionError::VertexBufferInstanceRangeOutOfBounds {
+                            instances_needed,
+                            instances_in_buffers,
+                        },
+                    );
+                }
+            }
+
+            let view_mask = match pipeline.render_pass() {
+                PipelineRenderPassType::BeginRenderPass(subpass) => {
+                    subpass.render_pass().views_used()
+                }
+                PipelineRenderPassType::BeginRendering(rendering_info) => rendering_info.view_mask,
+            };
+
+            if view_mask != 0 {
+                let max = pipeline
+                    .device()
+                    .physical_device()
+                    .properties()
+                    .max_multiview_instance_index
+                    .unwrap_or(0);
+
+                let highest_instance = instances_needed.saturating_sub(1);
+
+                // VUID-vkCmdDraw-maxMultiviewInstanceIndex-02688
+                if highest_instance > max as u64 {
+                    return Err(PipelineExecutionError::MaxMultiviewInstanceIndexExceeded {
+                        highest_instance,
+                        max,
+                    });
+                }
             }
         }
 
-        let view_mask = match pipeline.render_pass() {
-            PipelineRenderPassType::BeginRenderPass(subpass) => subpass.render_pass().views_used(),
-            PipelineRenderPassType::BeginRendering(rendering_info) => rendering_info.view_mask,
-        };
-
-        if view_mask != 0 {
-            let max_instance_index = pipeline
-                .device()
-                .physical_device()
-                .properties()
-                .max_multiview_instance_index
-                .unwrap_or(0);
-
-            // The condition is somewhat convoluted to avoid integer overflows.
-            let out_of_range = first_instance > max_instance_index
-                || (instance_count > 0 && instance_count - 1 > max_instance_index - first_instance);
-            if out_of_range {
-                return Err(CheckVertexBufferError::TooManyInstances {
-                    instance_count,
-                    max_instance_count: max_instance_index + 1, // TODO: this can overflow
-                });
-            }
-        }
-    }
-
-    Ok(())
-}
-
-/// Error that can happen when checking whether the vertex buffers are valid.
-#[derive(Debug, Copy, Clone)]
-pub enum CheckVertexBufferError {
-    /// No buffer was bound to a binding slot needed by the pipeline.
-    BufferNotBound { binding_num: u32 },
-
-    /// The "vertex buffer" usage must be enabled on the buffer.
-    BufferMissingUsage {
-        /// Index of the buffer that is missing usage.
-        binding_num: u32,
-    },
-
-    /// A draw command requested too many vertices.
-    TooManyVertices {
-        /// The used amount of vertices.
-        vertex_count: u32,
-        /// The allowed amount of vertices.
-        max_vertex_count: u32,
-    },
-
-    /// A draw command requested too many instances.
-    ///
-    /// When the `multiview` feature is used the maximum amount of instances may be reduced
-    /// because the implementation may use instancing internally to implement `multiview`.
-    TooManyInstances {
-        /// The used amount of instances.
-        instance_count: u32,
-        /// The allowed amount of instances.
-        max_instance_count: u32,
-    },
-}
-
-impl Error for CheckVertexBufferError {}
-
-impl fmt::Display for CheckVertexBufferError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                CheckVertexBufferError::BufferNotBound { .. } => {
-                    "no buffer was bound to a binding slot needed by the pipeline"
-                }
-                CheckVertexBufferError::BufferMissingUsage { .. } => {
-                    "the vertex buffer usage is missing on a vertex buffer"
-                }
-                CheckVertexBufferError::TooManyVertices { .. } => {
-                    "the draw command requested too many vertices"
-                }
-                CheckVertexBufferError::TooManyInstances { .. } => {
-                    "the draw command requested too many instances"
-                }
-            }
-        )
-    }
-}
-
-/// Checks whether the dispatch dimensions are supported by the device.
-fn check_dispatch(device: &Device, dimensions: [u32; 3]) -> Result<(), CheckDispatchError> {
-    let max = device
-        .physical_device()
-        .properties()
-        .max_compute_work_group_count;
-
-    if dimensions[0] > max[0] || dimensions[1] > max[1] || dimensions[2] > max[2] {
-        return Err(CheckDispatchError::UnsupportedDimensions {
-            requested: dimensions,
-            max_supported: max,
-        });
-    }
-
-    if dimensions.contains(&0) {
-        return Err(CheckDispatchError::ZeroLengthDimensions);
-    }
-
-    Ok(())
-}
-
-/// Error that can happen when checking dispatch command validity.
-#[derive(Debug, Copy, Clone)]
-pub enum CheckDispatchError {
-    /// The dimensions are too large for the device's limits.
-    UnsupportedDimensions {
-        /// The requested dimensions.
-        requested: [u32; 3],
-        /// The actual supported dimensions.
-        max_supported: [u32; 3],
-    },
-
-    /// At least one of the requested dimensions were zero.
-    ZeroLengthDimensions,
-}
-
-impl Error for CheckDispatchError {}
-
-impl fmt::Display for CheckDispatchError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                CheckDispatchError::UnsupportedDimensions { .. } => {
-                    "the dimensions are too large for the device's limits"
-                }
-                CheckDispatchError::ZeroLengthDimensions => {
-                    "at least one of the requested dimensions were zero"
-                }
-            }
-        )
+        Ok(())
     }
 }
 
@@ -2342,43 +2236,516 @@ impl UnsafeCommandBufferBuilder {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// Error that can happen when recording a bound pipeline execution command.
+#[derive(Debug, Clone)]
+pub enum PipelineExecutionError {
+    SyncCommandBufferBuilderError(SyncCommandBufferBuilderError),
 
-    #[test]
-    fn max_checked() {
-        let (device, _) = gfx_dev_and_queue!();
+    FeatureNotEnabled {
+        feature: &'static str,
+        reason: &'static str,
+    },
 
-        let attempted = [u32::MAX, u32::MAX, u32::MAX];
+    /// The resource bound to a descriptor set binding at a particular index is not compatible
+    /// with the requirements of the pipeline and shaders.
+    DescriptorResourceInvalid {
+        set_num: u32,
+        binding_num: u32,
+        index: u32,
+        error: DescriptorResourceInvalidError,
+    },
 
-        // Just in case the device is some kind of software implementation.
-        if device
-            .physical_device()
-            .properties()
-            .max_compute_work_group_count
-            == attempted
-        {
-            return;
-        }
+    /// The pipeline layout requires a descriptor set bound to a set number, but none was bound.
+    DescriptorSetNotBound {
+        set_num: u32,
+    },
 
-        match check_dispatch(&device, attempted) {
-            Err(CheckDispatchError::UnsupportedDimensions { requested, .. }) => {
-                assert_eq!(requested, attempted);
-            }
-            _ => panic!(),
+    /// The bound pipeline uses a dynamic color write enable setting, but the number of provided
+    /// enable values is less than the number of attachments in the current render subpass.
+    DynamicColorWriteEnableNotEnoughValues {
+        color_write_enable_count: u32,
+        attachment_count: u32,
+    },
+
+    /// The bound pipeline uses a dynamic primitive topology, but the provided topology is of a
+    /// different topology class than what the pipeline requires.
+    DynamicPrimitiveTopologyClassMismatch {
+        provided_class: PrimitiveTopologyClass,
+        required_class: PrimitiveTopologyClass,
+    },
+
+    /// The bound pipeline uses a dynamic primitive topology, but the provided topology is not
+    /// compatible with the shader stages in the pipeline.
+    DynamicPrimitiveTopologyInvalid {
+        topology: PrimitiveTopology,
+    },
+
+    /// The pipeline requires a particular dynamic state, but this state was not set.
+    DynamicStateNotSet {
+        dynamic_state: DynamicState,
+    },
+
+    /// The bound pipeline uses a dynamic scissor and/or viewport count, but the scissor count
+    /// does not match the viewport count.
+    DynamicViewportScissorCountMismatch {
+        viewport_count: u32,
+        scissor_count: u32,
+    },
+
+    /// Operation forbidden inside a render pass.
+    ForbiddenInsideRenderPass,
+
+    /// Operation forbidden outside a render pass.
+    ForbiddenOutsideRenderPass,
+
+    /// Operation forbidden inside a render subpass with the specified contents.
+    ForbiddenWithSubpassContents {
+        subpass_contents: SubpassContents,
+    },
+
+    /// An indexed draw command was recorded, but no index buffer was bound.
+    IndexBufferNotBound,
+
+    /// The highest index to be drawn exceeds the available number of indices in the bound index buffer.
+    IndexBufferRangeOutOfBounds {
+        highest_index: u32,
+        max_index_count: u32,
+    },
+
+    /// The `indirect_buffer` usage was not enabled on the indirect buffer.
+    IndirectBufferMissingUsage,
+
+    /// The `max_compute_work_group_count` limit has been exceeded.
+    MaxComputeWorkGroupCountExceeded {
+        requested: [u32; 3],
+        max: [u32; 3],
+    },
+
+    /// The `max_draw_indirect_count` limit has been exceeded.
+    MaxDrawIndirectCountExceeded {
+        provided: u32,
+        max: u32,
+    },
+
+    /// The `max_multiview_instance_index` limit has been exceeded.
+    MaxMultiviewInstanceIndexExceeded {
+        highest_instance: u64,
+        max: u32,
+    },
+
+    /// The queue family doesn't allow this operation.
+    NotSupportedByQueueFamily,
+
+    /// The color attachment count in the bound pipeline does not match the count of the current
+    /// render pass.
+    PipelineColorAttachmentCountMismatch {
+        pipeline_count: u32,
+        required_count: u32,
+    },
+
+    /// The format of a color attachment in the bound pipeline does not match the format of the
+    /// corresponding color attachment in the current render pass.
+    PipelineColorAttachmentFormatMismatch {
+        color_attachment_index: u32,
+        pipeline_format: Option<Format>,
+        required_format: Format,
+    },
+
+    /// The format of the depth attachment in the bound pipeline does not match the format of the
+    /// depth attachment in the current render pass.
+    PipelineDepthAttachmentFormatMismatch {
+        pipeline_format: Option<Format>,
+        required_format: Format,
+    },
+
+    /// The bound pipeline is not compatible with the layout used to bind the descriptor sets.
+    PipelineLayoutNotCompatible,
+
+    /// No pipeline was bound to the bind point used by the operation.
+    PipelineNotBound,
+
+    /// The bound graphics pipeline uses a render pass that is not compatible with the currently
+    /// active render pass.
+    PipelineRenderPassNotCompatible,
+
+    /// The bound graphics pipeline uses a render pass of a different type than the currently
+    /// active render pass.
+    PipelineRenderPassTypeMismatch,
+
+    /// The bound graphics pipeline uses a render subpass index that doesn't match the currently
+    /// active subpass index.
+    PipelineSubpassMismatch {
+        pipeline: u32,
+        current: u32,
+    },
+
+    /// The format of the stencil attachment in the bound pipeline does not match the format of the
+    /// stencil attachment in the current render pass.
+    PipelineStencilAttachmentFormatMismatch {
+        pipeline_format: Option<Format>,
+        required_format: Format,
+    },
+
+    /// The view mask of the bound pipeline does not match the view mask of the current render pass.
+    PipelineViewMaskMismatch {
+        pipeline_view_mask: u32,
+        required_view_mask: u32,
+    },
+
+    /// The push constants are not compatible with the pipeline layout.
+    PushConstantsNotCompatible,
+
+    /// Not all push constants used by the pipeline have been set.
+    PushConstantsMissing,
+
+    /// The bound graphics pipeline requires a vertex buffer bound to a binding number, but none
+    /// was bound.
+    VertexBufferNotBound {
+        binding_num: u32,
+    },
+
+    /// The number of instances to be drawn exceeds the available number of indices in the
+    /// bound vertex buffers used by the pipeline.
+    VertexBufferInstanceRangeOutOfBounds {
+        instances_needed: u64,
+        instances_in_buffers: u64,
+    },
+
+    /// The number of vertices to be drawn exceeds the lowest available number of vertices in the
+    /// bound vertex buffers used by the pipeline.
+    VertexBufferVertexRangeOutOfBounds {
+        vertices_needed: u64,
+        vertices_in_buffers: u64,
+    },
+}
+
+impl Error for PipelineExecutionError {
+    #[inline]
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::SyncCommandBufferBuilderError(err) => Some(err),
+            Self::DescriptorResourceInvalid { error, .. } => Some(error),
+            _ => None,
         }
     }
+}
 
-    #[test]
-    fn zero_dimension_checked() {
-        let (device, _) = gfx_dev_and_queue!();
+impl fmt::Display for PipelineExecutionError {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match self {
+            Self::SyncCommandBufferBuilderError(_) => write!(f, "a SyncCommandBufferBuilderError"),
 
-        let attempted = [128, 1, 0];
+            Self::FeatureNotEnabled { feature, reason } => {
+                write!(f, "the feature {} must be enabled: {}", feature, reason)
+            }
 
-        match check_dispatch(&device, attempted) {
-            Err(CheckDispatchError::ZeroLengthDimensions) => {}
-            _ => panic!(),
+            Self::DescriptorResourceInvalid { set_num, binding_num, index, .. } => write!(
+                f,
+                "the resource bound to descriptor set {} binding {} at index {} is not compatible with the requirements of the pipeline and shaders",
+                set_num, binding_num, index,
+            ),
+            Self::DescriptorSetNotBound {
+                set_num,
+            } => write!(
+                f,
+                "the pipeline layout requires a descriptor set bound to set number {}, but none was bound",
+                set_num,
+            ),
+            Self::DynamicColorWriteEnableNotEnoughValues {
+                color_write_enable_count,
+                attachment_count,
+            } => write!(
+                f,
+                "the bound pipeline uses a dynamic color write enable setting, but the number of provided enable values ({}) is less than the number of attachments in the current render subpass ({})",
+                color_write_enable_count,
+                attachment_count,
+            ),
+            Self::DynamicPrimitiveTopologyClassMismatch {
+                provided_class,
+                required_class,
+            } => write!(
+                f,
+                "The bound pipeline uses a dynamic primitive topology, but the provided topology is of a different topology class ({:?}) than what the pipeline requires ({:?})",
+                provided_class, required_class,
+            ),
+            Self::DynamicPrimitiveTopologyInvalid {
+                topology,
+            } => write!(
+                f,
+                "the bound pipeline uses a dynamic primitive topology, but the provided topology ({:?}) is not compatible with the shader stages in the pipeline",
+                topology,
+            ),
+            Self::DynamicStateNotSet { dynamic_state } => write!(
+                f,
+                "the pipeline requires the dynamic state {:?}, but this state was not set",
+                dynamic_state,
+            ),
+            Self::DynamicViewportScissorCountMismatch {
+                viewport_count,
+                scissor_count,
+            } => write!(
+                f,
+                "the bound pipeline uses a dynamic scissor and/or viewport count, but the scissor count ({}) does not match the viewport count ({})",
+                scissor_count,
+                viewport_count,
+            ),
+            Self::ForbiddenInsideRenderPass => write!(
+                f,
+                "operation forbidden inside a render pass",
+            ),
+            Self::ForbiddenOutsideRenderPass => write!(
+                f,
+                "operation forbidden outside a render pass",
+            ),
+            Self::ForbiddenWithSubpassContents { subpass_contents } => write!(
+                f,
+                "operation forbidden inside a render subpass with contents {:?}",
+                subpass_contents,
+            ),
+            Self::IndexBufferNotBound => write!(
+                f,
+                "an indexed draw command was recorded, but no index buffer was bound",
+            ),
+            Self::IndexBufferRangeOutOfBounds {
+                highest_index,
+                max_index_count,
+            } => write!(
+                f,
+                "the highest index to be drawn ({}) exceeds the available number of indices in the bound index buffer ({})",
+                highest_index,
+                max_index_count,
+            ),
+            Self::IndirectBufferMissingUsage => write!(
+                f,
+                "the `indirect_buffer` usage was not enabled on the indirect buffer",
+            ),
+            Self::MaxComputeWorkGroupCountExceeded { .. } => write!(
+                f,
+                "the `max_compute_work_group_count` limit has been exceeded",
+            ),
+            Self::MaxDrawIndirectCountExceeded { .. } => write!(
+                f,
+                "the `max_draw_indirect_count` limit has been exceeded",
+            ),
+            Self::MaxMultiviewInstanceIndexExceeded { .. } => write!(
+                f,
+                "the `max_multiview_instance_index` limit has been exceeded",
+            ),
+            Self::NotSupportedByQueueFamily => write!(
+                f,
+                "the queue family doesn't allow this operation",
+            ),
+            Self::PipelineColorAttachmentCountMismatch {
+                pipeline_count,
+                required_count,
+            } => write!(
+                f,
+                "the color attachment count in the bound pipeline ({}) does not match the count of the current render pass ({})",
+                pipeline_count, required_count,
+            ),
+            Self::PipelineColorAttachmentFormatMismatch {
+                color_attachment_index,
+                pipeline_format,
+                required_format,
+            } => write!(
+                f,
+                "the format of color attachment {} in the bound pipeline ({:?}) does not match the format of the corresponding color attachment in the current render pass ({:?})",
+                color_attachment_index, pipeline_format, required_format,
+            ),
+            Self::PipelineDepthAttachmentFormatMismatch {
+                pipeline_format,
+                required_format,
+            } => write!(
+                f,
+                "the format of the depth attachment in the bound pipeline ({:?}) does not match the format of the depth attachment in the current render pass ({:?})",
+                pipeline_format, required_format,
+            ),
+            Self::PipelineLayoutNotCompatible => write!(
+                f,
+                "the bound pipeline is not compatible with the layout used to bind the descriptor sets",
+            ),
+            Self::PipelineNotBound => write!(
+                f,
+                "no pipeline was bound to the bind point used by the operation",
+            ),
+            Self::PipelineRenderPassNotCompatible => write!(
+                f,
+                "the bound graphics pipeline uses a render pass that is not compatible with the currently active render pass",
+            ),
+            Self::PipelineRenderPassTypeMismatch => write!(
+                f,
+                "the bound graphics pipeline uses a render pass of a different type than the currently active render pass",
+            ),
+            Self::PipelineSubpassMismatch {
+                pipeline,
+                current,
+            } => write!(
+                f,
+                "the bound graphics pipeline uses a render subpass index ({}) that doesn't match the currently active subpass index ({})",
+                pipeline,
+                current,
+            ),
+            Self::PipelineStencilAttachmentFormatMismatch {
+                pipeline_format,
+                required_format,
+            } => write!(
+                f,
+                "the format of the stencil attachment in the bound pipeline ({:?}) does not match the format of the stencil attachment in the current render pass ({:?})",
+                pipeline_format, required_format,
+            ),
+            Self::PipelineViewMaskMismatch {
+                pipeline_view_mask,
+                required_view_mask,
+            } => write!(
+                f,
+                "the view mask of the bound pipeline ({}) does not match the view mask of the current render pass ({})",
+                pipeline_view_mask, required_view_mask,
+            ),
+            Self::PushConstantsNotCompatible => write!(
+                f,
+                "the push constants are not compatible with the pipeline layout",
+            ),
+            Self::PushConstantsMissing => write!(
+                f,
+                "not all push constants used by the pipeline have been set",
+            ),
+            Self::VertexBufferNotBound {
+                binding_num,
+            } => write!(
+                f,
+                "the bound graphics pipeline requires a vertex buffer bound to binding number {}, but none was bound",
+                binding_num,
+            ),
+            Self::VertexBufferInstanceRangeOutOfBounds {
+                instances_needed,
+                instances_in_buffers,
+            } => write!(
+                f,
+                "the number of instances to be drawn ({}) exceeds the available number of instances in the bound vertex buffers ({}) used by the pipeline",
+                instances_needed, instances_in_buffers,
+            ),
+            Self::VertexBufferVertexRangeOutOfBounds {
+                vertices_needed,
+                vertices_in_buffers,
+            } => write!(
+                f,
+                "the number of vertices to be drawn ({}) exceeds the available number of vertices in the bound vertex buffers ({}) used by the pipeline",
+                vertices_needed, vertices_in_buffers,
+            ),
+        }
+    }
+}
+
+impl From<SyncCommandBufferBuilderError> for PipelineExecutionError {
+    #[inline]
+    fn from(err: SyncCommandBufferBuilderError) -> Self {
+        Self::SyncCommandBufferBuilderError(err)
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum DescriptorResourceInvalidError {
+    ImageViewFormatMismatch {
+        required: Format,
+        provided: Option<Format>,
+    },
+    ImageViewMultisampledMismatch {
+        required: bool,
+        provided: bool,
+    },
+    ImageViewScalarTypeMismatch {
+        required: ShaderScalarType,
+        provided: ShaderScalarType,
+    },
+    ImageViewTypeMismatch {
+        required: ImageViewType,
+        provided: ImageViewType,
+    },
+    Missing,
+    SamplerCompareMismatch {
+        required: bool,
+        provided: bool,
+    },
+    SamplerImageViewIncompatible {
+        image_view_set_num: u32,
+        image_view_binding_num: u32,
+        image_view_index: u32,
+        error: SamplerImageViewIncompatibleError,
+    },
+    SamplerUnnormalizedCoordinatesNotAllowed,
+    SamplerYcbcrConversionNotAllowed,
+    StorageImageAtomicNotSupported,
+    StorageReadWithoutFormatNotSupported,
+    StorageWriteWithoutFormatNotSupported,
+}
+
+impl Error for DescriptorResourceInvalidError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::SamplerImageViewIncompatible { error, .. } => Some(error),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for DescriptorResourceInvalidError {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match self {
+            Self::ImageViewFormatMismatch { provided, required } => write!(
+                f,
+                "the format of the bound image view ({:?}) does not match what the pipeline requires ({:?})",
+                provided, required
+            ),
+            Self::ImageViewMultisampledMismatch { provided, required } => write!(
+                f,
+                "the multisampling of the bound image ({}) does not match what the pipeline requires ({})",
+                provided, required,
+            ),
+            Self::ImageViewScalarTypeMismatch { provided, required } => write!(
+                f,
+                "the scalar type of the format and aspect of the bound image view ({:?}) does not match what the pipeline requires ({:?})",
+                provided, required,
+            ),
+            Self::ImageViewTypeMismatch { provided, required } => write!(
+                f,
+                "the image view type of the bound image view ({:?}) does not match what the pipeline requires ({:?})",
+                provided, required,
+            ),
+            Self::Missing => write!(
+                f,
+                "no resource was bound",
+            ),
+            Self::SamplerImageViewIncompatible { .. } => write!(
+                f,
+                "the bound sampler samples an image view that is not compatible with that sampler",
+            ),
+            Self::SamplerCompareMismatch { provided, required } => write!(
+                f,
+                "the depth comparison state of the bound sampler ({}) does not match what the pipeline requires ({})",
+                provided, required,
+            ),
+            Self::SamplerUnnormalizedCoordinatesNotAllowed => write!(
+                f,
+                "the bound sampler is required to have unnormalized coordinates disabled",
+            ),
+            Self::SamplerYcbcrConversionNotAllowed => write!(
+                f,
+                "the bound sampler is required to have no attached sampler YCbCr conversion",
+            ),
+            Self::StorageImageAtomicNotSupported => write!(
+                f,
+                "the bound image view does not support the `storage_image_atomic` format feature",
+            ),
+            Self::StorageReadWithoutFormatNotSupported => write!(
+                f,
+                "the bound image view or buffer view does not support the `storage_read_without_format` format feature",
+            ),
+            Self::StorageWriteWithoutFormatNotSupported => write!(
+                f,
+                "the bound image view or buffer view does not support the `storage_write_without_format` format feature",
+            ),
         }
     }
 }

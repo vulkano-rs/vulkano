@@ -91,9 +91,7 @@
 
 pub use self::{
     auto::{
-        AutoCommandBufferBuilder, AutoCommandBufferBuilderContextError, BuildError,
-        CommandBufferBeginError, DispatchError, DispatchIndirectError, DrawError, DrawIndexedError,
-        DrawIndexedIndirectError, DrawIndirectError, PrimaryAutoCommandBuffer,
+        AutoCommandBufferBuilder, BuildError, CommandBufferBeginError, PrimaryAutoCommandBuffer,
         SecondaryAutoCommandBuffer,
     },
     commands::{
@@ -102,11 +100,7 @@ pub use self::{
             BlitImageInfo, ClearColorImageInfo, ClearDepthStencilImageInfo, ImageBlit,
             ImageResolve, ResolveImageInfo,
         },
-        pipeline::{
-            CheckDescriptorSetsValidityError, CheckDispatchError, CheckDynamicStateValidityError,
-            CheckIndexBufferError, CheckIndirectBufferError, CheckPipelineError,
-            CheckPushConstantsValidityError, CheckVertexBufferError,
-        },
+        pipeline::PipelineExecutionError,
         query::QueryError,
         render_pass::{
             ClearAttachment, ClearRect, RenderPassBeginInfo, RenderPassError,
