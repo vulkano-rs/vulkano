@@ -1,6 +1,6 @@
 # Examples
 
-**These examples track the current state of master. For version specific examples change the tag to the release you are looking for.**
+**The examples shown here will not necessarily work for the latest stable release. By default, Github shows the most recent unstable revision, rather than the last stable release of Vulkano. You can switch Github to show the examples for stable releases as follows.**
 
 ## Selecting the version tag:
 
