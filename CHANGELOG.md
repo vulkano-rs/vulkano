@@ -43,6 +43,21 @@
   - Added `winit_to_surface` method for iOS, ensuring we can draw to a sub `CAMetalLayer` layer
   - Added `Surface::update_ios_sublayer_on_resize` to ensure iOS sublayer is fullscreen if initial window size was not the same as device's
   - Ensure both iOS and MacOS have `CAMetalLayer` when using `create_surface_from_handle`
+- **Potentially Breaking** Changes to bitflag structs and enums corresponding to Vulkan equivalents, as well as to `InstanceExtensions`, `DeviceExtensions` and `Features`:
+  - All bitflag types now:
+    - Have a `const fn empty()` constructor.
+    - Have `const` methods `is_empty`, `intersects`, `contains`, `union`, `intersection`, `difference`, `symmetric_difference`.
+    - Implement the operators `&`, `&=`, `|`, `|=`, `^`, `^=`, `-` and `-=`.
+    - Implement `Clone`, `Copy`, `Debug`, `Default`, `PartialEq`, `Eq` and `Hash`.
+    - Implement `From` to and from the corresponding Vulkan type (except `InstanceExtensions`, `DeviceExtensions` and `Features`).
+  - All enum types now:
+    - Implement `Clone`, `Copy`, `Debug`, `PartialEq`, `Eq` and `Hash`.
+    - Implement `From` to the corresponding Vulkan type, and `TryFrom` from the corresponding Vulkan type.
+  - The `all()` constructor has been removed from types that have it, as it has the potential to break forward compatibility: it can enable new flags that were not anticipated by old code. For the same reason, the `!` operator is not implemented.
+  - All values are validated against the device API version and enabled extensions.
+  - The constructor `::none()` is deprecated in favour of `::empty()`.
+  - The method `is_superset_of` is deprecated in favour of `contains`.
+  - `BufferUsage` and `ImageUsage` no longer have constructors for some specific combinations.
 - Bugs fixed:
   - [#1896](https://github.com/vulkano-rs/vulkano/issues/1896): Vulkano-shaders generates invalid struct definitions when struct field names are stripped out by the compiler.
 - Improvements to compiler linting:
