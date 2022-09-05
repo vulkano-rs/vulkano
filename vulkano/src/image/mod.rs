@@ -60,13 +60,11 @@ pub use self::{
 };
 use crate::{
     format::Format,
+    macros::{vulkan_bitflags, vulkan_enum},
     memory::{ExternalMemoryHandleType, ExternalMemoryProperties},
     DeviceSize,
 };
-use std::{
-    cmp,
-    ops::{BitAnd, Range},
-};
+use std::{cmp, ops::Range};
 
 mod aspect;
 pub mod attachment; // TODO: make private
@@ -79,41 +77,31 @@ pub mod traits;
 mod usage;
 pub mod view;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(u32)]
-pub enum SampleCount {
-    Sample1 = ash::vk::SampleCountFlags::TYPE_1.as_raw(),
-    Sample2 = ash::vk::SampleCountFlags::TYPE_2.as_raw(),
-    Sample4 = ash::vk::SampleCountFlags::TYPE_4.as_raw(),
-    Sample8 = ash::vk::SampleCountFlags::TYPE_8.as_raw(),
-    Sample16 = ash::vk::SampleCountFlags::TYPE_16.as_raw(),
-    Sample32 = ash::vk::SampleCountFlags::TYPE_32.as_raw(),
-    Sample64 = ash::vk::SampleCountFlags::TYPE_64.as_raw(),
-}
+vulkan_enum! {
+    // TODO: document
+    #[non_exhaustive]
+    SampleCount = SampleCountFlags(u32);
 
-impl From<SampleCount> for ash::vk::SampleCountFlags {
-    #[inline]
-    fn from(val: SampleCount) -> Self {
-        Self::from_raw(val as u32)
-    }
-}
+    // TODO: document
+    Sample1 = TYPE_1,
 
-impl TryFrom<ash::vk::SampleCountFlags> for SampleCount {
-    type Error = ();
+    // TODO: document
+    Sample2 = TYPE_2,
 
-    #[inline]
-    fn try_from(val: ash::vk::SampleCountFlags) -> Result<Self, Self::Error> {
-        match val {
-            ash::vk::SampleCountFlags::TYPE_1 => Ok(Self::Sample1),
-            ash::vk::SampleCountFlags::TYPE_2 => Ok(Self::Sample2),
-            ash::vk::SampleCountFlags::TYPE_4 => Ok(Self::Sample4),
-            ash::vk::SampleCountFlags::TYPE_8 => Ok(Self::Sample8),
-            ash::vk::SampleCountFlags::TYPE_16 => Ok(Self::Sample16),
-            ash::vk::SampleCountFlags::TYPE_32 => Ok(Self::Sample32),
-            ash::vk::SampleCountFlags::TYPE_64 => Ok(Self::Sample64),
-            _ => Err(()),
-        }
-    }
+    // TODO: document
+    Sample4 = TYPE_4,
+
+    // TODO: document
+    Sample8 = TYPE_8,
+
+    // TODO: document
+    Sample16 = TYPE_16,
+
+    // TODO: document
+    Sample32 = TYPE_32,
+
+    // TODO: document
+    Sample64 = TYPE_64,
 }
 
 impl TryFrom<u32> for SampleCount {
@@ -134,29 +122,37 @@ impl TryFrom<u32> for SampleCount {
     }
 }
 
-/// Specifies how many sample counts supported for an image used for storage operations.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SampleCounts {
-    // specify an image with one sample per pixel
-    pub sample1: bool,
-    // specify an image with 2 samples per pixel
-    pub sample2: bool,
-    // specify an image with 4 samples per pixel
-    pub sample4: bool,
-    // specify an image with 8 samples per pixel
-    pub sample8: bool,
-    // specify an image with 16 samples per pixel
-    pub sample16: bool,
-    // specify an image with 32 samples per pixel
-    pub sample32: bool,
-    // specify an image with 64 samples per pixel
-    pub sample64: bool,
+vulkan_bitflags! {
+    /// Specifies a set of [`SampleCount`] values.
+    #[non_exhaustive]
+    SampleCounts = SampleCountFlags(u32);
+
+    /// 1 sample per pixel.
+    sample1 = TYPE_1,
+
+    /// 2 samples per pixel.
+    sample2 = TYPE_2,
+
+    /// 4 samples per pixel.
+    sample4 = TYPE_4,
+
+    /// 8 samples per pixel.
+    sample8 = TYPE_8,
+
+    /// 16 samples per pixel.
+    sample16 = TYPE_16,
+
+    /// 32 samples per pixel.
+    sample32 = TYPE_32,
+
+    /// 64 samples per pixel.
+    sample64 = TYPE_64,
 }
 
 impl SampleCounts {
     /// Returns true if `self` has the `sample_count` value set.
     #[inline]
-    pub const fn contains(&self, sample_count: SampleCount) -> bool {
+    pub const fn contains_count(&self, sample_count: SampleCount) -> bool {
         match sample_count {
             SampleCount::Sample1 => self.sample1,
             SampleCount::Sample2 => self.sample2,
@@ -165,41 +161,6 @@ impl SampleCounts {
             SampleCount::Sample16 => self.sample16,
             SampleCount::Sample32 => self.sample32,
             SampleCount::Sample64 => self.sample64,
-        }
-    }
-
-    /// Returns the intersection of these sample counts and another set of sample counts.
-    ///
-    /// # Examples
-    ///
-    /// If you're using both a color and depth buffer, and want to use multisampling, then you
-    /// should check the intersection of the supported sample counts because they don't have to
-    /// match. You could similarily apply this to the stencil counts.
-    /// ```no_run
-    /// # use vulkano::{
-    /// #     instance::Instance,
-    /// #     device::physical::PhysicalDevice,
-    /// #     VulkanLibrary,
-    /// # };
-    /// # let library = VulkanLibrary::new().unwrap();
-    /// # let instance = Instance::new(library, Default::default()).unwrap();
-    /// # let physical_device = PhysicalDevice::from_index(&instance, 0).unwrap();
-    /// let properties = physical_device.properties();
-    /// let color_counts = properties.framebuffer_color_sample_counts;
-    /// let depth_counts = properties.framebuffer_depth_sample_counts;
-    ///
-    /// let counts = color_counts.intersection(&depth_counts);
-    /// ```
-    #[inline]
-    pub const fn intersection(&self, other: &SampleCounts) -> SampleCounts {
-        SampleCounts {
-            sample1: self.sample1 && other.sample1,
-            sample2: self.sample2 && other.sample2,
-            sample4: self.sample4 && other.sample4,
-            sample8: self.sample8 && other.sample8,
-            sample16: self.sample16 && other.sample16,
-            sample32: self.sample32 && other.sample32,
-            sample64: self.sample64 && other.sample64,
         }
     }
 
@@ -214,66 +175,6 @@ impl SampleCounts {
             Self { sample4: true, .. } => SampleCount::Sample4,
             Self { sample2: true, .. } => SampleCount::Sample2,
             _ => SampleCount::Sample1,
-        }
-    }
-}
-
-impl From<ash::vk::SampleCountFlags> for SampleCounts {
-    fn from(sample_counts: ash::vk::SampleCountFlags) -> SampleCounts {
-        SampleCounts {
-            sample1: !(sample_counts & ash::vk::SampleCountFlags::TYPE_1).is_empty(),
-            sample2: !(sample_counts & ash::vk::SampleCountFlags::TYPE_2).is_empty(),
-            sample4: !(sample_counts & ash::vk::SampleCountFlags::TYPE_4).is_empty(),
-            sample8: !(sample_counts & ash::vk::SampleCountFlags::TYPE_8).is_empty(),
-            sample16: !(sample_counts & ash::vk::SampleCountFlags::TYPE_16).is_empty(),
-            sample32: !(sample_counts & ash::vk::SampleCountFlags::TYPE_32).is_empty(),
-            sample64: !(sample_counts & ash::vk::SampleCountFlags::TYPE_64).is_empty(),
-        }
-    }
-}
-
-impl From<SampleCounts> for ash::vk::SampleCountFlags {
-    fn from(val: SampleCounts) -> ash::vk::SampleCountFlags {
-        let mut sample_counts = ash::vk::SampleCountFlags::default();
-
-        if val.sample1 {
-            sample_counts |= ash::vk::SampleCountFlags::TYPE_1;
-        }
-        if val.sample2 {
-            sample_counts |= ash::vk::SampleCountFlags::TYPE_2;
-        }
-        if val.sample4 {
-            sample_counts |= ash::vk::SampleCountFlags::TYPE_4;
-        }
-        if val.sample8 {
-            sample_counts |= ash::vk::SampleCountFlags::TYPE_8;
-        }
-        if val.sample16 {
-            sample_counts |= ash::vk::SampleCountFlags::TYPE_16;
-        }
-        if val.sample32 {
-            sample_counts |= ash::vk::SampleCountFlags::TYPE_32;
-        }
-        if val.sample64 {
-            sample_counts |= ash::vk::SampleCountFlags::TYPE_64;
-        }
-
-        sample_counts
-    }
-}
-
-impl BitAnd for SampleCounts {
-    type Output = SampleCounts;
-
-    fn bitand(self, rhs: Self) -> Self::Output {
-        SampleCounts {
-            sample1: self.sample1 && rhs.sample1,
-            sample2: self.sample2 && rhs.sample2,
-            sample4: self.sample4 && rhs.sample4,
-            sample8: self.sample8 && rhs.sample8,
-            sample16: self.sample16 && rhs.sample16,
-            sample32: self.sample32 && rhs.sample32,
-            sample64: self.sample64 && rhs.sample64,
         }
     }
 }
@@ -305,14 +206,17 @@ impl From<u32> for MipmapsCount {
     }
 }
 
-/// Flags that can be set when creating a new image.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
-pub struct ImageCreateFlags {
+vulkan_bitflags! {
+    /// Flags that can be set when creating a new image.
+    #[non_exhaustive]
+    ImageCreateFlags = ImageCreateFlags(u32);
+
     /// The image will be backed by sparsely bound memory.
     ///
     /// Requires the [`sparse_binding`](crate::device::Features::sparse_binding) feature to be
     /// enabled.
-    pub sparse_binding: bool,
+    sparse_binding = SPARSE_BINDING,
+
     /// The image is allowed to be only partially resident in memory, not all parts of the image
     /// must be backed by memory.
     ///
@@ -321,98 +225,73 @@ pub struct ImageCreateFlags {
     /// [`sparse_residency_image3_d`](crate::device::Features::sparse_residency_image3_d) feature to
     /// be enabled. For a multisampled image, this also requires the appropriate sparse residency
     /// feature for the number of samples to be enabled.
-    pub sparse_residency: bool,
+    sparse_residency = SPARSE_RESIDENCY,
+
     /// The image can be backed by memory that is shared (aliased) with other images.
     ///
     /// Requires the `sparse_binding` flag and the
     /// [`sparse_residency_aliased`](crate::device::Features::sparse_residency_aliased) feature to
     /// be enabled.
-    pub sparse_aliased: bool,
+    sparse_aliased = SPARSE_ALIASED,
+
     /// For non-multi-planar formats, an image view wrapping this image can have a different format.
     ///
     /// For multi-planar formats, an image view wrapping this image can be created from a single
     /// plane of the image.
-    pub mutable_format: bool,
+    mutable_format = MUTABLE_FORMAT,
+
     /// For 2D images, allows creation of an image view of type `Cube` or `CubeArray`.
-    pub cube_compatible: bool,
+    cube_compatible = CUBE_COMPATIBLE,
+
     /// For 3D images, allows creation of an image view of type `Dim2d` or `Dim2dArray`.
-    pub array_2d_compatible: bool,
+    array_2d_compatible = TYPE_2D_ARRAY_COMPATIBLE {
+        api_version: V1_1,
+        extensions: [khr_maintenance1],
+    },
+
     /// For images with a compressed format, allows creation of an image view with an uncompressed
     /// format, where each texel in the view will correspond to a compressed texel block in the
     /// image.
     ///
     /// Requires `mutable_format`.
-    pub block_texel_view_compatible: bool,
+    block_texel_view_compatible = BLOCK_TEXEL_VIEW_COMPATIBLE {
+        api_version: V1_1,
+        extensions: [khr_maintenance1],
+    },
 }
 
-impl ImageCreateFlags {
-    pub fn none() -> Self {
-        Self::default()
-    }
+vulkan_enum! {
+    // TODO: document
+    #[non_exhaustive]
+    ImageType = ImageType(i32);
+
+    // TODO: document
+    Dim1d = TYPE_1D,
+
+    // TODO: document
+    Dim2d = TYPE_2D,
+
+    // TODO: document
+    Dim3d = TYPE_3D,
 }
 
-impl From<ImageCreateFlags> for ash::vk::ImageCreateFlags {
-    fn from(flags: ImageCreateFlags) -> Self {
-        let ImageCreateFlags {
-            sparse_binding,
-            sparse_residency,
-            sparse_aliased,
-            mutable_format,
-            cube_compatible,
-            array_2d_compatible,
-            block_texel_view_compatible,
-        } = flags;
+vulkan_enum! {
+    // TODO: document
+    #[non_exhaustive]
+    ImageTiling = ImageTiling(i32);
 
-        let mut vk_flags = Self::default();
-        if sparse_binding {
-            vk_flags |= ash::vk::ImageCreateFlags::SPARSE_BINDING
-        };
-        if sparse_residency {
-            vk_flags |= ash::vk::ImageCreateFlags::SPARSE_RESIDENCY
-        };
-        if sparse_aliased {
-            vk_flags |= ash::vk::ImageCreateFlags::SPARSE_ALIASED
-        };
-        if mutable_format {
-            vk_flags |= ash::vk::ImageCreateFlags::MUTABLE_FORMAT
-        };
-        if cube_compatible {
-            vk_flags |= ash::vk::ImageCreateFlags::CUBE_COMPATIBLE
-        };
-        if array_2d_compatible {
-            vk_flags |= ash::vk::ImageCreateFlags::TYPE_2D_ARRAY_COMPATIBLE
-        };
-        if block_texel_view_compatible {
-            vk_flags |= ash::vk::ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE
-        };
-        vk_flags
-    }
-}
+    // TODO: document
+    Optimal = OPTIMAL,
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[repr(i32)]
-pub enum ImageType {
-    Dim1d = ash::vk::ImageType::TYPE_1D.as_raw(),
-    Dim2d = ash::vk::ImageType::TYPE_2D.as_raw(),
-    Dim3d = ash::vk::ImageType::TYPE_3D.as_raw(),
-}
-impl From<ImageType> for ash::vk::ImageType {
-    fn from(val: ImageType) -> Self {
-        ash::vk::ImageType::from_raw(val as i32)
-    }
-}
+    // TODO: document
+    Linear = LINEAR,
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[repr(i32)]
-pub enum ImageTiling {
-    Optimal = ash::vk::ImageTiling::OPTIMAL.as_raw(),
-    Linear = ash::vk::ImageTiling::LINEAR.as_raw(),
-}
-
-impl From<ImageTiling> for ash::vk::ImageTiling {
-    fn from(val: ImageTiling) -> Self {
-        ash::vk::ImageTiling::from_raw(val as i32)
-    }
+    /*
+    // TODO: document
+    DrmFormatModifier = DRM_FORMAT_MODIFIER_EXT {
+        extensions: [ext_image_drm_format_modifier],
+    },
+     */
 }
 
 /// The dimensions of an image.
@@ -716,7 +595,7 @@ pub struct ImageFormatInfo {
 
     /// The `usage` that the image will have.
     ///
-    /// The default value is [`ImageUsage::none()`], which must be overridden.
+    /// The default value is [`ImageUsage::empty()`], which must be overridden.
     pub usage: ImageUsage,
 
     /// An external memory handle type that will be imported to or exported from the image.
@@ -724,8 +603,8 @@ pub struct ImageFormatInfo {
     /// This is needed to retrieve the
     /// [`external_memory_properties`](ImageFormatProperties::external_memory_properties) value,
     /// and the physical device API version must be at least 1.1 or the
-    /// [`ext_filter_cubic`](crate::device::DeviceExtensions::ext_filter_cubic) extension must be
-    /// supported on the physical device.
+    /// [`khr_external_memory_capabilities`](crate::instance::InstanceExtensions::khr_external_memory_capabilities)
+    /// extension must be enabled on the instance.
     ///
     /// The default value is `None`.
     pub external_memory_handle_type: Option<ExternalMemoryHandleType>,
@@ -771,7 +650,7 @@ impl Default for ImageFormatInfo {
             format: None,
             image_type: ImageType::Dim2d,
             tiling: ImageTiling::Optimal,
-            usage: ImageUsage::none(),
+            usage: ImageUsage::empty(),
             external_memory_handle_type: None,
             image_view_type: None,
             mutable_format: false,

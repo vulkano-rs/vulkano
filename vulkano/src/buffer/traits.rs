@@ -86,7 +86,7 @@ pub unsafe trait BufferAccess: DeviceOwned + Send + Sync {
         }
 
         // VUID-VkBufferDeviceAddressInfo-buffer-02601
-        if !inner.buffer.usage().device_address {
+        if !inner.buffer.usage().shader_device_address {
             return Err(BufferDeviceAddressError::BufferMissingUsage);
         }
 

@@ -118,7 +118,10 @@ impl VulkanoWindowRenderer {
                 min_image_count: surface_capabilities.min_image_count,
                 image_format,
                 image_extent,
-                image_usage: ImageUsage::color_attachment(),
+                image_usage: ImageUsage {
+                    color_attachment: true,
+                    ..ImageUsage::empty()
+                },
                 composite_alpha: surface_capabilities
                     .supported_composite_alpha
                     .iter()

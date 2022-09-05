@@ -11,7 +11,10 @@
 //!
 //! The discard rectangle test is similar to, but separate from the scissor test.
 
-use crate::pipeline::{graphics::viewport::Scissor, PartialStateMode};
+use crate::{
+    macros::vulkan_enum,
+    pipeline::{graphics::viewport::Scissor, PartialStateMode},
+};
 
 /// The state in a graphics pipeline describing how the discard rectangle test should behave.
 #[derive(Clone, Debug)]
@@ -47,22 +50,16 @@ impl Default for DiscardRectangleState {
     }
 }
 
-/// The mode in which the discard rectangle test operates.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[repr(i32)]
-pub enum DiscardRectangleMode {
+vulkan_enum! {
+    /// The mode in which the discard rectangle test operates.
+    #[non_exhaustive]
+    DiscardRectangleMode = DiscardRectangleModeEXT(i32);
+
     /// Samples that are inside a rectangle are kept, samples that are outside all rectangles
     /// are discarded.
-    Inclusive = ash::vk::DiscardRectangleModeEXT::INCLUSIVE.as_raw(),
+    Inclusive = INCLUSIVE,
 
     /// Samples that are inside a rectangle are discarded, samples that are outside all rectangles
     /// are kept.
-    Exclusive = ash::vk::DiscardRectangleModeEXT::EXCLUSIVE.as_raw(),
-}
-
-impl From<DiscardRectangleMode> for ash::vk::DiscardRectangleModeEXT {
-    #[inline]
-    fn from(val: DiscardRectangleMode) -> Self {
-        Self::from_raw(val as i32)
-    }
+    Exclusive = EXCLUSIVE,
 }

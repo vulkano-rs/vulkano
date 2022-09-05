@@ -161,7 +161,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
         },
     );
 
-    let none_items = members.iter().map(|FeaturesMember { name, .. }| {
+    let empty_items = members.iter().map(|FeaturesMember { name, .. }| {
         quote! {
             #name: false,
         }
@@ -173,15 +173,15 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
         }
     });
 
-    let is_superset_of_items = members.iter().map(|FeaturesMember { name, .. }| {
+    let intersects_items = members.iter().map(|FeaturesMember { name, .. }| {
         quote! {
-            (self.#name || !other.#name)
+            (self.#name && other.#name)
         }
     });
 
-    let not_items = members.iter().map(|FeaturesMember { name, .. }| {
+    let contains_items = members.iter().map(|FeaturesMember { name, .. }| {
         quote! {
-            #name: !self.#name,
+            (self.#name || !other.#name)
         }
     });
 
@@ -200,6 +200,12 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
     let difference_items = members.iter().map(|FeaturesMember { name, .. }| {
         quote! {
             #name: self.#name && !other.#name,
+        }
+    });
+
+    let symmetric_difference_items = members.iter().map(|FeaturesMember { name, .. }| {
+        quote! {
+            #name: self.#name ^ other.#name,
         }
     });
 
@@ -291,13 +297,13 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
         /// # let physical_device: vulkano::device::physical::PhysicalDevice = return;
         /// let minimal_features = Features {
         ///     geometry_shader: true,
-        ///     .. Features::none()
+        ///     .. Features::empty()
         /// };
         ///
         /// let optimal_features = vulkano::device::Features {
         ///     geometry_shader: true,
         ///     tessellation_shader: true,
-        ///     .. Features::none()
+        ///     .. Features::empty()
         /// };
         ///
         /// if !physical_device.supported_features().is_superset_of(&minimal_features) {
@@ -317,7 +323,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
         impl Default for Features {
             #[inline]
             fn default() -> Self {
-                Self::none()
+                Self::empty()
             }
         }
 
@@ -333,18 +339,23 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
                 Ok(())
             }
 
-            /// Builds a `Features` object with all values to false.
-            pub const fn none() -> Self {
-                Features {
-                    #(#none_items)*
+            /// Returns an `Features` object with none of the members set.
+            #[inline]
+            pub const fn empty() -> Self {
+                Self {
+                    #(#empty_items)*
                     _ne: crate::NonExhaustive(()),
                 }
             }
 
-            /// Builds a `Features` object with all values to true.
-            ///
-            /// > **Note**: This function is used for testing purposes, and is probably useless in
-            /// > a real code.
+            /// Returns an `Features` object with none of the members set.
+            #[deprecated(since = "0.31.0", note = "Use `empty` instead.")]
+            #[inline]
+            pub const fn none() -> Self {
+                Self::empty()
+            }
+
+            /// Returns a `Features` object with all of the members set.
             #[cfg(test)]
             pub(crate) const fn all() -> Features {
                 Features {
@@ -353,23 +364,26 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
                 }
             }
 
-            /// Returns true if `self` is a superset of the parameter.
-            ///
-            /// That is, for each feature of the parameter that is true, the corresponding value
-            /// in self is true as well.
+            /// Returns whether any members are set in both `self` and `other`.
+            #[inline]
+            pub const fn intersects(&self, other: &Self) -> bool {
+                #(#intersects_items)||*
+            }
+
+            /// Returns whether all members in `other` are set in `self`.
+            #[inline]
+            pub const fn contains(&self, other: &Self) -> bool {
+                #(#contains_items)&&*
+            }
+
+            /// Returns whether all members in `other` are set in `self`.
+            #[deprecated(since = "0.31.0", note = "Use `contains` instead.")]
+            #[inline]
             pub const fn is_superset_of(&self, other: &Self) -> bool {
-                #(#is_superset_of_items)&&*
+                self.contains(other)
             }
 
-            /// Returns the not of this list.
-            pub const fn not_const(self) -> Self {
-                Self {
-                    #(#not_items)*
-                    _ne: crate::NonExhaustive(()),
-                }
-            }
-
-            /// Returns the union of this list and another list.
+            /// Returns the union of `self` and `other`.
             #[inline]
             pub const fn union(&self, other: &Self) -> Self {
                 Self {
@@ -378,10 +392,8 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
                 }
             }
 
-            /// Builds a `Features` that is the intersection of `self` and another `Features`
-            /// object.
-            ///
-            /// The result's field will be true if it is also true in both `self` and `other`.
+            /// Returns the intersection of `self` and `other`.
+            #[inline]
             pub const fn intersection(&self, other: &Self) -> Self {
                 Self {
                     #(#intersection_items)*
@@ -389,62 +401,84 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
                 }
             }
 
-            /// Builds a `Features` that is the difference of another `Features` object from `self`.
-            ///
-            /// The result's field will be true if it is true in `self` but not `other`.
+            /// Returns `self` without the members set in `other`.
+            #[inline]
             pub const fn difference(&self, other: &Self) -> Self {
                 Self {
                     #(#difference_items)*
                     _ne: crate::NonExhaustive(()),
                 }
             }
-        }
 
-        impl Not for Features {
-            type Output = Features;
-
-            fn not(self) -> Self::Output {
-                self.not_const()
-            }
-        }
-
-        impl BitOr for Features {
-            type Output = Features;
-
-            fn bitor(self, rhs: Self) -> Self::Output {
-                self.union(&rhs)
-            }
-        }
-
-        impl BitOrAssign for Features {
-            fn bitor_assign(&mut self, rhs: Self) {
-                *self = self.union(&rhs);
+            /// Returns the members set in `self` or `other`, but not both.
+            #[inline]
+            pub const fn symmetric_difference(&self, other: &Self) -> Self {
+                Self {
+                    #(#symmetric_difference_items)*
+                    _ne: crate::NonExhaustive(()),
+                }
             }
         }
 
         impl BitAnd for Features {
             type Output = Features;
 
+            #[inline]
             fn bitand(self, rhs: Self) -> Self::Output {
                 self.intersection(&rhs)
             }
         }
 
         impl BitAndAssign for Features {
+            #[inline]
             fn bitand_assign(&mut self, rhs: Self) {
                 *self = self.intersection(&rhs);
+            }
+        }
+
+        impl BitOr for Features {
+            type Output = Features;
+
+            #[inline]
+            fn bitor(self, rhs: Self) -> Self::Output {
+                self.union(&rhs)
+            }
+        }
+
+        impl BitOrAssign for Features {
+            #[inline]
+            fn bitor_assign(&mut self, rhs: Self) {
+                *self = self.union(&rhs);
+            }
+        }
+
+        impl BitXor for Features {
+            type Output = Features;
+
+            #[inline]
+            fn bitxor(self, rhs: Self) -> Self::Output {
+                self.symmetric_difference(&rhs)
+            }
+        }
+
+        impl BitXorAssign for Features {
+            #[inline]
+            fn bitxor_assign(&mut self, rhs: Self) {
+                *self = self.symmetric_difference(&rhs);
             }
         }
 
         impl Sub for Features {
             type Output = Features;
 
+            #[inline]
             fn sub(self, rhs: Self) -> Self::Output {
                 self.difference(&rhs)
             }
         }
 
         impl SubAssign for Features {
+            #[inline]
             fn sub_assign(&mut self, rhs: Self) {
                 *self = self.difference(&rhs);
             }

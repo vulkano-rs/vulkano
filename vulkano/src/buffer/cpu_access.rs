@@ -626,10 +626,26 @@ mod tests {
         const EMPTY: [i32; 0] = [];
 
         assert_should_panic!({
-            CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), false, EMPTY)
-                .unwrap();
-            CpuAccessibleBuffer::from_iter(device, BufferUsage::all(), false, EMPTY.into_iter())
-                .unwrap();
+            CpuAccessibleBuffer::from_data(
+                device.clone(),
+                BufferUsage {
+                    transfer_dst: true,
+                    ..BufferUsage::empty()
+                },
+                false,
+                EMPTY,
+            )
+            .unwrap();
+            CpuAccessibleBuffer::from_iter(
+                device,
+                BufferUsage {
+                    transfer_dst: true,
+                    ..BufferUsage::empty()
+                },
+                false,
+                EMPTY.into_iter(),
+            )
+            .unwrap();
         });
     }
 }

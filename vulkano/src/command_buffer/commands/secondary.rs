@@ -127,7 +127,7 @@ where
             // VUID-vkCmdExecuteCommands-flags-06024
             if render_pass_state.contents != SubpassContents::SecondaryCommandBuffers {
                 return Err(ExecuteCommandsError::ForbiddenWithSubpassContents {
-                    subpass_contents: render_pass_state.contents,
+                    contents: render_pass_state.contents,
                 });
             }
 
@@ -564,7 +564,7 @@ pub enum ExecuteCommandsError {
 
     /// Operation forbidden inside a render subpass with the specified contents.
     ForbiddenWithSubpassContents {
-        subpass_contents: SubpassContents,
+        contents: SubpassContents,
     },
 
     /// The queue family doesn't allow this operation.
@@ -711,7 +711,7 @@ impl fmt::Display for ExecuteCommandsError {
                 write!(f, "the feature {} must be enabled: {}", feature, reason)
             }
 
-            Self::ForbiddenWithSubpassContents { subpass_contents } => write!(
+            Self::ForbiddenWithSubpassContents { contents: subpass_contents } => write!(
                 f,
                 "operation forbidden inside a render subpass with contents {:?}",
                 subpass_contents,

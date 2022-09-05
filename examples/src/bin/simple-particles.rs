@@ -80,10 +80,10 @@ fn main() {
 
     let device_extensions = DeviceExtensions {
         khr_swapchain: true,
-        ..DeviceExtensions::none()
+        ..DeviceExtensions::empty()
     };
     let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-        .filter(|&p| p.supported_extensions().is_superset_of(&device_extensions))
+        .filter(|&p| p.supported_extensions().contains(&device_extensions))
         .filter_map(|p| {
             p.queue_families()
                 .find(|&q| q.supports_graphics() && q.supports_surface(&surface).unwrap_or(false))
@@ -95,6 +95,7 @@ fn main() {
             PhysicalDeviceType::VirtualGpu => 2,
             PhysicalDeviceType::Cpu => 3,
             PhysicalDeviceType::Other => 4,
+            _ => 5,
         })
         .unwrap();
 
@@ -133,7 +134,10 @@ fn main() {
                 min_image_count: surface_capabilities.min_image_count,
                 image_format,
                 image_extent: [WINDOW_WIDTH as u32, WINDOW_HEIGHT as u32],
-                image_usage: ImageUsage::color_attachment(),
+                image_usage: ImageUsage {
+                    color_attachment: true,
+                    ..ImageUsage::empty()
+                },
                 composite_alpha: surface_capabilities
                     .supported_composite_alpha
                     .iter()
@@ -323,7 +327,10 @@ fn main() {
         // Create a CPU accessible buffer initialized with the vertex data.
         let temporary_accessible_buffer = CpuAccessibleBuffer::from_iter(
             device.clone(),
-            BufferUsage::transfer_src(), // Specify this buffer will be used as a transfer source.
+            BufferUsage {
+                transfer_src: true,
+                ..BufferUsage::empty()
+            }, // Specify this buffer will be used as a transfer source.
             false,
             vertices,
         )
@@ -333,7 +340,14 @@ fn main() {
         let device_local_buffer = DeviceLocalBuffer::<[Vertex]>::array(
             device.clone(),
             PARTICLE_COUNT as vulkano::DeviceSize,
-            BufferUsage::storage_buffer() | BufferUsage::vertex_buffer_transfer_dst(), // Specify use as a storage buffer, vertex buffer, and transfer destination.
+            BufferUsage {
+                storage_buffer: true,
+                ..BufferUsage::empty()
+            } | BufferUsage {
+                transfer_dst: true,
+                vertex_buffer: true,
+                ..BufferUsage::empty()
+            }, // Specify use as a storage buffer, vertex buffer, and transfer destination.
             device.active_queue_families(),
         )
         .unwrap();

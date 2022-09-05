@@ -77,9 +77,9 @@ impl StorageImage {
             color_attachment: !is_depth,
             depth_stencil_attachment: is_depth,
             input_attachment: true,
-            transient_attachment: false,
+            ..ImageUsage::empty()
         };
-        let flags = ImageCreateFlags::none();
+        let flags = ImageCreateFlags::empty();
 
         StorageImage::with_usage(device, dimensions, format, usage, flags, queue_families)
     }
@@ -176,7 +176,7 @@ impl StorageImage {
                 },
                 external_memory_handle_types: ExternalMemoryHandleTypes {
                     opaque_fd: true,
-                    ..ExternalMemoryHandleTypes::none()
+                    ..ExternalMemoryHandleTypes::empty()
                 },
                 mutable_format: flags.mutable_format,
                 cube_compatible: flags.cube_compatible,
@@ -225,7 +225,7 @@ impl StorageImage {
             height: size[1],
             array_layers: 1,
         };
-        let flags = ImageCreateFlags::none();
+        let flags = ImageCreateFlags::empty();
         let image_result = StorageImage::with_usage(
             queue.device().clone(),
             dims,
@@ -371,7 +371,7 @@ mod tests {
             transfer_src: true,
             transfer_dst: true,
             color_attachment: true,
-            ..ImageUsage::none()
+            ..ImageUsage::empty()
         };
         let img_view = StorageImage::general_purpose_image_view(
             queue,
@@ -389,7 +389,7 @@ mod tests {
         // Not valid for image view...
         let usage = ImageUsage {
             transfer_src: true,
-            ..ImageUsage::none()
+            ..ImageUsage::empty()
         };
         let img_result = StorageImage::general_purpose_image_view(
             queue,

@@ -49,7 +49,7 @@ impl Default for VulkanoConfig {
     fn default() -> Self {
         let device_extensions = DeviceExtensions {
             khr_swapchain: true,
-            ..DeviceExtensions::none()
+            ..DeviceExtensions::empty()
         };
         VulkanoConfig {
             instance_create_info: InstanceCreateInfo {
@@ -57,7 +57,7 @@ impl Default for VulkanoConfig {
                 enabled_extensions: InstanceExtensions {
                     #[cfg(target_os = "macos")]
                     khr_portability_enumeration: true,
-                    ..InstanceExtensions::none()
+                    ..InstanceExtensions::empty()
                 },
                 #[cfg(target_os = "macos")]
                 enumerate_portability: true,
@@ -65,7 +65,7 @@ impl Default for VulkanoConfig {
             },
             debug_create_info: None,
             device_filter_fn: Arc::new(move |p| {
-                p.supported_extensions().is_superset_of(&device_extensions)
+                p.supported_extensions().contains(&device_extensions)
             }),
             device_priority_fn: Arc::new(|p| match p.properties().device_type {
                 PhysicalDeviceType::DiscreteGpu => 1,
@@ -73,10 +73,11 @@ impl Default for VulkanoConfig {
                 PhysicalDeviceType::VirtualGpu => 3,
                 PhysicalDeviceType::Cpu => 4,
                 PhysicalDeviceType::Other => 5,
+                _ => 6,
             }),
             print_device_name: false,
             device_extensions,
-            device_features: Features::none(),
+            device_features: Features::empty(),
         }
     }
 }

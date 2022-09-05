@@ -285,19 +285,19 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
         }
     });
 
-    let none_items = members.iter().map(|ExtensionsMember { name, .. }| {
+    let empty_items = members.iter().map(|ExtensionsMember { name, .. }| {
         quote! {
             #name: false,
         }
     });
 
-    let not_items = members.iter().map(|ExtensionsMember { name, .. }| {
+    let intersects_items = members.iter().map(|ExtensionsMember { name, .. }| {
         quote! {
-            #name: !self.#name,
+            (self.#name && other.#name)
         }
     });
 
-    let is_superset_of_items = members.iter().map(|ExtensionsMember { name, .. }| {
+    let contains_items = members.iter().map(|ExtensionsMember { name, .. }| {
         quote! {
             (self.#name || !other.#name)
         }
@@ -318,6 +318,12 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
     let difference_items = members.iter().map(|ExtensionsMember { name, .. }| {
         quote! {
             #name: self.#name && !other.#name,
+        }
+    });
+
+    let symmetric_difference_items = members.iter().map(|ExtensionsMember { name, .. }| {
+        quote! {
+            #name: self.#name ^ other.#name,
         }
     });
 
@@ -358,38 +364,47 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
         impl Default for #struct_name {
             #[inline]
             fn default() -> Self {
-                Self::none()
+                Self::empty()
             }
         }
 
         impl #struct_name {
-            /// Returns an `Extensions` object with all members set to `false`.
+            /// Returns an `Extensions` object with none of the members set.
+            #[inline]
+            pub const fn empty() -> Self {
+                Self {
+                    #(#empty_items)*
+                    _ne: crate::NonExhaustive(()),
+                }
+            }
+
+            /// Returns an `Extensions` object with none of the members set.
+            #[deprecated(since = "0.31.0", note = "Use `empty` instead.")]
             #[inline]
             pub const fn none() -> Self {
-                Self {
-                    #(#none_items)*
-                    _ne: crate::NonExhaustive(()),
-                }
+                Self::empty()
             }
 
-            /// Returns true if `self` is a superset of the parameter.
-            ///
-            /// That is, for each extension of the parameter that is true, the corresponding value
-            /// in self is true as well.
-            pub fn is_superset_of(&self, other: &Self) -> bool {
-                #(#is_superset_of_items)&&*
-            }
-
-            /// Returns the not of this list.
+            /// Returns whether any members are set in both `self` and `other`.
             #[inline]
-            pub const fn not_const(&self) -> Self {
-                Self {
-                    #(#not_items)*
-                    _ne: crate::NonExhaustive(()),
-                }
+            pub const fn intersects(&self, other: &Self) -> bool {
+                #(#intersects_items)||*
             }
 
-            /// Returns the union of this list and another list.
+            /// Returns whether all members in `other` are set in `self`.
+            #[inline]
+            pub const fn contains(&self, other: &Self) -> bool {
+                #(#contains_items)&&*
+            }
+
+            /// Returns whether all members in `other` are set in `self`.
+            #[deprecated(since = "0.31.0", note = "Use `contains` instead.")]
+            #[inline]
+            pub const fn is_superset_of(&self, other: &Self) -> bool {
+                self.contains(other)
+            }
+
+            /// Returns the union of `self` and `other`.
             #[inline]
             pub const fn union(&self, other: &Self) -> Self {
                 Self {
@@ -398,7 +413,7 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
                 }
             }
 
-            /// Returns the intersection of this list and another list.
+            /// Returns the intersection of `self` and `other`.
             #[inline]
             pub const fn intersection(&self, other: &Self) -> Self {
                 Self {
@@ -407,7 +422,7 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
                 }
             }
 
-            /// Returns the difference of another list from this list.
+            /// Returns `self` without the members set in `other`.
             #[inline]
             pub const fn difference(&self, other: &Self) -> Self {
                 Self {
@@ -415,25 +430,28 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
                     _ne: crate::NonExhaustive(()),
                 }
             }
-        }
 
-        impl Not for #struct_name {
-            type Output = #struct_name;
-
-            fn not(self) -> Self::Output {
-                self.not_const()
+            /// Returns the members set in `self` or `other`, but not both.
+            #[inline]
+            pub const fn symmetric_difference(&self, other: &Self) -> Self {
+                Self {
+                    #(#symmetric_difference_items)*
+                    _ne: crate::NonExhaustive(()),
+                }
             }
         }
 
         impl BitAnd for #struct_name {
             type Output = #struct_name;
 
+            #[inline]
             fn bitand(self, rhs: Self) -> Self::Output {
                 self.union(&rhs)
             }
         }
 
         impl BitAndAssign for #struct_name {
+            #[inline]
             fn bitand_assign(&mut self, rhs: Self) {
                 *self = self.union(&rhs);
             }
@@ -442,26 +460,46 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
         impl BitOr for #struct_name {
             type Output = #struct_name;
 
+            #[inline]
             fn bitor(self, rhs: Self) -> Self::Output {
                 self.intersection(&rhs)
             }
         }
 
         impl BitOrAssign for #struct_name {
+            #[inline]
             fn bitor_assign(&mut self, rhs: Self) {
                 *self = self.intersection(&rhs);
+            }
+        }
+
+        impl BitXor for #struct_name {
+            type Output = #struct_name;
+
+            #[inline]
+            fn bitxor(self, rhs: Self) -> Self::Output {
+                self.symmetric_difference(&rhs)
+            }
+        }
+
+        impl BitXorAssign for #struct_name {
+            #[inline]
+            fn bitxor_assign(&mut self, rhs: Self) {
+                *self = self.symmetric_difference(&rhs);
             }
         }
 
         impl Sub for #struct_name {
             type Output = #struct_name;
 
+            #[inline]
             fn sub(self, rhs: Self) -> Self::Output {
                 self.difference(&rhs)
             }
         }
 
         impl SubAssign for #struct_name {
+            #[inline]
             fn sub_assign(&mut self, rhs: Self) {
                 *self = self.difference(&rhs);
             }
@@ -481,7 +519,7 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
 
         impl<'a, I> From<I> for #struct_name where I: IntoIterator<Item = &'a CStr> {
             fn from(names: I) -> Self {
-                let mut extensions = Self::none();
+                let mut extensions = Self::empty();
                 for name in names {
                     match name.to_bytes() {
                         #(#from_cstr_for_extensions_items)*

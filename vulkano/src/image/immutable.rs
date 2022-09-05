@@ -137,10 +137,10 @@ impl ImmutableImage {
             transfer_src: true, // for blits
             transfer_dst: true,
             sampled: true,
-            ..ImageUsage::none()
+            ..ImageUsage::empty()
         };
 
-        let flags = ImageCreateFlags::none();
+        let flags = ImageCreateFlags::empty();
 
         let (image, _) = ImmutableImage::uninitialized(
             device,
@@ -257,7 +257,10 @@ impl ImmutableImage {
     {
         let source = CpuAccessibleBuffer::from_iter(
             queue.device().clone(),
-            BufferUsage::transfer_src(),
+            BufferUsage {
+                transfer_src: true,
+                ..BufferUsage::empty()
+            },
             false,
             iter,
         )?;
@@ -283,9 +286,9 @@ impl ImmutableImage {
             transfer_dst: true,
             transfer_src: need_to_generate_mipmaps,
             sampled: true,
-            ..ImageUsage::none()
+            ..ImageUsage::empty()
         };
-        let flags = ImageCreateFlags::none();
+        let flags = ImageCreateFlags::empty();
         let layout = ImageLayout::ShaderReadOnlyOptimal;
 
         let (image, initializer) = ImmutableImage::uninitialized(

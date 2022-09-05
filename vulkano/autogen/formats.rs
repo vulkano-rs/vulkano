@@ -278,7 +278,7 @@ fn formats_output(members: &[FormatMember]) -> TokenStream {
                     plane0: matches!(self, #(Format::#aspects_plane0_items)|* ),
                     plane1: matches!(self, #(Format::#aspects_plane1_items)|* ),
                     plane2: matches!(self, #(Format::#aspects_plane2_items)|* ),
-                    ..ImageAspects::none()
+                    ..ImageAspects::empty()
                 }
             }
 

@@ -15,7 +15,7 @@ use super::{
     color_blend::{
         AttachmentBlend, ColorBlendAttachmentState, ColorBlendState, ColorComponents, LogicOp,
     },
-    depth_stencil::DepthStencilState,
+    depth_stencil::{DepthStencilState, StencilOps},
     discard_rectangle::DiscardRectangleState,
     input_assembly::{InputAssemblyState, PrimitiveTopology, PrimitiveTopologyClass},
     multisample::MultisampleState,
@@ -719,34 +719,42 @@ where
                 } = input_assembly_state;
 
                 match topology {
-                    PartialStateMode::Fixed(topology) => match topology {
-                        PrimitiveTopology::LineListWithAdjacency
-                        | PrimitiveTopology::LineStripWithAdjacency
-                        | PrimitiveTopology::TriangleListWithAdjacency
-                        | PrimitiveTopology::TriangleStripWithAdjacency => {
-                            // VUID-VkPipelineInputAssemblyStateCreateInfo-topology-00429
-                            if !device.enabled_features().geometry_shader {
-                                return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                    feature: "geometry_shader",
-                                    reason: "InputAssemblyState::topology was set to a WithAdjacency PrimitiveTopology",
-                                });
-                            }
-                        }
-                        PrimitiveTopology::PatchList => {
-                            // VUID-VkPipelineInputAssemblyStateCreateInfo-topology-00430
-                            if !device.enabled_features().tessellation_shader {
-                                return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                    feature: "tessellation_shader",
-                                    reason: "InputAssemblyState::topology was set to PrimitiveTopology::PatchList",
-                                });
-                            }
+                    PartialStateMode::Fixed(topology) => {
+                        // VUID-VkPipelineInputAssemblyStateCreateInfo-topology-parameter
+                        topology.validate(device)?;
 
-                            // TODO:
-                            // VUID-VkGraphicsPipelineCreateInfo-topology-00737
+                        match topology {
+                            PrimitiveTopology::LineListWithAdjacency
+                            | PrimitiveTopology::LineStripWithAdjacency
+                            | PrimitiveTopology::TriangleListWithAdjacency
+                            | PrimitiveTopology::TriangleStripWithAdjacency => {
+                                // VUID-VkPipelineInputAssemblyStateCreateInfo-topology-00429
+                                if !device.enabled_features().geometry_shader {
+                                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                        feature: "geometry_shader",
+                                        reason: "InputAssemblyState::topology was set to a WithAdjacency PrimitiveTopology",
+                                    });
+                                }
+                            }
+                            PrimitiveTopology::PatchList => {
+                                // VUID-VkPipelineInputAssemblyStateCreateInfo-topology-00430
+                                if !device.enabled_features().tessellation_shader {
+                                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                        feature: "tessellation_shader",
+                                        reason: "InputAssemblyState::topology was set to PrimitiveTopology::PatchList",
+                                    });
+                                }
+
+                                // TODO:
+                                // VUID-VkGraphicsPipelineCreateInfo-topology-00737
+                            }
+                            _ => (),
                         }
-                        _ => (),
-                    },
-                    PartialStateMode::Dynamic(_topology_class) => {
+                    }
+                    PartialStateMode::Dynamic(topology_class) => {
+                        // VUID-VkPipelineInputAssemblyStateCreateInfo-topology-parameter
+                        topology_class.example().validate(device)?;
+
                         // VUID?
                         if !(device.api_version() >= Version::V1_3
                             || device.enabled_features().extended_dynamic_state)
@@ -1055,6 +1063,9 @@ where
                     line_stipple,
                 } = rasterization_state;
 
+                // VUID-VkPipelineRasterizationStateCreateInfo-polygonMode-parameter
+                polygon_mode.validate(device)?;
+
                 // VUID-VkPipelineRasterizationStateCreateInfo-depthClampEnable-00782
                 if depth_clamp_enable && !device.enabled_features().depth_clamp {
                     return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
@@ -1084,26 +1095,40 @@ where
                     });
                 }
 
-                // VUID?
-                if matches!(cull_mode, StateMode::Dynamic)
-                    && !(device.api_version() >= Version::V1_3
-                        || device.enabled_features().extended_dynamic_state)
-                {
-                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                        feature: "extended_dynamic_state",
-                        reason: "RasterizationState::cull_mode was set to Dynamic",
-                    });
+                match cull_mode {
+                    StateMode::Fixed(cull_mode) => {
+                        // VUID-VkPipelineRasterizationStateCreateInfo-cullMode-parameter
+                        cull_mode.validate(device)?;
+                    }
+                    StateMode::Dynamic => {
+                        // VUID?
+                        if !(device.api_version() >= Version::V1_3
+                            || device.enabled_features().extended_dynamic_state)
+                        {
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "extended_dynamic_state",
+                                reason: "RasterizationState::cull_mode was set to Dynamic",
+                            });
+                        }
+                    }
                 }
 
-                // VUID?
-                if matches!(front_face, StateMode::Dynamic)
-                    && !(device.api_version() >= Version::V1_3
-                        || device.enabled_features().extended_dynamic_state)
-                {
-                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                        feature: "extended_dynamic_state",
-                        reason: "RasterizationState::front_face was set to Dynamic",
-                    });
+                match front_face {
+                    StateMode::Fixed(front_face) => {
+                        // VUID-VkPipelineRasterizationStateCreateInfo-frontFace-parameter
+                        front_face.validate(device)?;
+                    }
+                    StateMode::Dynamic => {
+                        // VUID?
+                        if !(device.api_version() >= Version::V1_3
+                            || device.enabled_features().extended_dynamic_state)
+                        {
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "extended_dynamic_state",
+                                reason: "RasterizationState::front_face was set to Dynamic",
+                            });
+                        }
+                    }
                 }
 
                 if let Some(depth_bias_state) = depth_bias {
@@ -1142,6 +1167,9 @@ where
                 }
 
                 if device.enabled_extensions().ext_line_rasterization {
+                    // VUID-VkPipelineRasterizationLineStateCreateInfoEXT-lineRasterizationMode-parameter
+                    line_rasterization_mode.validate(device)?;
+
                     match line_rasterization_mode {
                         LineRasterizationMode::Default => (),
                         LineRasterizationMode::Rectangular => {
@@ -1248,11 +1276,14 @@ where
             // Discard rectangle state
             {
                 let &DiscardRectangleState {
-                    mode: _,
+                    mode,
                     ref rectangles,
                 } = discard_rectangle_state;
 
                 if device.enabled_extensions().ext_discard_rectangles {
+                    // VUID-VkPipelineDiscardRectangleStateCreateInfoEXT-discardRectangleMode-parameter
+                    mode.validate(device)?;
+
                     let discard_rectangle_count = match *rectangles {
                         PartialStateMode::Dynamic(count) => count,
                         PartialStateMode::Fixed(ref rectangles) => rectangles.len() as u32,
@@ -1642,15 +1673,22 @@ where
                     }
                 }
 
-                // VUID?
-                if matches!(compare_op, StateMode::Dynamic)
-                    && !(device.api_version() >= Version::V1_3
-                        || device.enabled_features().extended_dynamic_state)
-                {
-                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                        feature: "extended_dynamic_state",
-                        reason: "DepthState::compare_op was set to Dynamic",
-                    });
+                match compare_op {
+                    StateMode::Fixed(compare_op) => {
+                        // VUID-VkPipelineDepthStencilStateCreateInfo-depthCompareOp-parameter
+                        compare_op.validate(device)?;
+                    }
+                    StateMode::Dynamic => {
+                        // VUID?
+                        if !(device.api_version() >= Version::V1_3
+                            || device.enabled_features().extended_dynamic_state)
+                        {
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "extended_dynamic_state",
+                                reason: "DepthState::compare_op was set to Dynamic",
+                            });
+                        }
+                    }
                 }
             }
 
@@ -1723,7 +1761,28 @@ where
                 }
 
                 match (front.ops, back.ops) {
-                    (StateMode::Fixed(_), StateMode::Fixed(_)) => (),
+                    (StateMode::Fixed(front_ops), StateMode::Fixed(back_ops)) => {
+                        for ops in [front_ops, back_ops] {
+                            let StencilOps {
+                                fail_op,
+                                pass_op,
+                                depth_fail_op,
+                                compare_op,
+                            } = ops;
+
+                            // VUID-VkStencilOpState-failOp-parameter
+                            fail_op.validate(device)?;
+
+                            // VUID-VkStencilOpState-passOp-parameter
+                            pass_op.validate(device)?;
+
+                            // VUID-VkStencilOpState-depthFailOp-parameter
+                            depth_fail_op.validate(device)?;
+
+                            // VUID-VkStencilOpState-compareOp-parameter
+                            compare_op.validate(device)?;
+                        }
+                    }
                     (StateMode::Dynamic, StateMode::Dynamic) => {
                         // VUID?
                         if !(device.api_version() >= Version::V1_3
@@ -1782,6 +1841,9 @@ where
                     alpha_to_coverage_enable: _,
                     alpha_to_one_enable,
                 } = multisample_state;
+
+                // VUID-VkPipelineMultisampleStateCreateInfo-rasterizationSamples-parameter
+                rasterization_samples.validate(device)?;
 
                 match render_pass {
                     PipelineRenderPassType::BeginRenderPass(subpass) => {
@@ -1850,14 +1912,20 @@ where
                     });
                 }
 
-                // VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-04869
-                if matches!(logic_op, StateMode::Dynamic)
-                    && !device.enabled_features().extended_dynamic_state2_logic_op
-                {
-                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                        feature: "extended_dynamic_state2_logic_op",
-                        reason: "ColorBlendState::logic_op was set to Some(Dynamic)",
-                    });
+                match logic_op {
+                    StateMode::Fixed(logic_op) => {
+                        // VUID-VkPipelineColorBlendStateCreateInfo-logicOpEnable-00607
+                        logic_op.validate(device)?
+                    }
+                    StateMode::Dynamic => {
+                        // VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-04869
+                        if !device.enabled_features().extended_dynamic_state2_logic_op {
+                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
+                                feature: "extended_dynamic_state2_logic_op",
+                                reason: "ColorBlendState::logic_op was set to Some(Dynamic)",
+                            });
+                        }
+                    }
                 }
             }
 
@@ -1903,13 +1971,40 @@ where
                 } = state;
 
                 if let Some(blend) = blend {
+                    let AttachmentBlend {
+                        color_op,
+                        color_source,
+                        color_destination,
+                        alpha_op,
+                        alpha_source,
+                        alpha_destination,
+                    } = blend;
+
+                    // VUID-VkPipelineColorBlendAttachmentState-colorBlendOp-parameter
+                    color_op.validate(device)?;
+
+                    // VUID-VkPipelineColorBlendAttachmentState-srcColorBlendFactor-parameter
+                    color_source.validate(device)?;
+
+                    // VUID-VkPipelineColorBlendAttachmentState-dstColorBlendFactor-parameter
+                    color_destination.validate(device)?;
+
+                    // VUID-VkPipelineColorBlendAttachmentState-alphaBlendOp-parameter
+                    alpha_op.validate(device)?;
+
+                    // VUID-VkPipelineColorBlendAttachmentState-srcAlphaBlendFactor-parameter
+                    alpha_source.validate(device)?;
+
+                    // VUID-VkPipelineColorBlendAttachmentState-dstAlphaBlendFactor-parameter
+                    alpha_destination.validate(device)?;
+
                     // VUID?
                     if !device.enabled_features().dual_src_blend
                         && [
-                            blend.color_source,
-                            blend.color_destination,
-                            blend.alpha_source,
-                            blend.alpha_destination,
+                            color_source,
+                            color_destination,
+                            alpha_source,
+                            alpha_destination,
                         ]
                         .into_iter()
                         .any(|blend_factor| {

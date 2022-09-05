@@ -91,7 +91,7 @@ where
             memory_type_index: memory_type.id(),
             export_handle_types: ExternalMemoryHandleTypes {
                 opaque_fd: true,
-                ..ExternalMemoryHandleTypes::none()
+                ..ExternalMemoryHandleTypes::empty()
             },
             ..MemoryAllocateInfo::dedicated_allocation(dedicated_allocation)
         },

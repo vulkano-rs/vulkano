@@ -9,6 +9,7 @@
 
 use crate::{
     device::{Device, DeviceOwned},
+    macros::{vulkan_bitflags, vulkan_enum, ExtensionNotEnabled},
     OomError, Version, VulkanError, VulkanObject,
 };
 use std::{
@@ -17,7 +18,6 @@ use std::{
     fs::File,
     hash::{Hash, Hasher},
     mem::MaybeUninit,
-    ops::BitOr,
     ptr,
     sync::Arc,
 };
@@ -45,31 +45,19 @@ impl Semaphore {
             export_handle_types,
             _ne: _,
         } = create_info;
-        let instance = device.instance();
 
-        if export_handle_types != ExternalSemaphoreHandleTypes::none() {
+        if !export_handle_types.is_empty() {
             if !(device.api_version() >= Version::V1_1
                 || device.enabled_extensions().khr_external_semaphore)
             {
-                return Err(SemaphoreCreationError::MissingExtension(
-                    "khr_external_semaphore",
-                ));
+                return Err(SemaphoreCreationError::ExtensionNotEnabled {
+                    extension: "khr_external_semaphore",
+                    reason: "export_handle_types was not empty",
+                });
             }
 
-            if (export_handle_types.opaque_fd
-                || export_handle_types.opaque_win32
-                || export_handle_types.opaque_win32_kmt
-                || export_handle_types.d3d12_fence
-                || export_handle_types.sync_fd)
-                && !(instance.api_version() >= Version::V1_1
-                    || instance
-                        .enabled_extensions()
-                        .khr_external_semaphore_capabilities)
-            {
-                return Err(SemaphoreCreationError::MissingExtension(
-                    "khr_external_semaphore_capabilities",
-                ));
-            }
+            // VUID-VkExportSemaphoreCreateInfo-handleTypes-parameter
+            export_handle_types.validate(&device)?;
 
             // VUID-VkExportSemaphoreCreateInfo-handleTypes-01124
             // TODO: `vkGetPhysicalDeviceExternalSemaphoreProperties` can only be called with one
@@ -78,15 +66,14 @@ impl Semaphore {
 
         let mut create_info = ash::vk::SemaphoreCreateInfo::builder();
 
-        let mut export_semaphore_create_info =
-            if export_handle_types != ExternalSemaphoreHandleTypes::none() {
-                Some(ash::vk::ExportSemaphoreCreateInfo {
-                    handle_types: export_handle_types.into(),
-                    ..Default::default()
-                })
-            } else {
-                None
-            };
+        let mut export_semaphore_create_info = if !export_handle_types.is_empty() {
+            Some(ash::vk::ExportSemaphoreCreateInfo {
+                handle_types: export_handle_types.into(),
+                ..Default::default()
+            })
+        } else {
+            None
+        };
 
         if let Some(info) = export_semaphore_create_info.as_mut() {
             create_info = create_info.push_next(info);
@@ -129,7 +116,7 @@ impl Semaphore {
                 handle,
                 must_put_in_pool: true,
 
-                export_handle_types: ExternalSemaphoreHandleTypes::none(),
+                export_handle_types: ExternalSemaphoreHandleTypes::empty(),
             },
             None => {
                 // Pool is empty, alloc new semaphore
@@ -271,16 +258,28 @@ pub enum SemaphoreCreationError {
     /// Not enough memory available.
     OomError(OomError),
 
-    /// An extension is missing.
-    MissingExtension(&'static str),
+    ExtensionNotEnabled {
+        extension: &'static str,
+        reason: &'static str,
+    },
+}
+
+impl Error for SemaphoreCreationError {
+    #[inline]
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match *self {
+            Self::OomError(ref err) => Some(err),
+            _ => None,
+        }
+    }
 }
 
 impl fmt::Display for SemaphoreCreationError {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match *self {
-            Self::OomError(_) => write!(fmt, "not enough memory available"),
-            Self::MissingExtension(s) => {
-                write!(fmt, "Missing the following extension: {}", s)
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::OomError(_) => write!(f, "not enough memory available"),
+            Self::ExtensionNotEnabled { extension, reason } => {
+                write!(f, "the extension {} must be enabled: {}", extension, reason)
             }
         }
     }
@@ -298,20 +297,20 @@ impl From<VulkanError> for SemaphoreCreationError {
     }
 }
 
-impl Error for SemaphoreCreationError {
-    #[inline]
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            Self::OomError(ref err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
 impl From<OomError> for SemaphoreCreationError {
     #[inline]
     fn from(err: OomError) -> Self {
         Self::OomError(err)
+    }
+}
+
+impl From<ExtensionNotEnabled> for SemaphoreCreationError {
+    #[inline]
+    fn from(err: ExtensionNotEnabled) -> Self {
+        Self::ExtensionNotEnabled {
+            extension: err.extension,
+            reason: err.reason,
+        }
     }
 }
 
@@ -320,7 +319,7 @@ impl From<OomError> for SemaphoreCreationError {
 pub struct SemaphoreCreateInfo {
     /// The handle types that can be exported from the semaphore.
     ///
-    /// The default value is [`ExternalSemaphoreHandleTypes::none()`].
+    /// The default value is [`ExternalSemaphoreHandleTypes::empty()`].
     pub export_handle_types: ExternalSemaphoreHandleTypes,
 
     pub _ne: crate::NonExhaustive,
@@ -330,130 +329,66 @@ impl Default for SemaphoreCreateInfo {
     #[inline]
     fn default() -> Self {
         Self {
-            export_handle_types: ExternalSemaphoreHandleTypes::none(),
+            export_handle_types: ExternalSemaphoreHandleTypes::empty(),
             _ne: crate::NonExhaustive(()),
         }
     }
 }
 
-/// Describes the handle type used for Vulkan external semaphore APIs.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[repr(u32)]
-pub enum ExternalSemaphoreHandleType {
-    OpaqueFd = ash::vk::ExternalSemaphoreHandleTypeFlags::OPAQUE_FD.as_raw(),
-    OpaqueWin32 = ash::vk::ExternalSemaphoreHandleTypeFlags::OPAQUE_WIN32.as_raw(),
-    OpaqueWin32Kmt = ash::vk::ExternalSemaphoreHandleTypeFlags::OPAQUE_WIN32_KMT.as_raw(),
-    D3D12Fence = ash::vk::ExternalSemaphoreHandleTypeFlags::D3D12_FENCE.as_raw(),
-    SyncFd = ash::vk::ExternalSemaphoreHandleTypeFlags::SYNC_FD.as_raw(),
+vulkan_enum! {
+    /// Describes the handle type used for Vulkan external semaphore APIs.
+    #[non_exhaustive]
+    ExternalSemaphoreHandleType = ExternalSemaphoreHandleTypeFlags(u32);
+
+    // TODO: document
+    OpaqueFd = OPAQUE_FD,
+
+    // TODO: document
+    OpaqueWin32 = OPAQUE_WIN32,
+
+    // TODO: document
+    OpaqueWin32Kmt = OPAQUE_WIN32_KMT,
+
+    // TODO: document
+    D3D12Fence = D3D12_FENCE,
+
+    // TODO: document
+    SyncFd = SYNC_FD,
+
+    /*
+    // TODO: document
+    ZirconEvent = ZIRCON_EVENT_FUCHSIA {
+        extensions: [fuchsia_external_semaphore],
+    },
+     */
 }
 
-impl From<ExternalSemaphoreHandleType> for ash::vk::ExternalSemaphoreHandleTypeFlags {
-    fn from(val: ExternalSemaphoreHandleType) -> Self {
-        Self::from_raw(val as u32)
-    }
-}
+vulkan_bitflags! {
+    /// A mask of multiple handle types.
+    #[non_exhaustive]
+    ExternalSemaphoreHandleTypes = ExternalSemaphoreHandleTypeFlags(u32);
 
-/// A mask of multiple handle types.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct ExternalSemaphoreHandleTypes {
-    pub opaque_fd: bool,
-    pub opaque_win32: bool,
-    pub opaque_win32_kmt: bool,
-    pub d3d12_fence: bool,
-    pub sync_fd: bool,
-}
+    // TODO: document
+    opaque_fd = OPAQUE_FD,
 
-impl ExternalSemaphoreHandleTypes {
-    /// Builds a `ExternalSemaphoreHandleTypes` with all values set to false. Useful as a default value.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use vulkano::sync::ExternalSemaphoreHandleTypes;
-    ///
-    /// let _handle_type = ExternalSemaphoreHandleTypes {
-    ///     opaque_fd: true,
-    ///     .. ExternalSemaphoreHandleTypes::none()
-    /// };
-    /// ```
-    #[inline]
-    pub fn none() -> ExternalSemaphoreHandleTypes {
-        ExternalSemaphoreHandleTypes {
-            opaque_fd: false,
-            opaque_win32: false,
-            opaque_win32_kmt: false,
-            d3d12_fence: false,
-            sync_fd: false,
-        }
-    }
+    // TODO: document
+    opaque_win32 = OPAQUE_WIN32,
 
-    /// Builds an `ExternalSemaphoreHandleTypes` for a posix file descriptor.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use vulkano::sync::ExternalSemaphoreHandleTypes;
-    ///
-    /// let _handle_type = ExternalSemaphoreHandleTypes::posix();
-    /// ```
-    #[inline]
-    pub fn posix() -> ExternalSemaphoreHandleTypes {
-        ExternalSemaphoreHandleTypes {
-            opaque_fd: true,
-            ..ExternalSemaphoreHandleTypes::none()
-        }
-    }
-}
+    // TODO: document
+    opaque_win32_kmt = OPAQUE_WIN32_KMT,
 
-impl From<ExternalSemaphoreHandleTypes> for ash::vk::ExternalSemaphoreHandleTypeFlags {
-    #[inline]
-    fn from(val: ExternalSemaphoreHandleTypes) -> Self {
-        let mut result = ash::vk::ExternalSemaphoreHandleTypeFlags::empty();
-        if val.opaque_fd {
-            result |= ash::vk::ExternalSemaphoreHandleTypeFlags::OPAQUE_FD;
-        }
-        if val.opaque_win32 {
-            result |= ash::vk::ExternalSemaphoreHandleTypeFlags::OPAQUE_WIN32;
-        }
-        if val.opaque_win32_kmt {
-            result |= ash::vk::ExternalSemaphoreHandleTypeFlags::OPAQUE_WIN32_KMT;
-        }
-        if val.d3d12_fence {
-            result |= ash::vk::ExternalSemaphoreHandleTypeFlags::D3D12_FENCE;
-        }
-        if val.sync_fd {
-            result |= ash::vk::ExternalSemaphoreHandleTypeFlags::SYNC_FD;
-        }
-        result
-    }
-}
+    // TODO: document
+    d3d12_fence = D3D12_FENCE,
 
-impl From<ash::vk::ExternalSemaphoreHandleTypeFlags> for ExternalSemaphoreHandleTypes {
-    fn from(val: ash::vk::ExternalSemaphoreHandleTypeFlags) -> Self {
-        Self {
-            opaque_fd: !(val & ash::vk::ExternalSemaphoreHandleTypeFlags::OPAQUE_FD).is_empty(),
-            opaque_win32: !(val & ash::vk::ExternalSemaphoreHandleTypeFlags::OPAQUE_WIN32)
-                .is_empty(),
-            opaque_win32_kmt: !(val & ash::vk::ExternalSemaphoreHandleTypeFlags::OPAQUE_WIN32_KMT)
-                .is_empty(),
-            d3d12_fence: !(val & ash::vk::ExternalSemaphoreHandleTypeFlags::D3D12_FENCE).is_empty(),
-            sync_fd: !(val & ash::vk::ExternalSemaphoreHandleTypeFlags::SYNC_FD).is_empty(),
-        }
-    }
-}
+    // TODO: document
+    sync_fd = SYNC_FD,
 
-impl BitOr for ExternalSemaphoreHandleTypes {
-    type Output = Self;
-
-    fn bitor(self, rhs: Self) -> Self {
-        ExternalSemaphoreHandleTypes {
-            opaque_fd: self.opaque_fd || rhs.opaque_fd,
-            opaque_win32: self.opaque_win32 || rhs.opaque_win32,
-            opaque_win32_kmt: self.opaque_win32_kmt || rhs.opaque_win32_kmt,
-            d3d12_fence: self.d3d12_fence || rhs.d3d12_fence,
-            sync_fd: self.sync_fd || rhs.sync_fd,
-        }
-    }
+    /*
+    // TODO: document
+    zircon_event = ZIRCON_EVENT_FUCHSIA {
+        extensions: [fuchsia_external_semaphore],
+    },
+     */
 }
 
 /// The semaphore configuration to query in
@@ -600,7 +535,7 @@ mod tests {
                 enabled_extensions: InstanceExtensions {
                     khr_get_physical_device_properties2: true,
                     khr_external_semaphore_capabilities: true,
-                    ..InstanceExtensions::none()
+                    ..InstanceExtensions::empty()
                 },
                 ..Default::default()
             },
@@ -618,7 +553,7 @@ mod tests {
                 enabled_extensions: DeviceExtensions {
                     khr_external_semaphore: true,
                     khr_external_semaphore_fd: true,
-                    ..DeviceExtensions::none()
+                    ..DeviceExtensions::empty()
                 },
                 queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
                 ..Default::default()
@@ -631,7 +566,10 @@ mod tests {
         let sem = Semaphore::new(
             device,
             SemaphoreCreateInfo {
-                export_handle_types: ExternalSemaphoreHandleTypes::posix(),
+                export_handle_types: ExternalSemaphoreHandleTypes {
+                    opaque_fd: true,
+                    ..ExternalSemaphoreHandleTypes::empty()
+                },
                 ..Default::default()
             },
         )

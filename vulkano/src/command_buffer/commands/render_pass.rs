@@ -21,6 +21,7 @@ use crate::{
     device::DeviceOwned,
     format::{ClearColorValue, ClearValue, Format, NumericType},
     image::{ImageLayout, ImageViewAbstract, SampleCount},
+    macros::ExtensionNotEnabled,
     render_pass::{
         AttachmentDescription, Framebuffer, LoadOp, RenderPass, ResolveMode, StoreOp,
         SubpassDescription,
@@ -88,9 +89,12 @@ where
     fn validate_begin_render_pass(
         &self,
         render_pass_begin_info: &mut RenderPassBeginInfo,
-        _contents: SubpassContents,
+        contents: SubpassContents,
     ) -> Result<(), RenderPassError> {
         let device = self.device();
+
+        // VUID-VkSubpassBeginInfo-contents-parameter
+        contents.validate(device)?;
 
         // VUID-vkCmdBeginRenderPass2-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -412,7 +416,12 @@ where
         Ok(self)
     }
 
-    fn validate_next_subpass(&self, _contents: SubpassContents) -> Result<(), RenderPassError> {
+    fn validate_next_subpass(&self, contents: SubpassContents) -> Result<(), RenderPassError> {
+        let device = self.device();
+
+        // VUID-VkSubpassBeginInfo-contents-parameter
+        contents.validate(device)?;
+
         // VUID-vkCmdNextSubpass2-renderpass
         let render_pass_state = self
             .render_pass_state
@@ -680,6 +689,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             _ne: _,
         } = rendering_info;
 
+        // VUID-VkRenderingInfo-flags-parameter
+        contents.validate(device)?;
+
         // VUID-vkCmdBeginRendering-commandBuffer-06068
         if self.inheritance_info.is_some() && contents == SubpassContents::SecondaryCommandBuffers {
             return Err(RenderPassError::ContentsForbiddenInSecondaryCommandBuffer);
@@ -733,11 +745,20 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 ref image_view,
                 image_layout,
                 ref resolve_info,
-                load_op: _,
-                store_op: _,
+                load_op,
+                store_op,
                 clear_value: _,
                 _ne: _,
             } = attachment_info;
+
+            // VUID-VkRenderingAttachmentInfo-imageLayout-parameter
+            image_layout.validate(device)?;
+
+            // VUID-VkRenderingAttachmentInfo-loadOp-parameter
+            load_op.validate(device)?;
+
+            // VUID-VkRenderingAttachmentInfo-storeOp-parameter
+            store_op.validate(device)?;
 
             // VUID-VkRenderingInfo-colorAttachmentCount-06087
             if !image_view.usage().color_attachment {
@@ -789,6 +810,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                     image_view: ref resolve_image_view,
                     image_layout: resolve_image_layout,
                 } = resolve_info;
+
+                // VUID-VkRenderingAttachmentInfo-resolveImageLayout-parameter
+                resolve_image_layout.validate(device)?;
+
+                // VUID-VkRenderingAttachmentInfo-resolveMode-parameter
+                mode.validate(device)?;
 
                 let resolve_image = resolve_image_view.image();
 
@@ -867,11 +894,20 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 ref image_view,
                 image_layout,
                 ref resolve_info,
-                load_op: _,
-                store_op: _,
+                load_op,
+                store_op,
                 clear_value: _,
                 _ne: _,
             } = attachment_info;
+
+            // VUID-VkRenderingAttachmentInfo-imageLayout-parameter
+            image_layout.validate(device)?;
+
+            // VUID-VkRenderingAttachmentInfo-loadOp-parameter
+            load_op.validate(device)?;
+
+            // VUID-VkRenderingAttachmentInfo-storeOp-parameter
+            store_op.validate(device)?;
 
             let image_aspects = image_view.format().unwrap().aspects();
 
@@ -928,10 +964,16 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                     image_layout: resolve_image_layout,
                 } = resolve_info;
 
+                // VUID-VkRenderingAttachmentInfo-resolveImageLayout-parameter
+                resolve_image_layout.validate(device)?;
+
+                // VUID-VkRenderingAttachmentInfo-resolveMode-parameter
+                mode.validate(device)?;
+
                 // VUID-VkRenderingInfo-pDepthAttachment-06102
                 if !properties
                     .supported_depth_resolve_modes
-                    .map_or(false, |modes| modes.contains(mode))
+                    .map_or(false, |modes| modes.contains_mode(mode))
                 {
                     return Err(RenderPassError::DepthAttachmentResolveModeNotSupported);
                 }
@@ -977,11 +1019,20 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 ref image_view,
                 image_layout,
                 ref resolve_info,
-                load_op: _,
-                store_op: _,
+                load_op,
+                store_op,
                 clear_value: _,
                 _ne: _,
             } = attachment_info;
+
+            // VUID-VkRenderingAttachmentInfo-imageLayout-parameter
+            image_layout.validate(device)?;
+
+            // VUID-VkRenderingAttachmentInfo-loadOp-parameter
+            load_op.validate(device)?;
+
+            // VUID-VkRenderingAttachmentInfo-storeOp-parameter
+            store_op.validate(device)?;
 
             let image_aspects = image_view.format().unwrap().aspects();
 
@@ -1038,10 +1089,16 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                     image_layout: resolve_image_layout,
                 } = resolve_info;
 
+                // VUID-VkRenderingAttachmentInfo-resolveImageLayout-parameter
+                resolve_image_layout.validate(device)?;
+
+                // VUID-VkRenderingAttachmentInfo-resolveMode-parameter
+                mode.validate(device)?;
+
                 // VUID-VkRenderingInfo-pStencilAttachment-06103
                 if !properties
                     .supported_stencil_resolve_modes
-                    .map_or(false, |modes| modes.contains(mode))
+                    .map_or(false, |modes| modes.contains_mode(mode))
                 {
                     return Err(RenderPassError::StencilAttachmentResolveModeNotSupported);
                 }
@@ -1207,7 +1264,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
         if render_pass_state.contents != SubpassContents::Inline {
             return Err(RenderPassError::ForbiddenWithSubpassContents {
-                subpass_contents: render_pass_state.contents,
+                contents: render_pass_state.contents,
             });
         }
 
@@ -1423,11 +1480,11 @@ impl SyncCommandBufferBuilder {
     pub unsafe fn begin_render_pass(
         &mut self,
         render_pass_begin_info: RenderPassBeginInfo,
-        subpass_contents: SubpassContents,
+        contents: SubpassContents,
     ) -> Result<(), SyncCommandBufferBuilderError> {
         struct Cmd {
             render_pass_begin_info: RenderPassBeginInfo,
-            subpass_contents: SubpassContents,
+            contents: SubpassContents,
         }
 
         impl Command for Cmd {
@@ -1436,7 +1493,7 @@ impl SyncCommandBufferBuilder {
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.begin_render_pass(&self.render_pass_begin_info, self.subpass_contents);
+                out.begin_render_pass(&self.render_pass_begin_info, self.contents);
             }
         }
 
@@ -1464,7 +1521,7 @@ impl SyncCommandBufferBuilder {
                         memory: PipelineMemoryAccess {
                             stages: PipelineStages {
                                 all_commands: true,
-                                ..PipelineStages::none()
+                                ..PipelineStages::empty()
                             }, // TODO: wrong!
                             access: AccessFlags {
                                 input_attachment_read: true,
@@ -1472,7 +1529,7 @@ impl SyncCommandBufferBuilder {
                                 color_attachment_write: true,
                                 depth_stencil_attachment_read: true,
                                 depth_stencil_attachment_write: true,
-                                ..AccessFlags::none()
+                                ..AccessFlags::empty()
                             }, // TODO: suboptimal
                             exclusive: true, // TODO: suboptimal ; note: remember to always pass true if desc.initial_layout != desc.final_layout
                         },
@@ -1489,7 +1546,7 @@ impl SyncCommandBufferBuilder {
 
         self.commands.push(Box::new(Cmd {
             render_pass_begin_info,
-            subpass_contents,
+            contents,
         }));
 
         for resource in resources {
@@ -1503,9 +1560,9 @@ impl SyncCommandBufferBuilder {
 
     /// Calls `vkCmdNextSubpass` on the builder.
     #[inline]
-    pub unsafe fn next_subpass(&mut self, subpass_contents: SubpassContents) {
+    pub unsafe fn next_subpass(&mut self, contents: SubpassContents) {
         struct Cmd {
-            subpass_contents: SubpassContents,
+            contents: SubpassContents,
         }
 
         impl Command for Cmd {
@@ -1514,11 +1571,11 @@ impl SyncCommandBufferBuilder {
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.next_subpass(self.subpass_contents);
+                out.next_subpass(self.contents);
             }
         }
 
-        self.commands.push(Box::new(Cmd { subpass_contents }));
+        self.commands.push(Box::new(Cmd { contents }));
     }
 
     /// Calls `vkCmdEndRenderPass` on the builder.
@@ -1601,12 +1658,12 @@ impl SyncCommandBufferBuilder {
                             memory: PipelineMemoryAccess {
                                 stages: PipelineStages {
                                     all_commands: true,
-                                    ..PipelineStages::none()
+                                    ..PipelineStages::empty()
                                 }, // TODO: wrong!
                                 access: AccessFlags {
                                     color_attachment_read: true,
                                     color_attachment_write: true,
-                                    ..AccessFlags::none()
+                                    ..AccessFlags::empty()
                                 }, // TODO: suboptimal
                                 exclusive: true, // TODO: suboptimal
                             },
@@ -1629,12 +1686,12 @@ impl SyncCommandBufferBuilder {
                                 memory: PipelineMemoryAccess {
                                     stages: PipelineStages {
                                         all_commands: true,
-                                        ..PipelineStages::none()
+                                        ..PipelineStages::empty()
                                     }, // TODO: wrong!
                                     access: AccessFlags {
                                         color_attachment_read: true,
                                         color_attachment_write: true,
-                                        ..AccessFlags::none()
+                                        ..AccessFlags::empty()
                                     }, // TODO: suboptimal
                                     exclusive: true, // TODO: suboptimal
                                 },
@@ -1667,12 +1724,12 @@ impl SyncCommandBufferBuilder {
                         memory: PipelineMemoryAccess {
                             stages: PipelineStages {
                                 all_commands: true,
-                                ..PipelineStages::none()
+                                ..PipelineStages::empty()
                             }, // TODO: wrong!
                             access: AccessFlags {
                                 depth_stencil_attachment_read: true,
                                 depth_stencil_attachment_write: true,
-                                ..AccessFlags::none()
+                                ..AccessFlags::empty()
                             }, // TODO: suboptimal
                             exclusive: true, // TODO: suboptimal
                         },
@@ -1695,12 +1752,12 @@ impl SyncCommandBufferBuilder {
                             memory: PipelineMemoryAccess {
                                 stages: PipelineStages {
                                     all_commands: true,
-                                    ..PipelineStages::none()
+                                    ..PipelineStages::empty()
                                 }, // TODO: wrong!
                                 access: AccessFlags {
                                     depth_stencil_attachment_read: true,
                                     depth_stencil_attachment_write: true,
-                                    ..AccessFlags::none()
+                                    ..AccessFlags::empty()
                                 }, // TODO: suboptimal
                                 exclusive: true, // TODO: suboptimal
                             },
@@ -1733,12 +1790,12 @@ impl SyncCommandBufferBuilder {
                         memory: PipelineMemoryAccess {
                             stages: PipelineStages {
                                 all_commands: true,
-                                ..PipelineStages::none()
+                                ..PipelineStages::empty()
                             }, // TODO: wrong!
                             access: AccessFlags {
                                 depth_stencil_attachment_read: true,
                                 depth_stencil_attachment_write: true,
-                                ..AccessFlags::none()
+                                ..AccessFlags::empty()
                             }, // TODO: suboptimal
                             exclusive: true, // TODO: suboptimal
                         },
@@ -1761,12 +1818,12 @@ impl SyncCommandBufferBuilder {
                             memory: PipelineMemoryAccess {
                                 stages: PipelineStages {
                                     all_commands: true,
-                                    ..PipelineStages::none()
+                                    ..PipelineStages::empty()
                                 }, // TODO: wrong!
                                 access: AccessFlags {
                                     depth_stencil_attachment_read: true,
                                     depth_stencil_attachment_write: true,
-                                    ..AccessFlags::none()
+                                    ..AccessFlags::empty()
                                 }, // TODO: suboptimal
                                 exclusive: true, // TODO: suboptimal
                             },
@@ -1852,7 +1909,7 @@ impl UnsafeCommandBufferBuilder {
     pub unsafe fn begin_render_pass(
         &mut self,
         render_pass_begin_info: &RenderPassBeginInfo,
-        subpass_contents: SubpassContents,
+        contents: SubpassContents,
     ) {
         let &RenderPassBeginInfo {
             ref render_pass,
@@ -1888,7 +1945,7 @@ impl UnsafeCommandBufferBuilder {
         };
 
         let subpass_begin_info = ash::vk::SubpassBeginInfo {
-            contents: subpass_contents.into(),
+            contents: contents.into(),
             ..Default::default()
         };
 
@@ -1923,11 +1980,11 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdNextSubpass` on the builder.
     #[inline]
-    pub unsafe fn next_subpass(&mut self, subpass_contents: SubpassContents) {
+    pub unsafe fn next_subpass(&mut self, contents: SubpassContents) {
         let fns = self.device.fns();
 
         let subpass_begin_info = ash::vk::SubpassBeginInfo {
-            contents: subpass_contents.into(),
+            contents: contents.into(),
             ..Default::default()
         };
 
@@ -2471,6 +2528,10 @@ pub struct ClearRect {
 pub enum RenderPassError {
     SyncCommandBufferBuilderError(SyncCommandBufferBuilderError),
 
+    ExtensionNotEnabled {
+        extension: &'static str,
+        reason: &'static str,
+    },
     FeatureNotEnabled {
         feature: &'static str,
         reason: &'static str,
@@ -2619,7 +2680,7 @@ pub enum RenderPassError {
 
     /// Operation forbidden inside a render subpass with the specified contents.
     ForbiddenWithSubpassContents {
-        subpass_contents: SubpassContents,
+        contents: SubpassContents,
     },
 
     /// The framebuffer is not compatible with the render pass.
@@ -2734,6 +2795,11 @@ impl fmt::Display for RenderPassError {
         match self {
             Self::SyncCommandBufferBuilderError(_) => write!(f, "a SyncCommandBufferBuilderError"),
 
+            Self::ExtensionNotEnabled { extension, reason } => write!(
+                f,
+                "the extension {} must be enabled: {}",
+                extension, reason
+            ),
             Self::FeatureNotEnabled { feature, reason } => {
                 write!(f, "the feature {} must be enabled: {}", feature, reason)
             }
@@ -2910,7 +2976,7 @@ impl fmt::Display for RenderPassError {
                 f,
                 "operation forbidden inside a render pass instance that is inherited by a secondary command buffer",
             ),
-            Self::ForbiddenWithSubpassContents { subpass_contents } => write!(
+            Self::ForbiddenWithSubpassContents { contents: subpass_contents } => write!(
                 f,
                 "operation forbidden inside a render subpass with contents {:?}",
                 subpass_contents,
@@ -3024,5 +3090,15 @@ impl From<SyncCommandBufferBuilderError> for RenderPassError {
     #[inline]
     fn from(err: SyncCommandBufferBuilderError) -> Self {
         Self::SyncCommandBufferBuilderError(err)
+    }
+}
+
+impl From<ExtensionNotEnabled> for RenderPassError {
+    #[inline]
+    fn from(err: ExtensionNotEnabled) -> Self {
+        Self::ExtensionNotEnabled {
+            extension: err.extension,
+            reason: err.reason,
+        }
     }
 }

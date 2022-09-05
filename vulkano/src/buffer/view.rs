@@ -28,7 +28,7 @@
 //! # let queue: Arc<vulkano::device::Queue> = return;
 //! let usage = BufferUsage {
 //!     storage_texel_buffer: true,
-//!     .. BufferUsage::none()
+//!     .. BufferUsage::empty()
 //! };
 //!
 //! let (buffer, _future) = DeviceLocalBuffer::<[u32]>::from_iter((0..128).map(|n| n), usage,
@@ -479,7 +479,7 @@ mod tests {
 
         let usage = BufferUsage {
             uniform_texel_buffer: true,
-            ..BufferUsage::none()
+            ..BufferUsage::empty()
         };
 
         let (buffer, _) =
@@ -502,7 +502,7 @@ mod tests {
 
         let usage = BufferUsage {
             storage_texel_buffer: true,
-            ..BufferUsage::none()
+            ..BufferUsage::empty()
         };
 
         let (buffer, _) =
@@ -525,7 +525,7 @@ mod tests {
 
         let usage = BufferUsage {
             storage_texel_buffer: true,
-            ..BufferUsage::none()
+            ..BufferUsage::empty()
         };
 
         let (buffer, _) =
@@ -547,7 +547,7 @@ mod tests {
 
         let (buffer, _) = DeviceLocalBuffer::<[[u8; 4]]>::from_iter(
             (0..128).map(|_| [0; 4]),
-            BufferUsage::none(),
+            BufferUsage::empty(),
             queue,
         )
         .unwrap();
@@ -571,7 +571,7 @@ mod tests {
         let usage = BufferUsage {
             uniform_texel_buffer: true,
             storage_texel_buffer: true,
-            ..BufferUsage::none()
+            ..BufferUsage::empty()
         };
 
         let (buffer, _) =

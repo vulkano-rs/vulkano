@@ -11,6 +11,7 @@ use super::vertex_input::IncompatibleVertexDefinitionError;
 use crate::{
     descriptor_set::layout::DescriptorSetLayoutCreationError,
     format::{Format, NumericType},
+    macros::ExtensionNotEnabled,
     pipeline::layout::{PipelineLayoutCreationError, PipelineLayoutSupersetError},
     shader::ShaderInterfaceMismatchError,
     OomError, VulkanError,
@@ -431,6 +432,16 @@ impl From<VulkanError> for GraphicsPipelineCreationError {
             err @ VulkanError::OutOfHostMemory => Self::OomError(OomError::from(err)),
             err @ VulkanError::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
             _ => panic!("unexpected error: {:?}", err),
+        }
+    }
+}
+
+impl From<ExtensionNotEnabled> for GraphicsPipelineCreationError {
+    #[inline]
+    fn from(err: ExtensionNotEnabled) -> Self {
+        Self::ExtensionNotEnabled {
+            extension: err.extension,
+            reason: err.reason,
         }
     }
 }

@@ -37,7 +37,7 @@ fn main() {
     // this example. First, enable debugging using this extension: VK_EXT_debug_utils
     let extensions = InstanceExtensions {
         ext_debug_utils: true,
-        ..InstanceExtensions::none()
+        ..InstanceExtensions::empty()
     };
 
     let library = VulkanLibrary::new().unwrap();
@@ -93,8 +93,14 @@ fn main() {
                     warning: true,
                     information: true,
                     verbose: true,
+                    ..DebugUtilsMessageSeverity::empty()
                 },
-                message_type: DebugUtilsMessageType::all(),
+                message_type: DebugUtilsMessageType {
+                    general: true,
+                    validation: true,
+                    performance: true,
+                    ..DebugUtilsMessageType::empty()
+                },
                 ..DebugUtilsMessengerCreateInfo::user_callback(Arc::new(|msg| {
                     let severity = if msg.severity.error {
                         "error"
@@ -136,10 +142,10 @@ fn main() {
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     let device_extensions = DeviceExtensions {
-        ..DeviceExtensions::none()
+        ..DeviceExtensions::empty()
     };
     let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-        .filter(|&p| p.supported_extensions().is_superset_of(&device_extensions))
+        .filter(|&p| p.supported_extensions().contains(&device_extensions))
         .map(|p| {
             p.queue_families()
                 .next()
@@ -152,6 +158,7 @@ fn main() {
             PhysicalDeviceType::VirtualGpu => 2,
             PhysicalDeviceType::Cpu => 3,
             PhysicalDeviceType::Other => 4,
+            _ => 5,
         })
         .expect("no device available");
 

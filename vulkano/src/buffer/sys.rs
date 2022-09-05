@@ -30,6 +30,7 @@ use super::{
 };
 use crate::{
     device::{Device, DeviceOwned},
+    macros::{vulkan_bitflags, ExtensionNotEnabled},
     memory::{DeviceMemory, DeviceMemoryAllocationError, MemoryRequirements},
     range_map::RangeMap,
     sync::{AccessError, CurrentAccess, Sharing},
@@ -84,8 +85,11 @@ impl UnsafeBuffer {
         // VUID-VkBufferCreateInfo-size-00912
         assert!(size != 0);
 
+        // VUID-VkBufferCreateInfo-usage-parameter
+        usage.validate(&device)?;
+
         // VUID-VkBufferCreateInfo-usage-requiredbitmask
-        assert!(usage != BufferUsage::none());
+        assert!(!usage.is_empty());
 
         let mut flags = ash::vk::BufferCreateFlags::empty();
 
@@ -433,7 +437,7 @@ pub struct UnsafeBufferCreateInfo {
 
     /// How the buffer is going to be used.
     ///
-    /// The default value is [`BufferUsage::none()`], which must be overridden.
+    /// The default value is [`BufferUsage::empty()`], which must be overridden.
     pub usage: BufferUsage,
 
     pub _ne: crate::NonExhaustive,
@@ -446,7 +450,7 @@ impl Default for UnsafeBufferCreateInfo {
             sharing: Sharing::Exclusive,
             size: 0,
             sparse: None,
-            usage: BufferUsage::none(),
+            usage: BufferUsage::empty(),
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -531,48 +535,26 @@ impl From<VulkanError> for BufferCreationError {
     }
 }
 
-/// The level of sparse binding that a buffer should be created with.
-#[derive(Clone, Copy, Debug)]
-pub struct SparseLevel {
-    pub sparse_residency: bool,
-    pub sparse_aliased: bool,
-    pub _ne: crate::NonExhaustive,
-}
-
-impl Default for SparseLevel {
+impl From<ExtensionNotEnabled> for BufferCreationError {
     #[inline]
-    fn default() -> Self {
-        Self {
-            sparse_residency: false,
-            sparse_aliased: false,
-            _ne: crate::NonExhaustive(()),
+    fn from(err: ExtensionNotEnabled) -> Self {
+        Self::ExtensionNotEnabled {
+            extension: err.extension,
+            reason: err.reason,
         }
     }
 }
 
-impl SparseLevel {
-    #[inline]
-    pub fn none() -> SparseLevel {
-        SparseLevel {
-            sparse_residency: false,
-            sparse_aliased: false,
-            _ne: crate::NonExhaustive(()),
-        }
-    }
-}
+vulkan_bitflags! {
+    /// The level of sparse binding that a buffer should be created with.
+    #[non_exhaustive]
+    SparseLevel = BufferCreateFlags(u32);
 
-impl From<SparseLevel> for ash::vk::BufferCreateFlags {
-    #[inline]
-    fn from(val: SparseLevel) -> Self {
-        let mut result = ash::vk::BufferCreateFlags::SPARSE_BINDING;
-        if val.sparse_residency {
-            result |= ash::vk::BufferCreateFlags::SPARSE_RESIDENCY;
-        }
-        if val.sparse_aliased {
-            result |= ash::vk::BufferCreateFlags::SPARSE_ALIASED;
-        }
-        result
-    }
+    // TODO: document
+    sparse_residency = SPARSE_ALIASED,
+
+    // TODO: document
+    sparse_aliased = SPARSE_ALIASED,
 }
 
 /// The current state of a buffer.
@@ -798,7 +780,10 @@ mod tests {
             device.clone(),
             UnsafeBufferCreateInfo {
                 size: 128,
-                usage: BufferUsage::all(),
+                usage: BufferUsage {
+                    transfer_dst: true,
+                    ..BufferUsage::empty()
+                },
                 ..Default::default()
             },
         )
@@ -817,8 +802,11 @@ mod tests {
             device,
             UnsafeBufferCreateInfo {
                 size: 128,
-                sparse: Some(SparseLevel::none()),
-                usage: BufferUsage::all(),
+                sparse: Some(SparseLevel::empty()),
+                usage: BufferUsage {
+                    transfer_dst: true,
+                    ..BufferUsage::empty()
+                },
                 ..Default::default()
             },
         ) {
@@ -842,7 +830,10 @@ mod tests {
                     sparse_aliased: false,
                     ..Default::default()
                 }),
-                usage: BufferUsage::all(),
+                usage: BufferUsage {
+                    transfer_dst: true,
+                    ..BufferUsage::empty()
+                },
                 ..Default::default()
             },
         ) {
@@ -866,7 +857,10 @@ mod tests {
                     sparse_aliased: true,
                     ..Default::default()
                 }),
-                usage: BufferUsage::all(),
+                usage: BufferUsage {
+                    transfer_dst: true,
+                    ..BufferUsage::empty()
+                },
                 ..Default::default()
             },
         ) {
@@ -887,7 +881,10 @@ mod tests {
                 device,
                 UnsafeBufferCreateInfo {
                     size: 0,
-                    usage: BufferUsage::all(),
+                    usage: BufferUsage {
+                        transfer_dst: true,
+                        ..BufferUsage::empty()
+                    },
                     ..Default::default()
                 },
             )

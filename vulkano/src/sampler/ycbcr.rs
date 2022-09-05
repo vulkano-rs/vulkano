@@ -87,6 +87,7 @@
 use crate::{
     device::{Device, DeviceOwned},
     format::{ChromaSampling, Format, NumericType},
+    macros::{vulkan_enum, ExtensionNotEnabled},
     sampler::{ComponentMapping, ComponentSwizzle, Filter},
     OomError, Version, VulkanError, VulkanObject,
 };
@@ -140,6 +141,33 @@ impl SamplerYcbcrConversion {
                 reason: "tried to create a SamplerYcbcrConversion",
             });
         }
+
+        // VUID-VkSamplerYcbcrConversionCreateInfo-ycbcrModel-parameter
+        ycbcr_model.validate(&device)?;
+
+        // VUID-VkSamplerYcbcrConversionCreateInfo-ycbcrRange-parameter
+        ycbcr_range.validate(&device)?;
+
+        // VUID-VkComponentMapping-r-parameter
+        component_mapping.r.validate(&device)?;
+
+        // VUID-VkComponentMapping-g-parameter
+        component_mapping.g.validate(&device)?;
+
+        // VUID-VkComponentMapping-b-parameter
+        component_mapping.b.validate(&device)?;
+
+        // VUID-VkComponentMapping-a-parameter
+        component_mapping.a.validate(&device)?;
+
+        for offset in chroma_offset {
+            // VUID-VkSamplerYcbcrConversionCreateInfo-xChromaOffset-parameter
+            // VUID-VkSamplerYcbcrConversionCreateInfo-yChromaOffset-parameter
+            offset.validate(&device)?;
+        }
+
+        // VUID-VkSamplerYcbcrConversionCreateInfo-chromaFilter-parameter
+        chroma_filter.validate(&device)?;
 
         let format = match format {
             Some(f) => f,
@@ -480,6 +508,10 @@ pub enum SamplerYcbcrConversionCreationError {
     /// Not enough memory.
     OomError(OomError),
 
+    ExtensionNotEnabled {
+        extension: &'static str,
+        reason: &'static str,
+    },
     FeatureNotEnabled {
         feature: &'static str,
         reason: &'static str,
@@ -529,50 +561,54 @@ impl Error for SamplerYcbcrConversionCreationError {
 
 impl fmt::Display for SamplerYcbcrConversionCreationError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match *self {
-            Self::OomError(_) => write!(fmt, "not enough memory available"),
-            Self::FeatureNotEnabled { feature, reason } => {
-                write!(fmt, "the feature {} must be enabled: {}", feature, reason)
+            Self::OomError(_) => write!(f, "not enough memory available"),
+            Self::ExtensionNotEnabled { extension, reason } => {
+                write!(f, "the extension {} must be enabled: {}", extension, reason)
             }
+            Self::FeatureNotEnabled { feature, reason } => {
+                write!(f, "the feature {} must be enabled: {}", feature, reason)
+            }
+
             Self::CubicFilterNotSupported => {
-                write!(fmt, "the `Cubic` filter was specified")
+                write!(f, "the `Cubic` filter was specified")
             }
             Self::FormatMissing => {
-                write!(fmt, "no format was specified when one was required")
+                write!(f, "no format was specified when one was required")
             }
             Self::FormatNotUnorm => {
-                write!(fmt, "the format has a color type other than `UNORM`")
+                write!(f, "the format has a color type other than `UNORM`")
             }
             Self::FormatNotSupported => {
-                write!(fmt, "the format does not support sampler YCbCr conversion")
+                write!(f, "the format does not support sampler YCbCr conversion")
             }
             Self::FormatChromaOffsetNotSupported => {
-                write!(fmt, "the format does not support the chosen chroma offsets")
+                write!(f, "the format does not support the chosen chroma offsets")
             }
             Self::FormatInvalidComponentMapping => {
                 write!(
-                    fmt,
+                    f,
                     "the component mapping was not valid for use with the chosen format"
                 )
             }
             Self::FormatForceExplicitReconstructionNotSupported => {
                 write!(
-                    fmt,
+                    f,
                     "the format does not support `force_explicit_reconstruction`"
                 )
             }
             Self::FormatLinearFilterNotSupported => {
-                write!(fmt, "the format does not support the `Linear` filter")
+                write!(f, "the format does not support the `Linear` filter")
             }
             Self::YcbcrModelInvalidComponentMapping => {
                 write!(
-                    fmt,
+                    f,
                     "the component mapping was not valid for use with the chosen YCbCr model"
                 )
             }
             Self::YcbcrRangeFormatNotEnoughBits => {
-                write!(fmt, "for the chosen `ycbcr_range`, the R, G or B components being read from the `format` do not have the minimum number of required bits")
+                write!(f, "for the chosen `ycbcr_range`, the R, G or B components being read from the `format` do not have the minimum number of required bits")
             }
         }
     }
@@ -596,6 +632,16 @@ impl From<VulkanError> for SamplerYcbcrConversionCreationError {
                 SamplerYcbcrConversionCreationError::OomError(OomError::from(err))
             }
             _ => panic!("unexpected error: {:?}", err),
+        }
+    }
+}
+
+impl From<ExtensionNotEnabled> for SamplerYcbcrConversionCreationError {
+    #[inline]
+    fn from(err: ExtensionNotEnabled) -> Self {
+        Self::ExtensionNotEnabled {
+            extension: err.extension,
+            reason: err.reason,
         }
     }
 }
@@ -689,74 +735,56 @@ impl Default for SamplerYcbcrConversionCreateInfo {
     }
 }
 
-/// The conversion between the color model of the source image and the color model of the shader.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[repr(i32)]
-pub enum SamplerYcbcrModelConversion {
+vulkan_enum! {
+    /// The conversion between the color model of the source image and the color model of the shader.
+    #[non_exhaustive]
+    SamplerYcbcrModelConversion = SamplerYcbcrModelConversion(i32);
+
     /// The input values are already in the shader's model, and are passed through unmodified.
-    RgbIdentity = ash::vk::SamplerYcbcrModelConversion::RGB_IDENTITY.as_raw(),
+    RgbIdentity = RGB_IDENTITY,
 
     /// The input values are only range expanded, no other modifications are done.
-    YcbcrIdentity = ash::vk::SamplerYcbcrModelConversion::YCBCR_IDENTITY.as_raw(),
+    YcbcrIdentity = YCBCR_IDENTITY,
 
     /// The input values are converted according to the
     /// [ITU-R BT.709](https://en.wikipedia.org/wiki/Rec._709) standard.
-    Ycbcr709 = ash::vk::SamplerYcbcrModelConversion::YCBCR_709.as_raw(),
+    Ycbcr709 = YCBCR_709,
 
     /// The input values are converted according to the
     /// [ITU-R BT.601](https://en.wikipedia.org/wiki/Rec._601) standard.
-    Ycbcr601 = ash::vk::SamplerYcbcrModelConversion::YCBCR_601.as_raw(),
+    Ycbcr601 = YCBCR_601,
 
     /// The input values are converted according to the
     /// [ITU-R BT.2020](https://en.wikipedia.org/wiki/Rec._2020) standard.
-    Ycbcr2020 = ash::vk::SamplerYcbcrModelConversion::YCBCR_2020.as_raw(),
+    Ycbcr2020 = YCBCR_2020,
 }
 
-impl From<SamplerYcbcrModelConversion> for ash::vk::SamplerYcbcrModelConversion {
-    #[inline]
-    fn from(val: SamplerYcbcrModelConversion) -> Self {
-        Self::from_raw(val as i32)
-    }
-}
+vulkan_enum! {
+    /// How the numeric range of the input data is converted.
+    #[non_exhaustive]
+    SamplerYcbcrRange = SamplerYcbcrRange(i32);
 
-/// How the numeric range of the input data is converted.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[repr(i32)]
-pub enum SamplerYcbcrRange {
     /// The input values cover the full numeric range, and are interpreted according to the ITU
     /// "full range" rules.
-    ItuFull = ash::vk::SamplerYcbcrRange::ITU_FULL.as_raw(),
+    ItuFull = ITU_FULL,
 
     /// The input values cover only a subset of the numeric range, with the remainder reserved as
     /// headroom/footroom. The values are interpreted according to the ITU "narrow range" rules.
-    ItuNarrow = ash::vk::SamplerYcbcrRange::ITU_NARROW.as_raw(),
+    ItuNarrow = ITU_NARROW,
 }
 
-impl From<SamplerYcbcrRange> for ash::vk::SamplerYcbcrRange {
-    #[inline]
-    fn from(val: SamplerYcbcrRange) -> Self {
-        Self::from_raw(val as i32)
-    }
-}
+vulkan_enum! {
+    /// For formats with chroma subsampling, the location where the chroma components are sampled,
+    /// relative to the luma component.
+    #[non_exhaustive]
+    ChromaLocation = ChromaLocation(i32);
 
-/// For formats with chroma subsampling, the location where the chroma components are sampled,
-/// relative to the luma component.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[repr(i32)]
-pub enum ChromaLocation {
     /// The chroma components are sampled at the even luma coordinate.
-    CositedEven = ash::vk::ChromaLocation::COSITED_EVEN.as_raw(),
+    CositedEven = COSITED_EVEN,
 
     /// The chroma components are sampled at the midpoint between the even luma coordinate and
     /// the next higher odd luma coordinate.
-    Midpoint = ash::vk::ChromaLocation::MIDPOINT.as_raw(),
-}
-
-impl From<ChromaLocation> for ash::vk::ChromaLocation {
-    #[inline]
-    fn from(val: ChromaLocation) -> Self {
-        Self::from_raw(val as i32)
-    }
+    Midpoint = MIDPOINT,
 }
 
 #[cfg(test)]

@@ -24,6 +24,7 @@ use crate::{
     device::{physical::QueueFamily, Device, DeviceOwned, Queue},
     format::Format,
     image::{sys::UnsafeImage, ImageAccess, ImageLayout, ImageSubresourceRange},
+    macros::ExtensionNotEnabled,
     query::{QueryControlFlags, QueryType},
     render_pass::{Framebuffer, Subpass},
     sync::{AccessCheckError, AccessFlags, GpuFuture, PipelineMemoryAccess, PipelineStages},
@@ -432,6 +433,9 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
             }
 
             if let Some(control_flags) = occlusion_query {
+                // VUID-VkCommandBufferInheritanceInfo-queryFlags-00057
+                control_flags.validate(device)?;
+
                 // VUID-VkCommandBufferInheritanceInfo-occlusionQueryEnable-00056
                 // VUID-VkCommandBufferInheritanceInfo-queryFlags-02788
                 if !device.enabled_features().inherited_queries {
@@ -449,6 +453,9 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
                     });
                 }
             }
+
+            // VUID-VkCommandBufferInheritanceInfo-pipelineStatistics-02789
+            query_statistics_flags.validate(device)?;
 
             // VUID-VkCommandBufferInheritanceInfo-pipelineStatistics-00058
             if query_statistics_flags.count() > 0
@@ -476,6 +483,10 @@ pub enum CommandBufferBeginError {
     /// Not enough memory.
     OomError(OomError),
 
+    ExtensionNotEnabled {
+        extension: &'static str,
+        reason: &'static str,
+    },
     FeatureNotEnabled {
         feature: &'static str,
         reason: &'static str,
@@ -516,6 +527,9 @@ impl Display for CommandBufferBeginError {
         match *self {
             Self::OomError(_) => write!(f, "not enough memory available"),
 
+            Self::ExtensionNotEnabled { extension, reason } => {
+                write!(f, "the extension {} must be enabled: {}", extension, reason)
+            }
             Self::FeatureNotEnabled { feature, reason } => {
                 write!(f, "the feature {} must be enabled: {}", feature, reason)
             }
@@ -551,6 +565,16 @@ impl From<OomError> for CommandBufferBeginError {
     #[inline]
     fn from(err: OomError) -> Self {
         Self::OomError(err)
+    }
+}
+
+impl From<ExtensionNotEnabled> for CommandBufferBeginError {
+    #[inline]
+    fn from(err: ExtensionNotEnabled) -> Self {
+        Self::ExtensionNotEnabled {
+            extension: err.extension,
+            reason: err.reason,
+        }
     }
 }
 
@@ -961,7 +985,10 @@ mod tests {
 
         let source = CpuAccessibleBuffer::from_iter(
             device.clone(),
-            BufferUsage::all(),
+            BufferUsage {
+                transfer_src: true,
+                ..BufferUsage::empty()
+            },
             true,
             [1_u32, 2].iter().copied(),
         )
@@ -969,7 +996,10 @@ mod tests {
 
         let destination = CpuAccessibleBuffer::from_iter(
             device.clone(),
-            BufferUsage::all(),
+            BufferUsage {
+                transfer_dst: true,
+                ..BufferUsage::empty()
+            },
             true,
             [0_u32, 10, 20, 3, 4].iter().copied(),
         )
@@ -1086,7 +1116,11 @@ mod tests {
 
         let source = CpuAccessibleBuffer::from_iter(
             device.clone(),
-            BufferUsage::all(),
+            BufferUsage {
+                transfer_src: true,
+                transfer_dst: true,
+                ..BufferUsage::empty()
+            },
             true,
             [0_u32, 1, 2, 3].iter().copied(),
         )
@@ -1132,7 +1166,11 @@ mod tests {
 
         let source = CpuAccessibleBuffer::from_iter(
             device.clone(),
-            BufferUsage::all(),
+            BufferUsage {
+                transfer_src: true,
+                transfer_dst: true,
+                ..BufferUsage::empty()
+            },
             true,
             [0_u32, 1, 2, 3].iter().copied(),
         )

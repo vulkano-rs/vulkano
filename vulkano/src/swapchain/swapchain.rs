@@ -22,6 +22,7 @@ use crate::{
         sys::UnsafeImage, ImageCreateFlags, ImageDimensions, ImageFormatInfo, ImageInner,
         ImageLayout, ImageTiling, ImageType, ImageUsage, SampleCount, SwapchainImage,
     },
+    macros::{vulkan_enum, ExtensionNotEnabled},
     swapchain::{SurfaceApi, SurfaceInfo, SurfaceSwapchainLock},
     sync::{
         AccessCheckError, AccessError, AccessFlags, Fence, FlushError, GpuFuture, PipelineStages,
@@ -295,16 +296,34 @@ impl<W> Swapchain<W> {
             _ne: _,
         } = create_info;
 
-        // VUID-VkSwapchainCreateInfoKHR-imageUsage-requiredbitmask
-        assert!(image_usage != ImageUsage::none());
+        // VUID-VkSwapchainCreateInfoKHR-imageColorSpace-parameter
+        image_color_space.validate(device)?;
 
-        if full_screen_exclusive != FullScreenExclusive::Default
-            && !device.enabled_extensions().ext_full_screen_exclusive
-        {
-            return Err(SwapchainCreationError::ExtensionNotEnabled {
-                extension: "ext_full_screen_exclusive",
-                reason: "`full_screen_exclusive` was not `FullScreenExclusive::Default`",
-            });
+        // VUID-VkSwapchainCreateInfoKHR-imageUsage-parameter
+        image_usage.validate(device)?;
+
+        // VUID-VkSwapchainCreateInfoKHR-imageUsage-requiredbitmask
+        assert!(!image_usage.is_empty());
+
+        // VUID-VkSwapchainCreateInfoKHR-preTransform-parameter
+        pre_transform.validate(device)?;
+
+        // VUID-VkSwapchainCreateInfoKHR-compositeAlpha-parameter
+        composite_alpha.validate(device)?;
+
+        // VUID-VkSwapchainCreateInfoKHR-presentMode-parameter
+        present_mode.validate(device)?;
+
+        if full_screen_exclusive != FullScreenExclusive::Default {
+            if !device.enabled_extensions().ext_full_screen_exclusive {
+                return Err(SwapchainCreationError::ExtensionNotEnabled {
+                    extension: "ext_full_screen_exclusive",
+                    reason: "`full_screen_exclusive` was not `FullScreenExclusive::Default`",
+                });
+            }
+
+            // VUID-VkSurfaceFullScreenExclusiveInfoEXT-fullScreenExclusive-parameter
+            full_screen_exclusive.validate(device)?;
         }
 
         if surface.api() == SurfaceApi::Win32
@@ -331,6 +350,9 @@ impl<W> Swapchain<W> {
             )?;
 
             if let Some(format) = image_format {
+                // VUID-VkSwapchainCreateInfoKHR-imageFormat-parameter
+                // TODO: format.validate(device)?;
+
                 // VUID-VkSwapchainCreateInfoKHR-imageFormat-01273
                 if !surface_formats
                     .into_iter()
@@ -653,7 +675,7 @@ impl<W> Swapchain<W> {
                         handle,
                         image_usage,
                         image_format.unwrap(),
-                        ImageCreateFlags::none(),
+                        ImageCreateFlags::empty(),
                         dims,
                         SampleCount::Sample1,
                         1,
@@ -948,7 +970,7 @@ pub struct SwapchainCreateInfo {
 
     /// How the created images will be used.
     ///
-    /// The default value is [`ImageUsage::none()`], which must be overridden.
+    /// The default value is [`ImageUsage::empty()`], which must be overridden.
     pub image_usage: ImageUsage,
 
     /// Whether the created images can be shared across multiple queues, or are limited to a single
@@ -1010,7 +1032,7 @@ impl Default for SwapchainCreateInfo {
             image_color_space: ColorSpace::SrgbNonLinear,
             image_extent: [0, 0],
             image_array_layers: 1,
-            image_usage: ImageUsage::none(),
+            image_usage: ImageUsage::empty(),
             image_sharing: Sharing::Exclusive,
             pre_transform: SurfaceTransform::Identity,
             composite_alpha: CompositeAlpha::Opaque,
@@ -1235,36 +1257,39 @@ impl From<SurfacePropertiesError> for SwapchainCreationError {
     }
 }
 
-/// The way full-screen exclusivity is handled.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[repr(i32)]
-#[non_exhaustive]
-pub enum FullScreenExclusive {
+impl From<ExtensionNotEnabled> for SwapchainCreationError {
+    #[inline]
+    fn from(err: ExtensionNotEnabled) -> Self {
+        Self::ExtensionNotEnabled {
+            extension: err.extension,
+            reason: err.reason,
+        }
+    }
+}
+
+vulkan_enum! {
+    /// The way full-screen exclusivity is handled.
+    #[non_exhaustive]
+    FullScreenExclusive = FullScreenExclusiveEXT(i32);
+
     /// Indicates that the driver should determine the appropriate full-screen method
     /// by whatever means it deems appropriate.
-    Default = ash::vk::FullScreenExclusiveEXT::DEFAULT.as_raw(),
+    Default = DEFAULT,
 
     /// Indicates that the driver may use full-screen exclusive mechanisms when available.
     /// Such mechanisms may result in better performance and/or the availability of
     /// different presentation capabilities, but may require a more disruptive transition
     // during swapchain initialization, first presentation and/or destruction.
-    Allowed = ash::vk::FullScreenExclusiveEXT::ALLOWED.as_raw(),
+    Allowed = ALLOWED,
 
     /// Indicates that the driver should avoid using full-screen mechanisms which rely
     /// on disruptive transitions.
-    Disallowed = ash::vk::FullScreenExclusiveEXT::DISALLOWED.as_raw(),
+    Disallowed = DISALLOWED,
 
     /// Indicates the application will manage full-screen exclusive mode by using the
     /// [`Swapchain::acquire_full_screen_exclusive()`] and
     /// [`Swapchain::release_full_screen_exclusive()`] functions.
-    ApplicationControlled = ash::vk::FullScreenExclusiveEXT::APPLICATION_CONTROLLED.as_raw(),
-}
-
-impl From<FullScreenExclusive> for ash::vk::FullScreenExclusiveEXT {
-    #[inline]
-    fn from(val: FullScreenExclusive) -> Self {
-        Self::from_raw(val as i32)
-    }
+    ApplicationControlled = APPLICATION_CONTROLLED,
 }
 
 /// A wrapper around a Win32 monitor handle.

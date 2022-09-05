@@ -10,6 +10,7 @@
 //! Configures how input vertices are assembled into primitives.
 
 use crate::{
+    macros::vulkan_enum,
     pipeline::{PartialStateMode, StateMode},
     DeviceSize,
 };
@@ -88,46 +89,58 @@ impl Default for InputAssemblyState {
     }
 }
 
-/// Describes how vertices must be grouped together to form primitives.
-///
-/// When enabling primitive restart, "list" topologies require a feature to be enabled on the
-/// device:
-/// - The `PatchList` topology requires the
-///   [`primitive_topology_patch_list_restart`](crate::device::Features::primitive_topology_patch_list_restart)
-///   feature.
-/// - All other "list" topologies require the
-///   [`primitive_topology_list_restart`](crate::device::Features::primitive_topology_list_restart)
-///   feature.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[repr(i32)]
-pub enum PrimitiveTopology {
+vulkan_enum! {
+    /// Describes how vertices must be grouped together to form primitives.
+    ///
+    /// When enabling primitive restart, "list" topologies require a feature to be enabled on the
+    /// device:
+    /// - The `PatchList` topology requires the
+    ///   [`primitive_topology_patch_list_restart`](crate::device::Features::primitive_topology_patch_list_restart)
+    ///   feature.
+    /// - All other "list" topologies require the
+    ///   [`primitive_topology_list_restart`](crate::device::Features::primitive_topology_list_restart)
+    ///   feature.
+    #[non_exhaustive]
+    PrimitiveTopology = PrimitiveTopology(i32);
+
     /// A series of separate point primitives.
-    PointList = ash::vk::PrimitiveTopology::POINT_LIST.as_raw(),
+    PointList = POINT_LIST,
+
     /// A series of separate line primitives.
-    LineList = ash::vk::PrimitiveTopology::LINE_LIST.as_raw(),
+    LineList = LINE_LIST,
+
     /// A series of consecutive line primitives, with consecutive lines sharing a vertex.
-    LineStrip = ash::vk::PrimitiveTopology::LINE_STRIP.as_raw(),
+    LineStrip = LINE_STRIP,
+
     /// A series of separate triangle primitives.
-    TriangleList = ash::vk::PrimitiveTopology::TRIANGLE_LIST.as_raw(),
+    TriangleList = TRIANGLE_LIST,
+
     /// A series of consecutive triangle primitives, with consecutive triangles sharing an edge (two vertices).
-    TriangleStrip = ash::vk::PrimitiveTopology::TRIANGLE_STRIP.as_raw(),
+    TriangleStrip = TRIANGLE_STRIP,
+
     /// A series of consecutive triangle primitives, with all triangles sharing a common vertex (the first).
-    TriangleFan = ash::vk::PrimitiveTopology::TRIANGLE_FAN.as_raw(),
+    TriangleFan = TRIANGLE_FAN,
+
     /// As `LineList, but with adjacency, used in combination with geometry shaders. Requires the
     /// [`geometry_shader`](crate::device::Features::geometry_shader) feature.
-    LineListWithAdjacency = ash::vk::PrimitiveTopology::LINE_LIST_WITH_ADJACENCY.as_raw(),
+    LineListWithAdjacency = LINE_LIST_WITH_ADJACENCY,
+
     /// As `LineStrip`, but with adjacency, used in combination with geometry shaders. Requires the
     /// [`geometry_shader`](crate::device::Features::geometry_shader) feature.
-    LineStripWithAdjacency = ash::vk::PrimitiveTopology::LINE_STRIP_WITH_ADJACENCY.as_raw(),
+    LineStripWithAdjacency = LINE_STRIP_WITH_ADJACENCY,
+
     /// As `TriangleList`, but with adjacency, used in combination with geometry shaders. Requires
     /// the [`geometry_shader`](crate::device::Features::geometry_shader) feature.
-    TriangleListWithAdjacency = ash::vk::PrimitiveTopology::TRIANGLE_LIST_WITH_ADJACENCY.as_raw(),
+    TriangleListWithAdjacency = TRIANGLE_LIST_WITH_ADJACENCY,
+
     /// As `TriangleStrip`, but with adjacency, used in combination with geometry shaders. Requires
     /// the [`geometry_shader`](crate::device::Features::geometry_shader) feature.
-    TriangleStripWithAdjacency = ash::vk::PrimitiveTopology::TRIANGLE_STRIP_WITH_ADJACENCY.as_raw(),
+    TriangleStripWithAdjacency = TRIANGLE_STRIP_WITH_ADJACENCY,
+
     /// Separate patch primitives, used in combination with tessellation shaders. Requires the
     /// [`tessellation_shader`](crate::device::Features::tessellation_shader) feature.
-    PatchList = ash::vk::PrimitiveTopology::PATCH_LIST.as_raw(),
+    PatchList = PATCH_LIST,
+
 }
 
 // TODO: use the #[default] attribute once it's stable.
@@ -136,13 +149,6 @@ impl Default for PrimitiveTopology {
     #[inline]
     fn default() -> Self {
         PrimitiveTopology::TriangleList
-    }
-}
-
-impl From<PrimitiveTopology> for ash::vk::PrimitiveTopology {
-    #[inline]
-    fn from(val: PrimitiveTopology) -> ash::vk::PrimitiveTopology {
-        Self::from_raw(val as i32)
     }
 }
 
@@ -215,14 +221,28 @@ unsafe impl Index for u32 {
     }
 }
 
-/// An enumeration of all valid index types.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-#[allow(missing_docs)]
-#[repr(i32)]
-pub enum IndexType {
-    U8 = ash::vk::IndexType::UINT8_EXT.as_raw(),
-    U16 = ash::vk::IndexType::UINT16.as_raw(),
-    U32 = ash::vk::IndexType::UINT32.as_raw(),
+vulkan_enum! {
+    /// An enumeration of all valid index types.
+    #[non_exhaustive]
+    IndexType = IndexType(i32);
+
+    // TODO: document
+    U8 = UINT8_EXT {
+        extensions: [ext_index_type_uint8],
+    },
+
+    // TODO: document
+    U16 = UINT16,
+
+    // TODO: document
+    U32 = UINT32,
+
+    /*
+    // TODO: document
+    None = NONE_KHR {
+        extensions: [khr_acceleration_structure, nv_ray_tracing],
+    },
+     */
 }
 
 impl IndexType {
@@ -234,12 +254,5 @@ impl IndexType {
             IndexType::U16 => 2,
             IndexType::U32 => 4,
         }
-    }
-}
-
-impl From<IndexType> for ash::vk::IndexType {
-    #[inline]
-    fn from(val: IndexType) -> Self {
-        Self::from_raw(val as i32)
     }
 }

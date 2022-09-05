@@ -58,7 +58,7 @@ use self::debug::{DebugUtilsMessengerCreateInfo, UserCallback};
 pub use self::{extensions::InstanceExtensions, layers::LayerProperties};
 use crate::{
     device::physical::{init_physical_devices, PhysicalDeviceInfo},
-    instance::debug::{trampoline, DebugUtilsMessageSeverity, DebugUtilsMessageType},
+    instance::debug::trampoline,
     OomError, VulkanError, VulkanLibrary, VulkanObject,
 };
 pub use crate::{
@@ -167,7 +167,7 @@ mod layers;
 /// let extensions = InstanceExtensions {
 ///     khr_surface: true,
 ///     khr_android_surface: true,
-///     .. InstanceExtensions::none()
+///     .. InstanceExtensions::empty()
 /// };
 ///
 /// let instance = Instance::new(
@@ -393,10 +393,10 @@ impl Instance {
             }
 
             // VUID-VkDebugUtilsMessengerCreateInfoEXT-messageSeverity-requiredbitmask
-            assert!(message_severity != DebugUtilsMessageSeverity::none());
+            assert!(!message_severity.is_empty());
 
             // VUID-VkDebugUtilsMessengerCreateInfoEXT-messageType-requiredbitmask
-            assert!(message_type != DebugUtilsMessageType::none());
+            assert!(!message_type.is_empty());
 
             // VUID-PFN_vkDebugUtilsMessengerCallbackEXT-None-04769
             // Can't be checked, creation is unsafe.
@@ -581,7 +581,7 @@ pub struct InstanceCreateInfo {
 
     /// The extensions to enable on the instance.
     ///
-    /// The default value is [`InstanceExtensions::none()`].
+    /// The default value is [`InstanceExtensions::empty()`].
     pub enabled_extensions: InstanceExtensions,
 
     /// The layers to enable on the instance.
@@ -630,7 +630,7 @@ impl Default for InstanceCreateInfo {
         Self {
             application_name: None,
             application_version: Version::major_minor(0, 0),
-            enabled_extensions: InstanceExtensions::none(),
+            enabled_extensions: InstanceExtensions::empty(),
             enabled_layers: Vec::new(),
             engine_name: None,
             engine_version: Version::major_minor(0, 0),

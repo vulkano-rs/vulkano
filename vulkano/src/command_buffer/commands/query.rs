@@ -16,6 +16,7 @@ use crate::{
         AutoCommandBufferBuilder,
     },
     device::{physical::QueueFamily, DeviceOwned},
+    macros::ExtensionNotEnabled,
     query::{
         QueriesRange, Query, QueryControlFlags, QueryPool, QueryResultElement, QueryResultFlags,
         QueryType,
@@ -71,6 +72,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
 
         let device = self.device();
+
+        // VUID-vkCmdBeginQuery-flags-parameter
+        flags.validate(device)?;
 
         // VUID-vkCmdBeginQuery-commonparent
         assert_eq!(device, query_pool.device());
@@ -576,11 +580,11 @@ impl SyncCommandBufferBuilder {
                 memory: PipelineMemoryAccess {
                     stages: PipelineStages {
                         transfer: true,
-                        ..PipelineStages::none()
+                        ..PipelineStages::empty()
                     },
                     access: AccessFlags {
                         transfer_write: true,
-                        ..AccessFlags::none()
+                        ..AccessFlags::empty()
                     },
                     exclusive: true,
                 },
@@ -719,6 +723,10 @@ impl UnsafeCommandBufferBuilder {
 pub enum QueryError {
     SyncCommandBufferBuilderError(SyncCommandBufferBuilderError),
 
+    ExtensionNotEnabled {
+        extension: &'static str,
+        reason: &'static str,
+    },
     FeatureNotEnabled {
         feature: &'static str,
         reason: &'static str,
@@ -778,6 +786,11 @@ impl fmt::Display for QueryError {
                 "a SyncCommandBufferBuilderError",
             ),
 
+            Self::ExtensionNotEnabled { extension, reason } => write!(
+                f,
+                "the extension {} must be enabled: {}",
+                extension, reason
+            ),
             Self::FeatureNotEnabled { feature, reason } => write!(
                 f,
                 "the feature {} must be enabled: {}",
@@ -826,5 +839,15 @@ impl From<SyncCommandBufferBuilderError> for QueryError {
     #[inline]
     fn from(err: SyncCommandBufferBuilderError) -> Self {
         Self::SyncCommandBufferBuilderError(err)
+    }
+}
+
+impl From<ExtensionNotEnabled> for QueryError {
+    #[inline]
+    fn from(err: ExtensionNotEnabled) -> Self {
+        Self::ExtensionNotEnabled {
+            extension: err.extension,
+            reason: err.reason,
+        }
     }
 }

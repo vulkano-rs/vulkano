@@ -68,7 +68,7 @@
 //!     let extensions = InstanceExtensions {
 //!         khr_surface: true,
 //!         khr_win32_surface: true,        // If you don't enable this, `from_hwnd` will fail.
-//!         .. InstanceExtensions::none()
+//!         .. InstanceExtensions::empty()
 //!     };
 //!
 //!     Instance::new(
@@ -131,7 +131,7 @@
 //! # use vulkano::device::DeviceExtensions;
 //! let ext = DeviceExtensions {
 //!     khr_swapchain: true,
-//!     .. DeviceExtensions::none()
+//!     .. DeviceExtensions::empty()
 //! };
 //! ```
 //!
@@ -189,7 +189,7 @@
 //! // The created swapchain will be used as a color attachment for rendering.
 //! let image_usage = ImageUsage {
 //!     color_attachment: true,
-//!     .. ImageUsage::none()
+//!     .. ImageUsage::empty()
 //! };
 //!
 //! // Create the swapchain and its images.

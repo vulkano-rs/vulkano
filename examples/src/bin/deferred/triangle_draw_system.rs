@@ -53,7 +53,10 @@ impl TriangleDrawSystem {
         let vertex_buffer = {
             CpuAccessibleBuffer::from_iter(
                 gfx_queue.device().clone(),
-                BufferUsage::all(),
+                BufferUsage {
+                    vertex_buffer: true,
+                    ..BufferUsage::empty()
+                },
                 false,
                 vertices,
             )

@@ -43,7 +43,10 @@ impl FractalComputePipeline {
         let palette_size = colors.len() as i32;
         let palette = CpuAccessibleBuffer::from_iter(
             queue.device().clone(),
-            BufferUsage::all(),
+            BufferUsage {
+                storage_buffer: true,
+                ..BufferUsage::empty()
+            },
             false,
             colors,
         )
@@ -82,7 +85,10 @@ impl FractalComputePipeline {
         }
         self.palette = CpuAccessibleBuffer::from_iter(
             self.queue.device().clone(),
-            BufferUsage::all(),
+            BufferUsage {
+                storage_buffer: true,
+                ..BufferUsage::empty()
+            },
             false,
             colors.into_iter(),
         )

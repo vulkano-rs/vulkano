@@ -10,6 +10,7 @@
 use super::DedicatedAllocation;
 use crate::{
     device::{physical::MemoryType, Device, DeviceOwned},
+    macros::{vulkan_bitflags, vulkan_enum, ExtensionNotEnabled},
     DeviceSize, OomError, Version, VulkanError, VulkanObject,
 };
 use std::{
@@ -19,7 +20,7 @@ use std::{
     fs::File,
     hash::{Hash, Hasher},
     mem::MaybeUninit,
-    ops::{BitOr, Range},
+    ops::Range,
     ptr, slice,
     sync::Arc,
 };
@@ -215,24 +216,24 @@ impl DeviceMemory {
             }
         }
 
-        // VUID-VkMemoryAllocateInfo-pNext-00639
-        // VUID-VkExportMemoryAllocateInfo-handleTypes-00656
-        // TODO: how do you fullfill this when you don't know the image or buffer parameters?
-        // Does exporting memory require specifying these parameters up front, and does it tie the
-        // allocation to only images or buffers of that type?
+        if !export_handle_types.is_empty() {
+            if !(device.api_version() >= Version::V1_1
+                || device.enabled_extensions().khr_external_memory)
+            {
+                return Err(DeviceMemoryAllocationError::ExtensionNotEnabled {
+                    extension: "khr_external_memory_fd",
+                    reason: "`import_info` was `MemoryImportInfo::Fd`",
+                });
+            }
 
-        if export_handle_types.opaque_fd && !device.enabled_extensions().khr_external_memory_fd {
-            return Err(DeviceMemoryAllocationError::ExtensionNotEnabled {
-                extension: "khr_external_memory_fd",
-                reason: "`export_handle_types.opaque_fd` was set",
-            });
-        }
+            // VUID-VkExportMemoryAllocateInfo-handleTypes-parameter
+            export_handle_types.validate(device)?;
 
-        if export_handle_types.dma_buf && !device.enabled_extensions().ext_external_memory_dma_buf {
-            return Err(DeviceMemoryAllocationError::ExtensionNotEnabled {
-                extension: "ext_external_memory_dma_buf",
-                reason: "`export_handle_types.dma_buf` was set",
-            });
+            // VUID-VkMemoryAllocateInfo-pNext-00639
+            // VUID-VkExportMemoryAllocateInfo-handleTypes-00656
+            // TODO: how do you fullfill this when you don't know the image or buffer parameters?
+            // Does exporting memory require specifying these parameters up front, and does it tie the
+            // allocation to only images or buffers of that type?
         }
 
         if let Some(import_info) = import_info {
@@ -258,6 +259,9 @@ impl DeviceMemory {
 
                     #[cfg(unix)]
                     {
+                        // VUID-VkImportMemoryFdInfoKHR-handleType-parameter
+                        handle_type.validate(device)?;
+
                         // VUID-VkImportMemoryFdInfoKHR-handleType-00669
                         match handle_type {
                             ExternalMemoryHandleType::OpaqueFd => {
@@ -312,6 +316,9 @@ impl DeviceMemory {
 
                     #[cfg(windows)]
                     {
+                        // VUID-VkImportMemoryWin32HandleInfoKHR-handleType-parameter
+                        handle_type.validate(device)?;
+
                         // VUID-VkImportMemoryWin32HandleInfoKHR-handleType-00660
                         match handle_type {
                             ExternalMemoryHandleType::OpaqueWin32
@@ -376,7 +383,7 @@ impl DeviceMemory {
             allocate_info = allocate_info.push_next(info);
         }
 
-        let mut export_allocate_info = if export_handle_types != ExternalMemoryHandleTypes::none() {
+        let mut export_allocate_info = if !export_handle_types.is_empty() {
             Some(ash::vk::ExportMemoryAllocateInfo {
                 handle_types: export_handle_types.into(),
                 ..Default::default()
@@ -483,6 +490,9 @@ impl DeviceMemory {
         &self,
         handle_type: ExternalMemoryHandleType,
     ) -> Result<std::fs::File, DeviceMemoryExportError> {
+        // VUID-VkMemoryGetFdInfoKHR-handleType-parameter
+        handle_type.validate(&self.device)?;
+
         // VUID-VkMemoryGetFdInfoKHR-handleType-00672
         if !matches!(
             handle_type,
@@ -728,6 +738,16 @@ impl From<MemoryMapError> for DeviceMemoryAllocationError {
     }
 }
 
+impl From<ExtensionNotEnabled> for DeviceMemoryAllocationError {
+    #[inline]
+    fn from(err: ExtensionNotEnabled) -> Self {
+        Self::ExtensionNotEnabled {
+            extension: err.extension,
+            reason: err.reason,
+        }
+    }
+}
+
 /// Parameters to allocate a new `DeviceMemory`.
 #[derive(Clone, Debug)]
 pub struct MemoryAllocateInfo<'d> {
@@ -762,7 +782,7 @@ impl Default for MemoryAllocateInfo<'static> {
             allocation_size: 0,
             memory_type_index: u32::MAX,
             dedicated_allocation: None,
-            export_handle_types: ExternalMemoryHandleTypes::none(),
+            export_handle_types: ExternalMemoryHandleTypes::empty(),
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -775,7 +795,7 @@ impl<'d> MemoryAllocateInfo<'d> {
             allocation_size: 0,
             memory_type_index: u32::MAX,
             dedicated_allocation: Some(dedicated_allocation),
-            export_handle_types: ExternalMemoryHandleTypes::none(),
+            export_handle_types: ExternalMemoryHandleTypes::empty(),
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -834,128 +854,125 @@ pub enum MemoryImportInfo {
     },
 }
 
-/// Describes a handle type used for Vulkan external memory apis.  This is **not** just a
-/// suggestion.  Check out vkExternalMemoryHandleTypeFlagBits in the Vulkan spec.
-///
-/// If you specify an handle type that doesnt make sense (for example, using a dma-buf handle type
-/// on Windows) when using this handle, a panic will happen.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[repr(u32)]
-pub enum ExternalMemoryHandleType {
-    OpaqueFd = ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD.as_raw(),
-    OpaqueWin32 = ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_WIN32.as_raw(),
-    OpaqueWin32Kmt = ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_WIN32_KMT.as_raw(),
-    D3D11Texture = ash::vk::ExternalMemoryHandleTypeFlags::D3D11_TEXTURE.as_raw(),
-    D3D11TextureKmt = ash::vk::ExternalMemoryHandleTypeFlags::D3D11_TEXTURE_KMT.as_raw(),
-    D3D12Heap = ash::vk::ExternalMemoryHandleTypeFlags::D3D12_HEAP.as_raw(),
-    D3D12Resource = ash::vk::ExternalMemoryHandleTypeFlags::D3D12_RESOURCE.as_raw(),
-    DmaBuf = ash::vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT.as_raw(),
-    AndroidHardwareBuffer =
-        ash::vk::ExternalMemoryHandleTypeFlags::ANDROID_HARDWARE_BUFFER_ANDROID.as_raw(),
-    HostAllocation = ash::vk::ExternalMemoryHandleTypeFlags::HOST_ALLOCATION_EXT.as_raw(),
-    HostMappedForeignMemory =
-        ash::vk::ExternalMemoryHandleTypeFlags::HOST_MAPPED_FOREIGN_MEMORY_EXT.as_raw(),
+vulkan_enum! {
+    /// Describes a handle type used for Vulkan external memory apis.  This is **not** just a
+    /// suggestion.  Check out vkExternalMemoryHandleTypeFlagBits in the Vulkan spec.
+    ///
+    /// If you specify an handle type that doesnt make sense (for example, using a dma-buf handle type
+    /// on Windows) when using this handle, a panic will happen.
+    #[non_exhaustive]
+    ExternalMemoryHandleType = ExternalMemoryHandleTypeFlags(u32);
+
+    // TODO: document
+    OpaqueFd = OPAQUE_FD,
+
+    // TODO: document
+    OpaqueWin32 = OPAQUE_WIN32,
+
+    // TODO: document
+    OpaqueWin32Kmt = OPAQUE_WIN32_KMT,
+
+    // TODO: document
+    D3D11Texture = D3D11_TEXTURE,
+
+    // TODO: document
+    D3D11TextureKmt = D3D11_TEXTURE_KMT,
+
+    // TODO: document
+    D3D12Heap = D3D12_HEAP,
+
+    // TODO: document
+    D3D12Resource = D3D12_RESOURCE,
+
+    // TODO: document
+    DmaBuf = DMA_BUF_EXT {
+        extensions: [ext_external_memory_dma_buf],
+    },
+
+    // TODO: document
+    AndroidHardwareBuffer = ANDROID_HARDWARE_BUFFER_ANDROID {
+        extensions: [android_external_memory_android_hardware_buffer],
+    },
+
+    // TODO: document
+    HostAllocation = HOST_ALLOCATION_EXT {
+        extensions: [ext_external_memory_host],
+    },
+
+    // TODO: document
+    HostMappedForeignMemory = HOST_MAPPED_FOREIGN_MEMORY_EXT {
+        extensions: [ext_external_memory_host],
+    },
+
+    // TODO: document
+    ZirconVmo = ZIRCON_VMO_FUCHSIA {
+        extensions: [fuchsia_external_memory],
+    },
+
+    // TODO: document
+    RdmaAddress = RDMA_ADDRESS_NV {
+        extensions: [nv_external_memory_rdma],
+    },
 }
 
-impl From<ExternalMemoryHandleType> for ash::vk::ExternalMemoryHandleTypeFlags {
-    fn from(val: ExternalMemoryHandleType) -> Self {
-        Self::from_raw(val as u32)
-    }
-}
+vulkan_bitflags! {
+    /// A mask of multiple handle types.
+    #[non_exhaustive]
+    ExternalMemoryHandleTypes = ExternalMemoryHandleTypeFlags(u32);
 
-/// A mask of multiple handle types.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub struct ExternalMemoryHandleTypes {
-    pub opaque_fd: bool,
-    pub opaque_win32: bool,
-    pub opaque_win32_kmt: bool,
-    pub d3d11_texture: bool,
-    pub d3d11_texture_kmt: bool,
-    pub d3d12_heap: bool,
-    pub d3d12_resource: bool,
-    pub dma_buf: bool,
-    pub android_hardware_buffer: bool,
-    pub host_allocation: bool,
-    pub host_mapped_foreign_memory: bool,
+    // TODO: document
+    opaque_fd = OPAQUE_FD,
+
+    // TODO: document
+    opaque_win32 = OPAQUE_WIN32,
+
+    // TODO: document
+    opaque_win32_kmt = OPAQUE_WIN32_KMT,
+
+    // TODO: document
+    d3d11_texture = D3D11_TEXTURE,
+
+    // TODO: document
+    d3d11_texture_kmt = D3D11_TEXTURE_KMT,
+
+    // TODO: document
+    d3d12_heap = D3D12_HEAP,
+
+    // TODO: document
+    d3d12_resource = D3D12_RESOURCE,
+
+    // TODO: document
+    dma_buf = DMA_BUF_EXT {
+        extensions: [ext_external_memory_dma_buf],
+    },
+
+    // TODO: document
+    android_hardware_buffer = ANDROID_HARDWARE_BUFFER_ANDROID {
+        extensions: [android_external_memory_android_hardware_buffer],
+    },
+
+    // TODO: document
+    host_allocation = HOST_ALLOCATION_EXT {
+        extensions: [ext_external_memory_host],
+    },
+
+    // TODO: document
+    host_mapped_foreign_memory = HOST_MAPPED_FOREIGN_MEMORY_EXT {
+        extensions: [ext_external_memory_host],
+    },
+
+    // TODO: document
+    zircon_vmo = ZIRCON_VMO_FUCHSIA {
+        extensions: [fuchsia_external_memory],
+    },
+
+    // TODO: document
+    rdma_address = RDMA_ADDRESS_NV {
+        extensions: [nv_external_memory_rdma],
+    },
 }
 
 impl ExternalMemoryHandleTypes {
-    /// Builds a `ExternalMemoryHandleTypes` with all values set to false. Useful as a default value.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use vulkano::memory::ExternalMemoryHandleTypes as ExternalMemoryHandleTypes;
-    ///
-    /// let _handle_type = ExternalMemoryHandleTypes {
-    ///     opaque_fd: true,
-    ///     .. ExternalMemoryHandleTypes::none()
-    /// };
-    /// ```
-    #[inline]
-    pub fn none() -> Self {
-        ExternalMemoryHandleTypes {
-            opaque_fd: false,
-            opaque_win32: false,
-            opaque_win32_kmt: false,
-            d3d11_texture: false,
-            d3d11_texture_kmt: false,
-            d3d12_heap: false,
-            d3d12_resource: false,
-            dma_buf: false,
-            android_hardware_buffer: false,
-            host_allocation: false,
-            host_mapped_foreign_memory: false,
-        }
-    }
-
-    /// Builds an `ExternalMemoryHandleTypes` for a posix file descriptor.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use vulkano::memory::ExternalMemoryHandleTypes as ExternalMemoryHandleTypes;
-    ///
-    /// let _handle_type = ExternalMemoryHandleTypes::posix();
-    /// ```
-    #[inline]
-    pub fn posix() -> ExternalMemoryHandleTypes {
-        ExternalMemoryHandleTypes {
-            opaque_fd: true,
-            ..ExternalMemoryHandleTypes::none()
-        }
-    }
-
-    /// Returns whether any of the fields are set.
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        let ExternalMemoryHandleTypes {
-            opaque_fd,
-            opaque_win32,
-            opaque_win32_kmt,
-            d3d11_texture,
-            d3d11_texture_kmt,
-            d3d12_heap,
-            d3d12_resource,
-            dma_buf,
-            android_hardware_buffer,
-            host_allocation,
-            host_mapped_foreign_memory,
-        } = *self;
-
-        !(opaque_fd
-            || opaque_win32
-            || opaque_win32_kmt
-            || d3d11_texture
-            || d3d11_texture_kmt
-            || d3d12_heap
-            || d3d12_resource
-            || dma_buf
-            || android_hardware_buffer
-            || host_allocation
-            || host_mapped_foreign_memory)
-    }
-
     /// Returns an iterator of `ExternalMemoryHandleType` enum values, representing the fields that
     /// are set in `self`.
     #[inline]
@@ -972,6 +989,9 @@ impl ExternalMemoryHandleTypes {
             android_hardware_buffer,
             host_allocation,
             host_mapped_foreign_memory,
+            zircon_vmo,
+            rdma_address,
+            _ne: _,
         } = *self;
 
         [
@@ -986,99 +1006,11 @@ impl ExternalMemoryHandleTypes {
             android_hardware_buffer.then(|| ExternalMemoryHandleType::AndroidHardwareBuffer),
             host_allocation.then(|| ExternalMemoryHandleType::HostAllocation),
             host_mapped_foreign_memory.then(|| ExternalMemoryHandleType::HostMappedForeignMemory),
+            zircon_vmo.then(|| ExternalMemoryHandleType::HostMappedForeignMemory),
+            rdma_address.then(|| ExternalMemoryHandleType::HostMappedForeignMemory),
         ]
         .into_iter()
         .flatten()
-    }
-}
-
-impl From<ExternalMemoryHandleTypes> for ash::vk::ExternalMemoryHandleTypeFlags {
-    #[inline]
-    fn from(val: ExternalMemoryHandleTypes) -> Self {
-        let mut result = ash::vk::ExternalMemoryHandleTypeFlags::empty();
-        if val.opaque_fd {
-            result |= ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD;
-        }
-        if val.opaque_win32 {
-            result |= ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_WIN32;
-        }
-        if val.opaque_win32_kmt {
-            result |= ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_WIN32_KMT;
-        }
-        if val.d3d11_texture {
-            result |= ash::vk::ExternalMemoryHandleTypeFlags::D3D11_TEXTURE;
-        }
-        if val.d3d11_texture_kmt {
-            result |= ash::vk::ExternalMemoryHandleTypeFlags::D3D11_TEXTURE_KMT;
-        }
-        if val.d3d12_heap {
-            result |= ash::vk::ExternalMemoryHandleTypeFlags::D3D12_HEAP;
-        }
-        if val.d3d12_resource {
-            result |= ash::vk::ExternalMemoryHandleTypeFlags::D3D12_RESOURCE;
-        }
-        if val.dma_buf {
-            result |= ash::vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT;
-        }
-        if val.android_hardware_buffer {
-            result |= ash::vk::ExternalMemoryHandleTypeFlags::ANDROID_HARDWARE_BUFFER_ANDROID;
-        }
-        if val.host_allocation {
-            result |= ash::vk::ExternalMemoryHandleTypeFlags::HOST_ALLOCATION_EXT;
-        }
-        if val.host_mapped_foreign_memory {
-            result |= ash::vk::ExternalMemoryHandleTypeFlags::HOST_MAPPED_FOREIGN_MEMORY_EXT
-        }
-        result
-    }
-}
-
-impl From<ash::vk::ExternalMemoryHandleTypeFlags> for ExternalMemoryHandleTypes {
-    fn from(val: ash::vk::ExternalMemoryHandleTypeFlags) -> Self {
-        ExternalMemoryHandleTypes {
-            opaque_fd: !(val & ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD).is_empty(),
-            opaque_win32: !(val & ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_WIN32).is_empty(),
-            opaque_win32_kmt: !(val & ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_WIN32_KMT)
-                .is_empty(),
-            d3d11_texture: !(val & ash::vk::ExternalMemoryHandleTypeFlags::D3D11_TEXTURE)
-                .is_empty(),
-            d3d11_texture_kmt: !(val & ash::vk::ExternalMemoryHandleTypeFlags::D3D11_TEXTURE_KMT)
-                .is_empty(),
-            d3d12_heap: !(val & ash::vk::ExternalMemoryHandleTypeFlags::D3D12_HEAP).is_empty(),
-            d3d12_resource: !(val & ash::vk::ExternalMemoryHandleTypeFlags::D3D12_RESOURCE)
-                .is_empty(),
-            dma_buf: !(val & ash::vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT).is_empty(),
-            android_hardware_buffer: !(val
-                & ash::vk::ExternalMemoryHandleTypeFlags::ANDROID_HARDWARE_BUFFER_ANDROID)
-                .is_empty(),
-            host_allocation: !(val & ash::vk::ExternalMemoryHandleTypeFlags::HOST_ALLOCATION_EXT)
-                .is_empty(),
-            host_mapped_foreign_memory: !(val
-                & ash::vk::ExternalMemoryHandleTypeFlags::HOST_MAPPED_FOREIGN_MEMORY_EXT)
-                .is_empty(),
-        }
-    }
-}
-
-impl BitOr for ExternalMemoryHandleTypes {
-    type Output = Self;
-
-    #[inline]
-    fn bitor(self, rhs: Self) -> Self {
-        ExternalMemoryHandleTypes {
-            opaque_fd: self.opaque_fd || rhs.opaque_fd,
-            opaque_win32: self.opaque_win32 || rhs.opaque_win32,
-            opaque_win32_kmt: self.opaque_win32_kmt || rhs.opaque_win32_kmt,
-            d3d11_texture: self.d3d11_texture || rhs.d3d11_texture,
-            d3d11_texture_kmt: self.d3d11_texture_kmt || rhs.d3d11_texture_kmt,
-            d3d12_heap: self.d3d12_heap || rhs.d3d12_heap,
-            d3d12_resource: self.d3d12_resource || rhs.d3d12_resource,
-            dma_buf: self.dma_buf || rhs.dma_buf,
-            android_hardware_buffer: self.android_hardware_buffer || rhs.android_hardware_buffer,
-            host_allocation: self.host_allocation || rhs.host_allocation,
-            host_mapped_foreign_memory: self.host_mapped_foreign_memory
-                || rhs.host_mapped_foreign_memory,
-        }
     }
 }
 
@@ -1087,6 +1019,11 @@ impl BitOr for ExternalMemoryHandleTypes {
 pub enum DeviceMemoryExportError {
     /// Not enough memory available.
     OomError(OomError),
+
+    ExtensionNotEnabled {
+        extension: &'static str,
+        reason: &'static str,
+    },
 
     /// The maximum number of allocations has been exceeded.
     TooManyObjects,
@@ -1113,6 +1050,11 @@ impl fmt::Display for DeviceMemoryExportError {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match *self {
             Self::OomError(_) => write!(fmt, "not enough memory available"),
+            Self::ExtensionNotEnabled { extension, reason } => write!(
+                fmt,
+                "the extension {} must be enabled: {}",
+                extension, reason
+            ),
             Self::TooManyObjects => {
                 write!(fmt, "the maximum number of allocations has been exceeded")
             }
@@ -1144,6 +1086,16 @@ impl From<OomError> for DeviceMemoryExportError {
     #[inline]
     fn from(err: OomError) -> DeviceMemoryExportError {
         Self::OomError(err)
+    }
+}
+
+impl From<ExtensionNotEnabled> for DeviceMemoryExportError {
+    #[inline]
+    fn from(err: ExtensionNotEnabled) -> Self {
+        Self::ExtensionNotEnabled {
+            extension: err.extension,
+            reason: err.reason,
+        }
     }
 }
 

@@ -1900,16 +1900,16 @@ impl SyncCommandBufferBuilder {
                     | DescriptorType::StorageBufferDynamic => AccessFlags {
                         shader_read: true,
                         shader_write: false,
-                        ..AccessFlags::none()
+                        ..AccessFlags::empty()
                     },
                     DescriptorType::InputAttachment => AccessFlags {
                         input_attachment_read: true,
-                        ..AccessFlags::none()
+                        ..AccessFlags::empty()
                     },
                     DescriptorType::UniformBuffer | DescriptorType::UniformBufferDynamic => {
                         AccessFlags {
                             uniform_read: true,
-                            ..AccessFlags::none()
+                            ..AccessFlags::empty()
                         }
                     }
                 },
@@ -2045,11 +2045,11 @@ impl SyncCommandBufferBuilder {
                     memory: PipelineMemoryAccess {
                         stages: PipelineStages {
                             vertex_input: true,
-                            ..PipelineStages::none()
+                            ..PipelineStages::empty()
                         },
                         access: AccessFlags {
                             vertex_attribute_read: true,
-                            ..AccessFlags::none()
+                            ..AccessFlags::empty()
                         },
                         exclusive: false,
                     },
@@ -2068,11 +2068,11 @@ impl SyncCommandBufferBuilder {
                 memory: PipelineMemoryAccess {
                     stages: PipelineStages {
                         vertex_input: true,
-                        ..PipelineStages::none()
+                        ..PipelineStages::empty()
                     },
                     access: AccessFlags {
                         index_read: true,
-                        ..AccessFlags::none()
+                        ..AccessFlags::empty()
                     },
                     exclusive: false,
                 },
@@ -2093,11 +2093,11 @@ impl SyncCommandBufferBuilder {
                 memory: PipelineMemoryAccess {
                     stages: PipelineStages {
                         draw_indirect: true,
-                        ..PipelineStages::none()
+                        ..PipelineStages::empty()
                     }, // TODO: is draw_indirect correct for dispatch too?
                     access: AccessFlags {
                         indirect_command_read: true,
-                        ..AccessFlags::none()
+                        ..AccessFlags::empty()
                     },
                     exclusive: false,
                 },

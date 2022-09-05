@@ -193,7 +193,7 @@ impl ExternalBufferInfo {
     pub fn handle_type(handle_type: ExternalMemoryHandleType) -> Self {
         Self {
             handle_type,
-            usage: BufferUsage::none(),
+            usage: BufferUsage::empty(),
             sparse: None,
             _ne: crate::NonExhaustive(()),
         }

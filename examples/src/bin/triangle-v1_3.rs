@@ -101,7 +101,7 @@ fn main() {
     // `khr_swapchain` extension.
     let device_extensions = DeviceExtensions {
         khr_swapchain: true,
-        ..DeviceExtensions::none()
+        ..DeviceExtensions::empty()
     };
 
     // We then choose which physical device to use. First, we enumerate all the available physical
@@ -115,7 +115,7 @@ fn main() {
             // Some devices may not support the extensions or features that your application, or
             // report properties and limits that are not sufficient for your application. These
             // should be filtered out here.
-            p.supported_extensions().is_superset_of(&device_extensions)
+            p.supported_extensions().contains(&device_extensions)
         })
         .filter_map(|p| {
             // For each physical device, we try to find a suitable queue family that will execute
@@ -158,6 +158,7 @@ fn main() {
                 PhysicalDeviceType::VirtualGpu => 2,
                 PhysicalDeviceType::Cpu => 3,
                 PhysicalDeviceType::Other => 4,
+                _ => 5,
             }
         })
         .expect("No suitable physical device found");
@@ -188,7 +189,7 @@ fn main() {
             // higher, so we don't need to check for support.
             enabled_features: Features {
                 dynamic_rendering: true,
-                ..Features::none()
+                ..Features::empty()
             },
 
             // The list of queues that we are going to use. Here we only use one queue, from the
@@ -247,7 +248,10 @@ fn main() {
                 // use that.
                 image_extent: surface.window().inner_size().into(),
 
-                image_usage: ImageUsage::color_attachment(),
+                image_usage: ImageUsage {
+                    color_attachment: true,
+                    ..ImageUsage::empty()
+                },
 
                 // The alpha mode indicates how the alpha value of the final image will behave. For
                 // example, you can choose whether the window will be opaque or transparent.
@@ -284,9 +288,16 @@ fn main() {
             position: [0.25, -0.1],
         },
     ];
-    let vertex_buffer =
-        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, vertices)
-            .unwrap();
+    let vertex_buffer = CpuAccessibleBuffer::from_iter(
+        device.clone(),
+        BufferUsage {
+            vertex_buffer: true,
+            ..BufferUsage::empty()
+        },
+        false,
+        vertices,
+    )
+    .unwrap();
 
     // The next step is to create the shaders.
     //

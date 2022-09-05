@@ -323,7 +323,7 @@ impl SyncCommandBuffer {
         range_map
             .range(&range)
             .try_fold(
-                (PipelineStages::none(), AccessFlags::none()),
+                (PipelineStages::empty(), AccessFlags::empty()),
                 |(stages, access), (_range, state)| {
                     if !state.exclusive && exclusive {
                         Err(AccessCheckError::Unknown)
@@ -357,7 +357,7 @@ impl SyncCommandBuffer {
         range_map
             .range(&range)
             .try_fold(
-                (PipelineStages::none(), AccessFlags::none()),
+                (PipelineStages::empty(), AccessFlags::empty()),
                 |(stages, access), (_range, state)| {
                     if expected_layout != ImageLayout::Undefined
                         && state.final_layout != expected_layout
@@ -572,9 +572,15 @@ mod tests {
             let (device, queue) = gfx_dev_and_queue!();
 
             // Create a tiny test buffer
-            let (buf, future) =
-                DeviceLocalBuffer::from_data(0u32, BufferUsage::transfer_dst(), queue.clone())
-                    .unwrap();
+            let (buf, future) = DeviceLocalBuffer::from_data(
+                0u32,
+                BufferUsage {
+                    transfer_dst: true,
+                    ..BufferUsage::empty()
+                },
+                queue.clone(),
+            )
+            .unwrap();
             future
                 .then_signal_fence_and_flush()
                 .unwrap()
@@ -679,8 +685,16 @@ mod tests {
                 },
             )
             .unwrap();
-            let buf =
-                CpuAccessibleBuffer::from_data(device, BufferUsage::all(), false, 0u32).unwrap();
+            let buf = CpuAccessibleBuffer::from_data(
+                device,
+                BufferUsage {
+                    vertex_buffer: true,
+                    ..BufferUsage::empty()
+                },
+                false,
+                0u32,
+            )
+            .unwrap();
             let mut buf_builder = sync.bind_vertex_buffers();
             buf_builder.add(buf);
             buf_builder.submit(1);
@@ -718,7 +732,7 @@ mod tests {
                     bindings: [(
                         0,
                         DescriptorSetLayoutBinding {
-                            stages: ShaderStages::all(),
+                            stages: ShaderStages::all_graphics(),
                             ..DescriptorSetLayoutBinding::descriptor_type(DescriptorType::Sampler)
                         },
                     )]

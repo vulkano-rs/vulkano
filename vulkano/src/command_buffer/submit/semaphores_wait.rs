@@ -57,7 +57,7 @@ impl<'a> From<SubmitSemaphoresWaitBuilder<'a>> for SubmitCommandBufferBuilder<'a
                     PipelineStages {
                         // TODO: correct stages ; hard
                         all_commands: true,
-                        ..PipelineStages::none()
+                        ..PipelineStages::empty()
                     },
                 );
             }

@@ -62,7 +62,7 @@ fn main() {
             storage: true,
             color_attachment: true,
             transfer_dst: true,
-            ..ImageUsage::none()
+            ..ImageUsage::empty()
         },
     );
 

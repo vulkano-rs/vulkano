@@ -8,11 +8,12 @@
 // according to those terms.
 
 use crate::{
-    buffer::{BufferUsage, ExternalBufferInfo, ExternalBufferProperties},
+    buffer::{ExternalBufferInfo, ExternalBufferProperties},
     device::{DeviceExtensions, Features, FeaturesFfi, Properties, PropertiesFfi},
     format::{Format, FormatProperties},
     image::{ImageCreateFlags, ImageFormatInfo, ImageFormatProperties, ImageUsage},
     instance::{Instance, InstanceCreationError},
+    macros::{vulkan_bitflags, vulkan_enum},
     swapchain::{
         ColorSpace, FullScreenExclusive, PresentMode, SupportedSurfaceTransforms, Surface,
         SurfaceApi, SurfaceCapabilities, SurfaceInfo,
@@ -458,7 +459,13 @@ impl<'a> PhysicalDevice<'a> {
             _ne: _,
         } = info;
 
-        assert!(usage != BufferUsage::none());
+        // VUID-VkPhysicalDeviceExternalBufferInfo-usage-parameter
+        // TODO: usage.validate()?;
+
+        assert!(!usage.is_empty());
+
+        // VUID-VkPhysicalDeviceExternalBufferInfo-handleType-parameter
+        // TODO: handle_type.validate()?;
 
         let external_buffer_info = ash::vk::PhysicalDeviceExternalBufferInfo {
             flags: sparse.map(Into::into).unwrap_or_default(),
@@ -592,6 +599,9 @@ impl<'a> PhysicalDevice<'a> {
             _ne: _,
         } = info;
 
+        // VUID-VkPhysicalDeviceExternalSemaphoreInfo-handleType-parameter
+        // TODO: handle_type.validate()?;
+
         let external_semaphore_info = ash::vk::PhysicalDeviceExternalSemaphoreInfo {
             handle_type: handle_type.into(),
             ..Default::default()
@@ -662,12 +672,30 @@ impl<'a> PhysicalDevice<'a> {
             _ne: _,
         } = image_format_info;
 
+        // VUID-VkPhysicalDeviceImageFormatInfo2-format-parameter
+        // TODO: format.validate()?;
+
+        // VUID-VkPhysicalDeviceImageFormatInfo2-imageType-parameter
+        // TODO: image_type.validate()?;
+
+        // VUID-VkPhysicalDeviceImageFormatInfo2-tiling-parameter
+        // TODO: tiling.validate()?;
+
+        // VUID-VkPhysicalDeviceImageFormatInfo2-usage-parameter
+        // TODO: usage.validate()?;
+
+        // VUID-VkPhysicalDeviceExternalImageFormatInfo-handleType-parameter
+        // TODO: external_memory_handle_type.validate()?;
+
+        // VUID-VkPhysicalDeviceImageViewImageFormatInfoEXT-imageViewType-parameter
+        // TODO: image_view_type.validate()?;
+
         let flags = ImageCreateFlags {
             mutable_format,
             cube_compatible,
             array_2d_compatible,
             block_texel_view_compatible,
-            ..ImageCreateFlags::none()
+            ..ImageCreateFlags::empty()
         };
 
         let mut format_info2 = ash::vk::PhysicalDeviceImageFormatInfo2::builder()
@@ -702,7 +730,9 @@ impl<'a> PhysicalDevice<'a> {
         }
 
         let mut image_view_image_format_info = if let Some(image_view_type) = image_view_type {
-            if !self.supported_extensions().ext_filter_cubic {
+            if !(self.supported_extensions().ext_filter_cubic
+                || self.supported_extensions().img_filter_cubic)
+            {
                 // Can't query this, return unsupported
                 return Ok(None);
             }
@@ -1342,42 +1372,31 @@ unsafe impl<'a> VulkanObject for PhysicalDevice<'a> {
     }
 }
 
-/// Type of a physical device.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Ord, PartialOrd)]
-#[repr(i32)]
-pub enum PhysicalDeviceType {
+vulkan_enum! {
+    /// Type of a physical device.
+    #[non_exhaustive]
+    PhysicalDeviceType = PhysicalDeviceType(i32);
+
     /// The device is an integrated GPU.
-    IntegratedGpu = ash::vk::PhysicalDeviceType::INTEGRATED_GPU.as_raw(),
+    IntegratedGpu = INTEGRATED_GPU,
+
     /// The device is a discrete GPU.
-    DiscreteGpu = ash::vk::PhysicalDeviceType::DISCRETE_GPU.as_raw(),
+    DiscreteGpu = DISCRETE_GPU,
+
     /// The device is a virtual GPU.
-    VirtualGpu = ash::vk::PhysicalDeviceType::VIRTUAL_GPU.as_raw(),
+    VirtualGpu = VIRTUAL_GPU,
+
     /// The device is a CPU.
-    Cpu = ash::vk::PhysicalDeviceType::CPU.as_raw(),
+    Cpu = CPU,
+
     /// The device is something else.
-    Other = ash::vk::PhysicalDeviceType::OTHER.as_raw(),
+    Other = OTHER,
 }
 
-/// VkPhysicalDeviceType::Other is represented as 0
 impl Default for PhysicalDeviceType {
+    #[inline]
     fn default() -> Self {
         PhysicalDeviceType::Other
-    }
-}
-
-impl TryFrom<ash::vk::PhysicalDeviceType> for PhysicalDeviceType {
-    type Error = ();
-
-    #[inline]
-    fn try_from(val: ash::vk::PhysicalDeviceType) -> Result<Self, Self::Error> {
-        match val {
-            ash::vk::PhysicalDeviceType::INTEGRATED_GPU => Ok(Self::IntegratedGpu),
-            ash::vk::PhysicalDeviceType::DISCRETE_GPU => Ok(Self::DiscreteGpu),
-            ash::vk::PhysicalDeviceType::VIRTUAL_GPU => Ok(Self::VirtualGpu),
-            ash::vk::PhysicalDeviceType::CPU => Ok(Self::Cpu),
-            ash::vk::PhysicalDeviceType::OTHER => Ok(Self::Other),
-            _ => Err(()),
-        }
     }
 }
 
@@ -1673,131 +1692,115 @@ impl fmt::Display for ConformanceVersion {
     }
 }
 
-/// An identifier for the driver of a physical device.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(i32)]
-pub enum DriverId {
-    AMDProprietary = ash::vk::DriverId::AMD_PROPRIETARY.as_raw(),
-    AMDOpenSource = ash::vk::DriverId::AMD_OPEN_SOURCE.as_raw(),
-    MesaRADV = ash::vk::DriverId::MESA_RADV.as_raw(),
-    NvidiaProprietary = ash::vk::DriverId::NVIDIA_PROPRIETARY.as_raw(),
-    IntelProprietaryWindows = ash::vk::DriverId::INTEL_PROPRIETARY_WINDOWS.as_raw(),
-    IntelOpenSourceMesa = ash::vk::DriverId::INTEL_OPEN_SOURCE_MESA.as_raw(),
-    ImaginationProprietary = ash::vk::DriverId::IMAGINATION_PROPRIETARY.as_raw(),
-    QualcommProprietary = ash::vk::DriverId::QUALCOMM_PROPRIETARY.as_raw(),
-    ARMProprietary = ash::vk::DriverId::ARM_PROPRIETARY.as_raw(),
-    GoogleSwiftshader = ash::vk::DriverId::GOOGLE_SWIFTSHADER.as_raw(),
-    GGPProprietary = ash::vk::DriverId::GGP_PROPRIETARY.as_raw(),
-    BroadcomProprietary = ash::vk::DriverId::BROADCOM_PROPRIETARY.as_raw(),
-    MesaLLVMpipe = ash::vk::DriverId::MESA_LLVMPIPE.as_raw(),
-    MoltenVK = ash::vk::DriverId::MOLTENVK.as_raw(),
+vulkan_enum! {
+    /// An identifier for the driver of a physical device.
+    #[non_exhaustive]
+    DriverId = DriverId(i32);
+
+    // TODO: document
+    AMDProprietary = AMD_PROPRIETARY,
+
+    // TODO: document
+    AMDOpenSource = AMD_OPEN_SOURCE,
+
+    // TODO: document
+    MesaRADV = MESA_RADV,
+
+    // TODO: document
+    NvidiaProprietary = NVIDIA_PROPRIETARY,
+
+    // TODO: document
+    IntelProprietaryWindows = INTEL_PROPRIETARY_WINDOWS,
+
+    // TODO: document
+    IntelOpenSourceMesa = INTEL_OPEN_SOURCE_MESA,
+
+    // TODO: document
+    ImaginationProprietary = IMAGINATION_PROPRIETARY,
+
+    // TODO: document
+    QualcommProprietary = QUALCOMM_PROPRIETARY,
+
+    // TODO: document
+    ARMProprietary = ARM_PROPRIETARY,
+
+    // TODO: document
+    GoogleSwiftshader = GOOGLE_SWIFTSHADER,
+
+    // TODO: document
+    GGPProprietary = GGP_PROPRIETARY,
+
+    // TODO: document
+    BroadcomProprietary = BROADCOM_PROPRIETARY,
+
+    // TODO: document
+    MesaLLVMpipe = MESA_LLVMPIPE,
+
+    // TODO: document
+    MoltenVK = MOLTENVK,
 }
 
-impl TryFrom<ash::vk::DriverId> for DriverId {
-    type Error = ();
+vulkan_bitflags! {
+    /// Specifies which subgroup operations are supported.
+    #[non_exhaustive]
+    SubgroupFeatures = SubgroupFeatureFlags(u32);
 
-    #[inline]
-    fn try_from(val: ash::vk::DriverId) -> Result<Self, Self::Error> {
-        match val {
-            ash::vk::DriverId::AMD_PROPRIETARY => Ok(Self::AMDProprietary),
-            ash::vk::DriverId::AMD_OPEN_SOURCE => Ok(Self::AMDOpenSource),
-            ash::vk::DriverId::MESA_RADV => Ok(Self::MesaRADV),
-            ash::vk::DriverId::NVIDIA_PROPRIETARY => Ok(Self::NvidiaProprietary),
-            ash::vk::DriverId::INTEL_PROPRIETARY_WINDOWS => Ok(Self::IntelProprietaryWindows),
-            ash::vk::DriverId::INTEL_OPEN_SOURCE_MESA => Ok(Self::IntelOpenSourceMesa),
-            ash::vk::DriverId::IMAGINATION_PROPRIETARY => Ok(Self::ImaginationProprietary),
-            ash::vk::DriverId::QUALCOMM_PROPRIETARY => Ok(Self::QualcommProprietary),
-            ash::vk::DriverId::ARM_PROPRIETARY => Ok(Self::ARMProprietary),
-            ash::vk::DriverId::GOOGLE_SWIFTSHADER => Ok(Self::GoogleSwiftshader),
-            ash::vk::DriverId::GGP_PROPRIETARY => Ok(Self::GGPProprietary),
-            ash::vk::DriverId::BROADCOM_PROPRIETARY => Ok(Self::BroadcomProprietary),
-            ash::vk::DriverId::MESA_LLVMPIPE => Ok(Self::MesaLLVMpipe),
-            ash::vk::DriverId::MOLTENVK => Ok(Self::MoltenVK),
-            _ => Err(()),
-        }
-    }
+    // TODO: document
+    basic = BASIC,
+
+    // TODO: document
+    vote = VOTE,
+
+    // TODO: document
+    arithmetic = ARITHMETIC,
+
+    // TODO: document
+    ballot = BALLOT,
+
+    // TODO: document
+    shuffle = SHUFFLE,
+
+    // TODO: document
+    shuffle_relative = SHUFFLE_RELATIVE,
+
+    // TODO: document
+    clustered = CLUSTERED,
+
+    // TODO: document
+    quad = QUAD,
+
+    // TODO: document
+    partitioned = PARTITIONED_NV {
+        extensions: [nv_shader_subgroup_partitioned],
+    },
 }
 
-/// Specifies which subgroup operations are supported.
-#[derive(Clone, Copy, Debug)]
-pub struct SubgroupFeatures {
-    pub basic: bool,
-    pub vote: bool,
-    pub arithmetic: bool,
-    pub ballot: bool,
-    pub shuffle: bool,
-    pub shuffle_relative: bool,
-    pub clustered: bool,
-    pub quad: bool,
-    pub partitioned: bool,
+vulkan_enum! {
+    /// Specifies how the device clips single point primitives.
+    #[non_exhaustive]
+    PointClippingBehavior = PointClippingBehavior(i32);
 
-    pub _ne: crate::NonExhaustive,
-}
-
-impl From<ash::vk::SubgroupFeatureFlags> for SubgroupFeatures {
-    #[inline]
-    fn from(val: ash::vk::SubgroupFeatureFlags) -> Self {
-        Self {
-            basic: val.intersects(ash::vk::SubgroupFeatureFlags::BASIC),
-            vote: val.intersects(ash::vk::SubgroupFeatureFlags::VOTE),
-            arithmetic: val.intersects(ash::vk::SubgroupFeatureFlags::ARITHMETIC),
-            ballot: val.intersects(ash::vk::SubgroupFeatureFlags::BALLOT),
-            shuffle: val.intersects(ash::vk::SubgroupFeatureFlags::SHUFFLE),
-            shuffle_relative: val.intersects(ash::vk::SubgroupFeatureFlags::SHUFFLE_RELATIVE),
-            clustered: val.intersects(ash::vk::SubgroupFeatureFlags::CLUSTERED),
-            quad: val.intersects(ash::vk::SubgroupFeatureFlags::QUAD),
-            partitioned: val.intersects(ash::vk::SubgroupFeatureFlags::PARTITIONED_NV),
-
-            _ne: crate::NonExhaustive(()),
-        }
-    }
-}
-
-/// Specifies how the device clips single point primitives.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(i32)]
-pub enum PointClippingBehavior {
     /// Points are clipped if they lie outside any clip plane, both those bounding the view volume
     /// and user-defined clip planes.
-    AllClipPlanes = ash::vk::PointClippingBehavior::ALL_CLIP_PLANES.as_raw(),
+    AllClipPlanes = ALL_CLIP_PLANES,
+
     /// Points are clipped only if they lie outside a user-defined clip plane.
-    UserClipPlanesOnly = ash::vk::PointClippingBehavior::USER_CLIP_PLANES_ONLY.as_raw(),
+    UserClipPlanesOnly = USER_CLIP_PLANES_ONLY,
 }
 
-impl TryFrom<ash::vk::PointClippingBehavior> for PointClippingBehavior {
-    type Error = ();
+vulkan_enum! {
+    /// Specifies whether, and how, shader float controls can be set independently.
+    #[non_exhaustive]
+    ShaderFloatControlsIndependence = ShaderFloatControlsIndependence(i32);
 
-    #[inline]
-    fn try_from(val: ash::vk::PointClippingBehavior) -> Result<Self, Self::Error> {
-        match val {
-            ash::vk::PointClippingBehavior::ALL_CLIP_PLANES => Ok(Self::AllClipPlanes),
-            ash::vk::PointClippingBehavior::USER_CLIP_PLANES_ONLY => Ok(Self::UserClipPlanesOnly),
-            _ => Err(()),
-        }
-    }
-}
+    // TODO: document
+    Float32Only = TYPE_32_ONLY,
 
-/// Specifies whether, and how, shader float controls can be set independently.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(i32)]
-pub enum ShaderFloatControlsIndependence {
-    Float32Only = ash::vk::ShaderFloatControlsIndependence::TYPE_32_ONLY.as_raw(),
-    All = ash::vk::ShaderFloatControlsIndependence::ALL.as_raw(),
-    None = ash::vk::ShaderFloatControlsIndependence::NONE.as_raw(),
-}
+    // TODO: document
+    All = ALL,
 
-impl TryFrom<ash::vk::ShaderFloatControlsIndependence> for ShaderFloatControlsIndependence {
-    type Error = ();
-
-    #[inline]
-    fn try_from(val: ash::vk::ShaderFloatControlsIndependence) -> Result<Self, Self::Error> {
-        match val {
-            ash::vk::ShaderFloatControlsIndependence::TYPE_32_ONLY => Ok(Self::Float32Only),
-            ash::vk::ShaderFloatControlsIndependence::ALL => Ok(Self::All),
-            ash::vk::ShaderFloatControlsIndependence::NONE => Ok(Self::None),
-            _ => Err(()),
-        }
-    }
+    // TODO: document
+    None = NONE,
 }
 
 /// Specifies shader core properties.

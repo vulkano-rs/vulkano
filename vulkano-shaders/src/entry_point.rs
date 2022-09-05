@@ -173,6 +173,7 @@ fn write_descriptor_requirements(
                 miss,
                 intersection,
                 callable,
+                _ne: _,
             } = stages;
 
             quote! {
@@ -189,6 +190,7 @@ fn write_descriptor_requirements(
                     miss: #miss,
                     intersection: #intersection,
                     callable: #callable,
+                    ..::vulkano::shader::ShaderStages::empty()
                 }
             }
         };
@@ -249,6 +251,7 @@ fn write_push_constant_requirements(
                     miss,
                     intersection,
                     callable,
+                    _ne: _,
                 } = stages;
 
                 quote! {
@@ -265,6 +268,7 @@ fn write_push_constant_requirements(
                         miss: #miss,
                         intersection: #intersection,
                         callable: #callable,
+                        ..::vulkano::shader::ShaderStages::empty()
                     }
                 }
             };

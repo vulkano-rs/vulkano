@@ -392,7 +392,7 @@ impl UnsafeCommandBufferBuilder {
     #[inline]
     pub unsafe fn set_event(&mut self, event: &Event, stages: PipelineStages) {
         debug_assert!(!stages.host);
-        debug_assert_ne!(stages, PipelineStages::none());
+        debug_assert_ne!(stages, PipelineStages::empty());
         let fns = self.device.fns();
         (fns.v1_0.cmd_set_event)(self.handle, event.internal_object(), stages.into());
     }
@@ -403,7 +403,7 @@ impl UnsafeCommandBufferBuilder {
         let fns = self.device.fns();
 
         debug_assert!(!stages.host);
-        debug_assert_ne!(stages, PipelineStages::none());
+        debug_assert_ne!(stages, PipelineStages::empty());
 
         (fns.v1_0.cmd_reset_event)(self.handle, event.internal_object(), stages.into());
     }

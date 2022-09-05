@@ -217,7 +217,13 @@ where
     /// - Panics if `T` has zero size.
     #[inline]
     pub fn upload(device: Arc<Device>) -> CpuBufferPool<T> {
-        CpuBufferPool::new(device, BufferUsage::transfer_src())
+        CpuBufferPool::new(
+            device,
+            BufferUsage {
+                transfer_src: true,
+                ..BufferUsage::empty()
+            },
+        )
     }
 
     /// Builds a `CpuBufferPool` meant for simple downloads.
@@ -230,7 +236,13 @@ where
     /// - Panics if `T` has zero size.
     #[inline]
     pub fn download(device: Arc<Device>) -> CpuBufferPool<T> {
-        CpuBufferPool::new(device, BufferUsage::transfer_dst())
+        CpuBufferPool::new(
+            device,
+            BufferUsage {
+                transfer_dst: true,
+                ..BufferUsage::empty()
+            },
+        )
     }
 
     /// Builds a `CpuBufferPool` meant for usage as a uniform buffer.
@@ -243,7 +255,13 @@ where
     /// - Panics if `T` has zero size.
     #[inline]
     pub fn uniform_buffer(device: Arc<Device>) -> CpuBufferPool<T> {
-        CpuBufferPool::new(device, BufferUsage::uniform_buffer())
+        CpuBufferPool::new(
+            device,
+            BufferUsage {
+                uniform_buffer: true,
+                ..BufferUsage::empty()
+            },
+        )
     }
 
     /// Builds a `CpuBufferPool` meant for usage as a vertex buffer.
@@ -256,7 +274,13 @@ where
     /// - Panics if `T` has zero size.
     #[inline]
     pub fn vertex_buffer(device: Arc<Device>) -> CpuBufferPool<T> {
-        CpuBufferPool::new(device, BufferUsage::vertex_buffer())
+        CpuBufferPool::new(
+            device,
+            BufferUsage {
+                vertex_buffer: true,
+                ..BufferUsage::empty()
+            },
+        )
     }
 
     /// Builds a `CpuBufferPool` meant for usage as a indirect buffer.
@@ -269,7 +293,13 @@ where
     /// - Panics if `T` has zero size.
     #[inline]
     pub fn indirect_buffer(device: Arc<Device>) -> CpuBufferPool<T> {
-        CpuBufferPool::new(device, BufferUsage::indirect_buffer())
+        CpuBufferPool::new(
+            device,
+            BufferUsage {
+                indirect_buffer: true,
+                ..BufferUsage::empty()
+            },
+        )
     }
 }
 
