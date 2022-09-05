@@ -18,6 +18,7 @@ use crate::{
     device::{Device, DeviceOwned},
     format::{ChromaSampling, Format, FormatFeatures},
     image::{ImageAspects, ImageTiling, ImageType, SampleCount},
+    macros::{vulkan_enum, ExtensionNotEnabled},
     sampler::{ycbcr::SamplerYcbcrConversion, ComponentMapping},
     OomError, VulkanError, VulkanObject,
 };
@@ -142,6 +143,27 @@ where
         assert!(level_count != 0);
         assert!(layer_count != 0);
 
+        // VUID-VkImageViewCreateInfo-viewType-parameter
+        view_type.validate(image.device())?;
+
+        // VUID-VkImageViewCreateInfo-format-parameter
+        // TODO: format.validate(image.device())?;
+
+        // VUID-VkComponentMapping-r-parameter
+        component_mapping.r.validate(image.device())?;
+
+        // VUID-VkComponentMapping-g-parameter
+        component_mapping.g.validate(image.device())?;
+
+        // VUID-VkComponentMapping-b-parameter
+        component_mapping.b.validate(image.device())?;
+
+        // VUID-VkComponentMapping-a-parameter
+        component_mapping.a.validate(image.device())?;
+
+        // VUID-VkImageSubresourceRange-aspectMask-parameter
+        subresource_range.aspects.validate(image.device())?;
+
         {
             let ImageAspects {
                 color,
@@ -154,6 +176,7 @@ where
                 memory_plane0,
                 memory_plane1,
                 memory_plane2,
+                _ne: _,
             } = subresource_range.aspects;
 
             assert!(!(metadata || memory_plane0 || memory_plane1 || memory_plane2));
@@ -664,7 +687,7 @@ impl Default for ImageViewCreateInfo {
             format: None,
             component_mapping: ComponentMapping::identity(),
             subresource_range: ImageSubresourceRange {
-                aspects: ImageAspects::none(),
+                aspects: ImageAspects::empty(),
                 array_layers: 0..0,
                 mip_levels: 0..0,
             },
@@ -707,6 +730,10 @@ pub enum ImageViewCreationError {
     /// Allocating memory failed.
     OomError(OomError),
 
+    ExtensionNotEnabled {
+        extension: &'static str,
+        reason: &'static str,
+    },
     FeatureNotEnabled {
         feature: &'static str,
         reason: &'static str,
@@ -808,101 +835,106 @@ impl Error for ImageViewCreationError {
 
 impl fmt::Display for ImageViewCreationError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match *self {
             Self::OomError(_) => write!(
-                fmt,
+                f,
                 "allocating memory failed",
             ),
+            Self::ExtensionNotEnabled { extension, reason } => write!(
+                f,
+                "the extension {} must be enabled: {}",
+                extension, reason
+            ),
             Self::FeatureNotEnabled { feature, reason } => {
-                write!(fmt, "the feature {} must be enabled: {}", feature, reason)
+                write!(f, "the feature {} must be enabled: {}", feature, reason)
             }
             Self::Array2dCompatibleMultipleMipLevels => write!(
-                fmt,
+                f,
                 "a 2D image view was requested from a 3D image, but a range of multiple mip levels was specified",
             ),
             Self::ArrayLayersOutOfRange { .. } => write!(
-                fmt,
+                f,
                 "the specified range of array layers was not a subset of those in the image",
             ),
             Self::BlockTexelViewCompatibleMultipleArrayLayers => write!(
-                fmt,
+                f,
                 "the image has the `block_texel_view_compatible` flag, but a range of multiple array layers was specified",
             ),
             Self::BlockTexelViewCompatibleMultipleMipLevels => write!(
-                fmt,
+                f,
                 "the image has the `block_texel_view_compatible` flag, but a range of multiple mip levels was specified",
             ),
             Self::BlockTexelViewCompatibleUncompressedIs3d => write!(
-                fmt,
+                f,
                 "the image has the `block_texel_view_compatible` flag, and an uncompressed format was requested, and the image view type was `Dim3d`",
             ),
             Self::FormatChromaSubsamplingInvalidImageDimensions => write!(
-                fmt,
+                f,
                 "the requested format has chroma subsampling, but the width and/or height of the image was not a multiple of 2",
             ),
             Self::FormatNotCompatible => write!(
-                fmt,
+                f,
                 "the requested format was not compatible with the image",
             ),
             Self::FormatNotSupported => write!(
-                fmt,
+                f,
                 "the given format was not supported by the device"
             ),
             Self::FormatRequiresSamplerYcbcrConversion { .. } => write!(
-                fmt,
+                f,
                 "the format requires a sampler YCbCr conversion, but none was provided",
             ),
             Self::FormatUsageNotSupported { .. } => write!(
-                fmt,
+                f,
                 "a requested usage flag was not supported by the given format"
             ),
             Self::ImageAspectsNotCompatible { .. } => write!(
-                fmt,
+                f,
                 "an aspect was selected that was not present in the image",
             ),
             Self::ImageMissingUsage => write!(
-                fmt,
+                f,
                 "the image was not created with one of the required usages for image views",
             ),
             Self::ImageNotArray2dCompatible => write!(
-                fmt,
+                f,
                 "a 2D image view was requested from a 3D image, but the image was not created with the `array_2d_compatible` flag",
             ),
             Self::ImageNotCubeCompatible => write!(
-                fmt,
+                f,
                 "a cube image view type was requested, but the image was not created with the `cube_compatible` flag",
             ),
             Self::ImageTypeNotCompatible => write!(
-                fmt,
+                f,
                 "the given image view type was not compatible with the type of the image",
             ),
             Self::IncompatibleType => write!(
-                fmt,
+                f,
                 "image view type is not compatible with image, array layers or mipmap levels",
             ),
             Self::MipLevelsOutOfRange { .. } => write!(
-                fmt,
+                f,
                 "the specified range of mip levels was not a subset of those in the image",
             ),
             Self::MultisamplingNot2d => write!(
-                fmt,
+                f,
                 "the image has multisampling enabled, but the image view type was not `Dim2d` or `Dim2dArray`",
             ),
             Self::SamplerYcbcrConversionComponentMappingNotIdentity { .. } => write!(
-                fmt,
+                f,
                 "sampler YCbCr conversion was enabled, but `component_mapping` was not the identity mapping",
             ),
             Self::TypeCubeArrayNotMultipleOf6ArrayLayers => write!(
-                fmt,
+                f,
                 "the `CubeArray` image view type was specified, but the range of array layers did not have a size that is a multiple 6"
             ),
             Self::TypeCubeNot6ArrayLayers => write!(
-                fmt,
+                f,
                 "the `Cube` image view type was specified, but the range of array layers did not have a size of 6"
             ),
             Self::TypeNonArrayedMultipleArrayLayers => write!(
-                fmt,
+                f,
                 "a non-arrayed image view type was specified, but a range of multiple array layers was specified"
             )
         }
@@ -927,17 +959,41 @@ impl From<VulkanError> for ImageViewCreationError {
     }
 }
 
-/// The geometry type of an image view.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[repr(i32)]
-pub enum ImageViewType {
-    Dim1d = ash::vk::ImageViewType::TYPE_1D.as_raw(),
-    Dim1dArray = ash::vk::ImageViewType::TYPE_1D_ARRAY.as_raw(),
-    Dim2d = ash::vk::ImageViewType::TYPE_2D.as_raw(),
-    Dim2dArray = ash::vk::ImageViewType::TYPE_2D_ARRAY.as_raw(),
-    Dim3d = ash::vk::ImageViewType::TYPE_3D.as_raw(),
-    Cube = ash::vk::ImageViewType::CUBE.as_raw(),
-    CubeArray = ash::vk::ImageViewType::CUBE_ARRAY.as_raw(),
+impl From<ExtensionNotEnabled> for ImageViewCreationError {
+    #[inline]
+    fn from(err: ExtensionNotEnabled) -> Self {
+        Self::ExtensionNotEnabled {
+            extension: err.extension,
+            reason: err.reason,
+        }
+    }
+}
+
+vulkan_enum! {
+    /// The geometry type of an image view.
+    #[non_exhaustive]
+    ImageViewType = ImageViewType(i32);
+
+    // TODO: document
+    Dim1d = TYPE_1D,
+
+    // TODO: document
+    Dim2d = TYPE_2D,
+
+    // TODO: document
+    Dim3d = TYPE_3D,
+
+    // TODO: document
+    Cube = CUBE,
+
+    // TODO: document
+    Dim1dArray = TYPE_1D_ARRAY,
+
+    // TODO: document
+    Dim2dArray = TYPE_2D_ARRAY,
+
+    // TODO: document
+    CubeArray = CUBE_ARRAY,
 }
 
 impl ImageViewType {
@@ -966,12 +1022,6 @@ impl ImageViewType {
                 ImageType::Dim2d
             ) | (ImageViewType::Dim3d, ImageType::Dim3d)
         )
-    }
-}
-
-impl From<ImageViewType> for ash::vk::ImageViewType {
-    fn from(val: ImageViewType) -> Self {
-        Self::from_raw(val as i32)
     }
 }
 

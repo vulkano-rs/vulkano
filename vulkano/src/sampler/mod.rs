@@ -50,6 +50,7 @@ use self::ycbcr::SamplerYcbcrConversion;
 use crate::{
     device::{Device, DeviceOwned},
     image::{view::ImageViewType, ImageViewAbstract},
+    macros::{vulkan_enum, ExtensionNotEnabled},
     pipeline::graphics::depth_stencil::CompareOp,
     shader::ShaderScalarType,
     OomError, VulkanError, VulkanObject,
@@ -139,6 +140,27 @@ impl Sampler {
             _ne: _,
         } = create_info;
 
+        for filter in [mag_filter, min_filter] {
+            // VUID-VkSamplerCreateInfo-magFilter-parameter
+            // VUID-VkSamplerCreateInfo-minFilter-parameter
+            filter.validate(&device)?;
+        }
+
+        // VUID-VkSamplerCreateInfo-mipmapMode-parameter
+        mipmap_mode.validate(&device)?;
+
+        for mode in address_mode {
+            // VUID-VkSamplerCreateInfo-addressModeU-parameter
+            // VUID-VkSamplerCreateInfo-addressModeV-parameter
+            // VUID-VkSamplerCreateInfo-addressModeW-parameter
+            mode.validate(&device)?;
+
+            if mode == SamplerAddressMode::ClampToBorder {
+                // VUID-VkSamplerCreateInfo-addressModeU-01078
+                border_color.validate(&device)?;
+            }
+        }
+
         if address_mode
             .into_iter()
             .any(|mode| mode == SamplerAddressMode::MirrorClampToEdge)
@@ -209,6 +231,9 @@ impl Sampler {
         };
 
         let (compare_enable, compare_op) = if let Some(compare_op) = compare {
+            // VUID-VkSamplerCreateInfo-compareEnable-01080
+            compare_op.validate(&device)?;
+
             if reduction_mode != SamplerReductionMode::WeightedAverage {
                 return Err(SamplerCreationError::CompareInvalidReductionMode { reduction_mode });
             }
@@ -281,6 +306,9 @@ impl Sampler {
                         });
                     }
                 }
+
+                // VUID-VkSamplerReductionModeCreateInfo-reductionMode-parameter
+                reduction_mode.validate(&device)?;
 
                 Some(ash::vk::SamplerReductionModeCreateInfo {
                     reduction_mode: reduction_mode.into(),
@@ -928,6 +956,16 @@ impl From<VulkanError> for SamplerCreationError {
     }
 }
 
+impl From<ExtensionNotEnabled> for SamplerCreationError {
+    #[inline]
+    fn from(err: ExtensionNotEnabled) -> Self {
+        Self::ExtensionNotEnabled {
+            extension: err.extension,
+            reason: err.reason,
+        }
+    }
+}
+
 /// Parameters to create a new `Sampler`.
 #[derive(Clone, Debug)]
 pub struct SamplerCreateInfo {
@@ -1222,33 +1260,33 @@ impl From<ComponentMapping> for ash::vk::ComponentMapping {
     }
 }
 
-/// Describes the value that an individual component must return when being accessed.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[repr(i32)]
-pub enum ComponentSwizzle {
+vulkan_enum! {
+    /// Describes the value that an individual component must return when being accessed.
+    #[non_exhaustive]
+    ComponentSwizzle = ComponentSwizzle(i32);
+
     /// Returns the value that this component should normally have.
     ///
     /// This is the `Default` value.
-    Identity = ash::vk::ComponentSwizzle::IDENTITY.as_raw(),
-    /// Always return zero.
-    Zero = ash::vk::ComponentSwizzle::ZERO.as_raw(),
-    /// Always return one.
-    One = ash::vk::ComponentSwizzle::ONE.as_raw(),
-    /// Returns the value of the first component.
-    Red = ash::vk::ComponentSwizzle::R.as_raw(),
-    /// Returns the value of the second component.
-    Green = ash::vk::ComponentSwizzle::G.as_raw(),
-    /// Returns the value of the third component.
-    Blue = ash::vk::ComponentSwizzle::B.as_raw(),
-    /// Returns the value of the fourth component.
-    Alpha = ash::vk::ComponentSwizzle::A.as_raw(),
-}
+    Identity = IDENTITY,
 
-impl From<ComponentSwizzle> for ash::vk::ComponentSwizzle {
-    #[inline]
-    fn from(val: ComponentSwizzle) -> Self {
-        Self::from_raw(val as i32)
-    }
+    /// Always return zero.
+    Zero = ZERO,
+
+    /// Always return one.
+    One = ONE,
+
+    /// Returns the value of the first component.
+    Red = R,
+
+    /// Returns the value of the second component.
+    Green = G,
+
+    /// Returns the value of the third component.
+    Blue = B,
+
+    /// Returns the value of the fourth component.
+    Alpha = A,
 }
 
 impl Default for ComponentSwizzle {
@@ -1258,18 +1296,19 @@ impl Default for ComponentSwizzle {
     }
 }
 
-/// Describes how the color of each pixel should be determined.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-#[repr(i32)]
-pub enum Filter {
+vulkan_enum! {
+    /// Describes how the color of each pixel should be determined.
+    #[non_exhaustive]
+    Filter = Filter(i32);
+
     /// The pixel whose center is nearest to the requested coordinates is taken from the source
     /// and its value is returned as-is.
-    Nearest = ash::vk::Filter::NEAREST.as_raw(),
+    Nearest = NEAREST,
 
     /// The 8/4/2 pixels (depending on view dimensionality) whose center surround the requested
     /// coordinates are taken, then their values are combined according to the chosen
     /// `reduction_mode`.
-    Linear = ash::vk::Filter::LINEAR.as_raw(),
+    Linear = LINEAR,
 
     /// The 64/16/4 pixels (depending on the view dimensionality) whose center surround the
     /// requested coordinates are taken, then their values are combined according to the chosen
@@ -1278,51 +1317,41 @@ pub enum Filter {
     /// The [`ext_filter_cubic`](crate::device::DeviceExtensions::ext_filter_cubic) extension must
     /// be enabled on the device, and anisotropy must be disabled. Sampled image views must have
     /// a type of [`Dim2d`](crate::image::view::ImageViewType::Dim2d).
-    Cubic = ash::vk::Filter::CUBIC_EXT.as_raw(),
+    Cubic = CUBIC_EXT {
+        extensions: [ext_filter_cubic, img_filter_cubic],
+    },
 }
 
-impl From<Filter> for ash::vk::Filter {
-    #[inline]
-    fn from(val: Filter) -> Self {
-        Self::from_raw(val as i32)
-    }
-}
+vulkan_enum! {
+    /// Describes which mipmap from the source to use.
+    #[non_exhaustive]
+    SamplerMipmapMode = SamplerMipmapMode(i32);
 
-/// Describes which mipmap from the source to use.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-#[repr(i32)]
-pub enum SamplerMipmapMode {
     /// Use the mipmap whose dimensions are the nearest to the dimensions of the destination.
-    Nearest = ash::vk::SamplerMipmapMode::NEAREST.as_raw(),
+    Nearest = NEAREST,
 
     /// Take the mipmap whose dimensions are no greater than that of the destination together
     /// with the next higher level mipmap, calculate the value for both, and interpolate them.
-    Linear = ash::vk::SamplerMipmapMode::LINEAR.as_raw(),
+    Linear = LINEAR,
 }
 
-impl From<SamplerMipmapMode> for ash::vk::SamplerMipmapMode {
-    #[inline]
-    fn from(val: SamplerMipmapMode) -> Self {
-        Self::from_raw(val as i32)
-    }
-}
+vulkan_enum! {
+    /// How the sampler should behave when it needs to access a pixel that is out of range of the
+    /// texture.
+    #[non_exhaustive]
+    SamplerAddressMode = SamplerAddressMode(i32);
 
-/// How the sampler should behave when it needs to access a pixel that is out of range of the
-/// texture.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-#[repr(i32)]
-pub enum SamplerAddressMode {
     /// Repeat the texture. In other words, the pixel at coordinate `x + 1.0` is the same as the
     /// one at coordinate `x`.
-    Repeat = ash::vk::SamplerAddressMode::REPEAT.as_raw(),
+    Repeat = REPEAT,
 
     /// Repeat the texture but mirror it at every repetition. In other words, the pixel at
     /// coordinate `x + 1.0` is the same as the one at coordinate `1.0 - x`.
-    MirroredRepeat = ash::vk::SamplerAddressMode::MIRRORED_REPEAT.as_raw(),
+    MirroredRepeat = MIRRORED_REPEAT,
 
     /// The coordinates are clamped to the valid range. Coordinates below 0.0 have the same value
     /// as coordinate 0.0. Coordinates over 1.0 have the same value as coordinate 1.0.
-    ClampToEdge = ash::vk::SamplerAddressMode::CLAMP_TO_EDGE.as_raw(),
+    ClampToEdge = CLAMP_TO_EDGE,
 
     /// Any pixel out of range is colored using the colour selected with the `border_color` on the
     /// `SamplerBuilder`.
@@ -1332,7 +1361,7 @@ pub enum SamplerAddressMode {
     /// floating-point or depth image views. When using an integer border color, the sampler can
     /// only be used with integer or stencil image views. In addition to this, you can't use an
     /// opaque black border color with an image view that uses component swizzling.
-    ClampToBorder = ash::vk::SamplerAddressMode::CLAMP_TO_BORDER.as_raw(),
+    ClampToBorder = CLAMP_TO_BORDER,
 
     /// Similar to `MirroredRepeat`, except that coordinates are clamped to the range
     /// `[-1.0, 1.0]`.
@@ -1341,59 +1370,62 @@ pub enum SamplerAddressMode {
     /// feature or the
     /// [`khr_sampler_mirror_clamp_to_edge`](crate::device::DeviceExtensions::khr_sampler_mirror_clamp_to_edge)
     /// extension must be enabled on the device.
-    MirrorClampToEdge = ash::vk::SamplerAddressMode::MIRROR_CLAMP_TO_EDGE.as_raw(),
+    MirrorClampToEdge = MIRROR_CLAMP_TO_EDGE {
+        api_version: V1_2,
+        extensions: [khr_sampler_mirror_clamp_to_edge],
+    },
 }
 
-impl From<SamplerAddressMode> for ash::vk::SamplerAddressMode {
-    #[inline]
-    fn from(val: SamplerAddressMode) -> Self {
-        Self::from_raw(val as i32)
-    }
-}
+vulkan_enum! {
+    /// The color to use for the border of an image.
+    ///
+    /// Only relevant if you use `ClampToBorder`.
+    ///
+    /// Using a border color restricts the sampler to either floating-point images or integer images.
+    #[non_exhaustive]
+    BorderColor = BorderColor(i32);
 
-/// The color to use for the border of an image.
-///
-/// Only relevant if you use `ClampToBorder`.
-///
-/// Using a border color restricts the sampler to either floating-point images or integer images.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-#[repr(i32)]
-pub enum BorderColor {
     /// The value `(0.0, 0.0, 0.0, 0.0)`. Can only be used with floating-point images.
-    FloatTransparentBlack = ash::vk::BorderColor::FLOAT_TRANSPARENT_BLACK.as_raw(),
+    FloatTransparentBlack = FLOAT_TRANSPARENT_BLACK,
 
     /// The value `(0, 0, 0, 0)`. Can only be used with integer images.
-    IntTransparentBlack = ash::vk::BorderColor::INT_TRANSPARENT_BLACK.as_raw(),
+    IntTransparentBlack = INT_TRANSPARENT_BLACK,
 
     /// The value `(0.0, 0.0, 0.0, 1.0)`. Can only be used with floating-point identity-swizzled
     /// images.
-    FloatOpaqueBlack = ash::vk::BorderColor::FLOAT_OPAQUE_BLACK.as_raw(),
+    FloatOpaqueBlack = FLOAT_OPAQUE_BLACK,
 
     /// The value `(0, 0, 0, 1)`. Can only be used with integer identity-swizzled images.
-    IntOpaqueBlack = ash::vk::BorderColor::INT_OPAQUE_BLACK.as_raw(),
+    IntOpaqueBlack = INT_OPAQUE_BLACK,
 
     /// The value `(1.0, 1.0, 1.0, 1.0)`. Can only be used with floating-point images.
-    FloatOpaqueWhite = ash::vk::BorderColor::FLOAT_OPAQUE_WHITE.as_raw(),
+    FloatOpaqueWhite = FLOAT_OPAQUE_WHITE,
 
     /// The value `(1, 1, 1, 1)`. Can only be used with integer images.
-    IntOpaqueWhite = ash::vk::BorderColor::INT_OPAQUE_WHITE.as_raw(),
+    IntOpaqueWhite = INT_OPAQUE_WHITE,
+
+    /*
+    // TODO: document
+    FloatCustom = VK_BORDER_COLOR_FLOAT_CUSTOM_EXT {
+        extensions: [ext_custom_border_color],
+    },
+
+    // TODO: document
+    IntCustom = INT_CUSTOM_EXT {
+        extensions: [ext_custom_border_color],
+    },
+     */
 }
 
-impl From<BorderColor> for ash::vk::BorderColor {
-    #[inline]
-    fn from(val: BorderColor) -> Self {
-        Self::from_raw(val as i32)
-    }
-}
+vulkan_enum! {
+    /// Describes how the value sampled from a mipmap should be calculated from the selected
+    /// pixels, for the `Linear` and `Cubic` filters.
+    #[non_exhaustive]
+    SamplerReductionMode = SamplerReductionMode(i32);
 
-/// Describes how the value sampled from a mipmap should be calculated from the selected
-/// pixels, for the `Linear` and `Cubic` filters.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-#[repr(i32)]
-pub enum SamplerReductionMode {
     /// Calculates a weighted average of the selected pixels. For `Linear` filtering the pixels
     /// are evenly weighted, for `Cubic` filtering they use Catmull-Rom weights.
-    WeightedAverage = ash::vk::SamplerReductionMode::WEIGHTED_AVERAGE.as_raw(),
+    WeightedAverage = WEIGHTED_AVERAGE,
 
     /// Calculates the minimum of the selected pixels.
     ///
@@ -1401,7 +1433,7 @@ pub enum SamplerReductionMode {
     /// feature or the
     /// [`ext_sampler_filter_minmax`](crate::device::DeviceExtensions::ext_sampler_filter_minmax)
     /// extension must be enabled on the device.
-    Min = ash::vk::SamplerReductionMode::MIN.as_raw(),
+    Min = MIN,
 
     /// Calculates the maximum of the selected pixels.
     ///
@@ -1409,14 +1441,7 @@ pub enum SamplerReductionMode {
     /// feature or the
     /// [`ext_sampler_filter_minmax`](crate::device::DeviceExtensions::ext_sampler_filter_minmax)
     /// extension must be enabled on the device.
-    Max = ash::vk::SamplerReductionMode::MAX.as_raw(),
-}
-
-impl From<SamplerReductionMode> for ash::vk::SamplerReductionMode {
-    #[inline]
-    fn from(val: SamplerReductionMode) -> Self {
-        Self::from_raw(val as i32)
-    }
+    Max = MAX,
 }
 
 #[derive(Clone, Copy, Debug)]

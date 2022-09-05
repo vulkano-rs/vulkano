@@ -21,6 +21,7 @@ use crate::{
         DescriptorWriteInfo, WriteDescriptorSet,
     },
     device::DeviceOwned,
+    macros::ExtensionNotEnabled,
     pipeline::{
         graphics::{
             input_assembly::{Index, IndexType},
@@ -90,6 +91,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         first_set: u32,
         descriptor_sets: &[DescriptorSetWithOffsets],
     ) -> Result<(), BindPushError> {
+        // VUID-vkCmdBindDescriptorSets-pipelineBindPoint-parameter
+        pipeline_bind_point.validate(self.device())?;
+
         // VUID-vkCmdBindDescriptorSets-commandBuffer-cmdpool
         // VUID-vkCmdBindDescriptorSets-pipelineBindPoint-00361
         match pipeline_bind_point {
@@ -533,9 +537,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         if !self.device().enabled_extensions().khr_push_descriptor {
             return Err(BindPushError::ExtensionNotEnabled {
                 extension: "khr_push_descriptor",
-                reason: "called validate_push_descriptor_set",
+                reason: "called push_descriptor_set",
             });
         }
+
+        // VUID-vkCmdPushDescriptorSetKHR-pipelineBindPoint-parameter
+        pipeline_bind_point.validate(self.device())?;
 
         // VUID-vkCmdPushDescriptorSetKHR-commandBuffer-cmdpool
         // VUID-vkCmdPushDescriptorSetKHR-pipelineBindPoint-00363
@@ -1059,7 +1066,7 @@ impl UnsafeCommandBufferBuilder {
     {
         let fns = self.device.fns();
 
-        debug_assert!(stages != ShaderStages::none());
+        debug_assert!(!stages.is_empty());
         debug_assert!(size > 0);
         debug_assert_eq!(size % 4, 0);
         debug_assert_eq!(offset % 4, 0);
@@ -1308,5 +1315,15 @@ impl From<DescriptorSetUpdateError> for BindPushError {
     #[inline]
     fn from(err: DescriptorSetUpdateError) -> Self {
         Self::DescriptorSetUpdateError(err)
+    }
+}
+
+impl From<ExtensionNotEnabled> for BindPushError {
+    #[inline]
+    fn from(err: ExtensionNotEnabled) -> Self {
+        Self::ExtensionNotEnabled {
+            extension: err.extension,
+            reason: err.reason,
+        }
     }
 }

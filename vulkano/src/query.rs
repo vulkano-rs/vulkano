@@ -15,6 +15,7 @@
 
 use crate::{
     device::{Device, DeviceOwned},
+    macros::{vulkan_bitflags, ExtensionNotEnabled},
     DeviceSize, OomError, VulkanError, VulkanObject,
 };
 use std::{
@@ -393,6 +394,10 @@ impl<'a> QueriesRange<'a> {
     where
         T: QueryResultElement,
     {
+        // VUID-vkGetQueryPoolResults-flags-parameter
+        // VUID-vkCmdCopyQueryPoolResults-flags-parameter
+        flags.validate(&self.pool.device)?;
+
         assert!(buffer_len > 0);
 
         // VUID-vkGetQueryPoolResults-flags-02828
@@ -430,6 +435,17 @@ impl<'a> QueriesRange<'a> {
 /// Error that can happen when calling [`QueriesRange::get_results`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GetResultsError {
+    /// The connection to the device has been lost.
+    DeviceLost,
+
+    /// Not enough memory.
+    OomError(OomError),
+
+    ExtensionNotEnabled {
+        extension: &'static str,
+        reason: &'static str,
+    },
+
     /// The buffer is too small for the operation.
     BufferTooSmall {
         /// Required number of elements in the buffer.
@@ -437,12 +453,38 @@ pub enum GetResultsError {
         /// Actual number of elements in the buffer.
         actual_len: DeviceSize,
     },
-    /// The connection to the device has been lost.
-    DeviceLost,
+
     /// The provided flags are not allowed for this type of query.
     InvalidFlags,
-    /// Not enough memory.
-    OomError(OomError),
+}
+
+impl Error for GetResultsError {
+    #[inline]
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match *self {
+            Self::OomError(ref err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for GetResultsError {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match self {
+            Self::OomError(_) => write!(f, "not enough memory available"),
+            Self::DeviceLost => write!(f, "the connection to the device has been lost"),
+            Self::ExtensionNotEnabled { extension, reason } => {
+                write!(f, "the extension {} must be enabled: {}", extension, reason)
+            }
+
+            Self::BufferTooSmall { .. } => write!(f, "the buffer is too small for the operation"),
+            Self::InvalidFlags => write!(
+                f,
+                "the provided flags are not allowed for this type of query"
+            ),
+        }
+    }
 }
 
 impl From<VulkanError> for GetResultsError {
@@ -465,32 +507,12 @@ impl From<OomError> for GetResultsError {
     }
 }
 
-impl fmt::Display for GetResultsError {
+impl From<ExtensionNotEnabled> for GetResultsError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                Self::BufferTooSmall { .. } => {
-                    "the buffer is too small for the operation"
-                }
-                Self::DeviceLost => "the connection to the device has been lost",
-                Self::InvalidFlags => {
-                    "the provided flags are not allowed for this type of query"
-                }
-                Self::OomError(_) => "not enough memory available",
-            }
-        )
-    }
-}
-
-impl Error for GetResultsError {
-    #[inline]
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            Self::OomError(ref err) => Some(err),
-            _ => None,
+    fn from(err: ExtensionNotEnabled) -> Self {
+        Self::ExtensionNotEnabled {
+            extension: err.extension,
+            reason: err.reason,
         }
     }
 }
@@ -552,71 +574,69 @@ impl From<QueryType> for ash::vk::QueryType {
     }
 }
 
-/// Flags that control how a query is to be executed.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct QueryControlFlags {
+vulkan_bitflags! {
+    /// Flags that control how a query is to be executed.
+    #[non_exhaustive]
+    QueryControlFlags = QueryControlFlags(u32);
+
     /// For occlusion queries, specifies that the result must reflect the exact number of
     /// tests passed. If not enabled, the query may return a result of 1 even if more fragments
     /// passed the test.
-    pub precise: bool,
+    precise = PRECISE,
 }
 
-impl From<QueryControlFlags> for ash::vk::QueryControlFlags {
-    #[inline]
-    fn from(value: QueryControlFlags) -> Self {
-        let mut result = ash::vk::QueryControlFlags::empty();
-        if value.precise {
-            result |= ash::vk::QueryControlFlags::PRECISE;
-        }
-        result
-    }
-}
+vulkan_bitflags! {
+    /// For pipeline statistics queries, the statistics that should be gathered.
+    #[non_exhaustive]
+    QueryPipelineStatisticFlags = QueryPipelineStatisticFlags(u32);
 
-/// For pipeline statistics queries, the statistics that should be gathered.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct QueryPipelineStatisticFlags {
     /// Count the number of vertices processed by the input assembly.
-    pub input_assembly_vertices: bool,
+    input_assembly_vertices = INPUT_ASSEMBLY_VERTICES,
+
     /// Count the number of primitives processed by the input assembly.
-    pub input_assembly_primitives: bool,
+    input_assembly_primitives = INPUT_ASSEMBLY_PRIMITIVES,
+
     /// Count the number of times a vertex shader is invoked.
-    pub vertex_shader_invocations: bool,
+    vertex_shader_invocations = VERTEX_SHADER_INVOCATIONS,
+
     /// Count the number of times a geometry shader is invoked.
-    pub geometry_shader_invocations: bool,
+    geometry_shader_invocations = GEOMETRY_SHADER_INVOCATIONS,
+
     /// Count the number of primitives generated by geometry shaders.
-    pub geometry_shader_primitives: bool,
+    geometry_shader_primitives = GEOMETRY_SHADER_PRIMITIVES,
+
     /// Count the number of times the clipping stage is invoked on a primitive.
-    pub clipping_invocations: bool,
+    clipping_invocations = CLIPPING_INVOCATIONS,
+
     /// Count the number of primitives that are output by the clipping stage.
-    pub clipping_primitives: bool,
+    clipping_primitives = CLIPPING_PRIMITIVES,
+
     /// Count the number of times a fragment shader is invoked.
-    pub fragment_shader_invocations: bool,
+    fragment_shader_invocations = FRAGMENT_SHADER_INVOCATIONS,
+
     /// Count the number of patches processed by a tessellation control shader.
-    pub tessellation_control_shader_patches: bool,
+    tessellation_control_shader_patches = TESSELLATION_CONTROL_SHADER_PATCHES,
+
     /// Count the number of times a tessellation evaluation shader is invoked.
-    pub tessellation_evaluation_shader_invocations: bool,
+    tessellation_evaluation_shader_invocations = TESSELLATION_EVALUATION_SHADER_INVOCATIONS,
+
     /// Count the number of times a compute shader is invoked.
-    pub compute_shader_invocations: bool,
+    compute_shader_invocations = COMPUTE_SHADER_INVOCATIONS,
+
+    /*
+    // TODO: document
+    task_shader_invocations = TASK_SHADER_INVOCATIONS_NV {
+        extensions: [nv_mesh_shader],
+    },
+
+    // TODO: document
+    mesh_shader_invocations = MESH_SHADER_INVOCATIONS_NV {
+        extensions: [nv_mesh_shader],
+    },
+     */
 }
 
 impl QueryPipelineStatisticFlags {
-    #[inline]
-    pub fn none() -> QueryPipelineStatisticFlags {
-        QueryPipelineStatisticFlags {
-            input_assembly_vertices: false,
-            input_assembly_primitives: false,
-            vertex_shader_invocations: false,
-            geometry_shader_invocations: false,
-            geometry_shader_primitives: false,
-            clipping_invocations: false,
-            clipping_primitives: false,
-            fragment_shader_invocations: false,
-            tessellation_control_shader_patches: false,
-            tessellation_evaluation_shader_invocations: false,
-            compute_shader_invocations: false,
-        }
-    }
-
     /// Returns the number of flags that are set to `true`.
     #[inline]
     pub const fn count(&self) -> DeviceSize {
@@ -632,6 +652,7 @@ impl QueryPipelineStatisticFlags {
             tessellation_control_shader_patches,
             tessellation_evaluation_shader_invocations,
             compute_shader_invocations,
+            _ne: _,
         } = self;
         input_assembly_vertices as DeviceSize
             + input_assembly_primitives as DeviceSize
@@ -685,80 +706,33 @@ impl QueryPipelineStatisticFlags {
     }
 }
 
-impl From<QueryPipelineStatisticFlags> for ash::vk::QueryPipelineStatisticFlags {
-    fn from(value: QueryPipelineStatisticFlags) -> ash::vk::QueryPipelineStatisticFlags {
-        let mut result = ash::vk::QueryPipelineStatisticFlags::empty();
-        if value.input_assembly_vertices {
-            result |= ash::vk::QueryPipelineStatisticFlags::INPUT_ASSEMBLY_VERTICES;
-        }
-        if value.input_assembly_primitives {
-            result |= ash::vk::QueryPipelineStatisticFlags::INPUT_ASSEMBLY_PRIMITIVES;
-        }
-        if value.vertex_shader_invocations {
-            result |= ash::vk::QueryPipelineStatisticFlags::VERTEX_SHADER_INVOCATIONS;
-        }
-        if value.geometry_shader_invocations {
-            result |= ash::vk::QueryPipelineStatisticFlags::GEOMETRY_SHADER_INVOCATIONS;
-        }
-        if value.geometry_shader_primitives {
-            result |= ash::vk::QueryPipelineStatisticFlags::GEOMETRY_SHADER_PRIMITIVES;
-        }
-        if value.clipping_invocations {
-            result |= ash::vk::QueryPipelineStatisticFlags::CLIPPING_INVOCATIONS;
-        }
-        if value.clipping_primitives {
-            result |= ash::vk::QueryPipelineStatisticFlags::CLIPPING_PRIMITIVES;
-        }
-        if value.fragment_shader_invocations {
-            result |= ash::vk::QueryPipelineStatisticFlags::FRAGMENT_SHADER_INVOCATIONS;
-        }
-        if value.tessellation_control_shader_patches {
-            result |= ash::vk::QueryPipelineStatisticFlags::TESSELLATION_CONTROL_SHADER_PATCHES;
-        }
-        if value.tessellation_evaluation_shader_invocations {
-            result |=
-                ash::vk::QueryPipelineStatisticFlags::TESSELLATION_EVALUATION_SHADER_INVOCATIONS;
-        }
-        if value.compute_shader_invocations {
-            result |= ash::vk::QueryPipelineStatisticFlags::COMPUTE_SHADER_INVOCATIONS;
-        }
-        result
-    }
-}
+vulkan_bitflags! {
+    /// Flags to control how the results of a query should be retrieved.
+    ///
+    /// `VK_QUERY_RESULT_64_BIT` is not included, as it is determined automatically via the
+    /// [`QueryResultElement`] trait.
+    #[non_exhaustive]
+    QueryResultFlags = QueryResultFlags(u32);
 
-/// Flags to control how the results of a query should be retrieved.
-///
-/// `VK_QUERY_RESULT_64_BIT` is not included, as it is determined automatically via the
-/// [`QueryResultElement`] trait.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct QueryResultFlags {
     /// Wait for the results to become available before writing the results.
-    pub wait: bool,
+    wait = WAIT,
+
     /// Write an additional element to the end of each query's results, indicating the availability
     /// of the results:
     /// - Nonzero: The results are available, and have been written to the element(s) preceding.
     /// - Zero: The results are not yet available, and have not been written.
-    pub with_availability: bool,
+    with_availability = WITH_AVAILABILITY,
+
     /// Allow writing partial results to the buffer, instead of waiting until they are fully
     /// available.
-    pub partial: bool,
-}
+    partial = PARTIAL,
 
-impl From<QueryResultFlags> for ash::vk::QueryResultFlags {
-    #[inline]
-    fn from(value: QueryResultFlags) -> Self {
-        let mut result = ash::vk::QueryResultFlags::empty();
-        if value.wait {
-            result |= ash::vk::QueryResultFlags::WAIT;
-        }
-        if value.with_availability {
-            result |= ash::vk::QueryResultFlags::WITH_AVAILABILITY;
-        }
-        if value.partial {
-            result |= ash::vk::QueryResultFlags::PARTIAL;
-        }
-        result
-    }
+    /*
+    // TODO: document
+    with_status = WITH_STATUS_KHR {
+        extensions: [khr_video_queue],
+    },
+     */
 }
 
 #[cfg(test)]
@@ -769,7 +743,7 @@ mod tests {
     #[test]
     fn pipeline_statistics_feature() {
         let (device, _) = gfx_dev_and_queue!();
-        let query_type = QueryType::PipelineStatistics(QueryPipelineStatisticFlags::none());
+        let query_type = QueryType::PipelineStatistics(QueryPipelineStatisticFlags::empty());
         match QueryPool::new(
             device,
             QueryPoolCreateInfo {

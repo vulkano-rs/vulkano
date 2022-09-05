@@ -9,7 +9,7 @@
 
 pub use crate::extensions::{ExtensionRestriction, ExtensionRestrictionError, OneOfRequirements};
 use crate::{instance::InstanceExtensions, Version};
-use core::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, Not, Sub, SubAssign};
+use core::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Sub, SubAssign};
 use std::{
     ffi::{CStr, CString},
     fmt::Formatter,
@@ -25,7 +25,7 @@ mod tests {
 
     #[test]
     fn empty_extensions() {
-        let d: Vec<CString> = (&DeviceExtensions::none()).into();
+        let d: Vec<CString> = (&DeviceExtensions::empty()).into();
         assert!(d.get(0).is_none());
     }
 }

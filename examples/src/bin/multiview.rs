@@ -55,7 +55,7 @@ fn main() {
         InstanceCreateInfo {
             enabled_extensions: InstanceExtensions {
                 khr_get_physical_device_properties2: true, // required to get multiview limits
-                ..InstanceExtensions::none()
+                ..InstanceExtensions::empty()
             },
             // Enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
             enumerate_portability: true,
@@ -65,20 +65,20 @@ fn main() {
     .unwrap();
 
     let device_extensions = DeviceExtensions {
-        ..DeviceExtensions::none()
+        ..DeviceExtensions::empty()
     };
     let features = Features {
         // enabling the `multiview` feature will use the `VK_KHR_multiview` extension on
         // Vulkan 1.0 and the device feature on Vulkan 1.1+
         multiview: true,
-        ..Features::none()
+        ..Features::empty()
     };
     let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
         .filter(|&p| {
-            p.supported_extensions().is_superset_of(&device_extensions)
+            p.supported_extensions().contains(&device_extensions)
         })
         .filter(|&p| {
-            p.supported_features().is_superset_of(&features)
+            p.supported_features().contains(&features)
         })
         .filter(|&p| {
             // This example renders to two layers of the framebuffer using the multiview
@@ -100,6 +100,7 @@ fn main() {
             PhysicalDeviceType::VirtualGpu => 2,
             PhysicalDeviceType::Cpu => 3,
             PhysicalDeviceType::Other => 4,
+            _ => 5,
         })
         // A real application should probably fall back to rendering the framebuffer layers
         // in multiple passes when multiview isn't supported.
@@ -135,9 +136,9 @@ fn main() {
         ImageUsage {
             transfer_src: true,
             color_attachment: true,
-            ..ImageUsage::none()
+            ..ImageUsage::empty()
         },
-        ImageCreateFlags::none(),
+        ImageCreateFlags::empty(),
         Some(queue_family),
     )
     .unwrap();
@@ -162,9 +163,16 @@ fn main() {
             position: [0.25, -0.1],
         },
     ];
-    let vertex_buffer =
-        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, vertices)
-            .unwrap();
+    let vertex_buffer = CpuAccessibleBuffer::from_iter(
+        device.clone(),
+        BufferUsage {
+            vertex_buffer: true,
+            ..BufferUsage::empty()
+        },
+        false,
+        vertices,
+    )
+    .unwrap();
 
     // Note the `#extension GL_EXT_multiview : enable` that enables the multiview extension
     // for the shader and the use of `gl_ViewIndex` which contains a value based on which
@@ -268,7 +276,10 @@ fn main() {
     let create_buffer = || {
         CpuAccessibleBuffer::from_iter(
             device.clone(),
-            BufferUsage::all(),
+            BufferUsage {
+                transfer_dst: true,
+                ..BufferUsage::empty()
+            },
             false,
             (0..image.dimensions().width() * image.dimensions().height() * 4).map(|_| 0u8),
         )

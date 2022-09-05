@@ -9,7 +9,7 @@
 
 //! Configures how primitives should be converted into collections of fragments.
 
-use crate::pipeline::StateMode;
+use crate::{macros::vulkan_enum, pipeline::StateMode};
 
 /// The state in a graphics pipeline describing how the rasterization stage should behave.
 #[derive(Clone, Debug)]
@@ -175,30 +175,28 @@ pub struct DepthBias {
     pub slope_factor: f32,
 }
 
-/// Specifies the culling mode.
-///
-/// This setting works in pair with `front_face`. The `front_face` setting tells the GPU whether
-/// clockwise or counter-clockwise correspond to the front and the back of each triangle. Then
-/// `cull_mode` lets you specify whether front faces should be discarded, back faces should be
-/// discarded, or none, or both.
-#[derive(Copy, Clone, Debug)]
-#[repr(u32)]
-pub enum CullMode {
-    /// No culling.
-    None = ash::vk::CullModeFlags::NONE.as_raw(),
-    /// The faces facing the front of the screen (ie. facing the user) will be removed.
-    Front = ash::vk::CullModeFlags::FRONT.as_raw(),
-    /// The faces facing the back of the screen will be removed.
-    Back = ash::vk::CullModeFlags::BACK.as_raw(),
-    /// All faces will be removed.
-    FrontAndBack = ash::vk::CullModeFlags::FRONT_AND_BACK.as_raw(),
-}
+vulkan_enum! {
+    /// Specifies the culling mode.
+    ///
+    /// This setting works in pair with `front_face`. The `front_face` setting tells the GPU whether
+    /// clockwise or counter-clockwise correspond to the front and the back of each triangle. Then
+    /// `cull_mode` lets you specify whether front faces should be discarded, back faces should be
+    /// discarded, or none, or both.
+    #[non_exhaustive]
+    CullMode = CullModeFlags(u32);
 
-impl From<CullMode> for ash::vk::CullModeFlags {
-    #[inline]
-    fn from(val: CullMode) -> Self {
-        Self::from_raw(val as u32)
-    }
+    /// No culling.
+    None = NONE,
+
+    /// The faces facing the front of the screen (ie. facing the user) will be removed.
+    Front = FRONT,
+
+    /// The faces facing the back of the screen will be removed.
+    Back = BACK,
+
+    /// All faces will be removed.
+    FrontAndBack = FRONT_AND_BACK,
+
 }
 
 impl Default for CullMode {
@@ -208,24 +206,19 @@ impl Default for CullMode {
     }
 }
 
-/// Specifies which triangle orientation corresponds to the front or the triangle.
-#[derive(Copy, Clone, Debug)]
-#[repr(i32)]
-pub enum FrontFace {
+vulkan_enum! {
+    /// Specifies which triangle orientation corresponds to the front or the triangle.
+    #[non_exhaustive]
+    FrontFace = FrontFace(i32);
+
     /// Triangles whose vertices are oriented counter-clockwise on the screen will be considered
     /// as facing their front. Otherwise they will be considered as facing their back.
-    CounterClockwise = ash::vk::FrontFace::COUNTER_CLOCKWISE.as_raw(),
+    CounterClockwise = COUNTER_CLOCKWISE,
+
 
     /// Triangles whose vertices are oriented clockwise on the screen will be considered
     /// as facing their front. Otherwise they will be considered as facing their back.
-    Clockwise = ash::vk::FrontFace::CLOCKWISE.as_raw(),
-}
-
-impl From<FrontFace> for ash::vk::FrontFace {
-    #[inline]
-    fn from(val: FrontFace) -> Self {
-        Self::from_raw(val as i32)
-    }
+    Clockwise = CLOCKWISE,
 }
 
 impl Default for FrontFace {
@@ -235,19 +228,26 @@ impl Default for FrontFace {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[repr(i32)]
-pub enum PolygonMode {
-    Fill = ash::vk::PolygonMode::FILL.as_raw(),
-    Line = ash::vk::PolygonMode::LINE.as_raw(),
-    Point = ash::vk::PolygonMode::POINT.as_raw(),
-}
+vulkan_enum! {
+    // TODO: document
+    #[non_exhaustive]
+    PolygonMode = PolygonMode(i32);
 
-impl From<PolygonMode> for ash::vk::PolygonMode {
-    #[inline]
-    fn from(val: PolygonMode) -> Self {
-        Self::from_raw(val as i32)
-    }
+    // TODO: document
+    Fill = FILL,
+
+    // TODO: document
+    Line = LINE,
+
+    // TODO: document
+    Point = POINT,
+
+    /*
+    // TODO: document
+    FillRectangle = FILL_RECTANGLE_NV {
+        extensions: [nv_fill_rectangle],
+    },
+     */
 }
 
 impl Default for PolygonMode {
@@ -257,10 +257,11 @@ impl Default for PolygonMode {
     }
 }
 
-/// The rasterization mode to use for lines.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[repr(i32)]
-pub enum LineRasterizationMode {
+vulkan_enum! {
+    /// The rasterization mode to use for lines.
+    #[non_exhaustive]
+    LineRasterizationMode = LineRasterizationModeEXT(i32);
+
     /// If the [`strict_lines`](crate::device::Properties::strict_lines) device property is `true`,
     /// then this is the same as `Rectangular`. Otherwise, lines are drawn as parallelograms.
     ///
@@ -268,7 +269,7 @@ pub enum LineRasterizationMode {
     /// [`strict_lines`](crate::device::Properties::strict_lines) property must be `true` and the
     /// [`stippled_rectangular_lines`](crate::device::Features::stippled_rectangular_lines) feature
     /// must be enabled on the device.
-    Default = ash::vk::LineRasterizationModeEXT::DEFAULT.as_raw(),
+    Default = DEFAULT,
 
     /// Lines are drawn as if they were rectangles extruded from the line.
     ///
@@ -276,7 +277,7 @@ pub enum LineRasterizationMode {
     /// enabled on the device. If [`RasterizationState::line_stipple`] is `Some`, then the
     /// [`stippled_rectangular_lines`](crate::device::Features::stippled_rectangular_lines) must
     /// also be enabled.
-    Rectangular = ash::vk::LineRasterizationModeEXT::RECTANGULAR.as_raw(),
+    Rectangular = RECTANGULAR,
 
     /// Lines are drawn by determining which pixel diamonds the line intersects and exits.
     ///
@@ -284,7 +285,7 @@ pub enum LineRasterizationMode {
     /// enabled on the device. If [`RasterizationState::line_stipple`] is `Some`, then the
     /// [`stippled_bresenham_lines`](crate::device::Features::stippled_bresenham_lines) must
     /// also be enabled.
-    Bresenham = ash::vk::LineRasterizationModeEXT::BRESENHAM.as_raw(),
+    Bresenham = BRESENHAM,
 
     /// As `Rectangular`, but with alpha falloff.
     ///
@@ -292,19 +293,13 @@ pub enum LineRasterizationMode {
     /// enabled on the device. If [`RasterizationState::line_stipple`] is `Some`, then the
     /// [`stippled_smooth_lines`](crate::device::Features::stippled_smooth_lines) must
     /// also be enabled.
-    RectangularSmooth = ash::vk::LineRasterizationModeEXT::RECTANGULAR_SMOOTH.as_raw(),
+    RectangularSmooth = RECTANGULAR_SMOOTH,
 }
 
 impl Default for LineRasterizationMode {
     /// Returns `LineRasterizationMode::Default`.
     fn default() -> Self {
         Self::Default
-    }
-}
-
-impl From<LineRasterizationMode> for ash::vk::LineRasterizationModeEXT {
-    fn from(val: LineRasterizationMode) -> Self {
-        Self::from_raw(val as i32)
     }
 }
 

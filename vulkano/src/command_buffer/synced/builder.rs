@@ -636,9 +636,9 @@ impl SyncCommandBufferBuilder {
                                             ImageMemoryBarrier {
                                                 source_stages: PipelineStages {
                                                     bottom_of_pipe: true,
-                                                    ..PipelineStages::none()
+                                                    ..PipelineStages::empty()
                                                 },
-                                                source_access: AccessFlags::none(),
+                                                source_access: AccessFlags::empty(),
                                                 destination_stages: memory.stages,
                                                 destination_access: memory.access,
                                                 old_layout: state.initial_layout,
@@ -770,9 +770,9 @@ impl SyncCommandBufferBuilder {
                                 source_access: state.memory.access,
                                 destination_stages: PipelineStages {
                                     top_of_pipe: true,
-                                    ..PipelineStages::none()
+                                    ..PipelineStages::empty()
                                 },
-                                destination_access: AccessFlags::none(),
+                                destination_access: AccessFlags::empty(),
                                 old_layout: state.current_layout,
                                 new_layout: state.final_layout,
                                 subresource_range: image.range_to_subresources(range.clone()),

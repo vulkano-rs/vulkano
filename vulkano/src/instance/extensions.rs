@@ -11,7 +11,7 @@ pub use crate::{
     extensions::{ExtensionRestriction, ExtensionRestrictionError, OneOfRequirements},
     Version,
 };
-use core::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, Not, Sub, SubAssign};
+use core::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Sub, SubAssign};
 use std::{
     ffi::{CStr, CString},
     fmt::Formatter,
@@ -27,7 +27,7 @@ mod tests {
 
     #[test]
     fn empty_extensions() {
-        let i: Vec<CString> = (&InstanceExtensions::none()).into();
+        let i: Vec<CString> = (&InstanceExtensions::empty()).into();
         assert!(i.get(0).is_none());
     }
 }

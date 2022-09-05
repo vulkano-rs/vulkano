@@ -110,10 +110,10 @@ fn main() {
 
     let device_extensions = DeviceExtensions {
         khr_swapchain: true,
-        ..DeviceExtensions::none()
+        ..DeviceExtensions::empty()
     };
     let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-        .filter(|&p| p.supported_extensions().is_superset_of(&device_extensions))
+        .filter(|&p| p.supported_extensions().contains(&device_extensions))
         .filter_map(|p| {
             p.queue_families()
                 .find(|&q| q.supports_graphics())
@@ -125,6 +125,7 @@ fn main() {
             PhysicalDeviceType::VirtualGpu => 2,
             PhysicalDeviceType::Cpu => 3,
             PhysicalDeviceType::Other => 4,
+            _ => 5,
         })
         .unwrap();
 
@@ -277,9 +278,16 @@ fn main() {
             position: [0.5, -0.25],
         },
     ];
-    let vertex_buffer =
-        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, vertices)
-            .unwrap();
+    let vertex_buffer = CpuAccessibleBuffer::from_iter(
+        device.clone(),
+        BufferUsage {
+            vertex_buffer: true,
+            ..BufferUsage::empty()
+        },
+        false,
+        vertices,
+    )
+    .unwrap();
 
     let subpass = Subpass::from(render_pass, 0).unwrap();
     let pipeline = GraphicsPipeline::start()
@@ -303,7 +311,10 @@ fn main() {
 
     let buf = CpuAccessibleBuffer::from_iter(
         device.clone(),
-        BufferUsage::all(),
+        BufferUsage {
+            transfer_dst: true,
+            ..BufferUsage::empty()
+        },
         false,
         (0..1024 * 1024 * 4).map(|_| 0u8),
     )

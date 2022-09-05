@@ -33,6 +33,7 @@ use crate::{
     device::{Device, DeviceOwned},
     format::Format,
     image::{ImageAspects, ImageLayout, SampleCount},
+    macros::{vulkan_bitflags, vulkan_enum},
     shader::ShaderInterface,
     sync::{AccessFlags, PipelineStages},
     Version, VulkanObject,
@@ -967,7 +968,7 @@ pub struct AttachmentReference {
     /// [`khr_maintenance2`](crate::device::DeviceExtensions::khr_maintenance2) extensions must be
     /// enabled on the device.
     ///
-    /// The default value is [`ImageAspects::none()`].
+    /// The default value is [`ImageAspects::empty()`].
     pub aspects: ImageAspects,
 
     pub _ne: crate::NonExhaustive,
@@ -979,7 +980,7 @@ impl Default for AttachmentReference {
         Self {
             attachment: 0,
             layout: ImageLayout::Undefined,
-            aspects: ImageAspects::none(),
+            aspects: ImageAspects::empty(),
             _ne: crate::NonExhaustive(()),
         }
     }
@@ -1024,24 +1025,24 @@ pub struct SubpassDependency {
     /// The pipeline stages that must be finished on `source_subpass` before the
     /// `destination_stages` of `destination_subpass` can start.
     ///
-    /// The default value is [`PipelineStages::none()`].
+    /// The default value is [`PipelineStages::empty()`].
     pub source_stages: PipelineStages,
 
     /// The pipeline stages of `destination_subpass` that must wait for the `source_stages` of
     /// `source_subpass` to be finished. Stages that are earlier than the stages specified here can
     /// start before the `source_stages` are finished.
     ///
-    /// The default value is [`PipelineStages::none()`].
+    /// The default value is [`PipelineStages::empty()`].
     pub destination_stages: PipelineStages,
 
     /// The way `source_subpass` accesses the attachments on which we depend.
     ///
-    /// The default value is [`AccessFlags::none()`].
+    /// The default value is [`AccessFlags::empty()`].
     pub source_access: AccessFlags,
 
     /// The way `destination_subpass` accesses the attachments on which we depend.
     ///
-    /// The default value is [`AccessFlags::none()`].
+    /// The default value is [`AccessFlags::empty()`].
     pub destination_access: AccessFlags,
 
     /// If false, then the source operations must be fully finished for the destination operations
@@ -1082,10 +1083,10 @@ impl Default for SubpassDependency {
         Self {
             source_subpass: None,
             destination_subpass: None,
-            source_stages: PipelineStages::none(),
-            destination_stages: PipelineStages::none(),
-            source_access: AccessFlags::none(),
-            destination_access: AccessFlags::none(),
+            source_stages: PipelineStages::empty(),
+            destination_stages: PipelineStages::empty(),
+            source_access: AccessFlags::empty(),
+            destination_access: AccessFlags::empty(),
             by_region: false,
             view_local: None,
             _ne: crate::NonExhaustive(()),
@@ -1093,24 +1094,24 @@ impl Default for SubpassDependency {
     }
 }
 
-/// Describes what the implementation should do with an attachment at the start of the subpass.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-#[repr(i32)]
-#[non_exhaustive]
-pub enum LoadOp {
+vulkan_enum! {
+    /// Describes what the implementation should do with an attachment at the start of the subpass.
+    #[non_exhaustive]
+    LoadOp = AttachmentLoadOp(i32);
+
     /// The content of the attachment will be loaded from memory. This is what you want if you want
     /// to draw over something existing.
     ///
     /// While this is the most intuitive option, it is also the slowest because it uses a lot of
     /// memory bandwidth.
-    Load = ash::vk::AttachmentLoadOp::LOAD.as_raw(),
+    Load = LOAD,
 
     /// The content of the attachment will be filled by the implementation with a uniform value
     /// that you must provide when you start drawing.
     ///
     /// This is what you usually use at the start of a frame, in order to reset the content of
     /// the color, depth and/or stencil buffers.
-    Clear = ash::vk::AttachmentLoadOp::CLEAR.as_raw(),
+    Clear = CLEAR,
 
     /// The attachment will have undefined content.
     ///
@@ -1118,27 +1119,27 @@ pub enum LoadOp {
     /// commands.
     /// If you are going to fill the attachment with a uniform value, it is better to use `Clear`
     /// instead.
-    DontCare = ash::vk::AttachmentLoadOp::DONT_CARE.as_raw(),
+    DontCare = DONT_CARE,
+
+    /*
+    // TODO: document
+    None = NONE_EXT {
+        extensions: [ext_load_store_op_none],
+    },
+     */
 }
 
-impl From<LoadOp> for ash::vk::AttachmentLoadOp {
-    #[inline]
-    fn from(val: LoadOp) -> Self {
-        Self::from_raw(val as i32)
-    }
-}
+vulkan_enum! {
+    /// Describes what the implementation should do with an attachment after all the subpasses have
+    /// completed.
+    #[non_exhaustive]
+    StoreOp = AttachmentStoreOp(i32);
 
-/// Describes what the implementation should do with an attachment after all the subpasses have
-/// completed.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-#[repr(i32)]
-#[non_exhaustive]
-pub enum StoreOp {
     /// The attachment will be stored. This is what you usually want.
     ///
     /// While this is the most intuitive option, it is also slower than `DontCare` because it can
     /// take time to write the data back to memory.
-    Store = ash::vk::AttachmentStoreOp::STORE.as_raw(),
+    Store = STORE,
 
     /// What happens is implementation-specific.
     ///
@@ -1148,79 +1149,71 @@ pub enum StoreOp {
     /// This doesn't mean that the data won't be copied, as an implementation is also free to not
     /// use a cache and write the output directly in memory. In other words, the content of the
     /// image will be undefined.
-    DontCare = ash::vk::AttachmentStoreOp::DONT_CARE.as_raw(),
+    DontCare = DONT_CARE,
+
+    /*
+    // TODO: document
+    None = NONE {
+        api_version: V1_3,
+        extensions: [ext_load_store_op_none],
+    },
+     */
 }
 
-impl From<StoreOp> for ash::vk::AttachmentStoreOp {
-    #[inline]
-    fn from(val: StoreOp) -> Self {
-        Self::from_raw(val as i32)
-    }
-}
+vulkan_enum! {
+    /// Possible resolve modes for attachments.
+    #[non_exhaustive]
+    ResolveMode = ResolveModeFlags(u32);
 
-/// Possible resolve modes for attachments.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(u32)]
-#[non_exhaustive]
-pub enum ResolveMode {
     /// The resolved sample is taken from sample number zero, the other samples are ignored.
     ///
     /// This mode is supported for depth and stencil formats, and for color images with an integer
     /// format.
-    SampleZero = ash::vk::ResolveModeFlags::SAMPLE_ZERO.as_raw(),
+    SampleZero = SAMPLE_ZERO,
 
     /// The resolved sample is calculated from the average of the samples.
     ///
     /// This mode is supported for depth formats, and for color images with a non-integer format.
-    Average = ash::vk::ResolveModeFlags::AVERAGE.as_raw(),
+    Average = AVERAGE,
 
     /// The resolved sample is calculated from the minimum of the samples.
     ///
     /// This mode is supported for depth and stencil formats only.
-    Min = ash::vk::ResolveModeFlags::MIN.as_raw(),
+    Min = MIN,
 
     /// The resolved sample is calculated from the maximum of the samples.
     ///
     /// This mode is supported for depth and stencil formats only.
-    Max = ash::vk::ResolveModeFlags::MAX.as_raw(),
+    Max = MAX,
 }
 
-impl From<ResolveMode> for ash::vk::ResolveModeFlags {
-    #[inline]
-    fn from(val: ResolveMode) -> Self {
-        Self::from_raw(val as u32)
-    }
-}
+vulkan_bitflags! {
+    // TODO: document
+    #[non_exhaustive]
+    ResolveModes = ResolveModeFlags(u32);
 
-#[derive(Clone, Copy, Debug)]
-pub struct ResolveModes {
-    pub sample_zero: bool,
-    pub average: bool,
-    pub min: bool,
-    pub max: bool,
+    // TODO: document
+    sample_zero = SAMPLE_ZERO,
+
+    // TODO: document
+    average = AVERAGE,
+
+    // TODO: document
+    min = MIN,
+
+    // TODO: document
+    max = MAX,
 }
 
 impl ResolveModes {
     /// Returns whether `self` contains the given `mode`.
     #[inline]
-    pub fn contains(&self, mode: ResolveMode) -> bool {
+    pub fn contains_mode(&self, mode: ResolveMode) -> bool {
         match mode {
             ResolveMode::SampleZero => self.sample_zero,
             ResolveMode::Average => self.average,
             ResolveMode::Min => self.min,
             ResolveMode::Max => self.max,
-        }
-    }
-}
-
-impl From<ash::vk::ResolveModeFlags> for ResolveModes {
-    #[inline]
-    fn from(val: ash::vk::ResolveModeFlags) -> Self {
-        Self {
-            sample_zero: val.intersects(ash::vk::ResolveModeFlags::SAMPLE_ZERO),
-            average: val.intersects(ash::vk::ResolveModeFlags::AVERAGE),
-            min: val.intersects(ash::vk::ResolveModeFlags::MIN),
-            max: val.intersects(ash::vk::ResolveModeFlags::MAX),
         }
     }
 }

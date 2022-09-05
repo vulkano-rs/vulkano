@@ -121,6 +121,7 @@ pub use self::{
 use crate::{
     format::Format,
     image::SampleCount,
+    macros::vulkan_enum,
     query::{QueryControlFlags, QueryPipelineStatisticFlags},
     render_pass::{Framebuffer, Subpass},
 };
@@ -162,21 +163,16 @@ pub struct DispatchIndirectCommand {
     pub z: u32,
 }
 
-/// Describes what a subpass in a command buffer will contain.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[repr(i32)]
-pub enum SubpassContents {
-    /// The subpass will only directly contain commands.
-    Inline = ash::vk::SubpassContents::INLINE.as_raw(),
-    /// The subpass will only contain secondary command buffers invocations.
-    SecondaryCommandBuffers = ash::vk::SubpassContents::SECONDARY_COMMAND_BUFFERS.as_raw(),
-}
+vulkan_enum! {
+    /// Describes what a subpass in a command buffer will contain.
+    #[non_exhaustive]
+    SubpassContents = SubpassContents(i32);
 
-impl From<SubpassContents> for ash::vk::SubpassContents {
-    #[inline]
-    fn from(val: SubpassContents) -> Self {
-        Self::from_raw(val as i32)
-    }
+    /// The subpass will only directly contain commands.
+    Inline = INLINE,
+
+    /// The subpass will only contain secondary command buffers invocations.
+    SecondaryCommandBuffers = SECONDARY_COMMAND_BUFFERS,
 }
 
 impl From<SubpassContents> for ash::vk::RenderingFlags {
@@ -189,24 +185,17 @@ impl From<SubpassContents> for ash::vk::RenderingFlags {
     }
 }
 
-/// Determines the kind of command buffer to create.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[repr(i32)]
-pub enum CommandBufferLevel {
+vulkan_enum! {
+    /// Determines the kind of command buffer to create.
+    CommandBufferLevel = CommandBufferLevel(i32);
+
     /// Primary command buffers can be executed on a queue, and can call secondary command buffers.
     /// Render passes must begin and end within the same primary command buffer.
-    Primary = ash::vk::CommandBufferLevel::PRIMARY.as_raw(),
+    Primary = PRIMARY,
 
     /// Secondary command buffers cannot be executed on a queue, but can be executed by a primary
     /// command buffer. If created for a render pass, they must fit within a single render subpass.
-    Secondary = ash::vk::CommandBufferLevel::SECONDARY.as_raw(),
-}
-
-impl From<CommandBufferLevel> for ash::vk::CommandBufferLevel {
-    #[inline]
-    fn from(val: CommandBufferLevel) -> Self {
-        Self::from_raw(val as i32)
-    }
+    Secondary = SECONDARY,
 }
 
 /// The context that a secondary command buffer can inherit from the primary command
@@ -238,7 +227,7 @@ pub struct CommandBufferInheritanceInfo {
     /// The `pipeline_statistics_query` feature must be enabled if any of the flags of this value
     /// are set.
     ///
-    /// The default value is [`QueryPipelineStatisticFlags::none()`].
+    /// The default value is [`QueryPipelineStatisticFlags::empty()`].
     pub query_statistics_flags: QueryPipelineStatisticFlags,
 
     pub _ne: crate::NonExhaustive,
@@ -250,7 +239,7 @@ impl Default for CommandBufferInheritanceInfo {
         Self {
             render_pass: None,
             occlusion_query: None,
-            query_statistics_flags: QueryPipelineStatisticFlags::none(),
+            query_statistics_flags: QueryPipelineStatisticFlags::empty(),
             _ne: crate::NonExhaustive(()),
         }
     }

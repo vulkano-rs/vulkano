@@ -13,7 +13,8 @@ use super::{
 };
 use crate::{
     device::Device,
-    image::{ImageAspects, ImageLayout, SampleCount},
+    image::{ImageLayout, SampleCount},
+    macros::ExtensionNotEnabled,
     sync::PipelineStages,
     OomError, Version, VulkanError, VulkanObject,
 };
@@ -46,11 +47,11 @@ impl RenderPass {
         for (atch_num, attachment) in attachments.iter().enumerate() {
             let &AttachmentDescription {
                 format,
-                samples: _,
-                load_op: _,
-                store_op: _,
-                stencil_load_op: _,
-                stencil_store_op: _,
+                samples,
+                load_op,
+                store_op,
+                stencil_load_op,
+                stencil_store_op,
                 initial_layout,
                 final_layout,
                 _ne: _,
@@ -77,7 +78,26 @@ impl RenderPass {
                     .potential_format_features(),
             );
 
+            // VUID-VkAttachmentDescription2-samples-parameter
+            samples.validate(device)?;
+
+            for load_op in [load_op, stencil_load_op] {
+                // VUID-VkAttachmentDescription2-loadOp-parameter
+                // VUID-VkAttachmentDescription2-stencilLoadOp-parameter
+                load_op.validate(device)?;
+            }
+
+            for store_op in [store_op, stencil_store_op] {
+                // VUID-VkAttachmentDescription2-storeOp-parameter
+                // VUID-VkAttachmentDescription2-stencilStoreOp-parameter
+                store_op.validate(device)?;
+            }
+
             for layout in [initial_layout, final_layout] {
+                // VUID-VkAttachmentDescription2-initialLayout-parameter
+                // VUID-VkAttachmentDescription2-finalLayout-parameter
+                layout.validate(device)?;
+
                 match layout {
                     ImageLayout::ColorAttachmentOptimal => {
                         // VUID-VkAttachmentDescription2-format-03295
@@ -174,6 +194,12 @@ impl RenderPass {
 
             // Common checks for all attachment types
             let mut check_attachment = |atch_ref: &AttachmentReference| {
+                // VUID-VkAttachmentReference2-layout-parameter
+                atch_ref.layout.validate(device)?;
+
+                // VUID?
+                atch_ref.aspects.validate(device)?;
+
                 // VUID-VkRenderPassCreateInfo2-attachment-03051
                 let atch = attachments.get(atch_ref.attachment as usize).ok_or(
                     RenderPassCreationError::SubpassAttachmentOutOfRange {
@@ -253,7 +279,7 @@ impl RenderPass {
                 }
 
                 // Not required by spec, but enforced by Vulkano for sanity.
-                if atch_ref.aspects != ImageAspects::none() {
+                if !atch_ref.aspects.is_empty() {
                     return Err(RenderPassCreationError::SubpassAttachmentAspectsNotEmpty {
                         subpass: subpass_num,
                         attachment: atch_ref.attachment,
@@ -311,7 +337,7 @@ impl RenderPass {
                 }
 
                 // Not required by spec, but enforced by Vulkano for sanity.
-                if atch_ref.aspects != ImageAspects::none() {
+                if !atch_ref.aspects.is_empty() {
                     return Err(RenderPassCreationError::SubpassAttachmentAspectsNotEmpty {
                         subpass: subpass_num,
                         attachment: atch_ref.attachment,
@@ -382,7 +408,7 @@ impl RenderPass {
 
                 let atch_aspects = atch.format.unwrap().aspects();
 
-                if atch_ref.aspects == ImageAspects::none() {
+                if atch_ref.aspects.is_empty() {
                     // VUID-VkSubpassDescription2-attachment-02800
                     atch_ref.aspects = atch_aspects;
                 } else if atch_ref.aspects != atch_aspects {
@@ -478,7 +504,7 @@ impl RenderPass {
                 }
 
                 // Not required by spec, but enforced by Vulkano for sanity.
-                if atch_ref.aspects != ImageAspects::none() {
+                if !atch_ref.aspects.is_empty() {
                     return Err(RenderPassCreationError::SubpassAttachmentAspectsNotEmpty {
                         subpass: subpass_num,
                         attachment: atch_ref.attachment,
@@ -558,10 +584,10 @@ impl RenderPass {
             let &SubpassDependency {
                 source_subpass,
                 destination_subpass,
-                ref source_stages,
-                ref destination_stages,
-                ref source_access,
-                ref destination_access,
+                source_stages,
+                destination_stages,
+                source_access,
+                destination_access,
                 by_region,
                 view_local,
                 _ne: _,
@@ -572,6 +598,14 @@ impl RenderPass {
                 (source_stages, source_access),
                 (destination_stages, destination_access),
             ] {
+                // VUID-VkSubpassDependency2-srcStageMask-parameter
+                // VUID-VkSubpassDependency2-dstStageMask-parameter
+                stages.validate(device)?;
+
+                // VUID-VkSubpassDependency2-srcAccessMask-parameter
+                // VUID-VkSubpassDependency2-dstAccessMask-parameter
+                access.validate(device)?;
+
                 // VUID-VkSubpassDependency2-srcStageMask-04090
                 // VUID-VkSubpassDependency2-dstStageMask-04090
                 if stages.geometry_shader && !device.enabled_features().geometry_shader {
@@ -594,8 +628,7 @@ impl RenderPass {
 
                 // VUID-VkSubpassDependency2-srcStageMask-03937
                 // VUID-VkSubpassDependency2-dstStageMask-03937
-                if *stages == PipelineStages::none() && !device.enabled_features().synchronization2
-                {
+                if stages.is_empty() && !device.enabled_features().synchronization2 {
                     return Err(RenderPassCreationError::FeatureNotEnabled {
                         feature: "synchronization2",
                         reason: "a dependency specified no shader stages",
@@ -604,7 +637,7 @@ impl RenderPass {
 
                 // VUID-VkSubpassDependency2-srcAccessMask-03088
                 // VUID-VkSubpassDependency2-dstAccessMask-03089
-                if !stages.supported_access().contains(access) {
+                if !stages.supported_access().contains(&access) {
                     return Err(
                         RenderPassCreationError::DependencyAccessNotSupportedByStages {
                             dependency: dependency_num,
@@ -658,12 +691,12 @@ impl RenderPass {
                         late_fragment_tests: false,
                         color_attachment_output: false,
                         all_graphics: false,
-                        ..*stages
+                        ..stages
                     };
 
                     // VUID-VkRenderPassCreateInfo2-pDependencies-03054
                     // VUID-VkRenderPassCreateInfo2-pDependencies-03055
-                    if remaining_stages != PipelineStages::none() {
+                    if !remaining_stages.is_empty() {
                         return Err(RenderPassCreationError::DependencyStageNotSupported {
                             dependency: dependency_num,
                         });
@@ -699,18 +732,18 @@ impl RenderPass {
                         fragment_shader: false,
                         late_fragment_tests: false,
                         color_attachment_output: false,
-                        ..*source_stages
+                        ..source_stages
                     };
                     let destination_stages_non_framebuffer = PipelineStages {
                         early_fragment_tests: false,
                         fragment_shader: false,
                         late_fragment_tests: false,
                         color_attachment_output: false,
-                        ..*destination_stages
+                        ..destination_stages
                     };
 
-                    if source_stages_non_framebuffer != PipelineStages::none()
-                        || destination_stages_non_framebuffer != PipelineStages::none()
+                    if !source_stages_non_framebuffer.is_empty()
+                        || !destination_stages_non_framebuffer.is_empty()
                     {
                         let source_latest_stage = if source_stages.all_graphics {
                             13
@@ -730,7 +763,7 @@ impl RenderPass {
                                 late_fragment_tests,
                                 color_attachment_output,
                                 ..
-                            } = *source_stages;
+                            } = source_stages;
 
                             #[allow(clippy::identity_op)]
                             [
@@ -771,7 +804,7 @@ impl RenderPass {
                                 late_fragment_tests,
                                 color_attachment_output,
                                 ..
-                            } = *destination_stages;
+                            } = destination_stages;
 
                             #[allow(clippy::identity_op)]
                             [
@@ -1717,6 +1750,16 @@ impl From<VulkanError> for RenderPassCreationError {
                 RenderPassCreationError::OomError(OomError::from(err))
             }
             _ => panic!("unexpected error: {:?}", err),
+        }
+    }
+}
+
+impl From<ExtensionNotEnabled> for RenderPassCreationError {
+    #[inline]
+    fn from(err: ExtensionNotEnabled) -> Self {
+        Self::ExtensionNotEnabled {
+            extension: err.extension,
+            reason: err.reason,
         }
     }
 }

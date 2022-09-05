@@ -147,7 +147,11 @@ impl FrameSystem {
                 gfx_queue.device().clone(),
                 [1, 1],
                 Format::A2B10G10R10_UNORM_PACK32,
-                ImageUsage::transient_input_attachment(),
+                ImageUsage {
+                    transient_attachment: true,
+                    input_attachment: true,
+                    ..ImageUsage::empty()
+                },
             )
             .unwrap(),
         )
@@ -157,7 +161,11 @@ impl FrameSystem {
                 gfx_queue.device().clone(),
                 [1, 1],
                 Format::R16G16B16A16_SFLOAT,
-                ImageUsage::transient_input_attachment(),
+                ImageUsage {
+                    transient_attachment: true,
+                    input_attachment: true,
+                    ..ImageUsage::empty()
+                },
             )
             .unwrap(),
         )
@@ -167,7 +175,11 @@ impl FrameSystem {
                 gfx_queue.device().clone(),
                 [1, 1],
                 Format::D16_UNORM,
-                ImageUsage::transient_input_attachment(),
+                ImageUsage {
+                    transient_attachment: true,
+                    input_attachment: true,
+                    ..ImageUsage::empty()
+                },
             )
             .unwrap(),
         )
@@ -235,7 +247,11 @@ impl FrameSystem {
                     self.gfx_queue.device().clone(),
                     img_dims,
                     Format::A2B10G10R10_UNORM_PACK32,
-                    ImageUsage::transient_input_attachment(),
+                    ImageUsage {
+                        transient_attachment: true,
+                        input_attachment: true,
+                        ..ImageUsage::empty()
+                    },
                 )
                 .unwrap(),
             )
@@ -245,7 +261,11 @@ impl FrameSystem {
                     self.gfx_queue.device().clone(),
                     img_dims,
                     Format::R16G16B16A16_SFLOAT,
-                    ImageUsage::transient_input_attachment(),
+                    ImageUsage {
+                        transient_attachment: true,
+                        input_attachment: true,
+                        ..ImageUsage::empty()
+                    },
                 )
                 .unwrap(),
             )
@@ -255,7 +275,11 @@ impl FrameSystem {
                     self.gfx_queue.device().clone(),
                     img_dims,
                     Format::D16_UNORM,
-                    ImageUsage::transient_input_attachment(),
+                    ImageUsage {
+                        transient_attachment: true,
+                        input_attachment: true,
+                        ..ImageUsage::empty()
+                    },
                 )
                 .unwrap(),
             )

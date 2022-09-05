@@ -18,7 +18,7 @@
 //! initialization or during a loading screen.
 
 pub use self::{compute::ComputePipeline, graphics::GraphicsPipeline, layout::PipelineLayout};
-use crate::device::DeviceOwned;
+use crate::{device::DeviceOwned, macros::vulkan_enum};
 use std::sync::Arc;
 
 pub mod cache;
@@ -39,76 +39,222 @@ pub trait Pipeline: DeviceOwned {
     fn num_used_descriptor_sets(&self) -> u32;
 }
 
-/// The type of a pipeline.
-///
-/// When binding a pipeline or descriptor sets in a command buffer, the state for each bind point
-/// is independent from the others. This means that it is possible, for example, to bind a graphics
-/// pipeline without disturbing any bound compute pipeline. Likewise, binding descriptor sets for
-/// the `Compute` bind point does not affect sets that were bound to the `Graphics` bind point.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[repr(i32)]
-pub enum PipelineBindPoint {
-    Compute = ash::vk::PipelineBindPoint::COMPUTE.as_raw(),
-    Graphics = ash::vk::PipelineBindPoint::GRAPHICS.as_raw(),
+vulkan_enum! {
+    /// The type of a pipeline.
+    ///
+    /// When binding a pipeline or descriptor sets in a command buffer, the state for each bind point
+    /// is independent from the others. This means that it is possible, for example, to bind a graphics
+    /// pipeline without disturbing any bound compute pipeline. Likewise, binding descriptor sets for
+    /// the `Compute` bind point does not affect sets that were bound to the `Graphics` bind point.
+    #[non_exhaustive]
+    PipelineBindPoint = PipelineBindPoint(i32);
+
+    // TODO: document
+    Compute = COMPUTE,
+
+    // TODO: document
+    Graphics = GRAPHICS,
+
+    /*
+    // TODO: document
+    RayTracing = RAY_TRACING_KHR {
+        extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
+    },
+
+    // TODO: document
+    SubpassShading = SUBPASS_SHADING_HUAWEI {
+        extensions: [huawei_subpass_shading],
+    },
+     */
 }
 
-impl From<PipelineBindPoint> for ash::vk::PipelineBindPoint {
-    #[inline]
-    fn from(val: PipelineBindPoint) -> Self {
-        Self::from_raw(val as i32)
-    }
-}
+vulkan_enum! {
+    /// A particular state value within a graphics pipeline that can be dynamically set by a command
+    /// buffer.
+    #[non_exhaustive]
+    DynamicState = DynamicState(i32);
 
-/// A particular state value within a graphics pipeline that can be dynamically set by a command
-/// buffer.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[repr(i32)]
-pub enum DynamicState {
-    Viewport = ash::vk::DynamicState::VIEWPORT.as_raw(),
-    Scissor = ash::vk::DynamicState::SCISSOR.as_raw(),
-    LineWidth = ash::vk::DynamicState::LINE_WIDTH.as_raw(),
-    DepthBias = ash::vk::DynamicState::DEPTH_BIAS.as_raw(),
-    BlendConstants = ash::vk::DynamicState::BLEND_CONSTANTS.as_raw(),
-    DepthBounds = ash::vk::DynamicState::DEPTH_BOUNDS.as_raw(),
-    StencilCompareMask = ash::vk::DynamicState::STENCIL_COMPARE_MASK.as_raw(),
-    StencilWriteMask = ash::vk::DynamicState::STENCIL_WRITE_MASK.as_raw(),
-    StencilReference = ash::vk::DynamicState::STENCIL_REFERENCE.as_raw(),
-    ViewportWScaling = ash::vk::DynamicState::VIEWPORT_W_SCALING_NV.as_raw(),
-    DiscardRectangle = ash::vk::DynamicState::DISCARD_RECTANGLE_EXT.as_raw(),
-    SampleLocations = ash::vk::DynamicState::SAMPLE_LOCATIONS_EXT.as_raw(),
-    RayTracingPipelineStackSize =
-        ash::vk::DynamicState::RAY_TRACING_PIPELINE_STACK_SIZE_KHR.as_raw(),
-    ViewportShadingRatePalette = ash::vk::DynamicState::VIEWPORT_SHADING_RATE_PALETTE_NV.as_raw(),
-    ViewportCoarseSampleOrder = ash::vk::DynamicState::VIEWPORT_COARSE_SAMPLE_ORDER_NV.as_raw(),
-    ExclusiveScissor = ash::vk::DynamicState::EXCLUSIVE_SCISSOR_NV.as_raw(),
-    FragmentShadingRate = ash::vk::DynamicState::FRAGMENT_SHADING_RATE_KHR.as_raw(),
-    LineStipple = ash::vk::DynamicState::LINE_STIPPLE_EXT.as_raw(),
-    CullMode = ash::vk::DynamicState::CULL_MODE_EXT.as_raw(),
-    FrontFace = ash::vk::DynamicState::FRONT_FACE_EXT.as_raw(),
-    PrimitiveTopology = ash::vk::DynamicState::PRIMITIVE_TOPOLOGY_EXT.as_raw(),
-    ViewportWithCount = ash::vk::DynamicState::VIEWPORT_WITH_COUNT_EXT.as_raw(),
-    ScissorWithCount = ash::vk::DynamicState::SCISSOR_WITH_COUNT_EXT.as_raw(),
-    VertexInputBindingStride = ash::vk::DynamicState::VERTEX_INPUT_BINDING_STRIDE_EXT.as_raw(),
-    DepthTestEnable = ash::vk::DynamicState::DEPTH_TEST_ENABLE_EXT.as_raw(),
-    DepthWriteEnable = ash::vk::DynamicState::DEPTH_WRITE_ENABLE_EXT.as_raw(),
-    DepthCompareOp = ash::vk::DynamicState::DEPTH_COMPARE_OP_EXT.as_raw(),
-    DepthBoundsTestEnable = ash::vk::DynamicState::DEPTH_BOUNDS_TEST_ENABLE_EXT.as_raw(),
-    StencilTestEnable = ash::vk::DynamicState::STENCIL_TEST_ENABLE_EXT.as_raw(),
-    StencilOp = ash::vk::DynamicState::STENCIL_OP_EXT.as_raw(),
-    VertexInput = ash::vk::DynamicState::VERTEX_INPUT_EXT.as_raw(),
-    PatchControlPoints = ash::vk::DynamicState::PATCH_CONTROL_POINTS_EXT.as_raw(),
-    RasterizerDiscardEnable = ash::vk::DynamicState::RASTERIZER_DISCARD_ENABLE_EXT.as_raw(),
-    DepthBiasEnable = ash::vk::DynamicState::DEPTH_BIAS_ENABLE_EXT.as_raw(),
-    LogicOp = ash::vk::DynamicState::LOGIC_OP_EXT.as_raw(),
-    PrimitiveRestartEnable = ash::vk::DynamicState::PRIMITIVE_RESTART_ENABLE_EXT.as_raw(),
-    ColorWriteEnable = ash::vk::DynamicState::COLOR_WRITE_ENABLE_EXT.as_raw(),
-}
+    // TODO: document
+    Viewport = VIEWPORT,
 
-impl From<DynamicState> for ash::vk::DynamicState {
-    #[inline]
-    fn from(val: DynamicState) -> Self {
-        Self::from_raw(val as i32)
-    }
+    // TODO: document
+    Scissor = SCISSOR,
+
+    // TODO: document
+    LineWidth = LINE_WIDTH,
+
+    // TODO: document
+    DepthBias = DEPTH_BIAS,
+
+    // TODO: document
+    BlendConstants = BLEND_CONSTANTS,
+
+    // TODO: document
+    DepthBounds = DEPTH_BOUNDS,
+
+    // TODO: document
+    StencilCompareMask = STENCIL_COMPARE_MASK,
+
+    // TODO: document
+    StencilWriteMask = STENCIL_WRITE_MASK,
+
+    // TODO: document
+    StencilReference = STENCIL_REFERENCE,
+
+    // TODO: document
+    CullMode = CULL_MODE {
+        api_version: V1_3,
+        extensions: [ext_extended_dynamic_state],
+    },
+
+    // TODO: document
+    FrontFace = FRONT_FACE {
+        api_version: V1_3,
+        extensions: [ext_extended_dynamic_state],
+    },
+
+    // TODO: document
+    PrimitiveTopology = PRIMITIVE_TOPOLOGY {
+        api_version: V1_3,
+        extensions: [ext_extended_dynamic_state],
+    },
+
+    // TODO: document
+    ViewportWithCount = VIEWPORT_WITH_COUNT {
+        api_version: V1_3,
+        extensions: [ext_extended_dynamic_state],
+    },
+
+    // TODO: document
+    ScissorWithCount = SCISSOR_WITH_COUNT {
+        api_version: V1_3,
+        extensions: [ext_extended_dynamic_state],
+    },
+
+    // TODO: document
+    VertexInputBindingStride = VERTEX_INPUT_BINDING_STRIDE {
+        api_version: V1_3,
+        extensions: [ext_extended_dynamic_state],
+    },
+
+    // TODO: document
+    DepthTestEnable = DEPTH_TEST_ENABLE {
+        api_version: V1_3,
+        extensions: [ext_extended_dynamic_state],
+    },
+
+    // TODO: document
+    DepthWriteEnable = DEPTH_WRITE_ENABLE {
+        api_version: V1_3,
+        extensions: [ext_extended_dynamic_state],
+    },
+
+    // TODO: document
+    DepthCompareOp = DEPTH_COMPARE_OP {
+        api_version: V1_3,
+        extensions: [ext_extended_dynamic_state],
+    },
+
+    // TODO: document
+    DepthBoundsTestEnable = DEPTH_BOUNDS_TEST_ENABLE {
+        api_version: V1_3,
+        extensions: [ext_extended_dynamic_state],
+    },
+
+    // TODO: document
+    StencilTestEnable = STENCIL_TEST_ENABLE {
+        api_version: V1_3,
+        extensions: [ext_extended_dynamic_state],
+    },
+
+    // TODO: document
+    StencilOp = STENCIL_OP {
+        api_version: V1_3,
+        extensions: [ext_extended_dynamic_state],
+    },
+
+    // TODO: document
+    RasterizerDiscardEnable = RASTERIZER_DISCARD_ENABLE {
+        api_version: V1_3,
+        extensions: [ext_extended_dynamic_state2],
+    },
+
+    // TODO: document
+    DepthBiasEnable = DEPTH_BIAS_ENABLE {
+        api_version: V1_3,
+        extensions: [ext_extended_dynamic_state2],
+    },
+
+    // TODO: document
+    PrimitiveRestartEnable = PRIMITIVE_RESTART_ENABLE {
+        api_version: V1_3,
+        extensions: [ext_extended_dynamic_state2],
+    },
+
+    // TODO: document
+    ViewportWScaling = VIEWPORT_W_SCALING_NV {
+        extensions: [nv_clip_space_w_scaling],
+    },
+
+    // TODO: document
+    DiscardRectangle = DISCARD_RECTANGLE_EXT {
+        extensions: [ext_discard_rectangles],
+    },
+
+    // TODO: document
+    SampleLocations = SAMPLE_LOCATIONS_EXT {
+        extensions: [ext_sample_locations],
+    },
+
+    // TODO: document
+    RayTracingPipelineStackSize = RAY_TRACING_PIPELINE_STACK_SIZE_KHR {
+        extensions: [khr_ray_tracing_pipeline],
+    },
+
+    // TODO: document
+    ViewportShadingRatePalette = VIEWPORT_SHADING_RATE_PALETTE_NV {
+        extensions: [nv_shading_rate_image],
+    },
+
+    // TODO: document
+    ViewportCoarseSampleOrder = VIEWPORT_COARSE_SAMPLE_ORDER_NV {
+        extensions: [nv_shading_rate_image],
+    },
+
+    // TODO: document
+    ExclusiveScissor = EXCLUSIVE_SCISSOR_NV {
+        extensions: [nv_scissor_exclusive],
+    },
+
+    // TODO: document
+    FragmentShadingRate = FRAGMENT_SHADING_RATE_KHR {
+        extensions: [khr_fragment_shading_rate],
+    },
+
+    // TODO: document
+    LineStipple = LINE_STIPPLE_EXT {
+        extensions: [ext_line_rasterization],
+    },
+
+    // TODO: document
+    VertexInput = VERTEX_INPUT_EXT {
+        extensions: [ext_vertex_input_dynamic_state],
+    },
+
+    // TODO: document
+    PatchControlPoints = PATCH_CONTROL_POINTS_EXT {
+        extensions: [ext_extended_dynamic_state2],
+    },
+
+    // TODO: document
+    LogicOp = LOGIC_OP_EXT {
+        extensions: [ext_extended_dynamic_state2],
+    },
+
+    // TODO: document
+    ColorWriteEnable = COLOR_WRITE_ENABLE_EXT {
+        extensions: [ext_color_write_enable],
+    },
 }
 
 /// Specifies how a dynamic state is handled by a graphics pipeline.

@@ -486,8 +486,16 @@ mod tests {
         )
         .unwrap();
 
-        let data_buffer =
-            CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), false, 0).unwrap();
+        let data_buffer = CpuAccessibleBuffer::from_data(
+            device.clone(),
+            BufferUsage {
+                storage_buffer: true,
+                ..BufferUsage::empty()
+            },
+            false,
+            0,
+        )
+        .unwrap();
 
         let set = PersistentDescriptorSet::new(
             pipeline.layout().set_layouts().get(0).unwrap().clone(),

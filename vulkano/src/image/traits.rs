@@ -108,7 +108,7 @@ pub unsafe trait ImageAccess: DeviceOwned + Send + Sync {
                 if aspects.plane0 {
                     ImageAspects {
                         plane0: true,
-                        ..ImageAspects::none()
+                        ..ImageAspects::empty()
                     }
                 } else {
                     aspects

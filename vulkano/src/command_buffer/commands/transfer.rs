@@ -228,6 +228,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             _ne: _,
         } = copy_image_info;
 
+        // VUID-VkCopyImageInfo2-srcImageLayout-parameter
+        src_image_layout.validate(device)?;
+
+        // VUID-VkCopyImageInfo2-dstImageLayout-parameter
+        dst_image_layout.validate(device)?;
+
         // VUID-VkCopyImageInfo2-commonparent
         assert_eq!(device, src_image.device());
         assert_eq!(device, dst_image.device());
@@ -397,8 +403,11 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                     });
                 }
 
+                // VUID-VkImageSubresourceLayers-aspectMask-parameter
+                subresource.aspects.validate(device)?;
+
                 // VUID-VkImageSubresourceLayers-aspectMask-requiredbitmask
-                assert!(subresource.aspects != ImageAspects::none());
+                assert!(!subresource.aspects.is_empty());
 
                 // VUID-VkCopyImageInfo2-aspectMask-00142
                 // VUID-VkCopyImageInfo2-aspectMask-00143
@@ -861,19 +870,22 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
 
         let &mut CopyBufferToImageInfo {
-            src_buffer: ref buffer,
-            dst_image: ref image,
-            dst_image_layout: image_layout,
+            ref src_buffer,
+            ref dst_image,
+            dst_image_layout,
             ref regions,
             _ne: _,
         } = copy_buffer_to_image_info;
 
-        // VUID-VkCopyBufferToImageInfo2-commonparent
-        assert_eq!(device, buffer.device());
-        assert_eq!(device, image.device());
+        // VUID-VkCopyBufferToImageInfo2-dstImageLayout-parameter
+        dst_image_layout.validate(device)?;
 
-        let buffer_inner = buffer.inner();
-        let mut image_aspects = image.format().aspects();
+        // VUID-VkCopyBufferToImageInfo2-commonparent
+        assert_eq!(device, src_buffer.device());
+        assert_eq!(device, dst_image.device());
+
+        let buffer_inner = src_buffer.inner();
+        let mut image_aspects = dst_image.format().aspects();
 
         // VUID-VkCopyBufferToImageInfo2-commandBuffer-04477
         if !self.queue_family().supports_graphics() && !image_aspects.color {
@@ -881,7 +893,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
 
         // VUID-VkCopyBufferToImageInfo2-srcBuffer-00174
-        if !buffer.usage().transfer_src {
+        if !src_buffer.usage().transfer_src {
             return Err(CopyError::MissingUsage {
                 resource: CopyErrorResource::Source,
                 usage: "transfer_src",
@@ -889,7 +901,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
 
         // VUID-VkCopyBufferToImageInfo2-dstImage-00177
-        if !image.usage().transfer_dst {
+        if !dst_image.usage().transfer_dst {
             return Err(CopyError::MissingUsage {
                 resource: CopyErrorResource::Destination,
                 usage: "transfer_dst",
@@ -898,7 +910,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
         if device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1 {
             // VUID-VkCopyBufferToImageInfo2-dstImage-01997
-            if !image.format_features().transfer_dst {
+            if !dst_image.format_features().transfer_dst {
                 return Err(CopyError::MissingFormatFeature {
                     resource: CopyErrorResource::Destination,
                     format_feature: "transfer_dst",
@@ -907,30 +919,25 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
 
         // VUID-VkCopyBufferToImageInfo2-dstImage-00179
-        if image.samples() != SampleCount::Sample1 {
+        if dst_image.samples() != SampleCount::Sample1 {
             return Err(CopyError::SampleCountInvalid {
                 resource: CopyErrorResource::Destination,
-                sample_count: image.samples(),
+                sample_count: dst_image.samples(),
                 allowed_sample_counts: SampleCounts {
                     sample1: true,
-                    sample2: false,
-                    sample4: false,
-                    sample8: false,
-                    sample16: false,
-                    sample32: false,
-                    sample64: false,
+                    ..SampleCounts::empty()
                 },
             });
         }
 
         // VUID-VkCopyBufferToImageInfo2-dstImageLayout-01396
         if !matches!(
-            image_layout,
+            dst_image_layout,
             ImageLayout::TransferDstOptimal | ImageLayout::General
         ) {
             return Err(CopyError::ImageLayoutInvalid {
                 resource: CopyErrorResource::Destination,
-                image_layout,
+                image_layout: dst_image_layout,
             });
         }
 
@@ -954,7 +961,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 };
 
                 Some(granularity(
-                    image.format().block_extent(),
+                    dst_image.format().block_extent(),
                     image_aspects.plane0,
                 ))
             }
@@ -977,12 +984,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             } = region;
 
             // VUID-VkCopyBufferToImageInfo2-imageSubresource-01701
-            if image_subresource.mip_level >= image.mip_levels() {
+            if image_subresource.mip_level >= dst_image.mip_levels() {
                 return Err(CopyError::MipLevelsOutOfRange {
                     resource: CopyErrorResource::Destination,
                     region_index,
                     mip_levels_range_end: image_subresource.mip_level + 1,
-                    image_mip_levels: image.mip_levels(),
+                    image_mip_levels: dst_image.mip_levels(),
                 });
             }
 
@@ -992,17 +999,17 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             // VUID-VkCopyBufferToImageInfo2-imageSubresource-01702
             // VUID-VkCopyBufferToImageInfo2-baseArrayLayer-00213
-            if image_subresource.array_layers.end > image.dimensions().array_layers() {
+            if image_subresource.array_layers.end > dst_image.dimensions().array_layers() {
                 return Err(CopyError::ArrayLayersOutOfRange {
                     resource: CopyErrorResource::Destination,
                     region_index,
                     array_layers_range_end: image_subresource.array_layers.end,
-                    image_array_layers: image.dimensions().array_layers(),
+                    image_array_layers: dst_image.dimensions().array_layers(),
                 });
             }
 
             // VUID-VkImageSubresourceLayers-aspectMask-requiredbitmask
-            assert!(image_subresource.aspects != ImageAspects::none());
+            assert!(!image_subresource.aspects.is_empty());
 
             // VUID-VkCopyBufferToImageInfo2-aspectMask-00211
             if !image_aspects.contains(&image_subresource.aspects) {
@@ -1027,32 +1034,32 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             let (image_subresource_format, image_subresource_extent) = if image_aspects.plane0 {
                 if image_subresource.aspects.plane0 {
                     (
-                        image.format().planes()[0],
-                        image.dimensions().width_height_depth(),
+                        dst_image.format().planes()[0],
+                        dst_image.dimensions().width_height_depth(),
                     )
                 } else if image_subresource.aspects.plane1 {
                     (
-                        image.format().planes()[1],
-                        image
+                        dst_image.format().planes()[1],
+                        dst_image
                             .format()
                             .ycbcr_chroma_sampling()
                             .unwrap()
-                            .subsampled_extent(image.dimensions().width_height_depth()),
+                            .subsampled_extent(dst_image.dimensions().width_height_depth()),
                     )
                 } else {
                     (
-                        image.format().planes()[2],
-                        image
+                        dst_image.format().planes()[2],
+                        dst_image
                             .format()
                             .ycbcr_chroma_sampling()
                             .unwrap()
-                            .subsampled_extent(image.dimensions().width_height_depth()),
+                            .subsampled_extent(dst_image.dimensions().width_height_depth()),
                     )
                 }
             } else {
                 (
-                    image.format(),
-                    image
+                    dst_image.format(),
+                    dst_image
                         .dimensions()
                         .mip_level_dimensions(image_subresource.mip_level)
                         .unwrap()
@@ -1242,12 +1249,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             let buffer_copy_size = region.buffer_copy_size(image_subresource_format);
 
             // VUID-VkCopyBufferToImageInfo2-pRegions-00171
-            if buffer_offset + buffer_copy_size > buffer.size() {
+            if buffer_offset + buffer_copy_size > src_buffer.size() {
                 return Err(CopyError::RegionOutOfBufferBounds {
                     resource: CopyErrorResource::Source,
                     region_index,
                     offset_range_end: buffer_offset + buffer_copy_size,
-                    buffer_size: buffer.size(),
+                    buffer_size: src_buffer.size(),
                 });
             }
         }
@@ -1292,22 +1299,25 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
 
         let &mut CopyImageToBufferInfo {
-            src_image: ref image,
-            src_image_layout: image_layout,
-            dst_buffer: ref buffer,
+            ref src_image,
+            src_image_layout,
+            ref dst_buffer,
             ref regions,
             _ne: _,
         } = copy_image_to_buffer_info;
 
-        // VUID-VkCopyImageToBufferInfo2-commonparent
-        assert_eq!(device, buffer.device());
-        assert_eq!(device, image.device());
+        // VUID-VkCopyImageToBufferInfo2-srcImageLayout-parameter
+        src_image_layout.validate(device)?;
 
-        let buffer_inner = buffer.inner();
-        let mut image_aspects = image.format().aspects();
+        // VUID-VkCopyImageToBufferInfo2-commonparent
+        assert_eq!(device, dst_buffer.device());
+        assert_eq!(device, src_image.device());
+
+        let buffer_inner = dst_buffer.inner();
+        let mut image_aspects = src_image.format().aspects();
 
         // VUID-VkCopyImageToBufferInfo2-srcImage-00186
-        if !image.usage().transfer_src {
+        if !src_image.usage().transfer_src {
             return Err(CopyError::MissingUsage {
                 resource: CopyErrorResource::Source,
                 usage: "transfer_src",
@@ -1315,7 +1325,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
 
         // VUID-VkCopyImageToBufferInfo2-dstBuffer-00191
-        if !buffer.usage().transfer_dst {
+        if !dst_buffer.usage().transfer_dst {
             return Err(CopyError::MissingUsage {
                 resource: CopyErrorResource::Destination,
                 usage: "transfer_dst",
@@ -1324,7 +1334,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
         if device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1 {
             // VUID-VkCopyImageToBufferInfo2-srcImage-01998
-            if !image.format_features().transfer_src {
+            if !src_image.format_features().transfer_src {
                 return Err(CopyError::MissingFormatFeature {
                     resource: CopyErrorResource::Source,
                     format_feature: "transfer_src",
@@ -1333,30 +1343,25 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
 
         // VUID-VkCopyImageToBufferInfo2-srcImage-00188
-        if image.samples() != SampleCount::Sample1 {
+        if src_image.samples() != SampleCount::Sample1 {
             return Err(CopyError::SampleCountInvalid {
                 resource: CopyErrorResource::Source,
-                sample_count: image.samples(),
+                sample_count: src_image.samples(),
                 allowed_sample_counts: SampleCounts {
                     sample1: true,
-                    sample2: false,
-                    sample4: false,
-                    sample8: false,
-                    sample16: false,
-                    sample32: false,
-                    sample64: false,
+                    ..SampleCounts::empty()
                 },
             });
         }
 
         // VUID-VkCopyImageToBufferInfo2-srcImageLayout-01397
         if !matches!(
-            image_layout,
+            src_image_layout,
             ImageLayout::TransferSrcOptimal | ImageLayout::General
         ) {
             return Err(CopyError::ImageLayoutInvalid {
                 resource: CopyErrorResource::Source,
-                image_layout,
+                image_layout: src_image_layout,
             });
         }
 
@@ -1380,7 +1385,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 };
 
                 Some(granularity(
-                    image.format().block_extent(),
+                    src_image.format().block_extent(),
                     image_aspects.plane0,
                 ))
             }
@@ -1403,12 +1408,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             } = region;
 
             // VUID-VkCopyImageToBufferInfo2-imageSubresource-01703
-            if image_subresource.mip_level >= image.mip_levels() {
+            if image_subresource.mip_level >= src_image.mip_levels() {
                 return Err(CopyError::MipLevelsOutOfRange {
                     resource: CopyErrorResource::Source,
                     region_index,
                     mip_levels_range_end: image_subresource.mip_level + 1,
-                    image_mip_levels: image.mip_levels(),
+                    image_mip_levels: src_image.mip_levels(),
                 });
             }
 
@@ -1417,17 +1422,17 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             // VUID-VkCopyImageToBufferInfo2-imageSubresource-01704
             // VUID-VkCopyImageToBufferInfo2-baseArrayLayer-00213
-            if image_subresource.array_layers.end > image.dimensions().array_layers() {
+            if image_subresource.array_layers.end > src_image.dimensions().array_layers() {
                 return Err(CopyError::ArrayLayersOutOfRange {
                     resource: CopyErrorResource::Source,
                     region_index,
                     array_layers_range_end: image_subresource.array_layers.end,
-                    image_array_layers: image.dimensions().array_layers(),
+                    image_array_layers: src_image.dimensions().array_layers(),
                 });
             }
 
             // VUID-VkImageSubresourceLayers-aspectMask-requiredbitmask
-            assert!(image_subresource.aspects != ImageAspects::none());
+            assert!(!image_subresource.aspects.is_empty());
 
             // VUID-VkCopyImageToBufferInfo2-aspectMask-00211
             if !image_aspects.contains(&image_subresource.aspects) {
@@ -1451,32 +1456,32 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             let (image_subresource_format, image_subresource_extent) = if image_aspects.plane0 {
                 if image_subresource.aspects.plane0 {
                     (
-                        image.format().planes()[0],
-                        image.dimensions().width_height_depth(),
+                        src_image.format().planes()[0],
+                        src_image.dimensions().width_height_depth(),
                     )
                 } else if image_subresource.aspects.plane1 {
                     (
-                        image.format().planes()[1],
-                        image
+                        src_image.format().planes()[1],
+                        src_image
                             .format()
                             .ycbcr_chroma_sampling()
                             .unwrap()
-                            .subsampled_extent(image.dimensions().width_height_depth()),
+                            .subsampled_extent(src_image.dimensions().width_height_depth()),
                     )
                 } else {
                     (
-                        image.format().planes()[2],
-                        image
+                        src_image.format().planes()[2],
+                        src_image
                             .format()
                             .ycbcr_chroma_sampling()
                             .unwrap()
-                            .subsampled_extent(image.dimensions().width_height_depth()),
+                            .subsampled_extent(src_image.dimensions().width_height_depth()),
                     )
                 }
             } else {
                 (
-                    image.format(),
-                    image
+                    src_image.format(),
+                    src_image
                         .dimensions()
                         .mip_level_dimensions(image_subresource.mip_level)
                         .unwrap()
@@ -1666,12 +1671,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             let buffer_copy_size = region.buffer_copy_size(image_subresource_format);
 
             // VUID-VkCopyImageToBufferInfo2-pRegions-00183
-            if buffer_offset + buffer_copy_size > buffer.size() {
+            if buffer_offset + buffer_copy_size > dst_buffer.size() {
                 return Err(CopyError::RegionOutOfBufferBounds {
                     resource: CopyErrorResource::Destination,
                     region_index,
                     offset_range_end: buffer_offset + buffer_copy_size,
-                    buffer_size: buffer.size(),
+                    buffer_size: dst_buffer.size(),
                 });
             }
         }
@@ -1945,11 +1950,11 @@ impl SyncCommandBufferBuilder {
                             memory: PipelineMemoryAccess {
                                 stages: PipelineStages {
                                     transfer: true,
-                                    ..PipelineStages::none()
+                                    ..PipelineStages::empty()
                                 },
                                 access: AccessFlags {
                                     transfer_read: true,
-                                    ..AccessFlags::none()
+                                    ..AccessFlags::empty()
                                 },
                                 exclusive: false,
                             },
@@ -1963,11 +1968,11 @@ impl SyncCommandBufferBuilder {
                             memory: PipelineMemoryAccess {
                                 stages: PipelineStages {
                                     transfer: true,
-                                    ..PipelineStages::none()
+                                    ..PipelineStages::empty()
                                 },
                                 access: AccessFlags {
                                     transfer_write: true,
-                                    ..AccessFlags::none()
+                                    ..AccessFlags::empty()
                                 },
                                 exclusive: true,
                             },
@@ -2043,11 +2048,11 @@ impl SyncCommandBufferBuilder {
                             memory: PipelineMemoryAccess {
                                 stages: PipelineStages {
                                     transfer: true,
-                                    ..PipelineStages::none()
+                                    ..PipelineStages::empty()
                                 },
                                 access: AccessFlags {
                                     transfer_read: true,
-                                    ..AccessFlags::none()
+                                    ..AccessFlags::empty()
                                 },
                                 exclusive: false,
                             },
@@ -2063,11 +2068,11 @@ impl SyncCommandBufferBuilder {
                             memory: PipelineMemoryAccess {
                                 stages: PipelineStages {
                                     transfer: true,
-                                    ..PipelineStages::none()
+                                    ..PipelineStages::empty()
                                 },
                                 access: AccessFlags {
                                     transfer_write: true,
-                                    ..AccessFlags::none()
+                                    ..AccessFlags::empty()
                                 },
                                 exclusive: true,
                             },
@@ -2146,11 +2151,11 @@ impl SyncCommandBufferBuilder {
                             memory: PipelineMemoryAccess {
                                 stages: PipelineStages {
                                     transfer: true,
-                                    ..PipelineStages::none()
+                                    ..PipelineStages::empty()
                                 },
                                 access: AccessFlags {
                                     transfer_read: true,
-                                    ..AccessFlags::none()
+                                    ..AccessFlags::empty()
                                 },
                                 exclusive: false,
                             },
@@ -2164,11 +2169,11 @@ impl SyncCommandBufferBuilder {
                             memory: PipelineMemoryAccess {
                                 stages: PipelineStages {
                                     transfer: true,
-                                    ..PipelineStages::none()
+                                    ..PipelineStages::empty()
                                 },
                                 access: AccessFlags {
                                     transfer_write: true,
-                                    ..AccessFlags::none()
+                                    ..AccessFlags::empty()
                                 },
                                 exclusive: true,
                             },
@@ -2248,11 +2253,11 @@ impl SyncCommandBufferBuilder {
                             memory: PipelineMemoryAccess {
                                 stages: PipelineStages {
                                     transfer: true,
-                                    ..PipelineStages::none()
+                                    ..PipelineStages::empty()
                                 },
                                 access: AccessFlags {
                                     transfer_read: true,
-                                    ..AccessFlags::none()
+                                    ..AccessFlags::empty()
                                 },
                                 exclusive: false,
                             },
@@ -2269,11 +2274,11 @@ impl SyncCommandBufferBuilder {
                             memory: PipelineMemoryAccess {
                                 stages: PipelineStages {
                                     transfer: true,
-                                    ..PipelineStages::none()
+                                    ..PipelineStages::empty()
                                 },
                                 access: AccessFlags {
                                     transfer_write: true,
-                                    ..AccessFlags::none()
+                                    ..AccessFlags::empty()
                                 },
                                 exclusive: true,
                             },
@@ -2334,11 +2339,11 @@ impl SyncCommandBufferBuilder {
                 memory: PipelineMemoryAccess {
                     stages: PipelineStages {
                         transfer: true,
-                        ..PipelineStages::none()
+                        ..PipelineStages::empty()
                     },
                     access: AccessFlags {
                         transfer_write: true,
-                        ..AccessFlags::none()
+                        ..AccessFlags::empty()
                     },
                     exclusive: true,
                 },
@@ -2398,11 +2403,11 @@ impl SyncCommandBufferBuilder {
                 memory: PipelineMemoryAccess {
                     stages: PipelineStages {
                         transfer: true,
-                        ..PipelineStages::none()
+                        ..PipelineStages::empty()
                     },
                     access: AccessFlags {
                         transfer_write: true,
-                        ..AccessFlags::none()
+                        ..AccessFlags::empty()
                     },
                     exclusive: true,
                 },
@@ -3245,13 +3250,13 @@ impl Default for ImageCopy {
     fn default() -> Self {
         Self {
             src_subresource: ImageSubresourceLayers {
-                aspects: ImageAspects::none(),
+                aspects: ImageAspects::empty(),
                 mip_level: 0,
                 array_layers: 0..0,
             },
             src_offset: [0; 3],
             dst_subresource: ImageSubresourceLayers {
-                aspects: ImageAspects::none(),
+                aspects: ImageAspects::empty(),
                 mip_level: 0,
                 array_layers: 0..0,
             },
@@ -3420,7 +3425,7 @@ impl Default for BufferImageCopy {
             buffer_row_length: 0,
             buffer_image_height: 0,
             image_subresource: ImageSubresourceLayers {
-                aspects: ImageAspects::none(),
+                aspects: ImageAspects::empty(),
                 mip_level: 0,
                 array_layers: 0..0,
             },

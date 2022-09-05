@@ -71,10 +71,10 @@ fn main() {
 
     let device_extensions = DeviceExtensions {
         khr_swapchain: true,
-        ..DeviceExtensions::none()
+        ..DeviceExtensions::empty()
     };
     let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-        .filter(|&p| p.supported_extensions().is_superset_of(&device_extensions))
+        .filter(|&p| p.supported_extensions().contains(&device_extensions))
         .filter_map(|p| {
             p.queue_families()
                 .find(|&q| q.supports_graphics() && q.supports_surface(&surface).unwrap_or(false))
@@ -86,6 +86,7 @@ fn main() {
             PhysicalDeviceType::VirtualGpu => 2,
             PhysicalDeviceType::Cpu => 3,
             PhysicalDeviceType::Other => 4,
+            _ => 5,
         })
         .unwrap();
 
@@ -124,7 +125,10 @@ fn main() {
                 min_image_count: surface_capabilities.min_image_count,
                 image_format,
                 image_extent: surface.window().inner_size().into(),
-                image_usage: ImageUsage::color_attachment(),
+                image_usage: ImageUsage {
+                    color_attachment: true,
+                    ..ImageUsage::empty()
+                },
                 composite_alpha: surface_capabilities
                     .supported_composite_alpha
                     .iter()
@@ -190,9 +194,16 @@ fn main() {
             color: [0.0, 1.0, 0.0],
         },
     ];
-    let vertex_buffer =
-        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, vertices)
-            .unwrap();
+    let vertex_buffer = CpuAccessibleBuffer::from_iter(
+        device.clone(),
+        BufferUsage {
+            vertex_buffer: true,
+            ..BufferUsage::empty()
+        },
+        false,
+        vertices,
+    )
+    .unwrap();
 
     // Create three buffer slices, one for each triangle.
     let triangle1 = vertex_buffer.slice::<Vertex>(0..3).unwrap();
@@ -381,7 +392,14 @@ fn main() {
                     // Begin query 0, then draw the red triangle.
                     // Enabling the `precise` bit would give exact numeric results. This needs
                     // the `occlusion_query_precise` feature to be enabled on the device.
-                    .begin_query(query_pool.clone(), 0, QueryControlFlags { precise: false })
+                    .begin_query(
+                        query_pool.clone(),
+                        0,
+                        QueryControlFlags {
+                            precise: false,
+                            ..QueryControlFlags::empty()
+                        },
+                    )
                     .unwrap()
                     .bind_vertex_buffers(0, triangle1.clone())
                     .draw(triangle1.len() as u32, 1, 0, 0)
@@ -390,7 +408,14 @@ fn main() {
                     .end_query(query_pool.clone(), 0)
                     .unwrap()
                     // Begin query 1 for the cyan triangle.
-                    .begin_query(query_pool.clone(), 1, QueryControlFlags { precise: false })
+                    .begin_query(
+                        query_pool.clone(),
+                        1,
+                        QueryControlFlags {
+                            precise: false,
+                            ..QueryControlFlags::empty()
+                        },
+                    )
                     .unwrap()
                     .bind_vertex_buffers(0, triangle2.clone())
                     .draw(triangle2.len() as u32, 1, 0, 0)
@@ -398,7 +423,14 @@ fn main() {
                     .end_query(query_pool.clone(), 1)
                     .unwrap()
                     // Finally, query 2 for the green triangle.
-                    .begin_query(query_pool.clone(), 2, QueryControlFlags { precise: false })
+                    .begin_query(
+                        query_pool.clone(),
+                        2,
+                        QueryControlFlags {
+                            precise: false,
+                            ..QueryControlFlags::empty()
+                        },
+                    )
                     .unwrap()
                     .bind_vertex_buffers(0, triangle3.clone())
                     .draw(triangle3.len() as u32, 1, 0, 0)
@@ -461,6 +493,7 @@ fn main() {
                         // query in your `query_results` buffer for this. This element will
                         // be filled with a zero/nonzero value indicating availability.
                         with_availability: false,
+                        ..QueryResultFlags::empty()
                     },
                 )
                 .unwrap();
@@ -499,7 +532,7 @@ fn window_size_dependent_setup(
             ImageUsage {
                 depth_stencil_attachment: true,
                 transient_attachment: true,
-                ..ImageUsage::none()
+                ..ImageUsage::empty()
             },
         )
         .unwrap(),

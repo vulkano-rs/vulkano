@@ -14,6 +14,7 @@ use crate::{
         AutoCommandBufferBuilder,
     },
     device::DeviceOwned,
+    macros::ExtensionNotEnabled,
     pipeline::{
         graphics::{
             color_blend::LogicOp,
@@ -166,8 +167,11 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         self
     }
 
-    fn validate_set_cull_mode(&self, _cull_mode: CullMode) -> Result<(), SetDynamicStateError> {
+    fn validate_set_cull_mode(&self, cull_mode: CullMode) -> Result<(), SetDynamicStateError> {
         self.validate_pipeline_fixed_state(DynamicState::CullMode)?;
+
+        // VUID-vkCmdSetCullMode-cullMode-parameter
+        cull_mode.validate(self.device())?;
 
         // VUID-vkCmdSetCullMode-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -392,9 +396,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     fn validate_set_depth_compare_op(
         &self,
-        _compare_op: CompareOp,
+        compare_op: CompareOp,
     ) -> Result<(), SetDynamicStateError> {
         self.validate_pipeline_fixed_state(DynamicState::DepthCompareOp)?;
+
+        // VUID-vkCmdSetDepthCompareOp-depthCompareOp-parameter
+        compare_op.validate(self.device())?;
 
         // VUID-vkCmdSetDepthCompareOp-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -586,8 +593,11 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         self
     }
 
-    fn validate_set_front_face(&self, _face: FrontFace) -> Result<(), SetDynamicStateError> {
+    fn validate_set_front_face(&self, face: FrontFace) -> Result<(), SetDynamicStateError> {
         self.validate_pipeline_fixed_state(DynamicState::FrontFace)?;
+
+        // VUID-vkCmdSetFrontFace-frontFace-parameter
+        face.validate(self.device())?;
 
         // VUID-vkCmdSetFrontFace-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -711,8 +721,11 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         self
     }
 
-    fn validate_set_logic_op(&self, _logic_op: LogicOp) -> Result<(), SetDynamicStateError> {
+    fn validate_set_logic_op(&self, logic_op: LogicOp) -> Result<(), SetDynamicStateError> {
         self.validate_pipeline_fixed_state(DynamicState::LogicOp)?;
+
+        // VUID-vkCmdSetLogicOpEXT-logicOp-parameter
+        logic_op.validate(self.device())?;
 
         // VUID-vkCmdSetLogicOpEXT-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -875,6 +888,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         topology: PrimitiveTopology,
     ) -> Result<(), SetDynamicStateError> {
         self.validate_pipeline_fixed_state(DynamicState::PrimitiveTopology)?;
+
+        // VUID-vkCmdSetPrimitiveTopology-primitiveTopology-parameter
+        topology.validate(self.device())?;
 
         // VUID-vkCmdSetPrimitiveTopology-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -1122,10 +1138,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     fn validate_set_stencil_compare_mask(
         &self,
-        _faces: StencilFaces,
+        faces: StencilFaces,
         _compare_mask: u32,
     ) -> Result<(), SetDynamicStateError> {
         self.validate_pipeline_fixed_state(DynamicState::StencilCompareMask)?;
+
+        // VUID-vkCmdSetStencilCompareMask-faceMask-parameter
+        faces.validate(self.device())?;
 
         // VUID-vkCmdSetStencilCompareMask-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -1166,13 +1185,28 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     fn validate_set_stencil_op(
         &self,
-        _faces: StencilFaces,
-        _fail_op: StencilOp,
-        _pass_op: StencilOp,
-        _depth_fail_op: StencilOp,
-        _compare_op: CompareOp,
+        faces: StencilFaces,
+        fail_op: StencilOp,
+        pass_op: StencilOp,
+        depth_fail_op: StencilOp,
+        compare_op: CompareOp,
     ) -> Result<(), SetDynamicStateError> {
         self.validate_pipeline_fixed_state(DynamicState::StencilOp)?;
+
+        // VUID-vkCmdSetStencilOp-faceMask-parameter
+        faces.validate(self.device())?;
+
+        // VUID-vkCmdSetStencilOp-failOp-parameter
+        fail_op.validate(self.device())?;
+
+        // VUID-vkCmdSetStencilOp-passOp-parameter
+        pass_op.validate(self.device())?;
+
+        // VUID-vkCmdSetStencilOp-depthFailOp-parameter
+        depth_fail_op.validate(self.device())?;
+
+        // VUID-vkCmdSetStencilOp-compareOp-parameter
+        compare_op.validate(self.device())?;
 
         // VUID-vkCmdSetStencilOp-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -1211,10 +1245,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     fn validate_set_stencil_reference(
         &self,
-        _faces: StencilFaces,
+        faces: StencilFaces,
         _reference: u32,
     ) -> Result<(), SetDynamicStateError> {
         self.validate_pipeline_fixed_state(DynamicState::StencilReference)?;
+
+        // VUID-vkCmdSetStencilReference-faceMask-parameter
+        faces.validate(self.device())?;
 
         // VUID-vkCmdSetStencilReference-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -1284,10 +1321,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     fn validate_set_stencil_write_mask(
         &self,
-        _faces: StencilFaces,
+        faces: StencilFaces,
         _write_mask: u32,
     ) -> Result<(), SetDynamicStateError> {
         self.validate_pipeline_fixed_state(DynamicState::StencilWriteMask)?;
+
+        // VUID-vkCmdSetStencilWriteMask-faceMask-parameter
+        faces.validate(self.device())?;
 
         // VUID-vkCmdSetStencilWriteMask-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -2723,6 +2763,16 @@ impl fmt::Display for SetDynamicStateError {
                 f,
                 "the currently bound pipeline contains this state as internally fixed state, which cannot be overridden with dynamic state",
             ),
+        }
+    }
+}
+
+impl From<ExtensionNotEnabled> for SetDynamicStateError {
+    #[inline]
+    fn from(err: ExtensionNotEnabled) -> Self {
+        Self::ExtensionNotEnabled {
+            extension: err.extension,
+            reason: err.reason,
         }
     }
 }

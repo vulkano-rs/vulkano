@@ -34,18 +34,18 @@ macro_rules! gfx_dev_and_queue {
         use crate::device::Features;
 
         let instance = instance!();
-        let enabled_extensions = DeviceExtensions::none();
+        let enabled_extensions = DeviceExtensions::empty();
         let enabled_features = Features {
             $(
                 $feature: true,
             )*
-            .. Features::none()
+            .. Features::empty()
         };
 
         let select = PhysicalDevice::enumerate(&instance)
             .filter(|&p| {
-                p.supported_extensions().is_superset_of(&enabled_extensions) &&
-                p.supported_features().is_superset_of(&enabled_features)
+                p.supported_extensions().contains(&enabled_extensions) &&
+                p.supported_features().contains(&enabled_features)
             })
             .filter_map(|p| {
                 p.queue_families()

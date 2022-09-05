@@ -40,7 +40,7 @@
 //!
 //! let usage = BufferUsage {
 //!     vertex_buffer: true,
-//!     .. BufferUsage::none()
+//!     .. BufferUsage::empty()
 //! };
 //!
 //! let vertex_buffer = BufferAccess::<[Vertex], _>::array(&device, 128, &usage, HostVisible, &queue)

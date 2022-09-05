@@ -104,6 +104,7 @@ mod fns;
 pub mod image;
 pub mod instance;
 pub mod library;
+mod macros;
 pub mod memory;
 pub mod pipeline;
 pub mod query;

@@ -40,10 +40,10 @@ fn main() {
 
     let device_extensions = DeviceExtensions {
         khr_storage_buffer_storage_class: true,
-        ..DeviceExtensions::none()
+        ..DeviceExtensions::empty()
     };
     let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-        .filter(|&p| p.supported_extensions().is_superset_of(&device_extensions))
+        .filter(|&p| p.supported_extensions().contains(&device_extensions))
         .filter_map(|p| {
             p.queue_families()
                 .find(|&q| q.supports_compute())
@@ -55,6 +55,7 @@ fn main() {
             PhysicalDeviceType::VirtualGpu => 2,
             PhysicalDeviceType::Cpu => 3,
             PhysicalDeviceType::Other => 4,
+            _ => 5,
         })
         .unwrap();
 
@@ -121,8 +122,16 @@ fn main() {
 
     let data_buffer = {
         let data_iter = 0..65536u32;
-        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, data_iter)
-            .unwrap()
+        CpuAccessibleBuffer::from_iter(
+            device.clone(),
+            BufferUsage {
+                storage_buffer: true,
+                ..BufferUsage::empty()
+            },
+            false,
+            data_iter,
+        )
+        .unwrap()
     };
 
     let layout = pipeline.layout().set_layouts().get(0).unwrap();

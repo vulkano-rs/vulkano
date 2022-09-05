@@ -22,6 +22,7 @@ use super::synced::SyncCommandBufferBuilderError;
 use crate::{
     format::Format,
     image::{ImageAspects, ImageLayout, SampleCount, SampleCounts},
+    macros::ExtensionNotEnabled,
     DeviceSize,
 };
 use std::{error::Error, fmt};
@@ -581,6 +582,16 @@ impl From<SyncCommandBufferBuilderError> for CopyError {
     #[inline]
     fn from(err: SyncCommandBufferBuilderError) -> Self {
         Self::SyncCommandBufferBuilderError(err)
+    }
+}
+
+impl From<ExtensionNotEnabled> for CopyError {
+    #[inline]
+    fn from(err: ExtensionNotEnabled) -> Self {
+        Self::ExtensionNotEnabled {
+            extension: err.extension,
+            reason: err.reason,
+        }
     }
 }
 

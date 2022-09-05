@@ -66,6 +66,7 @@
 use crate::{
     descriptor_set::layout::{DescriptorRequirementsNotMet, DescriptorSetLayout, DescriptorType},
     device::{Device, DeviceOwned},
+    macros::ExtensionNotEnabled,
     shader::{DescriptorRequirements, ShaderStages},
     OomError, VulkanError, VulkanObject,
 };
@@ -145,7 +146,7 @@ impl PipelineLayout {
             let mut min_offset = push_constant_ranges[0].offset;
             loop {
                 let mut max_offset = u32::MAX;
-                let mut stages = ShaderStages::none();
+                let mut stages = ShaderStages::empty();
 
                 for range in push_constant_ranges.iter() {
                     // new start (begin next time from it)
@@ -156,11 +157,11 @@ impl PipelineLayout {
                         // inside the range, include the stage
                         // use the minimum of the end of all ranges that are overlapping
                         max_offset = max_offset.min(range.offset + range.size);
-                        stages = stages | range.stages;
+                        stages |= range.stages;
                     }
                 }
                 // finished all stages
-                if stages == ShaderStages::none() {
+                if stages.is_empty() {
                     break;
                 }
 
@@ -460,27 +461,35 @@ impl PipelineLayout {
 
         /* Check push constant ranges */
 
-        push_constant_ranges.iter().try_fold(
-            ash::vk::ShaderStageFlags::empty(),
-            |total, range| {
-                let stages = ash::vk::ShaderStageFlags::from(range.stages);
+        push_constant_ranges
+            .iter()
+            .try_fold(ShaderStages::empty(), |total, range| {
+                let &PushConstantRange {
+                    stages,
+                    offset,
+                    size,
+                } = range;
+
+                // VUID-VkPushConstantRange-stageFlags-parameter
+                stages.validate(device)?;
+
+                // VUID-VkPushConstantRange-stageFlags-requiredbitmask
+                assert!(!stages.is_empty());
 
                 // VUID-VkPushConstantRange-offset-00295
+                assert!(offset % 4 == 0);
+
                 // VUID-VkPushConstantRange-size-00296
+                assert!(size != 0);
+
                 // VUID-VkPushConstantRange-size-00297
-                // VUID-VkPushConstantRange-stageFlags-requiredbitmask
-                assert!(
-                    !stages.is_empty()
-                        && (range.size % 4) == 0
-                        && range.size != 0
-                        && (range.size % 4) == 0
-                );
+                assert!(size % 4 == 0);
 
                 // VUID-VkPushConstantRange-offset-00294
                 // VUID-VkPushConstantRange-size-00298
-                if range.offset + range.size > properties.max_push_constants_size {
+                if offset + size > properties.max_push_constants_size {
                     return Err(PipelineLayoutCreationError::MaxPushConstantsSizeExceeded {
-                        provided: range.offset + range.size,
+                        provided: offset + size,
                         max_supported: properties.max_push_constants_size,
                     });
                 }
@@ -491,8 +500,7 @@ impl PipelineLayout {
                 }
 
                 Ok(total | stages)
-            },
-        )?;
+            })?;
 
         Ok(())
     }
@@ -706,6 +714,11 @@ pub enum PipelineLayoutCreationError {
     /// Not enough memory.
     OomError(OomError),
 
+    ExtensionNotEnabled {
+        extension: &'static str,
+        reason: &'static str,
+    },
+
     /// The number of elements in `set_layouts` is greater than the
     /// [`max_bound_descriptor_sets`](crate::device::Properties::max_bound_descriptor_sets) limit.
     MaxBoundDescriptorSetsExceeded { provided: u32, max_supported: u32 },
@@ -819,100 +832,106 @@ impl Error for PipelineLayoutCreationError {
 
 impl fmt::Display for PipelineLayoutCreationError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match *self {
-            Self::OomError(_) => write!(fmt, "not enough memory available"),
+            Self::OomError(_) => write!(f, "not enough memory available"),
+            Self::ExtensionNotEnabled { extension, reason } => write!(
+                f,
+                "the extension {} must be enabled: {}",
+                extension, reason
+            ),
+
             Self::MaxBoundDescriptorSetsExceeded { provided, max_supported } => write!(
-                fmt,
+                f,
                 "the number of elements in `set_layouts` ({}) is greater than the `max_bound_descriptor_sets` limit ({})",
                 provided, max_supported,
             ),
             Self::MaxDescriptorSetSamplersExceeded { provided, max_supported } => write!(
-                fmt,
+                f,
                 "the `set_layouts` contain more `DescriptorType::Sampler` and `DescriptorType::CombinedImageSampler` descriptors ({}) than the `max_descriptor_set_samplers` limit ({})",
                 provided, max_supported,
             ),
             Self::MaxDescriptorSetUniformBuffersExceeded { provided, max_supported } => write!(
-                fmt,
+                f,
                 "the `set_layouts` contain more `DescriptorType::UniformBuffer` descriptors ({}) than the `max_descriptor_set_uniform_buffers` limit ({})",
                 provided, max_supported,
             ),
             Self::MaxDescriptorSetUniformBuffersDynamicExceeded { provided, max_supported } => write!(
-                fmt,
+                f,
                 "the `set_layouts` contain more `DescriptorType::UniformBufferDynamic` descriptors ({}) than the `max_descriptor_set_uniform_buffers_dynamic` limit ({})",
                 provided, max_supported,
             ),
             Self::MaxDescriptorSetStorageBuffersExceeded { provided, max_supported } => write!(
-                fmt,
+                f,
                 "the `set_layouts` contain more `DescriptorType::StorageBuffer` descriptors ({}) than the `max_descriptor_set_storage_buffers` limit ({})",
                 provided, max_supported,
             ),
             Self::MaxDescriptorSetStorageBuffersDynamicExceeded { provided, max_supported } => write!(
-                fmt,
+                f,
                 "the `set_layouts` contain more `DescriptorType::StorageBufferDynamic` descriptors ({}) than the `max_descriptor_set_storage_buffers_dynamic` limit ({})",
                 provided, max_supported,
             ),
             Self::MaxDescriptorSetSampledImagesExceeded { provided, max_supported } => write!(
-                fmt,
+                f,
                 "the `set_layouts` contain more `DescriptorType::SampledImage`, `DescriptorType::CombinedImageSampler` and `DescriptorType::UniformTexelBuffer` descriptors ({}) than the `max_descriptor_set_sampled_images` limit ({})",
                 provided, max_supported,
             ),
             Self::MaxDescriptorSetStorageImagesExceeded { provided, max_supported } => write!(
-                fmt,
+                f,
                 "the `set_layouts` contain more `DescriptorType::StorageImage` and `DescriptorType::StorageTexelBuffer` descriptors ({}) than the `max_descriptor_set_storage_images` limit ({})",
                 provided, max_supported,
             ),
             Self::MaxDescriptorSetInputAttachmentsExceeded { provided, max_supported } => write!(
-                fmt,
+                f,
                 "the `set_layouts` contain more `DescriptorType::InputAttachment` descriptors ({}) than the `max_descriptor_set_input_attachments` limit ({})",
                 provided, max_supported,
             ),
             Self::MaxPerStageResourcesExceeded { provided, max_supported } => write!(
-                fmt,
+                f,
                 "the `set_layouts` contain more bound resources ({}) in a single stage than the `max_per_stage_resources` limit ({})",
                 provided, max_supported,
             ),
             Self::MaxPerStageDescriptorSamplersExceeded { provided, max_supported } => write!(
-                fmt,
+                f,
                 "the `set_layouts` contain more `DescriptorType::Sampler` and `DescriptorType::CombinedImageSampler` descriptors ({}) in a single stage than the `max_per_stage_descriptor_set_samplers` limit ({})",
                 provided, max_supported,
             ),
             Self::MaxPerStageDescriptorUniformBuffersExceeded { provided, max_supported } => write!(
-                fmt,
+                f,
                 "the `set_layouts` contain more `DescriptorType::UniformBuffer` and `DescriptorType::UniformBufferDynamic` descriptors ({}) in a single stage than the `max_per_stage_descriptor_set_uniform_buffers` limit ({})",
                 provided, max_supported,
             ),
             Self::MaxPerStageDescriptorStorageBuffersExceeded { provided, max_supported } => write!(
-                fmt,
+                f,
                 "the `set_layouts` contain more `DescriptorType::StorageBuffer` and `DescriptorType::StorageBufferDynamic` descriptors ({}) in a single stage than the `max_per_stage_descriptor_set_storage_buffers` limit ({})",
                 provided, max_supported,
             ),
             Self::MaxPerStageDescriptorSampledImagesExceeded { provided, max_supported } => write!(
-                fmt,
+                f,
                 "the `set_layouts` contain more `DescriptorType::SampledImage`, `DescriptorType::CombinedImageSampler` and `DescriptorType::UniformTexelBuffer` descriptors ({}) in a single stage than the `max_per_stage_descriptor_set_sampled_images` limit ({})",
                 provided, max_supported,
             ),
             Self::MaxPerStageDescriptorStorageImagesExceeded { provided, max_supported } => write!(
-                fmt,
+                f,
                 "the `set_layouts` contain more `DescriptorType::StorageImage` and `DescriptorType::StorageTexelBuffer` descriptors ({}) in a single stage than the `max_per_stage_descriptor_set_storage_images` limit ({})",
                 provided, max_supported,
             ),
             Self::MaxPerStageDescriptorInputAttachmentsExceeded { provided, max_supported } => write!(
-                fmt,
+                f,
                 "the `set_layouts` contain more `DescriptorType::InputAttachment` descriptors ({}) in a single stage than the `max_per_stage_descriptor_set_input_attachments` limit ({})",
                 provided, max_supported,
             ),
             Self::MaxPushConstantsSizeExceeded { provided, max_supported } => write!(
-                fmt,
+                f,
                 "an element in `push_constant_ranges` has an `offset + size` ({}) greater than the `max_push_constants_size` limit ({})",
                 provided, max_supported,
             ),
             Self::PushConstantRangesStageMultiple => write!(
-                fmt,
+                f,
                 "a shader stage appears in multiple elements of `push_constant_ranges`",
             ),
             Self::SetLayoutsPushDescriptorMultiple => write!(
-                fmt,
+                f,
                 "multiple elements of `set_layouts` have `push_descriptor` enabled"
             ),
         }
@@ -937,6 +956,16 @@ impl From<VulkanError> for PipelineLayoutCreationError {
                 PipelineLayoutCreationError::OomError(OomError::from(err))
             }
             _ => panic!("unexpected error: {:?}", err),
+        }
+    }
+}
+
+impl From<ExtensionNotEnabled> for PipelineLayoutCreationError {
+    #[inline]
+    fn from(err: ExtensionNotEnabled) -> Self {
+        Self::ExtensionNotEnabled {
+            extension: err.extension,
+            reason: err.reason,
         }
     }
 }
@@ -1052,7 +1081,7 @@ impl Default for PipelineLayoutCreateInfo {
 pub struct PushConstantRange {
     /// The stages which can access this range. A stage can access at most one push constant range.
     ///
-    /// The default value is [`ShaderStages::none()`], which must be overridden.
+    /// The default value is [`ShaderStages::empty()`], which must be overridden.
     pub stages: ShaderStages,
 
     /// Offset in bytes from the start of the push constants to this range.
@@ -1074,7 +1103,7 @@ impl Default for PushConstantRange {
     #[inline]
     fn default() -> Self {
         Self {
-            stages: ShaderStages::none(),
+            stages: ShaderStages::empty(),
             offset: 0,
             size: 0,
         }
@@ -1403,7 +1432,7 @@ mod tests {
     fn invalid_push_constant_stages() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let push_constant = (0, 8, ShaderStages::none());
+        let push_constant = (0, 8, ShaderStages::empty());
 
         match PipelineLayout::new(&device, iter::empty(), Some(push_constant)) {
             Err(PipelineLayoutCreationError::InvalidPushConstant) => (),

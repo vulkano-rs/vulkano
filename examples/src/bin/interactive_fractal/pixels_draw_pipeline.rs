@@ -78,14 +78,20 @@ impl PixelsDrawPipeline {
         let (vertices, indices) = textured_quad(2.0, 2.0);
         let vertex_buffer = CpuAccessibleBuffer::<[TexturedVertex]>::from_iter(
             gfx_queue.device().clone(),
-            BufferUsage::vertex_buffer(),
+            BufferUsage {
+                vertex_buffer: true,
+                ..BufferUsage::empty()
+            },
             false,
             vertices,
         )
         .unwrap();
         let index_buffer = CpuAccessibleBuffer::<[u32]>::from_iter(
             gfx_queue.device().clone(),
-            BufferUsage::index_buffer(),
+            BufferUsage {
+                index_buffer: true,
+                ..BufferUsage::empty()
+            },
             false,
             indices,
         )

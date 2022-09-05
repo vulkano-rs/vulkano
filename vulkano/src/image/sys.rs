@@ -23,6 +23,7 @@ use crate::{
     device::{Device, DeviceOwned},
     format::{ChromaSampling, Format, FormatFeatures, NumericType},
     image::{view::ImageViewCreationError, ImageFormatInfo, ImageFormatProperties, ImageType},
+    macros::ExtensionNotEnabled,
     memory::{
         DeviceMemory, DeviceMemoryAllocationError, ExternalMemoryHandleType,
         ExternalMemoryHandleTypes, MemoryRequirements,
@@ -202,8 +203,23 @@ impl UnsafeImage {
 
         let format = format.unwrap(); // Can be None for "external formats" but Vulkano doesn't support that yet
 
+        // VUID-VkImageCreateInfo-format-parameter
+        // TODO: format.validate(device)?;
+
+        // VUID-VkImageCreateInfo-samples-parameter
+        samples.validate(device)?;
+
+        // VUID-VkImageCreateInfo-tiling-parameter
+        tiling.validate(device)?;
+
+        // VUID-VkImageCreateInfo-usage-parameter
+        usage.validate(device)?;
+
         // VUID-VkImageCreateInfo-usage-requiredbitmask
-        assert!(usage != ImageUsage::none());
+        assert!(!usage.is_empty());
+
+        // VUID-VkImageCreateInfo-initialLayout-parameter
+        initial_layout.validate(device)?;
 
         if usage.transient_attachment {
             // VUID-VkImageCreateInfo-usage-00966
@@ -212,15 +228,14 @@ impl UnsafeImage {
             );
 
             // VUID-VkImageCreateInfo-usage-00963
-            assert!(
-                ImageUsage {
-                    transient_attachment: false,
-                    color_attachment: false,
-                    depth_stencil_attachment: false,
-                    input_attachment: false,
-                    ..usage
-                } == ImageUsage::none()
-            )
+            assert!(ImageUsage {
+                transient_attachment: false,
+                color_attachment: false,
+                depth_stencil_attachment: false,
+                input_attachment: false,
+                ..usage
+            }
+            .is_empty())
         }
 
         // VUID-VkImageCreateInfo-initialLayout-00993
@@ -492,6 +507,9 @@ impl UnsafeImage {
                 });
             }
 
+            // VUID-VkExternalMemoryImageCreateInfo-handleTypes-parameter
+            external_memory_handle_types.validate(device)?;
+
             // VUID-VkImageCreateInfo-pNext-01443
             if initial_layout != ImageLayout::Undefined {
                 return Err(ImageCreationError::ExternalMemoryInvalidInitialLayout);
@@ -557,7 +575,7 @@ impl UnsafeImage {
             if usage.color_attachment
                 && !device_properties
                     .framebuffer_color_sample_counts
-                    .contains(samples)
+                    .contains_count(samples)
             {
                 // TODO: how to handle framebuffer_integer_color_sample_counts limit, which only
                 // exists >= Vulkan 1.2
@@ -570,7 +588,7 @@ impl UnsafeImage {
                 if aspects.depth
                     && !device_properties
                         .framebuffer_depth_sample_counts
-                        .contains(samples)
+                        .contains_count(samples)
                 {
                     return true;
                 }
@@ -578,7 +596,7 @@ impl UnsafeImage {
                 if aspects.stencil
                     && !device_properties
                         .framebuffer_stencil_sample_counts
-                        .contains(samples)
+                        .contains_count(samples)
                 {
                     return true;
                 }
@@ -590,7 +608,7 @@ impl UnsafeImage {
                         NumericType::UINT | NumericType::SINT => {
                             if !device_properties
                                 .sampled_image_integer_sample_counts
-                                .contains(samples)
+                                .contains_count(samples)
                             {
                                 return true;
                             }
@@ -604,7 +622,7 @@ impl UnsafeImage {
                         | NumericType::SRGB => {
                             if !device_properties
                                 .sampled_image_color_sample_counts
-                                .contains(samples)
+                                .contains_count(samples)
                             {
                                 return true;
                             }
@@ -616,7 +634,7 @@ impl UnsafeImage {
                     if aspects.depth
                         && !device_properties
                             .sampled_image_depth_sample_counts
-                            .contains(samples)
+                            .contains_count(samples)
                     {
                         return true;
                     }
@@ -624,7 +642,7 @@ impl UnsafeImage {
                     if aspects.stencil
                         && device_properties
                             .sampled_image_stencil_sample_counts
-                            .contains(samples)
+                            .contains_count(samples)
                     {
                         return true;
                     }
@@ -634,7 +652,7 @@ impl UnsafeImage {
             if usage.storage
                 && !device_properties
                     .storage_image_sample_counts
-                    .contains(samples)
+                    .contains_count(samples)
             {
                 return true;
             }
@@ -654,7 +672,7 @@ impl UnsafeImage {
                         transfer_src: false,
                         transfer_dst: false,
                         ..usage
-                    } == ImageUsage::none())
+                    }.is_empty())
             } else {
                 false
             }
@@ -737,7 +755,7 @@ impl UnsafeImage {
                 }
 
                 // VUID-VkImageCreateInfo-samples-02258
-                if !sample_counts.contains(samples) {
+                if !sample_counts.contains_count(samples) {
                     return Err(ImageCreationError::SampleCountNotSupported {
                         samples,
                         supported: sample_counts,
@@ -777,7 +795,7 @@ impl UnsafeImage {
             cube_compatible,
             array_2d_compatible,
             block_texel_view_compatible,
-            ..ImageCreateFlags::none()
+            ..ImageCreateFlags::empty()
         };
 
         let (image_type, extent, array_layers) = match dimensions {
@@ -869,15 +887,14 @@ impl UnsafeImage {
             .format_properties(format)
             .optimal_tiling_features;
 
-        assert!(
-            ImageCreateFlags {
-                mutable_format: false,
-                cube_compatible: false,
-                array_2d_compatible: false,
-                block_texel_view_compatible: false,
-                ..ImageCreateFlags::none()
-            } == ImageCreateFlags::none()
-        );
+        assert!(ImageCreateFlags {
+            mutable_format: false,
+            cube_compatible: false,
+            array_2d_compatible: false,
+            block_texel_view_compatible: false,
+            ..ImageCreateFlags::empty()
+        }
+        .is_empty());
 
         // TODO: check that usage is correct in regard to `output`?
 
@@ -1198,7 +1215,7 @@ impl UnsafeImage {
                 if aspects.plane0 {
                     ImageAspects {
                         plane0: true,
-                        ..ImageAspects::none()
+                        ..ImageAspects::empty()
                     }
                 } else {
                     aspects
@@ -1425,7 +1442,7 @@ pub struct UnsafeImageCreateInfo {
 
     /// How the image is going to be used.
     ///
-    /// The default value is [`ImageUsage::none()`], which must be overridden.
+    /// The default value is [`ImageUsage::empty()`], which must be overridden.
     pub usage: ImageUsage,
 
     /// Whether the image can be shared across multiple queues, or is limited to a single queue.
@@ -1445,7 +1462,7 @@ pub struct UnsafeImageCreateInfo {
     /// extension must be enabled, and `initial_layout` must be set to
     /// [`ImageLayout::Undefined`].
     ///
-    /// The default value is [`ExternalMemoryHandleTypes::none()`].
+    /// The default value is [`ExternalMemoryHandleTypes::empty()`].
     pub external_memory_handle_types: ExternalMemoryHandleTypes,
 
     /// For non-multi-planar formats, whether an image view wrapping the image can have a
@@ -1497,10 +1514,10 @@ impl Default for UnsafeImageCreateInfo {
             mip_levels: 1,
             samples: SampleCount::Sample1,
             tiling: ImageTiling::Optimal,
-            usage: ImageUsage::none(),
+            usage: ImageUsage::empty(),
             sharing: Sharing::Exclusive,
             initial_layout: ImageLayout::Undefined,
-            external_memory_handle_types: ExternalMemoryHandleTypes::none(),
+            external_memory_handle_types: ExternalMemoryHandleTypes::empty(),
             mutable_format: false,
             cube_compatible: false,
             array_2d_compatible: false,
@@ -1785,6 +1802,16 @@ impl From<VulkanError> for ImageCreationError {
             err @ VulkanError::OutOfHostMemory => Self::AllocError(err.into()),
             err @ VulkanError::OutOfDeviceMemory => Self::AllocError(err.into()),
             _ => panic!("unexpected error: {:?}", err),
+        }
+    }
+}
+
+impl From<ExtensionNotEnabled> for ImageCreationError {
+    #[inline]
+    fn from(err: ExtensionNotEnabled) -> Self {
+        Self::ExtensionNotEnabled {
+            extension: err.extension,
+            reason: err.reason,
         }
     }
 }
@@ -2218,7 +2245,7 @@ mod tests {
                 format: Some(Format::R8G8B8A8_UNORM),
                 usage: ImageUsage {
                     sampled: true,
-                    ..ImageUsage::none()
+                    ..ImageUsage::empty()
                 },
                 ..Default::default()
             },
@@ -2242,7 +2269,7 @@ mod tests {
                 usage: ImageUsage {
                     transient_attachment: true,
                     color_attachment: true,
-                    ..ImageUsage::none()
+                    ..ImageUsage::empty()
                 },
                 ..Default::default()
             },
@@ -2267,7 +2294,7 @@ mod tests {
                     mip_levels: 0,
                     usage: ImageUsage {
                         sampled: true,
-                        ..ImageUsage::none()
+                        ..ImageUsage::empty()
                     },
                     ..Default::default()
                 },
@@ -2291,7 +2318,7 @@ mod tests {
                 mip_levels: u32::MAX,
                 usage: ImageUsage {
                     sampled: true,
-                    ..ImageUsage::none()
+                    ..ImageUsage::empty()
                 },
                 ..Default::default()
             },
@@ -2319,7 +2346,7 @@ mod tests {
                 samples: SampleCount::Sample2,
                 usage: ImageUsage {
                     storage: true,
-                    ..ImageUsage::none()
+                    ..ImageUsage::empty()
                 },
                 ..Default::default()
             },
@@ -2350,7 +2377,7 @@ mod tests {
                 format: Some(Format::ASTC_5x4_UNORM_BLOCK),
                 usage: ImageUsage {
                     color_attachment: true,
-                    ..ImageUsage::none()
+                    ..ImageUsage::empty()
                 },
                 ..Default::default()
             },
@@ -2382,7 +2409,7 @@ mod tests {
                     usage: ImageUsage {
                         transient_attachment: true,
                         sampled: true,
-                        ..ImageUsage::none()
+                        ..ImageUsage::empty()
                     },
                     ..Default::default()
                 },
@@ -2405,7 +2432,7 @@ mod tests {
                 format: Some(Format::R8G8B8A8_UNORM),
                 usage: ImageUsage {
                     sampled: true,
-                    ..ImageUsage::none()
+                    ..ImageUsage::empty()
                 },
                 cube_compatible: true,
                 ..Default::default()
@@ -2428,7 +2455,7 @@ mod tests {
             depth: true,
             stencil: true,
             plane0: true,
-            ..ImageAspects::none()
+            ..ImageAspects::empty()
         }
         .iter()
         .collect();
@@ -2446,7 +2473,7 @@ mod tests {
                     depth: true,
                     stencil: true,
                     plane0: true,
-                    ..ImageAspects::none()
+                    ..ImageAspects::empty()
                 },
                 mip_levels: 0..6,
                 array_layers: 0..8,
@@ -2469,7 +2496,7 @@ mod tests {
                     depth: true,
                     stencil: false,
                     plane0: true,
-                    ..ImageAspects::none()
+                    ..ImageAspects::empty()
                 },
                 mip_levels: 0..6,
                 array_layers: 0..8,
@@ -2493,7 +2520,7 @@ mod tests {
                     depth: true,
                     stencil: true,
                     plane0: false,
-                    ..ImageAspects::none()
+                    ..ImageAspects::empty()
                 },
                 mip_levels: 2..4,
                 array_layers: 0..8,
@@ -2516,7 +2543,7 @@ mod tests {
                     depth: false,
                     stencil: false,
                     plane0: false,
-                    ..ImageAspects::none()
+                    ..ImageAspects::empty()
                 },
                 mip_levels: 0..1,
                 array_layers: 2..4,
@@ -2542,7 +2569,7 @@ mod tests {
                     depth: true,
                     stencil: true,
                     plane0: false,
-                    ..ImageAspects::none()
+                    ..ImageAspects::empty()
                 },
                 mip_levels: 2..4,
                 array_layers: 6..8,

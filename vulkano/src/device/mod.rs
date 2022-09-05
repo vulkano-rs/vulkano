@@ -34,8 +34,8 @@
 //! // Here is the device-creating code.
 //! let device = {
 //!     let queue_family = physical_device.queue_families().next().unwrap();
-//!     let features = Features::none();
-//!     let extensions = DeviceExtensions::none();
+//!     let features = Features::empty();
+//!     let extensions = DeviceExtensions::empty();
 //!
 //!     match Device::new(
 //!         physical_device,
@@ -106,6 +106,7 @@ use crate::{
     command_buffer::pool::StandardCommandPool,
     descriptor_set::pool::StandardDescriptorPool,
     instance::{debug::DebugUtilsLabel, Instance},
+    macros::ExtensionNotEnabled,
     memory::{pool::StandardMemoryPool, ExternalMemoryHandleType},
     OomError, SynchronizedVulkanObject, Version, VulkanError, VulkanObject,
 };
@@ -631,6 +632,9 @@ impl Device {
         {
             use std::os::unix::io::IntoRawFd;
 
+            // VUID-vkGetMemoryFdPropertiesKHR-handleType-parameter
+            handle_type.validate(self)?;
+
             // VUID-vkGetMemoryFdPropertiesKHR-handleType-00674
             if handle_type == ExternalMemoryHandleType::OpaqueFd {
                 return Err(MemoryFdPropertiesError::InvalidExternalHandleType);
@@ -839,12 +843,12 @@ impl From<FeatureRestrictionError> for DeviceCreationError {
 pub struct DeviceCreateInfo<'qf> {
     /// The extensions to enable on the device.
     ///
-    /// The default value is [`DeviceExtensions::none()`].
+    /// The default value is [`DeviceExtensions::empty()`].
     pub enabled_extensions: DeviceExtensions,
 
     /// The features to enable on the device.
     ///
-    /// The default value is [`Features::none()`].
+    /// The default value is [`Features::empty()`].
     pub enabled_features: Features,
 
     /// The queues to create for the device.
@@ -859,8 +863,8 @@ impl Default for DeviceCreateInfo<'static> {
     #[inline]
     fn default() -> Self {
         Self {
-            enabled_extensions: DeviceExtensions::none(),
-            enabled_features: Features::none(),
+            enabled_extensions: DeviceExtensions::empty(),
+            enabled_features: Features::empty(),
             queue_create_infos: Vec::new(),
             _ne: crate::NonExhaustive(()),
         }
@@ -934,6 +938,11 @@ pub enum MemoryFdPropertiesError {
     /// No memory available on the host.
     OutOfHostMemory,
 
+    ExtensionNotEnabled {
+        extension: &'static str,
+        reason: &'static str,
+    },
+
     /// The provided external handle was not valid.
     InvalidExternalHandle,
 
@@ -951,6 +960,11 @@ impl fmt::Display for MemoryFdPropertiesError {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match *self {
             Self::OutOfHostMemory => write!(fmt, "no memory available on the host"),
+            Self::ExtensionNotEnabled { extension, reason } => write!(
+                fmt,
+                "the extension {} must be enabled: {}",
+                extension, reason
+            ),
             Self::InvalidExternalHandle => {
                 write!(fmt, "the provided external handle was not valid")
             }
@@ -972,6 +986,16 @@ impl From<VulkanError> for MemoryFdPropertiesError {
             VulkanError::OutOfHostMemory => Self::OutOfHostMemory,
             VulkanError::InvalidExternalHandle => Self::InvalidExternalHandle,
             _ => panic!("Unexpected error value"),
+        }
+    }
+}
+
+impl From<ExtensionNotEnabled> for MemoryFdPropertiesError {
+    #[inline]
+    fn from(err: ExtensionNotEnabled) -> Self {
+        Self::ExtensionNotEnabled {
+            extension: err.extension,
+            reason: err.reason,
         }
     }
 }
@@ -1275,7 +1299,7 @@ mod tests {
 
         let features = Features::all();
         // In the unlikely situation where the device supports everything, we ignore the test.
-        if physical.supported_features().is_superset_of(&features) {
+        if physical.supported_features().contains(&features) {
             return;
         }
 

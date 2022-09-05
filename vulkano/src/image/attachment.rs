@@ -97,7 +97,7 @@ impl AttachmentImage {
             dimensions,
             1,
             format,
-            ImageUsage::none(),
+            ImageUsage::empty(),
             SampleCount::Sample1,
         )
     }
@@ -113,7 +113,7 @@ impl AttachmentImage {
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
         let base_usage = ImageUsage {
             input_attachment: true,
-            ..ImageUsage::none()
+            ..ImageUsage::empty()
         };
 
         AttachmentImage::new_impl(
@@ -137,7 +137,7 @@ impl AttachmentImage {
         samples: SampleCount,
         format: Format,
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
-        AttachmentImage::new_impl(device, dimensions, 1, format, ImageUsage::none(), samples)
+        AttachmentImage::new_impl(device, dimensions, 1, format, ImageUsage::empty(), samples)
     }
 
     /// Same as `multisampled`, but creates an image that can be used as an input attachment.
@@ -152,7 +152,7 @@ impl AttachmentImage {
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
         let base_usage = ImageUsage {
             input_attachment: true,
-            ..ImageUsage::none()
+            ..ImageUsage::empty()
         };
 
         AttachmentImage::new_impl(device, dimensions, 1, format, base_usage, samples)
@@ -215,7 +215,7 @@ impl AttachmentImage {
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
         let base_usage = ImageUsage {
             sampled: true,
-            ..ImageUsage::none()
+            ..ImageUsage::empty()
         };
 
         AttachmentImage::new_impl(
@@ -240,7 +240,7 @@ impl AttachmentImage {
         let base_usage = ImageUsage {
             sampled: true,
             input_attachment: true,
-            ..ImageUsage::none()
+            ..ImageUsage::empty()
         };
 
         AttachmentImage::new_impl(
@@ -268,7 +268,7 @@ impl AttachmentImage {
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
         let base_usage = ImageUsage {
             sampled: true,
-            ..ImageUsage::none()
+            ..ImageUsage::empty()
         };
 
         AttachmentImage::new_impl(device, dimensions, 1, format, base_usage, samples)
@@ -288,7 +288,7 @@ impl AttachmentImage {
         let base_usage = ImageUsage {
             sampled: true,
             input_attachment: true,
-            ..ImageUsage::none()
+            ..ImageUsage::empty()
         };
 
         AttachmentImage::new_impl(device, dimensions, 1, format, base_usage, samples)
@@ -308,7 +308,7 @@ impl AttachmentImage {
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
         let base_usage = ImageUsage {
             transient_attachment: true,
-            ..ImageUsage::none()
+            ..ImageUsage::empty()
         };
 
         AttachmentImage::new_impl(
@@ -333,7 +333,7 @@ impl AttachmentImage {
         let base_usage = ImageUsage {
             transient_attachment: true,
             input_attachment: true,
-            ..ImageUsage::none()
+            ..ImageUsage::empty()
         };
 
         AttachmentImage::new_impl(
@@ -361,7 +361,7 @@ impl AttachmentImage {
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
         let base_usage = ImageUsage {
             transient_attachment: true,
-            ..ImageUsage::none()
+            ..ImageUsage::empty()
         };
 
         AttachmentImage::new_impl(device, dimensions, 1, format, base_usage, samples)
@@ -381,7 +381,7 @@ impl AttachmentImage {
         let base_usage = ImageUsage {
             transient_attachment: true,
             input_attachment: true,
-            ..ImageUsage::none()
+            ..ImageUsage::empty()
         };
 
         AttachmentImage::new_impl(device, dimensions, 1, format, base_usage, samples)
@@ -508,7 +508,7 @@ impl AttachmentImage {
                 },
                 external_memory_handle_types: ExternalMemoryHandleTypes {
                     opaque_fd: true,
-                    ..ExternalMemoryHandleTypes::none()
+                    ..ExternalMemoryHandleTypes::empty()
                 },
                 mutable_format: true,
                 ..Default::default()

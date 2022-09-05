@@ -102,11 +102,11 @@ mod linux {
                 sampled: true,
                 transfer_src: true,
                 transfer_dst: true,
-                ..ImageUsage::none()
+                ..ImageUsage::empty()
             },
             ImageCreateFlags {
                 mutable_format: true,
-                ..ImageCreateFlags::none()
+                ..ImageCreateFlags::empty()
             },
             [queue.family()],
         )
@@ -123,7 +123,10 @@ mod linux {
             Semaphore::new(
                 device.clone(),
                 SemaphoreCreateInfo {
-                    export_handle_types: ExternalSemaphoreHandleTypes::posix(),
+                    export_handle_types: ExternalSemaphoreHandleTypes {
+                        opaque_fd: true,
+                        ..ExternalSemaphoreHandleTypes::empty()
+                    },
                     ..Default::default()
                 },
             )
@@ -133,7 +136,10 @@ mod linux {
             Semaphore::new(
                 device.clone(),
                 SemaphoreCreateInfo {
-                    export_handle_types: ExternalSemaphoreHandleTypes::posix(),
+                    export_handle_types: ExternalSemaphoreHandleTypes {
+                        opaque_fd: true,
+                        ..ExternalSemaphoreHandleTypes::empty()
+                    },
                     ..Default::default()
                 },
             )
@@ -251,7 +257,7 @@ mod linux {
                             &release_sem,
                             PipelineStages {
                                 all_commands: true,
-                                ..PipelineStages::none()
+                                ..PipelineStages::empty()
                             },
                         );
                         builder.submit(&queue).unwrap();
@@ -390,7 +396,7 @@ mod linux {
                     khr_external_fence_capabilities: true,
                     ext_debug_utils: true,
 
-                    ..InstanceExtensions::none()
+                    ..InstanceExtensions::empty()
                 }
                 .union(&required_extensions),
 
@@ -431,11 +437,11 @@ mod linux {
             khr_external_fence: true,
             khr_external_fence_fd: true,
             khr_swapchain: true,
-            ..DeviceExtensions::none()
+            ..DeviceExtensions::empty()
         };
 
         let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-            .filter(|&p| p.supported_extensions().is_superset_of(&device_extensions))
+            .filter(|&p| p.supported_extensions().contains(&device_extensions))
             .filter_map(|p| {
                 p.queue_families()
                     .find(|&q| {
@@ -456,6 +462,7 @@ mod linux {
                 PhysicalDeviceType::VirtualGpu => 2,
                 PhysicalDeviceType::Cpu => 3,
                 PhysicalDeviceType::Other => 4,
+                _ => 5,
             })
             .unwrap();
 
@@ -495,7 +502,10 @@ mod linux {
                     min_image_count: surface_capabilities.min_image_count,
                     image_format,
                     image_extent: surface.window().inner_size().into(),
-                    image_usage: ImageUsage::color_attachment(),
+                    image_usage: ImageUsage {
+                        color_attachment: true,
+                        ..ImageUsage::empty()
+                    },
                     composite_alpha: surface_capabilities
                         .supported_composite_alpha
                         .iter()
@@ -523,7 +533,10 @@ mod linux {
         ];
         let vertex_buffer = CpuAccessibleBuffer::<[Vertex]>::from_iter(
             device.clone(),
-            BufferUsage::all(),
+            BufferUsage {
+                vertex_buffer: true,
+                ..BufferUsage::empty()
+            },
             false,
             vertices,
         )

@@ -22,7 +22,7 @@ pub fn required_extensions(library: &VulkanLibrary) -> InstanceExtensions {
         mvk_macos_surface: true,
         khr_get_physical_device_properties2: true,
         khr_get_surface_capabilities2: true,
-        ..InstanceExtensions::none()
+        ..InstanceExtensions::empty()
     };
 
     library.supported_extensions().intersection(&ideal)

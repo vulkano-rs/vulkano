@@ -39,7 +39,10 @@ pub struct GameOfLifeComputePipeline {
 fn rand_grid(compute_queue: &Arc<Queue>, size: [u32; 2]) -> Arc<CpuAccessibleBuffer<[u32]>> {
     CpuAccessibleBuffer::from_iter(
         compute_queue.device().clone(),
-        BufferUsage::all(),
+        BufferUsage {
+            storage_buffer: true,
+            ..BufferUsage::empty()
+        },
         false,
         (0..(size[0] * size[1]))
             .map(|_| rand::thread_rng().gen_range(0u32..=1))
@@ -74,7 +77,7 @@ impl GameOfLifeComputePipeline {
                 storage: true,
                 color_attachment: true,
                 transfer_dst: true,
-                ..ImageUsage::none()
+                ..ImageUsage::empty()
             },
         )
         .unwrap();

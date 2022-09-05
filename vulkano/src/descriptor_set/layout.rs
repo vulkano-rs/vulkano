@@ -13,6 +13,7 @@
 
 use crate::{
     device::{Device, DeviceOwned},
+    macros::{vulkan_enum, ExtensionNotEnabled},
     sampler::Sampler,
     shader::{DescriptorRequirements, ShaderStages},
     OomError, Version, VulkanError, VulkanObject,
@@ -124,16 +125,29 @@ impl DescriptorSetLayout {
         let highest_binding_num = bindings.keys().copied().next_back();
 
         for (&binding_num, binding) in bindings.iter() {
-            if binding.descriptor_count != 0 {
-                *descriptor_counts
-                    .entry(binding.descriptor_type)
-                    .or_default() += binding.descriptor_count;
+            let &DescriptorSetLayoutBinding {
+                descriptor_type,
+                descriptor_count,
+                variable_descriptor_count,
+                stages,
+                ref immutable_samplers,
+                _ne: _,
+            } = binding;
+
+            // VUID-VkDescriptorSetLayoutBinding-descriptorType-parameter
+            descriptor_type.validate(device)?;
+
+            if descriptor_count != 0 {
+                // VUID-VkDescriptorSetLayoutBinding-descriptorCount-00283
+                stages.validate(device)?;
+
+                *descriptor_counts.entry(descriptor_type).or_default() += descriptor_count;
             }
 
             if push_descriptor {
                 // VUID-VkDescriptorSetLayoutCreateInfo-flags-00280
                 if matches!(
-                    binding.descriptor_type,
+                    descriptor_type,
                     DescriptorType::StorageBufferDynamic | DescriptorType::UniformBufferDynamic
                 ) {
                     return Err(
@@ -144,7 +158,7 @@ impl DescriptorSetLayout {
                 }
 
                 // VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-flags-03003
-                if binding.variable_descriptor_count {
+                if variable_descriptor_count {
                     return Err(
                         DescriptorSetLayoutCreationError::PushDescriptorVariableDescriptorCount {
                             binding_num,
@@ -153,16 +167,12 @@ impl DescriptorSetLayout {
                 }
             }
 
-            if !binding.immutable_samplers.is_empty() {
-                if binding
-                    .immutable_samplers
+            if !immutable_samplers.is_empty() {
+                if immutable_samplers
                     .iter()
                     .any(|sampler| sampler.sampler_ycbcr_conversion().is_some())
                 {
-                    if !matches!(
-                        binding.descriptor_type,
-                        DescriptorType::CombinedImageSampler
-                    ) {
+                    if !matches!(descriptor_type, DescriptorType::CombinedImageSampler) {
                         return Err(
                             DescriptorSetLayoutCreationError::ImmutableSamplersDescriptorTypeIncompatible {
                                 binding_num,
@@ -171,7 +181,7 @@ impl DescriptorSetLayout {
                     }
                 } else {
                     if !matches!(
-                        binding.descriptor_type,
+                        descriptor_type,
                         DescriptorType::Sampler | DescriptorType::CombinedImageSampler
                     ) {
                         return Err(
@@ -183,12 +193,12 @@ impl DescriptorSetLayout {
                 }
 
                 // VUID-VkDescriptorSetLayoutBinding-descriptorType-00282
-                if binding.descriptor_count != binding.immutable_samplers.len() as u32 {
+                if descriptor_count != immutable_samplers.len() as u32 {
                     return Err(
                         DescriptorSetLayoutCreationError::ImmutableSamplersCountMismatch {
                             binding_num,
-                            sampler_count: binding.immutable_samplers.len() as u32,
-                            descriptor_count: binding.descriptor_count,
+                            sampler_count: immutable_samplers.len() as u32,
+                            descriptor_count,
                         },
                     );
                 }
@@ -197,7 +207,7 @@ impl DescriptorSetLayout {
             // VUID-VkDescriptorSetLayoutBinding-descriptorType-01510
             // If descriptorType is VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT and descriptorCount is not 0, then stageFlags must be 0 or VK_SHADER_STAGE_FRAGMENT_BIT
 
-            if binding.variable_descriptor_count {
+            if variable_descriptor_count {
                 // VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-descriptorBindingVariableDescriptorCount-03014
                 if !device
                     .enabled_features()
@@ -221,7 +231,7 @@ impl DescriptorSetLayout {
 
                 // VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-pBindingFlags-03015
                 if matches!(
-                    binding.descriptor_type,
+                    descriptor_type,
                     DescriptorType::UniformBufferDynamic | DescriptorType::StorageBufferDynamic
                 ) {
                     return Err(
@@ -561,6 +571,16 @@ impl std::fmt::Display for DescriptorSetLayoutCreationError {
     }
 }
 
+impl From<ExtensionNotEnabled> for DescriptorSetLayoutCreationError {
+    #[inline]
+    fn from(err: ExtensionNotEnabled) -> Self {
+        Self::ExtensionNotEnabled {
+            extension: err.extension,
+            reason: err.reason,
+        }
+    }
+}
+
 /// Parameters to create a new `DescriptorSetLayout`.
 #[derive(Clone, Debug)]
 pub struct DescriptorSetLayoutCreateInfo {
@@ -658,7 +678,7 @@ pub struct DescriptorSetLayoutBinding {
 
     /// Which shader stages are going to access the descriptors in this binding.
     ///
-    /// The default value is [`ShaderStages::none()`], which must be overridden.
+    /// The default value is [`ShaderStages::empty()`], which must be overridden.
     pub stages: ShaderStages,
 
     /// Samplers that are included as a fixed part of the descriptor set layout. Once bound, they
@@ -683,7 +703,7 @@ impl DescriptorSetLayoutBinding {
             descriptor_type,
             descriptor_count: 1,
             variable_descriptor_count: false,
-            stages: ShaderStages::none(),
+            stages: ShaderStages::empty(),
             immutable_samplers: Vec::new(),
             _ne: crate::NonExhaustive(()),
         }
@@ -727,7 +747,7 @@ impl DescriptorSetLayoutBinding {
             });
         }
 
-        if !self.stages.is_superset_of(stages) {
+        if !self.stages.contains(stages) {
             return Err(DescriptorRequirementsNotMet::ShaderStages {
                 required: *stages,
                 obtained: self.stages,
@@ -794,57 +814,73 @@ impl fmt::Display for DescriptorRequirementsNotMet {
     }
 }
 
-/// Describes what kind of resource may later be bound to a descriptor.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-#[repr(i32)]
-#[non_exhaustive]
-pub enum DescriptorType {
+vulkan_enum! {
+    /// Describes what kind of resource may later be bound to a descriptor.
+    #[non_exhaustive]
+    DescriptorType = DescriptorType(i32);
+
     /// Describes how a `SampledImage` descriptor should be read.
-    Sampler = ash::vk::DescriptorType::SAMPLER.as_raw(),
+    Sampler = SAMPLER,
 
     /// Combines `SampledImage` and `Sampler` in one descriptor.
-    CombinedImageSampler = ash::vk::DescriptorType::COMBINED_IMAGE_SAMPLER.as_raw(),
+    CombinedImageSampler = COMBINED_IMAGE_SAMPLER,
 
     /// Gives read-only access to an image via a sampler. The image must be combined with a sampler
     /// inside the shader.
-    SampledImage = ash::vk::DescriptorType::SAMPLED_IMAGE.as_raw(),
+    SampledImage = SAMPLED_IMAGE,
 
     /// Gives read and/or write access to individual pixels in an image. The image cannot be
     /// sampled, so you have exactly specify which pixel to read or write.
-    StorageImage = ash::vk::DescriptorType::STORAGE_IMAGE.as_raw(),
+    StorageImage = STORAGE_IMAGE,
 
     /// Gives read-only access to the content of a buffer, interpreted as an array of texel data.
-    UniformTexelBuffer = ash::vk::DescriptorType::UNIFORM_TEXEL_BUFFER.as_raw(),
+    UniformTexelBuffer = UNIFORM_TEXEL_BUFFER,
 
     /// Gives read and/or write access to the content of a buffer, interpreted as an array of texel
     /// data. Less restrictive but sometimes slower than a uniform texel buffer.
-    StorageTexelBuffer = ash::vk::DescriptorType::STORAGE_TEXEL_BUFFER.as_raw(),
+    StorageTexelBuffer = STORAGE_TEXEL_BUFFER,
 
     /// Gives read-only access to the content of a buffer, interpreted as a structure.
-    UniformBuffer = ash::vk::DescriptorType::UNIFORM_BUFFER.as_raw(),
+    UniformBuffer = UNIFORM_BUFFER,
 
     /// Gives read and/or write access to the content of a buffer, interpreted as a structure. Less
     /// restrictive but sometimes slower than a uniform buffer.
-    StorageBuffer = ash::vk::DescriptorType::STORAGE_BUFFER.as_raw(),
+    StorageBuffer = STORAGE_BUFFER,
 
     /// As `UniformBuffer`, but the offset within the buffer is specified at the time the descriptor
     /// set is bound, rather than when the descriptor set is updated.
-    UniformBufferDynamic = ash::vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC.as_raw(),
+    UniformBufferDynamic = UNIFORM_BUFFER_DYNAMIC,
 
     /// As `StorageBuffer`, but the offset within the buffer is specified at the time the descriptor
     /// set is bound, rather than when the descriptor set is updated.
-    StorageBufferDynamic = ash::vk::DescriptorType::STORAGE_BUFFER_DYNAMIC.as_raw(),
+    StorageBufferDynamic = STORAGE_BUFFER_DYNAMIC,
 
     /// Gives access to an image inside a fragment shader via a render pass. You can only access the
     /// pixel that is currently being processed by the fragment shader.
-    InputAttachment = ash::vk::DescriptorType::INPUT_ATTACHMENT.as_raw(),
-}
+    InputAttachment = INPUT_ATTACHMENT,
 
-impl From<DescriptorType> for ash::vk::DescriptorType {
-    #[inline]
-    fn from(val: DescriptorType) -> Self {
-        Self::from_raw(val as i32)
-    }
+    /*
+    // TODO: document
+    InlineUniformBlock = INLINE_UNIFORM_BLOCK {
+        api_version: V1_3,
+        extensions: [ext_inline_uniform_block],
+    },
+
+    // TODO: document
+    AccelerationStructure = ACCELERATION_STRUCTURE_KHR {
+        extensions: [khr_acceleration_structure],
+    },
+
+    // TODO: document
+    AccelerationStructureNV = ACCELERATION_STRUCTURE_NV {
+        extensions: [nv_ray_tracing],
+    },
+
+    // TODO: document
+    Mutable = MUTABLE_VALVE {
+        extensions: [valve_mutable_descriptor_type],
+    },
+     */
 }
 
 #[cfg(test)]

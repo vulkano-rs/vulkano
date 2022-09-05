@@ -101,6 +101,15 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             _ne: _,
         } = blit_image_info;
 
+        // VUID-VkBlitImageInfo2-srcImageLayout-parameter
+        src_image_layout.validate(device)?;
+
+        // VUID-VkBlitImageInfo2-dstImageLayout-parameter
+        dst_image_layout.validate(device)?;
+
+        // VUID-VkBlitImageInfo2-filter-parameter
+        filter.validate(device)?;
+
         let src_image_inner = src_image.inner();
         let dst_image_inner = dst_image.inner();
 
@@ -209,12 +218,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 sample_count: dst_image.samples(),
                 allowed_sample_counts: SampleCounts {
                     sample1: true,
-                    sample2: false,
-                    sample4: false,
-                    sample8: false,
-                    sample16: false,
-                    sample32: false,
-                    sample64: false,
+                    ..SampleCounts::empty()
                 },
             });
         }
@@ -226,12 +230,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 sample_count: dst_image.samples(),
                 allowed_sample_counts: SampleCounts {
                     sample1: true,
-                    sample2: false,
-                    sample4: false,
-                    sample8: false,
-                    sample16: false,
-                    sample32: false,
-                    sample64: false,
+                    ..SampleCounts::empty()
                 },
             });
         }
@@ -272,13 +271,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 }
             }
             Filter::Cubic => {
-                if !device.enabled_extensions().ext_filter_cubic {
-                    return Err(CopyError::ExtensionNotEnabled {
-                        extension: "ext_filter_cubic",
-                        reason: "the specified filter was Cubic",
-                    });
-                }
-
                 // VUID-VkBlitImageInfo2-filter-02002
                 if !src_image.format_features().sampled_image_filter_cubic {
                     return Err(CopyError::FilterNotSupportedByFormat);
@@ -335,8 +327,11 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                     });
                 }
 
+                // VUID-VkImageSubresourceLayers-aspectMask-parameter
+                subresource.aspects.validate(device)?;
+
                 // VUID-VkImageSubresourceLayers-aspectMask-requiredbitmask
-                assert!(subresource.aspects != ImageAspects::none());
+                assert!(!subresource.aspects.is_empty());
 
                 // VUID-VkBlitImageInfo2-aspectMask-00241
                 // VUID-VkBlitImageInfo2-aspectMask-00242
@@ -604,6 +599,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             _ne: _,
         } = clear_info;
 
+        // VUID-vkCmdClearColorImage-imageLayout-parameter
+        image_layout.validate(device)?;
+
         // VUID-vkCmdClearColorImage-commonparent
         assert_eq!(device, image.device());
 
@@ -663,8 +661,11 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
 
         for (region_index, subresource_range) in regions.iter().enumerate() {
+            // VUID-VkImageSubresourceRange-aspectMask-parameter
+            subresource_range.aspects.validate(device)?;
+
             // VUID-VkImageSubresourceRange-aspectMask-requiredbitmask
-            assert!(subresource_range.aspects != ImageAspects::none());
+            assert!(!subresource_range.aspects.is_empty());
 
             // VUID-vkCmdClearColorImage-aspectMask-02498
             if !image_aspects.contains(&subresource_range.aspects) {
@@ -746,6 +747,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             _ne: _,
         } = clear_info;
 
+        // VUID-vkCmdClearDepthStencilImage-imageLayout-parameter
+        image_layout.validate(device)?;
+
         // VUID-vkCmdClearDepthStencilImage-commonparent
         assert_eq!(device, image.device());
 
@@ -802,8 +806,11 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
 
         for (region_index, subresource_range) in regions.iter().enumerate() {
+            // VUID-VkImageSubresourceRange-aspectMask-parameter
+            subresource_range.aspects.validate(device)?;
+
             // VUID-VkImageSubresourceRange-aspectMask-requiredbitmask
-            assert!(subresource_range.aspects != ImageAspects::none());
+            assert!(!subresource_range.aspects.is_empty());
 
             // VUID-vkCmdClearDepthStencilImage-aspectMask-02824
             // VUID-vkCmdClearDepthStencilImage-image-02825
@@ -893,6 +900,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             _ne: _,
         } = resolve_image_info;
 
+        // VUID-VkResolveImageInfo2-srcImageLayout-parameter
+        src_image_layout.validate(device)?;
+
+        // VUID-VkResolveImageInfo2-dstImageLayout-parameter
+        dst_image_layout.validate(device)?;
+
         // VUID-VkResolveImageInfo2-commonparent
         assert_eq!(device, src_image.device());
         assert_eq!(device, dst_image.device());
@@ -906,13 +919,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 resource: CopyErrorResource::Source,
                 sample_count: dst_image.samples(),
                 allowed_sample_counts: SampleCounts {
-                    sample1: false,
                     sample2: true,
                     sample4: true,
                     sample8: true,
                     sample16: true,
                     sample32: true,
                     sample64: true,
+                    ..SampleCounts::empty()
                 },
             });
         }
@@ -924,12 +937,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 sample_count: dst_image.samples(),
                 allowed_sample_counts: SampleCounts {
                     sample1: true,
-                    sample2: false,
-                    sample4: false,
-                    sample8: false,
-                    sample16: false,
-                    sample32: false,
-                    sample64: false,
+                    ..SampleCounts::empty()
                 },
             });
         }
@@ -1019,12 +1027,15 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                     });
                 }
 
+                // VUID-VkImageSubresourceLayers-aspectMask-parameter
+                subresource.aspects.validate(device)?;
+
                 // VUID-VkImageSubresourceLayers-aspectMask-requiredbitmask
                 // VUID-VkImageResolve2-aspectMask-00266
                 if subresource.aspects
                     != (ImageAspects {
                         color: true,
-                        ..ImageAspects::none()
+                        ..ImageAspects::empty()
                     })
                 {
                     return Err(CopyError::AspectsNotAllowed {
@@ -1033,7 +1044,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                         aspects: subresource.aspects,
                         allowed_aspects: ImageAspects {
                             color: true,
-                            ..ImageAspects::none()
+                            ..ImageAspects::empty()
                         },
                     });
                 }
@@ -1177,11 +1188,11 @@ impl SyncCommandBufferBuilder {
                             memory: PipelineMemoryAccess {
                                 stages: PipelineStages {
                                     transfer: true,
-                                    ..PipelineStages::none()
+                                    ..PipelineStages::empty()
                                 },
                                 access: AccessFlags {
                                     transfer_read: true,
-                                    ..AccessFlags::none()
+                                    ..AccessFlags::empty()
                                 },
                                 exclusive: false,
                             },
@@ -1197,11 +1208,11 @@ impl SyncCommandBufferBuilder {
                             memory: PipelineMemoryAccess {
                                 stages: PipelineStages {
                                     transfer: true,
-                                    ..PipelineStages::none()
+                                    ..PipelineStages::empty()
                                 },
                                 access: AccessFlags {
                                     transfer_write: true,
-                                    ..AccessFlags::none()
+                                    ..AccessFlags::empty()
                                 },
                                 exclusive: true,
                             },
@@ -1268,11 +1279,11 @@ impl SyncCommandBufferBuilder {
                         memory: PipelineMemoryAccess {
                             stages: PipelineStages {
                                 transfer: true,
-                                ..PipelineStages::none()
+                                ..PipelineStages::empty()
                             },
                             access: AccessFlags {
                                 transfer_write: true,
-                                ..AccessFlags::none()
+                                ..AccessFlags::empty()
                             },
                             exclusive: true,
                         },
@@ -1338,11 +1349,11 @@ impl SyncCommandBufferBuilder {
                         memory: PipelineMemoryAccess {
                             stages: PipelineStages {
                                 transfer: true,
-                                ..PipelineStages::none()
+                                ..PipelineStages::empty()
                             },
                             access: AccessFlags {
                                 transfer_write: true,
-                                ..AccessFlags::none()
+                                ..AccessFlags::empty()
                             },
                             exclusive: true,
                         },
@@ -1419,11 +1430,11 @@ impl SyncCommandBufferBuilder {
                             memory: PipelineMemoryAccess {
                                 stages: PipelineStages {
                                     transfer: true,
-                                    ..PipelineStages::none()
+                                    ..PipelineStages::empty()
                                 },
                                 access: AccessFlags {
                                     transfer_read: true,
-                                    ..AccessFlags::none()
+                                    ..AccessFlags::empty()
                                 },
                                 exclusive: false,
                             },
@@ -1439,11 +1450,11 @@ impl SyncCommandBufferBuilder {
                             memory: PipelineMemoryAccess {
                                 stages: PipelineStages {
                                     transfer: true,
-                                    ..PipelineStages::none()
+                                    ..PipelineStages::empty()
                                 },
                                 access: AccessFlags {
                                     transfer_write: true,
-                                    ..AccessFlags::none()
+                                    ..AccessFlags::empty()
                                 },
                                 exclusive: true,
                             },
@@ -1966,13 +1977,13 @@ impl Default for ImageBlit {
     fn default() -> Self {
         Self {
             src_subresource: ImageSubresourceLayers {
-                aspects: ImageAspects::none(),
+                aspects: ImageAspects::empty(),
                 mip_level: 0,
                 array_layers: 0..0,
             },
             src_offsets: [[0; 3]; 2],
             dst_subresource: ImageSubresourceLayers {
-                aspects: ImageAspects::none(),
+                aspects: ImageAspects::empty(),
                 mip_level: 0,
                 array_layers: 0..0,
             },
@@ -2192,13 +2203,13 @@ impl Default for ImageResolve {
     fn default() -> Self {
         Self {
             src_subresource: ImageSubresourceLayers {
-                aspects: ImageAspects::none(),
+                aspects: ImageAspects::empty(),
                 mip_level: 0,
                 array_layers: 0..0,
             },
             src_offset: [0; 3],
             dst_subresource: ImageSubresourceLayers {
-                aspects: ImageAspects::none(),
+                aspects: ImageAspects::empty(),
                 mip_level: 0,
                 array_layers: 0..0,
             },

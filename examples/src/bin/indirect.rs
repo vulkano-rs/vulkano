@@ -94,10 +94,10 @@ fn main() {
     let device_extensions = DeviceExtensions {
         khr_swapchain: true,
         khr_storage_buffer_storage_class: true,
-        ..DeviceExtensions::none()
+        ..DeviceExtensions::empty()
     };
     let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-        .filter(|&p| p.supported_extensions().is_superset_of(&device_extensions))
+        .filter(|&p| p.supported_extensions().contains(&device_extensions))
         .filter_map(|p| {
             p.queue_families()
                 .find(|&q| q.supports_graphics() && q.supports_surface(&surface).unwrap_or(false))
@@ -109,6 +109,7 @@ fn main() {
             PhysicalDeviceType::VirtualGpu => 2,
             PhysicalDeviceType::Cpu => 3,
             PhysicalDeviceType::Other => 4,
+            _ => 5,
         })
         .unwrap();
 
@@ -148,7 +149,10 @@ fn main() {
                 min_image_count: surface_capabilities.min_image_count,
                 image_format,
                 image_extent: surface.window().inner_size().into(),
-                image_usage: ImageUsage::color_attachment(),
+                image_usage: ImageUsage {
+                    color_attachment: true,
+                    ..ImageUsage::empty()
+                },
                 composite_alpha: surface_capabilities
                     .supported_composite_alpha
                     .iter()
@@ -238,9 +242,22 @@ fn main() {
 
     // Each frame we generate a new set of vertices and each frame we need a new DrawIndirectCommand struct to
     // set the number of vertices to draw
-    let indirect_args_pool: CpuBufferPool<DrawIndirectCommand> =
-        CpuBufferPool::new(device.clone(), BufferUsage::all());
-    let vertex_pool: CpuBufferPool<Vertex> = CpuBufferPool::new(device.clone(), BufferUsage::all());
+    let indirect_args_pool: CpuBufferPool<DrawIndirectCommand> = CpuBufferPool::new(
+        device.clone(),
+        BufferUsage {
+            indirect_buffer: true,
+            storage_buffer: true,
+            ..BufferUsage::empty()
+        },
+    );
+    let vertex_pool: CpuBufferPool<Vertex> = CpuBufferPool::new(
+        device.clone(),
+        BufferUsage {
+            storage_buffer: true,
+            vertex_buffer: true,
+            ..BufferUsage::empty()
+        },
+    );
 
     let compute_pipeline = ComputePipeline::new(
         device.clone(),

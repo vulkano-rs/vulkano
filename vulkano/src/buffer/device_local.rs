@@ -84,7 +84,7 @@ use std::{
 /// // Create a CPU accessible buffer initialized with the data.
 /// let temporary_accessible_buffer = CpuAccessibleBuffer::from_iter(
 ///     device.clone(),
-///     BufferUsage::transfer_src(), // Specify this buffer will be used as a transfer source.
+///     BufferUsage { transfer_src: true, ..BufferUsage::empty() }, // Specify this buffer will be used as a transfer source.
 ///     false,
 ///     data,
 /// )
@@ -94,7 +94,11 @@ use std::{
 /// let device_local_buffer = DeviceLocalBuffer::<[f32]>::array(
 ///     device.clone(),
 ///     10_000 as vulkano::DeviceSize,
-///     BufferUsage::storage_buffer() | BufferUsage::transfer_dst(), // Specify use as a storage buffer and transfer destination.
+///     BufferUsage {
+///         storage_buffer: true,
+///         transfer_dst: true,
+///         ..BufferUsage::empty()
+///     }, // Specify use as a storage buffer and transfer destination.
 ///     device.active_queue_families(),
 /// )
 /// .unwrap();
@@ -250,7 +254,10 @@ where
     > {
         let source = CpuAccessibleBuffer::from_data(
             queue.device().clone(),
-            BufferUsage::transfer_src(),
+            BufferUsage {
+                transfer_src: true,
+                ..BufferUsage::empty()
+            },
             false,
             data,
         )?;
@@ -283,7 +290,10 @@ where
     {
         let source = CpuAccessibleBuffer::from_iter(
             queue.device().clone(),
-            BufferUsage::transfer_src(),
+            BufferUsage {
+                transfer_src: true,
+                ..BufferUsage::empty()
+            },
             false,
             data,
         )?;
@@ -613,11 +623,26 @@ mod tests {
     fn from_data_working() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let (buffer, _) =
-            DeviceLocalBuffer::from_data(12u32, BufferUsage::all(), queue.clone()).unwrap();
+        let (buffer, _) = DeviceLocalBuffer::from_data(
+            12u32,
+            BufferUsage {
+                transfer_src: true,
+                ..BufferUsage::empty()
+            },
+            queue.clone(),
+        )
+        .unwrap();
 
-        let destination =
-            CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), false, 0).unwrap();
+        let destination = CpuAccessibleBuffer::from_data(
+            device.clone(),
+            BufferUsage {
+                transfer_dst: true,
+                ..BufferUsage::empty()
+            },
+            false,
+            0,
+        )
+        .unwrap();
 
         let mut cbb = AutoCommandBufferBuilder::primary(
             device,
@@ -645,14 +670,20 @@ mod tests {
 
         let (buffer, _) = DeviceLocalBuffer::from_iter(
             (0..512u32).map(|n| n * 2),
-            BufferUsage::all(),
+            BufferUsage {
+                transfer_src: true,
+                ..BufferUsage::empty()
+            },
             queue.clone(),
         )
         .unwrap();
 
         let destination = CpuAccessibleBuffer::from_iter(
             device.clone(),
-            BufferUsage::all(),
+            BufferUsage {
+                transfer_dst: true,
+                ..BufferUsage::empty()
+            },
             false,
             (0..512).map(|_| 0u32),
         )
@@ -686,7 +717,15 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
 
         assert_should_panic!({
-            DeviceLocalBuffer::from_data((), BufferUsage::all(), queue.clone()).unwrap();
+            DeviceLocalBuffer::from_data(
+                (),
+                BufferUsage {
+                    transfer_dst: true,
+                    ..BufferUsage::empty()
+                },
+                queue.clone(),
+            )
+            .unwrap();
         });
     }
 
