@@ -325,8 +325,9 @@ pub use self::{
         SurfaceInfo, SurfaceTransform,
     },
     swapchain::{
-        acquire_next_image, acquire_next_image_raw, present, present_incremental, AcquireError,
-        AcquiredImage, FullScreenExclusive, FullScreenExclusiveError, PresentFuture, Swapchain,
+        acquire_next_image, acquire_next_image_raw, present, present_incremental, present_with_id,
+        wait_for_present, AcquireError, AcquiredImage, FullScreenExclusive,
+        FullScreenExclusiveError, PresentFuture, PresentWaitError, Swapchain,
         SwapchainAcquireFuture, SwapchainCreateInfo, SwapchainCreationError, Win32Monitor,
     },
 };

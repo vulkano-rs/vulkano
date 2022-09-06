@@ -22,6 +22,7 @@ pub struct SubmitPresentBuilder<'a> {
     wait_semaphores: SmallVec<[ash::vk::Semaphore; 8]>,
     swapchains: SmallVec<[ash::vk::SwapchainKHR; 4]>,
     image_indices: SmallVec<[u32; 4]>,
+    present_ids: SmallVec<[u64; 4]>,
     present_regions: SmallVec<[ash::vk::PresentRegionKHR; 4]>,
     rect_layers: SmallVec<[ash::vk::RectLayerKHR; 4]>,
     marker: PhantomData<&'a ()>,
@@ -35,6 +36,7 @@ impl<'a> SubmitPresentBuilder<'a> {
             wait_semaphores: SmallVec::new(),
             swapchains: SmallVec::new(),
             image_indices: SmallVec::new(),
+            present_ids: SmallVec::new(),
             present_regions: SmallVec::new(),
             rect_layers: SmallVec::new(),
             marker: PhantomData,
@@ -83,6 +85,7 @@ impl<'a> SubmitPresentBuilder<'a> {
         &mut self,
         swapchain: &'a Swapchain<W>,
         image_num: u32,
+        present_id: Option<u64>,
         present_region: Option<&'a PresentRegion>,
     ) {
         debug_assert!(image_num < swapchain.image_count());
@@ -112,6 +115,10 @@ impl<'a> SubmitPresentBuilder<'a> {
             self.present_regions.push(vk_present_region);
         }
 
+        if swapchain.device().enabled_features().present_id {
+            self.present_ids.push(present_id.unwrap_or(0));
+        }
+
         self.swapchains.push(swapchain.internal_object());
         self.image_indices.push(image_num);
     }
@@ -130,7 +137,7 @@ impl<'a> SubmitPresentBuilder<'a> {
                 "Tried to submit a present command without any swapchain"
             );
 
-            let present_regions = {
+            let mut present_regions = {
                 if !self.present_regions.is_empty() {
                     debug_assert!(queue.device().enabled_extensions().khr_incremental_present);
                     debug_assert_eq!(self.swapchains.len(), self.present_regions.len());
@@ -149,16 +156,26 @@ impl<'a> SubmitPresentBuilder<'a> {
                 }
             };
 
-            let mut results = vec![ash::vk::Result::SUCCESS; self.swapchains.len()];
+            let mut present_ids = {
+                if !self.present_ids.is_empty() {
+                    debug_assert!(queue.device().enabled_features().present_id);
+                    debug_assert_eq!(self.swapchains.len(), self.present_ids.len());
 
+                    Some(ash::vk::PresentIdKHR {
+                        swapchain_count: self.swapchains.len() as u32,
+                        p_present_ids: self.present_ids.as_ptr(),
+                        ..Default::default()
+                    })
+                } else {
+                    None
+                }
+            };
+
+            let mut results = vec![ash::vk::Result::SUCCESS; self.swapchains.len()];
             let fns = queue.device().fns();
             let queue = queue.internal_object_guard();
 
-            let infos = ash::vk::PresentInfoKHR {
-                p_next: present_regions
-                    .as_ref()
-                    .map(|pr| pr as *const ash::vk::PresentRegionsKHR as *const _)
-                    .unwrap_or(ptr::null()),
+            let mut present_info = ash::vk::PresentInfoKHR {
                 wait_semaphore_count: self.wait_semaphores.len() as u32,
                 p_wait_semaphores: self.wait_semaphores.as_ptr(),
                 swapchain_count: self.swapchains.len() as u32,
@@ -168,7 +185,17 @@ impl<'a> SubmitPresentBuilder<'a> {
                 ..Default::default()
             };
 
-            (fns.khr_swapchain.queue_present_khr)(*queue, &infos)
+            if let Some(present_regions) = present_regions.as_mut() {
+                present_regions.p_next = present_info.p_next as *mut _;
+                present_info.p_next = present_regions as *const _ as *const _;
+            }
+
+            if let Some(present_ids) = present_ids.as_mut() {
+                present_ids.p_next = present_info.p_next as *mut _;
+                present_info.p_next = present_ids as *const _ as *const _;
+            }
+
+            (fns.khr_swapchain.queue_present_khr)(*queue, &present_info)
                 .result()
                 .map_err(VulkanError::from)?;
 

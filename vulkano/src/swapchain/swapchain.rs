@@ -32,6 +32,7 @@ use crate::{
 };
 use parking_lot::Mutex;
 use smallvec::SmallVec;
+use std::num::NonZeroU64;
 use std::{
     error::Error,
     fmt,
@@ -1478,6 +1479,39 @@ where
         queue,
         swapchain,
         image_id: index,
+        present_id: None,
+        present_region: None,
+        flushed: AtomicBool::new(false),
+        finished: AtomicBool::new(false),
+    }
+}
+
+/// Same as `swapchain::present`, except it allows specifying a present id.
+pub fn present_with_id<F, W>(
+    swapchain: Arc<Swapchain<W>>,
+    before: F,
+    queue: Arc<Queue>,
+    index: usize,
+    present_id: NonZeroU64,
+) -> PresentFuture<F, W>
+where
+    F: GpuFuture,
+{
+    assert!(index < swapchain.images.len());
+
+    // TODO: restore this check with a dummy ImageAccess implementation
+    /*let swapchain_image = me.images.lock().unwrap().get(index).unwrap().0.upgrade().unwrap();       // TODO: return error instead
+    // Normally if `check_image_access` returns false we're supposed to call the `gpu_access`
+    // function on the image instead. But since we know that this method on `SwapchainImage`
+    // always returns false anyway (by design), we don't need to do it.
+    assert!(before.check_image_access(&swapchain_image, ImageLayout::PresentSrc, true, &queue).is_ok());         // TODO: return error instead*/
+
+    PresentFuture {
+        previous: before,
+        queue,
+        swapchain,
+        image_id: index,
+        present_id: Some(present_id.into()),
         present_region: None,
         flushed: AtomicBool::new(false),
         finished: AtomicBool::new(false),
@@ -1514,9 +1548,48 @@ where
         queue,
         swapchain,
         image_id: index,
+        present_id: None,
         present_region: Some(present_region),
         flushed: AtomicBool::new(false),
         finished: AtomicBool::new(false),
+    }
+}
+
+pub fn wait_for_present<W>(
+    swapchain: Arc<Swapchain<W>>,
+    present_id: NonZeroU64,
+    timeout: Option<Duration>,
+) -> Result<bool, PresentWaitError> {
+    let retired = swapchain.retired.lock();
+
+    // VUID-vkWaitForPresentKHR-swapchain-04997
+    if *retired {
+        return Err(PresentWaitError::OutOfDate);
+    }
+
+    // VUID-vkWaitForPresentKHR-presentWait-06234
+    if !swapchain.device.enabled_features().present_wait {
+        return Err(PresentWaitError::FeatureNotEnabled {
+            feature: "present_wait",
+            reason: "wait for present",
+        });
+    }
+
+    let timeout_ns = timeout.map(|dur| dur.as_nanos() as u64).unwrap_or(0);
+
+    let result = unsafe {
+        (swapchain.device.fns().khr_present_wait.wait_for_present_khr)(
+            swapchain.device.internal_object(),
+            swapchain.handle,
+            present_id.into(),
+            timeout_ns,
+        )
+    };
+
+    match result {
+        ash::vk::Result::SUCCESS => Ok(false),
+        ash::vk::Result::SUBOPTIMAL_KHR => Ok(true),
+        err => Err(VulkanError::from(err).into()),
     }
 }
 
@@ -1737,6 +1810,87 @@ impl From<VulkanError> for AcquireError {
     }
 }
 
+/// Error that can happen when calling `acquire_next_image`.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(u32)]
+pub enum PresentWaitError {
+    /// Not enough memory.
+    OomError(OomError),
+
+    /// The connection to the device has been lost.
+    DeviceLost,
+
+    /// The surface has changed in a way that makes the swapchain unusable. You must query the
+    /// surface's new properties and recreate a new swapchain if you want to continue drawing.
+    OutOfDate,
+
+    /// The surface is no longer accessible and must be recreated.
+    SurfaceLost,
+
+    /// The swapchain has lost or doesn't have full-screen exclusivity possibly for
+    /// implementation-specific reasons outside of the application’s control.
+    FullScreenExclusiveModeLost,
+
+    /// The timeout of the function has been reached before the present occured.
+    Timeout,
+
+    FeatureNotEnabled {
+        feature: &'static str,
+        reason: &'static str,
+    },
+}
+
+impl Error for PresentWaitError {
+    #[inline]
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match *self {
+            Self::OomError(ref err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for PresentWaitError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match *self {
+            Self::OomError(e) => write!(fmt, "{}", e),
+            Self::DeviceLost => write!(fmt, "the connection to the device has been lost"),
+            Self::Timeout => write!(fmt, "no image is available for acquiring yet"),
+            Self::SurfaceLost => write!(fmt, "the surface of this swapchain is no longer valid"),
+            Self::OutOfDate => write!(fmt, "the swapchain needs to be recreated"),
+            Self::FullScreenExclusiveModeLost => {
+                write!(fmt, "the swapchain no longer has full-screen exclusivity")
+            }
+            Self::FeatureNotEnabled { feature, reason } => {
+                write!(fmt, "the feature {} must be enabled: {}", feature, reason)
+            }
+        }
+    }
+}
+
+impl From<OomError> for PresentWaitError {
+    #[inline]
+    fn from(err: OomError) -> PresentWaitError {
+        Self::OomError(err)
+    }
+}
+
+impl From<VulkanError> for PresentWaitError {
+    #[inline]
+    fn from(err: VulkanError) -> PresentWaitError {
+        match err {
+            err @ VulkanError::OutOfHostMemory => Self::OomError(OomError::from(err)),
+            err @ VulkanError::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
+            VulkanError::DeviceLost => Self::DeviceLost,
+            VulkanError::SurfaceLost => Self::SurfaceLost,
+            VulkanError::OutOfDate => Self::OutOfDate,
+            VulkanError::FullScreenExclusiveModeLost => Self::FullScreenExclusiveModeLost,
+            _ => panic!("unexpected error: {:?}", err),
+        }
+    }
+}
+
 /// Represents a swapchain image being presented on the screen.
 #[must_use = "Dropping this object will immediately block the thread until the GPU has finished processing the submission"]
 pub struct PresentFuture<P, W>
@@ -1747,6 +1901,7 @@ where
     queue: Arc<Queue>,
     swapchain: Arc<Swapchain<W>>,
     image_id: usize,
+    present_id: Option<u64>,
     present_region: Option<PresentRegion>,
     // True if `flush()` has been called on the future, which means that the present command has
     // been submitted.
@@ -1799,6 +1954,7 @@ where
                 builder.add_swapchain(
                     &self.swapchain,
                     self.image_id as u32,
+                    self.present_id,
                     self.present_region.as_ref(),
                 );
                 SubmitAnyBuilder::QueuePresent(builder)
@@ -1808,6 +1964,7 @@ where
                 builder.add_swapchain(
                     &self.swapchain,
                     self.image_id as u32,
+                    self.present_id,
                     self.present_region.as_ref(),
                 );
                 SubmitAnyBuilder::QueuePresent(builder)
@@ -1821,6 +1978,7 @@ where
                 builder.add_swapchain(
                     &self.swapchain,
                     self.image_id as u32,
+                    self.present_id,
                     self.present_region.as_ref(),
                 );
                 SubmitAnyBuilder::QueuePresent(builder)
@@ -1834,6 +1992,7 @@ where
                 builder.add_swapchain(
                     &self.swapchain,
                     self.image_id as u32,
+                    self.present_id,
                     self.present_region.as_ref(),
                 );
                 SubmitAnyBuilder::QueuePresent(builder)

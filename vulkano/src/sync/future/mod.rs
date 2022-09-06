@@ -27,6 +27,7 @@ use crate::{
     swapchain::{self, PresentFuture, PresentRegion, Swapchain},
     DeviceSize, OomError,
 };
+use std::num::NonZeroU64;
 use std::{error::Error, fmt, ops::Range, sync::Arc};
 
 mod fence_signal;
@@ -259,6 +260,23 @@ pub unsafe trait GpuFuture: DeviceOwned {
         Self: Sized,
     {
         swapchain::present(swapchain, self, queue, image_index)
+    }
+
+    /// Same as `then_swapchain_present`, except it allows specifying a present region.
+    ///
+    /// > **Note**: This is just a shortcut for the `Swapchain::present_with_id()` function.
+    #[inline]
+    fn then_swapchain_present_with_id<W>(
+        self,
+        queue: Arc<Queue>,
+        swapchain: Arc<Swapchain<W>>,
+        image_index: usize,
+        present_id: NonZeroU64,
+    ) -> PresentFuture<Self, W>
+    where
+        Self: Sized,
+    {
+        swapchain::present_with_id(swapchain, self, queue, image_index, present_id)
     }
 
     /// Same as `then_swapchain_present`, except it allows specifying a present region.
