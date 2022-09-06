@@ -1589,6 +1589,7 @@ pub fn wait_for_present<W>(
     match result {
         ash::vk::Result::SUCCESS => Ok(false),
         ash::vk::Result::SUBOPTIMAL_KHR => Ok(true),
+        ash::vk::Result::TIMEOUT => return Err(PresentWaitError::Timeout),
         err => Err(VulkanError::from(err).into()),
     }
 }
