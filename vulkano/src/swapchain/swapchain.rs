@@ -1555,6 +1555,7 @@ where
     }
 }
 
+/// Wait for an image to be presented to the user. Must be used with a `present_id` given to `present_with_id`.
 pub fn wait_for_present<W>(
     swapchain: Arc<Swapchain<W>>,
     present_id: NonZeroU64,
