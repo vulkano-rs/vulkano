@@ -1556,6 +1556,9 @@ where
 }
 
 /// Wait for an image to be presented to the user. Must be used with a `present_id` given to `present_with_id`.
+///
+/// Returns a bool to represent if the presentation was suboptimal. In this case the swapchain is still 
+/// usable, but the swapchain should be recreated as the Surface's properties no longer match the swapchain.
 pub fn wait_for_present<W>(
     swapchain: Arc<Swapchain<W>>,
     present_id: NonZeroU64,
