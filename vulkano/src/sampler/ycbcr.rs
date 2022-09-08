@@ -87,13 +87,13 @@
 use crate::{
     device::{Device, DeviceOwned},
     format::{ChromaSampling, Format, NumericType},
-    macros::{vulkan_enum, ExtensionNotEnabled},
+    macros::vulkan_enum,
     sampler::{ComponentMapping, ComponentSwizzle, Filter},
-    OomError, Version, VulkanError, VulkanObject,
+    OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use std::{
     error::Error,
-    fmt,
+    fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     ptr,
@@ -136,38 +136,41 @@ impl SamplerYcbcrConversion {
         } = create_info;
 
         if !device.enabled_features().sampler_ycbcr_conversion {
-            return Err(SamplerYcbcrConversionCreationError::FeatureNotEnabled {
-                feature: "sampler_ycbcr_conversion",
-                reason: "tried to create a SamplerYcbcrConversion",
+            return Err(SamplerYcbcrConversionCreationError::RequirementNotMet {
+                required_for: "`SamplerYcbcrConversion`",
+                requires_one_of: RequiresOneOf {
+                    features: &["sampler_ycbcr_conversion"],
+                    ..Default::default()
+                },
             });
         }
 
         // VUID-VkSamplerYcbcrConversionCreateInfo-ycbcrModel-parameter
-        ycbcr_model.validate(&device)?;
+        ycbcr_model.validate_device(&device)?;
 
         // VUID-VkSamplerYcbcrConversionCreateInfo-ycbcrRange-parameter
-        ycbcr_range.validate(&device)?;
+        ycbcr_range.validate_device(&device)?;
 
         // VUID-VkComponentMapping-r-parameter
-        component_mapping.r.validate(&device)?;
+        component_mapping.r.validate_device(&device)?;
 
         // VUID-VkComponentMapping-g-parameter
-        component_mapping.g.validate(&device)?;
+        component_mapping.g.validate_device(&device)?;
 
         // VUID-VkComponentMapping-b-parameter
-        component_mapping.b.validate(&device)?;
+        component_mapping.b.validate_device(&device)?;
 
         // VUID-VkComponentMapping-a-parameter
-        component_mapping.a.validate(&device)?;
+        component_mapping.a.validate_device(&device)?;
 
         for offset in chroma_offset {
             // VUID-VkSamplerYcbcrConversionCreateInfo-xChromaOffset-parameter
             // VUID-VkSamplerYcbcrConversionCreateInfo-yChromaOffset-parameter
-            offset.validate(&device)?;
+            offset.validate_device(&device)?;
         }
 
         // VUID-VkSamplerYcbcrConversionCreateInfo-chromaFilter-parameter
-        chroma_filter.validate(&device)?;
+        chroma_filter.validate_device(&device)?;
 
         let format = match format {
             Some(f) => f,
@@ -508,13 +511,9 @@ pub enum SamplerYcbcrConversionCreationError {
     /// Not enough memory.
     OomError(OomError),
 
-    ExtensionNotEnabled {
-        extension: &'static str,
-        reason: &'static str,
-    },
-    FeatureNotEnabled {
-        feature: &'static str,
-        reason: &'static str,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
     },
 
     /// The `Cubic` filter was specified.
@@ -559,17 +558,20 @@ impl Error for SamplerYcbcrConversionCreationError {
     }
 }
 
-impl fmt::Display for SamplerYcbcrConversionCreationError {
+impl Display for SamplerYcbcrConversionCreationError {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match *self {
             Self::OomError(_) => write!(f, "not enough memory available"),
-            Self::ExtensionNotEnabled { extension, reason } => {
-                write!(f, "the extension {} must be enabled: {}", extension, reason)
-            }
-            Self::FeatureNotEnabled { feature, reason } => {
-                write!(f, "the feature {} must be enabled: {}", feature, reason)
-            }
+
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
+            ),
 
             Self::CubicFilterNotSupported => {
                 write!(f, "the `Cubic` filter was specified")
@@ -636,12 +638,12 @@ impl From<VulkanError> for SamplerYcbcrConversionCreationError {
     }
 }
 
-impl From<ExtensionNotEnabled> for SamplerYcbcrConversionCreationError {
+impl From<RequirementNotMet> for SamplerYcbcrConversionCreationError {
     #[inline]
-    fn from(err: ExtensionNotEnabled) -> Self {
-        Self::ExtensionNotEnabled {
-            extension: err.extension,
-            reason: err.reason,
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
         }
     }
 }
@@ -790,6 +792,7 @@ vulkan_enum! {
 #[cfg(test)]
 mod tests {
     use super::{SamplerYcbcrConversion, SamplerYcbcrConversionCreationError};
+    use crate::RequiresOneOf;
 
     #[test]
     fn feature_not_enabled() {
@@ -798,10 +801,10 @@ mod tests {
         let r = SamplerYcbcrConversion::new(device, Default::default());
 
         match r {
-            Err(SamplerYcbcrConversionCreationError::FeatureNotEnabled {
-                feature: "sampler_ycbcr_conversion",
+            Err(SamplerYcbcrConversionCreationError::RequirementNotMet {
+                requires_one_of: RequiresOneOf { features, .. },
                 ..
-            }) => (),
+            }) if features.contains(&"sampler_ycbcr_conversion") => (),
             _ => panic!(),
         }
     }

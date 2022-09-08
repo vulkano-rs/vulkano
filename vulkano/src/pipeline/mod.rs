@@ -58,12 +58,12 @@ vulkan_enum! {
     /*
     // TODO: document
     RayTracing = RAY_TRACING_KHR {
-        extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
+        device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
     },
 
     // TODO: document
     SubpassShading = SUBPASS_SHADING_HUAWEI {
-        extensions: [huawei_subpass_shading],
+        device_extensions: [huawei_subpass_shading],
     },
      */
 }
@@ -104,156 +104,156 @@ vulkan_enum! {
     // TODO: document
     CullMode = CULL_MODE {
         api_version: V1_3,
-        extensions: [ext_extended_dynamic_state],
+        device_extensions: [ext_extended_dynamic_state],
     },
 
     // TODO: document
     FrontFace = FRONT_FACE {
         api_version: V1_3,
-        extensions: [ext_extended_dynamic_state],
+        device_extensions: [ext_extended_dynamic_state],
     },
 
     // TODO: document
     PrimitiveTopology = PRIMITIVE_TOPOLOGY {
         api_version: V1_3,
-        extensions: [ext_extended_dynamic_state],
+        device_extensions: [ext_extended_dynamic_state],
     },
 
     // TODO: document
     ViewportWithCount = VIEWPORT_WITH_COUNT {
         api_version: V1_3,
-        extensions: [ext_extended_dynamic_state],
+        device_extensions: [ext_extended_dynamic_state],
     },
 
     // TODO: document
     ScissorWithCount = SCISSOR_WITH_COUNT {
         api_version: V1_3,
-        extensions: [ext_extended_dynamic_state],
+        device_extensions: [ext_extended_dynamic_state],
     },
 
     // TODO: document
     VertexInputBindingStride = VERTEX_INPUT_BINDING_STRIDE {
         api_version: V1_3,
-        extensions: [ext_extended_dynamic_state],
+        device_extensions: [ext_extended_dynamic_state],
     },
 
     // TODO: document
     DepthTestEnable = DEPTH_TEST_ENABLE {
         api_version: V1_3,
-        extensions: [ext_extended_dynamic_state],
+        device_extensions: [ext_extended_dynamic_state],
     },
 
     // TODO: document
     DepthWriteEnable = DEPTH_WRITE_ENABLE {
         api_version: V1_3,
-        extensions: [ext_extended_dynamic_state],
+        device_extensions: [ext_extended_dynamic_state],
     },
 
     // TODO: document
     DepthCompareOp = DEPTH_COMPARE_OP {
         api_version: V1_3,
-        extensions: [ext_extended_dynamic_state],
+        device_extensions: [ext_extended_dynamic_state],
     },
 
     // TODO: document
     DepthBoundsTestEnable = DEPTH_BOUNDS_TEST_ENABLE {
         api_version: V1_3,
-        extensions: [ext_extended_dynamic_state],
+        device_extensions: [ext_extended_dynamic_state],
     },
 
     // TODO: document
     StencilTestEnable = STENCIL_TEST_ENABLE {
         api_version: V1_3,
-        extensions: [ext_extended_dynamic_state],
+        device_extensions: [ext_extended_dynamic_state],
     },
 
     // TODO: document
     StencilOp = STENCIL_OP {
         api_version: V1_3,
-        extensions: [ext_extended_dynamic_state],
+        device_extensions: [ext_extended_dynamic_state],
     },
 
     // TODO: document
     RasterizerDiscardEnable = RASTERIZER_DISCARD_ENABLE {
         api_version: V1_3,
-        extensions: [ext_extended_dynamic_state2],
+        device_extensions: [ext_extended_dynamic_state2],
     },
 
     // TODO: document
     DepthBiasEnable = DEPTH_BIAS_ENABLE {
         api_version: V1_3,
-        extensions: [ext_extended_dynamic_state2],
+        device_extensions: [ext_extended_dynamic_state2],
     },
 
     // TODO: document
     PrimitiveRestartEnable = PRIMITIVE_RESTART_ENABLE {
         api_version: V1_3,
-        extensions: [ext_extended_dynamic_state2],
+        device_extensions: [ext_extended_dynamic_state2],
     },
 
     // TODO: document
     ViewportWScaling = VIEWPORT_W_SCALING_NV {
-        extensions: [nv_clip_space_w_scaling],
+        device_extensions: [nv_clip_space_w_scaling],
     },
 
     // TODO: document
     DiscardRectangle = DISCARD_RECTANGLE_EXT {
-        extensions: [ext_discard_rectangles],
+        device_extensions: [ext_discard_rectangles],
     },
 
     // TODO: document
     SampleLocations = SAMPLE_LOCATIONS_EXT {
-        extensions: [ext_sample_locations],
+        device_extensions: [ext_sample_locations],
     },
 
     // TODO: document
     RayTracingPipelineStackSize = RAY_TRACING_PIPELINE_STACK_SIZE_KHR {
-        extensions: [khr_ray_tracing_pipeline],
+        device_extensions: [khr_ray_tracing_pipeline],
     },
 
     // TODO: document
     ViewportShadingRatePalette = VIEWPORT_SHADING_RATE_PALETTE_NV {
-        extensions: [nv_shading_rate_image],
+        device_extensions: [nv_shading_rate_image],
     },
 
     // TODO: document
     ViewportCoarseSampleOrder = VIEWPORT_COARSE_SAMPLE_ORDER_NV {
-        extensions: [nv_shading_rate_image],
+        device_extensions: [nv_shading_rate_image],
     },
 
     // TODO: document
     ExclusiveScissor = EXCLUSIVE_SCISSOR_NV {
-        extensions: [nv_scissor_exclusive],
+        device_extensions: [nv_scissor_exclusive],
     },
 
     // TODO: document
     FragmentShadingRate = FRAGMENT_SHADING_RATE_KHR {
-        extensions: [khr_fragment_shading_rate],
+        device_extensions: [khr_fragment_shading_rate],
     },
 
     // TODO: document
     LineStipple = LINE_STIPPLE_EXT {
-        extensions: [ext_line_rasterization],
+        device_extensions: [ext_line_rasterization],
     },
 
     // TODO: document
     VertexInput = VERTEX_INPUT_EXT {
-        extensions: [ext_vertex_input_dynamic_state],
+        device_extensions: [ext_vertex_input_dynamic_state],
     },
 
     // TODO: document
     PatchControlPoints = PATCH_CONTROL_POINTS_EXT {
-        extensions: [ext_extended_dynamic_state2],
+        device_extensions: [ext_extended_dynamic_state2],
     },
 
     // TODO: document
     LogicOp = LOGIC_OP_EXT {
-        extensions: [ext_extended_dynamic_state2],
+        device_extensions: [ext_extended_dynamic_state2],
     },
 
     // TODO: document
     ColorWriteEnable = COLOR_WRITE_ENABLE_EXT {
-        extensions: [ext_color_write_enable],
+        device_extensions: [ext_color_write_enable],
     },
 }
 

@@ -1,4 +1,10 @@
-use std::{borrow::Borrow, error::Error, fmt, rc::Rc, sync::Arc};
+use std::{
+    borrow::Borrow,
+    error::Error,
+    fmt::{Display, Error as FmtError, Formatter},
+    rc::Rc,
+    sync::Arc,
+};
 use vulkano::{
     instance::{Instance, InstanceExtensions},
     swapchain::{Surface, SurfaceCreationError},
@@ -80,11 +86,11 @@ impl Error for CreationError {
     }
 }
 
-impl fmt::Display for CreationError {
+impl Display for CreationError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         write!(
-            fmt,
+            f,
             "{}",
             match *self {
                 CreationError::SurfaceCreationError(_) => "error while creating the surface",

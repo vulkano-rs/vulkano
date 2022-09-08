@@ -16,15 +16,20 @@ use crate::{
         AutoCommandBufferBuilder,
     },
     device::{physical::QueueFamily, DeviceOwned},
-    macros::ExtensionNotEnabled,
     query::{
         QueriesRange, Query, QueryControlFlags, QueryPool, QueryResultElement, QueryResultFlags,
         QueryType,
     },
     sync::{AccessFlags, PipelineMemoryAccess, PipelineStage, PipelineStages},
-    DeviceSize, VulkanObject,
+    DeviceSize, RequirementNotMet, RequiresOneOf, VulkanObject,
 };
-use std::{error::Error, fmt, mem::size_of, ops::Range, sync::Arc};
+use std::{
+    error::Error,
+    fmt::{Display, Error as FmtError, Formatter},
+    mem::size_of,
+    ops::Range,
+    sync::Arc,
+};
 
 /// # Commands related to queries.
 impl<L, P> AutoCommandBufferBuilder<L, P> {
@@ -74,7 +79,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         let device = self.device();
 
         // VUID-vkCmdBeginQuery-flags-parameter
-        flags.validate(device)?;
+        flags.validate_device(device)?;
 
         // VUID-vkCmdBeginQuery-commonparent
         assert_eq!(device, query_pool.device());
@@ -92,9 +97,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
                 // VUID-vkCmdBeginQuery-queryType-00800
                 if flags.precise && !device.enabled_features().occlusion_query_precise {
-                    return Err(QueryError::FeatureNotEnabled {
-                        feature: "occlusion_query_precise",
-                        reason: "flags.precise was enabled",
+                    return Err(QueryError::RequirementNotMet {
+                        required_for: "`flags.precise` is set",
+                        requires_one_of: RequiresOneOf {
+                            features: &["occlusion_query_precise"],
+                            ..Default::default()
+                        },
                     });
                 }
             }
@@ -237,9 +245,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             PipelineStage::GeometryShader => {
                 // VUID-vkCmdWriteTimestamp-pipelineStage-04075
                 if !device.enabled_features().geometry_shader {
-                    return Err(QueryError::FeatureNotEnabled {
-                        feature: "geometry_shader",
-                        reason: "stage was GeometryShader",
+                    return Err(QueryError::RequirementNotMet {
+                        required_for: "`stage` is `PipelineStage::GeometryShader`",
+                        requires_one_of: RequiresOneOf {
+                            features: &["geometry_shadere"],
+                            ..Default::default()
+                        },
                     });
                 }
             }
@@ -247,10 +258,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             | PipelineStage::TessellationEvaluationShader => {
                 // VUID-vkCmdWriteTimestamp-pipelineStage-04076
                 if !device.enabled_features().tessellation_shader {
-                    return Err(QueryError::FeatureNotEnabled {
-                        feature: "tessellation_shader",
-                        reason:
-                            "stage was TessellationControlShader or TessellationEvaluationShader",
+                    return Err(QueryError::RequirementNotMet {
+                        required_for: "`stage` is `PipelineStage::TessellationControlShader` or `PipelineStage::TessellationEvaluationShader`",
+                        requires_one_of: RequiresOneOf {
+                            features: &["tessellation_shader"],
+                            ..Default::default()
+                        },
                     });
                 }
             }
@@ -723,13 +736,9 @@ impl UnsafeCommandBufferBuilder {
 pub enum QueryError {
     SyncCommandBufferBuilderError(SyncCommandBufferBuilderError),
 
-    ExtensionNotEnabled {
-        extension: &'static str,
-        reason: &'static str,
-    },
-    FeatureNotEnabled {
-        feature: &'static str,
-        reason: &'static str,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
     },
 
     /// The buffer is too small for the copy operation.
@@ -777,24 +786,22 @@ pub enum QueryError {
 
 impl Error for QueryError {}
 
-impl fmt::Display for QueryError {
+impl Display for QueryError {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match *self {
             Self::SyncCommandBufferBuilderError(_) => write!(
                 f,
                 "a SyncCommandBufferBuilderError",
             ),
 
-            Self::ExtensionNotEnabled { extension, reason } => write!(
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
                 f,
-                "the extension {} must be enabled: {}",
-                extension, reason
-            ),
-            Self::FeatureNotEnabled { feature, reason } => write!(
-                f,
-                "the feature {} must be enabled: {}",
-                feature, reason,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
             ),
 
             Self::BufferTooSmall { .. } => {
@@ -842,12 +849,12 @@ impl From<SyncCommandBufferBuilderError> for QueryError {
     }
 }
 
-impl From<ExtensionNotEnabled> for QueryError {
+impl From<RequirementNotMet> for QueryError {
     #[inline]
-    fn from(err: ExtensionNotEnabled) -> Self {
-        Self::ExtensionNotEnabled {
-            extension: err.extension,
-            reason: err.reason,
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
         }
     }
 }

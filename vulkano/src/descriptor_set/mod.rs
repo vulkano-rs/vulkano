@@ -93,6 +93,7 @@ use smallvec::{smallvec, SmallVec};
 use std::{
     collections::HashMap,
     error::Error,
+    fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     ptr,
     sync::Arc,
@@ -504,9 +505,9 @@ impl Error for DescriptorSetCreationError {
     }
 }
 
-impl std::fmt::Display for DescriptorSetCreationError {
+impl Display for DescriptorSetCreationError {
     #[inline]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match self {
             Self::DescriptorSetUpdateError(_) => {
                 write!(f, "an error occurred while updating the descriptor set")

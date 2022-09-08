@@ -75,49 +75,49 @@ vulkan_enum! {
     /*
     // TODO: document
     TransformFeedback = TRANSFORM_FEEDBACK_EXT {
-        extensions: [ext_transform_feedback],
+        device_extensions: [ext_transform_feedback],
     },
 
     // TODO: document
     ConditionalRendering = CONDITIONAL_RENDERING_EXT {
-        extensions: [ext_conditional_rendering],
+        device_extensions: [ext_conditional_rendering],
     },
 
     // TODO: document
     AccelerationStructureBuild = ACCELERATION_STRUCTURE_BUILD_KHR {
-        extensions: [khr_acceleration_structure, nv_ray_tracing],
+        device_extensions: [khr_acceleration_structure, nv_ray_tracing],
     },
     */
 
     // TODO: document
     RayTracingShader = RAY_TRACING_SHADER_KHR {
-        extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
+        device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
     },
 
     /*
     // TODO: document
     FragmentDensityProcess = FRAGMENT_DENSITY_PROCESS_EXT {
-        extensions: [ext_fragment_density_map],
+        device_extensions: [ext_fragment_density_map],
     },
 
     // TODO: document
     FragmentShadingRateAttachment = FRAGMENT_SHADING_RATE_ATTACHMENT_KHR {
-        extensions: [khr_fragment_shading_rate],
+        device_extensions: [khr_fragment_shading_rate],
     },
 
     // TODO: document
     CommandPreprocess = COMMAND_PREPROCESS_NV {
-        extensions: [nv_device_generated_commands],
+        device_extensions: [nv_device_generated_commands],
     },
 
     // TODO: document
     TaskShader = TASK_SHADER_NV {
-        extensions: [nv_mesh_shader],
+        device_extensions: [nv_mesh_shader],
     },
 
     // TODO: document
     MeshShader = MESH_SHADER_NV {
-        extensions: [nv_mesh_shader],
+        device_extensions: [nv_mesh_shader],
     },
      */
 }
@@ -222,49 +222,49 @@ vulkan_bitflags! {
     /*
     // TODO: document
     transform_feedback = TRANSFORM_FEEDBACK_EXT {
-        extensions: [ext_transform_feedback],
+        device_extensions: [ext_transform_feedback],
     },
 
     // TODO: document
     conditional_rendering = CONDITIONAL_RENDERING_EXT {
-        extensions: [ext_conditional_rendering],
+        device_extensions: [ext_conditional_rendering],
     },
 
     // TODO: document
     acceleration_structure_build = ACCELERATION_STRUCTURE_BUILD_KHR {
-        extensions: [khr_acceleration_structure, nv_ray_tracing],
+        device_extensions: [khr_acceleration_structure, nv_ray_tracing],
     },
      */
 
     // TODO: document
     ray_tracing_shader = RAY_TRACING_SHADER_KHR {
-        extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
+        device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
     },
 
     /*
     // TODO: document
     fragment_density_process = FRAGMENT_DENSITY_PROCESS_EXT {
-        extensions: [ext_fragment_density_map],
+        device_extensions: [ext_fragment_density_map],
     },
 
     // TODO: document
     fragment_shading_rate_attachment = FRAGMENT_SHADING_RATE_ATTACHMENT_KHR {
-        extensions: [khr_fragment_shading_rate],
+        device_extensions: [khr_fragment_shading_rate],
     },
 
     // TODO: document
     command_preprocess = COMMAND_PREPROCESS_NV {
-        extensions: [nv_device_generated_commands],
+        device_extensions: [nv_device_generated_commands],
     },
 
     // TODO: document
     task_shader = TASK_SHADER_NV {
-        extensions: [nv_mesh_shader],
+        device_extensions: [nv_mesh_shader],
     },
 
     // TODO: document
     mesh_shader = MESH_SHADER_NV {
-        extensions: [nv_mesh_shader],
+        device_extensions: [nv_mesh_shader],
     },
      */
 }
@@ -459,57 +459,57 @@ vulkan_bitflags! {
     /*
     // Provided by VK_EXT_transform_feedback
     transform_feedback_write = TRANSFORM_FEEDBACK_WRITE_EXT {
-        extensions: [ext_transform_feedback],
+        device_extensions: [ext_transform_feedback],
     },
 
     // Provided by VK_EXT_transform_feedback
     transform_feedback_counter_read = TRANSFORM_FEEDBACK_COUNTER_READ_EXT {
-        extensions: [ext_transform_feedback],
+        device_extensions: [ext_transform_feedback],
     },
 
     // Provided by VK_EXT_transform_feedback
     transform_feedback_counter_write = TRANSFORM_FEEDBACK_COUNTER_WRITE_EXT {
-        extensions: [ext_transform_feedback],
+        device_extensions: [ext_transform_feedback],
     },
 
     // Provided by VK_EXT_conditional_rendering
     conditional_rendering_read = CONDITIONAL_RENDERING_READ_EXT {
-        extensions: [ext_conditional_rendering],
+        device_extensions: [ext_conditional_rendering],
     },
 
     // Provided by VK_EXT_blend_operation_advanced
     color_attachment_read_noncoherent = COLOR_ATTACHMENT_READ_NONCOHERENT_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // Provided by VK_KHR_acceleration_structure
     acceleration_structure_read = ACCELERATION_STRUCTURE_READ_KHR {
-        extensions: [khr_acceleration_structure, nv_ray_tracing],
+        device_extensions: [khr_acceleration_structure, nv_ray_tracing],
     },
 
     // Provided by VK_KHR_acceleration_structure
     acceleration_structure_write = ACCELERATION_STRUCTURE_WRITE_KHR {
-        extensions: [khr_acceleration_structure, nv_ray_tracing],
+        device_extensions: [khr_acceleration_structure, nv_ray_tracing],
     },
 
     // Provided by VK_EXT_fragment_density_map
     fragment_density_map_read = FRAGMENT_DENSITY_MAP_READ_EXT {
-        extensions: [ext_fragment_density_map],
+        device_extensions: [ext_fragment_density_map],
     },
 
     // Provided by VK_KHR_fragment_shading_rate
     fragment_shading_rate_attachment_read = FRAGMENT_SHADING_RATE_ATTACHMENT_READ_KHR {
-        extensions: [khr_fragment_shading_rate],
+        device_extensions: [khr_fragment_shading_rate],
     },
 
     // Provided by VK_NV_device_generated_commands
     command_preprocess_read = COMMAND_PREPROCESS_READ_NV {
-        extensions: [nv_device_generated_commands],
+        device_extensions: [nv_device_generated_commands],
     },
 
     // Provided by VK_NV_device_generated_commands
     command_preprocess_write = COMMAND_PREPROCESS_WRITE_NV {
-        extensions: [nv_device_generated_commands],
+        device_extensions: [nv_device_generated_commands],
     },
      */
 }

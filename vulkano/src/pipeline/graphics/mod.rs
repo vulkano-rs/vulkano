@@ -72,7 +72,7 @@ use crate::{
 };
 use std::{
     collections::HashMap,
-    fmt,
+    fmt::{Debug, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     ptr,
     sync::Arc,
@@ -264,10 +264,10 @@ unsafe impl DeviceOwned for GraphicsPipeline {
     }
 }
 
-impl fmt::Debug for GraphicsPipeline {
+impl Debug for GraphicsPipeline {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "<Vulkan graphics pipeline {:?}>", self.handle)
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+        write!(f, "<Vulkan graphics pipeline {:?}>", self.handle)
     }
 }
 

@@ -32,7 +32,13 @@ use crate::{
     device::physical::PhysicalDevice, instance::Instance, swapchain::SupportedSurfaceTransforms,
     OomError, VulkanError, VulkanObject,
 };
-use std::{ffi::CStr, fmt, fmt::Formatter, ptr, sync::Arc, vec::IntoIter};
+use std::{
+    ffi::CStr,
+    fmt::{Display as FmtDisplay, Error as FmtError, Formatter},
+    ptr,
+    sync::Arc,
+    vec::IntoIter,
+};
 
 // TODO: extract this to a `display` module and solve the visibility problems
 
@@ -421,9 +427,9 @@ impl DisplayMode {
     }
 }
 
-impl fmt::Display for DisplayMode {
+impl FmtDisplay for DisplayMode {
     #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         let visible_region = self.visible_region();
 
         write!(

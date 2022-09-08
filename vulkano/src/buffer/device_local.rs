@@ -37,10 +37,10 @@ use crate::{
     sync::{NowFuture, Sharing},
     DeviceSize,
 };
-use core::fmt;
 use smallvec::SmallVec;
 use std::{
     error::Error,
+    fmt::{Display, Error as FmtError, Formatter},
     fs::File,
     hash::{Hash, Hasher},
     marker::PhantomData,
@@ -590,9 +590,9 @@ impl Error for DeviceLocalBufferCreationError {
     }
 }
 
-impl fmt::Display for DeviceLocalBufferCreationError {
+impl Display for DeviceLocalBufferCreationError {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match self {
             Self::DeviceMemoryAllocationError(err) => err.fmt(f),
             Self::CommandBufferBeginError(err) => err.fmt(f),

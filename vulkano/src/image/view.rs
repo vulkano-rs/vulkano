@@ -15,16 +15,16 @@
 
 use super::{ImageAccess, ImageDimensions, ImageFormatInfo, ImageSubresourceRange, ImageUsage};
 use crate::{
-    device::{Device, DeviceOwned},
+    device::{Device, DeviceOwned, physical::ImageFormatPropertiesError},
     format::{ChromaSampling, Format, FormatFeatures},
     image::{ImageAspects, ImageTiling, ImageType, SampleCount},
-    macros::{vulkan_enum, ExtensionNotEnabled},
+    macros::vulkan_enum, RequirementNotMet,
     sampler::{ycbcr::SamplerYcbcrConversion, ComponentMapping},
-    OomError, VulkanError, VulkanObject,
+    OomError, RequiresOneOf, VulkanError, VulkanObject,
 };
 use std::{
     error::Error,
-    fmt,
+    fmt::{Debug, Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     ptr,
@@ -144,25 +144,25 @@ where
         assert!(layer_count != 0);
 
         // VUID-VkImageViewCreateInfo-viewType-parameter
-        view_type.validate(image.device())?;
+        view_type.validate_device(image.device())?;
 
         // VUID-VkImageViewCreateInfo-format-parameter
-        // TODO: format.validate(image.device())?;
+        // TODO: format.validate_device(image.device())?;
 
         // VUID-VkComponentMapping-r-parameter
-        component_mapping.r.validate(image.device())?;
+        component_mapping.r.validate_device(image.device())?;
 
         // VUID-VkComponentMapping-g-parameter
-        component_mapping.g.validate(image.device())?;
+        component_mapping.g.validate_device(image.device())?;
 
         // VUID-VkComponentMapping-b-parameter
-        component_mapping.b.validate(image.device())?;
+        component_mapping.b.validate_device(image.device())?;
 
         // VUID-VkComponentMapping-a-parameter
-        component_mapping.a.validate(image.device())?;
+        component_mapping.a.validate_device(image.device())?;
 
         // VUID-VkImageSubresourceRange-aspectMask-parameter
-        subresource_range.aspects.validate(image.device())?;
+        subresource_range.aspects.validate_device(image.device())?;
 
         {
             let ImageAspects {
@@ -277,9 +277,12 @@ where
         if view_type == ImageViewType::CubeArray
             && !image_inner.device().enabled_features().image_cube_array
         {
-            return Err(ImageViewCreationError::FeatureNotEnabled {
-                feature: "image_cube_array",
-                reason: "the `CubeArray` view type was requested",
+            return Err(ImageViewCreationError::RequirementNotMet {
+                required_for: "`create_info.viewtype` is `ImageViewType::CubeArray`",
+                requires_one_of: RequiresOneOf {
+                    features: &["image_cube_array"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -730,13 +733,9 @@ pub enum ImageViewCreationError {
     /// Allocating memory failed.
     OomError(OomError),
 
-    ExtensionNotEnabled {
-        extension: &'static str,
-        reason: &'static str,
-    },
-    FeatureNotEnabled {
-        feature: &'static str,
-        reason: &'static str,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
     },
 
     /// A 2D image view was requested from a 3D image, but a range of multiple mip levels was
@@ -833,22 +832,24 @@ impl Error for ImageViewCreationError {
     }
 }
 
-impl fmt::Display for ImageViewCreationError {
+impl Display for ImageViewCreationError {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match *self {
             Self::OomError(_) => write!(
                 f,
                 "allocating memory failed",
             ),
-            Self::ExtensionNotEnabled { extension, reason } => write!(
+            
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
                 f,
-                "the extension {} must be enabled: {}",
-                extension, reason
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
             ),
-            Self::FeatureNotEnabled { feature, reason } => {
-                write!(f, "the feature {} must be enabled: {}", feature, reason)
-            }
+
             Self::Array2dCompatibleMultipleMipLevels => write!(
                 f,
                 "a 2D image view was requested from a 3D image, but a range of multiple mip levels was specified",
@@ -959,12 +960,30 @@ impl From<VulkanError> for ImageViewCreationError {
     }
 }
 
-impl From<ExtensionNotEnabled> for ImageViewCreationError {
+impl From<RequirementNotMet> for ImageViewCreationError {
     #[inline]
-    fn from(err: ExtensionNotEnabled) -> Self {
-        Self::ExtensionNotEnabled {
-            extension: err.extension,
-            reason: err.reason,
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
+        }
+    }
+}
+
+impl From<ImageFormatPropertiesError> for ImageViewCreationError {
+    #[inline]
+    fn from(err: ImageFormatPropertiesError) -> Self {
+        match err {
+            ImageFormatPropertiesError::OomError(err) => {
+                Self::OomError(err)
+            }
+            ImageFormatPropertiesError::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            },
         }
     }
 }
@@ -1027,7 +1046,7 @@ impl ImageViewType {
 
 /// Trait for types that represent the GPU can access an image view.
 pub unsafe trait ImageViewAbstract:
-    VulkanObject<Object = ash::vk::ImageView> + DeviceOwned + fmt::Debug + Send + Sync
+    VulkanObject<Object = ash::vk::ImageView> + DeviceOwned + Debug + Send + Sync
 {
     /// Returns the wrapped image that this image view was created from.
     fn image(&self) -> Arc<dyn ImageAccess>;
@@ -1094,7 +1113,7 @@ pub unsafe trait ImageViewAbstract:
 
 unsafe impl<I> ImageViewAbstract for ImageView<I>
 where
-    I: ImageAccess + fmt::Debug + 'static,
+    I: ImageAccess + Debug + 'static,
 {
     #[inline]
     fn image(&self) -> Arc<dyn ImageAccess> {

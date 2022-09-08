@@ -130,7 +130,7 @@ fn bad_primitive_restart() {
     );
 
     match result {
-        Err(GraphicsPipelineCreationError::FeatureNotEnabled { .. }) => (),
+        Err(GraphicsPipelineCreationError::RequirementNotMet { .. }) => (),
         _ => panic!(),
     }
 }

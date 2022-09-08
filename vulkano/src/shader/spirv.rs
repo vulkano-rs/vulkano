@@ -19,7 +19,7 @@ use crate::Version;
 use std::{
     collections::HashMap,
     error::Error,
-    fmt::{self, Display, Formatter},
+    fmt::{Display, Formatter, Error as FmtError},
     ops::Range,
     string::FromUtf8Error,
 };
@@ -571,7 +571,7 @@ impl From<Id> for u32 {
 }
 
 impl Display for Id {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         write!(f, "%{}", self.0)
     }
 }
@@ -687,7 +687,7 @@ pub enum SpirvError {
 
 impl Display for SpirvError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::BadLayout { index } => write!(
                 f,
@@ -746,7 +746,7 @@ pub struct ParseError {
 
 impl Display for ParseError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
             "at instruction {}, word {}: {}",
@@ -771,7 +771,7 @@ pub enum ParseErrors {
 
 impl Display for ParseErrors {
     #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::FromUtf8Error(_) => write!(f, "invalid UTF-8 in string literal"),
             Self::LeftoverOperands => write!(f, "unparsed operands remaining"),

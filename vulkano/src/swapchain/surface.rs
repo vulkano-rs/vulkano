@@ -16,7 +16,7 @@ use crate::{
         display::{DisplayMode, DisplayPlane},
         SurfaceSwapchainLock,
     },
-    OomError, VulkanError, VulkanObject,
+    OomError, RequiresOneOf, VulkanError, VulkanObject,
 };
 
 #[cfg(target_os = "ios")]
@@ -24,7 +24,7 @@ use objc::{class, msg_send, runtime::Object, sel, sel_impl};
 
 use std::{
     error::Error,
-    fmt,
+    fmt::{Debug, Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     os::raw::c_ulong,
@@ -91,8 +91,12 @@ impl<W> Surface<W> {
             .enabled_extensions()
             .khr_display
         {
-            return Err(SurfaceCreationError::MissingExtension {
-                name: "VK_KHR_display",
+            return Err(SurfaceCreationError::RequirementNotMet {
+                required_for: "`from_display_plane`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_display"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -159,8 +163,12 @@ impl<W> Surface<W> {
         win: W,
     ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
         if !instance.enabled_extensions().khr_android_surface {
-            return Err(SurfaceCreationError::MissingExtension {
-                name: "VK_KHR_android_surface",
+            return Err(SurfaceCreationError::RequirementNotMet {
+                required_for: "`from_android`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_android_surface"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -211,8 +219,12 @@ impl<W> Surface<W> {
         win: W,
     ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
         if !instance.enabled_extensions().mvk_ios_surface {
-            return Err(SurfaceCreationError::MissingExtension {
-                name: "VK_MVK_ios_surface",
+            return Err(SurfaceCreationError::RequirementNotMet {
+                required_for: "`from_ios`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["mvk_ios_surface"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -262,8 +274,12 @@ impl<W> Surface<W> {
         win: W,
     ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
         if !instance.enabled_extensions().mvk_macos_surface {
-            return Err(SurfaceCreationError::MissingExtension {
-                name: "VK_MVK_macos_surface",
+            return Err(SurfaceCreationError::RequirementNotMet {
+                required_for: "`from_mac_os`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["mvk_macos_surface"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -312,8 +328,12 @@ impl<W> Surface<W> {
         win: W,
     ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
         if !instance.enabled_extensions().ext_metal_surface {
-            return Err(SurfaceCreationError::MissingExtension {
-                name: "VK_EXT_metal_surface",
+            return Err(SurfaceCreationError::RequirementNotMet {
+                required_for: "`from_metal`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["ext_metal_surface"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -362,8 +382,12 @@ impl<W> Surface<W> {
         win: W,
     ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
         if !instance.enabled_extensions().nn_vi_surface {
-            return Err(SurfaceCreationError::MissingExtension {
-                name: "VK_NN_vi_surface",
+            return Err(SurfaceCreationError::RequirementNotMet {
+                required_for: "`from_vi`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["nn_vi_surface"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -415,8 +439,12 @@ impl<W> Surface<W> {
         win: W,
     ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
         if !instance.enabled_extensions().khr_wayland_surface {
-            return Err(SurfaceCreationError::MissingExtension {
-                name: "VK_KHR_wayland_surface",
+            return Err(SurfaceCreationError::RequirementNotMet {
+                required_for: "`from_wayland`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_wayland_surface"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -469,8 +497,12 @@ impl<W> Surface<W> {
         win: W,
     ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
         if !instance.enabled_extensions().khr_win32_surface {
-            return Err(SurfaceCreationError::MissingExtension {
-                name: "VK_KHR_win32_surface",
+            return Err(SurfaceCreationError::RequirementNotMet {
+                required_for: "`from_win32`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_win32_surface"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -523,8 +555,12 @@ impl<W> Surface<W> {
         win: W,
     ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
         if !instance.enabled_extensions().khr_xcb_surface {
-            return Err(SurfaceCreationError::MissingExtension {
-                name: "VK_KHR_xcb_surface",
+            return Err(SurfaceCreationError::RequirementNotMet {
+                required_for: "`from_xcb`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_xcb_surface"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -577,8 +613,12 @@ impl<W> Surface<W> {
         win: W,
     ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
         if !instance.enabled_extensions().khr_xlib_surface {
-            return Err(SurfaceCreationError::MissingExtension {
-                name: "VK_KHR_xlib_surface",
+            return Err(SurfaceCreationError::RequirementNotMet {
+                required_for: "`from_xlib`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_xlib_surface"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -675,9 +715,9 @@ unsafe impl<W> VulkanObject for Surface<W> {
     }
 }
 
-impl<W> fmt::Debug for Surface<W> {
+impl<W> Debug for Surface<W> {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         let Self {
             handle,
             instance,
@@ -687,7 +727,7 @@ impl<W> fmt::Debug for Surface<W> {
             ..
         } = self;
 
-        fmt.debug_struct("Surface")
+        f.debug_struct("Surface")
             .field("handle", handle)
             .field("instance", instance)
             .field("api", api)
@@ -727,36 +767,37 @@ pub enum SurfaceCreationError {
     /// Not enough memory.
     OomError(OomError),
 
-    /// The extension required for this function was not enabled.
-    MissingExtension {
-        /// Name of the missing extension.
-        name: &'static str,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
     },
 }
 
 impl Error for SurfaceCreationError {
     #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            SurfaceCreationError::OomError(ref err) => Some(err),
+        match self {
+            SurfaceCreationError::OomError(err) => Some(err),
             _ => None,
         }
     }
 }
 
-impl fmt::Display for SurfaceCreationError {
+impl Display for SurfaceCreationError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                SurfaceCreationError::OomError(_) => "not enough memory available",
-                SurfaceCreationError::MissingExtension { .. } => {
-                    "the extension required for this function was not enabled"
-                }
-            }
-        )
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+        match self {
+            SurfaceCreationError::OomError(_) => write!(f, "not enough memory available"),
+
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
+            ),
+        }
     }
 }
 
@@ -830,12 +871,12 @@ vulkan_enum! {
     /*
     // TODO: document
     SharedDemandRefresh = SHARED_DEMAND_REFRESH_KHR {
-        extensions: [khr_shared_presentable_image],
+        device_extensions: [khr_shared_presentable_image],
     },
 
     // TODO: document
     SharedContinuousRefresh = SHARED_CONTINUOUS_REFRESH_KHR {
-        extensions: [khr_shared_presentable_image],
+        device_extensions: [khr_shared_presentable_image],
     },
      */
 }
@@ -1114,78 +1155,78 @@ vulkan_enum! {
     /*
     // TODO: document
     DisplayP3NonLinear = DISPLAY_P3_NONLINEAR_EXT {
-        extensions: [ext_swapchain_colorspace],
+        device_extensions: [ext_swapchain_colorspace],
     },
 
     // TODO: document
     ExtendedSrgbLinear = EXTENDED_SRGB_LINEAR_EXT {
-        extensions: [ext_swapchain_colorspace],
+        device_extensions: [ext_swapchain_colorspace],
     },
 
     // TODO: document
     ExtendedSrgbNonLinear = EXTENDED_SRGB_NONLINEAR_EXT {
-        extensions: [ext_swapchain_colorspace],
+        device_extensions: [ext_swapchain_colorspace],
     },
 
     // TODO: document
     DisplayP3Linear = DISPLAY_P3_LINEAR_EXT {
-        extensions: [ext_swapchain_colorspace],
+        device_extensions: [ext_swapchain_colorspace],
     },
 
     // TODO: document
     DciP3NonLinear = DCI_P3_NONLINEAR_EXT {
-        extensions: [ext_swapchain_colorspace],
+        device_extensions: [ext_swapchain_colorspace],
     },
 
     // TODO: document
     Bt709Linear = BT709_LINEAR_EXT {
-        extensions: [ext_swapchain_colorspace],
+        device_extensions: [ext_swapchain_colorspace],
     },
 
     // TODO: document
     Bt709NonLinear = BT709_NONLINEAR_EXT {
-        extensions: [ext_swapchain_colorspace],
+        device_extensions: [ext_swapchain_colorspace],
     },
 
     // TODO: document
     Bt2020Linear = BT2020_LINEAR_EXT {
-        extensions: [ext_swapchain_colorspace],
+        device_extensions: [ext_swapchain_colorspace],
     },
 
     // TODO: document
     Hdr10St2084 = HDR10_ST2084_EXT {
-        extensions: [ext_swapchain_colorspace],
+        device_extensions: [ext_swapchain_colorspace],
     },
 
     // TODO: document
     DolbyVision = DOLBYVISION_EXT {
-        extensions: [ext_swapchain_colorspace],
+        device_extensions: [ext_swapchain_colorspace],
     },
 
     // TODO: document
     Hdr10Hlg = HDR10_HLG_EXT {
-        extensions: [ext_swapchain_colorspace],
+        device_extensions: [ext_swapchain_colorspace],
     },
 
     // TODO: document
     AdobeRgbLinear = ADOBERGB_LINEAR_EXT {
-        extensions: [ext_swapchain_colorspace],
+        device_extensions: [ext_swapchain_colorspace],
     },
 
     // TODO: document
     AdobeRgbNonLinear = ADOBERGB_NONLINEAR_EXT {
-        extensions: [ext_swapchain_colorspace],
+        device_extensions: [ext_swapchain_colorspace],
     },
 
     // TODO: document
     PassThrough = PASS_THROUGH_EXT {
-        extensions: [ext_swapchain_colorspace],
+        device_extensions: [ext_swapchain_colorspace],
     },
      */
 
     // TODO: document
     DisplayNative = DISPLAY_NATIVE_AMD {
-        extensions: [amd_display_native_hdr],
+        device_extensions: [amd_display_native_hdr],
     },
 }
 
@@ -1289,14 +1330,24 @@ pub struct SurfaceCapabilities {
 
 #[cfg(test)]
 mod tests {
-    use crate::swapchain::{Surface, SurfaceCreationError};
+    use crate::{
+        swapchain::{Surface, SurfaceCreationError},
+        RequiresOneOf,
+    };
     use std::ptr;
 
     #[test]
     fn khr_win32_surface_ext_missing() {
         let instance = instance!();
         match unsafe { Surface::from_win32(instance, ptr::null::<u8>(), ptr::null::<u8>(), ()) } {
-            Err(SurfaceCreationError::MissingExtension { .. }) => (),
+            Err(SurfaceCreationError::RequirementNotMet {
+                requires_one_of:
+                    RequiresOneOf {
+                        instance_extensions,
+                        ..
+                    },
+                ..
+            }) if instance_extensions.contains(&"khr_win32_surface") => (),
             _ => panic!(),
         }
     }
@@ -1305,7 +1356,14 @@ mod tests {
     fn khr_xcb_surface_ext_missing() {
         let instance = instance!();
         match unsafe { Surface::from_xcb(instance, ptr::null::<u8>(), 0, ()) } {
-            Err(SurfaceCreationError::MissingExtension { .. }) => (),
+            Err(SurfaceCreationError::RequirementNotMet {
+                requires_one_of:
+                    RequiresOneOf {
+                        instance_extensions,
+                        ..
+                    },
+                ..
+            }) if instance_extensions.contains(&"khr_xcb_surface") => (),
             _ => panic!(),
         }
     }
@@ -1314,7 +1372,14 @@ mod tests {
     fn khr_xlib_surface_ext_missing() {
         let instance = instance!();
         match unsafe { Surface::from_xlib(instance, ptr::null::<u8>(), 0, ()) } {
-            Err(SurfaceCreationError::MissingExtension { .. }) => (),
+            Err(SurfaceCreationError::RequirementNotMet {
+                requires_one_of:
+                    RequiresOneOf {
+                        instance_extensions,
+                        ..
+                    },
+                ..
+            }) if instance_extensions.contains(&"khr_xlib_surface") => (),
             _ => panic!(),
         }
     }
@@ -1323,7 +1388,14 @@ mod tests {
     fn khr_wayland_surface_ext_missing() {
         let instance = instance!();
         match unsafe { Surface::from_wayland(instance, ptr::null::<u8>(), ptr::null::<u8>(), ()) } {
-            Err(SurfaceCreationError::MissingExtension { .. }) => (),
+            Err(SurfaceCreationError::RequirementNotMet {
+                requires_one_of:
+                    RequiresOneOf {
+                        instance_extensions,
+                        ..
+                    },
+                ..
+            }) if instance_extensions.contains(&"khr_wayland_surface") => (),
             _ => panic!(),
         }
     }
@@ -1332,7 +1404,14 @@ mod tests {
     fn khr_android_surface_ext_missing() {
         let instance = instance!();
         match unsafe { Surface::from_android(instance, ptr::null::<u8>(), ()) } {
-            Err(SurfaceCreationError::MissingExtension { .. }) => (),
+            Err(SurfaceCreationError::RequirementNotMet {
+                requires_one_of:
+                    RequiresOneOf {
+                        instance_extensions,
+                        ..
+                    },
+                ..
+            }) if instance_extensions.contains(&"khr_android_surface") => (),
             _ => panic!(),
         }
     }

@@ -14,7 +14,11 @@ use crate::{
     OomError, SynchronizedVulkanObject, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{error::Error, fmt, marker::PhantomData};
+use std::{
+    error::Error,
+    fmt::{Display, Error as FmtError, Formatter},
+    marker::PhantomData,
+};
 
 /// Prototype for a submission that executes command buffers.
 // TODO: example here
@@ -261,11 +265,11 @@ impl Error for SubmitCommandBufferError {
     }
 }
 
-impl fmt::Display for SubmitCommandBufferError {
+impl Display for SubmitCommandBufferError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         write!(
-            fmt,
+            f,
             "{}",
             match *self {
                 SubmitCommandBufferError::OomError(_) => "not enough memory",

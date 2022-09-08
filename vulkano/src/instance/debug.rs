@@ -43,11 +43,11 @@
 //!
 
 use super::Instance;
-use crate::{macros::vulkan_bitflags, VulkanError, VulkanObject};
+use crate::{macros::vulkan_bitflags, RequirementNotMet, RequiresOneOf, VulkanError, VulkanObject};
 use std::{
     error::Error,
     ffi::{c_void, CStr},
-    fmt,
+    fmt::{Debug, Display, Error as FmtError, Formatter},
     mem::MaybeUninit,
     panic::{catch_unwind, AssertUnwindSafe, RefUnwindSafe},
     ptr,
@@ -102,20 +102,23 @@ impl DebugUtilsMessenger {
         } = create_info;
 
         if !instance.enabled_extensions().ext_debug_utils {
-            return Err(DebugUtilsMessengerCreationError::ExtensionNotEnabled {
-                extension: "ext_debug_utils",
-                reason: "tried to create a DebugUtilsMessenger",
+            return Err(DebugUtilsMessengerCreationError::RequirementNotMet {
+                required_for: "`DebugUtilsMessenger`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["ext_debug_utils"],
+                    ..Default::default()
+                },
             });
         }
 
         // VUID-VkDebugUtilsMessengerCreateInfoEXT-messageSeverity-parameter
-        // TODO: message_severity.validate()?;
+        message_severity.validate_instance(instance)?;
 
         // VUID-VkDebugUtilsMessengerCreateInfoEXT-messageSeverity-requiredbitmask
         assert!(!message_severity.is_empty());
 
         // VUID-VkDebugUtilsMessengerCreateInfoEXT-messageType-parameter
-        // TODO: message_type.validate()?;
+        message_type.validate_instance(instance)?;
 
         // VUID-VkDebugUtilsMessengerCreateInfoEXT-messageType-requiredbitmask
         assert!(!message_type.is_empty());
@@ -186,8 +189,8 @@ impl Drop for DebugUtilsMessenger {
     }
 }
 
-impl fmt::Debug for DebugUtilsMessenger {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+impl Debug for DebugUtilsMessenger {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         let Self {
             handle,
             instance,
@@ -242,21 +245,26 @@ pub(super) unsafe extern "system" fn trampoline(
 /// Error that can happen when creating a `DebugUtilsMessenger`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum DebugUtilsMessengerCreationError {
-    ExtensionNotEnabled {
-        extension: &'static str,
-        reason: &'static str,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
     },
 }
 
 impl Error for DebugUtilsMessengerCreationError {}
 
-impl fmt::Display for DebugUtilsMessengerCreationError {
+impl Display for DebugUtilsMessengerCreationError {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match self {
-            Self::ExtensionNotEnabled { extension, reason } => {
-                write!(f, "the extension {} must be enabled: {}", extension, reason)
-            }
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
+            ),
         }
     }
 }
@@ -265,6 +273,16 @@ impl From<VulkanError> for DebugUtilsMessengerCreationError {
     #[inline]
     fn from(err: VulkanError) -> DebugUtilsMessengerCreationError {
         panic!("unexpected error: {:?}", err)
+    }
+}
+
+impl From<RequirementNotMet> for DebugUtilsMessengerCreationError {
+    #[inline]
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
+        }
     }
 }
 
@@ -317,8 +335,8 @@ impl DebugUtilsMessengerCreateInfo {
     }
 }
 
-impl fmt::Debug for DebugUtilsMessengerCreateInfo {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+impl Debug for DebugUtilsMessengerCreateInfo {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         let Self {
             message_severity,
             message_type,

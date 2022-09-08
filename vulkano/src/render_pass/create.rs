@@ -14,12 +14,16 @@ use super::{
 use crate::{
     device::Device,
     image::{ImageLayout, SampleCount},
-    macros::ExtensionNotEnabled,
     sync::PipelineStages,
-    OomError, Version, VulkanError, VulkanObject,
+    OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{error::Error, fmt, mem::MaybeUninit, ptr};
+use std::{
+    error::Error,
+    fmt::{Display, Error as FmtError, Formatter},
+    mem::MaybeUninit,
+    ptr,
+};
 
 impl RenderPass {
     pub(super) fn validate(
@@ -79,24 +83,24 @@ impl RenderPass {
             );
 
             // VUID-VkAttachmentDescription2-samples-parameter
-            samples.validate(device)?;
+            samples.validate_device(device)?;
 
             for load_op in [load_op, stencil_load_op] {
                 // VUID-VkAttachmentDescription2-loadOp-parameter
                 // VUID-VkAttachmentDescription2-stencilLoadOp-parameter
-                load_op.validate(device)?;
+                load_op.validate_device(device)?;
             }
 
             for store_op in [store_op, stencil_store_op] {
                 // VUID-VkAttachmentDescription2-storeOp-parameter
                 // VUID-VkAttachmentDescription2-stencilStoreOp-parameter
-                store_op.validate(device)?;
+                store_op.validate_device(device)?;
             }
 
             for layout in [initial_layout, final_layout] {
                 // VUID-VkAttachmentDescription2-initialLayout-parameter
                 // VUID-VkAttachmentDescription2-finalLayout-parameter
-                layout.validate(device)?;
+                layout.validate_device(device)?;
 
                 match layout {
                     ImageLayout::ColorAttachmentOptimal => {
@@ -134,9 +138,12 @@ impl RenderPass {
 
         // VUID-VkSubpassDescription2-multiview-06558
         if is_multiview && !device.enabled_features().multiview {
-            return Err(RenderPassCreationError::FeatureNotEnabled {
-                feature: "multiview",
-                reason: "the subpasses specified a nonzero `view_mask`",
+            return Err(RenderPassCreationError::RequirementNotMet {
+                required_for: "`create_info.subpasses[0].view_mask` is not `0`",
+                requires_one_of: RequiresOneOf {
+                    features: &["multiview"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -195,10 +202,10 @@ impl RenderPass {
             // Common checks for all attachment types
             let mut check_attachment = |atch_ref: &AttachmentReference| {
                 // VUID-VkAttachmentReference2-layout-parameter
-                atch_ref.layout.validate(device)?;
+                atch_ref.layout.validate_device(device)?;
 
                 // VUID?
-                atch_ref.aspects.validate(device)?;
+                atch_ref.aspects.validate_device(device)?;
 
                 // VUID-VkRenderPassCreateInfo2-attachment-03051
                 let atch = attachments.get(atch_ref.attachment as usize).ok_or(
@@ -416,21 +423,14 @@ impl RenderPass {
                         || device.enabled_extensions().khr_create_renderpass2
                         || device.enabled_extensions().khr_maintenance2)
                     {
-                        if device
-                            .physical_device()
-                            .supported_extensions()
-                            .khr_create_renderpass2
-                        {
-                            return Err(RenderPassCreationError::ExtensionNotEnabled {
-                                extension: "khr_create_renderpass2",
-                                reason: "an attachment reference selected a subset of the `aspects` of the attachment's format",
-                            });
-                        } else {
-                            return Err(RenderPassCreationError::ExtensionNotEnabled {
-                                extension: "khr_maintenance2",
-                                reason: "an attachment reference selected a subset of the `aspects` of the attachment's format",
-                            });
-                        }
+                        return Err(RenderPassCreationError::RequirementNotMet {
+                            required_for: "`create_info.subpasses` has an element, where `input_attachments` has an element that is `Some(atch_ref)`, where `atch_ref.aspects` does not match the aspects of the attachment itself",
+                            requires_one_of: RequiresOneOf {
+                                api_version: Some(Version::V1_1),
+                                device_extensions: &["khr_create_renderpass2", "khr_maintenance2"],
+                                ..Default::default()
+                            },
+                        });
                     }
 
                     // VUID-VkSubpassDescription2-attachment-02801
@@ -600,18 +600,21 @@ impl RenderPass {
             ] {
                 // VUID-VkSubpassDependency2-srcStageMask-parameter
                 // VUID-VkSubpassDependency2-dstStageMask-parameter
-                stages.validate(device)?;
+                stages.validate_device(device)?;
 
                 // VUID-VkSubpassDependency2-srcAccessMask-parameter
                 // VUID-VkSubpassDependency2-dstAccessMask-parameter
-                access.validate(device)?;
+                access.validate_device(device)?;
 
                 // VUID-VkSubpassDependency2-srcStageMask-04090
                 // VUID-VkSubpassDependency2-dstStageMask-04090
                 if stages.geometry_shader && !device.enabled_features().geometry_shader {
-                    return Err(RenderPassCreationError::FeatureNotEnabled {
-                        feature: "geometry_shader",
-                        reason: "a dependency specified the `geometry_shader` stage",
+                    return Err(RenderPassCreationError::RequirementNotMet {
+                        required_for: "`create_info.dependencies` has an element where `stages.geometry_shader` is set",
+                        requires_one_of: RequiresOneOf {
+                            features: &["geometry_shader"],
+                            ..Default::default()
+                        },
                     });
                 }
 
@@ -620,18 +623,25 @@ impl RenderPass {
                 if (stages.tessellation_control_shader || stages.tessellation_evaluation_shader)
                     && !device.enabled_features().tessellation_shader
                 {
-                    return Err(RenderPassCreationError::FeatureNotEnabled {
-                        feature: "tessellation_shader",
-                        reason: "a dependency specified the `tessellation_control_shader` or `tessellation_evaluation_shader` stage",
+                    return Err(RenderPassCreationError::RequirementNotMet {
+                        required_for: "`create_info.dependencies` has an element where `stages.tessellation_control_shader` or `stages.tessellation_evaluation_shader` are set",
+                        requires_one_of: RequiresOneOf {
+                            features: &["tessellation_shader"],
+                            ..Default::default()
+                        },
                     });
                 }
 
                 // VUID-VkSubpassDependency2-srcStageMask-03937
                 // VUID-VkSubpassDependency2-dstStageMask-03937
                 if stages.is_empty() && !device.enabled_features().synchronization2 {
-                    return Err(RenderPassCreationError::FeatureNotEnabled {
-                        feature: "synchronization2",
-                        reason: "a dependency specified no shader stages",
+                    return Err(RenderPassCreationError::RequirementNotMet {
+                        required_for:
+                            "`create_info.dependencies` has an element where `stages` is empty",
+                        requires_one_of: RequiresOneOf {
+                            features: &["synchronization2"],
+                            ..Default::default()
+                        },
                     });
                 }
 
@@ -1367,13 +1377,9 @@ pub enum RenderPassCreationError {
     /// Not enough memory.
     OomError(OomError),
 
-    ExtensionNotEnabled {
-        extension: &'static str,
-        reason: &'static str,
-    },
-    FeatureNotEnabled {
-        feature: &'static str,
-        reason: &'static str,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
     },
 
     /// An attachment is first used in the render pass with a read-only layout or as an input
@@ -1541,74 +1547,76 @@ impl Error for RenderPassCreationError {
     }
 }
 
-impl fmt::Display for RenderPassCreationError {
+impl Display for RenderPassCreationError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match *self {
-            Self::OomError(_) => write!(fmt, "not enough memory available",),
-            Self::ExtensionNotEnabled { extension, reason } => write!(
-                fmt,
-                "the extension {} must be enabled: {}",
-                extension, reason
+            Self::OomError(_) => write!(f, "not enough memory available",),
+
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
             ),
-            Self::FeatureNotEnabled { feature, reason } => {
-                write!(fmt, "the feature {} must be enabled: {}", feature, reason)
-            }
+
             Self::AttachmentFirstUseLoadOpInvalid { attachment, first_use_subpass } => write!(
-                fmt,
+                f,
                 "attachment {} is first used in the render pass in subpass {} with a read-only layout or as an input attachment, but its `load_op` or `stencil_load_op` is `LoadOp::Clear`",
                 attachment, first_use_subpass,
             ),
             Self::AttachmentLayoutInvalid { attachment } => write!(
-                fmt,
+                f,
                 "attachment {} has an `initial_layout` or `final_layout` value that is invalid for the provided `format`",
                 attachment,
             ),
             Self::CorrelatedViewMasksMultiviewNotEnabled => write!(
-                fmt,
+                f,
                 "correlated view masks were included, but multiview is not enabled on the render pass",
             ),
             Self::CorrelatedViewMasksOverlapping => write!(
-                fmt,
+                f,
                 "the provided correlated view masks contain a bit that is set in more than one element",
             ),
             Self::DependencyAccessNotSupportedByStages { dependency } => write!(
-                fmt,
+                f,
                 "subpass dependency {} specified an access type that was not supported by the given stages",
                 dependency,
             ),
             Self::DependencySelfDependencyFramebufferStagesWithoutByRegion { dependency } => write!(
-                fmt,
+                f,
                 "subpass dependency {} specifies a subpass self-dependency and includes framebuffer stages in both `source_stages` and `destination_stages`, but the `by_region` dependency was not enabled",
                 dependency,
             ),
             Self::DependencySelfDependencySourceStageAfterDestinationStage { dependency } => write!(
-                fmt,
+                f,
                 "subpass dependency {} specifies a subpass self-dependency and includes non-framebuffer stages, but the latest stage in `source_stages` is after the earliest stage in `destination_stages`",
                 dependency,
             ),
             Self::DependencySelfDependencyViewLocalNonzeroOffset { dependency } => write!(
-                fmt,
+                f,
                 "subpass dependency {} specifies a subpass self-dependency and has the `view_local` dependency enabled, but the inner offset value was not 0",
                 dependency,
             ),
             Self::DependencySelfDependencyViewMaskMultiple { dependency, subpass } => write!(
-                fmt,
+                f,
                 "subpass dependency {} specifies a subpass self-dependency without the `view_local` dependency, but the referenced subpass {} has more than one bit set in its `view_mask`",
                 dependency, subpass,
             ),
             Self::DependencySourceSubpassAfterDestinationSubpass { dependency } => write!(
-                fmt,
+                f,
                 "subpass dependency {} has a `source_subpass` that is later than the `destination_subpass`",
                 dependency,
             ),
             Self::DependencyStageNotSupported { dependency } => write!(
-                fmt,
+                f,
                 "subpass dependency {} has a bit set in the `source_stages` or `destination_stages` that is not supported for graphics pipelines",
                 dependency,
             ),
             Self::DependencyBothSubpassesExternal { dependency } => write!(
-                fmt,
+                f,
                 "subpass dependency {} has both `source_subpass` and `destination_subpass` set to `None`",
                 dependency,
             ),
@@ -1616,27 +1624,27 @@ impl fmt::Display for RenderPassCreationError {
                 dependency,
                 subpass,
             } => write!(
-                fmt,
+                f,
                 "the subpass index {} in subpass dependency {} is not less than the number of subpasses in the render pass",
                 subpass, dependency,
             ),
             Self::DependencyViewLocalExternalDependency { dependency } => write!(
-                fmt,
+                f,
                 "subpass dependency {} has the `view_local` dependency enabled, but `source_subpass` or `destination_subpass` were set to `None`",
                 dependency,
             ),
             Self::DependencyViewLocalMultiviewNotEnabled { dependency } => write!(
-                fmt,
+                f,
                 "subpass dependency {} has the `view_local` dependency enabled, but multiview is not enabled on the render pass",
                 dependency,
             ),
             Self::SubpassAttachmentAspectsNotEmpty { subpass, attachment } => write!(
-                fmt,
+                f,
                 "a reference to attachment {} used other than as an input attachment in subpass {} has one or more aspects selected",
                 attachment, subpass,
             ),
             Self::SubpassAttachmentLayoutMismatch { subpass, attachment } => write!(
-                fmt,
+                f,
                 "the layouts of all uses of attachment {} in subpass {} do not match.",
                 attachment, subpass,
             ),
@@ -1645,27 +1653,27 @@ impl fmt::Display for RenderPassCreationError {
                 attachment,
                 usage,
             } => write!(
-                fmt,
+                f,
                 "attachment {} used as {} attachment in subpass {} has a layout that is not supported for that usage",
                 attachment, usage, subpass,
             ),
             Self::SubpassAttachmentOutOfRange { subpass, attachment } => write!(
-                fmt,
+                f,
                 "the attachment index {} in subpass {} is not less than the number of attachments in the render pass",
                 attachment, subpass,
             ),
             Self::SubpassAttachmentUsageColorDepthStencil { subpass, attachment } => write!(
-                fmt,
+                f,
                 "attachment {} is used as both a color attachment and a depth/stencil attachment in subpass {}",
                 attachment, subpass,
             ),
             Self::SubpassAttachmentFormatUsageNotSupported { subpass, attachment, usage, } => write!(
-                fmt,
+                f,
                 "attachment {} used as {} attachment in subpass {} has a format that does not support that usage",
                 attachment, usage, subpass,
             ),
             Self::SubpassColorAttachmentWithResolveNotMultisampled { subpass, attachment } => write!(
-                fmt,
+                f,
                 "attachment {} used as a color attachment in subpass {} with resolve attachments has a `samples` value of `SampleCount::Sample1`",
                 attachment, subpass,
             ),
@@ -1675,37 +1683,37 @@ impl fmt::Display for RenderPassCreationError {
                 samples,
                 first_samples,
             } => write!(
-                fmt,
+                f,
                 "attachment {} used as a color or depth/stencil attachment in subpass {} has a `samples` value {:?} that is different from the first color attachment ({:?})",
                 attachment, subpass, samples, first_samples,
             ),
             Self::SubpassInputAttachmentAspectsNotCompatible { subpass, attachment } => write!(
-                fmt,
+                f,
                 "a reference to attachment {} used as an input attachment in subpass {} selects aspects that are not present in the format of the attachment",
                 attachment, subpass,
             ),
             Self::SubpassMaxColorAttachmentsExceeded { .. } => {
-                write!(fmt, "the `max_color_attachments` limit has been exceeded",)
+                write!(f, "the `max_color_attachments` limit has been exceeded",)
             }
             Self::SubpassMaxMultiviewViewCountExceeded { .. } => {
-                write!(fmt, "the `max_multiview_view_count` limit has been exceeded for a subpass",)
+                write!(f, "the `max_multiview_view_count` limit has been exceeded for a subpass",)
             },
             Self::SubpassMultiviewMismatch {
                 subpass,
                 multiview,
                 first_subpass_multiview,
             } => write!(
-                fmt,
+                f,
                 "the multiview state (whether `view_mask` is nonzero) of subpass {} is {}, which is different from the first subpass ({})",
                 subpass, multiview, first_subpass_multiview,
             ),
             Self::SubpassPreserveAttachmentUsedElsewhere { subpass, attachment } => write!(
-                fmt,
+                f,
                 "attachment {} marked as a preserve attachment in subpass {} is also used as an attachment in that subpass",
                 attachment, subpass,
             ),
             Self::SubpassResolveAttachmentsColorAttachmentsLenMismatch { subpass } => write!(
-                fmt,
+                f,
                 "the `resolve_attachments` field of subpass {} was not empty, but its length did not match the length of `color_attachments`",
                 subpass,
             ),
@@ -1714,17 +1722,17 @@ impl fmt::Display for RenderPassCreationError {
                 resolve_attachment,
                 color_attachment,
             } => write!(
-                fmt,
+                f,
                 "attachment {} used as a resolve attachment in subpass {} has a `format` value different from the corresponding color attachment {}",
                 subpass, resolve_attachment, color_attachment,
             ),
             Self::SubpassResolveAttachmentMultisampled { subpass, attachment } => write!(
-                fmt,
+                f,
                 "attachment {} used as a resolve attachment in subpass {} has a `samples` value other than `SampleCount::Sample1`",
                 attachment, subpass,
             ),
             Self::SubpassResolveAttachmentWithoutColorAttachment { subpass } => write!(
-                fmt,
+                f,
                 "a resolve attachment in subpass {} is `Some`, but the corresponding color attachment is `None`",
                 subpass,
             ),
@@ -1754,12 +1762,12 @@ impl From<VulkanError> for RenderPassCreationError {
     }
 }
 
-impl From<ExtensionNotEnabled> for RenderPassCreationError {
+impl From<RequirementNotMet> for RenderPassCreationError {
     #[inline]
-    fn from(err: ExtensionNotEnabled) -> Self {
-        Self::ExtensionNotEnabled {
-            extension: err.extension,
-            reason: err.reason,
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
         }
     }
 }

@@ -35,7 +35,7 @@ use crate::{
 use smallvec::SmallVec;
 use std::{
     error::Error,
-    fmt,
+    fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     marker::PhantomData,
     mem::size_of,
@@ -572,13 +572,13 @@ pub enum ReadLockError {
 
 impl Error for ReadLockError {}
 
-impl fmt::Display for ReadLockError {
+impl Display for ReadLockError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         write!(
-            fmt,
+            f,
             "{}",
-            match *self {
+            match self {
                 ReadLockError::CpuWriteLocked => {
                     "the buffer is already locked for write mode by the CPU"
                 }
@@ -601,13 +601,13 @@ pub enum WriteLockError {
 
 impl Error for WriteLockError {}
 
-impl fmt::Display for WriteLockError {
+impl Display for WriteLockError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         write!(
-            fmt,
+            f,
             "{}",
-            match *self {
+            match self {
                 WriteLockError::CpuLocked => "the buffer is already locked by the CPU",
                 WriteLockError::GpuLocked => "the buffer is already locked by the GPU",
             }

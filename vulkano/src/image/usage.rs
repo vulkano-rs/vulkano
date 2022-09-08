@@ -51,47 +51,47 @@ vulkan_bitflags! {
     /*
     // TODO: document
     video_decode_dst = VIDEO_DECODE_DST_KHR {
-        extensions: [khr_video_decode_queue],
+        device_extensions: [khr_video_decode_queue],
     },
 
     // TODO: document
     video_decode_src = VIDEO_DECODE_SRC_KHR {
-        extensions: [khr_video_decode_queue],
+        device_extensions: [khr_video_decode_queue],
     },
 
     // TODO: document
     video_decode_dpb = VIDEO_DECODE_DPB_KHR {
-        extensions: [khr_video_decode_queue],
+        device_extensions: [khr_video_decode_queue],
     },
 
     // TODO: document
     fragment_density_map = FRAGMENT_DENSITY_MAP_EXT {
-        extensions: [ext_fragment_density_map],
+        device_extensions: [ext_fragment_density_map],
     },
 
     // TODO: document
     fragment_shading_rate_attachment = FRAGMENT_SHADING_RATE_ATTACHMENT_KHR {
-        extensions: [khr_fragment_shading_rate],
+        device_extensions: [khr_fragment_shading_rate],
     },
 
     // TODO: document
     video_encode_dst = VIDEO_ENCODE_DST_KHR {
-        extensions: [khr_video_encode_queue],
+        device_extensions: [khr_video_encode_queue],
     },
 
     // TODO: document
     video_encode_src = VIDEO_ENCODE_SRC_KHR {
-        extensions: [khr_video_encode_queue],
+        device_extensions: [khr_video_encode_queue],
     },
 
     // TODO: document
     video_encode_dpb = VIDEO_ENCODE_DPB_KHR {
-        extensions: [khr_video_encode_queue],
+        device_extensions: [khr_video_encode_queue],
     },
 
     // TODO: document
     invocation_mask = INVOCATION_MASK_HUAWEI {
-        extensions: [huawei_invocation_mask],
+        device_extensions: [huawei_invocation_mask],
     },
      */
 }

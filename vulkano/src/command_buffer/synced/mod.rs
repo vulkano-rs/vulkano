@@ -84,7 +84,13 @@ use crate::{
     },
     DeviceSize,
 };
-use std::{borrow::Cow, collections::HashMap, ops::Range, sync::Arc};
+use std::{
+    borrow::Cow,
+    collections::HashMap,
+    fmt::{Debug, Error as FmtError, Formatter},
+    ops::Range,
+    sync::Arc,
+};
 
 mod builder;
 
@@ -513,8 +519,8 @@ pub(super) trait Command: Send + Sync {
     unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder);
 }
 
-impl std::fmt::Debug for dyn Command {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Debug for dyn Command {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         f.write_str(self.name())
     }
 }

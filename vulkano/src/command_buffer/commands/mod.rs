@@ -22,19 +22,22 @@ use super::synced::SyncCommandBufferBuilderError;
 use crate::{
     format::Format,
     image::{ImageAspects, ImageLayout, SampleCount, SampleCounts},
-    macros::ExtensionNotEnabled,
-    DeviceSize,
+     RequirementNotMet,
+    DeviceSize, RequiresOneOf,
 };
-use std::{error::Error, fmt};
+use std::{
+    error::Error,
+    fmt::{Display, Error as FmtError, Formatter},
+};
 
 /// Error that can happen when recording a copy command.
 #[derive(Clone, Debug)]
 pub enum CopyError {
     SyncCommandBufferBuilderError(SyncCommandBufferBuilderError),
 
-    ExtensionNotEnabled {
-        extension: &'static str,
-        reason: &'static str,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
     },
 
     /// Operation forbidden inside of a render pass.
@@ -282,16 +285,21 @@ impl Error for CopyError {
     }
 }
 
-impl fmt::Display for CopyError {
+impl Display for CopyError {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match self {
             Self::SyncCommandBufferBuilderError(_) => write!(f, "a SyncCommandBufferBuilderError"),
-            Self::ExtensionNotEnabled { extension, reason } => write!(
+            
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
                 f,
-                "the extension {} must be enabled: {}",
-                extension, reason
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
             ),
+            
             Self::ForbiddenInsideRenderPass => {
                 write!(f, "operation forbidden inside of a render pass")
             }
@@ -585,12 +593,12 @@ impl From<SyncCommandBufferBuilderError> for CopyError {
     }
 }
 
-impl From<ExtensionNotEnabled> for CopyError {
+impl From<RequirementNotMet> for CopyError {
     #[inline]
-    fn from(err: ExtensionNotEnabled) -> Self {
-        Self::ExtensionNotEnabled {
-            extension: err.extension,
-            reason: err.reason,
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
         }
     }
 }
@@ -602,9 +610,9 @@ pub enum CopyErrorResource {
     Destination,
 }
 
-impl fmt::Display for CopyErrorResource {
+impl Display for CopyErrorResource {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match self {
             Self::Source => write!(f, "source"),
             Self::Destination => write!(f, "destination"),

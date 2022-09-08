@@ -31,34 +31,34 @@ vulkan_enum! {
     // TODO: document
     Plane0 = PLANE_0 {
         api_version: V1_1,
-        extensions: [khr_sampler_ycbcr_conversion],
+        device_extensions: [khr_sampler_ycbcr_conversion],
     },
 
     // TODO: document
     Plane1 = PLANE_1 {
         api_version: V1_1,
-        extensions: [khr_sampler_ycbcr_conversion],
+        device_extensions: [khr_sampler_ycbcr_conversion],
     },
 
     // TODO: document
     Plane2 = PLANE_2 {
         api_version: V1_1,
-        extensions: [khr_sampler_ycbcr_conversion],
+        device_extensions: [khr_sampler_ycbcr_conversion],
     },
 
     // TODO: document
     MemoryPlane0 = MEMORY_PLANE_0_EXT {
-        extensions: [ext_image_drm_format_modifier],
+        device_extensions: [ext_image_drm_format_modifier],
     },
 
     // TODO: document
     MemoryPlane1 = MEMORY_PLANE_1_EXT {
-        extensions: [ext_image_drm_format_modifier],
+        device_extensions: [ext_image_drm_format_modifier],
     },
 
     // TODO: document
     MemoryPlane2 = MEMORY_PLANE_2_EXT {
-        extensions: [ext_image_drm_format_modifier],
+        device_extensions: [ext_image_drm_format_modifier],
     },
 }
 
@@ -82,34 +82,34 @@ vulkan_bitflags! {
     // TODO: document
     plane0 = PLANE_0 {
         api_version: V1_1,
-        extensions: [khr_sampler_ycbcr_conversion],
+        device_extensions: [khr_sampler_ycbcr_conversion],
     },
 
     // TODO: document
     plane1 = PLANE_1 {
         api_version: V1_1,
-        extensions: [khr_sampler_ycbcr_conversion],
+        device_extensions: [khr_sampler_ycbcr_conversion],
     },
 
     // TODO: document
     plane2 = PLANE_2 {
         api_version: V1_1,
-        extensions: [khr_sampler_ycbcr_conversion],
+        device_extensions: [khr_sampler_ycbcr_conversion],
     },
 
     // TODO: document
     memory_plane0 = MEMORY_PLANE_0_EXT {
-        extensions: [ext_image_drm_format_modifier],
+        device_extensions: [ext_image_drm_format_modifier],
     },
 
     // TODO: document
     memory_plane1 = MEMORY_PLANE_1_EXT {
-        extensions: [ext_image_drm_format_modifier],
+        device_extensions: [ext_image_drm_format_modifier],
     },
 
     // TODO: document
     memory_plane2 = MEMORY_PLANE_2_EXT {
-        extensions: [ext_image_drm_format_modifier],
+        device_extensions: [ext_image_drm_format_modifier],
     },
 }
 

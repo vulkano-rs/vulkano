@@ -245,7 +245,7 @@ vulkan_enum! {
     /*
     // TODO: document
     FillRectangle = FILL_RECTANGLE_NV {
-        extensions: [nv_fill_rectangle],
+        device_extensions: [nv_fill_rectangle],
     },
      */
 }

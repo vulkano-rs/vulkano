@@ -55,7 +55,10 @@ use crate::{
     pipeline::graphics::vertex_input::{VertexInputState, VertexMemberTy},
     shader::ShaderInterface,
 };
-use std::{error::Error, fmt};
+use std::{
+    error::Error,
+    fmt::{Display, Error as FmtError, Formatter},
+};
 
 /// Trait for types that can create a [`VertexInputState`] from a [`ShaderInterface`].
 pub unsafe trait VertexDefinition {
@@ -99,15 +102,15 @@ pub enum IncompatibleVertexDefinitionError {
 
 impl Error for IncompatibleVertexDefinitionError {}
 
-impl fmt::Display for IncompatibleVertexDefinitionError {
+impl Display for IncompatibleVertexDefinitionError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match *self {
             IncompatibleVertexDefinitionError::MissingAttribute { .. } => {
-                write!(fmt, "an attribute is missing",)
+                write!(f, "an attribute is missing",)
             }
             IncompatibleVertexDefinitionError::FormatMismatch { .. } => {
-                write!(fmt, "the format of an attribute does not match")
+                write!(f, "the format of an attribute does not match")
             }
         }
     }
