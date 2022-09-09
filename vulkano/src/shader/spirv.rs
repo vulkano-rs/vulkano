@@ -19,7 +19,7 @@ use crate::Version;
 use std::{
     collections::HashMap,
     error::Error,
-    fmt::{Display, Formatter, Error as FmtError},
+    fmt::{Display, Error as FmtError, Formatter},
     ops::Range,
     string::FromUtf8Error,
 };

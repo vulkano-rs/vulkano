@@ -22,8 +22,7 @@ use super::synced::SyncCommandBufferBuilderError;
 use crate::{
     format::Format,
     image::{ImageAspects, ImageLayout, SampleCount, SampleCounts},
-     RequirementNotMet,
-    DeviceSize, RequiresOneOf,
+    DeviceSize, RequirementNotMet, RequiresOneOf,
 };
 use std::{
     error::Error,
@@ -290,7 +289,7 @@ impl Display for CopyError {
     fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match self {
             Self::SyncCommandBufferBuilderError(_) => write!(f, "a SyncCommandBufferBuilderError"),
-            
+
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -299,7 +298,7 @@ impl Display for CopyError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
-            
+
             Self::ForbiddenInsideRenderPass => {
                 write!(f, "operation forbidden inside of a render pass")
             }

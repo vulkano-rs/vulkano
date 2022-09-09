@@ -15,12 +15,12 @@
 
 use super::{ImageAccess, ImageDimensions, ImageFormatInfo, ImageSubresourceRange, ImageUsage};
 use crate::{
-    device::{Device, DeviceOwned, physical::ImageFormatPropertiesError},
+    device::{physical::ImageFormatPropertiesError, Device, DeviceOwned},
     format::{ChromaSampling, Format, FormatFeatures},
     image::{ImageAspects, ImageTiling, ImageType, SampleCount},
-    macros::vulkan_enum, RequirementNotMet,
+    macros::vulkan_enum,
     sampler::{ycbcr::SamplerYcbcrConversion, ComponentMapping},
-    OomError, RequiresOneOf, VulkanError, VulkanObject,
+    OomError, RequirementNotMet, RequiresOneOf, VulkanError, VulkanObject,
 };
 use std::{
     error::Error,
@@ -85,25 +85,33 @@ where
         let image_inner = image.inner().image;
         let image_type = image.dimensions().image_type();
 
-        let (filter_cubic, filter_cubic_minmax) = if let Some(properties) = image_inner
+        let (filter_cubic, filter_cubic_minmax) = image
             .device()
             .physical_device()
-            .image_format_properties(ImageFormatInfo {
-                format: image_inner.format(),
-                image_type,
-                tiling: image_inner.tiling(),
-                usage: *image_inner.usage(),
-                image_view_type: Some(view_type),
-                mutable_format: image_inner.mutable_format(),
-                cube_compatible: image_inner.cube_compatible(),
-                array_2d_compatible: image_inner.array_2d_compatible(),
-                block_texel_view_compatible: image_inner.block_texel_view_compatible(),
-                ..Default::default()
-            })? {
-            (properties.filter_cubic, properties.filter_cubic_minmax)
-        } else {
-            (false, false)
-        };
+            .supported_extensions()
+            .ext_filter_cubic
+            .then_some(())
+            .and_then(|_| {
+                image_inner
+                    .device()
+                    .physical_device()
+                    .image_format_properties(ImageFormatInfo {
+                        format: image_inner.format(),
+                        image_type,
+                        tiling: image_inner.tiling(),
+                        usage: *image_inner.usage(),
+                        image_view_type: Some(view_type),
+                        mutable_format: image_inner.mutable_format(),
+                        cube_compatible: image_inner.cube_compatible(),
+                        array_2d_compatible: image_inner.array_2d_compatible(),
+                        block_texel_view_compatible: image_inner.block_texel_view_compatible(),
+                        ..Default::default()
+                    })
+                    .unwrap()
+            })
+            .map_or((false, false), |properties| {
+                (properties.filter_cubic, properties.filter_cubic_minmax)
+            });
 
         Ok(Arc::new(ImageView {
             handle,
@@ -840,7 +848,7 @@ impl Display for ImageViewCreationError {
                 f,
                 "allocating memory failed",
             ),
-            
+
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -974,9 +982,7 @@ impl From<ImageFormatPropertiesError> for ImageViewCreationError {
     #[inline]
     fn from(err: ImageFormatPropertiesError) -> Self {
         match err {
-            ImageFormatPropertiesError::OomError(err) => {
-                Self::OomError(err)
-            }
+            ImageFormatPropertiesError::OomError(err) => Self::OomError(err),
             ImageFormatPropertiesError::RequirementNotMet {
                 required_for,
                 requires_one_of,

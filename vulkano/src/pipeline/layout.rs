@@ -66,9 +66,8 @@
 use crate::{
     descriptor_set::layout::{DescriptorRequirementsNotMet, DescriptorSetLayout, DescriptorType},
     device::{Device, DeviceOwned},
-     RequirementNotMet,
     shader::{DescriptorRequirements, ShaderStages},
-    OomError, RequiresOneOf, VulkanError, VulkanObject,
+    OomError, RequirementNotMet, RequiresOneOf, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{
@@ -835,7 +834,7 @@ impl Display for PipelineLayoutCreationError {
     fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match *self {
             Self::OomError(_) => write!(f, "not enough memory available"),
-            
+
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
