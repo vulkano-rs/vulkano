@@ -21,8 +21,8 @@
 //! ```
 //! // Enumerating memory heaps.
 //! # let physical_device: vulkano::device::physical::PhysicalDevice = return;
-//! for heap in physical_device.memory_heaps() {
-//!     println!("Heap #{:?} has a capacity of {:?} bytes", heap.id(), heap.size());
+//! for (index, heap) in physical_device.memory_properties().memory_heaps.iter().enumerate() {
+//!     println!("Heap #{:?} has a capacity of {:?} bytes", index, heap.size);
 //! }
 //! ```
 //!
@@ -38,10 +38,10 @@
 //! ```
 //! // Enumerating memory types.
 //! # let physical_device: vulkano::device::physical::PhysicalDevice = return;
-//! for ty in physical_device.memory_types() {
-//!     println!("Memory type belongs to heap #{:?}", ty.heap().id());
-//!     println!("Host-accessible: {:?}", ty.is_host_visible());
-//!     println!("Device-local: {:?}", ty.is_device_local());
+//! for ty in physical_device.memory_properties().memory_types.iter() {
+//!     println!("Memory type belongs to heap #{:?}", ty.heap_index);
+//!     println!("Host-accessible: {:?}", ty.property_flags.host_visible);
+//!     println!("Device-local: {:?}", ty.property_flags.device_local);
 //! }
 //! ```
 //!
@@ -69,13 +69,13 @@
 //!
 //! # let device: std::sync::Arc<vulkano::device::Device> = return;
 //! // Taking the first memory type for the sake of this example.
-//! let memory_type = device.physical_device().memory_types().next().unwrap();
+//! let memory_type_index = 0;
 //!
 //! let memory = DeviceMemory::allocate(
 //!     device.clone(),
 //!     MemoryAllocateInfo {
 //!         allocation_size: 1024,
-//!         memory_type_index: memory_type.id(),
+//!         memory_type_index,
 //!         ..Default::default()
 //!     },
 //! ).expect("Failed to allocate memory");

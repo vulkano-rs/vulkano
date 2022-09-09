@@ -142,11 +142,14 @@ impl VulkanLibrary {
                 }
             };
 
-            InstanceExtensions::from(
-                extension_properties
-                    .iter()
-                    .map(|property| CStr::from_ptr(property.extension_name.as_ptr())),
-            )
+            extension_properties
+                .iter()
+                .map(|property| {
+                    CStr::from_ptr(property.extension_name.as_ptr())
+                        .to_str()
+                        .unwrap()
+                })
+                .collect()
         };
 
         Ok(Arc::new(VulkanLibrary {

@@ -63,7 +63,7 @@
 //! # let graphics_pipeline: std::sync::Arc<vulkano::pipeline::graphics::GraphicsPipeline> = return;
 //! let cb = AutoCommandBufferBuilder::primary(
 //!     device.clone(),
-//!     queue.family(),
+//!     queue.queue_family_index(),
 //!     CommandBufferUsage::MultipleSubmit
 //! ).unwrap()
 //! .begin_render_pass(render_pass_begin_info, SubpassContents::Inline).unwrap()

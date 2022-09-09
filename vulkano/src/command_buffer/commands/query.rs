@@ -15,7 +15,7 @@ use crate::{
         sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder,
     },
-    device::{physical::QueueFamily, DeviceOwned},
+    device::DeviceOwned,
     query::{
         QueriesRange, Query, QueryControlFlags, QueryPool, QueryResultElement, QueryResultFlags,
         QueryType,
@@ -71,8 +71,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         query: u32,
         flags: QueryControlFlags,
     ) -> Result<(), QueryError> {
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdBeginQuery-commandBuffer-cmdpool
-        if !(self.queue_family().supports_graphics() || self.queue_family().supports_compute()) {
+        if !(queue_family_properties.queue_flags.graphics
+            || queue_family_properties.queue_flags.compute)
+        {
             return Err(QueryError::NotSupportedByQueueFamily);
         }
 
@@ -91,7 +95,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             QueryType::Occlusion => {
                 // VUID-vkCmdBeginQuery-commandBuffer-cmdpool
                 // // VUID-vkCmdBeginQuery-queryType-00803
-                if !self.queue_family().supports_graphics() {
+                if !queue_family_properties.queue_flags.graphics {
                     return Err(QueryError::NotSupportedByQueueFamily);
                 }
 
@@ -110,8 +114,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 // VUID-vkCmdBeginQuery-commandBuffer-cmdpool
                 // VUID-vkCmdBeginQuery-queryType-00804
                 // VUID-vkCmdBeginQuery-queryType-00805
-                if statistic_flags.is_compute() && !self.queue_family().supports_compute()
-                    || statistic_flags.is_graphics() && !self.queue_family().supports_graphics()
+                if statistic_flags.is_compute() && !queue_family_properties.queue_flags.compute
+                    || statistic_flags.is_graphics()
+                        && !queue_family_properties.queue_flags.graphics
                 {
                     return Err(QueryError::NotSupportedByQueueFamily);
                 }
@@ -165,8 +170,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     fn validate_end_query(&self, query_pool: &QueryPool, query: u32) -> Result<(), QueryError> {
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdEndQuery-commandBuffer-cmdpool
-        if !(self.queue_family().supports_graphics() || self.queue_family().supports_compute()) {
+        if !(queue_family_properties.queue_flags.graphics
+            || queue_family_properties.queue_flags.compute)
+        {
             return Err(QueryError::NotSupportedByQueueFamily);
         }
 
@@ -209,7 +218,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         query: u32,
         stage: PipelineStage,
     ) -> Result<&mut Self, QueryError> {
-        self.validate_write_timestamp(self.queue_family(), &query_pool, query, stage)?;
+        self.validate_write_timestamp(&query_pool, query, stage)?;
 
         self.inner.write_timestamp(query_pool, query, stage);
 
@@ -218,15 +227,16 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     fn validate_write_timestamp(
         &self,
-        queue_family: QueueFamily,
         query_pool: &QueryPool,
         query: u32,
         stage: PipelineStage,
     ) -> Result<(), QueryError> {
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdWriteTimestamp-commandBuffer-cmdpool
-        if !(self.queue_family().explicitly_supports_transfers()
-            || self.queue_family().supports_graphics()
-            || self.queue_family().supports_compute())
+        if !(queue_family_properties.queue_flags.transfer
+            || queue_family_properties.queue_flags.graphics
+            || queue_family_properties.queue_flags.compute)
         {
             return Err(QueryError::NotSupportedByQueueFamily);
         }
@@ -237,7 +247,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         assert_eq!(device, query_pool.device());
 
         // VUID-vkCmdWriteTimestamp-pipelineStage-04074
-        if !queue_family.supports_stage(stage) {
+        if !queue_family_properties.supports_stage(stage) {
             return Err(QueryError::StageNotSupported);
         }
 
@@ -276,7 +286,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
 
         // VUID-vkCmdWriteTimestamp-timestampValidBits-00829
-        if queue_family.timestamp_valid_bits().is_none() {
+        if queue_family_properties.timestamp_valid_bits.is_none() {
             return Err(QueryError::NoTimestampValidBits);
         }
 
@@ -346,8 +356,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         D: ?Sized + TypedBufferAccess<Content = [T]>,
         T: QueryResultElement,
     {
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdCopyQueryPoolResults-commandBuffer-cmdpool
-        if !(self.queue_family().supports_graphics() || self.queue_family().supports_compute()) {
+        if !(queue_family_properties.queue_flags.graphics
+            || queue_family_properties.queue_flags.compute)
+        {
             return Err(QueryError::NotSupportedByQueueFamily);
         }
 
@@ -431,8 +445,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             return Err(QueryError::ForbiddenInsideRenderPass);
         }
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdResetQueryPool-commandBuffer-cmdpool
-        if !(self.queue_family().supports_graphics() || self.queue_family().supports_compute()) {
+        if !(queue_family_properties.queue_flags.graphics
+            || queue_family_properties.queue_flags.compute)
+        {
             return Err(QueryError::NotSupportedByQueueFamily);
         }
 

@@ -443,7 +443,7 @@ impl AttachmentImage {
             MappingRequirement::DoNotMap,
             Some(DedicatedAllocation::Image(&image)),
             |t| {
-                if t.is_device_local() {
+                if t.property_flags.device_local {
                     AllocFromRequirementsFilter::Preferred
                 } else {
                     AllocFromRequirementsFilter::Allowed
@@ -523,7 +523,7 @@ impl AttachmentImage {
             MappingRequirement::DoNotMap,
             DedicatedAllocation::Image(&image),
             |t| {
-                if t.is_device_local() {
+                if t.property_flags.device_local {
                     AllocFromRequirementsFilter::Preferred
                 } else {
                     AllocFromRequirementsFilter::Allowed

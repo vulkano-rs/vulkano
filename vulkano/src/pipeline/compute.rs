@@ -513,7 +513,7 @@ mod tests {
 
         let mut cbb = AutoCommandBufferBuilder::primary(
             device.clone(),
-            queue.family(),
+            queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();

@@ -135,20 +135,31 @@ impl UnsafeBuffer {
         // Check sharing mode and queue families
         let (sharing_mode, queue_family_indices) = match &mut sharing {
             Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, &[] as _),
-            Sharing::Concurrent(ids) => {
+            Sharing::Concurrent(queue_family_indices) => {
                 // VUID-VkBufferCreateInfo-sharingMode-00914
-                ids.sort_unstable();
-                ids.dedup();
-                assert!(ids.len() >= 2);
+                queue_family_indices.sort_unstable();
+                queue_family_indices.dedup();
+                assert!(queue_family_indices.len() >= 2);
 
-                for &id in ids.iter() {
+                for &queue_family_index in queue_family_indices.iter() {
                     // VUID-VkBufferCreateInfo-sharingMode-01419
-                    if device.physical_device().queue_family_by_id(id).is_none() {
-                        return Err(BufferCreationError::SharingInvalidQueueFamilyId { id });
+                    if queue_family_index
+                        >= device.physical_device().queue_family_properties().len() as u32
+                    {
+                        return Err(BufferCreationError::SharingQueueFamilyIndexOutOfRange {
+                            queue_family_index,
+                            queue_family_count: device
+                                .physical_device()
+                                .queue_family_properties()
+                                .len() as u32,
+                        });
                     }
                 }
 
-                (ash::vk::SharingMode::CONCURRENT, ids.as_slice())
+                (
+                    ash::vk::SharingMode::CONCURRENT,
+                    queue_family_indices.as_slice(),
+                )
             }
         };
 
@@ -332,7 +343,7 @@ impl UnsafeBuffer {
             let mem_reqs = mem_reqs.assume_init();
             mem_reqs.size <= (memory.allocation_size() - offset)
                 && (offset % mem_reqs.alignment) == 0
-                && mem_reqs.memory_type_bits & (1 << memory.memory_type().id()) != 0
+                && mem_reqs.memory_type_bits & (1 << memory.memory_type_index()) != 0
         });
 
         // Check for alignment correctness.
@@ -479,9 +490,12 @@ pub enum BufferCreationError {
     /// The specified size exceeded the value of the `max_buffer_size` limit.
     MaxBufferSizeExceeded { size: DeviceSize, max: DeviceSize },
 
-    /// The sharing mode was set to `Concurrent`, but one of the specified queue family ids was not
-    /// valid.
-    SharingInvalidQueueFamilyId { id: u32 },
+    /// The sharing mode was set to `Concurrent`, but one of the specified queue family indices was
+    /// out of range.
+    SharingQueueFamilyIndexOutOfRange {
+        queue_family_index: u32,
+        queue_family_count: u32,
+    },
 }
 
 impl Error for BufferCreationError {
@@ -511,8 +525,8 @@ impl Display for BufferCreationError {
                 f,
                 "the specified size exceeded the value of the `max_buffer_size` limit"
             ),
-            Self::SharingInvalidQueueFamilyId { .. } => {
-                write!(f, "the sharing mode was set to `Concurrent`, but one of the specified queue family ids was not valid")
+            Self::SharingQueueFamilyIndexOutOfRange { .. } => {
+                write!(f, "the sharing mode was set to `Concurrent`, but one of the specified queue family indices was out of range")
             }
         }
     }

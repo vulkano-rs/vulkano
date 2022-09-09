@@ -8,8 +8,7 @@
 // according to those terms.
 
 use crate::{
-    device::{physical::MemoryType, Device},
-    instance::Instance,
+    device::Device,
     memory::{device_memory::MemoryAllocateInfo, DeviceMemory, DeviceMemoryAllocationError},
     DeviceSize,
 };
@@ -20,7 +19,7 @@ use std::{cmp, ops::Range, sync::Arc};
 #[derive(Debug)]
 pub struct StandardNonHostVisibleMemoryTypePool {
     device: Arc<Device>,
-    memory_type: u32,
+    memory_type_index: u32,
     // TODO: obviously very inefficient
     occupied: Mutex<Vec<(Arc<DeviceMemory>, Vec<Range<DeviceSize>>)>>,
 }
@@ -30,25 +29,18 @@ impl StandardNonHostVisibleMemoryTypePool {
     ///
     /// # Panic
     ///
-    /// - Panics if the `device` and `memory_type` don't belong to the same physical device.
-    ///
+    /// - Panics if `memory_type_index` is out of range.
     #[inline]
     pub fn new(
         device: Arc<Device>,
-        memory_type: MemoryType,
+        memory_type_index: u32,
     ) -> Arc<StandardNonHostVisibleMemoryTypePool> {
-        assert_eq!(
-            &**device.physical_device().instance() as *const Instance,
-            &**memory_type.physical_device().instance() as *const Instance
-        );
-        assert_eq!(
-            device.physical_device().index(),
-            memory_type.physical_device().index()
-        );
+        let _ =
+            &device.physical_device().memory_properties().memory_types[memory_type_index as usize];
 
         Arc::new(StandardNonHostVisibleMemoryTypePool {
             device,
-            memory_type: memory_type.id(),
+            memory_type_index,
             occupied: Mutex::new(Vec::new()),
         })
     }
@@ -115,7 +107,7 @@ impl StandardNonHostVisibleMemoryTypePool {
                 self.device.clone(),
                 MemoryAllocateInfo {
                     allocation_size,
-                    memory_type_index: self.memory_type().id(),
+                    memory_type_index: self.memory_type_index,
                     ..Default::default()
                 },
             )?;
@@ -131,19 +123,10 @@ impl StandardNonHostVisibleMemoryTypePool {
         })
     }
 
-    /// Returns the device this pool operates on.
+    /// Returns the index of the memory type this pool operates on.
     #[inline]
-    pub fn device(&self) -> &Arc<Device> {
-        &self.device
-    }
-
-    /// Returns the memory type this pool operates on.
-    #[inline]
-    pub fn memory_type(&self) -> MemoryType {
-        self.device
-            .physical_device()
-            .memory_type_by_id(self.memory_type)
-            .unwrap()
+    pub fn memory_type_index(&self) -> u32 {
+        self.memory_type_index
     }
 }
 

@@ -112,7 +112,7 @@ impl GameOfLifeComputePipeline {
     ) -> Box<dyn GpuFuture> {
         let mut builder = AutoCommandBufferBuilder::primary(
             self.compute_queue.device().clone(),
-            self.compute_queue.family(),
+            self.compute_queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();

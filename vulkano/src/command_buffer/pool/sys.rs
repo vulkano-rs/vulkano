@@ -9,7 +9,7 @@
 
 use crate::{
     command_buffer::CommandBufferLevel,
-    device::{physical::QueueFamily, Device, DeviceOwned},
+    device::{Device, DeviceOwned},
     OomError, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
@@ -111,14 +111,10 @@ impl UnsafeCommandPool {
         } = create_info;
 
         // VUID-vkCreateCommandPool-queueFamilyIndex-01937
-        if device
-            .physical_device()
-            .queue_family_by_id(queue_family_index)
-            .is_none()
-        {
+        if queue_family_index >= device.physical_device().queue_family_properties().len() as u32 {
             return Err(UnsafeCommandPoolCreationError::QueueFamilyIndexOutOfRange {
                 queue_family_index,
-                queue_family_count: device.physical_device().queue_families().len() as u32,
+                queue_family_count: device.physical_device().queue_family_properties().len() as u32,
             });
         }
 
@@ -308,11 +304,8 @@ impl UnsafeCommandPool {
 
     /// Returns the queue family on which command buffers of this pool can be executed.
     #[inline]
-    pub fn queue_family(&self) -> QueueFamily {
-        self.device
-            .physical_device()
-            .queue_family_by_id(self.queue_family_index)
-            .unwrap()
+    pub fn queue_family_index(&self) -> u32 {
+        self.queue_family_index
     }
 }
 
@@ -364,7 +357,7 @@ impl Hash for UnsafeCommandPool {
 }
 
 /// Error that can happen when creating an `UnsafeCommandPool`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum UnsafeCommandPoolCreationError {
     /// Not enough memory.
     OomError(OomError),
@@ -576,7 +569,7 @@ mod tests {
         let _ = UnsafeCommandPool::new(
             device,
             UnsafeCommandPoolCreateInfo {
-                queue_family_index: queue.family().id(),
+                queue_family_index: queue.queue_family_index(),
                 ..Default::default()
             },
         )
@@ -589,12 +582,12 @@ mod tests {
         let pool = UnsafeCommandPool::new(
             device,
             UnsafeCommandPoolCreateInfo {
-                queue_family_index: queue.family().id(),
+                queue_family_index: queue.queue_family_index(),
                 ..Default::default()
             },
         )
         .unwrap();
-        assert_eq!(pool.queue_family().id(), queue.family().id());
+        assert_eq!(pool.queue_family_index(), queue.queue_family_index());
     }
 
     #[test]
@@ -618,7 +611,7 @@ mod tests {
         let pool = UnsafeCommandPool::new(
             device.clone(),
             UnsafeCommandPoolCreateInfo {
-                queue_family_index: queue.family().id(),
+                queue_family_index: queue.queue_family_index(),
                 ..Default::default()
             },
         )
@@ -660,7 +653,7 @@ mod tests {
         let pool = UnsafeCommandPool::new(
             device,
             UnsafeCommandPoolCreateInfo {
-                queue_family_index: queue.family().id(),
+                queue_family_index: queue.queue_family_index(),
                 ..Default::default()
             },
         )

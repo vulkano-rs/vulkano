@@ -75,8 +75,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ) -> Result<(), SetDynamicStateError> {
         self.validate_pipeline_fixed_state(DynamicState::BlendConstants)?;
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdSetBlendConstants-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -117,8 +119,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ) -> Result<(), SetDynamicStateError> {
         self.validate_pipeline_fixed_state(DynamicState::ColorWriteEnable)?;
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdSetColorWriteEnableEXT-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -179,8 +183,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         // VUID-vkCmdSetCullMode-cullMode-parameter
         cull_mode.validate_device(self.device())?;
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdSetCullMode-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -235,8 +241,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ) -> Result<(), SetDynamicStateError> {
         self.validate_pipeline_fixed_state(DynamicState::DepthBias)?;
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdSetDepthBias-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -277,8 +285,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     fn validate_set_depth_bias_enable(&self, _enable: bool) -> Result<(), SetDynamicStateError> {
         self.validate_pipeline_fixed_state(DynamicState::DepthBiasEnable)?;
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdSetDepthBiasEnable-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -325,8 +335,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ) -> Result<(), SetDynamicStateError> {
         self.validate_pipeline_fixed_state(DynamicState::DepthBounds)?;
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdSetDepthBounds-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -376,8 +388,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ) -> Result<(), SetDynamicStateError> {
         self.validate_pipeline_fixed_state(DynamicState::DepthBoundsTestEnable)?;
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdSetDepthBoundsTestEnable-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -427,8 +441,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         // VUID-vkCmdSetDepthCompareOp-depthCompareOp-parameter
         compare_op.validate_device(self.device())?;
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdSetDepthCompareOp-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -472,8 +488,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     fn validate_set_depth_test_enable(&self, _enable: bool) -> Result<(), SetDynamicStateError> {
         self.validate_pipeline_fixed_state(DynamicState::DepthTestEnable)?;
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdSetDepthTestEnable-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -517,8 +535,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     fn validate_set_depth_write_enable(&self, _enable: bool) -> Result<(), SetDynamicStateError> {
         self.validate_pipeline_fixed_state(DynamicState::DepthWriteEnable)?;
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdSetDepthWriteEnable-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -574,8 +594,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ) -> Result<(), SetDynamicStateError> {
         self.validate_pipeline_fixed_state(DynamicState::DiscardRectangle)?;
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdSetDiscardRectangle-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -638,8 +660,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         // VUID-vkCmdSetFrontFace-frontFace-parameter
         face.validate_device(self.device())?;
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdSetFrontFace-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -687,8 +711,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ) -> Result<(), SetDynamicStateError> {
         self.validate_pipeline_fixed_state(DynamicState::LineStipple)?;
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdSetLineStippleEXT-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -731,8 +757,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     fn validate_set_line_width(&self, line_width: f32) -> Result<(), SetDynamicStateError> {
         self.validate_pipeline_fixed_state(DynamicState::LineWidth)?;
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdSetLineWidth-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -776,8 +804,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         // VUID-vkCmdSetLogicOpEXT-logicOp-parameter
         logic_op.validate_device(self.device())?;
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdSetLogicOpEXT-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -826,8 +856,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     fn validate_set_patch_control_points(&self, num: u32) -> Result<(), SetDynamicStateError> {
         self.validate_pipeline_fixed_state(DynamicState::PatchControlPoints)?;
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdSetPatchControlPointsEXT-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -896,8 +928,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ) -> Result<(), SetDynamicStateError> {
         self.validate_pipeline_fixed_state(DynamicState::PrimitiveRestartEnable)?;
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdSetPrimitiveRestartEnable-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -951,8 +985,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         // VUID-vkCmdSetPrimitiveTopology-primitiveTopology-parameter
         topology.validate_device(self.device())?;
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdSetPrimitiveTopology-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -1031,8 +1067,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ) -> Result<(), SetDynamicStateError> {
         self.validate_pipeline_fixed_state(DynamicState::RasterizerDiscardEnable)?;
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdSetRasterizerDiscardEnable-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -1084,8 +1122,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ) -> Result<(), SetDynamicStateError> {
         self.validate_pipeline_fixed_state(DynamicState::Scissor)?;
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdSetScissor-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -1160,8 +1200,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ) -> Result<(), SetDynamicStateError> {
         self.validate_pipeline_fixed_state(DynamicState::ScissorWithCount)?;
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdSetScissorWithCount-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -1232,8 +1274,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         // VUID-vkCmdSetStencilCompareMask-faceMask-parameter
         faces.validate_device(self.device())?;
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdSetStencilCompareMask-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -1294,8 +1338,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         // VUID-vkCmdSetStencilOp-compareOp-parameter
         compare_op.validate_device(self.device())?;
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdSetStencilOp-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -1343,8 +1389,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         // VUID-vkCmdSetStencilReference-faceMask-parameter
         faces.validate_device(self.device())?;
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdSetStencilReference-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -1374,8 +1422,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     fn validate_set_stencil_test_enable(&self, _enable: bool) -> Result<(), SetDynamicStateError> {
         self.validate_pipeline_fixed_state(DynamicState::StencilTestEnable)?;
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdSetStencilTestEnable-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -1423,8 +1473,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         // VUID-vkCmdSetStencilWriteMask-faceMask-parameter
         faces.validate_device(self.device())?;
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdSetStencilWriteMask-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -1463,8 +1515,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ) -> Result<(), SetDynamicStateError> {
         self.validate_pipeline_fixed_state(DynamicState::Viewport)?;
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdSetViewport-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 
@@ -1539,8 +1593,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ) -> Result<(), SetDynamicStateError> {
         self.validate_pipeline_fixed_state(DynamicState::ViewportWithCount)?;
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdSetViewportWithCount-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(SetDynamicStateError::NotSupportedByQueueFamily);
         }
 

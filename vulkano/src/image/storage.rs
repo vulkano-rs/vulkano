@@ -12,7 +12,7 @@ use super::{
     ImageDescriptorLayouts, ImageDimensions, ImageInner, ImageLayout, ImageUsage,
 };
 use crate::{
-    device::{physical::QueueFamily, Device, DeviceOwned, Queue},
+    device::{Device, DeviceOwned, Queue},
     format::Format,
     image::{sys::UnsafeImageCreateInfo, view::ImageView},
     memory::{
@@ -53,15 +53,12 @@ where
 impl StorageImage {
     /// Creates a new image with the given dimensions and format.
     #[inline]
-    pub fn new<'a, I>(
+    pub fn new(
         device: Arc<Device>,
         dimensions: ImageDimensions,
         format: Format,
-        queue_families: I,
-    ) -> Result<Arc<StorageImage>, ImageCreationError>
-    where
-        I: IntoIterator<Item = QueueFamily<'a>>,
-    {
+        queue_family_indices: impl IntoIterator<Item = u32>,
+    ) -> Result<Arc<StorageImage>, ImageCreationError> {
         let aspects = format.aspects();
         let is_depth = aspects.depth || aspects.stencil;
 
@@ -81,25 +78,26 @@ impl StorageImage {
         };
         let flags = ImageCreateFlags::empty();
 
-        StorageImage::with_usage(device, dimensions, format, usage, flags, queue_families)
+        StorageImage::with_usage(
+            device,
+            dimensions,
+            format,
+            usage,
+            flags,
+            queue_family_indices,
+        )
     }
 
     /// Same as `new`, but allows specifying the usage.
-    pub fn with_usage<'a, I>(
+    pub fn with_usage(
         device: Arc<Device>,
         dimensions: ImageDimensions,
         format: Format,
         usage: ImageUsage,
         flags: ImageCreateFlags,
-        queue_families: I,
-    ) -> Result<Arc<StorageImage>, ImageCreationError>
-    where
-        I: IntoIterator<Item = QueueFamily<'a>>,
-    {
-        let queue_families = queue_families
-            .into_iter()
-            .map(|f| f.id())
-            .collect::<SmallVec<[u32; 4]>>();
+        queue_family_indices: impl IntoIterator<Item = u32>,
+    ) -> Result<Arc<StorageImage>, ImageCreationError> {
+        let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
 
         let image = UnsafeImage::new(
             device.clone(),
@@ -107,8 +105,8 @@ impl StorageImage {
                 dimensions,
                 format: Some(format),
                 usage,
-                sharing: if queue_families.len() >= 2 {
-                    Sharing::Concurrent(queue_families.iter().cloned().collect())
+                sharing: if queue_family_indices.len() >= 2 {
+                    Sharing::Concurrent(queue_family_indices)
                 } else {
                     Sharing::Exclusive
                 },
@@ -128,7 +126,7 @@ impl StorageImage {
             MappingRequirement::DoNotMap,
             Some(DedicatedAllocation::Image(&image)),
             |t| {
-                if t.is_device_local() {
+                if t.property_flags.device_local {
                     AllocFromRequirementsFilter::Preferred
                 } else {
                     AllocFromRequirementsFilter::Allowed
@@ -147,21 +145,15 @@ impl StorageImage {
         }))
     }
 
-    pub fn new_with_exportable_fd<'a, I>(
+    pub fn new_with_exportable_fd(
         device: Arc<Device>,
         dimensions: ImageDimensions,
         format: Format,
         usage: ImageUsage,
         flags: ImageCreateFlags,
-        queue_families: I,
-    ) -> Result<Arc<StorageImage>, ImageCreationError>
-    where
-        I: IntoIterator<Item = QueueFamily<'a>>,
-    {
-        let queue_families = queue_families
-            .into_iter()
-            .map(|f| f.id())
-            .collect::<SmallVec<[u32; 4]>>();
+        queue_family_indices: impl IntoIterator<Item = u32>,
+    ) -> Result<Arc<StorageImage>, ImageCreationError> {
+        let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
 
         let image = UnsafeImage::new(
             device.clone(),
@@ -169,8 +161,8 @@ impl StorageImage {
                 dimensions,
                 format: Some(format),
                 usage,
-                sharing: if queue_families.len() >= 2 {
-                    Sharing::Concurrent(queue_families.iter().cloned().collect())
+                sharing: if queue_family_indices.len() >= 2 {
+                    Sharing::Concurrent(queue_family_indices)
                 } else {
                     Sharing::Exclusive
                 },
@@ -194,7 +186,7 @@ impl StorageImage {
             MappingRequirement::DoNotMap,
             DedicatedAllocation::Image(&image),
             |t| {
-                if t.is_device_local() {
+                if t.property_flags.device_local {
                     AllocFromRequirementsFilter::Preferred
                 } else {
                     AllocFromRequirementsFilter::Allowed
@@ -232,7 +224,7 @@ impl StorageImage {
             format,
             usage,
             flags,
-            Some(queue.family()),
+            Some(queue.queue_family_index()),
         );
         match image_result {
             Ok(image) => {
@@ -359,7 +351,7 @@ mod tests {
                 array_layers: 1,
             },
             Format::R8G8B8A8_UNORM,
-            Some(queue.family()),
+            Some(queue.queue_family_index()),
         )
         .unwrap();
     }

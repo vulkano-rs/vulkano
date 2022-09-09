@@ -73,8 +73,7 @@ use vulkano::{
         RenderPassBeginInfo, SubpassContents,
     },
     device::{
-        physical::{PhysicalDevice, PhysicalDeviceType},
-        Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
     },
     format::Format,
     image::{view::ImageView, AttachmentImage, ImageDimensions, SampleCount, StorageImage},
@@ -112,12 +111,15 @@ fn main() {
         khr_swapchain: true,
         ..DeviceExtensions::empty()
     };
-    let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-        .filter(|&p| p.supported_extensions().contains(&device_extensions))
+    let (physical_device, queue_family_index) = instance
+        .enumerate_physical_devices()
+        .unwrap()
+        .filter(|p| p.supported_extensions().contains(&device_extensions))
         .filter_map(|p| {
-            p.queue_families()
-                .find(|&q| q.supports_graphics())
-                .map(|q| (p, q))
+            p.queue_family_properties()
+                .iter()
+                .position(|q| q.queue_flags.graphics)
+                .map(|i| (p, i as u32))
         })
         .min_by_key(|(p, _)| match p.properties().device_type {
             PhysicalDeviceType::DiscreteGpu => 0,
@@ -139,7 +141,10 @@ fn main() {
         physical_device,
         DeviceCreateInfo {
             enabled_extensions: device_extensions,
-            queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+            queue_create_infos: vec![QueueCreateInfo {
+                queue_family_index,
+                ..Default::default()
+            }],
             ..Default::default()
         },
     )
@@ -170,7 +175,7 @@ fn main() {
             array_layers: 1,
         },
         Format::R8G8B8A8_UNORM,
-        Some(queue.family()),
+        Some(queue.queue_family_index()),
     )
     .unwrap();
     let view = ImageView::new_default(image.clone()).unwrap();
@@ -322,7 +327,7 @@ fn main() {
 
     let mut builder = AutoCommandBufferBuilder::primary(
         device,
-        queue.family(),
+        queue.queue_family_index(),
         CommandBufferUsage::OneTimeSubmit,
     )
     .unwrap();

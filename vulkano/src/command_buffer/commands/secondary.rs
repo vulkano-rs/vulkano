@@ -114,10 +114,12 @@ where
         // VUID-vkCmdExecuteCommands-commonparent
         assert_eq!(self.device(), command_buffer.device());
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdExecuteCommands-commandBuffer-cmdpool
-        if !(self.queue_family().explicitly_supports_transfers()
-            || self.queue_family().supports_graphics()
-            || self.queue_family().supports_compute())
+        if !(queue_family_properties.queue_flags.transfer
+            || queue_family_properties.queue_flags.graphics
+            || queue_family_properties.queue_flags.compute)
         {
             return Err(ExecuteCommandsError::NotSupportedByQueueFamily);
         }

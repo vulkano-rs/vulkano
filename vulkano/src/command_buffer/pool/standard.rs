@@ -5,8 +5,8 @@ use super::{
 };
 use crate::{
     command_buffer::CommandBufferLevel,
-    device::{physical::QueueFamily, Device, DeviceOwned},
-    OomError, VulkanObject,
+    device::{Device, DeviceOwned},
+    OomError,
 };
 use crossbeam_queue::SegQueue;
 use std::{marker::PhantomData, mem::ManuallyDrop, ptr, sync::Arc, vec::IntoIter as VecIntoIter};
@@ -45,17 +45,16 @@ impl StandardCommandPool {
     /// - Panics if the device and the queue family don't belong to the same physical device.
     pub fn new(
         device: Arc<Device>,
-        queue_family: QueueFamily,
+        queue_family_index: u32,
     ) -> Result<StandardCommandPool, OomError> {
-        assert_eq!(
-            device.physical_device().internal_object(),
-            queue_family.physical_device().internal_object()
+        assert!(
+            queue_family_index < device.physical_device().queue_family_properties().len() as u32
         );
 
         let inner = UnsafeCommandPool::new(
             device,
             UnsafeCommandPoolCreateInfo {
-                queue_family_index: queue_family.id(),
+                queue_family_index,
                 reset_command_buffer: true,
                 ..Default::default()
             },
@@ -135,8 +134,8 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
     }
 
     #[inline]
-    fn queue_family(&self) -> QueueFamily {
-        self.inner.queue_family()
+    fn queue_family_index(&self) -> u32 {
+        self.inner.queue_family_index()
     }
 }
 
@@ -170,8 +169,8 @@ unsafe impl CommandPoolBuilderAlloc for StandardCommandPoolBuilder {
     }
 
     #[inline]
-    fn queue_family(&self) -> QueueFamily {
-        self.inner.queue_family()
+    fn queue_family_index(&self) -> u32 {
+        self.inner.queue_family_index()
     }
 }
 
@@ -200,8 +199,8 @@ unsafe impl CommandPoolAlloc for StandardCommandPoolAlloc {
     }
 
     #[inline]
-    fn queue_family(&self) -> QueueFamily {
-        self.pool.queue_family()
+    fn queue_family_index(&self) -> u32 {
+        self.pool.queue_family_index()
     }
 }
 
@@ -242,7 +241,7 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
 
         device
-            .with_standard_command_pool(queue.family(), |pool| {
+            .with_standard_command_pool(queue.queue_family_index(), |pool| {
                 let cb = pool
                     .allocate(CommandBufferLevel::Primary, 1)
                     .unwrap()
@@ -269,7 +268,7 @@ mod tests {
             let (device, queue) = (device, queue);
             move || {
                 device
-                    .with_standard_command_pool(queue.family(), |pool| {
+                    .with_standard_command_pool(queue.queue_family_index(), |pool| {
                         pool.allocate(CommandBufferLevel::Primary, 1)
                             .unwrap()
                             .next()

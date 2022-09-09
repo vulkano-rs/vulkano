@@ -339,9 +339,9 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
         }
     });
 
-    let from_cstr_for_extensions_items =
+    let from_str_for_extensions_items =
         members.iter().map(|ExtensionsMember { name, raw, .. }| {
-            let raw = Literal::byte_string(raw.as_bytes());
+            let raw = Literal::string(raw);
             quote! {
                 #raw => { extensions.#name = true; }
             }
@@ -519,12 +519,14 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
             }
         }
 
-        impl<'a, I> From<I> for #struct_name where I: IntoIterator<Item = &'a std::ffi::CStr> {
-            fn from(names: I) -> Self {
+        impl<'a> FromIterator<&'a str> for #struct_name {
+            fn from_iter<I>(iter: I) -> Self
+                where I: IntoIterator<Item = &'a str>
+            {
                 let mut extensions = Self::empty();
-                for name in names {
-                    match name.to_bytes() {
-                        #(#from_cstr_for_extensions_items)*
+                for name in iter {
+                    match name {
+                        #(#from_str_for_extensions_items)*
                         _ => (),
                     }
                 }

@@ -94,16 +94,18 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         // VUID-vkCmdBindDescriptorSets-pipelineBindPoint-parameter
         pipeline_bind_point.validate_device(self.device())?;
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdBindDescriptorSets-commandBuffer-cmdpool
         // VUID-vkCmdBindDescriptorSets-pipelineBindPoint-00361
         match pipeline_bind_point {
             PipelineBindPoint::Compute => {
-                if !self.queue_family().supports_compute() {
+                if !queue_family_properties.queue_flags.compute {
                     return Err(BindPushError::NotSupportedByQueueFamily);
                 }
             }
             PipelineBindPoint::Graphics => {
-                if !self.queue_family().supports_graphics() {
+                if !queue_family_properties.queue_flags.graphics {
                     return Err(BindPushError::NotSupportedByQueueFamily);
                 }
             }
@@ -171,8 +173,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         index_buffer: &dyn BufferAccess,
         index_type: IndexType,
     ) -> Result<(), BindPushError> {
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdBindIndexBuffer-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(BindPushError::NotSupportedByQueueFamily);
         }
 
@@ -221,8 +225,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         &self,
         pipeline: &ComputePipeline,
     ) -> Result<(), BindPushError> {
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdBindPipeline-pipelineBindPoint-00777
-        if !self.queue_family().supports_compute() {
+        if !queue_family_properties.queue_flags.compute {
             return Err(BindPushError::NotSupportedByQueueFamily);
         }
 
@@ -252,8 +258,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         &self,
         pipeline: &GraphicsPipeline,
     ) -> Result<(), BindPushError> {
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdBindPipeline-pipelineBindPoint-00778
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(BindPushError::NotSupportedByQueueFamily);
         }
 
@@ -339,8 +347,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         first_binding: u32,
         vertex_buffers: &[Arc<dyn BufferAccess>],
     ) -> Result<(), BindPushError> {
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdBindVertexBuffers-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(BindPushError::NotSupportedByQueueFamily);
         }
 
@@ -550,16 +560,18 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         // VUID-vkCmdPushDescriptorSetKHR-pipelineBindPoint-parameter
         pipeline_bind_point.validate_device(self.device())?;
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdPushDescriptorSetKHR-commandBuffer-cmdpool
         // VUID-vkCmdPushDescriptorSetKHR-pipelineBindPoint-00363
         match pipeline_bind_point {
             PipelineBindPoint::Compute => {
-                if !self.queue_family().supports_compute() {
+                if !queue_family_properties.queue_flags.compute {
                     return Err(BindPushError::NotSupportedByQueueFamily);
                 }
             }
             PipelineBindPoint::Graphics => {
-                if !self.queue_family().supports_graphics() {
+                if !queue_family_properties.queue_flags.graphics {
                     return Err(BindPushError::NotSupportedByQueueFamily);
                 }
             }

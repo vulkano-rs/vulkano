@@ -21,7 +21,7 @@
 //! - The [`PhysicalDevice`](crate::device::physical::PhysicalDevice) object represents a
 //!   Vulkan-capable device that is available on the system (eg. a graphics card, a software
 //!   implementation, etc.). Physical devices can be enumerated from an instance with
-//!   [`PhysicalDevice::enumerate`](crate::device::physical::PhysicalDevice::enumerate).
+//!   [`Instance::enumerate_physical_devices`](crate::instance::Instance::enumerate_physical_devices).
 //!
 //! - Once you have chosen a physical device to use, you can create a
 //!   [`Device`](crate::device::Device) object from it. The `Device` is the most important

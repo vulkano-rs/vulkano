@@ -136,7 +136,12 @@ impl<'a> SubmitBindSparseBuilder<'a> {
     /// Submits the command. Calls `vkQueueBindSparse`.
     pub fn submit(self, queue: &Queue) -> Result<(), SubmitBindSparseError> {
         unsafe {
-            debug_assert!(queue.family().supports_sparse_binding());
+            debug_assert!(
+                queue.device().physical_device().queue_family_properties()
+                    [queue.queue_family_index() as usize]
+                    .queue_flags
+                    .sparse_binding
+            );
 
             let fns = queue.device().fns();
             let queue = queue.internal_object_guard();

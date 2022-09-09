@@ -19,7 +19,7 @@ use crate::{
         CommandBufferUsage, CopyBufferToImageInfo, ImageBlit, PrimaryAutoCommandBuffer,
         PrimaryCommandBuffer,
     },
-    device::{physical::QueueFamily, Device, DeviceOwned, Queue},
+    device::{Device, DeviceOwned, Queue},
     format::Format,
     image::sys::UnsafeImageCreateInfo,
     memory::{
@@ -101,38 +101,31 @@ fn generate_mipmaps<L>(
 impl ImmutableImage {
     #[deprecated(note = "use ImmutableImage::uninitialized instead")]
     #[inline]
-    pub fn new<'a, I>(
+    pub fn new(
         device: Arc<Device>,
         dimensions: ImageDimensions,
         format: Format,
-        queue_families: I,
-    ) -> Result<Arc<ImmutableImage>, ImmutableImageCreationError>
-    where
-        I: IntoIterator<Item = QueueFamily<'a>>,
-    {
+        queue_family_indices: impl IntoIterator<Item = u32>,
+    ) -> Result<Arc<ImmutableImage>, ImmutableImageCreationError> {
         #[allow(deprecated)]
         ImmutableImage::with_mipmaps(
             device,
             dimensions,
             format,
             MipmapsCount::One,
-            queue_families,
+            queue_family_indices,
         )
     }
 
     #[deprecated(note = "use ImmutableImage::uninitialized instead")]
     #[inline]
-    pub fn with_mipmaps<'a, I, M>(
+    pub fn with_mipmaps(
         device: Arc<Device>,
         dimensions: ImageDimensions,
         format: Format,
-        mip_levels: M,
-        queue_families: I,
-    ) -> Result<Arc<ImmutableImage>, ImmutableImageCreationError>
-    where
-        I: IntoIterator<Item = QueueFamily<'a>>,
-        M: Into<MipmapsCount>,
-    {
+        mip_levels: impl Into<MipmapsCount>,
+        queue_family_indices: impl IntoIterator<Item = u32>,
+    ) -> Result<Arc<ImmutableImage>, ImmutableImageCreationError> {
         let usage = ImageUsage {
             transfer_src: true, // for blits
             transfer_dst: true,
@@ -150,7 +143,7 @@ impl ImmutableImage {
             usage,
             flags,
             ImageLayout::ShaderReadOnlyOptimal,
-            queue_families,
+            queue_family_indices,
         )?;
         Ok(image)
     }
@@ -158,24 +151,18 @@ impl ImmutableImage {
     /// Builds an uninitialized immutable image.
     ///
     /// Returns two things: the image, and a special access that should be used for the initial upload to the image.
-    pub fn uninitialized<'a, I, M>(
+    pub fn uninitialized(
         device: Arc<Device>,
         dimensions: ImageDimensions,
         format: Format,
-        mip_levels: M,
+        mip_levels: impl Into<MipmapsCount>,
         usage: ImageUsage,
         flags: ImageCreateFlags,
         layout: ImageLayout,
-        queue_families: I,
+        queue_family_indices: impl IntoIterator<Item = u32>,
     ) -> Result<(Arc<ImmutableImage>, Arc<ImmutableImageInitialization>), ImmutableImageCreationError>
-    where
-        I: IntoIterator<Item = QueueFamily<'a>>,
-        M: Into<MipmapsCount>,
     {
-        let queue_families = queue_families
-            .into_iter()
-            .map(|f| f.id())
-            .collect::<SmallVec<[u32; 4]>>();
+        let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
 
         let image = UnsafeImage::new(
             device.clone(),
@@ -188,8 +175,8 @@ impl ImmutableImage {
                     MipmapsCount::One => 1,
                 },
                 usage,
-                sharing: if queue_families.len() >= 2 {
-                    Sharing::Concurrent(queue_families.iter().cloned().collect())
+                sharing: if queue_family_indices.len() >= 2 {
+                    Sharing::Concurrent(queue_family_indices)
                 } else {
                     Sharing::Exclusive
                 },
@@ -209,7 +196,7 @@ impl ImmutableImage {
             MappingRequirement::DoNotMap,
             Some(DedicatedAllocation::Image(&image)),
             |t| {
-                if t.is_device_local() {
+                if t.property_flags.device_local {
                     AllocFromRequirementsFilter::Preferred
                 } else {
                     AllocFromRequirementsFilter::Allowed
@@ -299,12 +286,16 @@ impl ImmutableImage {
             usage,
             flags,
             layout,
-            source.device().active_queue_families(),
+            source
+                .device()
+                .active_queue_family_indices()
+                .iter()
+                .copied(),
         )?;
 
         let mut cbb = AutoCommandBufferBuilder::primary(
             source.device().clone(),
-            queue.family(),
+            queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
         )?;
         cbb.copy_buffer_to_image(CopyBufferToImageInfo::buffer_image(source, initializer))

@@ -452,19 +452,28 @@ impl<W> Swapchain<W> {
 
         match image_sharing {
             Sharing::Exclusive => (),
-            Sharing::Concurrent(ids) => {
+            Sharing::Concurrent(queue_family_indices) => {
                 // VUID-VkSwapchainCreateInfoKHR-imageSharingMode-01278
                 // VUID-VkSwapchainCreateInfoKHR-imageSharingMode-01428
-                ids.sort_unstable();
-                ids.dedup();
-                assert!(ids.len() >= 2);
+                queue_family_indices.sort_unstable();
+                queue_family_indices.dedup();
+                assert!(queue_family_indices.len() >= 2);
 
-                for &id in ids.iter() {
+                for &queue_family_index in queue_family_indices.iter() {
                     // VUID-VkSwapchainCreateInfoKHR-imageSharingMode-01428
-                    if device.physical_device().queue_family_by_id(id).is_none() {
-                        return Err(SwapchainCreationError::ImageSharingInvalidQueueFamilyId {
-                            id,
-                        });
+                    if queue_family_index
+                        >= device.physical_device().queue_family_properties().len() as u32
+                    {
+                        return Err(
+                            SwapchainCreationError::ImageSharingQueueFamilyIndexOutOfRange {
+                                queue_family_index,
+                                queue_family_count: device
+                                    .physical_device()
+                                    .queue_family_properties()
+                                    .len()
+                                    as u32,
+                            },
+                        );
                     }
                 }
             }
@@ -1111,8 +1120,11 @@ pub enum SwapchainCreationError {
     ImageFormatPropertiesNotSupported,
 
     /// The provided `image_sharing` was set to `Concurrent`, but one of the specified queue family
-    /// ids was not valid.
-    ImageSharingInvalidQueueFamilyId { id: u32 },
+    /// indices was out of range.
+    ImageSharingQueueFamilyIndexOutOfRange {
+        queue_family_index: u32,
+        queue_family_count: u32,
+    },
 
     /// The provided `image_usage` has fields set that are not supported by the surface for this
     /// device.
@@ -1204,10 +1216,10 @@ impl Display for SwapchainCreationError {
                 f,
                 "the provided image parameters are not supported as queried from `image_format_properties`",
             ),
-            Self::ImageSharingInvalidQueueFamilyId { id } => write!(
+            Self::ImageSharingQueueFamilyIndexOutOfRange { queue_family_index, queue_family_count: _ } => write!(
                 f,
-                "the provided `image_sharing` was set to `Concurrent`, but one of the specified queue family ids ({}) was not valid",
-                id,
+                "the provided `image_sharing` was set to `Concurrent`, but one of the specified queue family indices ({}) was out of range",
+                queue_family_index,
             ),
             Self::ImageUsageNotSupported { .. } => write!(
                 f,
@@ -1266,6 +1278,7 @@ impl From<SurfacePropertiesError> for SwapchainCreationError {
             SurfacePropertiesError::OomError(err) => Self::OomError(err),
             SurfacePropertiesError::SurfaceLost => Self::SurfaceLost,
             SurfacePropertiesError::NotSupported => unreachable!(),
+            SurfacePropertiesError::QueueFamilyIndexOutOfRange { .. } => unreachable!(),
         }
     }
 }

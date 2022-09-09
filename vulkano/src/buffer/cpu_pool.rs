@@ -77,7 +77,7 @@ use std::{
 ///     let sub_buffer = buffer.next(data).unwrap();
 ///
 ///     // You can then use `sub_buffer` as if it was an entirely separate buffer.
-///     AutoCommandBufferBuilder::primary(device.clone(), queue.family(), CommandBufferUsage::OneTimeSubmit)
+///     AutoCommandBufferBuilder::primary(device.clone(), queue.queue_family_index(), CommandBufferUsage::OneTimeSubmit)
 ///         .unwrap()
 ///         // For the sake of the example we just call `update_buffer` on the buffer, even though
 ///         // it is pointless to do that.
