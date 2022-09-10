@@ -1536,6 +1536,8 @@ where
 }
 
 /// Same as `swapchain::present`, except it allows specifying a present id.
+///
+/// The `present_id` parameter must be greater than previous `present_id` used.
 pub fn present_with_id<F, W>(
     swapchain: Arc<Swapchain<W>>,
     before: F,

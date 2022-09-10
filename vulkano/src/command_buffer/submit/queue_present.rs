@@ -173,8 +173,10 @@ impl<'a> SubmitPresentBuilder<'a> {
 
                     // VUID-VkPresentIdKHR-presentIds-04999
                     for (id, prev_id) in self.present_ids.iter().zip(self.prev_present_ids.iter()) {
-                        if prev_id.fetch_max(*id, Ordering::SeqCst) >= *id {
-                            return Err(SubmitPresentError::PresentIdLessThanOrEqual);
+                        if *id != 0 {
+                            if prev_id.fetch_max(*id, Ordering::SeqCst) >= *id {
+                                return Err(SubmitPresentError::PresentIdLessThanOrEqual);
+                            }
                         }
                     }
 
