@@ -922,6 +922,21 @@ impl PhysicalDevice {
         surface: &Surface<W>,
         surface_info: &SurfaceInfo,
     ) -> Result<(), SurfacePropertiesError> {
+        if !(self
+            .instance
+            .enabled_extensions()
+            .khr_get_surface_capabilities2
+            || self.instance.enabled_extensions().khr_surface)
+        {
+            return Err(SurfacePropertiesError::RequirementNotMet {
+                required_for: "`surface_capabilities`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_get_surface_capabilities2", "khr_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
         // VUID-vkGetPhysicalDeviceSurfaceCapabilities2KHR-commonparent
         assert_eq!(self.instance(), surface.instance());
 
@@ -1151,6 +1166,21 @@ impl PhysicalDevice {
         surface: &Surface<W>,
         surface_info: &SurfaceInfo,
     ) -> Result<(), SurfacePropertiesError> {
+        if !(self
+            .instance
+            .enabled_extensions()
+            .khr_get_surface_capabilities2
+            || self.instance.enabled_extensions().khr_surface)
+        {
+            return Err(SurfacePropertiesError::RequirementNotMet {
+                required_for: "`surface_formats`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_get_surface_capabilities2", "khr_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
         // VUID-vkGetPhysicalDeviceSurfaceFormats2KHR-commonparent
         assert_eq!(self.instance(), surface.instance());
 
@@ -1346,6 +1376,16 @@ impl PhysicalDevice {
         &self,
         surface: &Surface<W>,
     ) -> Result<(), SurfacePropertiesError> {
+        if !self.instance.enabled_extensions().khr_surface {
+            return Err(SurfacePropertiesError::RequirementNotMet {
+                required_for: "`surface_present_modes`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
         // VUID-vkGetPhysicalDeviceSurfacePresentModesKHR-commonparent
         assert_eq!(self.instance(), surface.instance());
 
@@ -1419,9 +1459,22 @@ impl PhysicalDevice {
         queue_family_index: u32,
         _surface: &Surface<W>,
     ) -> Result<(), SurfacePropertiesError> {
+        if !self.instance.enabled_extensions().khr_surface {
+            return Err(SurfacePropertiesError::RequirementNotMet {
+                required_for: "`surface_support`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
         // VUID-vkGetPhysicalDeviceSurfaceSupportKHR-queueFamilyIndex-01269
         if queue_family_index >= self.queue_family_properties.len() as u32 {
-            todo!()
+            return Err(SurfacePropertiesError::QueueFamilyIndexOutOfRange {
+                queue_family_index,
+                queue_family_count: self.queue_family_properties.len() as u32,
+            });
         }
 
         Ok(())
@@ -2018,6 +2071,11 @@ pub enum SurfacePropertiesError {
     // The given `SurfaceInfo` values are not supported for the surface by the physical device.
     NotSupported,
 
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
+    },
+
     /// The provided `queue_family_index` was not less than the number of queue families in the
     /// physical device.
     QueueFamilyIndexOutOfRange {
@@ -2052,6 +2110,16 @@ impl Display for SurfacePropertiesError {
                 f,
                 "the given `SurfaceInfo` values are not supported for the surface by the physical device",
             ),
+
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
+            ),
+
             Self::QueueFamilyIndexOutOfRange {
                 queue_family_index,
                 queue_family_count,
