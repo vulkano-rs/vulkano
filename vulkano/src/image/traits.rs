@@ -17,7 +17,7 @@ use crate::{
     SafeDeref,
 };
 use std::{
-    fmt,
+    fmt::{Debug, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     sync::Arc,
 };
@@ -223,8 +223,8 @@ pub struct ImageInner<'a> {
     pub num_mipmap_levels: u32,
 }
 
-impl fmt::Debug for dyn ImageAccess {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Debug for dyn ImageAccess {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         f.debug_struct("dyn ImageAccess")
             .field("inner", &self.inner())
             .finish()

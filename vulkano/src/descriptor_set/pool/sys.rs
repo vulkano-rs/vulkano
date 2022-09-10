@@ -19,7 +19,7 @@ use smallvec::SmallVec;
 use std::{
     collections::HashMap,
     error::Error,
-    fmt,
+    fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     ptr,
@@ -426,11 +426,11 @@ pub enum DescriptorPoolAllocError {
 
 impl Error for DescriptorPoolAllocError {}
 
-impl fmt::Display for DescriptorPoolAllocError {
+impl Display for DescriptorPoolAllocError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         write!(
-            fmt,
+            f,
             "{}",
             match *self {
                 DescriptorPoolAllocError::OutOfHostMemory => "no memory available on the host",

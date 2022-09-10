@@ -16,7 +16,11 @@ use crate::{
     DeviceSize, OomError, SynchronizedVulkanObject, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{error::Error, fmt, marker::PhantomData};
+use std::{
+    error::Error,
+    fmt::{Debug, Display, Error as FmtError, Formatter},
+    marker::PhantomData,
+};
 
 // TODO: correctly implement Debug on all the structs of this module
 
@@ -132,7 +136,12 @@ impl<'a> SubmitBindSparseBuilder<'a> {
     /// Submits the command. Calls `vkQueueBindSparse`.
     pub fn submit(self, queue: &Queue) -> Result<(), SubmitBindSparseError> {
         unsafe {
-            debug_assert!(queue.family().supports_sparse_binding());
+            debug_assert!(
+                queue.device().physical_device().queue_family_properties()
+                    [queue.queue_family_index() as usize]
+                    .queue_flags
+                    .sparse_binding
+            );
 
             let fns = queue.device().fns();
             let queue = queue.internal_object_guard();
@@ -246,10 +255,10 @@ impl<'a> SubmitBindSparseBuilder<'a> {
     }
 }
 
-impl<'a> fmt::Debug for SubmitBindSparseBuilder<'a> {
+impl<'a> Debug for SubmitBindSparseBuilder<'a> {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "<Bind sparse operation>")
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+        write!(f, "<Bind sparse operation>")
     }
 }
 
@@ -480,11 +489,11 @@ impl Error for SubmitBindSparseError {
     }
 }
 
-impl fmt::Display for SubmitBindSparseError {
+impl Display for SubmitBindSparseError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         write!(
-            fmt,
+            f,
             "{}",
             match *self {
                 SubmitBindSparseError::OomError(_) => "not enough memory",

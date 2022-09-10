@@ -21,7 +21,7 @@ use crate::{
     },
     sampler::Filter,
     sync::{AccessFlags, PipelineMemoryAccess, PipelineStages},
-    Version, VulkanObject,
+    RequiresOneOf, Version, VulkanObject,
 };
 use smallvec::{smallvec, SmallVec};
 use std::{
@@ -86,8 +86,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             return Err(CopyError::ForbiddenInsideRenderPass);
         }
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdBlitImage2-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(CopyError::NotSupportedByQueueFamily);
         }
 
@@ -102,13 +104,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         } = blit_image_info;
 
         // VUID-VkBlitImageInfo2-srcImageLayout-parameter
-        src_image_layout.validate(device)?;
+        src_image_layout.validate_device(device)?;
 
         // VUID-VkBlitImageInfo2-dstImageLayout-parameter
-        dst_image_layout.validate(device)?;
+        dst_image_layout.validate_device(device)?;
 
         // VUID-VkBlitImageInfo2-filter-parameter
-        filter.validate(device)?;
+        filter.validate_device(device)?;
 
         let src_image_inner = src_image.inner();
         let dst_image_inner = dst_image.inner();
@@ -328,7 +330,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 }
 
                 // VUID-VkImageSubresourceLayers-aspectMask-parameter
-                subresource.aspects.validate(device)?;
+                subresource.aspects.validate_device(device)?;
 
                 // VUID-VkImageSubresourceLayers-aspectMask-requiredbitmask
                 assert!(!subresource.aspects.is_empty());
@@ -586,8 +588,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             return Err(CopyError::ForbiddenInsideRenderPass);
         }
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdClearColorImage-commandBuffer-cmdpool
-        if !(self.queue_family().supports_graphics() || self.queue_family().supports_compute()) {
+        if !(queue_family_properties.queue_flags.graphics
+            || queue_family_properties.queue_flags.compute)
+        {
             return Err(CopyError::NotSupportedByQueueFamily);
         }
 
@@ -600,7 +606,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         } = clear_info;
 
         // VUID-vkCmdClearColorImage-imageLayout-parameter
-        image_layout.validate(device)?;
+        image_layout.validate_device(device)?;
 
         // VUID-vkCmdClearColorImage-commonparent
         assert_eq!(device, image.device());
@@ -662,7 +668,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
         for (region_index, subresource_range) in regions.iter().enumerate() {
             // VUID-VkImageSubresourceRange-aspectMask-parameter
-            subresource_range.aspects.validate(device)?;
+            subresource_range.aspects.validate_device(device)?;
 
             // VUID-VkImageSubresourceRange-aspectMask-requiredbitmask
             assert!(!subresource_range.aspects.is_empty());
@@ -734,8 +740,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             return Err(CopyError::ForbiddenInsideRenderPass);
         }
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdClearDepthStencilImage-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(CopyError::NotSupportedByQueueFamily);
         }
 
@@ -748,7 +756,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         } = clear_info;
 
         // VUID-vkCmdClearDepthStencilImage-imageLayout-parameter
-        image_layout.validate(device)?;
+        image_layout.validate_device(device)?;
 
         // VUID-vkCmdClearDepthStencilImage-commonparent
         assert_eq!(device, image.device());
@@ -799,15 +807,19 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         if !device.enabled_extensions().ext_depth_range_unrestricted
             && !(0.0..=1.0).contains(&clear_value.depth)
         {
-            return Err(CopyError::ExtensionNotEnabled {
-                extension: "ext_depth_range_unrestricted",
-                reason: "clear_value.depth was not between 0.0 and 1.0 inclusive",
+            return Err(CopyError::RequirementNotMet {
+                required_for:
+                    "`clear_info.clear_value.depth` is not between `0.0` and `1.0` inclusive",
+                requires_one_of: RequiresOneOf {
+                    device_extensions: &["ext_depth_range_unrestricted"],
+                    ..Default::default()
+                },
             });
         }
 
         for (region_index, subresource_range) in regions.iter().enumerate() {
             // VUID-VkImageSubresourceRange-aspectMask-parameter
-            subresource_range.aspects.validate(device)?;
+            subresource_range.aspects.validate_device(device)?;
 
             // VUID-VkImageSubresourceRange-aspectMask-requiredbitmask
             assert!(!subresource_range.aspects.is_empty());
@@ -886,8 +898,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             return Err(CopyError::ForbiddenInsideRenderPass);
         }
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdResolveImage2-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(CopyError::NotSupportedByQueueFamily);
         }
 
@@ -901,10 +915,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         } = resolve_image_info;
 
         // VUID-VkResolveImageInfo2-srcImageLayout-parameter
-        src_image_layout.validate(device)?;
+        src_image_layout.validate_device(device)?;
 
         // VUID-VkResolveImageInfo2-dstImageLayout-parameter
-        dst_image_layout.validate(device)?;
+        dst_image_layout.validate_device(device)?;
 
         // VUID-VkResolveImageInfo2-commonparent
         assert_eq!(device, src_image.device());
@@ -1028,7 +1042,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 }
 
                 // VUID-VkImageSubresourceLayers-aspectMask-parameter
-                subresource.aspects.validate(device)?;
+                subresource.aspects.validate_device(device)?;
 
                 // VUID-VkImageSubresourceLayers-aspectMask-requiredbitmask
                 // VUID-VkImageResolve2-aspectMask-00266

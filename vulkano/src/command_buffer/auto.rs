@@ -21,14 +21,13 @@ use super::{
 use crate::{
     buffer::{sys::UnsafeBuffer, BufferAccess},
     command_buffer::CommandBufferInheritanceRenderingInfo,
-    device::{physical::QueueFamily, Device, DeviceOwned, Queue},
+    device::{physical::QueueFamilyProperties, Device, DeviceOwned, Queue},
     format::Format,
     image::{sys::UnsafeImage, ImageAccess, ImageLayout, ImageSubresourceRange},
-    macros::ExtensionNotEnabled,
     query::{QueryControlFlags, QueryType},
     render_pass::{Framebuffer, Subpass},
     sync::{AccessCheckError, AccessFlags, GpuFuture, PipelineMemoryAccess, PipelineStages},
-    DeviceSize, OomError,
+    DeviceSize, OomError, RequirementNotMet, RequiresOneOf,
 };
 use std::{
     collections::HashMap,
@@ -50,8 +49,8 @@ pub struct AutoCommandBufferBuilder<L, P = StandardCommandPoolBuilder> {
     pub(super) inner: SyncCommandBufferBuilder,
     pool_builder_alloc: P, // Safety: must be dropped after `inner`
 
-    // The queue family that this command buffer is being created for.
-    queue_family_id: u32,
+    // The index of the queue family that this command buffer is being created for.
+    queue_family_index: u32,
 
     // The inheritance for secondary command buffers.
     // Must be `None` in a primary command buffer and `Some` in a secondary command buffer.
@@ -130,7 +129,7 @@ impl AutoCommandBufferBuilder<PrimaryAutoCommandBuffer, StandardCommandPoolBuild
     #[inline]
     pub fn primary(
         device: Arc<Device>,
-        queue_family: QueueFamily,
+        queue_family_index: u32,
         usage: CommandBufferUsage,
     ) -> Result<
         AutoCommandBufferBuilder<PrimaryAutoCommandBuffer, StandardCommandPoolBuilder>,
@@ -139,7 +138,7 @@ impl AutoCommandBufferBuilder<PrimaryAutoCommandBuffer, StandardCommandPoolBuild
         unsafe {
             AutoCommandBufferBuilder::begin(
                 device,
-                queue_family,
+                queue_family_index,
                 CommandBufferLevel::Primary,
                 CommandBufferBeginInfo {
                     usage,
@@ -156,7 +155,7 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
     #[inline]
     pub fn secondary(
         device: Arc<Device>,
-        queue_family: QueueFamily,
+        queue_family_index: u32,
         usage: CommandBufferUsage,
         inheritance_info: CommandBufferInheritanceInfo,
     ) -> Result<
@@ -166,7 +165,7 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
         unsafe {
             AutoCommandBufferBuilder::begin(
                 device,
-                queue_family,
+                queue_family_index,
                 CommandBufferLevel::Secondary,
                 CommandBufferBeginInfo {
                     usage,
@@ -184,12 +183,12 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
     // `begin_info.inheritance_info` must match `level`.
     unsafe fn begin(
         device: Arc<Device>,
-        queue_family: QueueFamily,
+        queue_family_index: u32,
         level: CommandBufferLevel,
         begin_info: CommandBufferBeginInfo,
     ) -> Result<AutoCommandBufferBuilder<L, StandardCommandPoolBuilder>, CommandBufferBeginError>
     {
-        Self::validate_begin(&device, &queue_family, level, &begin_info)?;
+        Self::validate_begin(&device, queue_family_index, level, &begin_info)?;
 
         let &CommandBufferBeginInfo {
             usage,
@@ -253,7 +252,7 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
             }
         }
 
-        device.with_standard_command_pool(queue_family, |pool| {
+        device.with_standard_command_pool(queue_family_index, |pool| {
             let pool_builder_alloc = pool
                 .allocate(level, 1)?
                 .next()
@@ -264,7 +263,7 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
             Ok(AutoCommandBufferBuilder {
                 inner,
                 pool_builder_alloc,
-                queue_family_id: queue_family.id(),
+                queue_family_index,
                 render_pass_state,
                 query_state: HashMap::default(),
                 inheritance_info,
@@ -276,7 +275,7 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
 
     fn validate_begin(
         device: &Device,
-        _queue_family: &QueueFamily,
+        _queue_family_index: u32,
         level: CommandBufferLevel,
         begin_info: &CommandBufferBeginInfo,
     ) -> Result<(), CommandBufferBeginError> {
@@ -341,9 +340,12 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
 
                         // VUID-VkCommandBufferInheritanceRenderingInfo-multiview-06008
                         if view_mask != 0 && !device.enabled_features().multiview {
-                            return Err(CommandBufferBeginError::FeatureNotEnabled {
-                                feature: "multiview",
-                                reason: "view_mask is not 0",
+                            return Err(CommandBufferBeginError::RequirementNotMet {
+                                required_for: "`inheritance_info.render_pass` is `CommandBufferInheritanceRenderPassType::BeginRendering`, where `view_mask` is not `0`",
+                                requires_one_of: RequiresOneOf {
+                                    features: &["multiview"],
+                                    ..Default::default()
+                                },
                             });
                         }
 
@@ -434,36 +436,46 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
 
             if let Some(control_flags) = occlusion_query {
                 // VUID-VkCommandBufferInheritanceInfo-queryFlags-00057
-                control_flags.validate(device)?;
+                control_flags.validate_device(device)?;
 
                 // VUID-VkCommandBufferInheritanceInfo-occlusionQueryEnable-00056
                 // VUID-VkCommandBufferInheritanceInfo-queryFlags-02788
                 if !device.enabled_features().inherited_queries {
-                    return Err(CommandBufferBeginError::FeatureNotEnabled {
-                        feature: "inherited_queries",
-                        reason: "occlusion queries were enabled",
+                    return Err(CommandBufferBeginError::RequirementNotMet {
+                        required_for: "`inheritance_info.occlusion_query` is `Some`",
+                        requires_one_of: RequiresOneOf {
+                            features: &["inherited_queries"],
+                            ..Default::default()
+                        },
                     });
                 }
 
                 // VUID-vkBeginCommandBuffer-commandBuffer-00052
                 if control_flags.precise && !device.enabled_features().occlusion_query_precise {
-                    return Err(CommandBufferBeginError::FeatureNotEnabled {
-                        feature: "occlusion_query_precise",
-                        reason: "occlusion_query.precise was set",
+                    return Err(CommandBufferBeginError::RequirementNotMet {
+                        required_for:
+                            "`inheritance_info.occlusion_query` is `Some(control_flags)`, where `control_flags.precise` is set",
+                        requires_one_of: RequiresOneOf {
+                            features: &["occlusion_query_precise"],
+                            ..Default::default()
+                        },
                     });
                 }
             }
 
             // VUID-VkCommandBufferInheritanceInfo-pipelineStatistics-02789
-            query_statistics_flags.validate(device)?;
+            query_statistics_flags.validate_device(device)?;
 
             // VUID-VkCommandBufferInheritanceInfo-pipelineStatistics-00058
             if query_statistics_flags.count() > 0
                 && !device.enabled_features().pipeline_statistics_query
             {
-                return Err(CommandBufferBeginError::FeatureNotEnabled {
-                    feature: "pipeline_statistics_query",
-                    reason: "one or more statistics flags were enabled",
+                return Err(CommandBufferBeginError::RequirementNotMet {
+                    required_for: "`inheritance_info.query_statistics_flags` is not empty",
+                    requires_one_of: RequiresOneOf {
+                        features: &["pipeline_statistics_query"],
+                        ..Default::default()
+                    },
                 });
             }
         } else {
@@ -483,13 +495,9 @@ pub enum CommandBufferBeginError {
     /// Not enough memory.
     OomError(OomError),
 
-    ExtensionNotEnabled {
-        extension: &'static str,
-        reason: &'static str,
-    },
-    FeatureNotEnabled {
-        feature: &'static str,
-        reason: &'static str,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
     },
 
     /// A color attachment has a format that does not support that usage.
@@ -524,15 +532,17 @@ impl Error for CommandBufferBeginError {
 impl Display for CommandBufferBeginError {
     #[inline]
     fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
-        match *self {
+        match self {
             Self::OomError(_) => write!(f, "not enough memory available"),
 
-            Self::ExtensionNotEnabled { extension, reason } => {
-                write!(f, "the extension {} must be enabled: {}", extension, reason)
-            }
-            Self::FeatureNotEnabled { feature, reason } => {
-                write!(f, "the feature {} must be enabled: {}", feature, reason)
-            }
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
+            ),
 
             Self::ColorAttachmentFormatUsageNotSupported { attachment_index } => write!(
                 f,
@@ -568,12 +578,12 @@ impl From<OomError> for CommandBufferBeginError {
     }
 }
 
-impl From<ExtensionNotEnabled> for CommandBufferBeginError {
+impl From<RequirementNotMet> for CommandBufferBeginError {
     #[inline]
-    fn from(err: ExtensionNotEnabled) -> Self {
-        Self::ExtensionNotEnabled {
-            extension: err.extension,
-            reason: err.reason,
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
         }
     }
 }
@@ -684,11 +694,8 @@ impl From<OomError> for BuildError {
 
 impl<L, P> AutoCommandBufferBuilder<L, P> {
     #[inline]
-    pub(super) fn queue_family(&self) -> QueueFamily {
-        self.device()
-            .physical_device()
-            .queue_family_by_id(self.queue_family_id)
-            .unwrap()
+    pub(super) fn queue_family_properties(&self) -> &QueueFamilyProperties {
+        &self.device().physical_device().queue_family_properties()[self.queue_family_index as usize]
     }
 
     /// Returns the binding/setting state.
@@ -955,27 +962,25 @@ mod tests {
             synced::SyncCommandBufferBuilderError, BufferCopy, CopyBufferInfoTyped, CopyError,
             ExecuteCommandsError,
         },
-        device::{physical::PhysicalDevice, DeviceCreateInfo, QueueCreateInfo},
+        device::{DeviceCreateInfo, QueueCreateInfo},
     };
 
     #[test]
     fn copy_buffer_dimensions() {
         let instance = instance!();
 
-        let phys = match PhysicalDevice::enumerate(&instance).next() {
+        let physical_device = match instance.enumerate_physical_devices().unwrap().next() {
             Some(p) => p,
             None => return,
         };
 
-        let queue_family = match phys.queue_families().next() {
-            Some(q) => q,
-            None => return,
-        };
-
         let (device, mut queues) = Device::new(
-            phys,
+            physical_device,
             DeviceCreateInfo {
-                queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+                queue_create_infos: vec![QueueCreateInfo {
+                    queue_family_index: 0,
+                    ..Default::default()
+                }],
                 ..Default::default()
             },
         )
@@ -1007,7 +1012,7 @@ mod tests {
 
         let mut cbb = AutoCommandBufferBuilder::primary(
             device,
-            queue.family(),
+            queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
@@ -1045,7 +1050,7 @@ mod tests {
         // Make a secondary CB that doesn't support simultaneous use.
         let builder = AutoCommandBufferBuilder::secondary(
             device.clone(),
-            queue.family(),
+            queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
             Default::default(),
         )
@@ -1055,7 +1060,7 @@ mod tests {
         {
             let mut builder = AutoCommandBufferBuilder::primary(
                 device.clone(),
-                queue.family(),
+                queue.queue_family_index(),
                 CommandBufferUsage::SimultaneousUse,
             )
             .unwrap();
@@ -1078,7 +1083,7 @@ mod tests {
         {
             let mut builder = AutoCommandBufferBuilder::primary(
                 device.clone(),
-                queue.family(),
+                queue.queue_family_index(),
                 CommandBufferUsage::SimultaneousUse,
             )
             .unwrap();
@@ -1087,7 +1092,7 @@ mod tests {
 
             let mut builder = AutoCommandBufferBuilder::primary(
                 device,
-                queue.family(),
+                queue.queue_family_index(),
                 CommandBufferUsage::SimultaneousUse,
             )
             .unwrap();
@@ -1128,7 +1133,7 @@ mod tests {
 
         let mut builder = AutoCommandBufferBuilder::primary(
             device,
-            queue.family(),
+            queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
@@ -1178,7 +1183,7 @@ mod tests {
 
         let mut builder = AutoCommandBufferBuilder::primary(
             device,
-            queue.family(),
+            queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();

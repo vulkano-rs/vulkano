@@ -20,10 +20,13 @@ use crate::{
     format::Format,
     image::SampleCount,
     query::{QueryControlFlags, QueryPipelineStatisticFlags, QueryType},
-    SafeDeref, VulkanObject,
+    RequiresOneOf, SafeDeref, VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{error::Error, fmt};
+use std::{
+    error::Error,
+    fmt::{Display, Error as FmtError, Formatter},
+};
 
 /// # Commands to execute a secondary command buffer inside a primary command buffer.
 ///
@@ -111,10 +114,12 @@ where
         // VUID-vkCmdExecuteCommands-commonparent
         assert_eq!(self.device(), command_buffer.device());
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdExecuteCommands-commandBuffer-cmdpool
-        if !(self.queue_family().explicitly_supports_transfers()
-            || self.queue_family().supports_graphics()
-            || self.queue_family().supports_compute())
+        if !(queue_family_properties.queue_flags.transfer
+            || queue_family_properties.queue_flags.graphics
+            || queue_family_properties.queue_flags.compute)
         {
             return Err(ExecuteCommandsError::NotSupportedByQueueFamily);
         }
@@ -317,9 +322,12 @@ where
 
         // VUID-vkCmdExecuteCommands-commandBuffer-00101
         if !self.query_state.is_empty() && !self.device().enabled_features().inherited_queries {
-            return Err(ExecuteCommandsError::FeatureNotEnabled {
-                feature: "inherited_queries",
-                reason: "a query was active when calling execute_commands",
+            return Err(ExecuteCommandsError::RequirementNotMet {
+                required_for: "`execute_commands` when a query is active",
+                requires_one_of: RequiresOneOf {
+                    features: &["inherited_queries"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -557,9 +565,9 @@ impl UnsafeCommandBufferBuilderExecuteCommands {
 pub enum ExecuteCommandsError {
     SyncCommandBufferBuilderError(SyncCommandBufferBuilderError),
 
-    FeatureNotEnabled {
-        feature: &'static str,
-        reason: &'static str,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
     },
 
     /// Operation forbidden inside a render subpass with the specified contents.
@@ -701,15 +709,20 @@ impl Error for ExecuteCommandsError {
     }
 }
 
-impl fmt::Display for ExecuteCommandsError {
+impl Display for ExecuteCommandsError {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match self {
             Self::SyncCommandBufferBuilderError(_) => write!(f, "a SyncCommandBufferBuilderError"),
 
-            Self::FeatureNotEnabled { feature, reason } => {
-                write!(f, "the feature {} must be enabled: {}", feature, reason)
-            }
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
+            ),
 
             Self::ForbiddenWithSubpassContents { contents: subpass_contents } => write!(
                 f,

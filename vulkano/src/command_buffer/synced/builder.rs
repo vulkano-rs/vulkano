@@ -48,7 +48,7 @@ use std::{
     borrow::Cow,
     collections::{hash_map::Entry, HashMap},
     error::Error,
-    fmt,
+    fmt::{Debug, Display, Error as FmtError, Formatter},
     ops::{Range, RangeInclusive},
     sync::Arc,
 };
@@ -58,9 +58,6 @@ use std::{
 /// Each method of the `UnsafeCommandBufferBuilder` has an equivalent in this wrapper, except
 /// for `pipeline_layout` which is automatically handled. This wrapper automatically builds
 /// pipeline barriers, keeps used resources alive and implements the `CommandBuffer` trait.
-///
-/// Since the implementation needs to cache commands in a `Vec`, most methods have additional
-/// `Send + Sync + 'static` trait requirements on their generics.
 ///
 /// If this builder finds out that a command isn't valid because of synchronization reasons (eg.
 /// trying to copy from a buffer to an image which share the same memory), then an error is
@@ -863,10 +860,10 @@ unsafe impl DeviceOwned for SyncCommandBufferBuilder {
     }
 }
 
-impl fmt::Debug for SyncCommandBufferBuilder {
+impl Debug for SyncCommandBufferBuilder {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Debug::fmt(&self.inner, f)
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+        Debug::fmt(&self.inner, f)
     }
 }
 
@@ -886,12 +883,12 @@ pub enum SyncCommandBufferBuilderError {
 
 impl Error for SyncCommandBufferBuilderError {}
 
-impl fmt::Display for SyncCommandBufferBuilderError {
+impl Display for SyncCommandBufferBuilderError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match self {
-            SyncCommandBufferBuilderError::Conflict { .. } => write!(fmt, "unsolvable conflict"),
-            SyncCommandBufferBuilderError::ExecError(err) => err.fmt(fmt),
+            SyncCommandBufferBuilderError::Conflict { .. } => write!(f, "unsolvable conflict"),
+            SyncCommandBufferBuilderError::ExecError(err) => Display::fmt(err, f),
         }
     }
 }

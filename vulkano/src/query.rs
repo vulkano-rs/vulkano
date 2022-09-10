@@ -15,13 +15,13 @@
 
 use crate::{
     device::{Device, DeviceOwned},
-    macros::{vulkan_bitflags, ExtensionNotEnabled},
-    DeviceSize, OomError, VulkanError, VulkanObject,
+    macros::vulkan_bitflags,
+    DeviceSize, OomError, RequirementNotMet, RequiresOneOf, VulkanError, VulkanObject,
 };
 use std::{
     error::Error,
     ffi::c_void,
-    fmt,
+    fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     mem::{size_of_val, MaybeUninit},
     ops::Range,
@@ -255,13 +255,13 @@ impl Error for QueryPoolCreationError {
     }
 }
 
-impl fmt::Display for QueryPoolCreationError {
+impl Display for QueryPoolCreationError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         write!(
-            fmt,
+            f,
             "{}",
-            match *self {
+            match self {
                 QueryPoolCreationError::OomError(_) => "not enough memory available",
                 QueryPoolCreationError::PipelineStatisticsQueryFeatureNotEnabled => {
                     "a pipeline statistics pool was requested but the corresponding feature \
@@ -396,7 +396,7 @@ impl<'a> QueriesRange<'a> {
     {
         // VUID-vkGetQueryPoolResults-flags-parameter
         // VUID-vkCmdCopyQueryPoolResults-flags-parameter
-        flags.validate(&self.pool.device)?;
+        flags.validate_device(&self.pool.device)?;
 
         assert!(buffer_len > 0);
 
@@ -441,9 +441,9 @@ pub enum GetResultsError {
     /// Not enough memory.
     OomError(OomError),
 
-    ExtensionNotEnabled {
-        extension: &'static str,
-        reason: &'static str,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
     },
 
     /// The buffer is too small for the operation.
@@ -468,15 +468,21 @@ impl Error for GetResultsError {
     }
 }
 
-impl fmt::Display for GetResultsError {
+impl Display for GetResultsError {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match self {
             Self::OomError(_) => write!(f, "not enough memory available"),
             Self::DeviceLost => write!(f, "the connection to the device has been lost"),
-            Self::ExtensionNotEnabled { extension, reason } => {
-                write!(f, "the extension {} must be enabled: {}", extension, reason)
-            }
+
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
+            ),
 
             Self::BufferTooSmall { .. } => write!(f, "the buffer is too small for the operation"),
             Self::InvalidFlags => write!(
@@ -507,12 +513,12 @@ impl From<OomError> for GetResultsError {
     }
 }
 
-impl From<ExtensionNotEnabled> for GetResultsError {
+impl From<RequirementNotMet> for GetResultsError {
     #[inline]
-    fn from(err: ExtensionNotEnabled) -> Self {
-        Self::ExtensionNotEnabled {
-            extension: err.extension,
-            reason: err.reason,
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
         }
     }
 }
@@ -626,12 +632,12 @@ vulkan_bitflags! {
     /*
     // TODO: document
     task_shader_invocations = TASK_SHADER_INVOCATIONS_NV {
-        extensions: [nv_mesh_shader],
+        device_extensions: [nv_mesh_shader],
     },
 
     // TODO: document
     mesh_shader_invocations = MESH_SHADER_INVOCATIONS_NV {
-        extensions: [nv_mesh_shader],
+        device_extensions: [nv_mesh_shader],
     },
      */
 }
@@ -730,7 +736,7 @@ vulkan_bitflags! {
     /*
     // TODO: document
     with_status = WITH_STATUS_KHR {
-        extensions: [khr_video_queue],
+        device_extensions: [khr_video_queue],
     },
      */
 }

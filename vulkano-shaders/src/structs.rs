@@ -251,27 +251,30 @@ fn write_impls<'a>(
 ) -> impl Iterator<Item = TokenStream> + 'a {
     let struct_ident = format_ident!("{}", struct_name);
 
-    (types_meta.partial_eq.then(|| {
-        let fields = rust_members
-            .iter()
-            .filter(|Member { is_dummy, .. }| !is_dummy)
-            .map(|Member { name, .. }| {
-                quote! {
-                    if self.#name != other.#name {
-                        return false
+    (types_meta
+        .partial_eq
+        .then(|| {
+            let fields = rust_members
+                .iter()
+                .filter(|Member { is_dummy, .. }| !is_dummy)
+                .map(|Member { name, .. }| {
+                    quote! {
+                        if self.#name != other.#name {
+                            return false
+                        }
+                    }
+                });
+
+            quote! {
+                impl PartialEq for #struct_ident {
+                    fn eq(&self, other: &Self) -> bool {
+                        #( #fields )*
+                        true
                     }
                 }
-            });
-
-        quote! {
-            impl PartialEq for #struct_ident {
-                fn eq(&self, other: &Self) -> bool {
-                    #( #fields )*
-                    true
-                }
             }
-        }
-    }).into_iter())
+        })
+        .into_iter())
     .chain(types_meta.debug.then(|| {
         let fields = rust_members
             .iter()
@@ -283,8 +286,8 @@ fn write_impls<'a>(
 
         quote! {
             impl std::fmt::Debug for #struct_ident {
-                fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-                    formatter
+                fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+                    f
                         .debug_struct(#struct_name)
                         #( #fields )*
                         .finish()
@@ -303,8 +306,8 @@ fn write_impls<'a>(
 
         quote! {
             impl std::fmt::Display for #struct_ident {
-                fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-                    formatter
+                fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+                    f
                         .debug_struct(#struct_name)
                         #( #fields )*
                         .finish()
@@ -323,7 +326,12 @@ fn write_impls<'a>(
             }
         }
     }))
-    .chain(types_meta.impls.iter().map(move |i| quote!{ #i for #struct_ident {} }))
+    .chain(
+        types_meta
+            .impls
+            .iter()
+            .map(move |i| quote! { #i for #struct_ident {} }),
+    )
 }
 
 fn has_defined_layout(spirv: &Spirv, struct_id: Id) -> bool {

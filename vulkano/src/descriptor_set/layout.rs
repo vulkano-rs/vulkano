@@ -13,15 +13,15 @@
 
 use crate::{
     device::{Device, DeviceOwned},
-    macros::{vulkan_enum, ExtensionNotEnabled},
+    macros::vulkan_enum,
     sampler::Sampler,
     shader::{DescriptorRequirements, ShaderStages},
-    OomError, Version, VulkanError, VulkanObject,
+    OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use std::{
     collections::{BTreeMap, HashMap},
     error::Error,
-    fmt,
+    fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     ptr,
@@ -115,9 +115,12 @@ impl DescriptorSetLayout {
 
         if push_descriptor {
             if !device.enabled_extensions().khr_push_descriptor {
-                return Err(DescriptorSetLayoutCreationError::ExtensionNotEnabled {
-                    extension: "khr_push_descriptor",
-                    reason: "description was set to be a push descriptor",
+                return Err(DescriptorSetLayoutCreationError::RequirementNotMet {
+                    required_for: "`create_info.push_descriptor` is set",
+                    requires_one_of: RequiresOneOf {
+                        device_extensions: &["khr_push_descriptor"],
+                        ..Default::default()
+                    },
                 });
             }
         }
@@ -135,11 +138,11 @@ impl DescriptorSetLayout {
             } = binding;
 
             // VUID-VkDescriptorSetLayoutBinding-descriptorType-parameter
-            descriptor_type.validate(device)?;
+            descriptor_type.validate_device(device)?;
 
             if descriptor_count != 0 {
                 // VUID-VkDescriptorSetLayoutBinding-descriptorCount-00283
-                stages.validate(device)?;
+                stages.validate_device(device)?;
 
                 *descriptor_counts.entry(descriptor_type).or_default() += descriptor_count;
             }
@@ -213,9 +216,12 @@ impl DescriptorSetLayout {
                     .enabled_features()
                     .descriptor_binding_variable_descriptor_count
                 {
-                    return Err(DescriptorSetLayoutCreationError::FeatureNotEnabled {
-                        feature: "descriptor_binding_variable_descriptor_count",
-                        reason: "binding has a variable count",
+                    return Err(DescriptorSetLayoutCreationError::RequirementNotMet {
+                        required_for: "`create_info.bindings` has an element where `variable_descriptor_count` is set",
+                        requires_one_of: RequiresOneOf {
+                            features: &["descriptor_binding_variable_descriptor_count"],
+                            ..Default::default()
+                        },
                     });
                 }
 
@@ -465,13 +471,9 @@ pub enum DescriptorSetLayoutCreationError {
     /// Out of Memory.
     OomError(OomError),
 
-    ExtensionNotEnabled {
-        extension: &'static str,
-        reason: &'static str,
-    },
-    FeatureNotEnabled {
-        feature: &'static str,
-        reason: &'static str,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
     },
 
     /// A binding includes immutable samplers but their number differs from  `descriptor_count`.
@@ -514,28 +516,30 @@ impl From<VulkanError> for DescriptorSetLayoutCreationError {
 
 impl Error for DescriptorSetLayoutCreationError {}
 
-impl std::fmt::Display for DescriptorSetLayoutCreationError {
+impl Display for DescriptorSetLayoutCreationError {
     #[inline]
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match *self {
             Self::OomError(_) => {
-                write!(fmt, "out of memory")
+                write!(f, "out of memory")
             }
-            Self::ExtensionNotEnabled { extension, reason } => write!(
-                fmt,
-                "the extension {} must be enabled: {}",
-                extension, reason
+
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
             ),
-            Self::FeatureNotEnabled { feature, reason } => {
-                write!(fmt, "the feature {} must be enabled: {}", feature, reason)
-            }
+
             Self::ImmutableSamplersCountMismatch { binding_num, sampler_count, descriptor_count } => write!(
-                fmt,
+                f,
                 "binding {} includes immutable samplers but their number ({}) differs from  `descriptor_count` ({})",
                 binding_num, sampler_count, descriptor_count,
             ),
             Self::ImmutableSamplersDescriptorTypeIncompatible { binding_num } => write!(
-                fmt,
+                f,
                 "binding {} includes immutable samplers but it has an incompatible `descriptor_type`",
                 binding_num,
             ),
@@ -543,27 +547,27 @@ impl std::fmt::Display for DescriptorSetLayoutCreationError {
                 provided,
                 max_supported,
             } => write!(
-                fmt,
+                f,
                 "more descriptors were provided in all bindings ({}) than the `max_push_descriptors` limit ({})",
                 provided, max_supported,
             ),
             Self::PushDescriptorDescriptorTypeIncompatible { binding_num } => write!(
-                fmt,
+                f,
                 "`push_descriptor` is enabled, but binding {} has an incompatible `descriptor_type`",
                 binding_num,
             ),
             Self::PushDescriptorVariableDescriptorCount { binding_num } => write!(
-                fmt,
+                f,
                 "`push_descriptor` is enabled, but binding {} has `variable_descriptor_count` enabled",
                 binding_num,
             ),
             Self::VariableDescriptorCountBindingNotHighest { binding_num, highest_binding_num } => write!(
-                fmt,
+                f,
                 "binding {} has `variable_descriptor_count` enabled, but it is not the highest-numbered binding ({})",
                 binding_num, highest_binding_num,
             ),
             Self::VariableDescriptorCountDescriptorTypeIncompatible { binding_num } => write!(
-                fmt,
+                f,
                 "binding {} has `variable_descriptor_count` enabled, but it has an incompatible `descriptor_type`",
                 binding_num,
             ),
@@ -571,12 +575,12 @@ impl std::fmt::Display for DescriptorSetLayoutCreationError {
     }
 }
 
-impl From<ExtensionNotEnabled> for DescriptorSetLayoutCreationError {
+impl From<RequirementNotMet> for DescriptorSetLayoutCreationError {
     #[inline]
-    fn from(err: ExtensionNotEnabled) -> Self {
-        Self::ExtensionNotEnabled {
-            extension: err.extension,
-            reason: err.reason,
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
         }
     }
 }
@@ -792,22 +796,22 @@ pub enum DescriptorRequirementsNotMet {
 
 impl Error for DescriptorRequirementsNotMet {}
 
-impl fmt::Display for DescriptorRequirementsNotMet {
+impl Display for DescriptorRequirementsNotMet {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match self {
             Self::DescriptorType { required, obtained } => write!(
-                fmt,
+                f,
                 "the descriptor's type ({:?}) is not one of those required ({:?})",
                 obtained, required
             ),
             Self::DescriptorCount { required, obtained } => write!(
-                fmt,
+                f,
                 "the descriptor count ({}) is less than what is required ({})",
                 obtained, required
             ),
             Self::ShaderStages { .. } => write!(
-                fmt,
+                f,
                 "the descriptor's shader stages do not contain the stages that are required",
             ),
         }
@@ -863,22 +867,22 @@ vulkan_enum! {
     // TODO: document
     InlineUniformBlock = INLINE_UNIFORM_BLOCK {
         api_version: V1_3,
-        extensions: [ext_inline_uniform_block],
+        device_extensions: [ext_inline_uniform_block],
     },
 
     // TODO: document
     AccelerationStructure = ACCELERATION_STRUCTURE_KHR {
-        extensions: [khr_acceleration_structure],
+        device_extensions: [khr_acceleration_structure],
     },
 
     // TODO: document
     AccelerationStructureNV = ACCELERATION_STRUCTURE_NV {
-        extensions: [nv_ray_tracing],
+        device_extensions: [nv_ray_tracing],
     },
 
     // TODO: document
     Mutable = MUTABLE_VALVE {
-        extensions: [valve_mutable_descriptor_type],
+        device_extensions: [valve_mutable_descriptor_type],
     },
      */
 }

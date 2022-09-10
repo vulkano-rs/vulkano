@@ -9,20 +9,15 @@
 
 macro_rules! vulkan_bitflags {
     {
-		$(#[doc = $ty_doc:literal])*
+        $(#[doc = $ty_doc:literal])*
         $ty:ident = $ty_ffi:ident($repr:ty);
 
         $(
             $(#[doc = $flag_doc:literal])*
-            $flag_name:ident = $flag_name_ffi:ident
-            $({
-                $(api_version: $api_version:ident,)?
-                extensions: [$($extension:ident),+ $(,)?],
-            })?
-            ,
+            $flag_name:ident = $flag_name_ffi:ident,
         )+
     } => {
-		$(#[doc = $ty_doc])*
+        $(#[doc = $ty_doc])*
         #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
         pub struct $ty {
             $(
@@ -134,55 +129,29 @@ macro_rules! vulkan_bitflags {
                     )+
                 }
             }
+        }
 
-            #[allow(dead_code)]
-            pub(crate) fn validate(
-                self,
-                #[allow(unused_variables)] device: &crate::device::Device
-            ) -> Result<(), crate::macros::ExtensionNotEnabled> {
+        impl From<$ty> for ash::vk::$ty_ffi {
+            #[inline]
+            fn from(val: $ty) -> Self {
+                let mut result = ash::vk::$ty_ffi::empty();
                 $(
-                    $(
-                        if self.$flag_name && !(
-                            $(
-                                device.api_version() >= crate::Version::$api_version ||
-                            )?
-                            $(
-                                device.enabled_extensions().$extension
-                            )||+
-                        ) {
-                            return Err(crate::macros::ExtensionNotEnabled {
-                                extension: stringify!($($extension)?),
-                                reason: concat!(stringify!($ty), "::", stringify!($flag_name), " was used"),
-                            });
-                        }
-                    )?
+                    if val.$flag_name { result |= ash::vk::$ty_ffi::$flag_name_ffi }
                 )+
-
-                Ok(())
+                result
             }
         }
 
-		impl From<$ty> for ash::vk::$ty_ffi {
-			#[inline]
-			fn from(val: $ty) -> Self {
-				let mut result = ash::vk::$ty_ffi::empty();
-				$(
-					if val.$flag_name { result |= ash::vk::$ty_ffi::$flag_name_ffi }
-				)+
-				result
-			}
-		}
-
         impl From<ash::vk::$ty_ffi> for $ty {
-			#[inline]
-			fn from(val: ash::vk::$ty_ffi) -> Self {
+            #[inline]
+            fn from(val: ash::vk::$ty_ffi) -> Self {
                 Self {
                     $(
                         $flag_name: val.intersects(ash::vk::$ty_ffi::$flag_name_ffi),
                     )+
                 }
-			}
-		}
+            }
+        }
 
         impl Default for $ty {
             #[inline]
@@ -270,7 +239,7 @@ macro_rules! vulkan_bitflags {
     };
 
     {
-		$(#[doc = $ty_doc:literal])*
+        $(#[doc = $ty_doc:literal])*
         #[non_exhaustive]
         $ty:ident = $ty_ffi:ident($repr:ty);
 
@@ -279,12 +248,13 @@ macro_rules! vulkan_bitflags {
             $flag_name:ident = $flag_name_ffi:ident
             $({
                 $(api_version: $api_version:ident,)?
-                extensions: [$($extension:ident),+ $(,)?],
+                $(device_extensions: [$($device_extension:ident),+ $(,)?],)?
+                $(instance_extensions: [$($instance_extension:ident),+ $(,)?],)?
             })?
             ,
         )+
     } => {
-		$(#[doc = $ty_doc])*
+        $(#[doc = $ty_doc])*
         #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
         pub struct $ty {
             $(
@@ -384,23 +354,95 @@ macro_rules! vulkan_bitflags {
             }
 
             #[allow(dead_code)]
-            pub(crate) fn validate(
+            pub(crate) fn validate_device(
                 self,
-                #[allow(unused_variables)] device: &crate::device::Device
-            ) -> Result<(), crate::macros::ExtensionNotEnabled> {
+                #[allow(unused_variables)] device: &crate::device::Device,
+            ) -> Result<(), crate::RequirementNotMet> {
                 $(
                     $(
-                        if self.$flag_name && !(
+                        if self.$flag_name && ![
                             $(
-                                device.api_version() >= crate::Version::$api_version ||
+                                device.api_version() >= crate::Version::$api_version,
                             )?
+                            $($(
+                                device.enabled_extensions().$device_extension,
+                            )+)?
+                            $($(
+                                device.instance().enabled_extensions().$instance_extension,
+                            )+)?
+                        ].into_iter().any(|x| x) {
+                            return Err(crate::RequirementNotMet {
+                                required_for: concat!("`", stringify!($ty), "::", stringify!($flag_name), "`"),
+                                requires_one_of: crate::RequiresOneOf {
+                                    $(api_version: Some(crate::Version::$api_version),)?
+                                    $(device_extensions: &[$(stringify!($device_extension)),+],)?
+                                    $(instance_extensions: &[$(stringify!($instance_extension)),+],)?
+                                    ..Default::default()
+                                },
+                            });
+                        }
+                    )?
+                )+
+
+                Ok(())
+            }
+
+            #[allow(dead_code)]
+            pub(crate) fn validate_physical_device(
+                self,
+                #[allow(unused_variables)] physical_device: &crate::device::physical::PhysicalDevice,
+            ) -> Result<(), crate::RequirementNotMet> {
+                $(
+                    $(
+                        if self.$flag_name && ![
                             $(
-                                device.enabled_extensions().$extension
-                            )||+
-                        ) {
-                            return Err(crate::macros::ExtensionNotEnabled {
-                                extension: stringify!($($extension)?),
-                                reason: concat!(stringify!($ty), "::", stringify!($flag_name), " was used"),
+                                physical_device.api_version() >= crate::Version::$api_version,
+                            )?
+                            $($(
+                                physical_device.supported_extensions().$device_extension,
+                            )+)?
+                            $($(
+                                physical_device.instance().enabled_extensions().$instance_extension,
+                            )+)?
+                        ].into_iter().any(|x| x) {
+                            return Err(crate::RequirementNotMet {
+                                required_for: concat!("`", stringify!($ty), "::", stringify!($flag_name), "`"),
+                                requires_one_of: crate::RequiresOneOf {
+                                    $(api_version: Some(crate::Version::$api_version),)?
+                                    $(device_extensions: &[$(stringify!($device_extension)),+],)?
+                                    $(instance_extensions: &[$(stringify!($instance_extension)),+],)?
+                                    ..Default::default()
+                                },
+                            });
+                        }
+                    )?
+                )+
+
+                Ok(())
+            }
+
+            #[allow(dead_code)]
+            pub(crate) fn validate_instance(
+                self,
+                #[allow(unused_variables)] instance: &crate::instance::Instance,
+            ) -> Result<(), crate::RequirementNotMet> {
+                $(
+                    $(
+                        if self.$flag_name && ![
+                            $(
+                                instance.api_version() >= crate::Version::$api_version,
+                            )?
+                            $($(
+                                instance.enabled_extensions().$instance_extension,
+                            )+)?
+                        ].into_iter().any(|x| x) {
+                            return Err(crate::RequirementNotMet {
+                                required_for: concat!("`", stringify!($ty), "::", stringify!($flag_name), "`"),
+                                requires_one_of: crate::RequiresOneOf {
+                                    $(api_version: Some(crate::Version::$api_version),)?
+                                    $(instance_extensions: &[$(stringify!($instance_extension)),+],)?
+                                    ..Default::default()
+                                },
                             });
                         }
                     )?
@@ -410,28 +452,28 @@ macro_rules! vulkan_bitflags {
             }
         }
 
-		impl From<$ty> for ash::vk::$ty_ffi {
-			#[inline]
-			fn from(val: $ty) -> Self {
-				let mut result = ash::vk::$ty_ffi::empty();
-				$(
-					if val.$flag_name { result |= ash::vk::$ty_ffi::$flag_name_ffi }
-				)+
-				result
-			}
-		}
+        impl From<$ty> for ash::vk::$ty_ffi {
+            #[inline]
+            fn from(val: $ty) -> Self {
+                let mut result = ash::vk::$ty_ffi::empty();
+                $(
+                    if val.$flag_name { result |= ash::vk::$ty_ffi::$flag_name_ffi }
+                )+
+                result
+            }
+        }
 
         impl From<ash::vk::$ty_ffi> for $ty {
-			#[inline]
-			fn from(val: ash::vk::$ty_ffi) -> Self {
+            #[inline]
+            fn from(val: ash::vk::$ty_ffi) -> Self {
                 Self {
                     $(
                         $flag_name: val.intersects(ash::vk::$ty_ffi::$flag_name_ffi),
                     )+
                     _ne: crate::NonExhaustive(()),
                 }
-			}
-		}
+            }
+        }
 
         impl Default for $ty {
             #[inline]
@@ -513,20 +555,15 @@ macro_rules! vulkan_bitflags {
 
 macro_rules! vulkan_enum {
     {
-		$(#[doc = $ty_doc:literal])*
+        $(#[doc = $ty_doc:literal])*
         $ty:ident = $ty_ffi:ident($repr:ty);
 
         $(
             $(#[doc = $flag_doc:literal])*
-            $flag_name:ident = $flag_name_ffi:ident
-            $({
-                $(api_version: $api_version:ident,)?
-                extensions: [$($extension:ident),+ $(,)?],
-            })?
-            ,
+            $flag_name:ident = $flag_name_ffi:ident,
         )+
     } => {
-		$(#[doc = $ty_doc])*
+        $(#[doc = $ty_doc])*
         #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
         #[repr($repr)]
         pub enum $ty {
@@ -536,30 +573,30 @@ macro_rules! vulkan_enum {
             )+
         }
 
-		impl From<$ty> for ash::vk::$ty_ffi {
-			#[inline]
-			fn from(val: $ty) -> Self {
+        impl From<$ty> for ash::vk::$ty_ffi {
+            #[inline]
+            fn from(val: $ty) -> Self {
                 ash::vk::$ty_ffi::from_raw(val as $repr)
-			}
-		}
+            }
+        }
 
         impl TryFrom<ash::vk::$ty_ffi> for $ty {
             type Error = ();
 
-			#[inline]
-			fn try_from(val: ash::vk::$ty_ffi) -> Result<Self, Self::Error> {
+            #[inline]
+            fn try_from(val: ash::vk::$ty_ffi) -> Result<Self, Self::Error> {
                 Ok(match val {
                     $(
                         ash::vk::$ty_ffi::$flag_name_ffi => Self::$flag_name,
                     )+
                     _ => return Err(()),
                 })
-			}
-		}
+            }
+        }
     };
 
     {
-		$(#[doc = $ty_doc:literal])*
+        $(#[doc = $ty_doc:literal])*
         #[non_exhaustive]
         $ty:ident = $ty_ffi:ident($repr:ty);
 
@@ -568,12 +605,13 @@ macro_rules! vulkan_enum {
             $flag_name:ident = $flag_name_ffi:ident
             $({
                 $(api_version: $api_version:ident,)?
-                extensions: [$($extension:ident),+ $(,)?],
+                $(device_extensions: [$($device_extension:ident),+ $(,)?],)?
+                $(instance_extensions: [$($instance_extension:ident),+ $(,)?],)?
             })?
             ,
         )+
     } => {
-		$(#[doc = $ty_doc])*
+        $(#[doc = $ty_doc])*
         #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
         #[non_exhaustive]
         #[repr($repr)]
@@ -586,25 +624,33 @@ macro_rules! vulkan_enum {
 
         impl $ty {
             #[allow(dead_code)]
-            pub(crate) fn validate(
+            pub(crate) fn validate_device(
                 self,
-                #[allow(unused_variables)] device: &crate::device::Device
-            ) -> Result<(), crate::macros::ExtensionNotEnabled> {
+                #[allow(unused_variables)] device: &crate::device::Device,
+            ) -> Result<(), crate::RequirementNotMet> {
                 match self {
                     $(
                         $(
                             Self::$flag_name => {
-                                if !(
+                                if ![
                                     $(
-                                        device.api_version() >= crate::Version::$api_version ||
+                                        device.api_version() >= crate::Version::$api_version,
                                     )?
-                                    $(
-                                        device.enabled_extensions().$extension
-                                    )||+
-                                ) {
-                                    return Err(crate::macros::ExtensionNotEnabled {
-                                        extension: stringify!($($extension)?),
-                                        reason: concat!(stringify!($ty), "::", stringify!($flag_name), " was used"),
+                                    $($(
+                                        device.enabled_extensions().$device_extension,
+                                    )+)?
+                                    $($(
+                                        device.instance().enabled_extensions().$instance_extension,
+                                    )+)?
+                                 ].into_iter().any(|x| x) {
+                                    return Err(crate::RequirementNotMet {
+                                        required_for: concat!("`", stringify!($ty), "::", stringify!($flag_name), "`"),
+                                        requires_one_of: crate::RequiresOneOf {
+                                            $(api_version: Some(crate::Version::$api_version),)?
+                                            $(device_extensions: &[$(stringify!($device_extension)),+],)?
+                                            $(instance_extensions: &[$(stringify!($instance_extension)),+],)?
+                                            ..Default::default()
+                                        },
                                     });
                                 }
                             },
@@ -615,35 +661,103 @@ macro_rules! vulkan_enum {
 
                 Ok(())
             }
-        }
 
-		impl From<$ty> for ash::vk::$ty_ffi {
-			#[inline]
-			fn from(val: $ty) -> Self {
-                ash::vk::$ty_ffi::from_raw(val as $repr)
-			}
-		}
-
-        impl TryFrom<ash::vk::$ty_ffi> for $ty {
-            type Error = ();
-
-			#[inline]
-			fn try_from(val: ash::vk::$ty_ffi) -> Result<Self, Self::Error> {
-                Ok(match val {
+            #[allow(dead_code)]
+            pub(crate) fn validate_physical_device(
+                self,
+                #[allow(unused_variables)] physical_device: &crate::device::physical::PhysicalDevice,
+            ) -> Result<(), crate::RequirementNotMet> {
+                match self {
                     $(
-                        ash::vk::$ty_ffi::$flag_name_ffi => Self::$flag_name,
+                        $(
+                            Self::$flag_name => {
+                                if ![
+                                    $(
+                                        physical_device.api_version() >= crate::Version::$api_version,
+                                    )?
+                                    $($(
+                                        physical_device.supported_extensions().$device_extension,
+                                    )+)?
+                                    $($(
+                                        physical_device.instance().enabled_extensions().$instance_extension,
+                                    )+)?
+                                 ].into_iter().any(|x| x) {
+                                    return Err(crate::RequirementNotMet {
+                                        required_for: concat!("`", stringify!($ty), "::", stringify!($flag_name), "`"),
+                                        requires_one_of: crate::RequiresOneOf {
+                                            $(api_version: Some(crate::Version::$api_version),)?
+                                            $(device_extensions: &[$(stringify!($device_extension)),+],)?
+                                            $(instance_extensions: &[$(stringify!($instance_extension)),+],)?
+                                            ..Default::default()
+                                        },
+                                    });
+                                }
+                            },
+                        )?
                     )+
-                    _ => return Err(()),
-                })
-			}
-		}
+                    _ => (),
+                }
+
+                Ok(())
+            }
+
+            #[allow(dead_code)]
+            pub(crate) fn validate_instance(
+                self,
+                #[allow(unused_variables)] instance: &crate::instance::Instance,
+            ) -> Result<(), crate::RequirementNotMet> {
+                match self {
+                    $(
+                        $(
+                            Self::$flag_name => {
+                                if ![
+                                    $(
+                                        instance.api_version() >= crate::Version::$api_version,
+                                    )?
+                                    $($(
+                                        instance.enabled_extensions().$instance_extension,
+                                    )+)?
+                                 ].into_iter().any(|x| x) {
+                                    return Err(crate::RequirementNotMet {
+                                        required_for: concat!("`", stringify!($ty), "::", stringify!($flag_name), "`"),
+                                        requires_one_of: crate::RequiresOneOf {
+                                            $(api_version: Some(crate::Version::$api_version),)?
+                                            $(instance_extensions: &[$(stringify!($instance_extension)),+],)?
+                                            ..Default::default()
+                                        },
+                                    });
+                                }
+                            },
+                        )?
+                    )+
+                    _ => (),
+                }
+
+            Ok(())
+        }
+    }
+
+    impl From<$ty> for ash::vk::$ty_ffi {
+        #[inline]
+        fn from(val: $ty) -> Self {
+            ash::vk::$ty_ffi::from_raw(val as $repr)
+        }
+    }
+
+    impl TryFrom<ash::vk::$ty_ffi> for $ty {
+        type Error = ();
+
+        #[inline]
+        fn try_from(val: ash::vk::$ty_ffi) -> Result<Self, Self::Error> {
+            Ok(match val {
+                $(
+                    ash::vk::$ty_ffi::$flag_name_ffi => Self::$flag_name,
+                )+
+                _ => return Err(()),
+            })
+        }
+    }
     };
 }
 
 pub(crate) use {vulkan_bitflags, vulkan_enum};
-
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct ExtensionNotEnabled {
-    pub(crate) extension: &'static str,
-    pub(crate) reason: &'static str,
-}

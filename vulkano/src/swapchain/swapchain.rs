@@ -16,26 +16,29 @@ use crate::{
     command_buffer::submit::{
         SubmitAnyBuilder, SubmitPresentBuilder, SubmitPresentError, SubmitSemaphoresWaitBuilder,
     },
-    device::{physical::SurfacePropertiesError, Device, DeviceOwned, Queue},
+    device::{
+        physical::{ImageFormatPropertiesError, SurfacePropertiesError},
+        Device, DeviceOwned, Queue,
+    },
     format::Format,
     image::{
         sys::UnsafeImage, ImageCreateFlags, ImageDimensions, ImageFormatInfo, ImageInner,
         ImageLayout, ImageTiling, ImageType, ImageUsage, SampleCount, SwapchainImage,
     },
-    macros::{vulkan_enum, ExtensionNotEnabled},
+    macros::vulkan_enum,
     swapchain::{SurfaceApi, SurfaceInfo, SurfaceSwapchainLock},
     sync::{
         AccessCheckError, AccessError, AccessFlags, Fence, FlushError, GpuFuture, PipelineStages,
         Semaphore, SemaphoreCreationError, Sharing,
     },
-    DeviceSize, OomError, VulkanError, VulkanObject,
+    DeviceSize, OomError, RequirementNotMet, RequiresOneOf, VulkanError, VulkanObject,
 };
 use parking_lot::Mutex;
 use smallvec::SmallVec;
 use std::num::NonZeroU64;
 use std::{
     error::Error,
-    fmt,
+    fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     ops::Range,
@@ -114,9 +117,12 @@ impl<W> Swapchain<W> {
         );
 
         if !device.enabled_extensions().khr_swapchain {
-            return Err(SwapchainCreationError::ExtensionNotEnabled {
-                extension: "khr_swapchain",
-                reason: "created a new swapchain",
+            return Err(SwapchainCreationError::RequirementNotMet {
+                required_for: "`Swapchain`",
+                requires_one_of: RequiresOneOf {
+                    device_extensions: &["khr_swapchain"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -298,33 +304,37 @@ impl<W> Swapchain<W> {
         } = create_info;
 
         // VUID-VkSwapchainCreateInfoKHR-imageColorSpace-parameter
-        image_color_space.validate(device)?;
+        image_color_space.validate_device(device)?;
 
         // VUID-VkSwapchainCreateInfoKHR-imageUsage-parameter
-        image_usage.validate(device)?;
+        image_usage.validate_device(device)?;
 
         // VUID-VkSwapchainCreateInfoKHR-imageUsage-requiredbitmask
         assert!(!image_usage.is_empty());
 
         // VUID-VkSwapchainCreateInfoKHR-preTransform-parameter
-        pre_transform.validate(device)?;
+        pre_transform.validate_device(device)?;
 
         // VUID-VkSwapchainCreateInfoKHR-compositeAlpha-parameter
-        composite_alpha.validate(device)?;
+        composite_alpha.validate_device(device)?;
 
         // VUID-VkSwapchainCreateInfoKHR-presentMode-parameter
-        present_mode.validate(device)?;
+        present_mode.validate_device(device)?;
 
         if full_screen_exclusive != FullScreenExclusive::Default {
             if !device.enabled_extensions().ext_full_screen_exclusive {
-                return Err(SwapchainCreationError::ExtensionNotEnabled {
-                    extension: "ext_full_screen_exclusive",
-                    reason: "`full_screen_exclusive` was not `FullScreenExclusive::Default`",
+                return Err(SwapchainCreationError::RequirementNotMet {
+                    required_for:
+                        "`create_info.full_screen_exclusive` is not `FullScreenExclusive::Default`",
+                    requires_one_of: RequiresOneOf {
+                        device_extensions: &["ext_full_screen_exclusive"],
+                        ..Default::default()
+                    },
                 });
             }
 
             // VUID-VkSurfaceFullScreenExclusiveInfoEXT-fullScreenExclusive-parameter
-            full_screen_exclusive.validate(device)?;
+            full_screen_exclusive.validate_device(device)?;
         }
 
         if surface.api() == SurfaceApi::Win32
@@ -352,7 +362,7 @@ impl<W> Swapchain<W> {
 
             if let Some(format) = image_format {
                 // VUID-VkSwapchainCreateInfoKHR-imageFormat-parameter
-                // TODO: format.validate(device)?;
+                // TODO: format.validate_device(device)?;
 
                 // VUID-VkSwapchainCreateInfoKHR-imageFormat-01273
                 if !surface_formats
@@ -443,19 +453,28 @@ impl<W> Swapchain<W> {
 
         match image_sharing {
             Sharing::Exclusive => (),
-            Sharing::Concurrent(ids) => {
+            Sharing::Concurrent(queue_family_indices) => {
                 // VUID-VkSwapchainCreateInfoKHR-imageSharingMode-01278
                 // VUID-VkSwapchainCreateInfoKHR-imageSharingMode-01428
-                ids.sort_unstable();
-                ids.dedup();
-                assert!(ids.len() >= 2);
+                queue_family_indices.sort_unstable();
+                queue_family_indices.dedup();
+                assert!(queue_family_indices.len() >= 2);
 
-                for &id in ids.iter() {
+                for &queue_family_index in queue_family_indices.iter() {
                     // VUID-VkSwapchainCreateInfoKHR-imageSharingMode-01428
-                    if device.physical_device().queue_family_by_id(id).is_none() {
-                        return Err(SwapchainCreationError::ImageSharingInvalidQueueFamilyId {
-                            id,
-                        });
+                    if queue_family_index
+                        >= device.physical_device().queue_family_properties().len() as u32
+                    {
+                        return Err(
+                            SwapchainCreationError::ImageSharingQueueFamilyIndexOutOfRange {
+                                queue_family_index,
+                                queue_family_count: device
+                                    .physical_device()
+                                    .queue_family_properties()
+                                    .len()
+                                    as u32,
+                            },
+                        );
                     }
                 }
             }
@@ -1064,9 +1083,9 @@ pub enum SwapchainCreationError {
     /// The window is already in use by another API.
     NativeWindowInUse,
 
-    ExtensionNotEnabled {
-        extension: &'static str,
-        reason: &'static str,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
     },
 
     /// The provided `composite_alpha` is not supported by the surface for this device.
@@ -1102,8 +1121,11 @@ pub enum SwapchainCreationError {
     ImageFormatPropertiesNotSupported,
 
     /// The provided `image_sharing` was set to `Concurrent`, but one of the specified queue family
-    /// ids was not valid.
-    ImageSharingInvalidQueueFamilyId { id: u32 },
+    /// indices was out of range.
+    ImageSharingQueueFamilyIndexOutOfRange {
+        queue_family_index: u32,
+        queue_family_count: u32,
+    },
 
     /// The provided `image_usage` has fields set that are not supported by the surface for this
     /// device.
@@ -1146,80 +1168,83 @@ impl Error for SwapchainCreationError {
     }
 }
 
-impl fmt::Display for SwapchainCreationError {
+impl Display for SwapchainCreationError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match *self {
-            Self::OomError(_) => write!(fmt, "not enough memory available",),
-            Self::DeviceLost => write!(fmt, "the device was lost",),
-            Self::SurfaceLost => write!(fmt, "the surface was lost",),
+            Self::OomError(_) => write!(f, "not enough memory available",),
+            Self::DeviceLost => write!(f, "the device was lost",),
+            Self::SurfaceLost => write!(f, "the surface was lost",),
             Self::SurfaceInUse => {
-                write!(fmt, "the surface is already used by another swapchain",)
+                write!(f, "the surface is already used by another swapchain",)
             }
             Self::NativeWindowInUse => {
-                write!(fmt, "the window is already in use by another API")
+                write!(f, "the window is already in use by another API")
             }
 
-            Self::ExtensionNotEnabled { extension, reason } => write!(
-                fmt,
-                "the extension {} must be enabled: {}",
-                extension, reason
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
             ),
 
             Self::CompositeAlphaNotSupported { .. } => write!(
-                fmt,
+                f,
                 "the provided `composite_alpha` is not supported by the surface for this device",
             ),
             Self::FormatColorSpaceNotSupported => write!(
-                fmt,
+                f,
                 "the provided `format` and `color_space` are not supported by the surface for this device",
             ),
             Self::ImageArrayLayersNotSupported { provided, max_supported } => write!(
-                fmt,
+                f,
                 "the provided `image_array_layers` ({}) is greater than what is supported ({}) by the surface for this device",
                 provided, max_supported,
             ),
             Self::ImageExtentNotSupported { provided, min_supported, max_supported } => write!(
-                fmt,
+                f,
                 "the provided `image_extent` ({:?}) is not within the range (min: {:?}, max: {:?}) supported by the surface for this device",
                 provided, min_supported, max_supported,
             ),
             Self::ImageExtentZeroLengthDimensions => write!(
-                fmt,
+                f,
                 "the provided `image_extent` contained at least one dimension of zero length",
             ),
             Self::ImageFormatPropertiesNotSupported => write!(
-                fmt,
+                f,
                 "the provided image parameters are not supported as queried from `image_format_properties`",
             ),
-            Self::ImageSharingInvalidQueueFamilyId { id } => write!(
-                fmt,
-                "the provided `image_sharing` was set to `Concurrent`, but one of the specified queue family ids ({}) was not valid",
-                id,
+            Self::ImageSharingQueueFamilyIndexOutOfRange { queue_family_index, queue_family_count: _ } => write!(
+                f,
+                "the provided `image_sharing` was set to `Concurrent`, but one of the specified queue family indices ({}) was out of range",
+                queue_family_index,
             ),
             Self::ImageUsageNotSupported { .. } => write!(
-                fmt,
+                f,
                 "the provided `image_usage` has fields set that are not supported by the surface for this device",
             ),
             Self::MinImageCountNotSupported { provided, min_supported, max_supported } => write!(
-                fmt,
+                f,
                 "the provided `min_image_count` ({}) is not within the range (min: {}, max: {:?}) supported by the surface for this device",
                 provided, min_supported, max_supported,
             ),
             Self::PresentModeNotSupported => write!(
-                fmt,
+                f,
                 "the provided `present_mode` is not supported by the surface for this device",
             ),
             Self::PreTransformNotSupported { .. } => write!(
-                fmt,
+                f,
                 "the provided `pre_transform` is not supported by the surface for this device",
             ),
             Self::SwapchainAlreadyRetired => write!(
-                fmt,
+                f,
                 "the swapchain has already been used to create a new one",
             ),
             Self::Win32MonitorInvalid => write!(
-                fmt,
+                f,
                 "the `win32_monitor` value was `Some` when it must be `None` or vice-versa",
             ),
         }
@@ -1254,16 +1279,33 @@ impl From<SurfacePropertiesError> for SwapchainCreationError {
             SurfacePropertiesError::OomError(err) => Self::OomError(err),
             SurfacePropertiesError::SurfaceLost => Self::SurfaceLost,
             SurfacePropertiesError::NotSupported => unreachable!(),
+            SurfacePropertiesError::QueueFamilyIndexOutOfRange { .. } => unreachable!(),
         }
     }
 }
 
-impl From<ExtensionNotEnabled> for SwapchainCreationError {
+impl From<RequirementNotMet> for SwapchainCreationError {
     #[inline]
-    fn from(err: ExtensionNotEnabled) -> Self {
-        Self::ExtensionNotEnabled {
-            extension: err.extension,
-            reason: err.reason,
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
+        }
+    }
+}
+
+impl From<ImageFormatPropertiesError> for SwapchainCreationError {
+    #[inline]
+    fn from(err: ImageFormatPropertiesError) -> Self {
+        match err {
+            ImageFormatPropertiesError::OomError(err) => Self::OomError(err),
+            ImageFormatPropertiesError::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            },
         }
     }
 }
@@ -1346,11 +1388,11 @@ impl Error for FullScreenExclusiveError {
     }
 }
 
-impl fmt::Display for FullScreenExclusiveError {
+impl Display for FullScreenExclusiveError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         write!(
-            fmt,
+            f,
             "{}",
             match *self {
                 FullScreenExclusiveError::OomError(_) => "not enough memory",
@@ -1573,9 +1615,12 @@ pub fn wait_for_present<W>(
 
     // VUID-vkWaitForPresentKHR-presentWait-06234
     if !swapchain.device.enabled_features().present_wait {
-        return Err(PresentWaitError::FeatureNotEnabled {
-            feature: "present_wait",
-            reason: "wait for present",
+        return Err(PresentWaitError::RequirementNotMet {
+            required_for: "`wait_for_present`",
+            requires_one_of: RequiresOneOf {
+                features: &["present_wait"],
+                ..Default::default()
+            },
         });
     }
 
@@ -1594,7 +1639,15 @@ pub fn wait_for_present<W>(
         ash::vk::Result::SUCCESS => Ok(false),
         ash::vk::Result::SUBOPTIMAL_KHR => Ok(true),
         ash::vk::Result::TIMEOUT => return Err(PresentWaitError::Timeout),
-        err => Err(VulkanError::from(err).into()),
+        err => {
+            let err = VulkanError::from(err).into();
+
+            if let PresentWaitError::FullScreenExclusiveModeLost = &err {
+                swapchain.full_screen_exclusive_held.store(false, Ordering::SeqCst);
+            }
+
+            Err(err)
+        }
     }
 }
 
@@ -1766,11 +1819,11 @@ impl Error for AcquireError {
     }
 }
 
-impl fmt::Display for AcquireError {
+impl Display for AcquireError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         write!(
-            fmt,
+            f,
             "{}",
             match *self {
                 AcquireError::OomError(_) => "not enough memory",
@@ -1839,9 +1892,9 @@ pub enum PresentWaitError {
     /// The timeout of the function has been reached before the present occured.
     Timeout,
 
-    FeatureNotEnabled {
-        feature: &'static str,
-        reason: &'static str,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
     },
 }
 
@@ -1855,21 +1908,26 @@ impl Error for PresentWaitError {
     }
 }
 
-impl fmt::Display for PresentWaitError {
+impl Display for PresentWaitError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match *self {
-            Self::OomError(e) => write!(fmt, "{}", e),
-            Self::DeviceLost => write!(fmt, "the connection to the device has been lost"),
-            Self::Timeout => write!(fmt, "no image is available for acquiring yet"),
-            Self::SurfaceLost => write!(fmt, "the surface of this swapchain is no longer valid"),
-            Self::OutOfDate => write!(fmt, "the swapchain needs to be recreated"),
+            Self::OomError(e) => write!(f, "{}", e),
+            Self::DeviceLost => write!(f, "the connection to the device has been lost"),
+            Self::Timeout => write!(f, "no image is available for acquiring yet"),
+            Self::SurfaceLost => write!(f, "the surface of this swapchain is no longer valid"),
+            Self::OutOfDate => write!(f, "the swapchain needs to be recreated"),
             Self::FullScreenExclusiveModeLost => {
-                write!(fmt, "the swapchain no longer has full-screen exclusivity")
+                write!(f, "the swapchain no longer has full-screen exclusivity")
             }
-            Self::FeatureNotEnabled { feature, reason } => {
-                write!(fmt, "the feature {} must be enabled: {}", feature, reason)
-            }
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
+            ),
         }
     }
 }
@@ -1878,6 +1936,16 @@ impl From<OomError> for PresentWaitError {
     #[inline]
     fn from(err: OomError) -> PresentWaitError {
         Self::OomError(err)
+    }
+}
+
+impl From<RequirementNotMet> for PresentWaitError {
+    #[inline]
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
+        }
     }
 }
 

@@ -29,10 +29,16 @@
 #![allow(unused_variables)] // TODO: this module isn't finished
 
 use crate::{
-    device::physical::PhysicalDevice, instance::Instance, swapchain::SupportedSurfaceTransforms,
-    OomError, VulkanError, VulkanObject,
+    device::physical::PhysicalDevice, swapchain::SupportedSurfaceTransforms, OomError, VulkanError,
+    VulkanObject,
 };
-use std::{ffi::CStr, fmt, fmt::Formatter, ptr, sync::Arc, vec::IntoIter};
+use std::{
+    ffi::CStr,
+    fmt::{Display as FmtDisplay, Error as FmtError, Formatter},
+    ptr,
+    sync::Arc,
+    vec::IntoIter,
+};
 
 // TODO: extract this to a `display` module and solve the visibility problems
 
@@ -40,8 +46,7 @@ use std::{ffi::CStr, fmt, fmt::Formatter, ptr, sync::Arc, vec::IntoIter};
 // TODO: plane capabilities
 // TODO: store properties in the instance?
 pub struct DisplayPlane {
-    instance: Arc<Instance>,
-    physical_device: usize,
+    physical_device: Arc<PhysicalDevice>,
     index: u32,
     properties: ash::vk::DisplayPlanePropertiesKHR,
     supported_displays: Vec<ash::vk::DisplayKHR>,
@@ -49,17 +54,19 @@ pub struct DisplayPlane {
 
 impl DisplayPlane {
     /// See the docs of enumerate().
-    pub fn enumerate_raw(device: PhysicalDevice) -> Result<IntoIter<DisplayPlane>, OomError> {
-        let fns = device.instance().fns();
+    pub fn enumerate_raw(
+        physical_device: Arc<PhysicalDevice>,
+    ) -> Result<IntoIter<DisplayPlane>, OomError> {
+        let fns = physical_device.instance().fns();
 
-        assert!(device.instance().enabled_extensions().khr_display); // TODO: return error instead
+        assert!(physical_device.instance().enabled_extensions().khr_display); // TODO: return error instead
 
         let display_plane_properties = unsafe {
             loop {
                 let mut count = 0;
                 (fns.khr_display
                     .get_physical_device_display_plane_properties_khr)(
-                    device.internal_object(),
+                    physical_device.internal_object(),
                     &mut count,
                     ptr::null_mut(),
                 )
@@ -70,7 +77,7 @@ impl DisplayPlane {
                 let result = (fns
                     .khr_display
                     .get_physical_device_display_plane_properties_khr)(
-                    device.internal_object(),
+                    physical_device.internal_object(),
                     &mut count,
                     properties.as_mut_ptr(),
                 );
@@ -94,7 +101,7 @@ impl DisplayPlane {
                     loop {
                         let mut count = 0;
                         (fns.khr_display.get_display_plane_supported_displays_khr)(
-                            device.internal_object(),
+                            physical_device.internal_object(),
                             index as u32,
                             &mut count,
                             ptr::null_mut(),
@@ -105,7 +112,7 @@ impl DisplayPlane {
 
                         let mut displays = Vec::with_capacity(count as usize);
                         let result = (fns.khr_display.get_display_plane_supported_displays_khr)(
-                            device.internal_object(),
+                            physical_device.internal_object(),
                             index as u32,
                             &mut count,
                             displays.as_mut_ptr(),
@@ -123,8 +130,7 @@ impl DisplayPlane {
                 };
 
                 DisplayPlane {
-                    instance: device.instance().clone(),
-                    physical_device: device.index(),
+                    physical_device: physical_device.clone(),
                     index: index as u32,
                     properties: prop,
                     supported_displays,
@@ -142,14 +148,14 @@ impl DisplayPlane {
     ///
     // TODO: move iterator creation here from raw constructor?
     #[inline]
-    pub fn enumerate(device: PhysicalDevice) -> IntoIter<DisplayPlane> {
-        DisplayPlane::enumerate_raw(device).unwrap()
+    pub fn enumerate(physical_device: Arc<PhysicalDevice>) -> IntoIter<DisplayPlane> {
+        DisplayPlane::enumerate_raw(physical_device).unwrap()
     }
 
     /// Returns the physical device that was used to create this display.
     #[inline]
-    pub fn physical_device(&self) -> PhysicalDevice {
-        PhysicalDevice::from_index(&self.instance, self.physical_device).unwrap()
+    pub fn physical_device(&self) -> &Arc<PhysicalDevice> {
+        &self.physical_device
     }
 
     /// Returns the index of the plane.
@@ -176,22 +182,23 @@ impl DisplayPlane {
 // TODO: store properties in the instance?
 #[derive(Clone)]
 pub struct Display {
-    instance: Arc<Instance>,
-    physical_device: usize,
+    physical_device: Arc<PhysicalDevice>,
     properties: Arc<ash::vk::DisplayPropertiesKHR>, // TODO: Arc because struct isn't clone
 }
 
 impl Display {
     /// See the docs of enumerate().
-    pub fn enumerate_raw(device: PhysicalDevice) -> Result<IntoIter<Display>, OomError> {
-        let fns = device.instance().fns();
-        assert!(device.instance().enabled_extensions().khr_display); // TODO: return error instead
+    pub fn enumerate_raw(
+        physical_device: Arc<PhysicalDevice>,
+    ) -> Result<IntoIter<Display>, OomError> {
+        let fns = physical_device.instance().fns();
+        assert!(physical_device.instance().enabled_extensions().khr_display); // TODO: return error instead
 
         let display_properties = unsafe {
             loop {
                 let mut count = 0;
                 (fns.khr_display.get_physical_device_display_properties_khr)(
-                    device.internal_object(),
+                    physical_device.internal_object(),
                     &mut count,
                     ptr::null_mut(),
                 )
@@ -200,7 +207,7 @@ impl Display {
 
                 let mut properties = Vec::with_capacity(count as usize);
                 let result = (fns.khr_display.get_physical_device_display_properties_khr)(
-                    device.internal_object(),
+                    physical_device.internal_object(),
                     &mut count,
                     properties.as_mut_ptr(),
                 );
@@ -219,8 +226,7 @@ impl Display {
         Ok(display_properties
             .into_iter()
             .map(|prop| Display {
-                instance: device.instance().clone(),
-                physical_device: device.index(),
+                physical_device: physical_device.clone(),
                 properties: Arc::new(prop),
             })
             .collect::<Vec<_>>()
@@ -235,8 +241,8 @@ impl Display {
     ///
     // TODO: move iterator creation here from raw constructor?
     #[inline]
-    pub fn enumerate(device: PhysicalDevice) -> IntoIter<Display> {
-        Display::enumerate_raw(device).unwrap()
+    pub fn enumerate(physical_device: Arc<PhysicalDevice>) -> IntoIter<Display> {
+        Display::enumerate_raw(physical_device).unwrap()
     }
 
     /// Returns the name of the display.
@@ -251,8 +257,8 @@ impl Display {
 
     /// Returns the physical device that was used to create this display.
     #[inline]
-    pub fn physical_device(&self) -> PhysicalDevice {
-        PhysicalDevice::from_index(&self.instance, self.physical_device).unwrap()
+    pub fn physical_device(&self) -> &Arc<PhysicalDevice> {
+        &self.physical_device
     }
 
     /// Returns the physical dimensions of the display in millimeters.
@@ -292,7 +298,7 @@ impl Display {
 
     /// See the docs of display_modes().
     pub fn display_modes_raw(&self) -> Result<IntoIter<DisplayMode>, OomError> {
-        let fns = self.instance.fns();
+        let fns = self.physical_device.instance().fns();
 
         let mode_properties = unsafe {
             loop {
@@ -421,9 +427,9 @@ impl DisplayMode {
     }
 }
 
-impl fmt::Display for DisplayMode {
+impl FmtDisplay for DisplayMode {
     #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         let visible_region = self.visible_region();
 
         write!(

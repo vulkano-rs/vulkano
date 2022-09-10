@@ -28,7 +28,12 @@ use crate::{
     DeviceSize, OomError,
 };
 use std::num::NonZeroU64;
-use std::{error::Error, fmt, ops::Range, sync::Arc};
+use std::{
+    error::Error,
+    fmt::{Display, Error as FmtError, Formatter},
+    ops::Range,
+    sync::Arc,
+};
 
 mod fence_signal;
 mod join;
@@ -425,11 +430,11 @@ pub enum AccessError {
 
 impl Error for AccessError {}
 
-impl fmt::Display for AccessError {
+impl Display for AccessError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         write!(
-            fmt,
+            f,
             "{}",
             match *self {
                 AccessError::ExclusiveDenied => "only shared access is allowed for this resource",
@@ -466,11 +471,11 @@ pub enum AccessCheckError {
 
 impl Error for AccessCheckError {}
 
-impl fmt::Display for AccessCheckError {
+impl Display for AccessCheckError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         write!(
-            fmt,
+            f,
             "{}",
             match *self {
                 AccessCheckError::Denied(_) => "access to the resource has been denied",
@@ -525,11 +530,11 @@ impl Error for FlushError {
     }
 }
 
-impl fmt::Display for FlushError {
+impl Display for FlushError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         write!(
-            fmt,
+            f,
             "{}",
             match *self {
                 FlushError::AccessError(_) => "access to a resource has been denied",

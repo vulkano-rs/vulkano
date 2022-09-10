@@ -24,10 +24,7 @@ pub use self::{
     },
 };
 use super::CommandBufferLevel;
-use crate::{
-    device::{physical::QueueFamily, DeviceOwned},
-    OomError,
-};
+use crate::{device::DeviceOwned, OomError};
 
 pub mod standard;
 mod sys;
@@ -70,8 +67,8 @@ pub unsafe trait CommandPool: DeviceOwned {
         command_buffer_count: u32,
     ) -> Result<Self::Iter, OomError>;
 
-    /// Returns the queue family that this pool targets.
-    fn queue_family(&self) -> QueueFamily;
+    /// Returns the index of the queue family that this pool targets.
+    fn queue_family_index(&self) -> u32;
 }
 
 /// A command buffer allocated from a pool and that can be recorded.
@@ -90,8 +87,8 @@ pub unsafe trait CommandPoolBuilderAlloc: DeviceOwned {
     /// Turns this builder into a command buffer that is pending execution.
     fn into_alloc(self) -> Self::Alloc;
 
-    /// Returns the queue family that the pool targets.
-    fn queue_family(&self) -> QueueFamily;
+    /// Returns the index of the queue family that the pool targets.
+    fn queue_family_index(&self) -> u32;
 }
 
 /// A command buffer allocated from a pool that has finished being recorded.
@@ -104,6 +101,6 @@ pub unsafe trait CommandPoolAlloc: DeviceOwned + Send + Sync {
     /// Returns the internal object that contains the command buffer.
     fn inner(&self) -> &UnsafeCommandPoolAlloc;
 
-    /// Returns the queue family that the pool targets.
-    fn queue_family(&self) -> QueueFamily;
+    /// Returns the index of the queue family that the pool targets.
+    fn queue_family_index(&self) -> u32;
 }

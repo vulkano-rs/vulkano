@@ -63,10 +63,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             return Err(CopyError::ForbiddenInsideRenderPass);
         }
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdCopyBuffer2-commandBuffer-cmdpool
-        if !(self.queue_family().explicitly_supports_transfers()
-            || self.queue_family().supports_graphics()
-            || self.queue_family().supports_compute())
+        if !(queue_family_properties.queue_flags.transfer
+            || queue_family_properties.queue_flags.graphics
+            || queue_family_properties.queue_flags.compute)
         {
             return Err(CopyError::NotSupportedByQueueFamily);
         }
@@ -211,10 +213,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             return Err(CopyError::ForbiddenInsideRenderPass);
         }
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdCopyImage2-commandBuffer-cmdpool
-        if !(self.queue_family().explicitly_supports_transfers()
-            || self.queue_family().supports_graphics()
-            || self.queue_family().supports_compute())
+        if !(queue_family_properties.queue_flags.transfer
+            || queue_family_properties.queue_flags.graphics
+            || queue_family_properties.queue_flags.compute)
         {
             return Err(CopyError::NotSupportedByQueueFamily);
         }
@@ -229,10 +233,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         } = copy_image_info;
 
         // VUID-VkCopyImageInfo2-srcImageLayout-parameter
-        src_image_layout.validate(device)?;
+        src_image_layout.validate_device(device)?;
 
         // VUID-VkCopyImageInfo2-dstImageLayout-parameter
-        dst_image_layout.validate(device)?;
+        dst_image_layout.validate_device(device)?;
 
         // VUID-VkCopyImageInfo2-commonparent
         assert_eq!(device, src_image.device());
@@ -319,7 +323,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             });
         }
 
-        let extent_alignment = match self.queue_family().min_image_transfer_granularity() {
+        let extent_alignment = match queue_family_properties.min_image_transfer_granularity {
             [0, 0, 0] => None,
             min_image_transfer_granularity => {
                 let granularity = move |block_extent: [u32; 3], is_multi_plane: bool| {
@@ -404,7 +408,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 }
 
                 // VUID-VkImageSubresourceLayers-aspectMask-parameter
-                subresource.aspects.validate(device)?;
+                subresource.aspects.validate_device(device)?;
 
                 // VUID-VkImageSubresourceLayers-aspectMask-requiredbitmask
                 assert!(!subresource.aspects.is_empty());
@@ -861,10 +865,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             return Err(CopyError::ForbiddenInsideRenderPass);
         }
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdCopyBufferToImage2-commandBuffer-cmdpool
-        if !(self.queue_family().explicitly_supports_transfers()
-            || self.queue_family().supports_graphics()
-            || self.queue_family().supports_compute())
+        if !(queue_family_properties.queue_flags.transfer
+            || queue_family_properties.queue_flags.graphics
+            || queue_family_properties.queue_flags.compute)
         {
             return Err(CopyError::NotSupportedByQueueFamily);
         }
@@ -878,7 +884,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         } = copy_buffer_to_image_info;
 
         // VUID-VkCopyBufferToImageInfo2-dstImageLayout-parameter
-        dst_image_layout.validate(device)?;
+        dst_image_layout.validate_device(device)?;
 
         // VUID-VkCopyBufferToImageInfo2-commonparent
         assert_eq!(device, src_buffer.device());
@@ -888,7 +894,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         let mut image_aspects = dst_image.format().aspects();
 
         // VUID-VkCopyBufferToImageInfo2-commandBuffer-04477
-        if !self.queue_family().supports_graphics() && !image_aspects.color {
+        if !queue_family_properties.queue_flags.graphics && !image_aspects.color {
             return Err(CopyError::DepthStencilNotSupportedByQueueFamily);
         }
 
@@ -941,7 +947,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             });
         }
 
-        let extent_alignment = match self.queue_family().min_image_transfer_granularity() {
+        let extent_alignment = match queue_family_properties.min_image_transfer_granularity {
             [0, 0, 0] => None,
             min_image_transfer_granularity => {
                 let granularity = move |block_extent: [u32; 3], is_multi_plane: bool| {
@@ -1218,8 +1224,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
                 // VUID-VkCopyBufferToImageInfo2-commandBuffer-04052
                 // Make the alignment a multiple of 4.
-                if !(self.queue_family().supports_graphics()
-                    || self.queue_family().supports_compute())
+                if !(queue_family_properties.queue_flags.graphics
+                    || queue_family_properties.queue_flags.compute)
                 {
                     if buffer_offset_alignment % 2 != 0 {
                         buffer_offset_alignment *= 2;
@@ -1290,10 +1296,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             return Err(CopyError::ForbiddenInsideRenderPass);
         }
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdCopyImageToBuffer2-commandBuffer-cmdpool
-        if !(self.queue_family().explicitly_supports_transfers()
-            || self.queue_family().supports_graphics()
-            || self.queue_family().supports_compute())
+        if !(queue_family_properties.queue_flags.transfer
+            || queue_family_properties.queue_flags.graphics
+            || queue_family_properties.queue_flags.compute)
         {
             return Err(CopyError::NotSupportedByQueueFamily);
         }
@@ -1307,7 +1315,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         } = copy_image_to_buffer_info;
 
         // VUID-VkCopyImageToBufferInfo2-srcImageLayout-parameter
-        src_image_layout.validate(device)?;
+        src_image_layout.validate_device(device)?;
 
         // VUID-VkCopyImageToBufferInfo2-commonparent
         assert_eq!(device, dst_buffer.device());
@@ -1365,7 +1373,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             });
         }
 
-        let extent_alignment = match self.queue_family().min_image_transfer_granularity() {
+        let extent_alignment = match queue_family_properties.min_image_transfer_granularity {
             [0, 0, 0] => None,
             min_image_transfer_granularity => {
                 let granularity = move |block_extent: [u32; 3], is_multi_plane: bool| {
@@ -1640,8 +1648,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
                 // VUID-VkCopyImageToBufferInfo2-commandBuffer-04052
                 // Make the alignment a multiple of 4.
-                if !(self.queue_family().supports_graphics()
-                    || self.queue_family().supports_compute())
+                if !(queue_family_properties.queue_flags.graphics
+                    || queue_family_properties.queue_flags.compute)
                 {
                     if buffer_offset_alignment % 2 != 0 {
                         buffer_offset_alignment *= 2;
@@ -1717,17 +1725,20 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             return Err(CopyError::ForbiddenInsideRenderPass);
         }
 
+        let queue_family_properties = self.queue_family_properties();
+
         if device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1 {
             // VUID-vkCmdFillBuffer-commandBuffer-cmdpool
-            if !(self.queue_family().explicitly_supports_transfers()
-                || self.queue_family().supports_graphics()
-                || self.queue_family().supports_compute())
+            if !(queue_family_properties.queue_flags.transfer
+                || queue_family_properties.queue_flags.graphics
+                || queue_family_properties.queue_flags.compute)
             {
                 return Err(CopyError::NotSupportedByQueueFamily);
             }
         } else {
             // VUID-vkCmdFillBuffer-commandBuffer-00030
-            if !(self.queue_family().supports_graphics() || self.queue_family().supports_compute())
+            if !(queue_family_properties.queue_flags.graphics
+                || queue_family_properties.queue_flags.compute)
             {
                 return Err(CopyError::NotSupportedByQueueFamily);
             }
@@ -1833,10 +1844,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             return Err(CopyError::ForbiddenInsideRenderPass);
         }
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdUpdateBuffer-commandBuffer-cmdpool
-        if !(self.queue_family().explicitly_supports_transfers()
-            || self.queue_family().supports_graphics()
-            || self.queue_family().supports_compute())
+        if !(queue_family_properties.queue_flags.transfer
+            || queue_family_properties.queue_flags.graphics
+            || queue_family_properties.queue_flags.compute)
         {
             return Err(CopyError::NotSupportedByQueueFamily);
         }

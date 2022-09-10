@@ -18,7 +18,10 @@ use crate::{
     VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{fmt, ptr};
+use std::{
+    fmt::{Debug, Error as FmtError, Formatter},
+    ptr,
+};
 
 /// Low-level descriptor set.
 ///
@@ -114,8 +117,8 @@ unsafe impl VulkanObject for UnsafeDescriptorSet {
     }
 }
 
-impl fmt::Debug for UnsafeDescriptorSet {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "<Vulkan descriptor set {:?}>", self.handle)
+impl Debug for UnsafeDescriptorSet {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+        write!(f, "<Vulkan descriptor set {:?}>", self.handle)
     }
 }

@@ -46,58 +46,58 @@ vulkan_bitflags! {
     /// The buffer's device address can be retrieved.
     shader_device_address = SHADER_DEVICE_ADDRESS {
         api_version: V1_2,
-        extensions: [khr_buffer_device_address, ext_buffer_device_address],
+        device_extensions: [khr_buffer_device_address, ext_buffer_device_address],
     },
 
     /*
     // TODO: document
     video_decode_src = VIDEO_DECODE_SRC_KHR {
-        extensions: [khr_video_decode_queue],
+        device_extensions: [khr_video_decode_queue],
     },
 
     // TODO: document
     video_decode_dst = VIDEO_DECODE_DST_KHR {
-        extensions: [khr_video_decode_queue],
+        device_extensions: [khr_video_decode_queue],
     },
 
     // TODO: document
     transform_feedback_buffer = TRANSFORM_FEEDBACK_BUFFER_EXT {
-        extensions: [ext_transform_feedback],
+        device_extensions: [ext_transform_feedback],
     },
 
     // TODO: document
     transform_feedback_counter_buffer = TRANSFORM_FEEDBACK_COUNTER_BUFFER_EXT {
-        extensions: [ext_transform_feedback],
+        device_extensions: [ext_transform_feedback],
     },
 
     // TODO: document
     conditional_rendering = CONDITIONAL_RENDERING_EXT {
-        extensions: [ext_conditional_rendering],
+        device_extensions: [ext_conditional_rendering],
     },
 
     // TODO: document
     acceleration_structure_build_input_read_only = ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR {
-        extensions: [khr_acceleration_structure],
+        device_extensions: [khr_acceleration_structure],
     },
 
     // TODO: document
     acceleration_structure_storage = ACCELERATION_STRUCTURE_STORAGE_KHR {
-        extensions: [khr_acceleration_structure],
+        device_extensions: [khr_acceleration_structure],
     },
 
     // TODO: document
     shader_binding_table = SHADER_BINDING_TABLE_KHR {
-        extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
+        device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
     },
 
     // TODO: document
     video_encode_dst = VIDEO_ENCODE_DST_KHR {
-        extensions: [khr_video_encode_queue],
+        device_extensions: [khr_video_encode_queue],
     },
 
     // TODO: document
     video_encode_src = VIDEO_ENCODE_SRC_KHR {
-        extensions: [khr_video_encode_queue],
+        device_extensions: [khr_video_encode_queue],
     },
      */
 }

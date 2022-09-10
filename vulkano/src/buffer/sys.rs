@@ -30,18 +30,18 @@ use super::{
 };
 use crate::{
     device::{Device, DeviceOwned},
-    macros::{vulkan_bitflags, ExtensionNotEnabled},
+    macros::vulkan_bitflags,
     memory::{DeviceMemory, DeviceMemoryAllocationError, MemoryRequirements},
     range_map::RangeMap,
     sync::{AccessError, CurrentAccess, Sharing},
-    DeviceSize, OomError, Version, VulkanError, VulkanObject,
+    DeviceSize, OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use ash::vk::Handle;
 use parking_lot::{Mutex, MutexGuard};
 use smallvec::SmallVec;
 use std::{
     error::Error,
-    fmt,
+    fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     ops::Range,
@@ -86,7 +86,7 @@ impl UnsafeBuffer {
         assert!(size != 0);
 
         // VUID-VkBufferCreateInfo-usage-parameter
-        usage.validate(&device)?;
+        usage.validate_device(&device)?;
 
         // VUID-VkBufferCreateInfo-usage-requiredbitmask
         assert!(!usage.is_empty());
@@ -97,25 +97,34 @@ impl UnsafeBuffer {
         if let Some(sparse_level) = sparse {
             // VUID-VkBufferCreateInfo-flags-00915
             if !device.enabled_features().sparse_binding {
-                return Err(BufferCreationError::FeatureNotEnabled {
-                    feature: "sparse_binding",
-                    reason: "sparse was `Some`",
+                return Err(BufferCreationError::RequirementNotMet {
+                    required_for: "`create_info.sparse` is `Some`",
+                    requires_one_of: RequiresOneOf {
+                        features: &["sparse_binding"],
+                        ..Default::default()
+                    },
                 });
             }
 
             // VUID-VkBufferCreateInfo-flags-00916
             if sparse_level.sparse_residency && !device.enabled_features().sparse_residency_buffer {
-                return Err(BufferCreationError::FeatureNotEnabled {
-                    feature: "sparse_residency_buffer",
-                    reason: "sparse was `Some` and `sparse_residency` was set",
+                return Err(BufferCreationError::RequirementNotMet {
+                    required_for: "`create_info.sparse` is `Some(sparse_level)`, where `sparse_level.sparse_residency` is set",
+                    requires_one_of: RequiresOneOf {
+                        features: &["sparse_residency_buffer"],
+                        ..Default::default()
+                    },
                 });
             }
 
             // VUID-VkBufferCreateInfo-flags-00917
             if sparse_level.sparse_aliased && !device.enabled_features().sparse_residency_aliased {
-                return Err(BufferCreationError::FeatureNotEnabled {
-                    feature: "sparse_residency_aliased",
-                    reason: "sparse was `Some` and `sparse_aliased` was set",
+                return Err(BufferCreationError::RequirementNotMet {
+                    required_for: "`create_info.sparse` is `Some(sparse_level)`, where `sparse_level.sparse_aliased` is set",
+                    requires_one_of: RequiresOneOf {
+                        features: &["sparse_residency_aliased"],
+                        ..Default::default()
+                    },
                 });
             }
 
@@ -126,20 +135,31 @@ impl UnsafeBuffer {
         // Check sharing mode and queue families
         let (sharing_mode, queue_family_indices) = match &mut sharing {
             Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, &[] as _),
-            Sharing::Concurrent(ids) => {
+            Sharing::Concurrent(queue_family_indices) => {
                 // VUID-VkBufferCreateInfo-sharingMode-00914
-                ids.sort_unstable();
-                ids.dedup();
-                assert!(ids.len() >= 2);
+                queue_family_indices.sort_unstable();
+                queue_family_indices.dedup();
+                assert!(queue_family_indices.len() >= 2);
 
-                for &id in ids.iter() {
+                for &queue_family_index in queue_family_indices.iter() {
                     // VUID-VkBufferCreateInfo-sharingMode-01419
-                    if device.physical_device().queue_family_by_id(id).is_none() {
-                        return Err(BufferCreationError::SharingInvalidQueueFamilyId { id });
+                    if queue_family_index
+                        >= device.physical_device().queue_family_properties().len() as u32
+                    {
+                        return Err(BufferCreationError::SharingQueueFamilyIndexOutOfRange {
+                            queue_family_index,
+                            queue_family_count: device
+                                .physical_device()
+                                .queue_family_properties()
+                                .len() as u32,
+                        });
                     }
                 }
 
-                (ash::vk::SharingMode::CONCURRENT, ids.as_slice())
+                (
+                    ash::vk::SharingMode::CONCURRENT,
+                    queue_family_indices.as_slice(),
+                )
             }
         };
 
@@ -323,7 +343,7 @@ impl UnsafeBuffer {
             let mem_reqs = mem_reqs.assume_init();
             mem_reqs.size <= (memory.allocation_size() - offset)
                 && (offset % mem_reqs.alignment) == 0
-                && mem_reqs.memory_type_bits & (1 << memory.memory_type().id()) != 0
+                && mem_reqs.memory_type_bits & (1 << memory.memory_type_index()) != 0
         });
 
         // Check for alignment correctness.
@@ -462,21 +482,20 @@ pub enum BufferCreationError {
     /// Allocating memory failed.
     AllocError(DeviceMemoryAllocationError),
 
-    ExtensionNotEnabled {
-        extension: &'static str,
-        reason: &'static str,
-    },
-    FeatureNotEnabled {
-        feature: &'static str,
-        reason: &'static str,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
     },
 
     /// The specified size exceeded the value of the `max_buffer_size` limit.
     MaxBufferSizeExceeded { size: DeviceSize, max: DeviceSize },
 
-    /// The sharing mode was set to `Concurrent`, but one of the specified queue family ids was not
-    /// valid.
-    SharingInvalidQueueFamilyId { id: u32 },
+    /// The sharing mode was set to `Concurrent`, but one of the specified queue family indices was
+    /// out of range.
+    SharingQueueFamilyIndexOutOfRange {
+        queue_family_index: u32,
+        queue_family_count: u32,
+    },
 }
 
 impl Error for BufferCreationError {
@@ -489,25 +508,25 @@ impl Error for BufferCreationError {
     }
 }
 
-impl fmt::Display for BufferCreationError {
+impl Display for BufferCreationError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match *self {
-            Self::AllocError(_) => write!(fmt, "allocating memory failed"),
-            Self::ExtensionNotEnabled { extension, reason } => write!(
-                fmt,
-                "the extension {} must be enabled: {}",
-                extension, reason
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+        match self {
+            Self::AllocError(_) => write!(f, "allocating memory failed"),
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
             ),
-            Self::FeatureNotEnabled { feature, reason } => {
-                write!(fmt, "the feature {} must be enabled: {}", feature, reason)
-            }
             Self::MaxBufferSizeExceeded { .. } => write!(
-                fmt,
+                f,
                 "the specified size exceeded the value of the `max_buffer_size` limit"
             ),
-            Self::SharingInvalidQueueFamilyId { .. } => {
-                write!(fmt, "the sharing mode was set to `Concurrent`, but one of the specified queue family ids was not valid")
+            Self::SharingQueueFamilyIndexOutOfRange { .. } => {
+                write!(f, "the sharing mode was set to `Concurrent`, but one of the specified queue family indices was out of range")
             }
         }
     }
@@ -535,12 +554,12 @@ impl From<VulkanError> for BufferCreationError {
     }
 }
 
-impl From<ExtensionNotEnabled> for BufferCreationError {
+impl From<RequirementNotMet> for BufferCreationError {
     #[inline]
-    fn from(err: ExtensionNotEnabled) -> Self {
-        Self::ExtensionNotEnabled {
-            extension: err.extension,
-            reason: err.reason,
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
         }
     }
 }
@@ -771,7 +790,10 @@ mod tests {
     use super::{
         BufferCreationError, BufferUsage, SparseLevel, UnsafeBuffer, UnsafeBufferCreateInfo,
     };
-    use crate::device::{Device, DeviceOwned};
+    use crate::{
+        device::{Device, DeviceOwned},
+        RequiresOneOf,
+    };
 
     #[test]
     fn create() {
@@ -810,10 +832,10 @@ mod tests {
                 ..Default::default()
             },
         ) {
-            Err(BufferCreationError::FeatureNotEnabled {
-                feature: "sparse_binding",
+            Err(BufferCreationError::RequirementNotMet {
+                requires_one_of: RequiresOneOf { features, .. },
                 ..
-            }) => (),
+            }) if features.contains(&"sparse_binding") => (),
             _ => panic!(),
         }
     }
@@ -837,10 +859,10 @@ mod tests {
                 ..Default::default()
             },
         ) {
-            Err(BufferCreationError::FeatureNotEnabled {
-                feature: "sparse_residency_buffer",
+            Err(BufferCreationError::RequirementNotMet {
+                requires_one_of: RequiresOneOf { features, .. },
                 ..
-            }) => (),
+            }) if features.contains(&"sparse_residency_buffer") => (),
             _ => panic!(),
         }
     }
@@ -864,10 +886,10 @@ mod tests {
                 ..Default::default()
             },
         ) {
-            Err(BufferCreationError::FeatureNotEnabled {
-                feature: "sparse_residency_aliased",
+            Err(BufferCreationError::RequirementNotMet {
+                requires_one_of: RequiresOneOf { features, .. },
                 ..
-            }) => (),
+            }) if features.contains(&"sparse_residency_aliased") => (),
             _ => panic!(),
         }
     }

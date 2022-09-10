@@ -34,9 +34,17 @@ use crate::{
     sampler::{Sampler, SamplerImageViewIncompatibleError},
     shader::{DescriptorRequirements, ShaderScalarType, ShaderStage},
     sync::{AccessFlags, PipelineMemoryAccess, PipelineStages},
-    DeviceSize, VulkanObject,
+    DeviceSize, RequiresOneOf, VulkanObject,
 };
-use std::{borrow::Cow, cmp::min, error::Error, fmt, mem::size_of, ops::Range, sync::Arc};
+use std::{
+    borrow::Cow,
+    cmp::min,
+    error::Error,
+    fmt::{Display, Error as FmtError, Formatter},
+    mem::size_of,
+    ops::Range,
+    sync::Arc,
+};
 
 /// # Commands to execute a bound pipeline.
 ///
@@ -62,8 +70,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     fn validate_dispatch(&self, group_counts: [u32; 3]) -> Result<(), PipelineExecutionError> {
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdDispatch-commandBuffer-cmdpool
-        if !self.queue_family().supports_compute() {
+        if !queue_family_properties.queue_flags.compute {
             return Err(PipelineExecutionError::NotSupportedByQueueFamily);
         }
 
@@ -127,8 +137,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         &self,
         indirect_buffer: &dyn BufferAccess,
     ) -> Result<(), PipelineExecutionError> {
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdDispatchIndirect-commandBuffer-cmdpool
-        if !self.queue_family().supports_compute() {
+        if !queue_family_properties.queue_flags.compute {
             return Err(PipelineExecutionError::NotSupportedByQueueFamily);
         }
 
@@ -286,9 +298,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
         // VUID-vkCmdDrawIndirect-drawCount-02718
         if draw_count > 1 && !self.device().enabled_features().multi_draw_indirect {
-            return Err(PipelineExecutionError::FeatureNotEnabled {
-                feature: "multi_draw_indirect",
-                reason: "draw_count was greater than 1",
+            return Err(PipelineExecutionError::RequirementNotMet {
+                required_for: "`draw_count` is greater than `1`",
+                requires_one_of: RequiresOneOf {
+                    features: &["multi_draw_indirect"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -475,9 +490,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
         // VUID-vkCmdDrawIndexedIndirect-drawCount-02718
         if draw_count > 1 && !self.device().enabled_features().multi_draw_indirect {
-            return Err(PipelineExecutionError::FeatureNotEnabled {
-                feature: "multi_draw_indirect",
-                reason: "draw_count was greater than 1",
+            return Err(PipelineExecutionError::RequirementNotMet {
+                required_for: "`draw_count` is greater than `1`",
+                requires_one_of: RequiresOneOf {
+                    features: &["multi_draw_indirect"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -1093,9 +1111,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                             | PrimitiveTopology::TriangleListWithAdjacency => {
                                 // VUID?
                                 if !device.enabled_features().primitive_topology_list_restart {
-                                    return Err(PipelineExecutionError::FeatureNotEnabled {
-                                        feature: "primitive_topology_list_restart",
-                                        reason: "the PrimitiveRestartEnable dynamic state was true in combination with a List PrimitiveTopology",
+                                    return Err(PipelineExecutionError::RequirementNotMet {
+                                        required_for: "The bound pipeline sets `DynamicState::PrimitiveRestartEnable` and the current primitive topology is `PrimitiveTopology::*List`",
+                                        requires_one_of: RequiresOneOf {
+                                            features: &["primitive_topology_list_restart"],
+                                            ..Default::default()
+                                        },
                                     });
                                 }
                             }
@@ -1105,9 +1126,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                                     .enabled_features()
                                     .primitive_topology_patch_list_restart
                                 {
-                                    return Err(PipelineExecutionError::FeatureNotEnabled {
-                                        feature: "primitive_topology_patch_list_restart",
-                                        reason: "the PrimitiveRestartEnable dynamic state was true in combination with PrimitiveTopology::PatchList",
+                                    return Err(PipelineExecutionError::RequirementNotMet {
+                                        required_for: "The bound pipeline sets `DynamicState::PrimitiveRestartEnable` and the current primitive topology is `PrimitiveTopology::PatchList`",
+                                        requires_one_of: RequiresOneOf {
+                                            features: &["primitive_topology_patch_list_restart"],
+                                            ..Default::default()
+                                        },
                                     });
                                 }
                             }
@@ -2241,9 +2265,9 @@ impl UnsafeCommandBufferBuilder {
 pub enum PipelineExecutionError {
     SyncCommandBufferBuilderError(SyncCommandBufferBuilderError),
 
-    FeatureNotEnabled {
-        feature: &'static str,
-        reason: &'static str,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
     },
 
     /// The resource bound to a descriptor set binding at a particular index is not compatible
@@ -2430,15 +2454,20 @@ impl Error for PipelineExecutionError {
     }
 }
 
-impl fmt::Display for PipelineExecutionError {
+impl Display for PipelineExecutionError {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match self {
             Self::SyncCommandBufferBuilderError(_) => write!(f, "a SyncCommandBufferBuilderError"),
 
-            Self::FeatureNotEnabled { feature, reason } => {
-                write!(f, "the feature {} must be enabled: {}", feature, reason)
-            }
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
+            ),
 
             Self::DescriptorResourceInvalid { set_num, binding_num, index, .. } => write!(
                 f,
@@ -2689,9 +2718,9 @@ impl Error for DescriptorResourceInvalidError {
     }
 }
 
-impl fmt::Display for DescriptorResourceInvalidError {
+impl Display for DescriptorResourceInvalidError {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match self {
             Self::ImageViewFormatMismatch { provided, required } => write!(
                 f,

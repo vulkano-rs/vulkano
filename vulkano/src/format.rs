@@ -760,14 +760,14 @@ vulkan_bitflags! {
     /// image view.
     storage_read_without_format = STORAGE_READ_WITHOUT_FORMAT {
         api_version: V1_3,
-        extensions: [khr_format_feature_flags2],
+        device_extensions: [khr_format_feature_flags2],
     },
 
     /// Can be used with a storage image descriptor for writing, without specifying a format on the
     /// image view.
     storage_write_without_format = STORAGE_WRITE_WITHOUT_FORMAT {
         api_version: V1_3,
-        extensions: [khr_format_feature_flags2],
+        device_extensions: [khr_format_feature_flags2],
     },
 
     /// Can be used with a color attachment in a framebuffer, or with an input attachment
@@ -784,24 +784,24 @@ vulkan_bitflags! {
 
     /// Can be used with a fragment density map attachment in a framebuffer.
     fragment_density_map = FRAGMENT_DENSITY_MAP_EXT {
-        extensions: [ext_fragment_density_map],
+        device_extensions: [ext_fragment_density_map],
     },
 
     /// Can be used with a fragment shading rate attachment in a framebuffer.
     fragment_shading_rate_attachment = FRAGMENT_SHADING_RATE_ATTACHMENT_KHR {
-        extensions: [khr_fragment_shading_rate],
+        device_extensions: [khr_fragment_shading_rate],
     },
 
     /// Can be used with the source image in a transfer (copy) operation.
     transfer_src = TRANSFER_SRC {
         api_version: V1_1,
-        extensions: [khr_maintenance1],
+        device_extensions: [khr_maintenance1],
     },
 
     /// Can be used with the destination image in a transfer (copy) operation.
     transfer_dst = TRANSFER_DST  {
         api_version: V1_1,
-        extensions: [khr_maintenance1],
+        device_extensions: [khr_maintenance1],
     },
 
     /// Can be used with the source image in a blit operation.
@@ -819,7 +819,7 @@ vulkan_bitflags! {
     /// Can be used with samplers or as a blit source, using the
     /// [`Cubic`](crate::sampler::Filter::Cubic) filter.
     sampled_image_filter_cubic = SAMPLED_IMAGE_FILTER_CUBIC_EXT  {
-        extensions: [ext_filter_cubic, img_filter_cubic],
+        device_extensions: [ext_filter_cubic, img_filter_cubic],
     },
 
     /// Can be used with samplers using a reduction mode of
@@ -827,76 +827,76 @@ vulkan_bitflags! {
     /// [`Max`](crate::sampler::SamplerReductionMode::Max).
     sampled_image_filter_minmax = SAMPLED_IMAGE_FILTER_MINMAX  {
         api_version: V1_2,
-        extensions: [ext_sampler_filter_minmax],
+        device_extensions: [ext_sampler_filter_minmax],
     },
 
     /// Can be used with sampler YCbCr conversions using a chroma offset of
     /// [`Midpoint`](crate::sampler::ycbcr::ChromaLocation::Midpoint).
     midpoint_chroma_samples = MIDPOINT_CHROMA_SAMPLES {
         api_version: V1_1,
-        extensions: [khr_sampler_ycbcr_conversion],
+        device_extensions: [khr_sampler_ycbcr_conversion],
     },
 
     /// Can be used with sampler YCbCr conversions using a chroma offset of
     /// [`CositedEven`](crate::sampler::ycbcr::ChromaLocation::CositedEven).
     cosited_chroma_samples = COSITED_CHROMA_SAMPLES {
         api_version: V1_1,
-        extensions: [khr_sampler_ycbcr_conversion],
+        device_extensions: [khr_sampler_ycbcr_conversion],
     },
 
     /// Can be used with sampler YCbCr conversions using the
     /// [`Linear`](crate::sampler::Filter::Linear) chroma filter.
     sampled_image_ycbcr_conversion_linear_filter = SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER {
         api_version: V1_1,
-        extensions: [khr_sampler_ycbcr_conversion],
+        device_extensions: [khr_sampler_ycbcr_conversion],
     },
 
     /// Can be used with sampler YCbCr conversions whose chroma filter differs from the filters of
     /// the base sampler.
     sampled_image_ycbcr_conversion_separate_reconstruction_filter = SAMPLED_IMAGE_YCBCR_CONVERSION_SEPARATE_RECONSTRUCTION_FILTER {
         api_version: V1_1,
-        extensions: [khr_sampler_ycbcr_conversion],
+        device_extensions: [khr_sampler_ycbcr_conversion],
     },
 
     /// When used with a sampler YCbCr conversion, the implementation will always perform
     /// explicit chroma reconstruction.
     sampled_image_ycbcr_conversion_chroma_reconstruction_explicit = SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT {
         api_version: V1_1,
-        extensions: [khr_sampler_ycbcr_conversion],
+        device_extensions: [khr_sampler_ycbcr_conversion],
     },
 
     /// Can be used with sampler YCbCr conversions with forced explicit reconstruction.
     sampled_image_ycbcr_conversion_chroma_reconstruction_explicit_forceable = SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT_FORCEABLE {
         api_version: V1_1,
-        extensions: [khr_sampler_ycbcr_conversion],
+        device_extensions: [khr_sampler_ycbcr_conversion],
     },
 
     /// Can be used with samplers using depth comparison.
     sampled_image_depth_comparison = SAMPLED_IMAGE_DEPTH_COMPARISON {
         api_version: V1_3,
-        extensions: [khr_format_feature_flags2],
+        device_extensions: [khr_format_feature_flags2],
     },
 
     /* Video */
 
     /// Can be used with the output image of a video decode operation.
     video_decode_output = VIDEO_DECODE_OUTPUT_KHR {
-        extensions: [khr_video_decode_queue],
+        device_extensions: [khr_video_decode_queue],
     },
 
     /// Can be used with the DPB image of a video decode operation.
     video_decode_dpb = VIDEO_DECODE_DPB_KHR {
-        extensions: [khr_video_decode_queue],
+        device_extensions: [khr_video_decode_queue],
     },
 
     /// Can be used with the input image of a video encode operation.
     video_encode_input = VIDEO_ENCODE_INPUT_KHR {
-        extensions: [khr_video_encode_queue],
+        device_extensions: [khr_video_encode_queue],
     },
 
     /// Can be used with the DPB image of a video encode operation.
     video_encode_dpb = VIDEO_ENCODE_DPB_KHR {
-        extensions: [khr_video_encode_queue],
+        device_extensions: [khr_video_encode_queue],
     },
 
     /* Misc image features */
@@ -904,7 +904,7 @@ vulkan_bitflags! {
     /// For multi-planar formats, can be used with images created with the `disjoint` flag.
     disjoint = DISJOINT {
         api_version: V1_1,
-        extensions: [khr_sampler_ycbcr_conversion],
+        device_extensions: [khr_sampler_ycbcr_conversion],
     },
 
     /* Buffer usage  */
@@ -924,7 +924,7 @@ vulkan_bitflags! {
 
     /// Can be used with the vertex buffer of an acceleration structure.
     acceleration_structure_vertex_buffer = ACCELERATION_STRUCTURE_VERTEX_BUFFER_KHR {
-        extensions: [khr_acceleration_structure],
+        device_extensions: [khr_acceleration_structure],
     },
 }
 

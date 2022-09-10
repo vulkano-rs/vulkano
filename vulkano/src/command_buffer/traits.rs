@@ -26,7 +26,7 @@ use parking_lot::Mutex;
 use std::{
     borrow::Cow,
     error::Error,
-    fmt,
+    fmt::{Display, Error as FmtError, Formatter},
     ops::Range,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -540,11 +540,11 @@ impl Error for CommandBufferExecError {
     }
 }
 
-impl fmt::Display for CommandBufferExecError {
+impl Display for CommandBufferExecError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         write!(
-            fmt,
+            f,
             "{}",
             match *self {
                 CommandBufferExecError::AccessError { .. } =>

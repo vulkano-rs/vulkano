@@ -113,9 +113,9 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
                 let string = feature.to_string();
                 quote! {
                     if !self.#feature {
-                        return Err(FeatureRestrictionError {
+                        return Err(crate::device::FeatureRestrictionError {
                             feature: #name_string,
-                            restriction: FeatureRestriction::RequiresFeature(#string),
+                            restriction: crate::device::FeatureRestriction::RequiresFeature(#string),
                         });
                     }
                 }
@@ -124,9 +124,9 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
                 let string = feature.to_string();
                 quote! {
                     if self.#feature {
-                        return Err(FeatureRestrictionError {
+                        return Err(crate::device::FeatureRestrictionError {
                             feature: #name_string,
-                            restriction: FeatureRestriction::ConflictsFeature(#string),
+                            restriction: crate::device::FeatureRestriction::ConflictsFeature(#string),
                         });
                     }
                 }
@@ -135,10 +135,10 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
                 required_by_extensions.iter().map(|(version, extension)| {
                     let string = extension.to_string();
                     quote! {
-                        if extensions.#extension && api_version >= Version::#version {
-                            return Err(FeatureRestrictionError {
+                        if extensions.#extension && api_version >= crate::Version::#version {
+                            return Err(crate::device::FeatureRestrictionError {
                                 feature: #name_string,
-                                restriction: FeatureRestriction::RequiredByExtension(#string),
+                                restriction: crate::device::FeatureRestriction::RequiredByExtension(#string),
                             });
                         }
                     }
@@ -146,9 +146,9 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             quote! {
                 if self.#name {
                     if !supported.#name {
-                        return Err(FeatureRestrictionError {
+                        return Err(crate::device::FeatureRestrictionError {
                             feature: #name_string,
-                            restriction: FeatureRestriction::NotSupported,
+                            restriction: crate::device::FeatureRestriction::NotSupported,
                         });
                     }
 
@@ -332,9 +332,9 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             pub(super) fn check_requirements(
                 &self,
                 supported: &Features,
-                api_version: Version,
-                extensions: &DeviceExtensions,
-            ) -> Result<(), FeatureRestrictionError> {
+                api_version: crate::Version,
+                extensions: &crate::device::DeviceExtensions,
+            ) -> Result<(), crate::device::FeatureRestrictionError> {
                 #(#check_requirements_items)*
                 Ok(())
             }
@@ -420,7 +420,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             }
         }
 
-        impl BitAnd for Features {
+        impl std::ops::BitAnd for Features {
             type Output = Features;
 
             #[inline]
@@ -429,14 +429,14 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             }
         }
 
-        impl BitAndAssign for Features {
+        impl std::ops::BitAndAssign for Features {
             #[inline]
             fn bitand_assign(&mut self, rhs: Self) {
                 *self = self.intersection(&rhs);
             }
         }
 
-        impl BitOr for Features {
+        impl std::ops::BitOr for Features {
             type Output = Features;
 
             #[inline]
@@ -445,14 +445,14 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             }
         }
 
-        impl BitOrAssign for Features {
+        impl std::ops::BitOrAssign for Features {
             #[inline]
             fn bitor_assign(&mut self, rhs: Self) {
                 *self = self.union(&rhs);
             }
         }
 
-        impl BitXor for Features {
+        impl std::ops::BitXor for Features {
             type Output = Features;
 
             #[inline]
@@ -461,14 +461,14 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             }
         }
 
-        impl BitXorAssign for Features {
+        impl std::ops::BitXorAssign for Features {
             #[inline]
             fn bitxor_assign(&mut self, rhs: Self) {
                 *self = self.symmetric_difference(&rhs);
             }
         }
 
-        impl Sub for Features {
+        impl std::ops::Sub for Features {
             type Output = Features;
 
             #[inline]
@@ -477,7 +477,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
             }
         }
 
-        impl SubAssign for Features {
+        impl std::ops::SubAssign for Features {
             #[inline]
             fn sub_assign(&mut self, rhs: Self) {
                 *self = self.difference(&rhs);
@@ -486,7 +486,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
 
         impl std::fmt::Debug for Features {
             #[allow(unused_assignments)]
-            fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+            fn fmt(&self, f: &mut std::fmt:: Formatter) -> Result<(), std::fmt::Error> {
                 write!(f, "[")?;
 
                 let mut first = true;
@@ -698,9 +698,9 @@ fn features_ffi_output(members: &[FeaturesFfiMember]) -> TokenStream {
         impl FeaturesFfi {
             pub(crate) fn make_chain(
                 &mut self,
-                api_version: Version,
-                device_extensions: &DeviceExtensions,
-                _instance_extensions: &InstanceExtensions,
+                api_version: crate::Version,
+                device_extensions: &crate::device::DeviceExtensions,
+                _instance_extensions: &crate::instance::InstanceExtensions,
             ) {
                 self.features_vulkan10 = Default::default();
                 let head = &mut self.features_vulkan10;
@@ -732,7 +732,7 @@ fn features_ffi_members<'a>(
                 .map(|provided_by| {
                     if let Some(version) = provided_by.strip_prefix("VK_VERSION_") {
                         let version = format_ident!("V{}", version);
-                        quote! { api_version >= Version::#version }
+                        quote! { api_version >= crate::Version::#version }
                     } else {
                         let member = format_ident!(
                             "{}_extensions",

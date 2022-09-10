@@ -84,7 +84,13 @@ use crate::{
     },
     DeviceSize,
 };
-use std::{borrow::Cow, collections::HashMap, ops::Range, sync::Arc};
+use std::{
+    borrow::Cow,
+    collections::HashMap,
+    fmt::{Debug, Error as FmtError, Formatter},
+    ops::Range,
+    sync::Arc,
+};
 
 mod builder;
 
@@ -513,8 +519,8 @@ pub(super) trait Command: Send + Sync {
     unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder);
 }
 
-impl std::fmt::Debug for dyn Command {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Debug for dyn Command {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         f.write_str(self.name())
     }
 }
@@ -547,7 +553,7 @@ mod tests {
             let (device, queue) = gfx_dev_and_queue!();
 
             let pool_builder_alloc = device
-                .with_standard_command_pool(queue.family(), |pool| {
+                .with_standard_command_pool(queue.queue_family_index(), |pool| {
                     pool.allocate(CommandBufferLevel::Primary, 1)
                         .unwrap()
                         .next()
@@ -592,7 +598,7 @@ mod tests {
                 .map(|_| {
                     let mut builder = AutoCommandBufferBuilder::secondary(
                         device.clone(),
-                        queue.family(),
+                        queue.queue_family_index(),
                         CommandBufferUsage::SimultaneousUse,
                         Default::default(),
                     )
@@ -608,7 +614,7 @@ mod tests {
                 .collect::<Vec<_>>();
 
             let allocs = device
-                .with_standard_command_pool(queue.family(), |pool| {
+                .with_standard_command_pool(queue.queue_family_index(), |pool| {
                     pool.allocate(CommandBufferLevel::Primary, 2)
                         .unwrap()
                         .collect::<Vec<_>>()
@@ -670,7 +676,7 @@ mod tests {
             let (device, queue) = gfx_dev_and_queue!();
 
             let pool_builder_alloc = device
-                .with_standard_command_pool(queue.family(), |pool| {
+                .with_standard_command_pool(queue.queue_family_index(), |pool| {
                     pool.allocate(CommandBufferLevel::Primary, 1)
                         .unwrap()
                         .next()
@@ -711,7 +717,7 @@ mod tests {
             let (device, queue) = gfx_dev_and_queue!();
 
             let pool_builder_alloc = device
-                .with_standard_command_pool(queue.family(), |pool| {
+                .with_standard_command_pool(queue.queue_family_index(), |pool| {
                     pool.allocate(CommandBufferLevel::Primary, 1)
                         .unwrap()
                         .next()

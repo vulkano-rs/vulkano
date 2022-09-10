@@ -411,232 +411,232 @@ vulkan_enum! {
     /*
     // TODO: document
     Zero = ZERO_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     Src = SRC_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     Dst = DST_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     SrcOver = SRC_OVER_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     DstOver = DST_OVER_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     SrcIn = SRC_IN_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     DstIn = DST_IN_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     SrcOut = SRC_OUT_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     DstOut = DST_OUT_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     SrcAtop = SRC_ATOP_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     DstAtop = DST_ATOP_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     Xor = XOR_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     Multiply = MULTIPLY_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     Screen = SCREEN_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     Overlay = OVERLAY_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     Darken = DARKEN_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     Lighten = LIGHTEN_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     Colordodge = COLORDODGE_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     Colorburn = COLORBURN_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     Hardlight = HARDLIGHT_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     Softlight = SOFTLIGHT_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     Difference = DIFFERENCE_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     Exclusion = EXCLUSION_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     Invert = INVERT_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     InvertRgb = INVERT_RGB_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     Lineardodge = LINEARDODGE_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     Linearburn = LINEARBURN_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     Vividlight = VIVIDLIGHT_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     Linearlight = LINEARLIGHT_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     Pinlight = PINLIGHT_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     Hardmix = HARDMIX_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     HslHue = HSL_HUE_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     HslSaturation = HSL_SATURATION_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     HslColor = HSL_COLOR_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     HslLuminosity = HSL_LUMINOSITY_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     Plus = PLUS_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     PlusClamped = PLUS_CLAMPED_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     PlusClampedAlpha = PLUS_CLAMPED_ALPHA_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     PlusDarker = PLUS_DARKER_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     Minus = MINUS_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     MinusClamped = MINUS_CLAMPED_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     Contrast = CONTRAST_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     InvertOvg = INVERT_OVG_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     Red = RED_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     Green = GREEN_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
 
     // TODO: document
     Blue = BLUE_EXT {
-        extensions: [ext_blend_operation_advanced],
+        device_extensions: [ext_blend_operation_advanced],
     },
      */
 }

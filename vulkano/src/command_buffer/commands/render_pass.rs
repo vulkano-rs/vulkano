@@ -21,16 +21,21 @@ use crate::{
     device::DeviceOwned,
     format::{ClearColorValue, ClearValue, Format, NumericType},
     image::{ImageLayout, ImageViewAbstract, SampleCount},
-    macros::ExtensionNotEnabled,
     render_pass::{
         AttachmentDescription, Framebuffer, LoadOp, RenderPass, ResolveMode, StoreOp,
         SubpassDescription,
     },
     sync::{AccessFlags, PipelineMemoryAccess, PipelineStages},
-    Version, VulkanObject,
+    RequirementNotMet, RequiresOneOf, Version, VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{cmp::min, error::Error, fmt, ops::Range, sync::Arc};
+use std::{
+    cmp::min,
+    error::Error,
+    fmt::{Display, Error as FmtError, Formatter},
+    ops::Range,
+    sync::Arc,
+};
 
 /// # Commands for render passes.
 ///
@@ -94,10 +99,12 @@ where
         let device = self.device();
 
         // VUID-VkSubpassBeginInfo-contents-parameter
-        contents.validate(device)?;
+        contents.validate_device(device)?;
+
+        let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdBeginRenderPass2-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(RenderPassError::NotSupportedByQueueFamily);
         }
 
@@ -420,7 +427,7 @@ where
         let device = self.device();
 
         // VUID-VkSubpassBeginInfo-contents-parameter
-        contents.validate(device)?;
+        contents.validate_device(device)?;
 
         // VUID-vkCmdNextSubpass2-renderpass
         let render_pass_state = self
@@ -448,7 +455,10 @@ where
         }
 
         // VUID-vkCmdNextSubpass2-commandBuffer-cmdpool
-        debug_assert!(self.queue_family().supports_graphics());
+        debug_assert!({
+            let queue_family_properties = self.queue_family_properties();
+            queue_family_properties.queue_flags.graphics
+        });
 
         // VUID-vkCmdNextSubpass2-bufferlevel
         // Ensured by the type of the impl block
@@ -504,7 +514,10 @@ where
         }
 
         // VUID-vkCmdEndRenderPass2-commandBuffer-cmdpool
-        debug_assert!(self.queue_family().supports_graphics());
+        debug_assert!({
+            let queue_family_properties = self.queue_family_properties();
+            queue_family_properties.queue_flags.graphics
+        });
 
         // VUID-vkCmdEndRenderPass2-bufferlevel
         // Ensured by the type of the impl block
@@ -661,14 +674,19 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
         // VUID-vkCmdBeginRendering-dynamicRendering-06446
         if !device.enabled_features().dynamic_rendering {
-            return Err(RenderPassError::FeatureNotEnabled {
-                feature: "dynamic_rendering",
-                reason: "called begin_rendering",
+            return Err(RenderPassError::RequirementNotMet {
+                required_for: "`begin_rendering`",
+                requires_one_of: RequiresOneOf {
+                    features: &["dynamic_rendering"],
+                    ..Default::default()
+                },
             });
         }
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdBeginRendering-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(RenderPassError::NotSupportedByQueueFamily);
         }
 
@@ -690,7 +708,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         } = rendering_info;
 
         // VUID-VkRenderingInfo-flags-parameter
-        contents.validate(device)?;
+        contents.validate_device(device)?;
 
         // VUID-vkCmdBeginRendering-commandBuffer-06068
         if self.inheritance_info.is_some() && contents == SubpassContents::SecondaryCommandBuffers {
@@ -704,9 +722,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
         // VUID-VkRenderingInfo-multiview-06127
         if view_mask != 0 && !device.enabled_features().multiview {
-            return Err(RenderPassError::FeatureNotEnabled {
-                feature: "multiview",
-                reason: "view_mask is not 0",
+            return Err(RenderPassError::RequirementNotMet {
+                required_for: "`rendering_info.viewmask` is not `0`",
+                requires_one_of: RequiresOneOf {
+                    features: &["multiview"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -752,13 +773,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             } = attachment_info;
 
             // VUID-VkRenderingAttachmentInfo-imageLayout-parameter
-            image_layout.validate(device)?;
+            image_layout.validate_device(device)?;
 
             // VUID-VkRenderingAttachmentInfo-loadOp-parameter
-            load_op.validate(device)?;
+            load_op.validate_device(device)?;
 
             // VUID-VkRenderingAttachmentInfo-storeOp-parameter
-            store_op.validate(device)?;
+            store_op.validate_device(device)?;
 
             // VUID-VkRenderingInfo-colorAttachmentCount-06087
             if !image_view.usage().color_attachment {
@@ -812,10 +833,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 } = resolve_info;
 
                 // VUID-VkRenderingAttachmentInfo-resolveImageLayout-parameter
-                resolve_image_layout.validate(device)?;
+                resolve_image_layout.validate_device(device)?;
 
                 // VUID-VkRenderingAttachmentInfo-resolveMode-parameter
-                mode.validate(device)?;
+                mode.validate_device(device)?;
 
                 let resolve_image = resolve_image_view.image();
 
@@ -901,13 +922,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             } = attachment_info;
 
             // VUID-VkRenderingAttachmentInfo-imageLayout-parameter
-            image_layout.validate(device)?;
+            image_layout.validate_device(device)?;
 
             // VUID-VkRenderingAttachmentInfo-loadOp-parameter
-            load_op.validate(device)?;
+            load_op.validate_device(device)?;
 
             // VUID-VkRenderingAttachmentInfo-storeOp-parameter
-            store_op.validate(device)?;
+            store_op.validate_device(device)?;
 
             let image_aspects = image_view.format().unwrap().aspects();
 
@@ -965,10 +986,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 } = resolve_info;
 
                 // VUID-VkRenderingAttachmentInfo-resolveImageLayout-parameter
-                resolve_image_layout.validate(device)?;
+                resolve_image_layout.validate_device(device)?;
 
                 // VUID-VkRenderingAttachmentInfo-resolveMode-parameter
-                mode.validate(device)?;
+                mode.validate_device(device)?;
 
                 // VUID-VkRenderingInfo-pDepthAttachment-06102
                 if !properties
@@ -1026,13 +1047,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             } = attachment_info;
 
             // VUID-VkRenderingAttachmentInfo-imageLayout-parameter
-            image_layout.validate(device)?;
+            image_layout.validate_device(device)?;
 
             // VUID-VkRenderingAttachmentInfo-loadOp-parameter
-            load_op.validate(device)?;
+            load_op.validate_device(device)?;
 
             // VUID-VkRenderingAttachmentInfo-storeOp-parameter
-            store_op.validate(device)?;
+            store_op.validate_device(device)?;
 
             let image_aspects = image_view.format().unwrap().aspects();
 
@@ -1090,10 +1111,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 } = resolve_info;
 
                 // VUID-VkRenderingAttachmentInfo-resolveImageLayout-parameter
-                resolve_image_layout.validate(device)?;
+                resolve_image_layout.validate_device(device)?;
 
                 // VUID-VkRenderingAttachmentInfo-resolveMode-parameter
-                mode.validate(device)?;
+                mode.validate_device(device)?;
 
                 // VUID-VkRenderingInfo-pStencilAttachment-06103
                 if !properties
@@ -1217,7 +1238,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
 
         // VUID-vkCmdEndRendering-commandBuffer-cmdpool
-        debug_assert!(self.queue_family().supports_graphics());
+        debug_assert!({
+            let queue_family_properties = self.queue_family_properties();
+            queue_family_properties.queue_flags.graphics
+        });
 
         Ok(())
     }
@@ -1465,7 +1489,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
 
         // VUID-vkCmdClearAttachments-commandBuffer-cmdpool
-        debug_assert!(self.queue_family().supports_graphics());
+        debug_assert!({
+            let queue_family_properties = self.queue_family_properties();
+            queue_family_properties.queue_flags.graphics
+        });
 
         Ok(())
     }
@@ -2528,13 +2555,9 @@ pub struct ClearRect {
 pub enum RenderPassError {
     SyncCommandBufferBuilderError(SyncCommandBufferBuilderError),
 
-    ExtensionNotEnabled {
-        extension: &'static str,
-        reason: &'static str,
-    },
-    FeatureNotEnabled {
-        feature: &'static str,
-        reason: &'static str,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
     },
 
     /// A framebuffer image did not have the required usage enabled.
@@ -2789,20 +2812,20 @@ impl Error for RenderPassError {
     }
 }
 
-impl fmt::Display for RenderPassError {
+impl Display for RenderPassError {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match self {
             Self::SyncCommandBufferBuilderError(_) => write!(f, "a SyncCommandBufferBuilderError"),
 
-            Self::ExtensionNotEnabled { extension, reason } => write!(
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
                 f,
-                "the extension {} must be enabled: {}",
-                extension, reason
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
             ),
-            Self::FeatureNotEnabled { feature, reason } => {
-                write!(f, "the feature {} must be enabled: {}", feature, reason)
-            }
 
             Self::AttachmentImageMissingUsage { attachment_index, usage } => write!(
                 f,
@@ -3093,12 +3116,12 @@ impl From<SyncCommandBufferBuilderError> for RenderPassError {
     }
 }
 
-impl From<ExtensionNotEnabled> for RenderPassError {
+impl From<RequirementNotMet> for RenderPassError {
     #[inline]
-    fn from(err: ExtensionNotEnabled) -> Self {
-        Self::ExtensionNotEnabled {
-            extension: err.extension,
-            reason: err.reason,
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
         }
     }
 }

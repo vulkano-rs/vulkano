@@ -15,16 +15,21 @@ use crate::{
         sys::UnsafeCommandBufferBuilder,
         AutoCommandBufferBuilder,
     },
-    device::{physical::QueueFamily, DeviceOwned},
-    macros::ExtensionNotEnabled,
+    device::DeviceOwned,
     query::{
         QueriesRange, Query, QueryControlFlags, QueryPool, QueryResultElement, QueryResultFlags,
         QueryType,
     },
     sync::{AccessFlags, PipelineMemoryAccess, PipelineStage, PipelineStages},
-    DeviceSize, VulkanObject,
+    DeviceSize, RequirementNotMet, RequiresOneOf, VulkanObject,
 };
-use std::{error::Error, fmt, mem::size_of, ops::Range, sync::Arc};
+use std::{
+    error::Error,
+    fmt::{Display, Error as FmtError, Formatter},
+    mem::size_of,
+    ops::Range,
+    sync::Arc,
+};
 
 /// # Commands related to queries.
 impl<L, P> AutoCommandBufferBuilder<L, P> {
@@ -66,15 +71,19 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         query: u32,
         flags: QueryControlFlags,
     ) -> Result<(), QueryError> {
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdBeginQuery-commandBuffer-cmdpool
-        if !(self.queue_family().supports_graphics() || self.queue_family().supports_compute()) {
+        if !(queue_family_properties.queue_flags.graphics
+            || queue_family_properties.queue_flags.compute)
+        {
             return Err(QueryError::NotSupportedByQueueFamily);
         }
 
         let device = self.device();
 
         // VUID-vkCmdBeginQuery-flags-parameter
-        flags.validate(device)?;
+        flags.validate_device(device)?;
 
         // VUID-vkCmdBeginQuery-commonparent
         assert_eq!(device, query_pool.device());
@@ -86,15 +95,18 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             QueryType::Occlusion => {
                 // VUID-vkCmdBeginQuery-commandBuffer-cmdpool
                 // // VUID-vkCmdBeginQuery-queryType-00803
-                if !self.queue_family().supports_graphics() {
+                if !queue_family_properties.queue_flags.graphics {
                     return Err(QueryError::NotSupportedByQueueFamily);
                 }
 
                 // VUID-vkCmdBeginQuery-queryType-00800
                 if flags.precise && !device.enabled_features().occlusion_query_precise {
-                    return Err(QueryError::FeatureNotEnabled {
-                        feature: "occlusion_query_precise",
-                        reason: "flags.precise was enabled",
+                    return Err(QueryError::RequirementNotMet {
+                        required_for: "`flags.precise` is set",
+                        requires_one_of: RequiresOneOf {
+                            features: &["occlusion_query_precise"],
+                            ..Default::default()
+                        },
                     });
                 }
             }
@@ -102,8 +114,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 // VUID-vkCmdBeginQuery-commandBuffer-cmdpool
                 // VUID-vkCmdBeginQuery-queryType-00804
                 // VUID-vkCmdBeginQuery-queryType-00805
-                if statistic_flags.is_compute() && !self.queue_family().supports_compute()
-                    || statistic_flags.is_graphics() && !self.queue_family().supports_graphics()
+                if statistic_flags.is_compute() && !queue_family_properties.queue_flags.compute
+                    || statistic_flags.is_graphics()
+                        && !queue_family_properties.queue_flags.graphics
                 {
                     return Err(QueryError::NotSupportedByQueueFamily);
                 }
@@ -157,8 +170,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     fn validate_end_query(&self, query_pool: &QueryPool, query: u32) -> Result<(), QueryError> {
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdEndQuery-commandBuffer-cmdpool
-        if !(self.queue_family().supports_graphics() || self.queue_family().supports_compute()) {
+        if !(queue_family_properties.queue_flags.graphics
+            || queue_family_properties.queue_flags.compute)
+        {
             return Err(QueryError::NotSupportedByQueueFamily);
         }
 
@@ -201,7 +218,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         query: u32,
         stage: PipelineStage,
     ) -> Result<&mut Self, QueryError> {
-        self.validate_write_timestamp(self.queue_family(), &query_pool, query, stage)?;
+        self.validate_write_timestamp(&query_pool, query, stage)?;
 
         self.inner.write_timestamp(query_pool, query, stage);
 
@@ -210,15 +227,16 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     fn validate_write_timestamp(
         &self,
-        queue_family: QueueFamily,
         query_pool: &QueryPool,
         query: u32,
         stage: PipelineStage,
     ) -> Result<(), QueryError> {
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdWriteTimestamp-commandBuffer-cmdpool
-        if !(self.queue_family().explicitly_supports_transfers()
-            || self.queue_family().supports_graphics()
-            || self.queue_family().supports_compute())
+        if !(queue_family_properties.queue_flags.transfer
+            || queue_family_properties.queue_flags.graphics
+            || queue_family_properties.queue_flags.compute)
         {
             return Err(QueryError::NotSupportedByQueueFamily);
         }
@@ -229,7 +247,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         assert_eq!(device, query_pool.device());
 
         // VUID-vkCmdWriteTimestamp-pipelineStage-04074
-        if !queue_family.supports_stage(stage) {
+        if !queue_family_properties.supports_stage(stage) {
             return Err(QueryError::StageNotSupported);
         }
 
@@ -237,9 +255,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             PipelineStage::GeometryShader => {
                 // VUID-vkCmdWriteTimestamp-pipelineStage-04075
                 if !device.enabled_features().geometry_shader {
-                    return Err(QueryError::FeatureNotEnabled {
-                        feature: "geometry_shader",
-                        reason: "stage was GeometryShader",
+                    return Err(QueryError::RequirementNotMet {
+                        required_for: "`stage` is `PipelineStage::GeometryShader`",
+                        requires_one_of: RequiresOneOf {
+                            features: &["geometry_shadere"],
+                            ..Default::default()
+                        },
                     });
                 }
             }
@@ -247,10 +268,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             | PipelineStage::TessellationEvaluationShader => {
                 // VUID-vkCmdWriteTimestamp-pipelineStage-04076
                 if !device.enabled_features().tessellation_shader {
-                    return Err(QueryError::FeatureNotEnabled {
-                        feature: "tessellation_shader",
-                        reason:
-                            "stage was TessellationControlShader or TessellationEvaluationShader",
+                    return Err(QueryError::RequirementNotMet {
+                        required_for: "`stage` is `PipelineStage::TessellationControlShader` or `PipelineStage::TessellationEvaluationShader`",
+                        requires_one_of: RequiresOneOf {
+                            features: &["tessellation_shader"],
+                            ..Default::default()
+                        },
                     });
                 }
             }
@@ -263,7 +286,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
 
         // VUID-vkCmdWriteTimestamp-timestampValidBits-00829
-        if queue_family.timestamp_valid_bits().is_none() {
+        if queue_family_properties.timestamp_valid_bits.is_none() {
             return Err(QueryError::NoTimestampValidBits);
         }
 
@@ -333,8 +356,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         D: ?Sized + TypedBufferAccess<Content = [T]>,
         T: QueryResultElement,
     {
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdCopyQueryPoolResults-commandBuffer-cmdpool
-        if !(self.queue_family().supports_graphics() || self.queue_family().supports_compute()) {
+        if !(queue_family_properties.queue_flags.graphics
+            || queue_family_properties.queue_flags.compute)
+        {
             return Err(QueryError::NotSupportedByQueueFamily);
         }
 
@@ -418,8 +445,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             return Err(QueryError::ForbiddenInsideRenderPass);
         }
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdResetQueryPool-commandBuffer-cmdpool
-        if !(self.queue_family().supports_graphics() || self.queue_family().supports_compute()) {
+        if !(queue_family_properties.queue_flags.graphics
+            || queue_family_properties.queue_flags.compute)
+        {
             return Err(QueryError::NotSupportedByQueueFamily);
         }
 
@@ -723,13 +754,9 @@ impl UnsafeCommandBufferBuilder {
 pub enum QueryError {
     SyncCommandBufferBuilderError(SyncCommandBufferBuilderError),
 
-    ExtensionNotEnabled {
-        extension: &'static str,
-        reason: &'static str,
-    },
-    FeatureNotEnabled {
-        feature: &'static str,
-        reason: &'static str,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
     },
 
     /// The buffer is too small for the copy operation.
@@ -777,24 +804,22 @@ pub enum QueryError {
 
 impl Error for QueryError {}
 
-impl fmt::Display for QueryError {
+impl Display for QueryError {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match *self {
             Self::SyncCommandBufferBuilderError(_) => write!(
                 f,
                 "a SyncCommandBufferBuilderError",
             ),
 
-            Self::ExtensionNotEnabled { extension, reason } => write!(
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
                 f,
-                "the extension {} must be enabled: {}",
-                extension, reason
-            ),
-            Self::FeatureNotEnabled { feature, reason } => write!(
-                f,
-                "the feature {} must be enabled: {}",
-                feature, reason,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
             ),
 
             Self::BufferTooSmall { .. } => {
@@ -842,12 +867,12 @@ impl From<SyncCommandBufferBuilderError> for QueryError {
     }
 }
 
-impl From<ExtensionNotEnabled> for QueryError {
+impl From<RequirementNotMet> for QueryError {
     #[inline]
-    fn from(err: ExtensionNotEnabled) -> Self {
-        Self::ExtensionNotEnabled {
-            extension: err.extension,
-            reason: err.reason,
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
         }
     }
 }

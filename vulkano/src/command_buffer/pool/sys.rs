@@ -9,13 +9,13 @@
 
 use crate::{
     command_buffer::CommandBufferLevel,
-    device::{physical::QueueFamily, Device, DeviceOwned},
-    OomError, Version, VulkanError, VulkanObject,
+    device::{Device, DeviceOwned},
+    OomError, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{
     error::Error,
-    fmt,
+    fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     marker::PhantomData,
     mem::MaybeUninit,
@@ -111,14 +111,10 @@ impl UnsafeCommandPool {
         } = create_info;
 
         // VUID-vkCreateCommandPool-queueFamilyIndex-01937
-        if device
-            .physical_device()
-            .queue_family_by_id(queue_family_index)
-            .is_none()
-        {
+        if queue_family_index >= device.physical_device().queue_family_properties().len() as u32 {
             return Err(UnsafeCommandPoolCreationError::QueueFamilyIndexOutOfRange {
                 queue_family_index,
-                queue_family_count: device.physical_device().queue_families().len() as u32,
+                queue_family_count: device.physical_device().queue_family_properties().len() as u32,
             });
         }
 
@@ -275,7 +271,14 @@ impl UnsafeCommandPool {
         if !(self.device.api_version() >= Version::V1_1
             || self.device.enabled_extensions().khr_maintenance1)
         {
-            return Err(CommandPoolTrimError::Maintenance1ExtensionNotEnabled);
+            return Err(CommandPoolTrimError::RequirementNotMet {
+                required_for: "`trim`",
+                requires_one_of: RequiresOneOf {
+                    api_version: Some(Version::V1_1),
+                    device_extensions: &["khr_maintenance1"],
+                    ..Default::default()
+                },
+            });
         }
 
         unsafe {
@@ -301,11 +304,8 @@ impl UnsafeCommandPool {
 
     /// Returns the queue family on which command buffers of this pool can be executed.
     #[inline]
-    pub fn queue_family(&self) -> QueueFamily {
-        self.device
-            .physical_device()
-            .queue_family_by_id(self.queue_family_index)
-            .unwrap()
+    pub fn queue_family_index(&self) -> u32 {
+        self.queue_family_index
     }
 }
 
@@ -357,7 +357,7 @@ impl Hash for UnsafeCommandPool {
 }
 
 /// Error that can happen when creating an `UnsafeCommandPool`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum UnsafeCommandPoolCreationError {
     /// Not enough memory.
     OomError(OomError),
@@ -380,16 +380,16 @@ impl Error for UnsafeCommandPoolCreationError {
     }
 }
 
-impl fmt::Display for UnsafeCommandPoolCreationError {
+impl Display for UnsafeCommandPoolCreationError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match *self {
-            Self::OomError(_) => write!(fmt, "not enough memory",),
+            Self::OomError(_) => write!(f, "not enough memory",),
             Self::QueueFamilyIndexOutOfRange {
                 queue_family_index,
                 queue_family_count,
             } => write!(
-                fmt,
+                f,
                 "the provided `queue_family_index` ({}) was not less than the number of queue families in the physical device ({})",
                 queue_family_index, queue_family_count,
             ),
@@ -521,24 +521,27 @@ impl Hash for UnsafeCommandPoolAlloc {
 /// Error that can happen when trimming command pools.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum CommandPoolTrimError {
-    /// The `KHR_maintenance1` extension was not enabled.
-    Maintenance1ExtensionNotEnabled,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
+    },
 }
 
 impl Error for CommandPoolTrimError {}
 
-impl fmt::Display for CommandPoolTrimError {
+impl Display for CommandPoolTrimError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                CommandPoolTrimError::Maintenance1ExtensionNotEnabled => {
-                    "the `KHR_maintenance1` extension was not enabled"
-                }
-            }
-        )
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+        match self {
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
+            ),
+        }
     }
 }
 
@@ -557,7 +560,7 @@ mod tests {
     };
     use crate::{
         command_buffer::{pool::sys::CommandBufferAllocateInfo, CommandBufferLevel},
-        Version,
+        RequiresOneOf, Version,
     };
 
     #[test]
@@ -566,7 +569,7 @@ mod tests {
         let _ = UnsafeCommandPool::new(
             device,
             UnsafeCommandPoolCreateInfo {
-                queue_family_index: queue.family().id(),
+                queue_family_index: queue.queue_family_index(),
                 ..Default::default()
             },
         )
@@ -579,12 +582,12 @@ mod tests {
         let pool = UnsafeCommandPool::new(
             device,
             UnsafeCommandPoolCreateInfo {
-                queue_family_index: queue.family().id(),
+                queue_family_index: queue.queue_family_index(),
                 ..Default::default()
             },
         )
         .unwrap();
-        assert_eq!(pool.queue_family().id(), queue.family().id());
+        assert_eq!(pool.queue_family_index(), queue.queue_family_index());
     }
 
     #[test]
@@ -608,7 +611,7 @@ mod tests {
         let pool = UnsafeCommandPool::new(
             device.clone(),
             UnsafeCommandPoolCreateInfo {
-                queue_family_index: queue.family().id(),
+                queue_family_index: queue.queue_family_index(),
                 ..Default::default()
             },
         )
@@ -617,14 +620,24 @@ mod tests {
         if device.api_version() >= Version::V1_1 {
             if matches!(
                 pool.trim(),
-                Err(CommandPoolTrimError::Maintenance1ExtensionNotEnabled)
+                Err(CommandPoolTrimError::RequirementNotMet {
+                    requires_one_of: RequiresOneOf {
+                        device_extensions,
+                        ..
+                    }, ..
+                }) if device_extensions.contains(&"khr_maintenance1")
             ) {
                 panic!()
             }
         } else {
             if !matches!(
                 pool.trim(),
-                Err(CommandPoolTrimError::Maintenance1ExtensionNotEnabled)
+                Err(CommandPoolTrimError::RequirementNotMet {
+                    requires_one_of: RequiresOneOf {
+                        device_extensions,
+                        ..
+                    }, ..
+                }) if device_extensions.contains(&"khr_maintenance1")
             ) {
                 panic!()
             }
@@ -640,7 +653,7 @@ mod tests {
         let pool = UnsafeCommandPool::new(
             device,
             UnsafeCommandPoolCreateInfo {
-                queue_family_index: queue.family().id(),
+                queue_family_index: queue.queue_family_index(),
                 ..Default::default()
             },
         )

@@ -24,7 +24,7 @@ use crate::{
         AutoCommandBufferBuilder, CommandBufferBeginError, CommandBufferExecFuture,
         CommandBufferUsage, CopyBufferInfo, PrimaryAutoCommandBuffer, PrimaryCommandBuffer,
     },
-    device::{physical::QueueFamily, Device, DeviceOwned, Queue},
+    device::{Device, DeviceOwned, Queue},
     memory::{
         pool::{
             alloc_dedicated_with_exportable_fd, AllocFromRequirementsFilter, AllocLayout,
@@ -37,10 +37,10 @@ use crate::{
     sync::{NowFuture, Sharing},
     DeviceSize,
 };
-use core::fmt;
 use smallvec::SmallVec;
 use std::{
     error::Error,
+    fmt::{Display, Error as FmtError, Formatter},
     fs::File,
     hash::{Hash, Hasher},
     marker::PhantomData,
@@ -99,14 +99,14 @@ use std::{
 ///         transfer_dst: true,
 ///         ..BufferUsage::empty()
 ///     }, // Specify use as a storage buffer and transfer destination.
-///     device.active_queue_families(),
+///     device.active_queue_family_indices().iter().copied(),
 /// )
 /// .unwrap();
 ///
 /// // Create a one-time command to copy between the buffers.
 /// let mut cbb = AutoCommandBufferBuilder::primary(
 ///     device.clone(),
-///     queue.family(),
+///     queue.queue_family_index(),
 ///     CommandBufferUsage::OneTimeSubmit,
 /// )
 /// .unwrap();
@@ -138,7 +138,7 @@ where
     memory: A,
 
     // Queue families allowed to access this buffer.
-    queue_families: SmallVec<[u32; 4]>,
+    queue_family_indices: SmallVec<[u32; 4]>,
 
     // Necessary to make it compile.
     marker: PhantomData<Box<T>>,
@@ -154,16 +154,18 @@ where
     ///
     /// - Panics if `T` has zero size.
     #[inline]
-    pub fn new<'a, I>(
+    pub fn new(
         device: Arc<Device>,
         usage: BufferUsage,
-        queue_families: I,
-    ) -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryAllocationError>
-    where
-        I: IntoIterator<Item = QueueFamily<'a>>,
-    {
+        queue_family_indices: impl IntoIterator<Item = u32>,
+    ) -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryAllocationError> {
         unsafe {
-            DeviceLocalBuffer::raw(device, size_of::<T>() as DeviceSize, usage, queue_families)
+            DeviceLocalBuffer::raw(
+                device,
+                size_of::<T>() as DeviceSize,
+                usage,
+                queue_family_indices,
+            )
         }
     }
 }
@@ -204,12 +206,16 @@ where
                 source.device().clone(),
                 source.size(),
                 actual_usage,
-                source.device().active_queue_families(),
+                source
+                    .device()
+                    .active_queue_family_indices()
+                    .iter()
+                    .copied(),
             )?;
 
             let mut cbb = AutoCommandBufferBuilder::primary(
                 source.device().clone(),
-                queue.family(),
+                queue.queue_family_index(),
                 CommandBufferUsage::MultipleSubmit,
             )?;
             cbb.copy_buffer(CopyBufferInfo::buffers(source, buffer.clone()))
@@ -312,21 +318,18 @@ where
     /// - Panics if `T` has zero size.
     /// - Panics if `len` is zero.
     #[inline]
-    pub fn array<'a, I>(
+    pub fn array(
         device: Arc<Device>,
         len: DeviceSize,
         usage: BufferUsage,
-        queue_families: I,
-    ) -> Result<Arc<DeviceLocalBuffer<[T]>>, DeviceMemoryAllocationError>
-    where
-        I: IntoIterator<Item = QueueFamily<'a>>,
-    {
+        queue_family_indices: impl IntoIterator<Item = u32>,
+    ) -> Result<Arc<DeviceLocalBuffer<[T]>>, DeviceMemoryAllocationError> {
         unsafe {
             DeviceLocalBuffer::raw(
                 device,
                 len * size_of::<T>() as DeviceSize,
                 usage,
-                queue_families,
+                queue_family_indices,
             )
         }
     }
@@ -345,21 +348,15 @@ where
     /// # Panics
     ///
     /// - Panics if `size` is zero.
-    pub unsafe fn raw<'a, I>(
+    pub unsafe fn raw(
         device: Arc<Device>,
         size: DeviceSize,
         usage: BufferUsage,
-        queue_families: I,
-    ) -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryAllocationError>
-    where
-        I: IntoIterator<Item = QueueFamily<'a>>,
-    {
-        let queue_families = queue_families
-            .into_iter()
-            .map(|f| f.id())
-            .collect::<SmallVec<[u32; 4]>>();
+        queue_family_indices: impl IntoIterator<Item = u32>,
+    ) -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryAllocationError> {
+        let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
 
-        let (buffer, mem_reqs) = Self::build_buffer(&device, size, usage, &queue_families)?;
+        let (buffer, mem_reqs) = Self::build_buffer(&device, size, usage, &queue_family_indices)?;
 
         let memory = MemoryPool::alloc_from_requirements(
             device.standard_memory_pool(),
@@ -368,7 +365,7 @@ where
             MappingRequirement::DoNotMap,
             Some(DedicatedAllocation::Buffer(&buffer)),
             |t| {
-                if t.is_device_local() {
+                if t.property_flags.device_local {
                     AllocFromRequirementsFilter::Preferred
                 } else {
                     AllocFromRequirementsFilter::Allowed
@@ -381,7 +378,7 @@ where
         Ok(Arc::new(DeviceLocalBuffer {
             inner: buffer,
             memory,
-            queue_families,
+            queue_family_indices,
             marker: PhantomData,
         }))
     }
@@ -391,24 +388,18 @@ where
     /// # Panics
     ///
     /// - Panics if `size` is zero.
-    pub unsafe fn raw_with_exportable_fd<'a, I>(
+    pub unsafe fn raw_with_exportable_fd(
         device: Arc<Device>,
         size: DeviceSize,
         usage: BufferUsage,
-        queue_families: I,
-    ) -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryAllocationError>
-    where
-        I: IntoIterator<Item = QueueFamily<'a>>,
-    {
+        queue_family_indices: impl IntoIterator<Item = u32>,
+    ) -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryAllocationError> {
         assert!(device.enabled_extensions().khr_external_memory_fd);
         assert!(device.enabled_extensions().khr_external_memory);
 
-        let queue_families = queue_families
-            .into_iter()
-            .map(|f| f.id())
-            .collect::<SmallVec<[u32; 4]>>();
+        let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
 
-        let (buffer, mem_reqs) = Self::build_buffer(&device, size, usage, &queue_families)?;
+        let (buffer, mem_reqs) = Self::build_buffer(&device, size, usage, &queue_family_indices)?;
 
         let memory = alloc_dedicated_with_exportable_fd(
             device,
@@ -417,7 +408,7 @@ where
             MappingRequirement::DoNotMap,
             DedicatedAllocation::Buffer(&buffer),
             |t| {
-                if t.is_device_local() {
+                if t.property_flags.device_local {
                     AllocFromRequirementsFilter::Preferred
                 } else {
                     AllocFromRequirementsFilter::Allowed
@@ -431,7 +422,7 @@ where
         Ok(Arc::new(DeviceLocalBuffer {
             inner: buffer,
             memory,
-            queue_families,
+            queue_family_indices,
             marker: PhantomData,
         }))
     }
@@ -440,14 +431,14 @@ where
         device: &Arc<Device>,
         size: DeviceSize,
         usage: BufferUsage,
-        queue_families: &SmallVec<[u32; 4]>,
+        queue_family_indices: &SmallVec<[u32; 4]>,
     ) -> Result<(Arc<UnsafeBuffer>, MemoryRequirements), DeviceMemoryAllocationError> {
         let buffer = {
             match UnsafeBuffer::new(
                 device.clone(),
                 UnsafeBufferCreateInfo {
-                    sharing: if queue_families.len() >= 2 {
-                        Sharing::Concurrent(queue_families.clone())
+                    sharing: if queue_family_indices.len() >= 2 {
+                        Sharing::Concurrent(queue_family_indices.clone())
                     } else {
                         Sharing::Exclusive
                     },
@@ -481,18 +472,9 @@ where
     T: BufferContents + ?Sized,
 {
     /// Returns the queue families this buffer can be used on.
-    // TODO: use a custom iterator
     #[inline]
-    pub fn queue_families(&self) -> Vec<QueueFamily> {
-        self.queue_families
-            .iter()
-            .map(|&num| {
-                self.device()
-                    .physical_device()
-                    .queue_family_by_id(num)
-                    .unwrap()
-            })
-            .collect()
+    pub fn queue_family_indices(&self) -> &[u32] {
+        &self.queue_family_indices
     }
 }
 
@@ -590,9 +572,9 @@ impl Error for DeviceLocalBufferCreationError {
     }
 }
 
-impl fmt::Display for DeviceLocalBufferCreationError {
+impl Display for DeviceLocalBufferCreationError {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match self {
             Self::DeviceMemoryAllocationError(err) => err.fmt(f),
             Self::CommandBufferBeginError(err) => err.fmt(f),
@@ -646,7 +628,7 @@ mod tests {
 
         let mut cbb = AutoCommandBufferBuilder::primary(
             device,
-            queue.family(),
+            queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
         )
         .unwrap();
@@ -691,7 +673,7 @@ mod tests {
 
         let mut cbb = AutoCommandBufferBuilder::primary(
             device,
-            queue.family(),
+            queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
         )
         .unwrap();

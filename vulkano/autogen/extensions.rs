@@ -105,7 +105,7 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
         let requires_items = requires.iter().map(|require| {
             let require_items = require.api_version.iter().map(|version| {
                 let version = format_ident!("V{}_{}", version.0, version.1);
-                quote! { api_version >= Version::#version }
+                quote! { api_version >= crate::Version::#version }
             }).chain(require.instance_extensions.iter().map(|ext| {
                 quote! { instance_extensions.#ext }
             })).chain(require.device_extensions.iter().map(|ext| {
@@ -114,19 +114,20 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
 
             let api_version_items = require.api_version.as_ref().map(|version| {
                 let version = format_ident!("V{}_{}", version.0, version.1);
-                quote! { Some(Version::#version) }
+                quote! { Some(crate::Version::#version) }
             }).unwrap_or_else(|| quote!{ None });
             let device_extensions_items = require.device_extensions.iter().map(|ext| ext.to_string());
             let instance_extensions_items = require.instance_extensions.iter().map(|ext| ext.to_string());
 
             quote! {
                 if !(#(#require_items)||*) {
-                    return Err(ExtensionRestrictionError {
+                    return Err(crate::device::ExtensionRestrictionError {
                         extension: #name_string,
-                        restriction: ExtensionRestriction::Requires(OneOfRequirements {
+                        restriction: crate::device::ExtensionRestriction::Requires(crate::RequiresOneOf {
                             api_version: #api_version_items,
                             device_extensions: &[#(#device_extensions_items),*],
                             instance_extensions: &[#(#instance_extensions_items),*],
+                            ..Default::default()
                         }),
                     })
                 }
@@ -136,9 +137,9 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
             let string = extension.to_string();
             quote! {
                 if self.#extension {
-                    return Err(ExtensionRestrictionError {
+                    return Err(crate::device::ExtensionRestrictionError {
                         extension: #name_string,
-                        restriction: ExtensionRestriction::ConflictsDeviceExtension(#string),
+                        restriction: crate::device::ExtensionRestriction::ConflictsDeviceExtension(#string),
                     });
                 }
             }
@@ -146,9 +147,9 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
         let required_if_supported = if *required_if_supported {
             quote! {
                 if supported.#name {
-                    return Err(ExtensionRestrictionError {
+                    return Err(crate::device::ExtensionRestrictionError {
                         extension: #name_string,
-                        restriction: ExtensionRestriction::RequiredIfSupported,
+                        restriction: crate::device::ExtensionRestriction::RequiredIfSupported,
                     });
                 }
             }
@@ -159,9 +160,9 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
         quote! {
             if self.#name {
                 if !supported.#name {
-                    return Err(ExtensionRestrictionError {
+                    return Err(crate::device::ExtensionRestrictionError {
                         extension: #name_string,
-                        restriction: ExtensionRestriction::NotSupported,
+                        restriction: crate::device::ExtensionRestriction::NotSupported,
                     });
                 }
 
@@ -181,9 +182,9 @@ fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
             pub(super) fn check_requirements(
                 &self,
                 supported: &DeviceExtensions,
-                api_version: Version,
-                instance_extensions: &InstanceExtensions,
-            ) -> Result<(), ExtensionRestrictionError> {
+                api_version: crate::Version,
+                instance_extensions: &crate::instance::InstanceExtensions,
+            ) -> Result<(), crate::device::ExtensionRestrictionError> {
                 let device_extensions = self;
                 #(#check_requirements_items)*
                 Ok(())
@@ -207,7 +208,7 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                         .iter()
                         .map(|version| {
                             let version = format_ident!("V{}_{}", version.0, version.1);
-                            quote! { api_version >= Version::#version }
+                            quote! { api_version >= crate::Version::#version }
                         })
                         .chain(require.instance_extensions.iter().map(|ext| {
                             quote! { instance_extensions.#ext }
@@ -221,7 +222,7 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                         .as_ref()
                         .map(|version| {
                             let version = format_ident!("V{}_{}", version.0, version.1);
-                            quote! { Some(Version::#version) }
+                            quote! { Some(crate::Version::#version) }
                         })
                         .unwrap_or_else(|| quote! { None });
                     let device_extensions_items =
@@ -233,12 +234,13 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
 
                     quote! {
                         if !(#(#require_items)||*) {
-                            return Err(ExtensionRestrictionError {
+                            return Err(crate::instance::ExtensionRestrictionError {
                                 extension: #name_string,
-                                restriction: ExtensionRestriction::Requires(OneOfRequirements {
+                                restriction: crate::instance::ExtensionRestriction::Requires(crate::RequiresOneOf {
                                     api_version: #api_version_items,
                                     device_extensions: &[#(#device_extensions_items),*],
                                     instance_extensions: &[#(#instance_extensions_items),*],
+                                    ..Default::default()
                                 }),
                             })
                         }
@@ -248,9 +250,9 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
                 quote! {
                     if self.#name {
                         if !supported.#name {
-                            return Err(ExtensionRestrictionError {
+                            return Err(crate::instance::ExtensionRestrictionError {
                                 extension: #name_string,
-                                restriction: ExtensionRestriction::NotSupported,
+                                restriction: crate::instance::ExtensionRestriction::NotSupported,
                             });
                         }
 
@@ -267,8 +269,8 @@ fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
             pub(super) fn check_requirements(
                 &self,
                 supported: &InstanceExtensions,
-                api_version: Version,
-            ) -> Result<(), ExtensionRestrictionError> {
+                api_version: crate::Version,
+            ) -> Result<(), crate::instance::ExtensionRestrictionError> {
                 let instance_extensions = self;
                 #(#check_requirements_items)*
                 Ok(())
@@ -337,9 +339,9 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
         }
     });
 
-    let from_cstr_for_extensions_items =
+    let from_str_for_extensions_items =
         members.iter().map(|ExtensionsMember { name, raw, .. }| {
-            let raw = Literal::byte_string(raw.as_bytes());
+            let raw = Literal::string(raw);
             quote! {
                 #raw => { extensions.#name = true; }
             }
@@ -348,7 +350,7 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
     let from_extensions_for_vec_cstring_items =
         members.iter().map(|ExtensionsMember { name, raw, .. }| {
             quote! {
-                if x.#name { data.push(CString::new(#raw).unwrap()); }
+                if x.#name { data.push(std::ffi::CString::new(#raw).unwrap()); }
             }
         });
 
@@ -441,7 +443,7 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
             }
         }
 
-        impl BitAnd for #struct_name {
+        impl std::ops::BitAnd for #struct_name {
             type Output = #struct_name;
 
             #[inline]
@@ -450,14 +452,14 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
             }
         }
 
-        impl BitAndAssign for #struct_name {
+        impl std::ops::BitAndAssign for #struct_name {
             #[inline]
             fn bitand_assign(&mut self, rhs: Self) {
                 *self = self.union(&rhs);
             }
         }
 
-        impl BitOr for #struct_name {
+        impl std::ops::BitOr for #struct_name {
             type Output = #struct_name;
 
             #[inline]
@@ -466,14 +468,14 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
             }
         }
 
-        impl BitOrAssign for #struct_name {
+        impl std::ops::BitOrAssign for #struct_name {
             #[inline]
             fn bitor_assign(&mut self, rhs: Self) {
                 *self = self.intersection(&rhs);
             }
         }
 
-        impl BitXor for #struct_name {
+        impl std::ops::BitXor for #struct_name {
             type Output = #struct_name;
 
             #[inline]
@@ -482,14 +484,14 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
             }
         }
 
-        impl BitXorAssign for #struct_name {
+        impl std::ops::BitXorAssign for #struct_name {
             #[inline]
             fn bitxor_assign(&mut self, rhs: Self) {
                 *self = self.symmetric_difference(&rhs);
             }
         }
 
-        impl Sub for #struct_name {
+        impl std::ops::Sub for #struct_name {
             type Output = #struct_name;
 
             #[inline]
@@ -498,7 +500,7 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
             }
         }
 
-        impl SubAssign for #struct_name {
+        impl std::ops::SubAssign for #struct_name {
             #[inline]
             fn sub_assign(&mut self, rhs: Self) {
                 *self = self.difference(&rhs);
@@ -507,7 +509,7 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
 
         impl std::fmt::Debug for #struct_name {
             #[allow(unused_assignments)]
-            fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
                 write!(f, "[")?;
 
                 let mut first = true;
@@ -517,12 +519,14 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
             }
         }
 
-        impl<'a, I> From<I> for #struct_name where I: IntoIterator<Item = &'a CStr> {
-            fn from(names: I) -> Self {
+        impl<'a> FromIterator<&'a str> for #struct_name {
+            fn from_iter<I>(iter: I) -> Self
+                where I: IntoIterator<Item = &'a str>
+            {
                 let mut extensions = Self::empty();
-                for name in names {
-                    match name.to_bytes() {
-                        #(#from_cstr_for_extensions_items)*
+                for name in iter {
+                    match name {
+                        #(#from_str_for_extensions_items)*
                         _ => (),
                     }
                 }
@@ -530,7 +534,7 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
             }
         }
 
-        impl<'a> From<&'a #struct_name> for Vec<CString> {
+        impl<'a> From<&'a #struct_name> for Vec<std::ffi::CString> {
             fn from(x: &'a #struct_name) -> Self {
                 let mut data = Self::new();
                 #(#from_extensions_for_vec_cstring_items)*

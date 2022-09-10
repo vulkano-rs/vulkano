@@ -15,8 +15,13 @@ use crate::{
     },
     device::DeviceOwned,
     instance::debug::DebugUtilsLabel,
+    RequiresOneOf,
 };
-use std::{error::Error, ffi::CString, fmt};
+use std::{
+    error::Error,
+    ffi::CString,
+    fmt::{Display, Error as FmtError, Formatter},
+};
 
 /// # Commands for debugging.
 ///
@@ -49,14 +54,21 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             .enabled_extensions()
             .ext_debug_utils
         {
-            return Err(DebugUtilsError::ExtensionNotEnabled {
-                extension: "ext_debug_utils",
-                reason: "tried to record a debug utils command",
+            return Err(DebugUtilsError::RequirementNotMet {
+                required_for: "`begin_debug_utils_label`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["ext_debug_utils"],
+                    ..Default::default()
+                },
             });
         }
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdBeginDebugUtilsLabelEXT-commandBuffer-cmdpool
-        if !(self.queue_family().supports_graphics() || self.queue_family().supports_compute()) {
+        if !(queue_family_properties.queue_flags.graphics
+            || queue_family_properties.queue_flags.compute)
+        {
             return Err(DebugUtilsError::NotSupportedByQueueFamily);
         }
 
@@ -86,14 +98,21 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             .enabled_extensions()
             .ext_debug_utils
         {
-            return Err(DebugUtilsError::ExtensionNotEnabled {
-                extension: "ext_debug_utils",
-                reason: "tried to record a debug utils command",
+            return Err(DebugUtilsError::RequirementNotMet {
+                required_for: "`end_debug_utils_label`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["ext_debug_utils"],
+                    ..Default::default()
+                },
             });
         }
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdEndDebugUtilsLabelEXT-commandBuffer-cmdpool
-        if !(self.queue_family().supports_graphics() || self.queue_family().supports_compute()) {
+        if !(queue_family_properties.queue_flags.graphics
+            || queue_family_properties.queue_flags.compute)
+        {
             return Err(DebugUtilsError::NotSupportedByQueueFamily);
         }
 
@@ -131,14 +150,21 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             .enabled_extensions()
             .ext_debug_utils
         {
-            return Err(DebugUtilsError::ExtensionNotEnabled {
-                extension: "ext_debug_utils",
-                reason: "tried to record a debug utils command",
+            return Err(DebugUtilsError::RequirementNotMet {
+                required_for: "`insert_debug_utils_label`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["ext_debug_utils"],
+                    ..Default::default()
+                },
             });
         }
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdInsertDebugUtilsLabelEXT-commandBuffer-cmdpool
-        if !(self.queue_family().supports_graphics() || self.queue_family().supports_compute()) {
+        if !(queue_family_properties.queue_flags.graphics
+            || queue_family_properties.queue_flags.compute)
+        {
             return Err(DebugUtilsError::NotSupportedByQueueFamily);
         }
 
@@ -284,9 +310,9 @@ impl UnsafeCommandBufferBuilder {
 /// Error that can happen when recording a debug utils command.
 #[derive(Clone, Debug)]
 pub enum DebugUtilsError {
-    ExtensionNotEnabled {
-        extension: &'static str,
-        reason: &'static str,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
     },
 
     /// The queue family doesn't allow this operation.
@@ -295,13 +321,19 @@ pub enum DebugUtilsError {
 
 impl Error for DebugUtilsError {}
 
-impl fmt::Display for DebugUtilsError {
+impl Display for DebugUtilsError {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match self {
-            Self::ExtensionNotEnabled { extension, reason } => {
-                write!(f, "the extension {} must be enabled: {}", extension, reason)
-            }
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
+            ),
+
             Self::NotSupportedByQueueFamily => {
                 write!(f, "the queue family doesn't allow this operation")
             }

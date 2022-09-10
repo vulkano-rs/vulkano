@@ -50,14 +50,14 @@ use self::ycbcr::SamplerYcbcrConversion;
 use crate::{
     device::{Device, DeviceOwned},
     image::{view::ImageViewType, ImageViewAbstract},
-    macros::{vulkan_enum, ExtensionNotEnabled},
+    macros::vulkan_enum,
     pipeline::graphics::depth_stencil::CompareOp,
     shader::ShaderScalarType,
-    OomError, VulkanError, VulkanObject,
+    OomError, RequirementNotMet, RequiresOneOf, VulkanError, VulkanObject,
 };
 use std::{
     error::Error,
-    fmt,
+    fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     ops::RangeInclusive,
@@ -143,46 +143,36 @@ impl Sampler {
         for filter in [mag_filter, min_filter] {
             // VUID-VkSamplerCreateInfo-magFilter-parameter
             // VUID-VkSamplerCreateInfo-minFilter-parameter
-            filter.validate(&device)?;
+            filter.validate_device(&device)?;
         }
 
         // VUID-VkSamplerCreateInfo-mipmapMode-parameter
-        mipmap_mode.validate(&device)?;
+        mipmap_mode.validate_device(&device)?;
 
         for mode in address_mode {
             // VUID-VkSamplerCreateInfo-addressModeU-parameter
             // VUID-VkSamplerCreateInfo-addressModeV-parameter
             // VUID-VkSamplerCreateInfo-addressModeW-parameter
-            mode.validate(&device)?;
+            mode.validate_device(&device)?;
 
             if mode == SamplerAddressMode::ClampToBorder {
                 // VUID-VkSamplerCreateInfo-addressModeU-01078
-                border_color.validate(&device)?;
+                border_color.validate_device(&device)?;
             }
         }
 
-        if address_mode
-            .into_iter()
-            .any(|mode| mode == SamplerAddressMode::MirrorClampToEdge)
-        {
+        if address_mode.contains(&SamplerAddressMode::MirrorClampToEdge) {
             if !device.enabled_features().sampler_mirror_clamp_to_edge
                 && !device.enabled_extensions().khr_sampler_mirror_clamp_to_edge
             {
-                if device
-                    .physical_device()
-                    .supported_features()
-                    .sampler_mirror_clamp_to_edge
-                {
-                    return Err(SamplerCreationError::FeatureNotEnabled {
-                        feature: "sampler_mirror_clamp_to_edge",
-                        reason: "one or more address modes were MirrorClampToEdge",
-                    });
-                } else {
-                    return Err(SamplerCreationError::ExtensionNotEnabled {
-                        extension: "khr_sampler_mirror_clamp_to_edge",
-                        reason: "one or more address modes were MirrorClampToEdge",
-                    });
-                }
+                return Err(SamplerCreationError::RequirementNotMet {
+                    required_for: "`create_info.address_mode` contains `SamplerAddressMode::MirrorClampToEdge`",
+                    requires_one_of: RequiresOneOf {
+                        features: &["sampler_mirror_clamp_to_edge"],
+                        device_extensions: &["khr_sampler_mirror_clamp_to_edge"],
+                        ..Default::default()
+                    },
+                });
             }
         }
 
@@ -201,9 +191,12 @@ impl Sampler {
             assert!(max_anisotropy >= 1.0);
 
             if !device.enabled_features().sampler_anisotropy {
-                return Err(SamplerCreationError::FeatureNotEnabled {
-                    feature: "sampler_anisotropy",
-                    reason: "anisotropy was set to `Some`",
+                return Err(SamplerCreationError::RequirementNotMet {
+                    required_for: "`create_info.anisotropy` is `Some`",
+                    requires_one_of: RequiresOneOf {
+                        features: &["sampler_anisotropy"],
+                        ..Default::default()
+                    },
                 });
             }
 
@@ -232,7 +225,7 @@ impl Sampler {
 
         let (compare_enable, compare_op) = if let Some(compare_op) = compare {
             // VUID-VkSamplerCreateInfo-compareEnable-01080
-            compare_op.validate(&device)?;
+            compare_op.validate_device(&device)?;
 
             if reduction_mode != SamplerReductionMode::WeightedAverage {
                 return Err(SamplerCreationError::CompareInvalidReductionMode { reduction_mode });
@@ -285,38 +278,32 @@ impl Sampler {
             }
         }
 
-        let mut sampler_reduction_mode_create_info =
-            if reduction_mode != SamplerReductionMode::WeightedAverage {
-                if !(device.enabled_features().sampler_filter_minmax
-                    || device.enabled_extensions().ext_sampler_filter_minmax)
-                {
-                    if device
-                        .physical_device()
-                        .supported_features()
-                        .sampler_filter_minmax
-                    {
-                        return Err(SamplerCreationError::FeatureNotEnabled {
-                            feature: "sampler_filter_minmax",
-                            reason: "reduction_mode was not WeightedAverage",
-                        });
-                    } else {
-                        return Err(SamplerCreationError::ExtensionNotEnabled {
-                            extension: "ext_sampler_filter_minmax",
-                            reason: "reduction_mode was not WeightedAverage",
-                        });
-                    }
-                }
+        let mut sampler_reduction_mode_create_info = if reduction_mode
+            != SamplerReductionMode::WeightedAverage
+        {
+            if !(device.enabled_features().sampler_filter_minmax
+                || device.enabled_extensions().ext_sampler_filter_minmax)
+            {
+                return Err(SamplerCreationError::RequirementNotMet {
+                        required_for: "`create_info.reduction_mode` is not `SamplerReductionMode::WeightedAverage`",
+                        requires_one_of: RequiresOneOf {
+                            features: &["sampler_filter_minmax"],
+                            device_extensions: &["ext_sampler_filter_minmax"],
+                            ..Default::default()
+                        },
+                    });
+            }
 
-                // VUID-VkSamplerReductionModeCreateInfo-reductionMode-parameter
-                reduction_mode.validate(&device)?;
+            // VUID-VkSamplerReductionModeCreateInfo-reductionMode-parameter
+            reduction_mode.validate_device(&device)?;
 
-                Some(ash::vk::SamplerReductionModeCreateInfo {
-                    reduction_mode: reduction_mode.into(),
-                    ..Default::default()
-                })
-            } else {
-                None
-            };
+            Some(ash::vk::SamplerReductionModeCreateInfo {
+                reduction_mode: reduction_mode.into(),
+                ..Default::default()
+            })
+        } else {
+            None
+        };
 
         // Don't need to check features because you can't create a conversion object without the
         // feature anyway.
@@ -780,13 +767,9 @@ pub enum SamplerCreationError {
     /// Note the specs guarantee that at least 4000 samplers can exist simultaneously.
     TooManyObjects,
 
-    ExtensionNotEnabled {
-        extension: &'static str,
-        reason: &'static str,
-    },
-    FeatureNotEnabled {
-        feature: &'static str,
-        reason: &'static str,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
     },
 
     /// Anisotropy was enabled with an invalid filter.
@@ -878,59 +861,61 @@ impl Error for SamplerCreationError {
     }
 }
 
-impl fmt::Display for SamplerCreationError {
+impl Display for SamplerCreationError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match *self {
-            Self::OomError(_) => write!(fmt, "not enough memory available"),
-            Self::TooManyObjects => write!(fmt, "too many simultaneous sampler objects",),
-            Self::ExtensionNotEnabled { extension, reason } => write!(
-                fmt,
-                "the extension {} must be enabled: {}",
-                extension, reason
+            Self::OomError(_) => write!(f, "not enough memory available"),
+            Self::TooManyObjects => write!(f, "too many simultaneous sampler objects",),
+
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
             ),
-            Self::FeatureNotEnabled { feature, reason } => {
-                write!(fmt, "the feature {} must be enabled: {}", feature, reason)
-            }
-            Self::AnisotropyInvalidFilter { .. } => write!(fmt, "anisotropy was enabled with an invalid filter"),
-            Self::CompareInvalidReductionMode { .. } => write!(fmt, "depth comparison was enabled with an invalid reduction mode"),
+
+            Self::AnisotropyInvalidFilter { .. } => write!(f, "anisotropy was enabled with an invalid filter"),
+            Self::CompareInvalidReductionMode { .. } => write!(f, "depth comparison was enabled with an invalid reduction mode"),
             Self::MaxSamplerAnisotropyExceeded { .. } => {
-                write!(fmt, "max_sampler_anisotropy limit exceeded")
+                write!(f, "max_sampler_anisotropy limit exceeded")
             }
-            Self::MaxSamplerLodBiasExceeded { .. } => write!(fmt, "mip lod bias limit exceeded"),
+            Self::MaxSamplerLodBiasExceeded { .. } => write!(f, "mip lod bias limit exceeded"),
             Self::SamplerYcbcrConversionAnisotropyEnabled => write!(
-                fmt,
+                f,
                 "sampler YCbCr conversion was enabled together with anisotropy"
             ),
-            Self::SamplerYcbcrConversionChromaFilterMismatch { .. } => write!(fmt, "sampler YCbCr conversion was enabled, and its format does not support `sampled_image_ycbcr_conversion_separate_reconstruction_filter`, but `mag_filter` or `min_filter` did not match the conversion's `chroma_filter`"),
-            Self::SamplerYcbcrConversionInvalidAddressMode { .. } => write!(fmt, "sampler YCbCr conversion was enabled, but the address mode for u, v or w was something other than `ClampToEdge`"),
-            Self::SamplerYcbcrConversionInvalidReductionMode { .. } => write!(fmt, "sampler YCbCr conversion was enabled, but the reduction mode was something other than `WeightedAverage`"),
+            Self::SamplerYcbcrConversionChromaFilterMismatch { .. } => write!(f, "sampler YCbCr conversion was enabled, and its format does not support `sampled_image_ycbcr_conversion_separate_reconstruction_filter`, but `mag_filter` or `min_filter` did not match the conversion's `chroma_filter`"),
+            Self::SamplerYcbcrConversionInvalidAddressMode { .. } => write!(f, "sampler YCbCr conversion was enabled, but the address mode for u, v or w was something other than `ClampToEdge`"),
+            Self::SamplerYcbcrConversionInvalidReductionMode { .. } => write!(f, "sampler YCbCr conversion was enabled, but the reduction mode was something other than `WeightedAverage`"),
             Self::SamplerYcbcrConversionUnnormalizedCoordinatesEnabled => write!(
-                fmt,
+                f,
                 "sampler YCbCr conversion was enabled together with unnormalized coordinates"
             ),
             Self::UnnormalizedCoordinatesAnisotropyEnabled => write!(
-                fmt,
+                f,
                 "unnormalized coordinates were enabled together with anisotropy"
             ),
             Self::UnnormalizedCoordinatesCompareEnabled => write!(
-                fmt,
+                f,
                 "unnormalized coordinates were enabled together with depth comparison"
             ),
             Self::UnnormalizedCoordinatesFiltersNotEqual { .. } => write!(
-                fmt,
+                f,
                 "unnormalized coordinates were enabled, but the min and mag filters were not equal"
             ),
             Self::UnnormalizedCoordinatesInvalidAddressMode { .. } => write!(
-                fmt,
+                f,
                 "unnormalized coordinates were enabled, but the address mode for u or v was something other than `ClampToEdge` or `ClampToBorder`"
             ),
             Self::UnnormalizedCoordinatesInvalidMipmapMode { .. } => write!(
-                fmt,
+                f,
                 "unnormalized coordinates were enabled, but the mipmap mode was not `Nearest`"
             ),
             Self::UnnormalizedCoordinatesNonzeroLod { .. } => write!(
-                fmt,
+                f,
                 "unnormalized coordinates were enabled, but the LOD range was not zero"
             ),
         }
@@ -956,12 +941,12 @@ impl From<VulkanError> for SamplerCreationError {
     }
 }
 
-impl From<ExtensionNotEnabled> for SamplerCreationError {
+impl From<RequirementNotMet> for SamplerCreationError {
     #[inline]
-    fn from(err: ExtensionNotEnabled) -> Self {
-        Self::ExtensionNotEnabled {
-            extension: err.extension,
-            reason: err.reason,
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
         }
     }
 }
@@ -1318,7 +1303,7 @@ vulkan_enum! {
     /// be enabled on the device, and anisotropy must be disabled. Sampled image views must have
     /// a type of [`Dim2d`](crate::image::view::ImageViewType::Dim2d).
     Cubic = CUBIC_EXT {
-        extensions: [ext_filter_cubic, img_filter_cubic],
+        device_extensions: [ext_filter_cubic, img_filter_cubic],
     },
 }
 
@@ -1372,7 +1357,7 @@ vulkan_enum! {
     /// extension must be enabled on the device.
     MirrorClampToEdge = MIRROR_CLAMP_TO_EDGE {
         api_version: V1_2,
-        extensions: [khr_sampler_mirror_clamp_to_edge],
+        device_extensions: [khr_sampler_mirror_clamp_to_edge],
     },
 }
 
@@ -1407,12 +1392,12 @@ vulkan_enum! {
     /*
     // TODO: document
     FloatCustom = VK_BORDER_COLOR_FLOAT_CUSTOM_EXT {
-        extensions: [ext_custom_border_color],
+        device_extensions: [ext_custom_border_color],
     },
 
     // TODO: document
     IntCustom = INT_CUSTOM_EXT {
-        extensions: [ext_custom_border_color],
+        device_extensions: [ext_custom_border_color],
     },
      */
 }
@@ -1485,19 +1470,19 @@ pub enum SamplerImageViewIncompatibleError {
 
 impl Error for SamplerImageViewIncompatibleError {}
 
-impl fmt::Display for SamplerImageViewIncompatibleError {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+impl Display for SamplerImageViewIncompatibleError {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match self {
-            Self::BorderColorFormatNotCompatible => write!(fmt, "the sampler has a border color with a numeric type different from the image view"),
-            Self::BorderColorOpaqueBlackNotIdentitySwizzled => write!(fmt, "the sampler has an opaque black border color, but the image view is not identity swizzled"),
-            Self::DepthComparisonNotSupported => write!(fmt, "the sampler has depth comparison enabled, but this is not supported by the image view"),
-            Self::DepthComparisonWrongAspect => write!(fmt, "the sampler has depth comparison enabled, but the image view does not select the `depth` aspect"),
-            Self::FilterLinearNotSupported => write!(fmt, "the sampler uses a linear filter, but this is not supported by the image view's format features"),
-            Self::FilterCubicNotSupported => write!(fmt, "the sampler uses a cubic filter, but this is not supported by the image view's format features"),
-            Self::FilterCubicMinmaxNotSupported => write!(fmt, "the sampler uses a cubic filter with a `Min` or `Max` reduction mode, but this is not supported by the image view's format features"),
-            Self::MipmapModeLinearNotSupported => write!(fmt, "the sampler uses a linear mipmap mode, but this is not supported by the image view's format features"),
-            Self::UnnormalizedCoordinatesMultipleMipLevels => write!(fmt, "the sampler uses unnormalized coordinates, but the image view has multiple mip levels"),
-            Self::UnnormalizedCoordinatesViewTypeNotCompatible => write!(fmt, "the sampler uses unnormalized coordinates, but the image view has a type other than `Dim1d` or `Dim2d`"),
+            Self::BorderColorFormatNotCompatible => write!(f, "the sampler has a border color with a numeric type different from the image view"),
+            Self::BorderColorOpaqueBlackNotIdentitySwizzled => write!(f, "the sampler has an opaque black border color, but the image view is not identity swizzled"),
+            Self::DepthComparisonNotSupported => write!(f, "the sampler has depth comparison enabled, but this is not supported by the image view"),
+            Self::DepthComparisonWrongAspect => write!(f, "the sampler has depth comparison enabled, but the image view does not select the `depth` aspect"),
+            Self::FilterLinearNotSupported => write!(f, "the sampler uses a linear filter, but this is not supported by the image view's format features"),
+            Self::FilterCubicNotSupported => write!(f, "the sampler uses a cubic filter, but this is not supported by the image view's format features"),
+            Self::FilterCubicMinmaxNotSupported => write!(f, "the sampler uses a cubic filter with a `Min` or `Max` reduction mode, but this is not supported by the image view's format features"),
+            Self::MipmapModeLinearNotSupported => write!(f, "the sampler uses a linear mipmap mode, but this is not supported by the image view's format features"),
+            Self::UnnormalizedCoordinatesMultipleMipLevels => write!(f, "the sampler uses unnormalized coordinates, but the image view has multiple mip levels"),
+            Self::UnnormalizedCoordinatesViewTypeNotCompatible => write!(f, "the sampler uses unnormalized coordinates, but the image view has a type other than `Dim1d` or `Dim2d`"),
         }
     }
 }
@@ -1510,6 +1495,7 @@ mod tests {
             Filter, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerCreationError,
             SamplerReductionMode,
         },
+        RequiresOneOf,
     };
 
     #[test]
@@ -1640,10 +1626,10 @@ mod tests {
         );
 
         match r {
-            Err(SamplerCreationError::FeatureNotEnabled {
-                feature: "sampler_anisotropy",
+            Err(SamplerCreationError::RequirementNotMet {
+                requires_one_of: RequiresOneOf { features, .. },
                 ..
-            }) => (),
+            }) if features.contains(&"sampler_anisotropy") => (),
             _ => panic!(),
         }
     }
@@ -1710,16 +1696,16 @@ mod tests {
         );
 
         match r {
-            Err(
-                SamplerCreationError::FeatureNotEnabled {
-                    feature: "sampler_mirror_clamp_to_edge",
-                    ..
-                }
-                | SamplerCreationError::ExtensionNotEnabled {
-                    extension: "khr_sampler_mirror_clamp_to_edge",
-                    ..
-                },
-            ) => (),
+            Err(SamplerCreationError::RequirementNotMet {
+                requires_one_of:
+                    RequiresOneOf {
+                        features,
+                        device_extensions,
+                        ..
+                    },
+                ..
+            }) if features.contains(&"sampler_mirror_clamp_to_edge")
+                && device_extensions.contains(&"khr_sampler_mirror_clamp_to_edge") => {}
             _ => panic!(),
         }
     }
@@ -1739,16 +1725,16 @@ mod tests {
         );
 
         match r {
-            Err(
-                SamplerCreationError::FeatureNotEnabled {
-                    feature: "sampler_filter_minmax",
-                    ..
-                }
-                | SamplerCreationError::ExtensionNotEnabled {
-                    extension: "ext_sampler_filter_minmax",
-                    ..
-                },
-            ) => (),
+            Err(SamplerCreationError::RequirementNotMet {
+                requires_one_of:
+                    RequiresOneOf {
+                        features,
+                        device_extensions,
+                        ..
+                    },
+                ..
+            }) if features.contains(&"sampler_filter_minmax")
+                && device_extensions.contains(&"ext_sampler_filter_minmax") => {}
             _ => panic!(),
         }
     }

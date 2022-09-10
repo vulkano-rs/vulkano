@@ -9,12 +9,12 @@
 
 use crate::{
     device::{Device, DeviceOwned},
-    macros::{vulkan_bitflags, vulkan_enum, ExtensionNotEnabled},
-    OomError, Version, VulkanError, VulkanObject,
+    macros::{vulkan_bitflags, vulkan_enum},
+    OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use std::{
     error::Error,
-    fmt,
+    fmt::{Display, Error as FmtError, Formatter},
     fs::File,
     hash::{Hash, Hasher},
     mem::MaybeUninit,
@@ -50,14 +50,18 @@ impl Semaphore {
             if !(device.api_version() >= Version::V1_1
                 || device.enabled_extensions().khr_external_semaphore)
             {
-                return Err(SemaphoreCreationError::ExtensionNotEnabled {
-                    extension: "khr_external_semaphore",
-                    reason: "export_handle_types was not empty",
+                return Err(SemaphoreCreationError::RequirementNotMet {
+                    required_for: "`create_info.export_handle_types` is not empty",
+                    requires_one_of: RequiresOneOf {
+                        api_version: Some(Version::V1_1),
+                        device_extensions: &["khr_external_semaphore"],
+                        ..Default::default()
+                    },
                 });
             }
 
             // VUID-VkExportSemaphoreCreateInfo-handleTypes-parameter
-            export_handle_types.validate(&device)?;
+            export_handle_types.validate_device(&device)?;
 
             // VUID-VkExportSemaphoreCreateInfo-handleTypes-01124
             // TODO: `vkGetPhysicalDeviceExternalSemaphoreProperties` can only be called with one
@@ -258,9 +262,9 @@ pub enum SemaphoreCreationError {
     /// Not enough memory available.
     OomError(OomError),
 
-    ExtensionNotEnabled {
-        extension: &'static str,
-        reason: &'static str,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
     },
 }
 
@@ -274,13 +278,19 @@ impl Error for SemaphoreCreationError {
     }
 }
 
-impl fmt::Display for SemaphoreCreationError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Display for SemaphoreCreationError {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match self {
             Self::OomError(_) => write!(f, "not enough memory available"),
-            Self::ExtensionNotEnabled { extension, reason } => {
-                write!(f, "the extension {} must be enabled: {}", extension, reason)
-            }
+
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
+            ),
         }
     }
 }
@@ -304,12 +314,12 @@ impl From<OomError> for SemaphoreCreationError {
     }
 }
 
-impl From<ExtensionNotEnabled> for SemaphoreCreationError {
+impl From<RequirementNotMet> for SemaphoreCreationError {
     #[inline]
-    fn from(err: ExtensionNotEnabled) -> Self {
-        Self::ExtensionNotEnabled {
-            extension: err.extension,
-            reason: err.reason,
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
         }
     }
 }
@@ -358,7 +368,7 @@ vulkan_enum! {
     /*
     // TODO: document
     ZirconEvent = ZIRCON_EVENT_FUCHSIA {
-        extensions: [fuchsia_external_semaphore],
+        device_extensions: [fuchsia_external_semaphore],
     },
      */
 }
@@ -386,7 +396,7 @@ vulkan_bitflags! {
     /*
     // TODO: document
     zircon_event = ZIRCON_EVENT_FUCHSIA {
-        extensions: [fuchsia_external_semaphore],
+        device_extensions: [fuchsia_external_semaphore],
     },
      */
 }
@@ -446,12 +456,12 @@ pub enum SemaphoreExportError {
     },
 }
 
-impl fmt::Display for SemaphoreExportError {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Display for SemaphoreExportError {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match *self {
-            Self::OomError(_) => write!(fmt, "not enough memory available"),
+            Self::OomError(_) => write!(f, "not enough memory available"),
             Self::HandleTypeNotSupported { handle_type } => write!(
-                fmt,
+                f,
                 "the requested export handle type ({:?}) was not provided in `export_handle_types` when creating the semaphore",
                 handle_type,
             ),
@@ -491,9 +501,7 @@ impl From<OomError> for SemaphoreExportError {
 #[cfg(test)]
 mod tests {
     use crate::{
-        device::{
-            physical::PhysicalDevice, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
-        },
+        device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo},
         instance::{Instance, InstanceCreateInfo, InstanceExtensions},
         sync::{ExternalSemaphoreHandleTypes, Semaphore, SemaphoreCreateInfo},
         VulkanLibrary, VulkanObject,
@@ -544,8 +552,10 @@ mod tests {
             Err(_) => return,
         };
 
-        let physical_device = PhysicalDevice::enumerate(&instance).next().unwrap();
-        let queue_family = physical_device.queue_families().next().unwrap();
+        let physical_device = match instance.enumerate_physical_devices() {
+            Ok(mut x) => x.next().unwrap(),
+            Err(_) => return,
+        };
 
         let (device, _) = match Device::new(
             physical_device,
@@ -555,7 +565,10 @@ mod tests {
                     khr_external_semaphore_fd: true,
                     ..DeviceExtensions::empty()
                 },
-                queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+                queue_create_infos: vec![QueueCreateInfo {
+                    queue_family_index: 0,
+                    ..Default::default()
+                }],
                 ..Default::default()
             },
         ) {

@@ -4,7 +4,7 @@ use std::{
     cmp,
     cmp::Ordering,
     collections::{btree_map, BTreeMap},
-    fmt::{self, Debug},
+    fmt::{Debug, Error as FmtError, Formatter},
     iter::{FromIterator, FusedIterator, Peekable},
     ops::{Add, Bound, Range, Sub},
 };
@@ -585,7 +585,7 @@ where
     K: Ord + Clone,
     V: Eq + Clone,
 {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         f.debug_map().entries(self.iter()).finish()
     }
 }

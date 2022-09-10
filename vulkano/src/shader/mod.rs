@@ -33,8 +33,7 @@ use std::{
     collections::{HashMap, HashSet},
     error::Error,
     ffi::{CStr, CString},
-    fmt,
-    fmt::Display,
+    fmt::{Display, Error as FmtError, Formatter},
     mem,
     mem::MaybeUninit,
     ptr,
@@ -308,7 +307,7 @@ impl Error for ShaderCreationError {
 }
 
 impl Display for ShaderCreationError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match self {
             Self::OomError(_) => write!(f, "not enough memory available"),
             Self::SpirvCapabilityNotSupported { capability, .. } => write!(
@@ -353,7 +352,7 @@ pub enum ShaderSupportError {
 impl Error for ShaderSupportError {}
 
 impl Display for ShaderSupportError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match self {
             Self::NotSupportedByVulkan => write!(f, "not supported by Vulkan"),
             Self::RequirementsNotMet(requirements) => write!(
@@ -686,24 +685,24 @@ pub enum DescriptorRequirementsIncompatible {
 impl Error for DescriptorRequirementsIncompatible {}
 
 impl Display for DescriptorRequirementsIncompatible {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match self {
             DescriptorRequirementsIncompatible::DescriptorType => write!(
-                fmt,
+                f,
                 "the allowed descriptor types of the two descriptors do not overlap",
             ),
             DescriptorRequirementsIncompatible::ImageFormat => {
-                write!(fmt, "the descriptors require different formats",)
+                write!(f, "the descriptors require different formats",)
             }
             DescriptorRequirementsIncompatible::ImageMultisampled => write!(
-                fmt,
+                f,
                 "the multisampling requirements of the descriptors differ",
             ),
             DescriptorRequirementsIncompatible::ImageScalarType => {
-                write!(fmt, "the descriptors require different scalar types",)
+                write!(f, "the descriptors require different scalar types",)
             }
             DescriptorRequirementsIncompatible::ImageViewType => {
-                write!(fmt, "the descriptors require different image view types",)
+                write!(f, "the descriptors require different image view types",)
             }
         }
     }
@@ -1020,11 +1019,11 @@ pub enum ShaderInterfaceMismatchError {
 
 impl Error for ShaderInterfaceMismatchError {}
 
-impl fmt::Display for ShaderInterfaceMismatchError {
+impl Display for ShaderInterfaceMismatchError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         write!(
-            fmt,
+            f,
             "{}",
             match *self {
                 ShaderInterfaceMismatchError::ElementsCountMismatch { .. } => {
@@ -1064,48 +1063,48 @@ vulkan_enum! {
 
     // TODO: document
     Raygen = RAYGEN_KHR {
-        extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
+        device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
     },
 
     // TODO: document
     AnyHit = ANY_HIT_KHR {
-        extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
+        device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
     },
 
     // TODO: document
     ClosestHit = CLOSEST_HIT_KHR {
-        extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
+        device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
     },
 
     // TODO: document
     Miss = MISS_KHR {
-        extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
+        device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
     },
 
     // TODO: document
     Intersection = INTERSECTION_KHR {
-        extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
+        device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
     },
 
     // TODO: document
     Callable = CALLABLE_KHR {
-        extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
+        device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
     },
 
     /*
     // TODO: document
     Task = TASK_NV {
-        extensions: [nv_mesh_shader],
+        device_extensions: [nv_mesh_shader],
     },
 
     // TODO: document
     Mesh = MESH_NV {
-        extensions: [nv_mesh_shader],
+        device_extensions: [nv_mesh_shader],
     },
 
     // TODO: document
     SubpassShading = SUBPASS_SHADING_HUAWEI {
-        extensions: [huawei_subpass_shading],
+        device_extensions: [huawei_subpass_shading],
     },
      */
 }
@@ -1211,48 +1210,48 @@ vulkan_bitflags! {
 
     // TODO: document
     raygen = RAYGEN_KHR {
-        extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
+        device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
     },
 
     // TODO: document
     any_hit = ANY_HIT_KHR {
-        extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
+        device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
     },
 
     // TODO: document
     closest_hit = CLOSEST_HIT_KHR {
-        extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
+        device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
     },
 
     // TODO: document
     miss = MISS_KHR {
-        extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
+        device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
     },
 
     // TODO: document
     intersection = INTERSECTION_KHR {
-        extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
+        device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
     },
 
     // TODO: document
     callable = CALLABLE_KHR {
-        extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
+        device_extensions: [khr_ray_tracing_pipeline, nv_ray_tracing],
     },
 
     /*
     // TODO: document
     task = TASK_NV {
-        extensions: [nv_mesh_shader],
+        device_extensions: [nv_mesh_shader],
     },
 
     // TODO: document
     mesh = MESH_NV {
-        extensions: [nv_mesh_shader],
+        device_extensions: [nv_mesh_shader],
     },
 
     // TODO: document
     subpass_shading = SUBPASS_SHADING_HUAWEI {
-        extensions: [huawei_subpass_shading],
+        device_extensions: [huawei_subpass_shading],
     },
      */
 }

@@ -118,7 +118,7 @@ impl FractalComputePipeline {
         .unwrap();
         let mut builder = AutoCommandBufferBuilder::primary(
             self.queue.device().clone(),
-            self.queue.family(),
+            self.queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();

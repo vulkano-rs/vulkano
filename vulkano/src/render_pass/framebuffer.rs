@@ -17,7 +17,7 @@ use crate::{
 use smallvec::SmallVec;
 use std::{
     error::Error,
-    fmt,
+    fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     ops::Range,
@@ -602,26 +602,26 @@ impl Error for FramebufferCreationError {
     }
 }
 
-impl fmt::Display for FramebufferCreationError {
+impl Display for FramebufferCreationError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match *self {
             Self::OomError(_) => write!(
-                fmt,
+                f,
                 "no memory available",
             ),
             Self::Attachment2dArrayCompatibleDepthStencil { attachment } => write!(
-                fmt,
+                f,
                 "attachment image {} is a 2D image view created from a 3D image, and has a depth/stencil format",
                 attachment,
             ),
             Self::AttachmentComponentMappingNotIdentity { attachment } => write!(
-                fmt,
+                f,
                 "attachment image {} has a non-identity component mapping",
                 attachment,
             ),
             Self::AttachmentCountMismatch { .. } => write!(
-                fmt,
+                f,
                 "the number of attachments doesn't match the number expected by the render pass",
             ),
             Self::AttachmentExtentTooSmall {
@@ -629,7 +629,7 @@ impl fmt::Display for FramebufferCreationError {
                 provided,
                 min,
             } => write!(
-                fmt,
+                f,
                 "attachment image {} has an extent ({:?}) smaller than the provided `extent` ({:?})",
                 attachment, provided, min,
             ),
@@ -638,7 +638,7 @@ impl fmt::Display for FramebufferCreationError {
                 provided,
                 required,
             } => write!(
-                fmt,
+                f,
                 "attachment image {} has a `format` ({:?}) different from what the render pass requires ({:?})",
                 attachment, provided, required,
             ),
@@ -646,14 +646,14 @@ impl fmt::Display for FramebufferCreationError {
                 attachment,
                 usage,
             } => write!(
-                fmt,
+                f,
                 "attachment image {} is missing usage `{}` that the render pass requires it to have",
                 attachment, usage,
             ),
             Self::AttachmentMultipleMipLevels {
                 attachment,
             } => write!(
-                fmt,
+                f,
                 "attachment image {} has multiple mip levels",
                 attachment,
             ),
@@ -662,7 +662,7 @@ impl fmt::Display for FramebufferCreationError {
                 provided,
                 min,
             } => write!(
-                fmt,
+                f,
                 "attachment image {} has less layers ({}) than the provided `layers` ({})",
                 attachment, provided, min,
             ),
@@ -671,32 +671,32 @@ impl fmt::Display for FramebufferCreationError {
                 provided,
                 required,
             } => write!(
-                fmt,
+                f,
                 "attachment image {} has a `samples` ({:?}) different from what the render pass requires ({:?})",
                 attachment, provided, required,
             ),
             Self::AttachmentViewType3d {
                 attachment,
             } => write!(
-                fmt,
+                f,
                 "attachment image {} has a `ty` of `ImageViewType::Dim3d`",
                 attachment,
             ),
             Self::AutoExtentAttachmentsEmpty => write!(
-                fmt,
+                f,
                 "one of the elements of `extent` is zero, but no attachment images were given to calculate the extent from",
             ),
             Self::AutoLayersAttachmentsEmpty => write!(
-                fmt,
+                f,
                 "`layers` is zero, but no attachment images were given to calculate the number of layers from",
             ),
             Self::MaxFramebufferExtentExceeded { provided, max } => write!(
-                fmt,
+                f,
                 "the provided `extent` ({:?}) exceeds the `max_framebuffer_width` or `max_framebuffer_height` limits ({:?})",
                 provided, max,
             ),
             Self::MaxFramebufferLayersExceeded { provided, max } => write!(
-                fmt,
+                f,
                 "the provided `layers` ({}) exceeds the `max_framebuffer_layers` limit ({})",
                 provided, max,
             ),
@@ -705,12 +705,12 @@ impl fmt::Display for FramebufferCreationError {
                 provided,
                 min,
             } => write!(
-                fmt,
+                f,
                 "the render pass has multiview enabled, and attachment image {} has less layers ({}) than the number of views in the render pass ({})",
                 attachment, provided, min,
             ),
             Self::MultiviewLayersInvalid => write!(
-                fmt,
+                f,
                 "the render pass has multiview enabled, but `layers` was not 0 or 1",
             ),
         }

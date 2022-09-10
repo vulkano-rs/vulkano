@@ -36,7 +36,15 @@ use crate::{
     shader::{DescriptorRequirements, EntryPoint, SpecializationConstants},
     DeviceSize, OomError, VulkanError, VulkanObject,
 };
-use std::{collections::HashMap, error::Error, fmt, mem, mem::MaybeUninit, ptr, sync::Arc};
+use std::{
+    collections::HashMap,
+    error::Error,
+    fmt::{Debug, Display, Error as FmtError, Formatter},
+    mem,
+    mem::MaybeUninit,
+    ptr,
+    sync::Arc,
+};
 
 /// A pipeline object that describes to the Vulkan implementation how it should perform compute
 /// operations.
@@ -264,10 +272,10 @@ impl Pipeline for ComputePipeline {
     }
 }
 
-impl fmt::Debug for ComputePipeline {
+impl Debug for ComputePipeline {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "<Vulkan compute pipeline {:?}>", self.handle)
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+        write!(f, "<Vulkan compute pipeline {:?}>", self.handle)
     }
 }
 
@@ -334,11 +342,11 @@ impl Error for ComputePipelineCreationError {
     }
 }
 
-impl fmt::Display for ComputePipelineCreationError {
+impl Display for ComputePipelineCreationError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         write!(
-            fmt,
+            f,
             "{}",
             match *self {
                 ComputePipelineCreationError::OomError(_) => "not enough memory available",
@@ -505,7 +513,7 @@ mod tests {
 
         let mut cbb = AutoCommandBufferBuilder::primary(
             device.clone(),
-            queue.family(),
+            queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();

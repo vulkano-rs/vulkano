@@ -21,7 +21,6 @@ use crate::{
         DescriptorWriteInfo, WriteDescriptorSet,
     },
     device::DeviceOwned,
-    macros::ExtensionNotEnabled,
     pipeline::{
         graphics::{
             input_assembly::{Index, IndexType},
@@ -31,12 +30,13 @@ use crate::{
         ComputePipeline, GraphicsPipeline, PipelineBindPoint, PipelineLayout,
     },
     shader::ShaderStages,
-    DeviceSize, VulkanObject,
+    DeviceSize, RequirementNotMet, RequiresOneOf, VulkanObject,
 };
 use parking_lot::Mutex;
 use smallvec::SmallVec;
 use std::{
-    error, fmt,
+    error,
+    fmt::{Display, Error as FmtError, Formatter},
     mem::{size_of, size_of_val},
     ptr, slice,
     sync::Arc,
@@ -92,18 +92,20 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         descriptor_sets: &[DescriptorSetWithOffsets],
     ) -> Result<(), BindPushError> {
         // VUID-vkCmdBindDescriptorSets-pipelineBindPoint-parameter
-        pipeline_bind_point.validate(self.device())?;
+        pipeline_bind_point.validate_device(self.device())?;
+
+        let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdBindDescriptorSets-commandBuffer-cmdpool
         // VUID-vkCmdBindDescriptorSets-pipelineBindPoint-00361
         match pipeline_bind_point {
             PipelineBindPoint::Compute => {
-                if !self.queue_family().supports_compute() {
+                if !queue_family_properties.queue_flags.compute {
                     return Err(BindPushError::NotSupportedByQueueFamily);
                 }
             }
             PipelineBindPoint::Graphics => {
-                if !self.queue_family().supports_graphics() {
+                if !queue_family_properties.queue_flags.graphics {
                     return Err(BindPushError::NotSupportedByQueueFamily);
                 }
             }
@@ -171,8 +173,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         index_buffer: &dyn BufferAccess,
         index_type: IndexType,
     ) -> Result<(), BindPushError> {
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdBindIndexBuffer-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(BindPushError::NotSupportedByQueueFamily);
         }
 
@@ -186,9 +190,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
         // VUID-vkCmdBindIndexBuffer-indexType-02765
         if index_type == IndexType::U8 && !self.device().enabled_features().index_type_uint8 {
-            return Err(BindPushError::FeatureNotEnabled {
-                feature: "index_type_uint8",
-                reason: "index_buffer's index type was U8",
+            return Err(BindPushError::RequirementNotMet {
+                required_for: "`index_type` is `IndexType::U8`",
+                requires_one_of: RequiresOneOf {
+                    features: &["index_type_uint8"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -218,8 +225,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         &self,
         pipeline: &ComputePipeline,
     ) -> Result<(), BindPushError> {
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdBindPipeline-pipelineBindPoint-00777
-        if !self.queue_family().supports_compute() {
+        if !queue_family_properties.queue_flags.compute {
             return Err(BindPushError::NotSupportedByQueueFamily);
         }
 
@@ -249,8 +258,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         &self,
         pipeline: &GraphicsPipeline,
     ) -> Result<(), BindPushError> {
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdBindPipeline-pipelineBindPoint-00778
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(BindPushError::NotSupportedByQueueFamily);
         }
 
@@ -336,8 +347,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         first_binding: u32,
         vertex_buffers: &[Arc<dyn BufferAccess>],
     ) -> Result<(), BindPushError> {
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdBindVertexBuffers-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(BindPushError::NotSupportedByQueueFamily);
         }
 
@@ -535,25 +548,30 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         descriptor_writes: &[WriteDescriptorSet],
     ) -> Result<(), BindPushError> {
         if !self.device().enabled_extensions().khr_push_descriptor {
-            return Err(BindPushError::ExtensionNotEnabled {
-                extension: "khr_push_descriptor",
-                reason: "called push_descriptor_set",
+            return Err(BindPushError::RequirementNotMet {
+                required_for: "`push_descriptor_set`",
+                requires_one_of: RequiresOneOf {
+                    device_extensions: &["khr_push_descriptor"],
+                    ..Default::default()
+                },
             });
         }
 
         // VUID-vkCmdPushDescriptorSetKHR-pipelineBindPoint-parameter
-        pipeline_bind_point.validate(self.device())?;
+        pipeline_bind_point.validate_device(self.device())?;
+
+        let queue_family_properties = self.queue_family_properties();
 
         // VUID-vkCmdPushDescriptorSetKHR-commandBuffer-cmdpool
         // VUID-vkCmdPushDescriptorSetKHR-pipelineBindPoint-00363
         match pipeline_bind_point {
             PipelineBindPoint::Compute => {
-                if !self.queue_family().supports_compute() {
+                if !queue_family_properties.queue_flags.compute {
                     return Err(BindPushError::NotSupportedByQueueFamily);
                 }
             }
             PipelineBindPoint::Graphics => {
-                if !self.queue_family().supports_graphics() {
+                if !queue_family_properties.queue_flags.graphics {
                     return Err(BindPushError::NotSupportedByQueueFamily);
                 }
             }
@@ -1177,13 +1195,9 @@ impl UnsafeCommandBufferBuilderBindVertexBuffer {
 enum BindPushError {
     DescriptorSetUpdateError(DescriptorSetUpdateError),
 
-    ExtensionNotEnabled {
-        extension: &'static str,
-        reason: &'static str,
-    },
-    FeatureNotEnabled {
-        feature: &'static str,
-        reason: &'static str,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
     },
 
     /// The element of `descriptor_sets` being bound to a slot is not compatible with the
@@ -1242,20 +1256,19 @@ impl error::Error for BindPushError {
     }
 }
 
-impl fmt::Display for BindPushError {
+impl Display for BindPushError {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match self {
-            Self::ExtensionNotEnabled { extension, reason } => write!(
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
                 f,
-                "the extension {} must be enabled: {}",
-                extension, reason
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
             ),
-            Self::FeatureNotEnabled { feature, reason } => write!(
-                f,
-                "the feature {} must be enabled: {}",
-                feature, reason,
-            ),
+
             Self::DescriptorSetUpdateError(_) => write!(
                 f,
                 "a DescriptorSetUpdateError",
@@ -1318,12 +1331,12 @@ impl From<DescriptorSetUpdateError> for BindPushError {
     }
 }
 
-impl From<ExtensionNotEnabled> for BindPushError {
+impl From<RequirementNotMet> for BindPushError {
     #[inline]
-    fn from(err: ExtensionNotEnabled) -> Self {
-        Self::ExtensionNotEnabled {
-            extension: err.extension,
-            reason: err.reason,
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
         }
     }
 }
