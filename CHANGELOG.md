@@ -37,6 +37,15 @@
 - **Breaking** Changes to memory pools:
   - Renamed `StdMemoryPool[Alloc]`, `StdHostVisibleMemoryTypePool[Alloc]`, `StdNonHostVisibleMemoryTypePool[Alloc]` to `Standard{...}`.
   - Removed `Device::standard_pool` in favor of `Device::standard_memory_pool`, which returns `&Arc<StandardMemoryPool>`.
+- **Breaking** Changes to `PhysicalDevice`:
+  - `PhysicalDevice::enumerate` has been replaced with `Instance::enumerate_physical_devices`. This function returns `Arc<PhysicalDevice>`.
+  - Enumerating physical devices multiple times now retrieves the list of devices each time, instead of only at instance creation. This makes it possible to handle devices that are added/removed during runtime.
+  - `PhysicalDevice` now owns instead of borrows from its parent `Instance`, so it has no more type parameter.
+  - Added `extension_properties`, `memory_properties` and `queue_family_properties` method to get the full properties directly.
+  - `MemoryType`, `MemoryHeap` and `QueueFamily` have been removed. Where they were used, you now provide a `u32` index into the `memory_properties().memory_types`, `memory_properties().memory_heaps` and `queue_family_properties()` arrays.
+  - `QueueFamily::supports_surface` has been replaced with `PhysicalDevice::surface_support`, to match the Vulkan structure.
+  - `QueueCreateInfo` now implements `Default` (with a default `queue_family_index` of 0).
+  - `Queue::family` has been renamed to `queue_family_index`.
 - **Potentially Breaking** Fix iOS compilation:
   - Removed dependency to `cocoa` and `metal`
   - Fixed iOS compilation errors
