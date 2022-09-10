@@ -111,7 +111,9 @@ use crate::{
     command_buffer::pool::StandardCommandPool,
     descriptor_set::pool::StandardDescriptorPool,
     instance::{debug::DebugUtilsLabel, Instance},
+    macros::vulkan_bitflags,
     memory::{pool::StandardMemoryPool, ExternalMemoryHandleType},
+    sync::PipelineStage,
     OomError, RequirementNotMet, RequiresOneOf, SynchronizedVulkanObject, Version, VulkanError,
     VulkanObject,
 };
@@ -1245,6 +1247,86 @@ impl Hash for Queue {
         self.queue_family_index.hash(state);
         self.device.hash(state);
     }
+}
+
+/// Properties of a queue family in a physical device.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct QueueFamilyProperties {
+    /// Attributes of the queue family.
+    pub queue_flags: QueueFlags,
+
+    /// The number of queues available in this family.
+    ///
+    /// This guaranteed to be at least 1 (or else that family wouldn't exist).
+    pub queue_count: u32,
+
+    /// If timestamps are supported, the number of bits supported by timestamp operations.
+    /// The returned value will be in the range 36..64.
+    ///
+    /// If timestamps are not supported, this is `None`.
+    pub timestamp_valid_bits: Option<u32>,
+
+    /// The minimum granularity supported for image transfers, in terms of `[width, height, depth]`.
+    pub min_image_transfer_granularity: [u32; 3],
+}
+
+impl QueueFamilyProperties {
+    /// Returns whether the queues of this family support a particular pipeline stage.
+    #[inline]
+    pub fn supports_stage(&self, stage: PipelineStage) -> bool {
+        ash::vk::QueueFlags::from(self.queue_flags).contains(stage.required_queue_flags())
+    }
+}
+
+impl From<ash::vk::QueueFamilyProperties> for QueueFamilyProperties {
+    #[inline]
+    fn from(val: ash::vk::QueueFamilyProperties) -> Self {
+        Self {
+            queue_flags: val.queue_flags.into(),
+            queue_count: val.queue_count,
+            timestamp_valid_bits: (val.timestamp_valid_bits != 0)
+                .then_some(val.timestamp_valid_bits),
+            min_image_transfer_granularity: [
+                val.min_image_transfer_granularity.width,
+                val.min_image_transfer_granularity.height,
+                val.min_image_transfer_granularity.depth,
+            ],
+        }
+    }
+}
+
+vulkan_bitflags! {
+    /// Attributes of a queue or queue family.
+    #[non_exhaustive]
+    QueueFlags = QueueFlags(u32);
+
+    /// Queues of this family can execute graphics operations.
+    graphics = GRAPHICS,
+
+    /// Queues of this family can execute compute operations.
+    compute = COMPUTE,
+
+    /// Queues of this family can execute transfer operations.
+    transfer = TRANSFER,
+
+    /// Queues of this family can execute sparse memory management operations.
+    sparse_binding = SPARSE_BINDING,
+
+    /// Queues of this family can be created using the `protected` flag.
+    protected = PROTECTED {
+        api_version: V1_1,
+    },
+
+    /// Queues of this family can execute video decode operations.
+    video_decode = VIDEO_DECODE_KHR {
+        device_extensions: [khr_video_decode_queue],
+    },
+
+    /// Queues of this family can execute video encode operations.
+    video_encode = VIDEO_ENCODE_KHR {
+        device_extensions: [khr_video_encode_queue],
+    },
 }
 
 /// Error that can happen when submitting a debug utils command to a queue.
