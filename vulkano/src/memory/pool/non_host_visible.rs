@@ -9,7 +9,7 @@
 
 use crate::{
     device::Device,
-    memory::{device_memory::MemoryAllocateInfo, DeviceMemory, DeviceMemoryAllocationError},
+    memory::{device_memory::MemoryAllocateInfo, DeviceMemory, DeviceMemoryError},
     DeviceSize,
 };
 use parking_lot::Mutex;
@@ -56,7 +56,7 @@ impl StandardNonHostVisibleMemoryTypePool {
         self: &Arc<Self>,
         size: DeviceSize,
         alignment: DeviceSize,
-    ) -> Result<StandardNonHostVisibleMemoryTypePoolAlloc, DeviceMemoryAllocationError> {
+    ) -> Result<StandardNonHostVisibleMemoryTypePoolAlloc, DeviceMemoryError> {
         assert!(size != 0);
         assert!(alignment != 0);
 

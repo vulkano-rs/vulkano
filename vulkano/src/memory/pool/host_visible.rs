@@ -10,8 +10,7 @@
 use crate::{
     device::Device,
     memory::{
-        device_memory::MemoryAllocateInfo, DeviceMemory, DeviceMemoryAllocationError,
-        MappedDeviceMemory,
+        device_memory::MemoryAllocateInfo, DeviceMemory, DeviceMemoryError, MappedDeviceMemory,
     },
     DeviceSize,
 };
@@ -62,7 +61,7 @@ impl StandardHostVisibleMemoryTypePool {
         self: &Arc<Self>,
         size: DeviceSize,
         alignment: DeviceSize,
-    ) -> Result<StandardHostVisibleMemoryTypePoolAlloc, DeviceMemoryAllocationError> {
+    ) -> Result<StandardHostVisibleMemoryTypePoolAlloc, DeviceMemoryError> {
         assert!(size != 0);
         assert!(alignment != 0);
 

@@ -21,7 +21,7 @@ use crate::{
             MappingRequirement, MemoryPoolAlloc, PotentialDedicatedAllocation,
             StandardMemoryPoolAlloc,
         },
-        DedicatedAllocation, DeviceMemoryExportError, ExternalMemoryHandleType,
+        DedicatedAllocation, DeviceMemoryError, ExternalMemoryHandleType,
         ExternalMemoryHandleTypes, MemoryPool,
     },
     DeviceSize,
@@ -550,7 +550,7 @@ impl AttachmentImage {
 
     /// Exports posix file descriptor for the allocated memory
     /// requires `khr_external_memory_fd` and `khr_external_memory` extensions to be loaded.
-    pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryExportError> {
+    pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryError> {
         self.memory
             .memory()
             .export_fd(ExternalMemoryHandleType::OpaqueFd)

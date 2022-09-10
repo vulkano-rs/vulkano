@@ -17,9 +17,8 @@ pub use self::{
 use crate::{
     device::{physical::MemoryType, Device, DeviceOwned},
     memory::{
-        device_memory::MemoryAllocateInfo, DedicatedAllocation, DeviceMemory,
-        DeviceMemoryAllocationError, ExternalMemoryHandleTypes, MappedDeviceMemory,
-        MemoryRequirements,
+        device_memory::MemoryAllocateInfo, DedicatedAllocation, DeviceMemory, DeviceMemoryError,
+        ExternalMemoryHandleTypes, MappedDeviceMemory, MemoryRequirements,
     },
     DeviceSize,
 };
@@ -82,7 +81,7 @@ pub(crate) fn alloc_dedicated_with_exportable_fd<F>(
     map: MappingRequirement,
     dedicated_allocation: DedicatedAllocation,
     filter: F,
-) -> Result<PotentialDedicatedAllocation<StandardMemoryPoolAlloc>, DeviceMemoryAllocationError>
+) -> Result<PotentialDedicatedAllocation<StandardMemoryPoolAlloc>, DeviceMemoryError>
 where
     F: FnMut(&MemoryType) -> AllocFromRequirementsFilter,
 {
@@ -145,7 +144,7 @@ pub unsafe trait MemoryPool: DeviceOwned {
         alignment: DeviceSize,
         layout: AllocLayout,
         map: MappingRequirement,
-    ) -> Result<Self::Alloc, DeviceMemoryAllocationError>;
+    ) -> Result<Self::Alloc, DeviceMemoryError>;
 
     /// Chooses a memory type and allocates memory from it.
     ///
@@ -183,7 +182,7 @@ pub unsafe trait MemoryPool: DeviceOwned {
         map: MappingRequirement,
         dedicated_allocation: Option<DedicatedAllocation>,
         filter: F,
-    ) -> Result<PotentialDedicatedAllocation<Self::Alloc>, DeviceMemoryAllocationError>
+    ) -> Result<PotentialDedicatedAllocation<Self::Alloc>, DeviceMemoryError>
     where
         F: FnMut(&MemoryType) -> AllocFromRequirementsFilter,
     {

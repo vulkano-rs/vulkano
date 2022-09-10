@@ -24,8 +24,8 @@ use crate::{
     format::{ChromaSampling, Format, FormatFeatures, NumericType},
     image::{view::ImageViewCreationError, ImageFormatInfo, ImageFormatProperties, ImageType},
     memory::{
-        DeviceMemory, DeviceMemoryAllocationError, ExternalMemoryHandleType,
-        ExternalMemoryHandleTypes, MemoryRequirements,
+        DeviceMemory, DeviceMemoryError, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
+        MemoryRequirements,
     },
     range_map::RangeMap,
     sync::{AccessError, CurrentAccess, Sharing},
@@ -1548,7 +1548,7 @@ impl Default for UnsafeImageCreateInfo {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ImageCreationError {
     /// Allocating memory failed.
-    AllocError(DeviceMemoryAllocationError),
+    AllocError(DeviceMemoryError),
 
     RequirementNotMet {
         required_for: &'static str,
@@ -1794,13 +1794,13 @@ impl Display for ImageCreationError {
 impl From<OomError> for ImageCreationError {
     #[inline]
     fn from(err: OomError) -> Self {
-        Self::AllocError(DeviceMemoryAllocationError::OomError(err))
+        Self::AllocError(DeviceMemoryError::OomError(err))
     }
 }
 
-impl From<DeviceMemoryAllocationError> for ImageCreationError {
+impl From<DeviceMemoryError> for ImageCreationError {
     #[inline]
-    fn from(err: DeviceMemoryAllocationError) -> Self {
+    fn from(err: DeviceMemoryError) -> Self {
         Self::AllocError(err)
     }
 }
@@ -1831,7 +1831,7 @@ impl From<ImageFormatPropertiesError> for ImageCreationError {
     fn from(err: ImageFormatPropertiesError) -> Self {
         match err {
             ImageFormatPropertiesError::OomError(err) => {
-                Self::AllocError(DeviceMemoryAllocationError::OomError(err))
+                Self::AllocError(DeviceMemoryError::OomError(err))
             }
             ImageFormatPropertiesError::RequirementNotMet {
                 required_for,
