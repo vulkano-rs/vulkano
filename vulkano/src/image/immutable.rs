@@ -36,7 +36,7 @@ use crate::{
 use smallvec::SmallVec;
 use std::{
     error::Error,
-    fmt,
+    fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     sync::Arc,
 };
@@ -485,9 +485,9 @@ impl Error for ImmutableImageCreationError {
     }
 }
 
-impl fmt::Display for ImmutableImageCreationError {
+impl Display for ImmutableImageCreationError {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match self {
             Self::ImageCreationError(err) => err.fmt(f),
             Self::DeviceMemoryAllocationError(err) => err.fmt(f),

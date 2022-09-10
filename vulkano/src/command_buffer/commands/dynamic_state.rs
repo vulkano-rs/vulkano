@@ -14,7 +14,6 @@ use crate::{
         AutoCommandBufferBuilder,
     },
     device::DeviceOwned,
-    macros::ExtensionNotEnabled,
     pipeline::{
         graphics::{
             color_blend::LogicOp,
@@ -25,11 +24,15 @@ use crate::{
         },
         DynamicState,
     },
-    Version,
+    RequirementNotMet, RequiresOneOf, Version,
 };
 use parking_lot::Mutex;
 use smallvec::SmallVec;
-use std::{error::Error, fmt, ops::RangeInclusive};
+use std::{
+    error::Error,
+    fmt::{Display, Error as FmtError, Formatter},
+    ops::RangeInclusive,
+};
 
 /// # Commands to set dynamic state for pipelines.
 ///
@@ -121,9 +124,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
         // VUID-vkCmdSetColorWriteEnableEXT-None-04803
         if !self.device().enabled_features().color_write_enable {
-            return Err(SetDynamicStateError::ExtensionNotEnabled {
-                extension: "color_write_enable",
-                reason: "called set_color_write_enable",
+            return Err(SetDynamicStateError::RequirementNotMet {
+                required_for: "`set_color_write_enable`",
+                requires_one_of: RequiresOneOf {
+                    device_extensions: &["ext_color_write_enable"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -171,7 +177,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         self.validate_pipeline_fixed_state(DynamicState::CullMode)?;
 
         // VUID-vkCmdSetCullMode-cullMode-parameter
-        cull_mode.validate(self.device())?;
+        cull_mode.validate_device(self.device())?;
 
         // VUID-vkCmdSetCullMode-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -182,9 +188,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         if !(self.device().api_version() >= Version::V1_3
             || self.device().enabled_features().extended_dynamic_state)
         {
-            return Err(SetDynamicStateError::FeatureNotEnabled {
-                feature: "extended_dynamic_state",
-                reason: "called set_cull_mode",
+            return Err(SetDynamicStateError::RequirementNotMet {
+                required_for: "`set_cull_mode`",
+                requires_one_of: RequiresOneOf {
+                    api_version: Some(Version::V1_3),
+                    features: &["extended_dynamic_state"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -232,9 +242,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
         // VUID-vkCmdSetDepthBias-depthBiasClamp-00790
         if clamp != 0.0 && !self.device().enabled_features().depth_bias_clamp {
-            return Err(SetDynamicStateError::FeatureNotEnabled {
-                feature: "depth_bias_clamp",
-                reason: "clamp was not 0.0",
+            return Err(SetDynamicStateError::RequirementNotMet {
+                required_for: "`clamp` is not `0.0`",
+                requires_one_of: RequiresOneOf {
+                    features: &["depth_bias_clamp"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -273,9 +286,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         if !(self.device().api_version() >= Version::V1_3
             || self.device().enabled_features().extended_dynamic_state2)
         {
-            return Err(SetDynamicStateError::FeatureNotEnabled {
-                feature: "extended_dynamic_state2",
-                reason: "called set_depth_bias_enable",
+            return Err(SetDynamicStateError::RequirementNotMet {
+                required_for: "`set_depth_bias_enable`",
+                requires_one_of: RequiresOneOf {
+                    api_version: Some(Version::V1_3),
+                    features: &["extended_dynamic_state2"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -321,9 +338,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             .ext_depth_range_unrestricted
             && !((0.0..=1.0).contains(bounds.start()) && (0.0..=1.0).contains(bounds.end()))
         {
-            return Err(SetDynamicStateError::ExtensionNotEnabled {
-                extension: "ext_depth_range_unrestricted",
-                reason: "the start and end of bounds were not between 0.0 and 1.0 inclusive",
+            return Err(SetDynamicStateError::RequirementNotMet {
+                required_for: "`bounds` is not between `0.0` and `1.0` inclusive",
+                requires_one_of: RequiresOneOf {
+                    device_extensions: &["ext_depth_range_unrestricted"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -365,9 +385,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         if !(self.device().api_version() >= Version::V1_3
             || self.device().enabled_features().extended_dynamic_state)
         {
-            return Err(SetDynamicStateError::FeatureNotEnabled {
-                feature: "extended_dynamic_state",
-                reason: "called set_depth_bounds_test_enable",
+            return Err(SetDynamicStateError::RequirementNotMet {
+                required_for: "`set_depth_bounds_test_enable`",
+                requires_one_of: RequiresOneOf {
+                    api_version: Some(Version::V1_3),
+                    features: &["extended_dynamic_state"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -401,7 +425,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         self.validate_pipeline_fixed_state(DynamicState::DepthCompareOp)?;
 
         // VUID-vkCmdSetDepthCompareOp-depthCompareOp-parameter
-        compare_op.validate(self.device())?;
+        compare_op.validate_device(self.device())?;
 
         // VUID-vkCmdSetDepthCompareOp-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -412,9 +436,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         if !(self.device().api_version() >= Version::V1_3
             || self.device().enabled_features().extended_dynamic_state)
         {
-            return Err(SetDynamicStateError::FeatureNotEnabled {
-                feature: "extended_dynamic_state",
-                reason: "called set_depth_compare_op",
+            return Err(SetDynamicStateError::RequirementNotMet {
+                required_for: "`set_depth_compare_op`",
+                requires_one_of: RequiresOneOf {
+                    api_version: Some(Version::V1_3),
+                    features: &["extended_dynamic_state"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -453,9 +481,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         if !(self.device().api_version() >= Version::V1_3
             || self.device().enabled_features().extended_dynamic_state)
         {
-            return Err(SetDynamicStateError::FeatureNotEnabled {
-                feature: "extended_dynamic_state",
-                reason: "called set_depth_test_enable",
+            return Err(SetDynamicStateError::RequirementNotMet {
+                required_for: "`set_depth_test_enable`",
+                requires_one_of: RequiresOneOf {
+                    api_version: Some(Version::V1_3),
+                    features: &["extended_dynamic_state"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -494,9 +526,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         if !(self.device().api_version() >= Version::V1_3
             || self.device().enabled_features().extended_dynamic_state)
         {
-            return Err(SetDynamicStateError::FeatureNotEnabled {
-                feature: "extended_dynamic_state",
-                reason: "called set_depth_write_enable",
+            return Err(SetDynamicStateError::RequirementNotMet {
+                required_for: "`set_depth_write_enable`",
+                requires_one_of: RequiresOneOf {
+                    api_version: Some(Version::V1_3),
+                    features: &["extended_dynamic_state"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -544,9 +580,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
 
         if self.device().enabled_extensions().ext_discard_rectangles {
-            return Err(SetDynamicStateError::ExtensionNotEnabled {
-                extension: "ext_discard_rectangles",
-                reason: "called set_discard_rectangle",
+            return Err(SetDynamicStateError::RequirementNotMet {
+                required_for: "`set_discard_rectangle`",
+                requires_one_of: RequiresOneOf {
+                    device_extensions: &["ext_discard_rectangles"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -597,7 +636,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         self.validate_pipeline_fixed_state(DynamicState::FrontFace)?;
 
         // VUID-vkCmdSetFrontFace-frontFace-parameter
-        face.validate(self.device())?;
+        face.validate_device(self.device())?;
 
         // VUID-vkCmdSetFrontFace-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -608,9 +647,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         if !(self.device().api_version() >= Version::V1_3
             || self.device().enabled_features().extended_dynamic_state)
         {
-            return Err(SetDynamicStateError::FeatureNotEnabled {
-                feature: "extended_dynamic_state",
-                reason: "called set_front_face",
+            return Err(SetDynamicStateError::RequirementNotMet {
+                required_for: "`set_front_face`",
+                requires_one_of: RequiresOneOf {
+                    api_version: Some(Version::V1_3),
+                    features: &["extended_dynamic_state"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -650,9 +693,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
 
         if !self.device().enabled_extensions().ext_line_rasterization {
-            return Err(SetDynamicStateError::ExtensionNotEnabled {
-                extension: "ext_line_rasterization",
-                reason: "called set_line_stipple",
+            return Err(SetDynamicStateError::RequirementNotMet {
+                required_for: "`set_line_stipple`",
+                requires_one_of: RequiresOneOf {
+                    device_extensions: &["ext_line_rasterization"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -692,9 +738,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
         // VUID-vkCmdSetLineWidth-lineWidth-00788
         if !self.device().enabled_features().wide_lines && line_width != 1.0 {
-            return Err(SetDynamicStateError::FeatureNotEnabled {
-                feature: "wide_lines",
-                reason: "line_width was not 1.0",
+            return Err(SetDynamicStateError::RequirementNotMet {
+                required_for: "`line_width` is not `1.0`",
+                requires_one_of: RequiresOneOf {
+                    features: &["wide_lines"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -725,7 +774,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         self.validate_pipeline_fixed_state(DynamicState::LogicOp)?;
 
         // VUID-vkCmdSetLogicOpEXT-logicOp-parameter
-        logic_op.validate(self.device())?;
+        logic_op.validate_device(self.device())?;
 
         // VUID-vkCmdSetLogicOpEXT-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -738,9 +787,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             .enabled_features()
             .extended_dynamic_state2_logic_op
         {
-            return Err(SetDynamicStateError::FeatureNotEnabled {
-                feature: "extended_dynamic_state2_logic_op",
-                reason: "called set_logic_op",
+            return Err(SetDynamicStateError::RequirementNotMet {
+                required_for: "`set_logic_op`",
+                requires_one_of: RequiresOneOf {
+                    features: &["extended_dynamic_state2_logic_op"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -785,9 +837,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             .enabled_features()
             .extended_dynamic_state2_patch_control_points
         {
-            return Err(SetDynamicStateError::FeatureNotEnabled {
-                feature: "extended_dynamic_state2_patch_control_points",
-                reason: "called set_patch_control_points",
+            return Err(SetDynamicStateError::RequirementNotMet {
+                required_for: "`set_patch_control_points`",
+                requires_one_of: RequiresOneOf {
+                    features: &["extended_dynamic_state2_patch_control_points"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -850,9 +905,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         if !(self.device().api_version() >= Version::V1_3
             || self.device().enabled_features().extended_dynamic_state2)
         {
-            return Err(SetDynamicStateError::FeatureNotEnabled {
-                feature: "extended_dynamic_state2",
-                reason: "called set_primitive_restart_enable",
+            return Err(SetDynamicStateError::RequirementNotMet {
+                required_for: "`set_primitive_restart_enable`",
+                requires_one_of: RequiresOneOf {
+                    api_version: Some(Version::V1_3),
+                    features: &["extended_dynamic_state2"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -890,7 +949,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         self.validate_pipeline_fixed_state(DynamicState::PrimitiveTopology)?;
 
         // VUID-vkCmdSetPrimitiveTopology-primitiveTopology-parameter
-        topology.validate(self.device())?;
+        topology.validate_device(self.device())?;
 
         // VUID-vkCmdSetPrimitiveTopology-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -901,9 +960,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         if !(self.device().api_version() >= Version::V1_3
             || self.device().enabled_features().extended_dynamic_state)
         {
-            return Err(SetDynamicStateError::FeatureNotEnabled {
-                feature: "extended_dynamic_state",
-                reason: "called set_primitive_topology",
+            return Err(SetDynamicStateError::RequirementNotMet {
+                required_for: "`set_primitive_topology`",
+                requires_one_of: RequiresOneOf {
+                    api_version: Some(Version::V1_3),
+                    features: &["extended_dynamic_state"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -917,9 +980,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                     | PrimitiveTopology::TriangleStripWithAdjacency
             )
         {
-            return Err(SetDynamicStateError::FeatureNotEnabled {
-                feature: "geometry_shader",
-                reason: "topology was a WithAdjacency topology",
+            return Err(SetDynamicStateError::RequirementNotMet {
+                required_for: "`topology` is `PrimitiveTopology::*WithAdjacency`",
+                requires_one_of: RequiresOneOf {
+                    features: &["geometry_shader"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -927,9 +993,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         if !self.device().enabled_features().tessellation_shader
             && matches!(topology, PrimitiveTopology::PatchList)
         {
-            return Err(SetDynamicStateError::FeatureNotEnabled {
-                feature: "tessellation_shader",
-                reason: "topology was PatchList",
+            return Err(SetDynamicStateError::RequirementNotMet {
+                required_for: "`topology` is `PrimitiveTopology::PatchList`",
+                requires_one_of: RequiresOneOf {
+                    features: &["tessellation_shader"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -971,9 +1040,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         if !(self.device().api_version() >= Version::V1_3
             || self.device().enabled_features().extended_dynamic_state2)
         {
-            return Err(SetDynamicStateError::FeatureNotEnabled {
-                feature: "extended_dynamic_state2",
-                reason: "called set_rasterizer_discard_enable",
+            return Err(SetDynamicStateError::RequirementNotMet {
+                required_for: "`set_rasterizer_discard_enable`",
+                requires_one_of: RequiresOneOf {
+                    api_version: Some(Version::V1_3),
+                    features: &["extended_dynamic_state2"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -1029,17 +1102,23 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         if !self.device().enabled_features().multi_viewport {
             // VUID-vkCmdSetScissor-firstScissor-00593
             if first_scissor != 0 {
-                return Err(SetDynamicStateError::FeatureNotEnabled {
-                    feature: "multi_viewport",
-                    reason: "first_scissor was not 0",
+                return Err(SetDynamicStateError::RequirementNotMet {
+                    required_for: "`first_scissor` is not `0`",
+                    requires_one_of: RequiresOneOf {
+                        features: &["multi_viewport"],
+                        ..Default::default()
+                    },
                 });
             }
 
             // VUID-vkCmdSetScissor-scissorCount-00594
             if scissors.len() > 1 {
-                return Err(SetDynamicStateError::FeatureNotEnabled {
-                    feature: "multi_viewport",
-                    reason: "scissors contained more than one element",
+                return Err(SetDynamicStateError::RequirementNotMet {
+                    required_for: "`scissors.len()` is greater than `1`",
+                    requires_one_of: RequiresOneOf {
+                        features: &["multi_viewport"],
+                        ..Default::default()
+                    },
                 });
             }
         }
@@ -1090,9 +1169,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         if !(self.device().api_version() >= Version::V1_3
             || self.device().enabled_features().extended_dynamic_state)
         {
-            return Err(SetDynamicStateError::FeatureNotEnabled {
-                feature: "extended_dynamic_state",
-                reason: "called set_scissor_with_count",
+            return Err(SetDynamicStateError::RequirementNotMet {
+                required_for: "`set_scissor_with_count`",
+                requires_one_of: RequiresOneOf {
+                    api_version: Some(Version::V1_3),
+                    features: &["extended_dynamic_state"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -1106,9 +1189,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
         // VUID-vkCmdSetScissorWithCount-scissorCount-03398
         if !self.device().enabled_features().multi_viewport && scissors.len() > 1 {
-            return Err(SetDynamicStateError::FeatureNotEnabled {
-                feature: "multi_viewport",
-                reason: "scissors contained more than one element",
+            return Err(SetDynamicStateError::RequirementNotMet {
+                required_for: "`scissors.len()` is greater than `1`",
+                requires_one_of: RequiresOneOf {
+                    features: &["multi_viewport"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -1144,7 +1230,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         self.validate_pipeline_fixed_state(DynamicState::StencilCompareMask)?;
 
         // VUID-vkCmdSetStencilCompareMask-faceMask-parameter
-        faces.validate(self.device())?;
+        faces.validate_device(self.device())?;
 
         // VUID-vkCmdSetStencilCompareMask-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -1194,19 +1280,19 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         self.validate_pipeline_fixed_state(DynamicState::StencilOp)?;
 
         // VUID-vkCmdSetStencilOp-faceMask-parameter
-        faces.validate(self.device())?;
+        faces.validate_device(self.device())?;
 
         // VUID-vkCmdSetStencilOp-failOp-parameter
-        fail_op.validate(self.device())?;
+        fail_op.validate_device(self.device())?;
 
         // VUID-vkCmdSetStencilOp-passOp-parameter
-        pass_op.validate(self.device())?;
+        pass_op.validate_device(self.device())?;
 
         // VUID-vkCmdSetStencilOp-depthFailOp-parameter
-        depth_fail_op.validate(self.device())?;
+        depth_fail_op.validate_device(self.device())?;
 
         // VUID-vkCmdSetStencilOp-compareOp-parameter
-        compare_op.validate(self.device())?;
+        compare_op.validate_device(self.device())?;
 
         // VUID-vkCmdSetStencilOp-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -1217,9 +1303,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         if !(self.device().api_version() >= Version::V1_3
             || self.device().enabled_features().extended_dynamic_state)
         {
-            return Err(SetDynamicStateError::FeatureNotEnabled {
-                feature: "extended_dynamic_state",
-                reason: "called set_stencil_op",
+            return Err(SetDynamicStateError::RequirementNotMet {
+                required_for: "`set_stencil_op`",
+                requires_one_of: RequiresOneOf {
+                    api_version: Some(Version::V1_3),
+                    features: &["extended_dynamic_state"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -1251,7 +1341,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         self.validate_pipeline_fixed_state(DynamicState::StencilReference)?;
 
         // VUID-vkCmdSetStencilReference-faceMask-parameter
-        faces.validate(self.device())?;
+        faces.validate_device(self.device())?;
 
         // VUID-vkCmdSetStencilReference-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -1293,9 +1383,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         if !(self.device().api_version() >= Version::V1_3
             || self.device().enabled_features().extended_dynamic_state)
         {
-            return Err(SetDynamicStateError::FeatureNotEnabled {
-                feature: "extended_dynamic_state",
-                reason: "called set_stencil_test_enable",
+            return Err(SetDynamicStateError::RequirementNotMet {
+                required_for: "`set_stencil_test_enable`",
+                requires_one_of: RequiresOneOf {
+                    api_version: Some(Version::V1_3),
+                    features: &["extended_dynamic_state"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -1327,7 +1421,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         self.validate_pipeline_fixed_state(DynamicState::StencilWriteMask)?;
 
         // VUID-vkCmdSetStencilWriteMask-faceMask-parameter
-        faces.validate(self.device())?;
+        faces.validate_device(self.device())?;
 
         // VUID-vkCmdSetStencilWriteMask-commandBuffer-cmdpool
         if !self.queue_family().supports_graphics() {
@@ -1387,17 +1481,23 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         if !self.device().enabled_features().multi_viewport {
             // VUID-vkCmdSetViewport-firstViewport-01224
             if first_viewport != 0 {
-                return Err(SetDynamicStateError::FeatureNotEnabled {
-                    feature: "multi_viewport",
-                    reason: "first_viewport was not 0",
+                return Err(SetDynamicStateError::RequirementNotMet {
+                    required_for: "`first_scissors` is not `0`",
+                    requires_one_of: RequiresOneOf {
+                        features: &["multi_viewport"],
+                        ..Default::default()
+                    },
                 });
             }
 
             // VUID-vkCmdSetViewport-viewportCount-01225
             if viewports.len() > 1 {
-                return Err(SetDynamicStateError::FeatureNotEnabled {
-                    feature: "multi_viewport",
-                    reason: "viewports contained more than one element",
+                return Err(SetDynamicStateError::RequirementNotMet {
+                    required_for: "`viewports.len()` is greater than `1`",
+                    requires_one_of: RequiresOneOf {
+                        features: &["multi_viewport"],
+                        ..Default::default()
+                    },
                 });
             }
         }
@@ -1448,9 +1548,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         if !(self.device().api_version() >= Version::V1_3
             || self.device().enabled_features().extended_dynamic_state)
         {
-            return Err(SetDynamicStateError::FeatureNotEnabled {
-                feature: "extended_dynamic_state",
-                reason: "called set_viewport_with_count",
+            return Err(SetDynamicStateError::RequirementNotMet {
+                required_for: "`set_viewport_with_count`",
+                requires_one_of: RequiresOneOf {
+                    api_version: Some(Version::V1_3),
+                    features: &["extended_dynamic_state"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -1464,9 +1568,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
         // VUID-vkCmdSetViewportWithCount-viewportCount-03395
         if !self.device().enabled_features().multi_viewport && viewports.len() > 1 {
-            return Err(SetDynamicStateError::FeatureNotEnabled {
-                feature: "multi_viewport",
-                reason: "viewports contained more than one element",
+            return Err(SetDynamicStateError::RequirementNotMet {
+                required_for: "`viewports.len()` is greater than `1`",
+                requires_one_of: RequiresOneOf {
+                    features: &["multi_viewport"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -2679,13 +2786,9 @@ impl UnsafeCommandBufferBuilder {
 #[derive(Clone, Debug)]
 #[allow(dead_code)]
 enum SetDynamicStateError {
-    ExtensionNotEnabled {
-        extension: &'static str,
-        reason: &'static str,
-    },
-    FeatureNotEnabled {
-        feature: &'static str,
-        reason: &'static str,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
     },
 
     /// The provided `factor` is not between 1 and 256 inclusive.
@@ -2720,16 +2823,18 @@ enum SetDynamicStateError {
 
 impl Error for SetDynamicStateError {}
 
-impl fmt::Display for SetDynamicStateError {
+impl Display for SetDynamicStateError {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match self {
-            Self::ExtensionNotEnabled { extension, reason } => {
-                write!(f, "the extension {} must be enabled: {}", extension, reason)
-            }
-            Self::FeatureNotEnabled { feature, reason } => {
-                write!(f, "the feature {} must be enabled: {}", feature, reason,)
-            }
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
+            ),
 
             Self::FactorOutOfRange => write!(
                 f,
@@ -2767,12 +2872,12 @@ impl fmt::Display for SetDynamicStateError {
     }
 }
 
-impl From<ExtensionNotEnabled> for SetDynamicStateError {
+impl From<RequirementNotMet> for SetDynamicStateError {
     #[inline]
-    fn from(err: ExtensionNotEnabled) -> Self {
-        Self::ExtensionNotEnabled {
-            extension: err.extension,
-            reason: err.reason,
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
         }
     }
 }

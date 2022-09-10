@@ -24,7 +24,10 @@ use super::{
     },
     render_pass::{PipelineRenderPassType, PipelineRenderingCreateInfo},
     tessellation::TessellationState,
-    vertex_input::{BuffersDefinition, Vertex, VertexDefinition, VertexInputState},
+    vertex_input::{
+        BuffersDefinition, Vertex, VertexDefinition, VertexInputBindingDescription,
+        VertexInputState,
+    },
     viewport::{Scissor, Viewport, ViewportState},
     GraphicsPipeline, GraphicsPipelineCreationError,
 };
@@ -46,7 +49,7 @@ use crate::{
         DescriptorRequirements, EntryPoint, ShaderExecution, ShaderStage, SpecializationConstants,
         SpecializationMapEntry,
     },
-    DeviceSize, Version, VulkanError, VulkanObject,
+    DeviceSize, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{
@@ -466,17 +469,23 @@ where
 
                 // VUID-VkGraphicsPipelineCreateInfo-dynamicRendering-06576
                 if !device.enabled_features().dynamic_rendering {
-                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                        feature: "dynamic_rendering",
-                        reason: "render_pass was BeginRendering",
+                    return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                        required_for: "`render_pass` is `PipelineRenderPassType::BeginRendering`",
+                        requires_one_of: RequiresOneOf {
+                            features: &["dynamic_rendering"],
+                            ..Default::default()
+                        },
                     });
                 }
 
                 // VUID-VkGraphicsPipelineCreateInfo-multiview-06577
                 if view_mask != 0 && !device.enabled_features().multiview {
-                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                        feature: "multiview",
-                        reason: "PipelineRenderingCreateInfo::view_mask was not 0",
+                    return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                        required_for: "`render_pass` is `PipelineRenderPassType::BeginRendering` where `view_mask` is not `0`",
+                        requires_one_of: RequiresOneOf {
+                            features: &["multiview"],
+                            ..Default::default()
+                        },
                     });
                 }
 
@@ -595,6 +604,8 @@ where
                 // Ensured by HashMap.
 
                 for (&binding, binding_desc) in bindings {
+                    let &VertexInputBindingDescription { stride, input_rate } = binding_desc;
+
                     // VUID-VkVertexInputBindingDescription-binding-00618
                     if binding >= properties.max_vertex_input_bindings {
                         return Err(
@@ -606,26 +617,29 @@ where
                     }
 
                     // VUID-VkVertexInputBindingDescription-stride-00619
-                    if binding_desc.stride > properties.max_vertex_input_binding_stride {
+                    if stride > properties.max_vertex_input_binding_stride {
                         return Err(
                             GraphicsPipelineCreationError::MaxVertexInputBindingStrideExceeded {
                                 binding,
                                 max: properties.max_vertex_input_binding_stride,
-                                obtained: binding_desc.stride,
+                                obtained: stride,
                             },
                         );
                     }
 
-                    match binding_desc.input_rate {
+                    match input_rate {
                         VertexInputRate::Instance { divisor } if divisor != 1 => {
                             // VUID-VkVertexInputBindingDivisorDescriptionEXT-vertexAttributeInstanceRateDivisor-02229
                             if !device
                                 .enabled_features()
                                 .vertex_attribute_instance_rate_divisor
                             {
-                                return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                    feature: "vertex_attribute_instance_rate_divisor",
-                                    reason: "VertexInputRate::Instance::divisor was not 1",
+                                return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                                    required_for: "`vertex_input_state.bindings` has an element where `input_rate` is `VertexInputRate::Instance`, where `divisor` is not `1`",
+                                    requires_one_of: RequiresOneOf {
+                                        features: &["vertex_attribute_instance_rate_divisor"],
+                                        ..Default::default()
+                                    },
                                 });
                             }
 
@@ -635,9 +649,12 @@ where
                                     .enabled_features()
                                     .vertex_attribute_instance_rate_zero_divisor
                             {
-                                return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                    feature: "vertex_attribute_instance_rate_zero_divisor",
-                                    reason: "VertexInputRate::Instance::divisor was 0",
+                                return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                                    required_for: "`vertex_input_state.bindings` has an element where `input_rate` is `VertexInputRate::Instance`, where `divisor` is `0`",
+                                    requires_one_of: RequiresOneOf {
+                                        features: &["vertex_attribute_instance_rate_zero_divisor"],
+                                        ..Default::default()
+                                    },
                                 });
                             }
 
@@ -721,7 +738,7 @@ where
                 match topology {
                     PartialStateMode::Fixed(topology) => {
                         // VUID-VkPipelineInputAssemblyStateCreateInfo-topology-parameter
-                        topology.validate(device)?;
+                        topology.validate_device(device)?;
 
                         match topology {
                             PrimitiveTopology::LineListWithAdjacency
@@ -730,18 +747,24 @@ where
                             | PrimitiveTopology::TriangleStripWithAdjacency => {
                                 // VUID-VkPipelineInputAssemblyStateCreateInfo-topology-00429
                                 if !device.enabled_features().geometry_shader {
-                                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                        feature: "geometry_shader",
-                                        reason: "InputAssemblyState::topology was set to a WithAdjacency PrimitiveTopology",
+                                    return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                                        required_for: "`input_assembly_state.topology` is `StateMode::Fixed(PrimitiveTopology::*WithAdjacency)`",
+                                        requires_one_of: RequiresOneOf {
+                                            features: &["geometry_shader"],
+                                            ..Default::default()
+                                        },
                                     });
                                 }
                             }
                             PrimitiveTopology::PatchList => {
                                 // VUID-VkPipelineInputAssemblyStateCreateInfo-topology-00430
                                 if !device.enabled_features().tessellation_shader {
-                                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                        feature: "tessellation_shader",
-                                        reason: "InputAssemblyState::topology was set to PrimitiveTopology::PatchList",
+                                    return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                                        required_for: "`input_assembly_state.topology` is `StateMode::Fixed(PrimitiveTopology::PatchList)`",
+                                        requires_one_of: RequiresOneOf {
+                                            features: &["tessellation_shader"],
+                                            ..Default::default()
+                                        },
                                     });
                                 }
 
@@ -753,15 +776,20 @@ where
                     }
                     PartialStateMode::Dynamic(topology_class) => {
                         // VUID-VkPipelineInputAssemblyStateCreateInfo-topology-parameter
-                        topology_class.example().validate(device)?;
+                        topology_class.example().validate_device(device)?;
 
                         // VUID?
                         if !(device.api_version() >= Version::V1_3
                             || device.enabled_features().extended_dynamic_state)
                         {
-                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                feature: "extended_dynamic_state",
-                                reason: "InputAssemblyState::topology was set to Dynamic",
+                            return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                                required_for:
+                                    "`input_assembly_state.topology` is `PartialStateMode::Dynamic`",
+                                requires_one_of: RequiresOneOf {
+                                    api_version: Some(Version::V1_3),
+                                    features: &["extended_dynamic_state"],
+                                    ..Default::default()
+                                },
                             });
                         }
                     }
@@ -780,9 +808,12 @@ where
                                 ) => {
                                     // VUID-VkPipelineInputAssemblyStateCreateInfo-topology-06252
                                     if !device.enabled_features().primitive_topology_list_restart {
-                                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                            feature: "primitive_topology_list_restart",
-                                            reason: "InputAssemblyState::primitive_restart_enable was set to true in combination with a List PrimitiveTopology",
+                                        return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                                            required_for: "`input_assembly_state.primitive_restart_enable` is `StateMode::Fixed(true)` and `input_assembly_state.topology` is `StateMode::Fixed(PrimitiveTopology::*List)`",
+                                            requires_one_of: RequiresOneOf {
+                                                features: &["primitive_topology_list_restart"],
+                                                ..Default::default()
+                                            },
                                         });
                                     }
                                 }
@@ -792,9 +823,12 @@ where
                                         .enabled_features()
                                         .primitive_topology_patch_list_restart
                                     {
-                                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                            feature: "primitive_topology_patch_list_restart",
-                                            reason: "InputAssemblyState::primitive_restart_enable was set to true in combination with PrimitiveTopology::PatchList",
+                                        return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                                            required_for: "`input_assembly_state.primitive_restart_enable` is `StateMode::Fixed(true)` and `input_assembly_state.topology` is `StateMode::Fixed(PrimitiveTopology::PatchList)`",
+                                            requires_one_of: RequiresOneOf {
+                                                features: &["primitive_topology_patch_list_restart"],
+                                                ..Default::default()
+                                            },
                                         });
                                     }
                                 }
@@ -807,9 +841,13 @@ where
                         if !(device.api_version() >= Version::V1_3
                             || device.enabled_features().extended_dynamic_state2)
                         {
-                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                feature: "extended_dynamic_state2",
-                                reason: "InputAssemblyState::primitive_restart_enable was set to Dynamic",
+                            return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                                required_for: "`input_assembly_state.primitive_restart_enable` is `StateMode::Dynamic`",
+                                requires_one_of: RequiresOneOf {
+                                    api_version: Some(Version::V1_3),
+                                    features: &["extended_dynamic_state2"],
+                                    ..Default::default()
+                                },
                             });
                         }
                     }
@@ -913,9 +951,12 @@ where
 
                 // VUID-VkPipelineShaderStageCreateInfo-stage-00705
                 if !device.enabled_features().tessellation_shader {
-                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                        feature: "tessellation_shader",
-                        reason: "a tessellation shader was provided",
+                    return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                        required_for: "`tessellation_shaders` are provided",
+                        requires_one_of: RequiresOneOf {
+                            features: &["tessellation_shader"],
+                            ..Default::default()
+                        },
                     });
                 }
 
@@ -972,9 +1013,12 @@ where
                     // VUID-VkGraphicsPipelineCreateInfo-renderPass-06047
                     // VUID-VkGraphicsPipelineCreateInfo-renderPass-06057
                     if view_mask != 0 {
-                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                            feature: "multiview_tessellation_shader",
-                            reason: "a tessellation shader was provided, and the render pass has multiview enabled with more than zero layers used",
+                        return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                            required_for: "`tessellation_shaders` are provided and `render_pass` has a subpass where `view_mask` is not `0`",
+                            requires_one_of: RequiresOneOf {
+                                features: &["multiview_tessellation_shader"],
+                                ..Default::default()
+                            },
                         });
                     }
                 }
@@ -1002,9 +1046,12 @@ where
 
                 // VUID-VkPipelineShaderStageCreateInfo-stage-00704
                 if !device.enabled_features().geometry_shader {
-                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                        feature: "geometry_shader",
-                        reason: "a geometry shader was provided",
+                    return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                        required_for: "`geometry_shader` is provided",
+                        requires_one_of: RequiresOneOf {
+                            features: &["geometry_shader"],
+                            ..Default::default()
+                        },
                     });
                 }
 
@@ -1035,9 +1082,12 @@ where
                     // VUID-VkGraphicsPipelineCreateInfo-renderPass-06048
                     // VUID-VkGraphicsPipelineCreateInfo-renderPass-06058
                     if view_mask != 0 {
-                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                            feature: "multiview_geometry_shader",
-                            reason: "a geometry shader was provided, and the render pass has multiview enabled with more than zero layers used",
+                        return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                            required_for: "`geometry_shader` is provided and `render_pass` has a subpass where `view_mask` is not `0`",
+                            requires_one_of: RequiresOneOf {
+                                features: &["multiview_geometry_shader"],
+                                ..Default::default()
+                            },
                         });
                     }
                 }
@@ -1064,13 +1114,16 @@ where
                 } = rasterization_state;
 
                 // VUID-VkPipelineRasterizationStateCreateInfo-polygonMode-parameter
-                polygon_mode.validate(device)?;
+                polygon_mode.validate_device(device)?;
 
                 // VUID-VkPipelineRasterizationStateCreateInfo-depthClampEnable-00782
                 if depth_clamp_enable && !device.enabled_features().depth_clamp {
-                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                        feature: "depth_clamp",
-                        reason: "RasterizationState::depth_clamp_enable was true",
+                    return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                        required_for: "`rasterization_state.depth_clamp_enable` is set",
+                        requires_one_of: RequiresOneOf {
+                            features: &["depth_clamp"],
+                            ..Default::default()
+                        },
                     });
                 }
 
@@ -1079,9 +1132,13 @@ where
                     && !(device.api_version() >= Version::V1_3
                         || device.enabled_features().extended_dynamic_state2)
                 {
-                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                        feature: "extended_dynamic_state2",
-                        reason: "RasterizationState::rasterizer_discard_enable was set to Dynamic",
+                    return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                        required_for: "`rasterization_state.rasterizer_discard_enable` is `StateMode::Dynamic`",
+                        requires_one_of: RequiresOneOf {
+                            api_version: Some(Version::V1_3),
+                            features: &["extended_dynamic_state"],
+                            ..Default::default()
+                        },
                     });
                 }
 
@@ -1089,25 +1146,34 @@ where
                 if polygon_mode != PolygonMode::Fill
                     && !device.enabled_features().fill_mode_non_solid
                 {
-                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                        feature: "fill_mode_non_solid",
-                        reason: "RasterizationState::polygon_mode was not Fill",
+                    return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                        required_for:
+                            "`rasterization_state.polygon_mode` is not `PolygonMode::Fill`",
+                        requires_one_of: RequiresOneOf {
+                            features: &["fill_mode_non_solid"],
+                            ..Default::default()
+                        },
                     });
                 }
 
                 match cull_mode {
                     StateMode::Fixed(cull_mode) => {
                         // VUID-VkPipelineRasterizationStateCreateInfo-cullMode-parameter
-                        cull_mode.validate(device)?;
+                        cull_mode.validate_device(device)?;
                     }
                     StateMode::Dynamic => {
                         // VUID?
                         if !(device.api_version() >= Version::V1_3
                             || device.enabled_features().extended_dynamic_state)
                         {
-                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                feature: "extended_dynamic_state",
-                                reason: "RasterizationState::cull_mode was set to Dynamic",
+                            return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                                required_for:
+                                    "`rasterization_state.cull_mode` is `StateMode::Dynamic`",
+                                requires_one_of: RequiresOneOf {
+                                    api_version: Some(Version::V1_3),
+                                    features: &["extended_dynamic_state"],
+                                    ..Default::default()
+                                },
                             });
                         }
                     }
@@ -1116,16 +1182,21 @@ where
                 match front_face {
                     StateMode::Fixed(front_face) => {
                         // VUID-VkPipelineRasterizationStateCreateInfo-frontFace-parameter
-                        front_face.validate(device)?;
+                        front_face.validate_device(device)?;
                     }
                     StateMode::Dynamic => {
                         // VUID?
                         if !(device.api_version() >= Version::V1_3
                             || device.enabled_features().extended_dynamic_state)
                         {
-                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                feature: "extended_dynamic_state",
-                                reason: "RasterizationState::front_face was set to Dynamic",
+                            return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                                required_for:
+                                    "`rasterization_state.front_face` is `StateMode::Dynamic`",
+                                requires_one_of: RequiresOneOf {
+                                    api_version: Some(Version::V1_3),
+                                    features: &["extended_dynamic_state"],
+                                    ..Default::default()
+                                },
                             });
                         }
                     }
@@ -1138,10 +1209,17 @@ where
                     } = depth_bias_state;
 
                     // VUID?
-                    if enable_dynamic && !device.enabled_features().extended_dynamic_state2 {
-                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                            feature: "extended_dynamic_state2",
-                            reason: "DepthBiasState::enable_dynamic was true",
+                    if enable_dynamic
+                        && !(device.api_version() >= Version::V1_3
+                            || device.enabled_features().extended_dynamic_state2)
+                    {
+                        return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                            required_for: "`rasterization_state.depth_bias` is `Some(depth_bias_state)`, where `depth_bias_state.enable_dynamic` is set",
+                            requires_one_of: RequiresOneOf {
+                                api_version: Some(Version::V1_3),
+                                features: &["extended_dynamic_state2"],
+                                ..Default::default()
+                            },
                         });
                     }
 
@@ -1149,9 +1227,12 @@ where
                     if matches!(bias, StateMode::Fixed(bias) if bias.clamp != 0.0)
                         && !device.enabled_features().depth_bias_clamp
                     {
-                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                            feature: "depth_bias_clamp",
-                            reason: "DepthBias::clamp was not 0.0",
+                        return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                            required_for: "`rasterization_state.depth_bias` is `Some(depth_bias_state)`, where `depth_bias_state.bias` is `StateMode::Fixed(bias)`, where `bias.clamp` is not `0.0`",
+                            requires_one_of: RequiresOneOf {
+                                features: &["depth_bias_clamp"],
+                                ..Default::default()
+                            },
                         });
                     }
                 }
@@ -1160,44 +1241,54 @@ where
                 if matches!(line_width, StateMode::Fixed(line_width) if line_width != 1.0)
                     && !device.enabled_features().wide_lines
                 {
-                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                        feature: "wide_lines",
-                        reason: "RasterizationState::line_width was not 1.0",
+                    return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                        required_for: "`rasterization_state.line_width` is `StateMode::Fixed(line_width)`, where `line_width` is not `1.0`",
+                        requires_one_of: RequiresOneOf {
+                            features: &["wide_lines"],
+                            ..Default::default()
+                        },
                     });
                 }
 
                 if device.enabled_extensions().ext_line_rasterization {
                     // VUID-VkPipelineRasterizationLineStateCreateInfoEXT-lineRasterizationMode-parameter
-                    line_rasterization_mode.validate(device)?;
+                    line_rasterization_mode.validate_device(device)?;
 
                     match line_rasterization_mode {
                         LineRasterizationMode::Default => (),
                         LineRasterizationMode::Rectangular => {
                             // VUID-VkPipelineRasterizationLineStateCreateInfoEXT-lineRasterizationMode-02768
                             if !device.enabled_features().rectangular_lines {
-                                return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                feature: "rectangular_lines",
-                                reason:
-                                    "RasterizationState::line_rasterization_mode was Rectangular",
-                            });
+                                return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                                    required_for: "`rasterization_state.line_rasterization_mode` is `LineRasterizationMode::Rectangular`",
+                                    requires_one_of: RequiresOneOf {
+                                        features: &["rectangular_lines"],
+                                        ..Default::default()
+                                    },
+                                });
                             }
                         }
                         LineRasterizationMode::Bresenham => {
                             // VUID-VkPipelineRasterizationLineStateCreateInfoEXT-lineRasterizationMode-02769
                             if !device.enabled_features().bresenham_lines {
-                                return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                    feature: "bresenham_lines",
-                                    reason:
-                                        "RasterizationState::line_rasterization_mode was Bresenham",
+                                return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                                    required_for: "`rasterization_state.line_rasterization_mode` is `LineRasterizationMode::Bresenham`",
+                                    requires_one_of: RequiresOneOf {
+                                        features: &["bresenham_lines"],
+                                        ..Default::default()
+                                    },
                                 });
                             }
                         }
                         LineRasterizationMode::RectangularSmooth => {
                             // VUID-VkPipelineRasterizationLineStateCreateInfoEXT-lineRasterizationMode-02770
                             if !device.enabled_features().smooth_lines {
-                                return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                    feature: "smooth_lines",
-                                    reason: "RasterizationState::line_rasterization_mode was RectangularSmooth",
+                                return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                                    required_for: "`rasterization_state.line_rasterization_mode` is `LineRasterizationMode::RectangularSmooth`",
+                                    requires_one_of: RequiresOneOf {
+                                        features: &["smooth_lines"],
+                                        ..Default::default()
+                                    },
                                 });
                             }
                         }
@@ -1208,9 +1299,12 @@ where
                             LineRasterizationMode::Default => {
                                 // VUID-VkPipelineRasterizationLineStateCreateInfoEXT-stippledLineEnable-02774
                                 if !device.enabled_features().stippled_rectangular_lines {
-                                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                        feature: "stippled_rectangular_lines",
-                                        reason: "RasterizationState::line_stipple was Some and line_rasterization_mode was Default",
+                                    return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                                        required_for: "`rasterization_state.line_stipple` is `Some` and `rasterization_state.line_rasterization_mode` is `LineRasterizationMode::Default`",
+                                        requires_one_of: RequiresOneOf {
+                                            features: &["stippled_rectangular_lines"],
+                                            ..Default::default()
+                                        },
                                     });
                                 }
 
@@ -1224,27 +1318,36 @@ where
                             LineRasterizationMode::Rectangular => {
                                 // VUID-VkPipelineRasterizationLineStateCreateInfoEXT-stippledLineEnable-02771
                                 if !device.enabled_features().stippled_rectangular_lines {
-                                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                        feature: "stippled_rectangular_lines",
-                                        reason: "RasterizationState::line_stipple was Some and line_rasterization_mode was Rectangular",
+                                    return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                                        required_for: "`rasterization_state.line_stipple` is `Some` and `rasterization_state.line_rasterization_mode` is `LineRasterizationMode::Rectangular`",
+                                        requires_one_of: RequiresOneOf {
+                                            features: &["stippled_rectangular_lines"],
+                                            ..Default::default()
+                                        },
                                     });
                                 }
                             }
                             LineRasterizationMode::Bresenham => {
                                 // VUID-VkPipelineRasterizationLineStateCreateInfoEXT-stippledLineEnable-02772
                                 if !device.enabled_features().stippled_bresenham_lines {
-                                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                        feature: "stippled_bresenham_lines",
-                                        reason: "RasterizationState::line_stipple was Some and line_rasterization_mode was Bresenham",
+                                    return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                                        required_for: "`rasterization_state.line_stipple` is `Some` and `rasterization_state.line_rasterization_mode` is `LineRasterizationMode::Bresenham`",
+                                        requires_one_of: RequiresOneOf {
+                                            features: &["stippled_bresenham_lines"],
+                                            ..Default::default()
+                                        },
                                     });
                                 }
                             }
                             LineRasterizationMode::RectangularSmooth => {
                                 // VUID-VkPipelineRasterizationLineStateCreateInfoEXT-stippledLineEnable-02773
                                 if !device.enabled_features().stippled_smooth_lines {
-                                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                        feature: "stippled_smooth_lines",
-                                        reason: "RasterizationState::line_stipple was Some and line_rasterization_mode was RectangularSmooth",
+                                    return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                                        required_for: "`rasterization_state.line_stipple` is `Some` and `rasterization_state.line_rasterization_mode` is `LineRasterizationMode::RectangularSmooth`",
+                                        requires_one_of: RequiresOneOf {
+                                            features: &["stippled_smooth_lines"],
+                                            ..Default::default()
+                                        },
                                     });
                                 }
                             }
@@ -1258,16 +1361,22 @@ where
                     }
                 } else {
                     if line_rasterization_mode != LineRasterizationMode::Default {
-                        return Err(GraphicsPipelineCreationError::ExtensionNotEnabled {
-                            extension: "ext_line_rasterization",
-                            reason: "RasterizationState::line_rasterization_mode was not Default",
+                        return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                            required_for: "`rasterization_state.line_rasterization_mode` is not `LineRasterizationMode::Default`",
+                            requires_one_of: RequiresOneOf {
+                                device_extensions: &["ext_line_rasterization"],
+                                ..Default::default()
+                            },
                         });
                     }
 
                     if line_stipple.is_some() {
-                        return Err(GraphicsPipelineCreationError::ExtensionNotEnabled {
-                            extension: "ext_line_rasterization",
-                            reason: "RasterizationState::line_stipple was not None",
+                        return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                            required_for: "`rasterization_state.line_stipple` is `Some`",
+                            requires_one_of: RequiresOneOf {
+                                device_extensions: &["ext_line_rasterization"],
+                                ..Default::default()
+                            },
                         });
                     }
                 }
@@ -1282,7 +1391,7 @@ where
 
                 if device.enabled_extensions().ext_discard_rectangles {
                     // VUID-VkPipelineDiscardRectangleStateCreateInfoEXT-discardRectangleMode-parameter
-                    mode.validate(device)?;
+                    mode.validate_device(device)?;
 
                     let discard_rectangle_count = match *rectangles {
                         PartialStateMode::Dynamic(count) => count,
@@ -1305,10 +1414,12 @@ where
                     };
 
                     if error {
-                        return Err(GraphicsPipelineCreationError::ExtensionNotEnabled {
-                            extension: "ext_discard_rectangles",
-                            reason:
-                                "DiscardRectangleState::rectangles was not Fixed with an empty list",
+                        return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                            required_for: "`discard_rectangle_state.rectangles` is not `PartialStateMode::Fixed(vec![])`",
+                            requires_one_of: RequiresOneOf {
+                                device_extensions: &["ext_discard_rectangles"],
+                                ..Default::default()
+                            },
                         });
                     }
                 }
@@ -1353,9 +1464,13 @@ where
                         .enabled_features()
                         .extended_dynamic_state2_patch_control_points
                     {
-                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                            feature: "extended_dynamic_state2_patch_control_points",
-                            reason: "TessellationState::patch_control_points was set to Dynamic",
+                        return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                            required_for:
+                                "`tessellation_state.patch_control_points` is `StateMode::Dynamic`",
+                            requires_one_of: RequiresOneOf {
+                                features: &["extended_dynamic_state2_patch_control_points"],
+                                ..Default::default()
+                            },
                         });
                     }
                 }
@@ -1427,10 +1542,14 @@ where
                         if !(device.api_version() >= Version::V1_3
                             || device.enabled_features().extended_dynamic_state)
                         {
-                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                    feature: "extended_dynamic_state",
-                                    reason: "ViewportState::FixedViewport::scissor_count_dynamic was set to true",
-                                });
+                            return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                                required_for: "`viewport_state` is `ViewportState::FixedViewport`, where `scissor_count_dynamic` is set",
+                                requires_one_of: RequiresOneOf {
+                                    api_version: Some(Version::V1_3),
+                                    features: &["extended_dynamic_state"],
+                                    ..Default::default()
+                                },
+                            });
                         }
 
                         // VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-03380
@@ -1455,10 +1574,14 @@ where
                         if !(device.api_version() >= Version::V1_3
                             || device.enabled_features().extended_dynamic_state)
                         {
-                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                    feature: "extended_dynamic_state",
-                                    reason: "ViewportState::FixedScissor::viewport_count_dynamic was set to true",
-                                });
+                            return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                                required_for: "`viewport_state` is `ViewportState::FixedScissor`, where `viewport_count_dynamic` is set",
+                                requires_one_of: RequiresOneOf {
+                                    api_version: Some(Version::V1_3),
+                                    features: &["extended_dynamic_state"],
+                                    ..Default::default()
+                                },
+                            });
                         }
 
                         // VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-03379
@@ -1489,10 +1612,13 @@ where
                         if !(device.api_version() >= Version::V1_3
                             || device.enabled_features().extended_dynamic_state)
                         {
-                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                feature: "extended_dynamic_state",
-                                reason:
-                                    "ViewportState::Dynamic::viewport_count_dynamic was set to true",
+                            return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                                required_for: "`viewport_state` is `ViewportState::Dynamic`, where `viewport_count_dynamic` is set",
+                                requires_one_of: RequiresOneOf {
+                                    api_version: Some(Version::V1_3),
+                                    features: &["extended_dynamic_state"],
+                                    ..Default::default()
+                                },
                             });
                         }
 
@@ -1507,10 +1633,13 @@ where
                         if !(device.api_version() >= Version::V1_3
                             || device.enabled_features().extended_dynamic_state)
                         {
-                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                feature: "extended_dynamic_state",
-                                reason:
-                                    "ViewportState::Dynamic::scissor_count_dynamic was set to true",
+                            return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                                required_for: "`viewport_state` is `ViewportState::Dynamic`, where `scissor_count_dynamic` is set",
+                                requires_one_of: RequiresOneOf {
+                                    api_version: Some(Version::V1_3),
+                                    features: &["extended_dynamic_state"],
+                                    ..Default::default()
+                                },
                             });
                         }
 
@@ -1532,9 +1661,12 @@ where
             // VUID-VkPipelineViewportStateCreateInfo-viewportCount-01216
             // VUID-VkPipelineViewportStateCreateInfo-scissorCount-01217
             if viewport_scissor_count > 1 && !device.enabled_features().multi_viewport {
-                return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                    feature: "multi_viewport",
-                    reason: "ViewportState viewport/scissor count was greater than 1",
+                return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                    required_for: "`viewport_state` has a fixed viewport/scissor count that is greater than `1`",
+                    requires_one_of: RequiresOneOf {
+                        features: &["multi_viewport"],
+                        ..Default::default()
+                    },
                 });
             }
 
@@ -1640,9 +1772,14 @@ where
                     && !(device.api_version() >= Version::V1_3
                         || device.enabled_features().extended_dynamic_state)
                 {
-                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                        feature: "extended_dynamic_state",
-                        reason: "DepthState::enable_dynamic was true",
+                    return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                        required_for:
+                            "`depth_stencil_state.depth` is `Some(depth_state)`, where `depth_state.enable_dynamic` is set",
+                        requires_one_of: RequiresOneOf {
+                            api_version: Some(Version::V1_3),
+                            features: &["extended_dynamic_state"],
+                            ..Default::default()
+                        },
                     });
                 }
 
@@ -1665,9 +1802,13 @@ where
                         if !(device.api_version() >= Version::V1_3
                             || device.enabled_features().extended_dynamic_state)
                         {
-                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                feature: "extended_dynamic_state",
-                                reason: "DepthState::write_enable was set to Dynamic",
+                            return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                                required_for: "`depth_stencil_state.depth` is `Some(depth_state)`, where `depth_state.write_enable` is `StateMode::Dynamic`",
+                                requires_one_of: RequiresOneOf {
+                                    api_version: Some(Version::V1_3),
+                                    features: &["extended_dynamic_state"],
+                                    ..Default::default()
+                                },
                             });
                         }
                     }
@@ -1676,16 +1817,20 @@ where
                 match compare_op {
                     StateMode::Fixed(compare_op) => {
                         // VUID-VkPipelineDepthStencilStateCreateInfo-depthCompareOp-parameter
-                        compare_op.validate(device)?;
+                        compare_op.validate_device(device)?;
                     }
                     StateMode::Dynamic => {
                         // VUID?
                         if !(device.api_version() >= Version::V1_3
                             || device.enabled_features().extended_dynamic_state)
                         {
-                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                feature: "extended_dynamic_state",
-                                reason: "DepthState::compare_op was set to Dynamic",
+                            return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                                required_for: "`depth_stencil_state.depth` is `Some(depth_state)`, where `depth_state.compare_op` is `StateMode::Dynamic`",
+                                requires_one_of: RequiresOneOf {
+                                    api_version: Some(Version::V1_3),
+                                    features: &["extended_dynamic_state"],
+                                    ..Default::default()
+                                },
                             });
                         }
                     }
@@ -1700,9 +1845,12 @@ where
 
                 // VUID-VkPipelineDepthStencilStateCreateInfo-depthBoundsTestEnable-00598
                 if !device.enabled_features().depth_bounds {
-                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                        feature: "depth_bounds",
-                        reason: "DepthStencilState::depth_bounds was Some",
+                    return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                        required_for: "`depth_stencil_state.depth_bounds` is `Some`",
+                        requires_one_of: RequiresOneOf {
+                            features: &["depth_bounds"],
+                            ..Default::default()
+                        },
                     });
                 }
 
@@ -1711,9 +1859,13 @@ where
                     && !(device.api_version() >= Version::V1_3
                         || device.enabled_features().extended_dynamic_state)
                 {
-                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                        feature: "extended_dynamic_state",
-                        reason: "DepthBoundsState::enable_dynamic was true",
+                    return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                        required_for: "`depth_stencil_state.depth_bounds` is `Some(depth_bounds_state)`, where `depth_bounds_state.enable_dynamic` is set",
+                        requires_one_of: RequiresOneOf {
+                            api_version: Some(Version::V1_3),
+                            features: &["extended_dynamic_state"],
+                            ..Default::default()
+                        },
                     });
                 }
 
@@ -1723,10 +1875,13 @@ where
                         && !(0.0..1.0).contains(bounds.start())
                         && !(0.0..1.0).contains(bounds.end())
                     {
-                        return Err(GraphicsPipelineCreationError::ExtensionNotEnabled {
-                                extension: "ext_depth_range_unrestricted",
-                                reason: "DepthBoundsState::bounds were not both between 0.0 and 1.0 inclusive",
-                            });
+                        return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                            required_for: "`depth_stencil_state.depth_bounds` is `Some(depth_bounds_state)`, where `depth_bounds_state.bounds` is not between `0.0` and `1.0` inclusive",
+                            requires_one_of: RequiresOneOf {
+                                device_extensions: &["ext_depth_range_unrestricted"],
+                                ..Default::default()
+                            },
+                        });
                     }
                 }
             }
@@ -1754,9 +1909,14 @@ where
                     && !(device.api_version() >= Version::V1_3
                         || device.enabled_features().extended_dynamic_state)
                 {
-                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                        feature: "extended_dynamic_state",
-                        reason: "StencilState::enable_dynamic was true",
+                    return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                        required_for:
+                            "`depth_stencil_state.stencil` is `Some(stencil_state)`, where `stencil_state.enable_dynamic` is set",
+                        requires_one_of: RequiresOneOf {
+                            api_version: Some(Version::V1_3),
+                            features: &["extended_dynamic_state"],
+                            ..Default::default()
+                        },
                     });
                 }
 
@@ -1771,16 +1931,16 @@ where
                             } = ops;
 
                             // VUID-VkStencilOpState-failOp-parameter
-                            fail_op.validate(device)?;
+                            fail_op.validate_device(device)?;
 
                             // VUID-VkStencilOpState-passOp-parameter
-                            pass_op.validate(device)?;
+                            pass_op.validate_device(device)?;
 
                             // VUID-VkStencilOpState-depthFailOp-parameter
-                            depth_fail_op.validate(device)?;
+                            depth_fail_op.validate_device(device)?;
 
                             // VUID-VkStencilOpState-compareOp-parameter
-                            compare_op.validate(device)?;
+                            compare_op.validate_device(device)?;
                         }
                     }
                     (StateMode::Dynamic, StateMode::Dynamic) => {
@@ -1788,9 +1948,13 @@ where
                         if !(device.api_version() >= Version::V1_3
                             || device.enabled_features().extended_dynamic_state)
                         {
-                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                feature: "extended_dynamic_state",
-                                reason: "StencilState::ops was set to Dynamic",
+                            return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                                required_for: "`depth_stencil_state.stencil` is `Some(stencil_state)`, where `stencil_state.front.ops` and `stencil_state.back.ops` are `StateMode::Dynamic`",
+                                requires_one_of: RequiresOneOf {
+                                    api_version: Some(Version::V1_3),
+                                    features: &["extended_dynamic_state"],
+                                    ..Default::default()
+                                },
                             });
                         }
                     }
@@ -1843,7 +2007,7 @@ where
                 } = multisample_state;
 
                 // VUID-VkPipelineMultisampleStateCreateInfo-rasterizationSamples-parameter
-                rasterization_samples.validate(device)?;
+                rasterization_samples.validate_device(device)?;
 
                 match render_pass {
                     PipelineRenderPassType::BeginRenderPass(subpass) => {
@@ -1869,9 +2033,12 @@ where
                 if let Some(min_sample_shading) = sample_shading {
                     // VUID-VkPipelineMultisampleStateCreateInfo-sampleShadingEnable-00784
                     if !device.enabled_features().sample_rate_shading {
-                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                            feature: "sample_rate_shading",
-                            reason: "MultisampleState::sample_shading was Some",
+                        return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                            required_for: "`multisample_state.sample_shading` is `Some`",
+                            requires_one_of: RequiresOneOf {
+                                features: &["sample_rate_shading"],
+                                ..Default::default()
+                            },
                         });
                     }
 
@@ -1882,9 +2049,12 @@ where
 
                 // VUID-VkPipelineMultisampleStateCreateInfo-alphaToOneEnable-00785
                 if alpha_to_one_enable && !device.enabled_features().alpha_to_one {
-                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                        feature: "alpha_to_one",
-                        reason: "MultisampleState::alpha_to_one was true",
+                    return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                        required_for: "`multisample_state.alpha_to_one_enable` is set",
+                        requires_one_of: RequiresOneOf {
+                            features: &["alpha_to_one"],
+                            ..Default::default()
+                        },
                     });
                 }
 
@@ -1906,23 +2076,30 @@ where
             if let Some(logic_op) = logic_op {
                 // VUID-VkPipelineColorBlendStateCreateInfo-logicOpEnable-00606
                 if !device.enabled_features().logic_op {
-                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                        feature: "logic_op",
-                        reason: "ColorBlendState::logic_op was set to Some",
+                    return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                        required_for: "`color_blend_state.logic_op` is `Some`",
+                        requires_one_of: RequiresOneOf {
+                            features: &["logic_op"],
+                            ..Default::default()
+                        },
                     });
                 }
 
                 match logic_op {
                     StateMode::Fixed(logic_op) => {
                         // VUID-VkPipelineColorBlendStateCreateInfo-logicOpEnable-00607
-                        logic_op.validate(device)?
+                        logic_op.validate_device(device)?
                     }
                     StateMode::Dynamic => {
                         // VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-04869
                         if !device.enabled_features().extended_dynamic_state2_logic_op {
-                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                feature: "extended_dynamic_state2_logic_op",
-                                reason: "ColorBlendState::logic_op was set to Some(Dynamic)",
+                            return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                                required_for:
+                                    "`color_blend_state.logic_op` is `Some(StateMode::Dynamic)`",
+                                requires_one_of: RequiresOneOf {
+                                    features: &["extended_dynamic_state2_logic_op"],
+                                    ..Default::default()
+                                },
                             });
                         }
                     }
@@ -1954,12 +2131,13 @@ where
 
                 // VUID-VkPipelineColorBlendStateCreateInfo-pAttachments-00605
                 if !iter.all(|state| state == first) {
-                    return Err(
-                        GraphicsPipelineCreationError::FeatureNotEnabled {
-                            feature: "independent_blend",
-                            reason: "The blend and color_write_mask members of all elements of ColorBlendState::attachments were not identical",
+                    return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                        required_for: "`color_blend_state.attachments` has elements where `blend` and `color_write_mask` do not match the other elements",
+                        requires_one_of: RequiresOneOf {
+                            features: &["independent_blend"],
+                            ..Default::default()
                         },
-                    );
+                    });
                 }
             }
 
@@ -1981,22 +2159,22 @@ where
                     } = blend;
 
                     // VUID-VkPipelineColorBlendAttachmentState-colorBlendOp-parameter
-                    color_op.validate(device)?;
+                    color_op.validate_device(device)?;
 
                     // VUID-VkPipelineColorBlendAttachmentState-srcColorBlendFactor-parameter
-                    color_source.validate(device)?;
+                    color_source.validate_device(device)?;
 
                     // VUID-VkPipelineColorBlendAttachmentState-dstColorBlendFactor-parameter
-                    color_destination.validate(device)?;
+                    color_destination.validate_device(device)?;
 
                     // VUID-VkPipelineColorBlendAttachmentState-alphaBlendOp-parameter
-                    alpha_op.validate(device)?;
+                    alpha_op.validate_device(device)?;
 
                     // VUID-VkPipelineColorBlendAttachmentState-srcAlphaBlendFactor-parameter
-                    alpha_source.validate(device)?;
+                    alpha_source.validate_device(device)?;
 
                     // VUID-VkPipelineColorBlendAttachmentState-dstAlphaBlendFactor-parameter
-                    alpha_destination.validate(device)?;
+                    alpha_destination.validate_device(device)?;
 
                     // VUID?
                     if !device.enabled_features().dual_src_blend
@@ -2017,10 +2195,12 @@ where
                             )
                         })
                     {
-                        return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                            feature: "dual_src_blend",
-                            reason:
-                                "One of the BlendFactor members of AttachmentBlend was set to Src1",
+                        return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                            required_for: "`color_blend_state.attachments` has an element where `blend` is `Some(blend)`, where `blend.color_source`, `blend.color_destination`, `blend.alpha_source` or `blend.alpha_destination` is `BlendFactor::Src1*`",
+                            requires_one_of: RequiresOneOf {
+                                features: &["dual_src_blend"],
+                                ..Default::default()
+                            },
                         });
                     }
 
@@ -2058,19 +2238,25 @@ where
                     StateMode::Fixed(enable) => {
                         // VUID-VkPipelineColorWriteCreateInfoEXT-pAttachments-04801
                         if !enable && !device.enabled_features().color_write_enable {
-                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                    feature: "color_write_enable",
-                                    reason: "ColorBlendAttachmentState::color_blend_enable was set to Fixed(false)",
-                                });
+                            return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                                required_for: "`color_blend_state.attachments` has an element where `color_write_enable` is `StateMode::Fixed(false)`",
+                                requires_one_of: RequiresOneOf {
+                                    features: &["color_write_enable"],
+                                    ..Default::default()
+                                },
+                            });
                         }
                     }
                     StateMode::Dynamic => {
                         // VUID-VkGraphicsPipelineCreateInfo-pDynamicStates-04800
                         if !device.enabled_features().color_write_enable {
-                            return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                                    feature: "color_write_enable",
-                                    reason: "ColorBlendAttachmentState::color_blend_enable was set to Dynamic",
-                                });
+                            return Err(GraphicsPipelineCreationError::RequirementNotMet {
+                                required_for: "`color_blend_state.attachments` has an element where `color_write_enable` is `StateMode::Dynamic`",
+                                requires_one_of: RequiresOneOf {
+                                    features: &["color_write_enable"],
+                                    ..Default::default()
+                                },
+                            });
                         }
                     }
                 }
@@ -3117,13 +3303,6 @@ where
             ));
 
             let (logic_op_enable, logic_op) = if let Some(logic_op) = logic_op {
-                if !device.enabled_features().logic_op {
-                    return Err(GraphicsPipelineCreationError::FeatureNotEnabled {
-                        feature: "logic_op",
-                        reason: "ColorBlendState::logic_op was set to Some",
-                    });
-                }
-
                 let logic_op = match logic_op {
                     StateMode::Fixed(logic_op) => {
                         dynamic_state.insert(DynamicState::LogicOp, false);

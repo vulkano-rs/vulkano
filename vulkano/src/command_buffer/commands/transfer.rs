@@ -229,10 +229,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         } = copy_image_info;
 
         // VUID-VkCopyImageInfo2-srcImageLayout-parameter
-        src_image_layout.validate(device)?;
+        src_image_layout.validate_device(device)?;
 
         // VUID-VkCopyImageInfo2-dstImageLayout-parameter
-        dst_image_layout.validate(device)?;
+        dst_image_layout.validate_device(device)?;
 
         // VUID-VkCopyImageInfo2-commonparent
         assert_eq!(device, src_image.device());
@@ -404,7 +404,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 }
 
                 // VUID-VkImageSubresourceLayers-aspectMask-parameter
-                subresource.aspects.validate(device)?;
+                subresource.aspects.validate_device(device)?;
 
                 // VUID-VkImageSubresourceLayers-aspectMask-requiredbitmask
                 assert!(!subresource.aspects.is_empty());
@@ -878,7 +878,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         } = copy_buffer_to_image_info;
 
         // VUID-VkCopyBufferToImageInfo2-dstImageLayout-parameter
-        dst_image_layout.validate(device)?;
+        dst_image_layout.validate_device(device)?;
 
         // VUID-VkCopyBufferToImageInfo2-commonparent
         assert_eq!(device, src_buffer.device());
@@ -1307,7 +1307,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         } = copy_image_to_buffer_info;
 
         // VUID-VkCopyImageToBufferInfo2-srcImageLayout-parameter
-        src_image_layout.validate(device)?;
+        src_image_layout.validate_device(device)?;
 
         // VUID-VkCopyImageToBufferInfo2-commonparent
         assert_eq!(device, dst_buffer.device());

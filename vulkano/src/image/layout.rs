@@ -77,49 +77,49 @@ vulkan_enum! {
     // TODO: document
     DepthReadOnlyStencilAttachmentOptimal = DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL {
         api_version: V1_1,
-        extensions: [khr_maintenance2],
+        device_extensions: [khr_maintenance2],
     },
 
     // TODO: document
     DepthAttachmentStencilReadOnlyOptimal = DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL {
         api_version: V1_1,
-        extensions: [khr_maintenance2],
+        device_extensions: [khr_maintenance2],
     },
 
     // TODO: document
     DepthAttachmentOptimal = DEPTH_ATTACHMENT_OPTIMAL {
         api_version: V1_2,
-        extensions: [khr_separate_depth_stencil_layouts],
+        device_extensions: [khr_separate_depth_stencil_layouts],
     },
 
     // TODO: document
     DepthReadOnlyOptimal = DEPTH_READ_ONLY_OPTIMAL {
         api_version: V1_2,
-        extensions: [khr_separate_depth_stencil_layouts],
+        device_extensions: [khr_separate_depth_stencil_layouts],
     },
 
     // TODO: document
     StencilAttachmentOptimal = STENCIL_ATTACHMENT_OPTIMAL {
         api_version: V1_2,
-        extensions: [khr_separate_depth_stencil_layouts],
+        device_extensions: [khr_separate_depth_stencil_layouts],
     },
 
     // TODO: document
     StencilReadOnlyOptimal = STENCIL_READ_ONLY_OPTIMAL {
         api_version: V1_2,
-        extensions: [khr_separate_depth_stencil_layouts],
+        device_extensions: [khr_separate_depth_stencil_layouts],
     },
 
     // TODO: document
     ReadOnlyOptimal = READ_ONLY_OPTIMAL {
         api_version: V1_3,
-        extensions: [khr_synchronization2],
+        device_extensions: [khr_synchronization2],
     },
 
     // TODO: document
     AttachmentOptimal = ATTACHMENT_OPTIMAL {
         api_version: V1_3,
-        extensions: [khr_synchronization2],
+        device_extensions: [khr_synchronization2],
     },
      */
 
@@ -127,53 +127,53 @@ vulkan_enum! {
     /// acquired from the swapchain, and must be transitioned back into this layout before
     /// presenting them.
     PresentSrc = PRESENT_SRC_KHR {
-        extensions: [khr_swapchain],
+        device_extensions: [khr_swapchain],
     },
 
     /*
     // TODO: document
     VideoDecodeDst = VIDEO_DECODE_DST_KHR {
-        extensions: [khr_video_decode_queue],
+        device_extensions: [khr_video_decode_queue],
     },
 
     // TODO: document
     VideoDecodeSrc = VIDEO_DECODE_SRC_KHR {
-        extensions: [khr_video_decode_queue],
+        device_extensions: [khr_video_decode_queue],
     },
 
     // TODO: document
     VideoDecodeDpb = VIDEO_DECODE_DPB_KHR {
-        extensions: [khr_video_decode_queue],
+        device_extensions: [khr_video_decode_queue],
     },
 
     // TODO: document
     SharedPresent = SHARED_PRESENT_KHR {
-        extensions: [khr_shared_presentable_image],
+        device_extensions: [khr_shared_presentable_image],
     },
 
     // TODO: document
     FragmentDensityMapOptimal = FRAGMENT_DENSITY_MAP_OPTIMAL_EXT {
-        extensions: [ext_fragment_density_map],
+        device_extensions: [ext_fragment_density_map],
     },
 
     // TODO: document
     FragmentShadingRateAttachmentOptimal = FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL_KHR {
-        extensions: [khr_fragment_shading_rate],
+        device_extensions: [khr_fragment_shading_rate],
     },
 
     // TODO: document
     VideoEncodeDst = VIDEO_ENCODE_DST_KHR {
-        extensions: [khr_video_encode_queue],
+        device_extensions: [khr_video_encode_queue],
     },
 
     // TODO: document
     VideoEncodeSrc = VIDEO_ENCODE_SRC_KHR {
-        extensions: [khr_video_encode_queue],
+        device_extensions: [khr_video_encode_queue],
     },
 
     // TODO: document
     VideoEncodeDpb = VIDEO_ENCODE_DPB_KHR {
-        extensions: [khr_video_encode_queue],
+        device_extensions: [khr_video_encode_queue],
     },
      */
 }

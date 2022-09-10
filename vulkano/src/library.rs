@@ -25,7 +25,14 @@ use crate::{
 };
 use libloading::{Error as LibloadingError, Library};
 use std::{
-    error::Error, ffi::CStr, fmt, mem::transmute, os::raw::c_char, path::Path, ptr, sync::Arc,
+    error::Error,
+    ffi::CStr,
+    fmt::{Debug, Display, Error as FmtError, Formatter},
+    mem::transmute,
+    os::raw::c_char,
+    path::Path,
+    ptr,
+    sync::Arc,
 };
 
 /// A loaded library containing a valid Vulkan implementation.
@@ -262,9 +269,9 @@ where
     }
 }
 
-impl fmt::Debug for dyn Loader {
+impl Debug for dyn Loader {
     #[inline]
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, _f: &mut Formatter) -> Result<(), FmtError> {
         Ok(())
     }
 }
@@ -366,11 +373,11 @@ impl Error for LoadingError {
     }
 }
 
-impl fmt::Display for LoadingError {
+impl Display for LoadingError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         write!(
-            fmt,
+            f,
             "{}",
             match *self {
                 Self::LibraryLoadFailure(_) => "failed to load the Vulkan shared library",

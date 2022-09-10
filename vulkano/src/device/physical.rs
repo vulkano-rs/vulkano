@@ -19,9 +19,17 @@ use crate::{
         SurfaceApi, SurfaceCapabilities, SurfaceInfo,
     },
     sync::{ExternalSemaphoreInfo, ExternalSemaphoreProperties, PipelineStage},
-    DeviceSize, OomError, Version, VulkanError, VulkanObject,
+    DeviceSize, OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
-use std::{error::Error, ffi::CStr, fmt, hash::Hash, mem::MaybeUninit, ptr, sync::Arc};
+use std::{
+    error::Error,
+    ffi::CStr,
+    fmt::{Debug, Display, Error as FmtError, Formatter},
+    hash::Hash,
+    mem::MaybeUninit,
+    ptr,
+    sync::Arc,
+};
 
 #[derive(Clone, Debug)]
 pub(crate) struct PhysicalDeviceInfo {
@@ -434,20 +442,27 @@ impl<'a> PhysicalDevice<'a> {
 
     /// Retrieves the external memory properties supported for buffers with a given configuration.
     ///
-    /// Returns `None` if the instance API version is less than 1.1 and the
+    /// Instance API version must be at least 1.1, or the
     /// [`khr_external_memory_capabilities`](crate::instance::InstanceExtensions::khr_external_memory_capabilities)
-    /// extension is not enabled on the instance.
+    /// extension must be enabled on the instance.
     pub fn external_buffer_properties(
         &self,
         info: ExternalBufferInfo,
-    ) -> Option<ExternalBufferProperties> {
+    ) -> Result<ExternalBufferProperties, ExternalBufferPropertiesError> {
         if !(self.instance.api_version() >= Version::V1_1
             || self
                 .instance
                 .enabled_extensions()
                 .khr_external_memory_capabilities)
         {
-            return None;
+            return Err(ExternalBufferPropertiesError::RequirementNotMet {
+                required_for: "`external_buffer_properties`",
+                requires_one_of: RequiresOneOf {
+                    api_version: Some(Version::V1_1),
+                    instance_extensions: &["khr_external_memory_capabilities"],
+                    ..Default::default()
+                },
+            });
         }
 
         /* Input */
@@ -460,12 +475,12 @@ impl<'a> PhysicalDevice<'a> {
         } = info;
 
         // VUID-VkPhysicalDeviceExternalBufferInfo-usage-parameter
-        // TODO: usage.validate()?;
+        usage.validate_physical_device(self)?;
 
         assert!(!usage.is_empty());
 
         // VUID-VkPhysicalDeviceExternalBufferInfo-handleType-parameter
-        // TODO: handle_type.validate()?;
+        handle_type.validate_physical_device(self)?;
 
         let external_buffer_info = ash::vk::PhysicalDeviceExternalBufferInfo {
             flags: sparse.map(Into::into).unwrap_or_default(),
@@ -499,7 +514,7 @@ impl<'a> PhysicalDevice<'a> {
             }
         }
 
-        Some(ExternalBufferProperties {
+        Ok(ExternalBufferProperties {
             external_memory_properties: external_buffer_properties
                 .external_memory_properties
                 .into(),
@@ -576,20 +591,27 @@ impl<'a> PhysicalDevice<'a> {
     /// Retrieves the external handle properties supported for semaphores with a given
     /// configuration.
     ///
-    /// Returns `None` if the instance API version is less than 1.1 and the
+    /// The instance API version must be at least 1.1, or the
     /// [`khr_external_semaphore_capabilities`](crate::instance::InstanceExtensions::khr_external_semaphore_capabilities)
-    /// extension is not enabled on the instance.
+    /// extension must be enabled on the instance.
     pub fn external_semaphore_properties(
         &self,
         info: ExternalSemaphoreInfo,
-    ) -> Option<ExternalSemaphoreProperties> {
+    ) -> Result<ExternalSemaphoreProperties, ExternalSemaphorePropertiesError> {
         if !(self.instance.api_version() >= Version::V1_1
             || self
                 .instance
                 .enabled_extensions()
                 .khr_external_semaphore_capabilities)
         {
-            return None;
+            return Err(ExternalSemaphorePropertiesError::RequirementNotMet {
+                required_for: "`external_semaphore_properties`",
+                requires_one_of: RequiresOneOf {
+                    api_version: Some(Version::V1_1),
+                    instance_extensions: &["khr_external_semaphore_capabilities"],
+                    ..Default::default()
+                },
+            });
         }
 
         /* Input */
@@ -600,7 +622,7 @@ impl<'a> PhysicalDevice<'a> {
         } = info;
 
         // VUID-VkPhysicalDeviceExternalSemaphoreInfo-handleType-parameter
-        // TODO: handle_type.validate()?;
+        handle_type.validate_physical_device(self)?;
 
         let external_semaphore_info = ash::vk::PhysicalDeviceExternalSemaphoreInfo {
             handle_type: handle_type.into(),
@@ -632,7 +654,7 @@ impl<'a> PhysicalDevice<'a> {
             }
         }
 
-        Some(ExternalSemaphoreProperties {
+        Ok(ExternalSemaphoreProperties {
             exportable: external_semaphore_properties
                 .external_semaphore_features
                 .intersects(ash::vk::ExternalSemaphoreFeatureFlags::EXPORTABLE),
@@ -656,7 +678,7 @@ impl<'a> PhysicalDevice<'a> {
     pub fn image_format_properties(
         &self,
         image_format_info: ImageFormatInfo,
-    ) -> Result<Option<ImageFormatProperties>, OomError> {
+    ) -> Result<Option<ImageFormatProperties>, ImageFormatPropertiesError> {
         /* Input */
         let ImageFormatInfo {
             format,
@@ -673,22 +695,16 @@ impl<'a> PhysicalDevice<'a> {
         } = image_format_info;
 
         // VUID-VkPhysicalDeviceImageFormatInfo2-format-parameter
-        // TODO: format.validate()?;
+        // TODO: format.validate_physical_device(self)?;
 
         // VUID-VkPhysicalDeviceImageFormatInfo2-imageType-parameter
-        // TODO: image_type.validate()?;
+        image_type.validate_physical_device(self)?;
 
         // VUID-VkPhysicalDeviceImageFormatInfo2-tiling-parameter
-        // TODO: tiling.validate()?;
+        tiling.validate_physical_device(self)?;
 
         // VUID-VkPhysicalDeviceImageFormatInfo2-usage-parameter
-        // TODO: usage.validate()?;
-
-        // VUID-VkPhysicalDeviceExternalImageFormatInfo-handleType-parameter
-        // TODO: external_memory_handle_type.validate()?;
-
-        // VUID-VkPhysicalDeviceImageViewImageFormatInfoEXT-imageViewType-parameter
-        // TODO: image_view_type.validate()?;
+        usage.validate_physical_device(self)?;
 
         let flags = ImageCreateFlags {
             mutable_format,
@@ -713,9 +729,18 @@ impl<'a> PhysicalDevice<'a> {
                     .enabled_extensions()
                     .khr_external_memory_capabilities)
             {
-                // Can't query this, return unsupported
-                return Ok(None);
+                return Err(ImageFormatPropertiesError::RequirementNotMet {
+                    required_for: "`image_format_info.external_memory_handle_type` is `Some`",
+                    requires_one_of: RequiresOneOf {
+                        api_version: Some(Version::V1_1),
+                        instance_extensions: &["khr_external_memory_capabilities"],
+                        ..Default::default()
+                    },
+                });
             }
+
+            // VUID-VkPhysicalDeviceExternalImageFormatInfo-handleType-parameter
+            handle_type.validate_physical_device(self)?;
 
             Some(
                 ash::vk::PhysicalDeviceExternalImageFormatInfo::builder()
@@ -730,12 +755,18 @@ impl<'a> PhysicalDevice<'a> {
         }
 
         let mut image_view_image_format_info = if let Some(image_view_type) = image_view_type {
-            if !(self.supported_extensions().ext_filter_cubic
-                || self.supported_extensions().img_filter_cubic)
-            {
-                // Can't query this, return unsupported
-                return Ok(None);
+            if !self.supported_extensions().ext_filter_cubic {
+                return Err(ImageFormatPropertiesError::RequirementNotMet {
+                    required_for: "`image_format_info.image_view_type` is `Some`",
+                    requires_one_of: RequiresOneOf {
+                        device_extensions: &["ext_filter_cubic"],
+                        ..Default::default()
+                    },
+                });
             }
+
+            // VUID-VkPhysicalDeviceImageViewImageFormatInfoEXT-imageViewType-parameter
+            image_view_type.validate_physical_device(self)?;
 
             if !image_view_type.is_compatible_with(image_type) {
                 return Ok(None);
@@ -1680,15 +1711,15 @@ impl From<ash::vk::ConformanceVersion> for ConformanceVersion {
     }
 }
 
-impl fmt::Debug for ConformanceVersion {
-    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+impl Debug for ConformanceVersion {
+    fn fmt(&self, formatter: &mut Formatter) -> Result<(), FmtError> {
         write!(formatter, "{}.{}.{}", self.major, self.minor, self.patch)
     }
 }
 
-impl fmt::Display for ConformanceVersion {
-    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Debug::fmt(self, formatter)
+impl Display for ConformanceVersion {
+    fn fmt(&self, formatter: &mut Formatter) -> Result<(), FmtError> {
+        Debug::fmt(self, formatter)
     }
 }
 
@@ -1771,7 +1802,7 @@ vulkan_bitflags! {
 
     // TODO: document
     partitioned = PARTITIONED_NV {
-        extensions: [nv_shader_subgroup_partitioned],
+        device_extensions: [nv_shader_subgroup_partitioned],
     },
 }
 
@@ -1814,9 +1845,143 @@ impl From<ash::vk::ShaderCorePropertiesFlagsAMD> for ShaderCoreProperties {
     }
 }
 
+/// Error that can happen when retrieving properties of an external buffer.
+#[derive(Clone, Debug)]
+pub enum ExternalBufferPropertiesError {
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
+    },
+}
+
+impl Error for ExternalBufferPropertiesError {}
+
+impl Display for ExternalBufferPropertiesError {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+        match self {
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
+            ),
+        }
+    }
+}
+
+impl From<RequirementNotMet> for ExternalBufferPropertiesError {
+    #[inline]
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
+        }
+    }
+}
+
+/// Error that can happen when retrieving properties of an external semaphore.
+#[derive(Clone, Debug)]
+pub enum ExternalSemaphorePropertiesError {
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
+    },
+}
+
+impl Error for ExternalSemaphorePropertiesError {}
+
+impl Display for ExternalSemaphorePropertiesError {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+        match self {
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
+            ),
+        }
+    }
+}
+
+impl From<RequirementNotMet> for ExternalSemaphorePropertiesError {
+    #[inline]
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
+        }
+    }
+}
+
+/// Error that can happen when retrieving format properties of an image.
+#[derive(Clone, Debug)]
+pub enum ImageFormatPropertiesError {
+    /// Not enough memory.
+    OomError(OomError),
+
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
+    },
+}
+
+impl Error for ImageFormatPropertiesError {
+    #[inline]
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::OomError(err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl Display for ImageFormatPropertiesError {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+        match self {
+            Self::OomError(_) => write!(f, "not enough memory"),
+
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
+            ),
+        }
+    }
+}
+
+impl From<VulkanError> for ImageFormatPropertiesError {
+    #[inline]
+    fn from(err: VulkanError) -> Self {
+        match err {
+            err @ VulkanError::OutOfHostMemory => Self::OomError(OomError::from(err)),
+            err @ VulkanError::OutOfDeviceMemory => Self::OomError(OomError::from(err)),
+            _ => panic!("unexpected error: {:?}", err),
+        }
+    }
+}
+
+impl From<RequirementNotMet> for ImageFormatPropertiesError {
+    #[inline]
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
+        }
+    }
+}
+
 /// Error that can happen when retrieving properties of a surface.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[repr(u32)]
 pub enum SurfacePropertiesError {
     /// Not enough memory.
     OomError(OomError),
@@ -1838,11 +2003,11 @@ impl Error for SurfacePropertiesError {
     }
 }
 
-impl fmt::Display for SurfacePropertiesError {
+impl Display for SurfacePropertiesError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         write!(
-            fmt,
+            f,
             "{}",
             match *self {
                 Self::OomError(_) => "not enough memory",

@@ -14,7 +14,12 @@ use crate::{
     OomError, SynchronizedVulkanObject, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{error::Error, fmt, marker::PhantomData, ptr};
+use std::{
+    error::Error,
+    fmt::{Debug, Display, Error as FmtError, Formatter},
+    marker::PhantomData,
+    ptr,
+};
 
 /// Prototype for a submission that presents a swapchain on the screen.
 // TODO: example here
@@ -181,9 +186,9 @@ impl<'a> SubmitPresentBuilder<'a> {
     }
 }
 
-impl<'a> fmt::Debug for SubmitPresentBuilder<'a> {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        fmt.debug_struct("SubmitPresentBuilder")
+impl<'a> Debug for SubmitPresentBuilder<'a> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+        f.debug_struct("SubmitPresentBuilder")
             .field("wait_semaphores", &self.wait_semaphores)
             .field("swapchains", &self.swapchains)
             .field("image_indices", &self.image_indices)
@@ -223,11 +228,11 @@ impl Error for SubmitPresentError {
     }
 }
 
-impl fmt::Display for SubmitPresentError {
+impl Display for SubmitPresentError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         write!(
-            fmt,
+            f,
             "{}",
             match *self {
                 SubmitPresentError::OomError(_) => "not enough memory",

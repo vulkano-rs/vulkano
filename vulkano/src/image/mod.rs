@@ -246,7 +246,7 @@ vulkan_bitflags! {
     /// For 3D images, allows creation of an image view of type `Dim2d` or `Dim2dArray`.
     array_2d_compatible = TYPE_2D_ARRAY_COMPATIBLE {
         api_version: V1_1,
-        extensions: [khr_maintenance1],
+        device_extensions: [khr_maintenance1],
     },
 
     /// For images with a compressed format, allows creation of an image view with an uncompressed
@@ -256,7 +256,7 @@ vulkan_bitflags! {
     /// Requires `mutable_format`.
     block_texel_view_compatible = BLOCK_TEXEL_VIEW_COMPATIBLE {
         api_version: V1_1,
-        extensions: [khr_maintenance1],
+        device_extensions: [khr_maintenance1],
     },
 }
 
@@ -289,7 +289,7 @@ vulkan_enum! {
     /*
     // TODO: document
     DrmFormatModifier = DRM_FORMAT_MODIFIER_EXT {
-        extensions: [ext_image_drm_format_modifier],
+        device_extensions: [ext_image_drm_format_modifier],
     },
      */
 }

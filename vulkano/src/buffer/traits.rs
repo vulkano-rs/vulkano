@@ -8,10 +8,10 @@
 // according to those terms.
 
 use super::{sys::UnsafeBuffer, BufferContents, BufferSlice, BufferUsage};
-use crate::{device::DeviceOwned, DeviceSize, SafeDeref, VulkanObject};
+use crate::{device::DeviceOwned, DeviceSize, RequiresOneOf, SafeDeref, VulkanObject};
 use std::{
     error::Error,
-    fmt,
+    fmt::{Debug, Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     num::NonZeroU64,
     ops::Range,
@@ -82,7 +82,13 @@ pub unsafe trait BufferAccess: DeviceOwned + Send + Sync {
 
         // VUID-vkGetBufferDeviceAddress-bufferDeviceAddress-03324
         if !device.enabled_features().buffer_device_address {
-            return Err(BufferDeviceAddressError::FeatureNotEnabled);
+            return Err(BufferDeviceAddressError::RequirementNotMet {
+                required_for: "`raw_device_address`",
+                requires_one_of: RequiresOneOf {
+                    features: &["buffer_device_address"],
+                    ..Default::default()
+                },
+            });
         }
 
         // VUID-VkBufferDeviceAddressInfo-buffer-02601
@@ -168,8 +174,8 @@ where
     type Content = <T::Target as TypedBufferAccess>::Content;
 }
 
-impl fmt::Debug for dyn BufferAccess {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Debug for dyn BufferAccess {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         f.debug_struct("dyn BufferAccess")
             .field("inner", &self.inner())
             .finish()
@@ -196,23 +202,32 @@ impl Hash for dyn BufferAccess {
 /// Error that can happen when querying the device address of a buffer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BufferDeviceAddressError {
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
+    },
+
     BufferMissingUsage,
-    FeatureNotEnabled,
 }
 
 impl Error for BufferDeviceAddressError {}
 
-impl fmt::Display for BufferDeviceAddressError {
+impl Display for BufferDeviceAddressError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match self {
-            Self::BufferMissingUsage => write!(
-                fmt,
-                "the device address usage flag was not set on this buffer",
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
             ),
-            Self::FeatureNotEnabled => write!(
-                fmt,
-                "the buffer_device_address feature was not enabled on the device",
+
+            Self::BufferMissingUsage => write!(
+                f,
+                "the device address usage flag was not set on this buffer",
             ),
         }
     }

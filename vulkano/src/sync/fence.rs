@@ -14,7 +14,7 @@ use crate::{
 use smallvec::SmallVec;
 use std::{
     error::Error,
-    fmt,
+    fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     ptr,
@@ -413,11 +413,11 @@ impl Error for FenceWaitError {
     }
 }
 
-impl fmt::Display for FenceWaitError {
+impl Display for FenceWaitError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         write!(
-            fmt,
+            f,
             "{}",
             match *self {
                 FenceWaitError::OomError(_) => "no memory available",

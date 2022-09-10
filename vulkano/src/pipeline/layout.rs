@@ -66,14 +66,13 @@
 use crate::{
     descriptor_set::layout::{DescriptorRequirementsNotMet, DescriptorSetLayout, DescriptorType},
     device::{Device, DeviceOwned},
-    macros::ExtensionNotEnabled,
     shader::{DescriptorRequirements, ShaderStages},
-    OomError, VulkanError, VulkanObject,
+    OomError, RequirementNotMet, RequiresOneOf, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{
     error::Error,
-    fmt,
+    fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     ptr,
@@ -471,7 +470,7 @@ impl PipelineLayout {
                 } = range;
 
                 // VUID-VkPushConstantRange-stageFlags-parameter
-                stages.validate(device)?;
+                stages.validate_device(device)?;
 
                 // VUID-VkPushConstantRange-stageFlags-requiredbitmask
                 assert!(!stages.is_empty());
@@ -714,9 +713,9 @@ pub enum PipelineLayoutCreationError {
     /// Not enough memory.
     OomError(OomError),
 
-    ExtensionNotEnabled {
-        extension: &'static str,
-        reason: &'static str,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
     },
 
     /// The number of elements in `set_layouts` is greater than the
@@ -830,15 +829,19 @@ impl Error for PipelineLayoutCreationError {
     }
 }
 
-impl fmt::Display for PipelineLayoutCreationError {
+impl Display for PipelineLayoutCreationError {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match *self {
             Self::OomError(_) => write!(f, "not enough memory available"),
-            Self::ExtensionNotEnabled { extension, reason } => write!(
+
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
                 f,
-                "the extension {} must be enabled: {}",
-                extension, reason
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
             ),
 
             Self::MaxBoundDescriptorSetsExceeded { provided, max_supported } => write!(
@@ -960,12 +963,12 @@ impl From<VulkanError> for PipelineLayoutCreationError {
     }
 }
 
-impl From<ExtensionNotEnabled> for PipelineLayoutCreationError {
+impl From<RequirementNotMet> for PipelineLayoutCreationError {
     #[inline]
-    fn from(err: ExtensionNotEnabled) -> Self {
-        Self::ExtensionNotEnabled {
-            extension: err.extension,
-            reason: err.reason,
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
         }
     }
 }
@@ -1000,12 +1003,12 @@ impl Error for PipelineLayoutSupersetError {
     }
 }
 
-impl fmt::Display for PipelineLayoutSupersetError {
+impl Display for PipelineLayoutSupersetError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match self {
             PipelineLayoutSupersetError::DescriptorRequirementsNotMet { set_num, binding_num, .. } => write!(
-                fmt,
+                f,
                 "the descriptor at set {} binding {} does not meet the requirements",
                 set_num, binding_num
             ),
@@ -1013,7 +1016,7 @@ impl fmt::Display for PipelineLayoutSupersetError {
                 set_num,
                 binding_num,
             } => write!(
-                fmt,
+                f,
                 "a descriptor at set {} binding {} is required by the shaders, but is missing from the pipeline layout",
                 set_num, binding_num
             ),
@@ -1022,19 +1025,19 @@ impl fmt::Display for PipelineLayoutSupersetError {
                 second_range,
             } => {
                 writeln!(
-                    fmt,
+                    f,
                     "our range did not completely encompass the other range"
                 )?;
-                writeln!(fmt, "    our stages: {:?}", first_range.stages)?;
+                writeln!(f, "    our stages: {:?}", first_range.stages)?;
                 writeln!(
-                    fmt,
+                    f,
                     "    our range: {} - {}",
                     first_range.offset,
                     first_range.offset + first_range.size
                 )?;
-                writeln!(fmt, "    other stages: {:?}", second_range.stages)?;
+                writeln!(f, "    other stages: {:?}", second_range.stages)?;
                 write!(
-                    fmt,
+                    f,
                     "    other range: {} - {}",
                     second_range.offset,
                     second_range.offset + second_range.size

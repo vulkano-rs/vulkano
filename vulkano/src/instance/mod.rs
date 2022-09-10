@@ -59,7 +59,7 @@ pub use self::{extensions::InstanceExtensions, layers::LayerProperties};
 use crate::{
     device::physical::{init_physical_devices, PhysicalDeviceInfo},
     instance::debug::trampoline,
-    OomError, VulkanError, VulkanLibrary, VulkanObject,
+    OomError, RequiresOneOf, VulkanError, VulkanLibrary, VulkanObject,
 };
 pub use crate::{
     extensions::{ExtensionRestriction, ExtensionRestrictionError},
@@ -70,7 +70,7 @@ use smallvec::SmallVec;
 use std::{
     error::Error,
     ffi::{c_void, CString},
-    fmt,
+    fmt::{Debug, Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     panic::{RefUnwindSafe, UnwindSafe},
@@ -386,14 +386,23 @@ impl Instance {
 
             // VUID-VkInstanceCreateInfo-pNext-04926
             if !enabled_extensions.ext_debug_utils {
-                return Err(InstanceCreationError::ExtensionNotEnabled {
-                    extension: "ext_debug_utils",
-                    reason: "debug_utils_messengers was not empty",
+                return Err(InstanceCreationError::RequirementNotMet {
+                    required_for: "`debug_utils_messengers` is not empty",
+                    requires_one_of: RequiresOneOf {
+                        instance_extensions: &["ext_debug_utils"],
+                        ..Default::default()
+                    },
                 });
             }
 
+            // VUID-VkDebugUtilsMessengerCreateInfoEXT-messageSeverity-parameter
+            // TODO: message_severity.validate_instance()?;
+
             // VUID-VkDebugUtilsMessengerCreateInfoEXT-messageSeverity-requiredbitmask
             assert!(!message_severity.is_empty());
+
+            // VUID-VkDebugUtilsMessengerCreateInfoEXT-messageType-parameter
+            // TODO: message_type.validate_instance()?;
 
             // VUID-VkDebugUtilsMessengerCreateInfoEXT-messageType-requiredbitmask
             assert!(!message_type.is_empty());
@@ -539,8 +548,8 @@ impl Hash for Instance {
     }
 }
 
-impl fmt::Debug for Instance {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+impl Debug for Instance {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         let Self {
             handle,
             fns,
@@ -684,9 +693,9 @@ pub enum InstanceCreationError {
     /// A restriction for an extension was not met.
     ExtensionRestrictionNotMet(ExtensionRestrictionError),
 
-    ExtensionNotEnabled {
-        extension: &'static str,
-        reason: &'static str,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
     },
 }
 
@@ -700,20 +709,24 @@ impl Error for InstanceCreationError {
     }
 }
 
-impl fmt::Display for InstanceCreationError {
+impl Display for InstanceCreationError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match *self {
-            Self::OomError(_) => write!(fmt, "not enough memory available"),
-            Self::InitializationFailed => write!(fmt, "initialization failed"),
-            Self::LayerNotPresent => write!(fmt, "layer not present"),
-            Self::ExtensionNotPresent => write!(fmt, "extension not present"),
-            Self::IncompatibleDriver => write!(fmt, "incompatible driver"),
-            Self::ExtensionRestrictionNotMet(err) => err.fmt(fmt),
-            Self::ExtensionNotEnabled { extension, reason } => write!(
-                fmt,
-                "the extension {} must be enabled: {}",
-                extension, reason
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+        match self {
+            Self::OomError(_) => write!(f, "not enough memory available"),
+            Self::InitializationFailed => write!(f, "initialization failed"),
+            Self::LayerNotPresent => write!(f, "layer not present"),
+            Self::ExtensionNotPresent => write!(f, "extension not present"),
+            Self::IncompatibleDriver => write!(f, "incompatible driver"),
+            Self::ExtensionRestrictionNotMet(err) => Display::fmt(err, f),
+
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
             ),
         }
     }

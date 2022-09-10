@@ -11,26 +11,21 @@ use super::vertex_input::IncompatibleVertexDefinitionError;
 use crate::{
     descriptor_set::layout::DescriptorSetLayoutCreationError,
     format::{Format, NumericType},
-    macros::ExtensionNotEnabled,
     pipeline::layout::{PipelineLayoutCreationError, PipelineLayoutSupersetError},
     shader::ShaderInterfaceMismatchError,
-    OomError, VulkanError,
+    OomError, RequirementNotMet, RequiresOneOf, VulkanError,
 };
-use std::{error::Error, fmt};
+use std::{
+    error::Error,
+    fmt::{Display, Error as FmtError, Formatter},
+};
 
 /// Error that can happen when creating a graphics pipeline.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GraphicsPipelineCreationError {
-    /// A device extension that was required for a particular setting on the graphics pipeline was not enabled.
-    ExtensionNotEnabled {
-        extension: &'static str,
-        reason: &'static str,
-    },
-
-    /// A device feature that was required for a particular setting on the graphics pipeline was not enabled.
-    FeatureNotEnabled {
-        feature: &'static str,
-        reason: &'static str,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
     },
 
     /// A color attachment has a format that does not support blending.
@@ -215,20 +210,19 @@ impl Error for GraphicsPipelineCreationError {
     }
 }
 
-impl fmt::Display for GraphicsPipelineCreationError {
+impl Display for GraphicsPipelineCreationError {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match *self {
-            Self::ExtensionNotEnabled { extension, reason } => write!(
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
                 f,
-                "the extension {} must be enabled: {}",
-                extension, reason
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
             ),
-            Self::FeatureNotEnabled { feature, reason } => write!(
-                f,
-                "the feature {} must be enabled: {}",
-                feature, reason
-            ),
+
             Self::ColorAttachmentFormatBlendNotSupported { attachment_index } => write!(
                 f,
                 "color attachment {} has a format that does not support blending",
@@ -436,12 +430,12 @@ impl From<VulkanError> for GraphicsPipelineCreationError {
     }
 }
 
-impl From<ExtensionNotEnabled> for GraphicsPipelineCreationError {
+impl From<RequirementNotMet> for GraphicsPipelineCreationError {
     #[inline]
-    fn from(err: ExtensionNotEnabled) -> Self {
-        Self::ExtensionNotEnabled {
-            extension: err.extension,
-            reason: err.reason,
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
         }
     }
 }

@@ -50,7 +50,7 @@ use crate::{
 };
 use std::{
     error::Error,
-    fmt,
+    fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     ops::Range,
@@ -357,32 +357,32 @@ impl Error for BufferViewCreationError {
     }
 }
 
-impl fmt::Display for BufferViewCreationError {
+impl Display for BufferViewCreationError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match *self {
             BufferViewCreationError::OomError(_) => write!(
-                fmt,
+                f,
                 "out of memory when creating buffer view",
             ),
             BufferViewCreationError::BufferMissingUsage => write!(
-                fmt,
+                f,
                 "the buffer was not created with one of the `storage_texel_buffer` or `uniform_texel_buffer` usages",
             ),
             BufferViewCreationError::OffsetNotAligned { .. } => write!(
-                fmt,
+                f,
                 "the offset within the buffer is not a multiple of the required alignment",
             ),
             BufferViewCreationError::RangeNotAligned { .. } => write!(
-                fmt,
+                f,
                 "the range within the buffer is not a multiple of the required alignment",
             ),
             BufferViewCreationError::UnsupportedFormat => write!(
-                fmt,
+                f,
                 "the requested format is not supported for this usage",
             ),
             BufferViewCreationError::MaxTexelBufferElementsExceeded => write!(
-                fmt,
+                f,
                 "the `max_texel_buffer_elements` limit has been exceeded",
             ),
         }

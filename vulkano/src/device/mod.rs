@@ -106,9 +106,9 @@ use crate::{
     command_buffer::pool::StandardCommandPool,
     descriptor_set::pool::StandardDescriptorPool,
     instance::{debug::DebugUtilsLabel, Instance},
-    macros::ExtensionNotEnabled,
     memory::{pool::StandardMemoryPool, ExternalMemoryHandleType},
-    OomError, SynchronizedVulkanObject, Version, VulkanError, VulkanObject,
+    OomError, RequirementNotMet, RequiresOneOf, SynchronizedVulkanObject, Version, VulkanError,
+    VulkanObject,
 };
 pub use crate::{
     device::extensions::DeviceExtensions,
@@ -124,7 +124,7 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     error::Error,
     ffi::CString,
-    fmt,
+    fmt::{Display, Error as FmtError, Formatter},
     fs::File,
     hash::{Hash, Hasher},
     mem::MaybeUninit,
@@ -633,7 +633,7 @@ impl Device {
             use std::os::unix::io::IntoRawFd;
 
             // VUID-vkGetMemoryFdPropertiesKHR-handleType-parameter
-            handle_type.validate(self)?;
+            handle_type.validate_device(self)?;
 
             // VUID-vkGetMemoryFdPropertiesKHR-handleType-00674
             if handle_type == ExternalMemoryHandleType::OpaqueFd {
@@ -766,44 +766,44 @@ pub enum DeviceCreationError {
 
 impl Error for DeviceCreationError {}
 
-impl fmt::Display for DeviceCreationError {
+impl Display for DeviceCreationError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match *self {
             Self::InitializationFailed => {
                 write!(
-                    fmt,
+                    f,
                     "failed to create the device for an implementation-specific reason"
                 )
             }
-            Self::OutOfHostMemory => write!(fmt, "no memory available on the host"),
+            Self::OutOfHostMemory => write!(f, "no memory available on the host"),
             Self::OutOfDeviceMemory => {
-                write!(fmt, "no memory available on the graphical device")
+                write!(f, "no memory available on the graphical device")
             }
-            Self::DeviceLost => write!(fmt, "failed to connect to the device"),
+            Self::DeviceLost => write!(f, "failed to connect to the device"),
             Self::TooManyQueuesForFamily => {
-                write!(fmt, "tried to create too many queues for a given family")
+                write!(f, "tried to create too many queues for a given family")
             }
             Self::FeatureNotPresent => {
                 write!(
-                    fmt,
+                    f,
                     "some of the requested features are unsupported by the physical device"
                 )
             }
             Self::PriorityOutOfRange => {
                 write!(
-                    fmt,
+                    f,
                     "the priority of one of the queues is out of the [0.0; 1.0] range"
                 )
             }
             Self::ExtensionNotPresent => {
-                write!(fmt,"some of the requested device extensions are not supported by the physical device")
+                write!(f,"some of the requested device extensions are not supported by the physical device")
             }
             Self::TooManyObjects => {
-                write!(fmt,"you have reached the limit to the number of devices that can be created from the same physical device")
+                write!(f,"you have reached the limit to the number of devices that can be created from the same physical device")
             }
-            Self::ExtensionRestrictionNotMet(err) => err.fmt(fmt),
-            Self::FeatureRestrictionNotMet(err) => err.fmt(fmt),
+            Self::ExtensionRestrictionNotMet(err) => err.fmt(f),
+            Self::FeatureRestrictionNotMet(err) => err.fmt(f),
         }
     }
 }
@@ -938,9 +938,9 @@ pub enum MemoryFdPropertiesError {
     /// No memory available on the host.
     OutOfHostMemory,
 
-    ExtensionNotEnabled {
-        extension: &'static str,
-        reason: &'static str,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
     },
 
     /// The provided external handle was not valid.
@@ -955,24 +955,29 @@ pub enum MemoryFdPropertiesError {
 
 impl Error for MemoryFdPropertiesError {}
 
-impl fmt::Display for MemoryFdPropertiesError {
+impl Display for MemoryFdPropertiesError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match *self {
-            Self::OutOfHostMemory => write!(fmt, "no memory available on the host"),
-            Self::ExtensionNotEnabled { extension, reason } => write!(
-                fmt,
-                "the extension {} must be enabled: {}",
-                extension, reason
+            Self::OutOfHostMemory => write!(f, "no memory available on the host"),
+
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
             ),
+
             Self::InvalidExternalHandle => {
-                write!(fmt, "the provided external handle was not valid")
+                write!(f, "the provided external handle was not valid")
             }
             Self::InvalidExternalHandleType => {
-                write!(fmt, "the provided external handle type was not valid")
+                write!(f, "the provided external handle type was not valid")
             }
             Self::NotSupported => write!(
-                fmt,
+                f,
                 "the `khr_external_memory_fd` extension was not enabled on the device",
             ),
         }
@@ -990,12 +995,12 @@ impl From<VulkanError> for MemoryFdPropertiesError {
     }
 }
 
-impl From<ExtensionNotEnabled> for MemoryFdPropertiesError {
+impl From<RequirementNotMet> for MemoryFdPropertiesError {
     #[inline]
-    fn from(err: ExtensionNotEnabled) -> Self {
-        Self::ExtensionNotEnabled {
-            extension: err.extension,
-            reason: err.reason,
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
         }
     }
 }
@@ -1090,9 +1095,12 @@ impl Queue {
             .enabled_extensions()
             .ext_debug_utils
         {
-            return Err(DebugUtilsError::ExtensionNotEnabled {
-                extension: "ext_debug_utils",
-                reason: "tried to submit a debug utils command",
+            return Err(DebugUtilsError::RequirementNotMet {
+                required_for: "`begin_debug_utils_label`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["ext_debug_utils"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -1128,9 +1136,12 @@ impl Queue {
             .enabled_extensions()
             .ext_debug_utils
         {
-            return Err(DebugUtilsError::ExtensionNotEnabled {
-                extension: "ext_debug_utils",
-                reason: "tried to submit a debug utils command",
+            return Err(DebugUtilsError::RequirementNotMet {
+                required_for: "`end_debug_utils_label`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["ext_debug_utils"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -1183,9 +1194,12 @@ impl Queue {
             .enabled_extensions()
             .ext_debug_utils
         {
-            return Err(DebugUtilsError::ExtensionNotEnabled {
-                extension: "ext_debug_utils",
-                reason: "tried to submit a debug utils command",
+            return Err(DebugUtilsError::RequirementNotMet {
+                required_for: "`insert_debug_utils_label`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["ext_debug_utils"],
+                    ..Default::default()
+                },
             });
         }
 
@@ -1228,21 +1242,26 @@ impl Hash for Queue {
 /// Error that can happen when submitting a debug utils command to a queue.
 #[derive(Clone, Debug)]
 pub enum DebugUtilsError {
-    ExtensionNotEnabled {
-        extension: &'static str,
-        reason: &'static str,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
     },
 }
 
 impl Error for DebugUtilsError {}
 
-impl fmt::Display for DebugUtilsError {
+impl Display for DebugUtilsError {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match self {
-            Self::ExtensionNotEnabled { extension, reason } => {
-                write!(f, "the extension {} must be enabled: {}", extension, reason)
-            }
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
+            ),
         }
     }
 }

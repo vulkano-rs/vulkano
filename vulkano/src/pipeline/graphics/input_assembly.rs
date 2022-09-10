@@ -228,7 +228,7 @@ vulkan_enum! {
 
     // TODO: document
     U8 = UINT8_EXT {
-        extensions: [ext_index_type_uint8],
+        device_extensions: [ext_index_type_uint8],
     },
 
     // TODO: document
@@ -240,7 +240,7 @@ vulkan_enum! {
     /*
     // TODO: document
     None = NONE_KHR {
-        extensions: [khr_acceleration_structure, nv_ray_tracing],
+        device_extensions: [khr_acceleration_structure, nv_ray_tracing],
     },
      */
 }

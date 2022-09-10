@@ -16,7 +16,11 @@ use crate::{
     DeviceSize, OomError, SynchronizedVulkanObject, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
-use std::{error::Error, fmt, marker::PhantomData};
+use std::{
+    error::Error,
+    fmt::{Debug, Display, Error as FmtError, Formatter},
+    marker::PhantomData,
+};
 
 // TODO: correctly implement Debug on all the structs of this module
 
@@ -246,10 +250,10 @@ impl<'a> SubmitBindSparseBuilder<'a> {
     }
 }
 
-impl<'a> fmt::Debug for SubmitBindSparseBuilder<'a> {
+impl<'a> Debug for SubmitBindSparseBuilder<'a> {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "<Bind sparse operation>")
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+        write!(f, "<Bind sparse operation>")
     }
 }
 
@@ -480,11 +484,11 @@ impl Error for SubmitBindSparseError {
     }
 }
 
-impl fmt::Display for SubmitBindSparseError {
+impl Display for SubmitBindSparseError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         write!(
-            fmt,
+            f,
             "{}",
             match *self {
                 SubmitBindSparseError::OomError(_) => "not enough memory",

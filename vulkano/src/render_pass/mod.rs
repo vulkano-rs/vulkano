@@ -1124,7 +1124,7 @@ vulkan_enum! {
     /*
     // TODO: document
     None = NONE_EXT {
-        extensions: [ext_load_store_op_none],
+        device_extensions: [ext_load_store_op_none],
     },
      */
 }
@@ -1155,7 +1155,7 @@ vulkan_enum! {
     // TODO: document
     None = NONE {
         api_version: V1_3,
-        extensions: [ext_load_store_op_none],
+        device_extensions: [ext_load_store_op_none],
     },
      */
 }

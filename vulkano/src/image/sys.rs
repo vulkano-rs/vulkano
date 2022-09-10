@@ -20,24 +20,23 @@ use super::{
 };
 use crate::{
     buffer::cpu_access::{ReadLockError, WriteLockError},
-    device::{Device, DeviceOwned},
+    device::{physical::ImageFormatPropertiesError, Device, DeviceOwned},
     format::{ChromaSampling, Format, FormatFeatures, NumericType},
     image::{view::ImageViewCreationError, ImageFormatInfo, ImageFormatProperties, ImageType},
-    macros::ExtensionNotEnabled,
     memory::{
         DeviceMemory, DeviceMemoryAllocationError, ExternalMemoryHandleType,
         ExternalMemoryHandleTypes, MemoryRequirements,
     },
     range_map::RangeMap,
     sync::{AccessError, CurrentAccess, Sharing},
-    DeviceSize, OomError, Version, VulkanError, VulkanObject,
+    DeviceSize, OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use ash::vk::Handle;
 use parking_lot::{Mutex, MutexGuard};
 use smallvec::{smallvec, SmallVec};
 use std::{
     error::Error,
-    fmt,
+    fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     iter::{FusedIterator, Peekable},
     mem::MaybeUninit,
@@ -204,22 +203,22 @@ impl UnsafeImage {
         let format = format.unwrap(); // Can be None for "external formats" but Vulkano doesn't support that yet
 
         // VUID-VkImageCreateInfo-format-parameter
-        // TODO: format.validate(device)?;
+        // TODO: format.validate_device(device)?;
 
         // VUID-VkImageCreateInfo-samples-parameter
-        samples.validate(device)?;
+        samples.validate_device(device)?;
 
         // VUID-VkImageCreateInfo-tiling-parameter
-        tiling.validate(device)?;
+        tiling.validate_device(device)?;
 
         // VUID-VkImageCreateInfo-usage-parameter
-        usage.validate(device)?;
+        usage.validate_device(device)?;
 
         // VUID-VkImageCreateInfo-usage-requiredbitmask
         assert!(!usage.is_empty());
 
         // VUID-VkImageCreateInfo-initialLayout-parameter
-        initial_layout.validate(device)?;
+        initial_layout.validate_device(device)?;
 
         if usage.transient_attachment {
             // VUID-VkImageCreateInfo-usage-00966
@@ -345,9 +344,12 @@ impl UnsafeImage {
 
             // VUID-VkImageCreateInfo-format-06413
             if array_layers > 1 && !device.enabled_features().ycbcr_image_arrays {
-                return Err(ImageCreationError::FeatureNotEnabled {
-                    feature: "ycbcr_image_arrays",
-                    reason: "format was an YCbCr format and array_layers was greater than 1",
+                return Err(ImageCreationError::RequirementNotMet {
+                    required_for: "`create_info.format.ycbcr_chroma_sampling()` is `Some` and `create_info.dimensions.array_layers()` is greater than `1`",
+                    requires_one_of: RequiresOneOf {
+                        features: &["ycbcr_image_arrays"],
+                        ..Default::default()
+                    },
                 });
             }
 
@@ -422,9 +424,12 @@ impl UnsafeImage {
             if samples != SampleCount::Sample1
                 && !device.enabled_features().shader_storage_image_multisample
             {
-                return Err(ImageCreationError::FeatureNotEnabled {
-                    feature: "shader_storage_image_multisample",
-                    reason: "usage included `storage` and samples was not `Sample1`",
+                return Err(ImageCreationError::RequirementNotMet {
+                    required_for: "`create_info.usage.storage` is set and `create_info.samples` is not `SampleCount::Sample1`",
+                    requires_one_of: RequiresOneOf {
+                        features: &["shader_storage_image_multisample"],
+                        ..Default::default()
+                    },
                 });
             }
         }
@@ -501,14 +506,18 @@ impl UnsafeImage {
             if !(device.api_version() >= Version::V1_1
                 || device.enabled_extensions().khr_external_memory)
             {
-                return Err(ImageCreationError::ExtensionNotEnabled {
-                    extension: "khr_external_memory",
-                    reason: "one or more fields of external_memory_handle_types were set",
+                return Err(ImageCreationError::RequirementNotMet {
+                    required_for: "`create_info.external_memory_handle_types` is not empty",
+                    requires_one_of: RequiresOneOf {
+                        api_version: Some(Version::V1_1),
+                        device_extensions: &["khr_external_memory"],
+                        ..Default::default()
+                    },
                 });
             }
 
             // VUID-VkExternalMemoryImageCreateInfo-handleTypes-parameter
-            external_memory_handle_types.validate(device)?;
+            external_memory_handle_types.validate_device(device)?;
 
             // VUID-VkImageCreateInfo-pNext-01443
             if initial_layout != ImageLayout::Undefined {
@@ -1533,13 +1542,9 @@ pub enum ImageCreationError {
     /// Allocating memory failed.
     AllocError(DeviceMemoryAllocationError),
 
-    ExtensionNotEnabled {
-        extension: &'static str,
-        reason: &'static str,
-    },
-    FeatureNotEnabled {
-        feature: &'static str,
-        reason: &'static str,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
     },
 
     /// The array_2d_compatible flag was enabled, but the image type was not 3D.
@@ -1653,129 +1658,125 @@ impl Error for ImageCreationError {
     }
 }
 
-impl fmt::Display for ImageCreationError {
+impl Display for ImageCreationError {
     #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match *self {
-            Self::AllocError(_) => write!(fmt, "allocating memory failed"),
-            Self::ExtensionNotEnabled { extension, reason } => write!(
-                fmt,
-                "the extension {} must be enabled: {}",
-                extension, reason
+            Self::AllocError(_) => write!(f, "allocating memory failed"),
+
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
             ),
-            Self::FeatureNotEnabled { feature, reason } => {
-                write!(fmt, "the feature {} must be enabled: {}", feature, reason)
-            }
+
             Self::Array2dCompatibleNot3d => {
                 write!(
-                    fmt,
+                    f,
                     "the array_2d_compatible flag was enabled, but the image type was not 3D"
                 )
             }
             Self::BlockTexelViewCompatibleNotCompressed => {
-                write!(fmt, "the block_texel_view_compatible flag was enabled, but the given format was not compressed")
+                write!(f, "the block_texel_view_compatible flag was enabled, but the given format was not compressed")
             }
             Self::CubeCompatibleNot2d => {
                 write!(
-                    fmt,
+                    f,
                     "the cube_compatible flag was enabled, but the image type was not 2D"
                 )
             }
             Self::CubeCompatibleNotEnoughArrayLayers => {
-                write!(fmt, "the cube_compatible flag was enabled, but the number of array layers was less than 6")
+                write!(f, "the cube_compatible flag was enabled, but the number of array layers was less than 6")
             }
             Self::CubeCompatibleNotSquare => {
-                write!(fmt, "the cube_compatible flag was enabled, but the image dimensions were not square")
+                write!(f, "the cube_compatible flag was enabled, but the image dimensions were not square")
             }
             Self::CubeCompatibleMultisampling => {
                 write!(
-                    fmt,
+                    f,
                     "the cube_compatible flag was enabled together with multisampling"
                 )
             }
             Self::ExternalMemoryInvalidInitialLayout => {
-                write!(fmt, "one or more external memory handle types were provided, but the initial layout was not `Undefined`")
+                write!(f, "one or more external memory handle types were provided, but the initial layout was not `Undefined`")
             }
             Self::FormatNotSupported => {
-                write!(fmt, "the given format was not supported by the device")
+                write!(f, "the given format was not supported by the device")
             }
             Self::FormatUsageNotSupported { .. } => {
                 write!(
-                    fmt,
+                    f,
                     "a requested usage flag was not supported by the given format"
                 )
             }
             Self::ImageFormatPropertiesNotSupported => {
-                write!(fmt, "the image configuration as queried through the `image_format_properties` function was not supported by the device")
+                write!(f, "the image configuration as queried through the `image_format_properties` function was not supported by the device")
             }
             Self::MaxArrayLayersExceeded { .. } => {
-                write!(fmt, "the number of array layers exceeds the maximum supported by the device for this image configuration")
+                write!(f, "the number of array layers exceeds the maximum supported by the device for this image configuration")
             }
             Self::MaxDimensionsExceeded { .. } => {
-                write!(fmt, "the specified dimensions exceed the maximum supported by the device for this image configuration")
+                write!(f, "the specified dimensions exceed the maximum supported by the device for this image configuration")
             }
             Self::MaxFramebufferDimensionsExceeded { .. } => {
-                write!(fmt, "the usage included one of the attachment types, and the specified width and height exceeded the `max_framebuffer_width` or `max_framebuffer_height` limits")
+                write!(f, "the usage included one of the attachment types, and the specified width and height exceeded the `max_framebuffer_width` or `max_framebuffer_height` limits")
             }
             Self::MaxMipLevelsExceeded { .. } => {
                 write!(
-                    fmt,
+                    f,
                     "the maximum number of mip levels for the given dimensions has been exceeded"
                 )
             }
             Self::MultisampleCubeCompatible => {
                 write!(
-                    fmt,
+                    f,
                     "multisampling was enabled, and the `cube_compatible` flag was set"
                 )
             }
             Self::MultisampleLinearTiling => {
-                write!(fmt, "multisampling was enabled, and tiling was `Linear`")
+                write!(f, "multisampling was enabled, and tiling was `Linear`")
             }
             Self::MultisampleMultipleMipLevels => {
                 write!(
-                    fmt,
+                    f,
                     "multisampling was enabled, and multiple mip levels were specified"
                 )
             }
             Self::MultisampleNot2d => {
                 write!(
-                    fmt,
+                    f,
                     "multisampling was enabled, but the image type was not 2D"
                 )
             }
             Self::SampleCountNotSupported { .. } => {
                 write!(
-                    fmt,
+                    f,
                     "the sample count is not supported by the device for this image configuration"
                 )
             }
             Self::SharingInvalidQueueFamilyId { .. } => {
-                write!(fmt, "the sharing mode was set to `Concurrent`, but one of the specified queue family ids was not valid")
+                write!(f, "the sharing mode was set to `Concurrent`, but one of the specified queue family ids was not valid")
             }
             Self::YcbcrFormatInvalidDimensions => {
-                write!(fmt, "a YCbCr format was given, but the specified width and/or height was not a multiple of 2 as required by the format's chroma subsampling")
+                write!(f, "a YCbCr format was given, but the specified width and/or height was not a multiple of 2 as required by the format's chroma subsampling")
             }
             Self::YcbcrFormatMultipleMipLevels => {
                 write!(
-                    fmt,
+                    f,
                     "a YCbCr format was given, and multiple mip levels were specified"
                 )
             }
             Self::YcbcrFormatMultisampling => {
-                write!(
-                    fmt,
-                    "a YCbCr format was given, and multisampling was enabled"
-                )
+                write!(f, "a YCbCr format was given, and multisampling was enabled")
             }
             Self::YcbcrFormatNot2d => {
-                write!(
-                    fmt,
-                    "a YCbCr format was given, but the image type was not 2D"
-                )
+                write!(f, "a YCbCr format was given, but the image type was not 2D")
             }
             Self::DirectImageViewCreationFailed(e) => {
-                write!(fmt, "Image view creation failed {}", e)
+                write!(f, "Image view creation failed {}", e)
             }
         }
     }
@@ -1806,12 +1807,30 @@ impl From<VulkanError> for ImageCreationError {
     }
 }
 
-impl From<ExtensionNotEnabled> for ImageCreationError {
+impl From<RequirementNotMet> for ImageCreationError {
     #[inline]
-    fn from(err: ExtensionNotEnabled) -> Self {
-        Self::ExtensionNotEnabled {
-            extension: err.extension,
-            reason: err.reason,
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
+        }
+    }
+}
+
+impl From<ImageFormatPropertiesError> for ImageCreationError {
+    #[inline]
+    fn from(err: ImageFormatPropertiesError) -> Self {
+        match err {
+            ImageFormatPropertiesError::OomError(err) => {
+                Self::AllocError(DeviceMemoryAllocationError::OomError(err))
+            }
+            ImageFormatPropertiesError::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            },
         }
     }
 }
@@ -2226,7 +2245,7 @@ mod tests {
             sys::SubresourceRangeIterator, ImageAspect, ImageAspects, ImageDimensions,
             ImageSubresourceRange, SampleCount,
         },
-        DeviceSize,
+        DeviceSize, RequiresOneOf,
     };
     use smallvec::SmallVec;
 
@@ -2353,10 +2372,10 @@ mod tests {
         );
 
         match res {
-            Err(ImageCreationError::FeatureNotEnabled {
-                feature: "shader_storage_image_multisample",
+            Err(ImageCreationError::RequirementNotMet {
+                requires_one_of: RequiresOneOf { features, .. },
                 ..
-            }) => (),
+            }) if features.contains(&"shader_storage_image_multisample") => (),
             Err(ImageCreationError::SampleCountNotSupported { .. }) => (), // unlikely but possible
             _ => panic!(),
         };
