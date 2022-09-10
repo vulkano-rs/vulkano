@@ -44,7 +44,7 @@ use std::{
     ops::Range,
     ptr,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc,
     },
     time::Duration,
@@ -70,6 +70,7 @@ pub struct Swapchain<W> {
     clipped: bool,
     full_screen_exclusive: FullScreenExclusive,
     win32_monitor: Option<Win32Monitor>,
+    prev_present_id: AtomicU64,
 
     // Whether full-screen exclusive is currently held.
     full_screen_exclusive_held: AtomicBool,
@@ -174,6 +175,7 @@ impl<W> Swapchain<W> {
             clipped,
             full_screen_exclusive,
             win32_monitor,
+            prev_present_id: Default::default(),
 
             full_screen_exclusive_held: AtomicBool::new(false),
             images,
@@ -268,6 +270,7 @@ impl<W> Swapchain<W> {
             clipped,
             full_screen_exclusive,
             win32_monitor,
+            prev_present_id: AtomicU64::from(self.prev_present_id.load(Ordering::SeqCst)),
 
             full_screen_exclusive_held: AtomicBool::new(full_screen_exclusive_held),
             images,
@@ -898,6 +901,10 @@ impl<W> Swapchain<W> {
         } else {
             false
         }
+    }
+
+    pub(crate) fn prev_present_id(&self) -> &AtomicU64 {
+        &self.prev_present_id
     }
 }
 
@@ -1599,7 +1606,7 @@ where
 
 /// Wait for an image to be presented to the user. Must be used with a `present_id` given to `present_with_id`.
 ///
-/// Returns a bool to represent if the presentation was suboptimal. In this case the swapchain is still 
+/// Returns a bool to represent if the presentation was suboptimal. In this case the swapchain is still
 /// usable, but the swapchain should be recreated as the Surface's properties no longer match the swapchain.
 pub fn wait_for_present<W>(
     swapchain: Arc<Swapchain<W>>,
@@ -1643,7 +1650,9 @@ pub fn wait_for_present<W>(
             let err = VulkanError::from(err).into();
 
             if let PresentWaitError::FullScreenExclusiveModeLost = &err {
-                swapchain.full_screen_exclusive_held.store(false, Ordering::SeqCst);
+                swapchain
+                    .full_screen_exclusive_held
+                    .store(false, Ordering::SeqCst);
             }
 
             Err(err)

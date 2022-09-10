@@ -19,6 +19,7 @@ use std::{
     fmt::{Debug, Display, Error as FmtError, Formatter},
     marker::PhantomData,
     ptr,
+    sync::atomic::{AtomicU64, Ordering},
 };
 
 /// Prototype for a submission that presents a swapchain on the screen.
@@ -28,6 +29,7 @@ pub struct SubmitPresentBuilder<'a> {
     swapchains: SmallVec<[ash::vk::SwapchainKHR; 4]>,
     image_indices: SmallVec<[u32; 4]>,
     present_ids: SmallVec<[u64; 4]>,
+    prev_present_ids: SmallVec<[&'a AtomicU64; 4]>,
     present_regions: SmallVec<[ash::vk::PresentRegionKHR; 4]>,
     rect_layers: SmallVec<[ash::vk::RectLayerKHR; 4]>,
     marker: PhantomData<&'a ()>,
@@ -42,6 +44,7 @@ impl<'a> SubmitPresentBuilder<'a> {
             swapchains: SmallVec::new(),
             image_indices: SmallVec::new(),
             present_ids: SmallVec::new(),
+            prev_present_ids: SmallVec::new(),
             present_regions: SmallVec::new(),
             rect_layers: SmallVec::new(),
             marker: PhantomData,
@@ -78,13 +81,14 @@ impl<'a> SubmitPresentBuilder<'a> {
     ///
     /// If `VK_KHR_incremental_present` is not enabled, the `present_region` parameter is ignored.
     ///
+    /// If `present_id` feature is not enabled, then the `present_id` parameter is ignored.
+    ///
     /// # Safety
     ///
     /// - If you submit this builder, the swapchain must be kept alive until you are
     ///   guaranteed that the GPU has finished presenting.
     ///
     /// - The swapchains and semaphores must all belong to the same device.
-    ///
     #[inline]
     pub unsafe fn add_swapchain<W>(
         &mut self,
@@ -122,6 +126,7 @@ impl<'a> SubmitPresentBuilder<'a> {
 
         if swapchain.device().enabled_features().present_id {
             self.present_ids.push(present_id.unwrap_or(0));
+            self.prev_present_ids.push(swapchain.prev_present_id());
         }
 
         self.swapchains.push(swapchain.internal_object());
@@ -165,6 +170,13 @@ impl<'a> SubmitPresentBuilder<'a> {
                 if !self.present_ids.is_empty() {
                     debug_assert!(queue.device().enabled_features().present_id);
                     debug_assert_eq!(self.swapchains.len(), self.present_ids.len());
+
+                    // VUID-VkPresentIdKHR-presentIds-04999
+                    for (id, prev_id) in self.present_ids.iter().zip(self.prev_present_ids.iter()) {
+                        if prev_id.fetch_max(*id, Ordering::SeqCst) >= *id {
+                            return Err(SubmitPresentError::PresentIdLessThanOrEqual);
+                        }
+                    }
 
                     Some(ash::vk::PresentIdKHR {
                         swapchain_count: self.swapchains.len() as u32,
@@ -243,6 +255,10 @@ pub enum SubmitPresentError {
     /// The surface has changed in a way that makes the swapchain unusable. You must query the
     /// surface's new properties and recreate a new swapchain if you want to continue drawing.
     OutOfDate,
+
+    /// A non-zero present_id must be greater than any non-zero present_id passed previously
+    /// for the same swapchain.
+    PresentIdLessThanOrEqual,
 }
 
 impl Error for SubmitPresentError {
@@ -269,6 +285,9 @@ impl Display for SubmitPresentError {
                 SubmitPresentError::OutOfDate => "the swapchain needs to be recreated",
                 SubmitPresentError::FullScreenExclusiveModeLost => {
                     "the swapchain no longer has full-screen exclusivity"
+                }
+                SubmitPresentError::PresentIdLessThanOrEqual => {
+                    "present id is less than or equal to previous"
                 }
             }
         )
