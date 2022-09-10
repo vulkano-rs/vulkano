@@ -8,7 +8,7 @@
 // according to those terms.
 
 use crate::{
-    device::{physical::MemoryType, Device, DeviceOwned},
+    device::{Device, DeviceOwned},
     memory::{
         pool::{
             AllocLayout, MappingRequirement, MemoryPool, MemoryPoolAlloc,
@@ -37,7 +37,11 @@ impl StandardMemoryPool {
     /// Creates a new pool.
     #[inline]
     pub fn new(device: Arc<Device>) -> Arc<StandardMemoryPool> {
-        let cap = device.physical_device().memory_types().len();
+        let cap = device
+            .physical_device()
+            .memory_properties()
+            .memory_types
+            .len();
 
         Arc::new(StandardMemoryPool {
             device,
@@ -48,7 +52,7 @@ impl StandardMemoryPool {
 
 fn generic_allocation(
     mem_pool: Arc<StandardMemoryPool>,
-    memory_type: MemoryType,
+    memory_type_index: u32,
     size: DeviceSize,
     alignment: DeviceSize,
     layout: AllocLayout,
@@ -56,10 +60,19 @@ fn generic_allocation(
 ) -> Result<StandardMemoryPoolAlloc, DeviceMemoryAllocationError> {
     let mut pools = mem_pool.pools.lock();
 
-    let memory_type_host_visible = memory_type.is_host_visible();
+    let memory_properties = mem_pool.device().physical_device().memory_properties();
+    let memory_type = memory_properties
+        .memory_types
+        .get(memory_type_index as usize)
+        .ok_or(DeviceMemoryAllocationError::MemoryTypeIndexOutOfRange {
+            memory_type_index,
+            memory_type_count: memory_properties.memory_types.len() as u32,
+        })?;
+
+    let memory_type_host_visible = memory_type.property_flags.host_visible;
     assert!(memory_type_host_visible || map == MappingRequirement::DoNotMap);
 
-    match pools.entry((memory_type.id(), layout, map)) {
+    match pools.entry((memory_type_index, layout, map)) {
         Entry::Occupied(entry) => match *entry.get() {
             Pool::HostVisible(ref pool) => {
                 let alloc = pool.alloc(size, alignment)?;
@@ -81,8 +94,10 @@ fn generic_allocation(
 
         Entry::Vacant(entry) => {
             if memory_type_host_visible {
-                let pool =
-                    StandardHostVisibleMemoryTypePool::new(mem_pool.device.clone(), memory_type);
+                let pool = StandardHostVisibleMemoryTypePool::new(
+                    mem_pool.device.clone(),
+                    memory_type_index,
+                );
                 entry.insert(Pool::HostVisible(pool.clone()));
                 let alloc = pool.alloc(size, alignment)?;
                 let inner = StandardMemoryPoolAllocInner::HostVisible(alloc);
@@ -91,8 +106,10 @@ fn generic_allocation(
                     _pool: mem_pool.clone(),
                 })
             } else {
-                let pool =
-                    StandardNonHostVisibleMemoryTypePool::new(mem_pool.device.clone(), memory_type);
+                let pool = StandardNonHostVisibleMemoryTypePool::new(
+                    mem_pool.device.clone(),
+                    memory_type_index,
+                );
                 entry.insert(Pool::NonHostVisible(pool.clone()));
                 let alloc = pool.alloc(size, alignment)?;
                 let inner = StandardMemoryPoolAllocInner::NonHostVisible(alloc);
@@ -110,13 +127,20 @@ unsafe impl MemoryPool for Arc<StandardMemoryPool> {
 
     fn alloc_generic(
         &self,
-        memory_type: MemoryType,
+        memory_type_index: u32,
         size: DeviceSize,
         alignment: DeviceSize,
         layout: AllocLayout,
         map: MappingRequirement,
     ) -> Result<StandardMemoryPoolAlloc, DeviceMemoryAllocationError> {
-        generic_allocation(self.clone(), memory_type, size, alignment, layout, map)
+        generic_allocation(
+            self.clone(),
+            memory_type_index,
+            size,
+            alignment,
+            layout,
+            map,
+        )
     }
 }
 

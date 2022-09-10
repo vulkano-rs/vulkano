@@ -10,8 +10,7 @@
 use std::sync::Arc;
 use vulkano::{
     device::{
-        physical::{PhysicalDevice, PhysicalDeviceType},
-        Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
     },
     format::Format,
     image::{ImageDimensions, ImmutableImage, MipmapsCount},
@@ -144,12 +143,13 @@ fn main() {
     let device_extensions = DeviceExtensions {
         ..DeviceExtensions::empty()
     };
-    let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-        .filter(|&p| p.supported_extensions().contains(&device_extensions))
+    let (physical_device, queue_family_index) = instance
+        .enumerate_physical_devices()
+        .unwrap()
+        .filter(|p| p.supported_extensions().contains(&device_extensions))
         .map(|p| {
-            p.queue_families()
-                .next()
-                .map(|q| (p, q))
+            (!p.queue_family_properties().is_empty())
+                .then_some((p, 0))
                 .expect("couldn't find a queue family")
         })
         .min_by_key(|(p, _)| match p.properties().device_type {
@@ -166,7 +166,10 @@ fn main() {
         physical_device,
         DeviceCreateInfo {
             enabled_extensions: device_extensions,
-            queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+            queue_create_infos: vec![QueueCreateInfo {
+                queue_family_index,
+                ..Default::default()
+            }],
             ..Default::default()
         },
     )

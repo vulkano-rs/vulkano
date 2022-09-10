@@ -101,8 +101,10 @@ where
         // VUID-VkSubpassBeginInfo-contents-parameter
         contents.validate_device(device)?;
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdBeginRenderPass2-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(RenderPassError::NotSupportedByQueueFamily);
         }
 
@@ -453,7 +455,10 @@ where
         }
 
         // VUID-vkCmdNextSubpass2-commandBuffer-cmdpool
-        debug_assert!(self.queue_family().supports_graphics());
+        debug_assert!({
+            let queue_family_properties = self.queue_family_properties();
+            queue_family_properties.queue_flags.graphics
+        });
 
         // VUID-vkCmdNextSubpass2-bufferlevel
         // Ensured by the type of the impl block
@@ -509,7 +514,10 @@ where
         }
 
         // VUID-vkCmdEndRenderPass2-commandBuffer-cmdpool
-        debug_assert!(self.queue_family().supports_graphics());
+        debug_assert!({
+            let queue_family_properties = self.queue_family_properties();
+            queue_family_properties.queue_flags.graphics
+        });
 
         // VUID-vkCmdEndRenderPass2-bufferlevel
         // Ensured by the type of the impl block
@@ -675,8 +683,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             });
         }
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdBeginRendering-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(RenderPassError::NotSupportedByQueueFamily);
         }
 
@@ -1228,7 +1238,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
 
         // VUID-vkCmdEndRendering-commandBuffer-cmdpool
-        debug_assert!(self.queue_family().supports_graphics());
+        debug_assert!({
+            let queue_family_properties = self.queue_family_properties();
+            queue_family_properties.queue_flags.graphics
+        });
 
         Ok(())
     }
@@ -1476,7 +1489,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
 
         // VUID-vkCmdClearAttachments-commandBuffer-cmdpool
-        debug_assert!(self.queue_family().supports_graphics());
+        debug_assert!({
+            let queue_family_properties = self.queue_family_properties();
+            queue_family_properties.queue_flags.graphics
+        });
 
         Ok(())
     }

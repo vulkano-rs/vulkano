@@ -37,7 +37,7 @@
 //!
 //! # let library = VulkanLibrary::new().unwrap();
 //! # let instance = Instance::new(library, Default::default()).unwrap();
-//! for physical_device in PhysicalDevice::enumerate(&instance) {
+//! for physical_device in instance.enumerate_physical_devices().unwrap() {
 //!     println!("Available device: {}", physical_device.properties().device_name);
 //! }
 //! ```
@@ -45,7 +45,7 @@
 //! # Enumerating physical devices and creating a device
 //!
 //! After you have created an instance, the next step is usually to enumerate the physical devices
-//! that are available on the system with `PhysicalDevice::enumerate()` (see above).
+//! that are available on the system with `Instance::enumerate_physical_devices()` (see above).
 //!
 //! When choosing which physical device to use, keep in mind that physical devices may or may not
 //! be able to draw to a certain surface (ie. to a window or a monitor), or may even not be able
@@ -57,9 +57,8 @@
 use self::debug::{DebugUtilsMessengerCreateInfo, UserCallback};
 pub use self::{extensions::InstanceExtensions, layers::LayerProperties};
 use crate::{
-    device::physical::{init_physical_devices, PhysicalDeviceInfo},
-    instance::debug::trampoline,
-    OomError, RequiresOneOf, VulkanError, VulkanLibrary, VulkanObject,
+    device::physical::PhysicalDevice, instance::debug::trampoline, OomError, RequiresOneOf,
+    VulkanError, VulkanLibrary, VulkanObject,
 };
 pub use crate::{
     extensions::{ExtensionRestriction, ExtensionRestrictionError},
@@ -234,7 +233,6 @@ mod layers;
 pub struct Instance {
     handle: ash::vk::Instance,
     fns: InstanceFunctions,
-    pub(crate) physical_device_infos: Vec<PhysicalDeviceInfo>,
 
     api_version: Version,
     enabled_extensions: InstanceExtensions,
@@ -452,10 +450,9 @@ impl Instance {
             })
         };
 
-        let mut instance = Instance {
+        Ok(Arc::new(Instance {
             handle,
             fns,
-            physical_device_infos: Vec::new(),
 
             api_version,
             enabled_extensions,
@@ -463,12 +460,7 @@ impl Instance {
             library,
             max_api_version,
             _user_callbacks: user_callbacks,
-        };
-
-        // Enumerating all physical devices.
-        instance.physical_device_infos = init_physical_devices(&instance)?;
-
-        Ok(Arc::new(instance))
+        }))
     }
 
     /// Returns the Vulkan library used to create this instance.
@@ -509,6 +501,60 @@ impl Instance {
     #[inline]
     pub fn enabled_layers(&self) -> &[String] {
         &self.enabled_layers
+    }
+
+    /// Returns an iterator that enumerates the physical devices available.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use vulkano::{
+    /// #     instance::{Instance, InstanceExtensions},
+    /// #     Version, VulkanLibrary,
+    /// # };
+    ///
+    /// # let library = VulkanLibrary::new().unwrap();
+    /// # let instance = Instance::new(library, Default::default()).unwrap();
+    /// for physical_device in instance.enumerate_physical_devices().unwrap() {
+    ///     println!("Available device: {}", physical_device.properties().device_name);
+    /// }
+    /// ```
+    pub fn enumerate_physical_devices(
+        self: &Arc<Self>,
+    ) -> Result<impl ExactSizeIterator<Item = Arc<PhysicalDevice>>, VulkanError> {
+        let fns = self.fns();
+
+        unsafe {
+            let handles = loop {
+                let mut count = 0;
+                (fns.v1_0.enumerate_physical_devices)(self.handle, &mut count, ptr::null_mut())
+                    .result()
+                    .map_err(VulkanError::from)?;
+
+                let mut handles = Vec::with_capacity(count as usize);
+                let result = (fns.v1_0.enumerate_physical_devices)(
+                    self.handle,
+                    &mut count,
+                    handles.as_mut_ptr(),
+                );
+
+                match result {
+                    ash::vk::Result::SUCCESS => {
+                        handles.set_len(count as usize);
+                        break handles;
+                    }
+                    ash::vk::Result::INCOMPLETE => (),
+                    err => return Err(VulkanError::from(err)),
+                }
+            };
+
+            let physical_devices: SmallVec<[_; 4]> = handles
+                .into_iter()
+                .map(|handle| PhysicalDevice::from_handle(handle, self.clone()))
+                .collect::<Result<_, _>>()?;
+
+            Ok(physical_devices.into_iter())
+        }
     }
 }
 
@@ -553,7 +599,6 @@ impl Debug for Instance {
         let Self {
             handle,
             fns,
-            physical_device_infos,
             api_version,
             enabled_extensions,
             enabled_layers,
@@ -565,7 +610,6 @@ impl Debug for Instance {
         f.debug_struct("Instance")
             .field("handle", handle)
             .field("fns", fns)
-            .field("physical_device_infos", physical_device_infos)
             .field("api_version", api_version)
             .field("enabled_extensions", enabled_extensions)
             .field("enabled_layers", enabled_layers)
@@ -763,28 +807,9 @@ impl From<VulkanError> for InstanceCreationError {
 
 #[cfg(test)]
 mod tests {
-    use crate::device::physical::PhysicalDevice;
 
     #[test]
     fn create_instance() {
         let _ = instance!();
-    }
-
-    #[test]
-    fn queue_family_by_id() {
-        let instance = instance!();
-
-        let phys = match PhysicalDevice::enumerate(&instance).next() {
-            Some(p) => p,
-            None => return,
-        };
-
-        let queue_family = match phys.queue_families().next() {
-            Some(q) => q,
-            None => return,
-        };
-
-        let by_id = phys.queue_family_by_id(queue_family.id()).unwrap();
-        assert_eq!(by_id.id(), queue_family.id());
     }
 }

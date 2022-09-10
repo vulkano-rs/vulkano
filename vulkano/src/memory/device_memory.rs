@@ -9,7 +9,7 @@
 
 use super::DedicatedAllocation;
 use crate::{
-    device::{physical::MemoryType, Device, DeviceOwned},
+    device::{Device, DeviceOwned},
     macros::{vulkan_bitflags, vulkan_enum},
     DeviceSize, OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
@@ -35,14 +35,14 @@ use std::{
 /// use vulkano::memory::{DeviceMemory, MemoryAllocateInfo};
 ///
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
-/// let memory_type = device.physical_device().memory_types().next().unwrap();
+/// let memory_type_index = 0;
 ///
 /// // Allocates 1KB of memory.
 /// let memory = DeviceMemory::allocate(
 ///     device.clone(),
 ///     MemoryAllocateInfo {
 ///         allocation_size: 1024,
-///         memory_type_index: memory_type.id(),
+///         memory_type_index,
 ///         ..Default::default()
 ///     },
 /// ).unwrap();
@@ -150,19 +150,21 @@ impl DeviceMemory {
             *dedicated_allocation = None;
         }
 
+        let memory_properties = device.physical_device().memory_properties();
+
         // VUID-vkAllocateMemory-pAllocateInfo-01714
-        let memory_type = device
-            .physical_device()
-            .memory_type_by_id(memory_type_index)
-            .ok_or_else(|| DeviceMemoryAllocationError::MemoryTypeIndexOutOfRange {
+        let memory_type = memory_properties
+            .memory_types
+            .get(memory_type_index as usize)
+            .ok_or(DeviceMemoryAllocationError::MemoryTypeIndexOutOfRange {
                 memory_type_index,
-                memory_type_count: device.physical_device().memory_types().len() as u32,
+                memory_type_count: memory_properties.memory_types.len() as u32,
             })?;
 
         // VUID-VkMemoryAllocateInfo-memoryTypeIndex-01872
-        if memory_type.is_protected() && !device.enabled_features().protected_memory {
+        if memory_type.property_flags.protected && !device.enabled_features().protected_memory {
             return Err(DeviceMemoryAllocationError::RequirementNotMet {
-                required_for: "`allocate_info.memory_type_index` refers to a memory type where `flags.protected` is set",
+                required_for: "`allocate_info.memory_type_index` refers to a memory type where `property_flags.protected` is set",
                 requires_one_of: RequiresOneOf {
                     features: &["protected_memory"],
                     ..Default::default()
@@ -174,7 +176,7 @@ impl DeviceMemory {
         assert!(allocation_size != 0);
 
         // VUID-vkAllocateMemory-pAllocateInfo-01713
-        let heap_size = memory_type.heap().size();
+        let heap_size = memory_properties.memory_heaps[memory_type.heap_index as usize].size;
         if heap_size != 0 && allocation_size > heap_size {
             return Err(DeviceMemoryAllocationError::MemoryTypeHeapSizeExceeded {
                 allocation_size,
@@ -473,13 +475,10 @@ impl DeviceMemory {
         Ok(handle)
     }
 
-    /// Returns the memory type that this memory was allocated from.
+    /// Returns the index of the memory type that this memory was allocated from.
     #[inline]
-    pub fn memory_type(&self) -> MemoryType {
-        self.device
-            .physical_device()
-            .memory_type_by_id(self.memory_type_index)
-            .unwrap()
+    pub fn memory_type_index(&self) -> u32 {
+        self.memory_type_index
     }
 
     /// Returns the size in bytes of the memory allocation.
@@ -1122,16 +1121,21 @@ impl From<RequirementNotMet> for DeviceMemoryExportError {
 ///
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
 /// // The memory type must be mappable.
-/// let memory_type = device.physical_device().memory_types()
-///                     .filter(|t| t.is_host_visible())
-///                     .next().unwrap();    // Vk specs guarantee that this can't fail
+/// let memory_type_index = device
+///     .physical_device()
+///     .memory_properties()
+///     .memory_types
+///     .iter()
+///     .position(|t| t.property_flags.host_visible)
+///     .map(|i| i as u32)
+///     .unwrap();    // Vk specs guarantee that this can't fail
 ///
 /// // Allocates 1KB of memory.
 /// let memory = DeviceMemory::allocate(
 ///     device.clone(),
 ///     MemoryAllocateInfo {
 ///         allocation_size: 1024,
-///         memory_type_index: memory_type.id(),
+///         memory_type_index,
 ///         ..Default::default()
 ///     },
 /// ).unwrap();
@@ -1191,13 +1195,16 @@ impl MappedDeviceMemory {
             });
         }
 
+        let device = memory.device();
+        let memory_type = &device.physical_device().memory_properties().memory_types
+            [memory.memory_type_index() as usize];
+
         // VUID-vkMapMemory-memory-00682
-        if !memory.memory_type().is_host_visible() {
+        if !memory_type.property_flags.host_visible {
             return Err(MemoryMapError::NotHostVisible);
         }
 
-        let device = memory.device();
-        let coherent = memory.memory_type().is_host_coherent();
+        let coherent = memory_type.property_flags.host_coherent;
         let atom_size = device.physical_device().properties().non_coherent_atom_size;
 
         // Not required for merely mapping, but without this check the user can end up with
@@ -1544,12 +1551,11 @@ mod tests {
     #[test]
     fn create() {
         let (device, _) = gfx_dev_and_queue!();
-        let memory_type = device.physical_device().memory_types().next().unwrap();
         let _ = DeviceMemory::allocate(
-            device.clone(),
+            device,
             MemoryAllocateInfo {
                 allocation_size: 256,
-                memory_type_index: memory_type.id(),
+                memory_type_index: 0,
                 ..Default::default()
             },
         )
@@ -1559,13 +1565,12 @@ mod tests {
     #[test]
     fn zero_size() {
         let (device, _) = gfx_dev_and_queue!();
-        let memory_type = device.physical_device().memory_types().next().unwrap();
         assert_should_panic!({
             let _ = DeviceMemory::allocate(
                 device.clone(),
                 MemoryAllocateInfo {
                     allocation_size: 0,
-                    memory_type_index: memory_type.id(),
+                    memory_type_index: 0,
                     ..Default::default()
                 },
             )
@@ -1577,17 +1582,20 @@ mod tests {
     #[cfg(target_pointer_width = "64")]
     fn oom_single() {
         let (device, _) = gfx_dev_and_queue!();
-        let memory_type = device
+        let memory_type_index = device
             .physical_device()
-            .memory_types()
-            .find(|m| !m.is_lazily_allocated())
+            .memory_properties()
+            .memory_types
+            .iter()
+            .enumerate()
+            .find_map(|(i, m)| (!m.property_flags.lazily_allocated).then_some(i as u32))
             .unwrap();
 
         match DeviceMemory::allocate(
-            device.clone(),
+            device,
             MemoryAllocateInfo {
                 allocation_size: 0xffffffffffffffff,
-                memory_type_index: memory_type.id(),
+                memory_type_index,
                 ..Default::default()
             },
         ) {
@@ -1600,12 +1608,17 @@ mod tests {
     #[ignore] // TODO: test fails for now on Mesa+Intel
     fn oom_multi() {
         let (device, _) = gfx_dev_and_queue!();
-        let memory_type = device
+        let (memory_type_index, memory_type) = device
             .physical_device()
-            .memory_types()
-            .find(|m| !m.is_lazily_allocated())
+            .memory_properties()
+            .memory_types
+            .iter()
+            .enumerate()
+            .find_map(|(i, m)| (!m.property_flags.lazily_allocated).then_some((i as u32, m)))
             .unwrap();
-        let heap_size = memory_type.heap().size();
+        let heap_size = device.physical_device().memory_properties().memory_heaps
+            [memory_type.heap_index as usize]
+            .size;
 
         let mut allocs = Vec::new();
 
@@ -1614,7 +1627,7 @@ mod tests {
                 device.clone(),
                 MemoryAllocateInfo {
                     allocation_size: heap_size / 3,
-                    memory_type_index: memory_type.id(),
+                    memory_type_index,
                     ..Default::default()
                 },
             ) {
@@ -1630,13 +1643,12 @@ mod tests {
     #[test]
     fn allocation_count() {
         let (device, _) = gfx_dev_and_queue!();
-        let memory_type = device.physical_device().memory_types().next().unwrap();
         assert_eq!(*device.allocation_count().lock(), 0);
         let _mem1 = DeviceMemory::allocate(
             device.clone(),
             MemoryAllocateInfo {
                 allocation_size: 256,
-                memory_type_index: memory_type.id(),
+                memory_type_index: 0,
                 ..Default::default()
             },
         )
@@ -1647,7 +1659,7 @@ mod tests {
                 device.clone(),
                 MemoryAllocateInfo {
                     allocation_size: 256,
-                    memory_type_index: memory_type.id(),
+                    memory_type_index: 0,
                     ..Default::default()
                 },
             )

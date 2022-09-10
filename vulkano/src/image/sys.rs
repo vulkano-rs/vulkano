@@ -485,16 +485,24 @@ impl UnsafeImage {
 
         match sharing {
             Sharing::Exclusive => (),
-            Sharing::Concurrent(ids) => {
+            Sharing::Concurrent(queue_family_indices) => {
                 // VUID-VkImageCreateInfo-sharingMode-00942
-                ids.sort_unstable();
-                ids.dedup();
-                assert!(ids.len() >= 2);
+                queue_family_indices.sort_unstable();
+                queue_family_indices.dedup();
+                assert!(queue_family_indices.len() >= 2);
 
-                for &id in ids.iter() {
+                for &queue_family_index in queue_family_indices.iter() {
                     // VUID-VkImageCreateInfo-sharingMode-01420
-                    if device.physical_device().queue_family_by_id(id).is_none() {
-                        return Err(ImageCreationError::SharingInvalidQueueFamilyId { id });
+                    if queue_family_index
+                        >= device.physical_device().queue_family_properties().len() as u32
+                    {
+                        return Err(ImageCreationError::SharingQueueFamilyIndexOutOfRange {
+                            queue_family_index,
+                            queue_family_count: device
+                                .physical_device()
+                                .queue_family_properties()
+                                .len() as u32,
+                        });
                     }
                 }
             }
@@ -1022,7 +1030,7 @@ impl UnsafeImage {
             let mem_reqs = mem_reqs.assume_init();
             mem_reqs.size <= memory.allocation_size() - offset
                 && offset % mem_reqs.alignment == 0
-                && mem_reqs.memory_type_bits & (1 << memory.memory_type().id()) != 0
+                && mem_reqs.memory_type_bits & (1 << memory.memory_type_index()) != 0
         });
 
         (fns.v1_0.bind_image_memory)(
@@ -1626,10 +1634,11 @@ pub enum ImageCreationError {
         supported: SampleCounts,
     },
 
-    /// The sharing mode was set to `Concurrent`, but one of the specified queue family ids was not
-    /// valid.
-    SharingInvalidQueueFamilyId {
-        id: u32,
+    /// The sharing mode was set to `Concurrent`, but one of the specified queue family indices was
+    /// out of range.
+    SharingQueueFamilyIndexOutOfRange {
+        queue_family_index: u32,
+        queue_family_count: u32,
     },
 
     /// A YCbCr format was given, but the specified width and/or height was not a multiple of 2
@@ -1757,8 +1766,8 @@ impl Display for ImageCreationError {
                     "the sample count is not supported by the device for this image configuration"
                 )
             }
-            Self::SharingInvalidQueueFamilyId { .. } => {
-                write!(f, "the sharing mode was set to `Concurrent`, but one of the specified queue family ids was not valid")
+            Self::SharingQueueFamilyIndexOutOfRange { .. } => {
+                write!(f, "the sharing mode was set to `Concurrent`, but one of the specified queue family indices was out of range")
             }
             Self::YcbcrFormatInvalidDimensions => {
                 write!(f, "a YCbCr format was given, but the specified width and/or height was not a multiple of 2 as required by the format's chroma subsampling")

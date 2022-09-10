@@ -63,8 +63,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             });
         }
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdBeginDebugUtilsLabelEXT-commandBuffer-cmdpool
-        if !(self.queue_family().supports_graphics() || self.queue_family().supports_compute()) {
+        if !(queue_family_properties.queue_flags.graphics
+            || queue_family_properties.queue_flags.compute)
+        {
             return Err(DebugUtilsError::NotSupportedByQueueFamily);
         }
 
@@ -103,8 +107,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             });
         }
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdEndDebugUtilsLabelEXT-commandBuffer-cmdpool
-        if !(self.queue_family().supports_graphics() || self.queue_family().supports_compute()) {
+        if !(queue_family_properties.queue_flags.graphics
+            || queue_family_properties.queue_flags.compute)
+        {
             return Err(DebugUtilsError::NotSupportedByQueueFamily);
         }
 
@@ -151,8 +159,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             });
         }
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdInsertDebugUtilsLabelEXT-commandBuffer-cmdpool
-        if !(self.queue_family().supports_graphics() || self.queue_family().supports_compute()) {
+        if !(queue_family_properties.queue_flags.graphics
+            || queue_family_properties.queue_flags.compute)
+        {
             return Err(DebugUtilsError::NotSupportedByQueueFamily);
         }
 

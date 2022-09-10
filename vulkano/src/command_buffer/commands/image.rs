@@ -86,8 +86,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             return Err(CopyError::ForbiddenInsideRenderPass);
         }
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdBlitImage2-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(CopyError::NotSupportedByQueueFamily);
         }
 
@@ -586,8 +588,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             return Err(CopyError::ForbiddenInsideRenderPass);
         }
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdClearColorImage-commandBuffer-cmdpool
-        if !(self.queue_family().supports_graphics() || self.queue_family().supports_compute()) {
+        if !(queue_family_properties.queue_flags.graphics
+            || queue_family_properties.queue_flags.compute)
+        {
             return Err(CopyError::NotSupportedByQueueFamily);
         }
 
@@ -734,8 +740,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             return Err(CopyError::ForbiddenInsideRenderPass);
         }
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdClearDepthStencilImage-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(CopyError::NotSupportedByQueueFamily);
         }
 
@@ -890,8 +898,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             return Err(CopyError::ForbiddenInsideRenderPass);
         }
 
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdResolveImage2-commandBuffer-cmdpool
-        if !self.queue_family().supports_graphics() {
+        if !queue_family_properties.queue_flags.graphics {
             return Err(CopyError::NotSupportedByQueueFamily);
         }
 

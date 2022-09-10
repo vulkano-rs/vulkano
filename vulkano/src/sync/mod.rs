@@ -152,7 +152,12 @@ impl<'a> From<&'a Arc<Queue>> for SharingMode {
 impl<'a> From<&'a [&'a Arc<Queue>]> for SharingMode {
     #[inline]
     fn from(queues: &'a [&'a Arc<Queue>]) -> SharingMode {
-        SharingMode::Concurrent(queues.iter().map(|queue| queue.family().id()).collect())
+        SharingMode::Concurrent(
+            queues
+                .iter()
+                .map(|queue| queue.queue_family_index())
+                .collect(),
+        )
     }
 }
 

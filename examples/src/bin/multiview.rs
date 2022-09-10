@@ -22,8 +22,8 @@ use vulkano::{
         RenderPassBeginInfo, SubpassContents,
     },
     device::{
-        physical::{PhysicalDevice, PhysicalDeviceType},
-        Device, DeviceCreateInfo, DeviceExtensions, Features, QueueCreateInfo,
+        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Features,
+        QueueCreateInfo,
     },
     format::Format,
     image::{
@@ -73,14 +73,14 @@ fn main() {
         multiview: true,
         ..Features::empty()
     };
-    let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-        .filter(|&p| {
+    let (physical_device, queue_family_index) = instance.enumerate_physical_devices().unwrap()
+        .filter(|p| {
             p.supported_extensions().contains(&device_extensions)
         })
-        .filter(|&p| {
+        .filter(|p| {
             p.supported_features().contains(&features)
         })
-        .filter(|&p| {
+        .filter(|p| {
             // This example renders to two layers of the framebuffer using the multiview
             // extension so we check that at least two views are supported by the device.
             // Not checking this on a device that doesn't support two views
@@ -90,9 +90,10 @@ fn main() {
             p.properties().max_multiview_view_count.unwrap_or(0) >= 2
         })
         .filter_map(|p| {
-            p.queue_families()
-                .find(|&q| q.supports_graphics())
-                .map(|q| (p, q))
+            p.queue_family_properties()
+                .iter()
+                .position(|q| q.queue_flags.graphics)
+                .map(|i| (p, i as u32))
         })
         .min_by_key(|(p, _)| match p.properties().device_type {
             PhysicalDeviceType::DiscreteGpu => 0,
@@ -117,7 +118,10 @@ fn main() {
         DeviceCreateInfo {
             enabled_extensions: device_extensions,
             enabled_features: features,
-            queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+            queue_create_infos: vec![QueueCreateInfo {
+                queue_family_index,
+                ..Default::default()
+            }],
             ..Default::default()
         },
     )
@@ -139,7 +143,7 @@ fn main() {
             ..ImageUsage::empty()
         },
         ImageCreateFlags::empty(),
-        Some(queue_family),
+        Some(queue.queue_family_index()),
     )
     .unwrap();
 
@@ -291,7 +295,7 @@ fn main() {
 
     let mut builder = AutoCommandBufferBuilder::primary(
         device.clone(),
-        queue_family,
+        queue.queue_family_index(),
         CommandBufferUsage::OneTimeSubmit,
     )
     .unwrap();

@@ -21,7 +21,7 @@ use super::{
 };
 use crate::{
     buffer::{sys::UnsafeBufferCreateInfo, BufferCreationError, TypedBufferAccess},
-    device::{physical::QueueFamily, Device, DeviceOwned},
+    device::{Device, DeviceOwned},
     memory::{
         pool::{
             AllocFromRequirementsFilter, AllocLayout, MappingRequirement, MemoryPoolAlloc,
@@ -62,7 +62,7 @@ where
     memory: A,
 
     // Queue families allowed to access this buffer.
-    queue_families: SmallVec<[u32; 4]>,
+    queue_family_indices: SmallVec<[u32; 4]>,
 
     // Necessary to make it compile.
     marker: PhantomData<Box<T>>,
@@ -203,27 +203,21 @@ where
     /// # Panics
     ///
     /// - Panics if `size` is zero.
-    pub unsafe fn raw<'a, I>(
+    pub unsafe fn raw(
         device: Arc<Device>,
         size: DeviceSize,
         usage: BufferUsage,
         host_cached: bool,
-        queue_families: I,
-    ) -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocationError>
-    where
-        I: IntoIterator<Item = QueueFamily<'a>>,
-    {
-        let queue_families = queue_families
-            .into_iter()
-            .map(|f| f.id())
-            .collect::<SmallVec<[u32; 4]>>();
+        queue_family_indices: impl IntoIterator<Item = u32>,
+    ) -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocationError> {
+        let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
 
         let buffer = {
             match UnsafeBuffer::new(
                 device.clone(),
                 UnsafeBufferCreateInfo {
-                    sharing: if queue_families.len() >= 2 {
-                        Sharing::Concurrent(queue_families.clone())
+                    sharing: if queue_family_indices.len() >= 2 {
+                        Sharing::Concurrent(queue_family_indices.clone())
                     } else {
                         Sharing::Exclusive
                     },
@@ -247,7 +241,7 @@ where
             MappingRequirement::Map,
             Some(DedicatedAllocation::Buffer(&buffer)),
             |m| {
-                if m.is_host_cached() {
+                if m.property_flags.host_cached {
                     if host_cached {
                         AllocFromRequirementsFilter::Preferred
                     } else {
@@ -269,7 +263,7 @@ where
         Ok(Arc::new(CpuAccessibleBuffer {
             inner: buffer,
             memory,
-            queue_families,
+            queue_family_indices,
             marker: PhantomData,
         }))
     }
@@ -280,18 +274,9 @@ where
     T: BufferContents + ?Sized,
 {
     /// Returns the queue families this buffer can be used on.
-    // TODO: use a custom iterator
     #[inline]
-    pub fn queue_families(&self) -> Vec<QueueFamily> {
-        self.queue_families
-            .iter()
-            .map(|&num| {
-                self.device()
-                    .physical_device()
-                    .queue_family_by_id(num)
-                    .unwrap()
-            })
-            .collect()
+    pub fn queue_family_indices(&self) -> &[u32] {
+        &self.queue_family_indices
     }
 }
 

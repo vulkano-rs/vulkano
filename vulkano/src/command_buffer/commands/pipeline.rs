@@ -70,8 +70,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     fn validate_dispatch(&self, group_counts: [u32; 3]) -> Result<(), PipelineExecutionError> {
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdDispatch-commandBuffer-cmdpool
-        if !self.queue_family().supports_compute() {
+        if !queue_family_properties.queue_flags.compute {
             return Err(PipelineExecutionError::NotSupportedByQueueFamily);
         }
 
@@ -135,8 +137,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         &self,
         indirect_buffer: &dyn BufferAccess,
     ) -> Result<(), PipelineExecutionError> {
+        let queue_family_properties = self.queue_family_properties();
+
         // VUID-vkCmdDispatchIndirect-commandBuffer-cmdpool
-        if !self.queue_family().supports_compute() {
+        if !queue_family_properties.queue_flags.compute {
             return Err(PipelineExecutionError::NotSupportedByQueueFamily);
         }
 

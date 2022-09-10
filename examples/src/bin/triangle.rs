@@ -24,8 +24,7 @@ use vulkano::{
         AutoCommandBufferBuilder, CommandBufferUsage, RenderPassBeginInfo, SubpassContents,
     },
     device::{
-        physical::{PhysicalDevice, PhysicalDeviceType},
-        Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
+        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo,
     },
     image::{view::ImageView, ImageAccess, ImageUsage, SwapchainImage},
     impl_vertex,
@@ -100,8 +99,10 @@ fn main() {
 
     // We then choose which physical device to use. First, we enumerate all the available physical
     // devices, then apply filters to narrow them down to those that can support our needs.
-    let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-        .filter(|&p| {
+    let (physical_device, queue_family_index) = instance
+        .enumerate_physical_devices()
+        .unwrap()
+        .filter(|p| {
             // Some devices may not support the extensions or features that your application, or
             // report properties and limits that are not sufficient for your application. These
             // should be filtered out here.
@@ -120,17 +121,19 @@ fn main() {
             // real-life application, you may want to use a separate dedicated transfer queue to
             // handle data transfers in parallel with graphics operations. You may also need a
             // separate queue for compute operations, if your application uses those.
-            p.queue_families()
-                .find(|&q| {
+            p.queue_family_properties()
+                .iter()
+                .enumerate()
+                .position(|(i, q)| {
                     // We select a queue family that supports graphics operations. When drawing to
                     // a window surface, as we do in this example, we also need to check that queues
                     // in this queue family are capable of presenting images to the surface.
-                    q.supports_graphics() && q.supports_surface(&surface).unwrap_or(false)
+                    q.queue_flags.graphics && p.surface_support(i as u32, &surface).unwrap_or(false)
                 })
                 // The code here searches for the first queue family that is suitable. If none is
                 // found, `None` is returned to `filter_map`, which disqualifies this physical
                 // device.
-                .map(|q| (p, q))
+                .map(|i| (p, i as u32))
         })
         // All the physical devices that pass the filters above are suitable for the application.
         // However, not every device is equal, some are preferred over others. Now, we assign
@@ -175,7 +178,10 @@ fn main() {
 
             // The list of queues that we are going to use. Here we only use one queue, from the
             // previously chosen queue family.
-            queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+            queue_create_infos: vec![QueueCreateInfo {
+                queue_family_index,
+                ..Default::default()
+            }],
 
             ..Default::default()
         },
@@ -193,13 +199,15 @@ fn main() {
     let (mut swapchain, images) = {
         // Querying the capabilities of the surface. When we create the swapchain we can only
         // pass values that are allowed by the capabilities.
-        let surface_capabilities = physical_device
+        let surface_capabilities = device
+            .physical_device()
             .surface_capabilities(&surface, Default::default())
             .unwrap();
 
         // Choosing the internal format that the images will have.
         let image_format = Some(
-            physical_device
+            device
+                .physical_device()
                 .surface_formats(&surface, Default::default())
                 .unwrap()[0]
                 .0,
@@ -515,7 +523,7 @@ fn main() {
                 // buffer will only be executable on that given queue family.
                 let mut builder = AutoCommandBufferBuilder::primary(
                     device.clone(),
-                    queue.family(),
+                    queue.queue_family_index(),
                     CommandBufferUsage::OneTimeSubmit,
                 )
                 .unwrap();

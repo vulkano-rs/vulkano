@@ -8,8 +8,7 @@
 // according to those terms.
 
 use crate::{
-    device::{physical::MemoryType, Device},
-    instance::Instance,
+    device::Device,
     memory::{
         device_memory::MemoryAllocateInfo, DeviceMemory, DeviceMemoryAllocationError,
         MappedDeviceMemory,
@@ -23,7 +22,7 @@ use std::{cmp, ops::Range, sync::Arc};
 #[derive(Debug)]
 pub struct StandardHostVisibleMemoryTypePool {
     device: Arc<Device>,
-    memory_type: u32,
+    memory_type_index: u32,
     // TODO: obviously very inefficient
     occupied: Mutex<Vec<(Arc<MappedDeviceMemory>, Vec<Range<DeviceSize>>)>>,
 }
@@ -33,27 +32,21 @@ impl StandardHostVisibleMemoryTypePool {
     ///
     /// # Panic
     ///
-    /// - Panics if the `device` and `memory_type` don't belong to the same physical device.
-    /// - Panics if the memory type is not host-visible.
+    /// - Panics if `memory_type_index` is out of range.
+    /// - Panics if `memory_type_index` refers to a memory type that is not host-visible.
     ///
     #[inline]
     pub fn new(
         device: Arc<Device>,
-        memory_type: MemoryType,
+        memory_type_index: u32,
     ) -> Arc<StandardHostVisibleMemoryTypePool> {
-        assert_eq!(
-            &**device.physical_device().instance() as *const Instance,
-            &**memory_type.physical_device().instance() as *const Instance
-        );
-        assert_eq!(
-            device.physical_device().index(),
-            memory_type.physical_device().index()
-        );
-        assert!(memory_type.is_host_visible());
+        let memory_type =
+            &device.physical_device().memory_properties().memory_types[memory_type_index as usize];
+        assert!(memory_type.property_flags.host_visible);
 
         Arc::new(StandardHostVisibleMemoryTypePool {
             device,
-            memory_type: memory_type.id(),
+            memory_type_index,
             occupied: Mutex::new(Vec::new()),
         })
     }
@@ -120,7 +113,7 @@ impl StandardHostVisibleMemoryTypePool {
                 self.device.clone(),
                 MemoryAllocateInfo {
                     allocation_size,
-                    memory_type_index: self.memory_type().id(),
+                    memory_type_index: self.memory_type_index,
                     ..Default::default()
                 },
             )?;
@@ -143,13 +136,10 @@ impl StandardHostVisibleMemoryTypePool {
         &self.device
     }
 
-    /// Returns the memory type this pool operates on.
+    /// Returns the index of the memory type this pool operates on.
     #[inline]
-    pub fn memory_type(&self) -> MemoryType {
-        self.device
-            .physical_device()
-            .memory_type_by_id(self.memory_type)
-            .unwrap()
+    pub fn memory_type_index(&self) -> u32 {
+        self.memory_type_index
     }
 }
 

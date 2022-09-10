@@ -9,7 +9,7 @@
 
 macro_rules! vulkan_bitflags {
     {
-		$(#[doc = $ty_doc:literal])*
+        $(#[doc = $ty_doc:literal])*
         $ty:ident = $ty_ffi:ident($repr:ty);
 
         $(
@@ -17,7 +17,7 @@ macro_rules! vulkan_bitflags {
             $flag_name:ident = $flag_name_ffi:ident,
         )+
     } => {
-		$(#[doc = $ty_doc])*
+        $(#[doc = $ty_doc])*
         #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
         pub struct $ty {
             $(
@@ -131,27 +131,27 @@ macro_rules! vulkan_bitflags {
             }
         }
 
-		impl From<$ty> for ash::vk::$ty_ffi {
-			#[inline]
-			fn from(val: $ty) -> Self {
-				let mut result = ash::vk::$ty_ffi::empty();
-				$(
-					if val.$flag_name { result |= ash::vk::$ty_ffi::$flag_name_ffi }
-				)+
-				result
-			}
-		}
+        impl From<$ty> for ash::vk::$ty_ffi {
+            #[inline]
+            fn from(val: $ty) -> Self {
+                let mut result = ash::vk::$ty_ffi::empty();
+                $(
+                    if val.$flag_name { result |= ash::vk::$ty_ffi::$flag_name_ffi }
+                )+
+                result
+            }
+        }
 
         impl From<ash::vk::$ty_ffi> for $ty {
-			#[inline]
-			fn from(val: ash::vk::$ty_ffi) -> Self {
+            #[inline]
+            fn from(val: ash::vk::$ty_ffi) -> Self {
                 Self {
                     $(
                         $flag_name: val.intersects(ash::vk::$ty_ffi::$flag_name_ffi),
                     )+
                 }
-			}
-		}
+            }
+        }
 
         impl Default for $ty {
             #[inline]
@@ -239,7 +239,7 @@ macro_rules! vulkan_bitflags {
     };
 
     {
-		$(#[doc = $ty_doc:literal])*
+        $(#[doc = $ty_doc:literal])*
         #[non_exhaustive]
         $ty:ident = $ty_ffi:ident($repr:ty);
 
@@ -254,7 +254,7 @@ macro_rules! vulkan_bitflags {
             ,
         )+
     } => {
-		$(#[doc = $ty_doc])*
+        $(#[doc = $ty_doc])*
         #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
         pub struct $ty {
             $(
@@ -452,28 +452,28 @@ macro_rules! vulkan_bitflags {
             }
         }
 
-		impl From<$ty> for ash::vk::$ty_ffi {
-			#[inline]
-			fn from(val: $ty) -> Self {
-				let mut result = ash::vk::$ty_ffi::empty();
-				$(
-					if val.$flag_name { result |= ash::vk::$ty_ffi::$flag_name_ffi }
-				)+
-				result
-			}
-		}
+        impl From<$ty> for ash::vk::$ty_ffi {
+            #[inline]
+            fn from(val: $ty) -> Self {
+                let mut result = ash::vk::$ty_ffi::empty();
+                $(
+                    if val.$flag_name { result |= ash::vk::$ty_ffi::$flag_name_ffi }
+                )+
+                result
+            }
+        }
 
         impl From<ash::vk::$ty_ffi> for $ty {
-			#[inline]
-			fn from(val: ash::vk::$ty_ffi) -> Self {
+            #[inline]
+            fn from(val: ash::vk::$ty_ffi) -> Self {
                 Self {
                     $(
                         $flag_name: val.intersects(ash::vk::$ty_ffi::$flag_name_ffi),
                     )+
                     _ne: crate::NonExhaustive(()),
                 }
-			}
-		}
+            }
+        }
 
         impl Default for $ty {
             #[inline]
@@ -555,7 +555,7 @@ macro_rules! vulkan_bitflags {
 
 macro_rules! vulkan_enum {
     {
-		$(#[doc = $ty_doc:literal])*
+        $(#[doc = $ty_doc:literal])*
         $ty:ident = $ty_ffi:ident($repr:ty);
 
         $(
@@ -563,7 +563,7 @@ macro_rules! vulkan_enum {
             $flag_name:ident = $flag_name_ffi:ident,
         )+
     } => {
-		$(#[doc = $ty_doc])*
+        $(#[doc = $ty_doc])*
         #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
         #[repr($repr)]
         pub enum $ty {
@@ -573,30 +573,30 @@ macro_rules! vulkan_enum {
             )+
         }
 
-		impl From<$ty> for ash::vk::$ty_ffi {
-			#[inline]
-			fn from(val: $ty) -> Self {
+        impl From<$ty> for ash::vk::$ty_ffi {
+            #[inline]
+            fn from(val: $ty) -> Self {
                 ash::vk::$ty_ffi::from_raw(val as $repr)
-			}
-		}
+            }
+        }
 
         impl TryFrom<ash::vk::$ty_ffi> for $ty {
             type Error = ();
 
-			#[inline]
-			fn try_from(val: ash::vk::$ty_ffi) -> Result<Self, Self::Error> {
+            #[inline]
+            fn try_from(val: ash::vk::$ty_ffi) -> Result<Self, Self::Error> {
                 Ok(match val {
                     $(
                         ash::vk::$ty_ffi::$flag_name_ffi => Self::$flag_name,
                     )+
                     _ => return Err(()),
                 })
-			}
-		}
+            }
+        }
     };
 
     {
-		$(#[doc = $ty_doc:literal])*
+        $(#[doc = $ty_doc:literal])*
         #[non_exhaustive]
         $ty:ident = $ty_ffi:ident($repr:ty);
 
@@ -611,7 +611,7 @@ macro_rules! vulkan_enum {
             ,
         )+
     } => {
-		$(#[doc = $ty_doc])*
+        $(#[doc = $ty_doc])*
         #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
         #[non_exhaustive]
         #[repr($repr)]
@@ -733,30 +733,30 @@ macro_rules! vulkan_enum {
                     _ => (),
                 }
 
-                Ok(())
-            }
+            Ok(())
         }
+    }
 
-		impl From<$ty> for ash::vk::$ty_ffi {
-			#[inline]
-			fn from(val: $ty) -> Self {
-                ash::vk::$ty_ffi::from_raw(val as $repr)
-			}
-		}
+    impl From<$ty> for ash::vk::$ty_ffi {
+        #[inline]
+        fn from(val: $ty) -> Self {
+            ash::vk::$ty_ffi::from_raw(val as $repr)
+        }
+    }
 
-        impl TryFrom<ash::vk::$ty_ffi> for $ty {
-            type Error = ();
+    impl TryFrom<ash::vk::$ty_ffi> for $ty {
+        type Error = ();
 
-			#[inline]
-			fn try_from(val: ash::vk::$ty_ffi) -> Result<Self, Self::Error> {
-                Ok(match val {
-                    $(
-                        ash::vk::$ty_ffi::$flag_name_ffi => Self::$flag_name,
-                    )+
-                    _ => return Err(()),
-                })
-			}
-		}
+        #[inline]
+        fn try_from(val: ash::vk::$ty_ffi) -> Result<Self, Self::Error> {
+            Ok(match val {
+                $(
+                    ash::vk::$ty_ffi::$flag_name_ffi => Self::$flag_name,
+                )+
+                _ => return Err(()),
+            })
+        }
+    }
     };
 }
 
