@@ -24,10 +24,9 @@ use crate::{
     },
     device::{DeviceOwned, Queue},
     image::{sys::UnsafeImage, ImageLayout},
-    swapchain::{self, PresentFuture, PresentRegion, Swapchain},
+    swapchain::{self, PresentFuture, Swapchain, PresentInfoExt},
     DeviceSize, OomError,
 };
-use std::num::NonZeroU64;
 use std::{
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
@@ -260,45 +259,12 @@ pub unsafe trait GpuFuture: DeviceOwned {
         queue: Arc<Queue>,
         swapchain: Arc<Swapchain<W>>,
         image_index: usize,
+        info_ext: PresentInfoExt,
     ) -> PresentFuture<Self, W>
     where
         Self: Sized,
     {
-        swapchain::present(swapchain, self, queue, image_index)
-    }
-
-    /// Same as `then_swapchain_present`, except it allows specifying a present region.
-    ///
-    /// > **Note**: This is just a shortcut for the `Swapchain::present_with_id()` function.
-    #[inline]
-    fn then_swapchain_present_with_id<W>(
-        self,
-        queue: Arc<Queue>,
-        swapchain: Arc<Swapchain<W>>,
-        image_index: usize,
-        present_id: NonZeroU64,
-    ) -> PresentFuture<Self, W>
-    where
-        Self: Sized,
-    {
-        swapchain::present_with_id(swapchain, self, queue, image_index, present_id)
-    }
-
-    /// Same as `then_swapchain_present`, except it allows specifying a present region.
-    ///
-    /// > **Note**: This is just a shortcut for the `Swapchain::present_incremental()` function.
-    #[inline]
-    fn then_swapchain_present_incremental<W>(
-        self,
-        queue: Arc<Queue>,
-        swapchain: Arc<Swapchain<W>>,
-        image_index: usize,
-        present_region: PresentRegion,
-    ) -> PresentFuture<Self, W>
-    where
-        Self: Sized,
-    {
-        swapchain::present_incremental(swapchain, self, queue, image_index, present_region)
+        swapchain::present(swapchain, self, queue, image_index, info_ext)
     }
 
     /// Turn the current future into a `Box<dyn GpuFuture>`.

@@ -247,7 +247,7 @@ fn main() {
 
             let future = after_future
                 .unwrap()
-                .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
+                .then_swapchain_present(queue.clone(), swapchain.clone(), image_num, Default::default())
                 .then_signal_fence_and_flush();
 
             match future {

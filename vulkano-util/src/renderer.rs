@@ -281,6 +281,7 @@ impl VulkanoWindowRenderer {
                 self.graphics_queue.clone(),
                 self.swap_chain.clone(),
                 self.image_index,
+                Default::default(),
             )
             .then_signal_fence_and_flush();
         match future {

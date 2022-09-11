@@ -9,7 +9,7 @@
 
 use crate::{
     device::{DeviceOwned, Queue},
-    swapchain::{PresentRegion, Swapchain},
+    swapchain::{Swapchain, PresentInfoExt},
     sync::Semaphore,
     OomError, SynchronizedVulkanObject, VulkanError, VulkanObject,
 };
@@ -94,10 +94,15 @@ impl<'a> SubmitPresentBuilder<'a> {
         &mut self,
         swapchain: &'a Swapchain<W>,
         image_num: u32,
-        present_id: Option<u64>,
-        present_region: Option<&'a PresentRegion>,
+        info_ext: &'a PresentInfoExt,
     ) {
         debug_assert!(image_num < swapchain.image_count());
+
+        let PresentInfoExt {
+            present_id,
+            present_region,
+            ..
+        } = info_ext;
 
         if swapchain
             .device()

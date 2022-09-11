@@ -270,7 +270,7 @@ impl<W> Swapchain<W> {
             clipped,
             full_screen_exclusive,
             win32_monitor,
-            prev_present_id: AtomicU64::from(self.prev_present_id.load(Ordering::SeqCst)),
+            prev_present_id: Default::default(),
 
             full_screen_exclusive_held: AtomicBool::new(full_screen_exclusive_held),
             images,
@@ -1499,6 +1499,40 @@ pub fn acquire_next_image<W>(
     ))
 }
 
+/// Additional parameters for
+/// [`swapchain::present`](crate::swapchain::present)
+/// and
+/// [`GpuFuture::then_swapchain_present`](crate::sync::GpuFuture::then_swapchain_present).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PresentInfoExt {
+    /// A present id used for this present call.
+    ///
+    /// Must be greater than previously used.
+    ///
+    /// If this value is zero it is equivalent to `None`.
+    ///
+    /// If the `present_id` feature is not enabled on the device, the parameter will be ignored.
+    pub present_id: Option<u64>,
+    /// Areas outside the present region may be ignored by Vulkan in order to optimize presentation.
+    ///
+    /// This is just an optimization hint, as the Vulkan driver is free to ignore the given present region.
+    ///
+    /// If `khr_incremental_present` extension is not enabled on the device, the parameter will be ignored.
+    pub present_region: Option<PresentRegion>,
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for PresentInfoExt {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            present_id: None,
+            present_region: None,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
 /// Presents an image on the screen.
 ///
 /// The parameter is the same index as what `acquire_next_image` returned. The image must
@@ -1511,6 +1545,7 @@ pub fn present<F, W>(
     before: F,
     queue: Arc<Queue>,
     index: usize,
+    info_ext: PresentInfoExt,
 ) -> PresentFuture<F, W>
 where
     F: GpuFuture,
@@ -1529,79 +1564,7 @@ where
         queue,
         swapchain,
         image_id: index,
-        present_id: None,
-        present_region: None,
-        flushed: AtomicBool::new(false),
-        finished: AtomicBool::new(false),
-    }
-}
-
-/// Same as `swapchain::present`, except it allows specifying a present id.
-///
-/// The `present_id` parameter must be greater than previous `present_id` used.
-pub fn present_with_id<F, W>(
-    swapchain: Arc<Swapchain<W>>,
-    before: F,
-    queue: Arc<Queue>,
-    index: usize,
-    present_id: NonZeroU64,
-) -> PresentFuture<F, W>
-where
-    F: GpuFuture,
-{
-    assert!(index < swapchain.images.len());
-
-    // TODO: restore this check with a dummy ImageAccess implementation
-    /*let swapchain_image = me.images.lock().unwrap().get(index).unwrap().0.upgrade().unwrap();       // TODO: return error instead
-    // Normally if `check_image_access` returns false we're supposed to call the `gpu_access`
-    // function on the image instead. But since we know that this method on `SwapchainImage`
-    // always returns false anyway (by design), we don't need to do it.
-    assert!(before.check_image_access(&swapchain_image, ImageLayout::PresentSrc, true, &queue).is_ok());         // TODO: return error instead*/
-
-    PresentFuture {
-        previous: before,
-        queue,
-        swapchain,
-        image_id: index,
-        present_id: Some(present_id.into()),
-        present_region: None,
-        flushed: AtomicBool::new(false),
-        finished: AtomicBool::new(false),
-    }
-}
-
-/// Same as `swapchain::present`, except it allows specifying a present region.
-/// Areas outside the present region may be ignored by Vulkan in order to optimize presentation.
-///
-/// This is just an optimization hint, as the Vulkan driver is free to ignore the given present region.
-///
-/// If `VK_KHR_incremental_present` is not enabled on the device, the parameter will be ignored.
-pub fn present_incremental<F, W>(
-    swapchain: Arc<Swapchain<W>>,
-    before: F,
-    queue: Arc<Queue>,
-    index: usize,
-    present_region: PresentRegion,
-) -> PresentFuture<F, W>
-where
-    F: GpuFuture,
-{
-    assert!(index < swapchain.images.len());
-
-    // TODO: restore this check with a dummy ImageAccess implementation
-    /*let swapchain_image = me.images.lock().unwrap().get(index).unwrap().0.upgrade().unwrap();       // TODO: return error instead
-    // Normally if `check_image_access` returns false we're supposed to call the `gpu_access`
-    // function on the image instead. But since we know that this method on `SwapchainImage`
-    // always returns false anyway (by design), we don't need to do it.
-    assert!(before.check_image_access(&swapchain_image, ImageLayout::PresentSrc, true, &queue).is_ok());         // TODO: return error instead*/
-
-    PresentFuture {
-        previous: before,
-        queue,
-        swapchain,
-        image_id: index,
-        present_id: None,
-        present_region: Some(present_region),
+        info_ext,
         flushed: AtomicBool::new(false),
         finished: AtomicBool::new(false),
     }
@@ -1986,8 +1949,7 @@ where
     queue: Arc<Queue>,
     swapchain: Arc<Swapchain<W>>,
     image_id: usize,
-    present_id: Option<u64>,
-    present_region: Option<PresentRegion>,
+    info_ext: PresentInfoExt,
     // True if `flush()` has been called on the future, which means that the present command has
     // been submitted.
     flushed: AtomicBool,
@@ -2036,50 +1998,52 @@ where
         Ok(match self.previous.build_submission()? {
             SubmitAnyBuilder::Empty => {
                 let mut builder = SubmitPresentBuilder::new();
+
                 builder.add_swapchain(
                     &self.swapchain,
                     self.image_id as u32,
-                    self.present_id,
-                    self.present_region.as_ref(),
+                    &self.info_ext,
                 );
+
                 SubmitAnyBuilder::QueuePresent(builder)
             }
             SubmitAnyBuilder::SemaphoresWait(sem) => {
                 let mut builder: SubmitPresentBuilder = sem.into();
+
                 builder.add_swapchain(
                     &self.swapchain,
                     self.image_id as u32,
-                    self.present_id,
-                    self.present_region.as_ref(),
+                    &self.info_ext,
                 );
+
                 SubmitAnyBuilder::QueuePresent(builder)
             }
             SubmitAnyBuilder::CommandBuffer(_) => {
                 // submit the command buffer by flushing previous.
                 // Since the implementation should remember being flushed it's safe to call build_submission multiple times
                 self.previous.flush()?;
-
                 let mut builder = SubmitPresentBuilder::new();
+
                 builder.add_swapchain(
                     &self.swapchain,
                     self.image_id as u32,
-                    self.present_id,
-                    self.present_region.as_ref(),
+                    &self.info_ext,
                 );
+
                 SubmitAnyBuilder::QueuePresent(builder)
             }
             SubmitAnyBuilder::BindSparse(_) => {
                 // submit the command buffer by flushing previous.
                 // Since the implementation should remember being flushed it's safe to call build_submission multiple times
                 self.previous.flush()?;
-
                 let mut builder = SubmitPresentBuilder::new();
+
                 builder.add_swapchain(
                     &self.swapchain,
                     self.image_id as u32,
-                    self.present_id,
-                    self.present_region.as_ref(),
+                    &self.info_ext,
                 );
+
                 SubmitAnyBuilder::QueuePresent(builder)
             }
             SubmitAnyBuilder::QueuePresent(_present) => {

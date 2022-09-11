@@ -160,8 +160,6 @@ impl Semaphore {
     ///
     /// - The semaphore must not be used, or have been used, to acquire a swapchain image.
     pub unsafe fn export_opaque_fd(&self) -> Result<File, SemaphoreExportError> {
-        let fns = self.device.fns();
-
         // VUID-VkSemaphoreGetFdInfoKHR-handleType-01132
         if !self.export_handle_types.opaque_fd {
             return Err(SemaphoreExportError::HandleTypeNotSupported {
@@ -181,6 +179,8 @@ impl Semaphore {
         #[cfg(unix)]
         {
             use std::os::unix::io::FromRawFd;
+
+            let fns = self.device.fns();
 
             let fd = {
                 let info = ash::vk::SemaphoreGetFdInfoKHR {
