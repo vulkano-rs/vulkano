@@ -100,10 +100,121 @@ pub use self::{
     },
     pool::MemoryPool,
 };
-use crate::{buffer::sys::UnsafeBuffer, image::sys::UnsafeImage, DeviceSize};
+use crate::{
+    buffer::sys::UnsafeBuffer, image::sys::UnsafeImage, macros::vulkan_bitflags, DeviceSize,
+};
 
 mod device_memory;
 pub mod pool;
+
+/// Properties of the memory in a physical device.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct MemoryProperties {
+    /// The available memory types.
+    pub memory_types: Vec<MemoryType>,
+
+    /// The available memory heaps.
+    pub memory_heaps: Vec<MemoryHeap>,
+}
+
+impl From<ash::vk::PhysicalDeviceMemoryProperties> for MemoryProperties {
+    #[inline]
+    fn from(val: ash::vk::PhysicalDeviceMemoryProperties) -> Self {
+        Self {
+            memory_types: val.memory_types[0..val.memory_type_count as usize]
+                .iter()
+                .map(|vk_memory_type| MemoryType {
+                    property_flags: vk_memory_type.property_flags.into(),
+                    heap_index: vk_memory_type.heap_index,
+                })
+                .collect(),
+            memory_heaps: val.memory_heaps[0..val.memory_heap_count as usize]
+                .iter()
+                .map(|vk_memory_heap| MemoryHeap {
+                    size: vk_memory_heap.size,
+                    flags: vk_memory_heap.flags.into(),
+                })
+                .collect(),
+        }
+    }
+}
+
+/// A memory type in a physical device.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct MemoryType {
+    /// The properties of this memory type.
+    pub property_flags: MemoryPropertyFlags,
+
+    /// The index of the memory heap that this memory type corresponds to.
+    pub heap_index: u32,
+}
+
+vulkan_bitflags! {
+    /// Properties of a memory type.
+    #[non_exhaustive]
+    MemoryPropertyFlags = MemoryPropertyFlags(u32);
+
+    /// The memory is located on the device. This usually means that it's efficient for the
+    /// device to access this memory.
+    device_local = DEVICE_LOCAL,
+
+    /// The memory can be accessed by the host.
+    host_visible = HOST_VISIBLE,
+
+    /// Modifications made by the host or the device on this memory type are
+    /// instantaneously visible to the other party. If memory does not have this flag, changes to
+    /// the memory are not visible until they are flushed or invalidated.
+    host_coherent = HOST_COHERENT,
+
+    /// The memory is cached by the host. Host memory accesses to cached memory are faster than for
+    /// uncached memory, but the cache may not be coherent.
+    host_cached = HOST_CACHED,
+
+    /// Allocations made from this memory type are lazy.
+    ///
+    /// This means that no actual allocation is performed. Instead memory is automatically
+    /// allocated by the Vulkan implementation based on need.
+    ///
+    /// Memory of this type can only be used on images created with a certain flag. Memory of this
+    /// type is never host-visible.
+    lazily_allocated = LAZILY_ALLOCATED,
+
+    /// The memory can only be accessed by the device, and allows protected queue access.
+    ///
+    /// Memory of this type is never host visible, host coherent or host cached.
+    protected = PROTECTED {
+        api_version: V1_1,
+    },
+}
+
+/// A memory heap in a physical device.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct MemoryHeap {
+    /// The size of the heap in bytes.
+    pub size: DeviceSize,
+
+    /// Attributes of the heap.
+    pub flags: MemoryHeapFlags,
+}
+
+vulkan_bitflags! {
+    /// Attributes of a memory heap.
+    #[non_exhaustive]
+    MemoryHeapFlags = MemoryHeapFlags(u32);
+
+    /// The heap corresponds to device-local memory.
+    device_local = DEVICE_LOCAL,
+
+    /// If used on a logical device that represents more than one physical device, allocations are
+    /// replicated across each physical device's instance of this heap.
+    multi_instance = MULTI_INSTANCE {
+        api_version: V1_1,
+        instance_extensions: [khr_device_group_creation],
+    },
+}
 
 /// Represents requirements expressed by the Vulkan implementation when it comes to binding memory
 /// to a resource.

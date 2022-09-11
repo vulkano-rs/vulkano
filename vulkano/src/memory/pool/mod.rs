@@ -14,8 +14,9 @@ pub use self::{
     },
     pool::{StandardMemoryPool, StandardMemoryPoolAlloc},
 };
+use super::MemoryType;
 use crate::{
-    device::{physical::MemoryType, Device, DeviceOwned},
+    device::{Device, DeviceOwned},
     memory::{
         device_memory::MemoryAllocateInfo, DedicatedAllocation, DeviceMemory,
         DeviceMemoryAllocationError, ExternalMemoryHandleTypes, MappedDeviceMemory,
