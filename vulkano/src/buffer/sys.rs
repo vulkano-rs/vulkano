@@ -31,7 +31,7 @@ use super::{
 use crate::{
     device::{Device, DeviceOwned},
     macros::vulkan_bitflags,
-    memory::{DeviceMemory, DeviceMemoryAllocationError, MemoryRequirements},
+    memory::{DeviceMemory, DeviceMemoryError, MemoryRequirements},
     range_map::RangeMap,
     sync::{AccessError, CurrentAccess, Sharing},
     DeviceSize, OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
@@ -480,7 +480,7 @@ impl Default for UnsafeBufferCreateInfo {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BufferCreationError {
     /// Allocating memory failed.
-    AllocError(DeviceMemoryAllocationError),
+    AllocError(DeviceMemoryError),
 
     RequirementNotMet {
         required_for: &'static str,
@@ -544,10 +544,10 @@ impl From<VulkanError> for BufferCreationError {
     fn from(err: VulkanError) -> BufferCreationError {
         match err {
             err @ VulkanError::OutOfHostMemory => {
-                BufferCreationError::AllocError(DeviceMemoryAllocationError::from(err))
+                BufferCreationError::AllocError(DeviceMemoryError::from(err))
             }
             err @ VulkanError::OutOfDeviceMemory => {
-                BufferCreationError::AllocError(DeviceMemoryAllocationError::from(err))
+                BufferCreationError::AllocError(DeviceMemoryError::from(err))
             }
             _ => panic!("unexpected error: {:?}", err),
         }

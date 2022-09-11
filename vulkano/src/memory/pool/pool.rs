@@ -15,7 +15,7 @@ use crate::{
             StandardHostVisibleMemoryTypePool, StandardHostVisibleMemoryTypePoolAlloc,
             StandardNonHostVisibleMemoryTypePool, StandardNonHostVisibleMemoryTypePoolAlloc,
         },
-        DeviceMemory, DeviceMemoryAllocationError, MappedDeviceMemory,
+        DeviceMemory, DeviceMemoryError, MappedDeviceMemory,
     },
     DeviceSize,
 };
@@ -57,14 +57,14 @@ fn generic_allocation(
     alignment: DeviceSize,
     layout: AllocLayout,
     map: MappingRequirement,
-) -> Result<StandardMemoryPoolAlloc, DeviceMemoryAllocationError> {
+) -> Result<StandardMemoryPoolAlloc, DeviceMemoryError> {
     let mut pools = mem_pool.pools.lock();
 
     let memory_properties = mem_pool.device().physical_device().memory_properties();
     let memory_type = memory_properties
         .memory_types
         .get(memory_type_index as usize)
-        .ok_or(DeviceMemoryAllocationError::MemoryTypeIndexOutOfRange {
+        .ok_or(DeviceMemoryError::MemoryTypeIndexOutOfRange {
             memory_type_index,
             memory_type_count: memory_properties.memory_types.len() as u32,
         })?;
@@ -132,7 +132,7 @@ unsafe impl MemoryPool for Arc<StandardMemoryPool> {
         alignment: DeviceSize,
         layout: AllocLayout,
         map: MappingRequirement,
-    ) -> Result<StandardMemoryPoolAlloc, DeviceMemoryAllocationError> {
+    ) -> Result<StandardMemoryPoolAlloc, DeviceMemoryError> {
         generic_allocation(
             self.clone(),
             memory_type_index,

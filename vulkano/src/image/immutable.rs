@@ -27,7 +27,7 @@ use crate::{
             AllocFromRequirementsFilter, AllocLayout, MappingRequirement, MemoryPoolAlloc,
             PotentialDedicatedAllocation, StandardMemoryPoolAlloc,
         },
-        DedicatedAllocation, DeviceMemoryAllocationError, MemoryPool,
+        DedicatedAllocation, DeviceMemoryError, MemoryPool,
     },
     sampler::Filter,
     sync::{NowFuture, Sharing},
@@ -461,7 +461,7 @@ where
 #[derive(Clone, Debug)]
 pub enum ImmutableImageCreationError {
     ImageCreationError(ImageCreationError),
-    DeviceMemoryAllocationError(DeviceMemoryAllocationError),
+    DeviceMemoryAllocationError(DeviceMemoryError),
     CommandBufferBeginError(CommandBufferBeginError),
 }
 
@@ -494,9 +494,9 @@ impl From<ImageCreationError> for ImmutableImageCreationError {
     }
 }
 
-impl From<DeviceMemoryAllocationError> for ImmutableImageCreationError {
+impl From<DeviceMemoryError> for ImmutableImageCreationError {
     #[inline]
-    fn from(err: DeviceMemoryAllocationError) -> Self {
+    fn from(err: DeviceMemoryError) -> Self {
         Self::DeviceMemoryAllocationError(err)
     }
 }

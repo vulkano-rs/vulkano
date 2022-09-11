@@ -20,7 +20,7 @@ use crate::{
             alloc_dedicated_with_exportable_fd, AllocFromRequirementsFilter, AllocLayout,
             MappingRequirement, MemoryPoolAlloc, PotentialDedicatedAllocation, StandardMemoryPool,
         },
-        DedicatedAllocation, DeviceMemoryExportError, ExternalMemoryHandleType,
+        DedicatedAllocation, DeviceMemoryError, ExternalMemoryHandleType,
         ExternalMemoryHandleTypes, MemoryPool,
     },
     sync::Sharing,
@@ -240,7 +240,7 @@ impl StorageImage {
 
     /// Exports posix file descriptor for the allocated memory
     /// requires `khr_external_memory_fd` and `khr_external_memory` extensions to be loaded.
-    pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryExportError> {
+    pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryError> {
         self.memory
             .memory()
             .export_fd(ExternalMemoryHandleType::OpaqueFd)
