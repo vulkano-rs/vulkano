@@ -7,19 +7,24 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use super::QueueFamilyProperties;
 use crate::{
     buffer::{ExternalBufferInfo, ExternalBufferProperties},
     device::{DeviceExtensions, Features, FeaturesFfi, Properties, PropertiesFfi},
     format::{Format, FormatProperties},
-    image::{ImageCreateFlags, ImageFormatInfo, ImageFormatProperties, ImageUsage},
+    image::{
+        ImageCreateFlags, ImageFormatInfo, ImageFormatProperties, ImageUsage,
+        SparseImageFormatInfo, SparseImageFormatProperties,
+    },
     instance::Instance,
     macros::{vulkan_bitflags, vulkan_enum},
+    memory::MemoryProperties,
     swapchain::{
         ColorSpace, FullScreenExclusive, PresentMode, SupportedSurfaceTransforms, Surface,
         SurfaceApi, SurfaceCapabilities, SurfaceInfo,
     },
-    sync::{ExternalSemaphoreInfo, ExternalSemaphoreProperties, PipelineStage},
-    DeviceSize, OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
+    sync::{ExternalSemaphoreInfo, ExternalSemaphoreProperties},
+    OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use bytemuck::cast_slice;
 use std::{
@@ -722,6 +727,9 @@ impl PhysicalDevice {
         // VUID-VkPhysicalDeviceImageFormatInfo2-usage-parameter
         usage.validate_physical_device(self)?;
 
+        // VUID-VkPhysicalDeviceImageFormatInfo2-usage-requiredbitmask
+        assert!(!usage.is_empty());
+
         if let Some(handle_type) = external_memory_handle_type {
             if !(self.api_version() >= Version::V1_1
                 || self
@@ -901,6 +909,203 @@ impl PhysicalDevice {
         }
     }
 
+    /// Returns the properties of sparse images with a given image configuration.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `format_info.format` is `None`.
+    #[inline]
+    pub fn sparse_image_format_properties(
+        &self,
+        format_info: SparseImageFormatInfo,
+    ) -> Result<Vec<SparseImageFormatProperties>, ImageFormatPropertiesError> {
+        self.validate_sparse_image_format_properties(&format_info)?;
+
+        unsafe { Ok(self.sparse_image_format_properties_unchecked(format_info)) }
+    }
+
+    fn validate_sparse_image_format_properties(
+        &self,
+        format_info: &SparseImageFormatInfo,
+    ) -> Result<(), ImageFormatPropertiesError> {
+        let &SparseImageFormatInfo {
+            format: _,
+            image_type,
+            samples,
+            usage,
+            tiling,
+            _ne: _,
+        } = format_info;
+
+        // VUID-VkPhysicalDeviceSparseImageFormatInfo2-format-parameter
+        // TODO: format.validate_physical_device(self)?;
+
+        // VUID-VkPhysicalDeviceSparseImageFormatInfo2-type-parameter
+        image_type.validate_physical_device(self)?;
+
+        // VUID-VkPhysicalDeviceSparseImageFormatInfo2-samples-parameter
+        samples.validate_physical_device(self)?;
+
+        // VUID-VkPhysicalDeviceSparseImageFormatInfo2-usage-parameter
+        usage.validate_physical_device(self)?;
+
+        // VUID-VkPhysicalDeviceSparseImageFormatInfo2-usage-requiredbitmask
+        assert!(!usage.is_empty());
+
+        // VUID-VkPhysicalDeviceSparseImageFormatInfo2-tiling-parameter
+        tiling.validate_physical_device(self)?;
+
+        // VUID-VkPhysicalDeviceSparseImageFormatInfo2-samples-01095
+        // TODO:
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn sparse_image_format_properties_unchecked(
+        &self,
+        format_info: SparseImageFormatInfo,
+    ) -> Vec<SparseImageFormatProperties> {
+        let SparseImageFormatInfo {
+            format,
+            image_type,
+            samples,
+            usage,
+            tiling,
+            _ne: _,
+        } = format_info;
+
+        let format_info2 = ash::vk::PhysicalDeviceSparseImageFormatInfo2 {
+            format: format.unwrap().into(),
+            ty: image_type.into(),
+            samples: samples.into(),
+            usage: usage.into(),
+            tiling: tiling.into(),
+            ..Default::default()
+        };
+
+        let fns = self.instance.fns();
+
+        if self.api_version() >= Version::V1_1
+            || self
+                .instance
+                .enabled_extensions()
+                .khr_get_physical_device_properties2
+        {
+            let mut count = 0;
+
+            if self.api_version() >= Version::V1_1 {
+                (fns.v1_1.get_physical_device_sparse_image_format_properties2)(
+                    self.handle,
+                    &format_info2,
+                    &mut count,
+                    ptr::null_mut(),
+                );
+            } else {
+                (fns.khr_get_physical_device_properties2
+                    .get_physical_device_sparse_image_format_properties2_khr)(
+                    self.handle,
+                    &format_info2,
+                    &mut count,
+                    ptr::null_mut(),
+                );
+            }
+
+            let mut sparse_image_format_properties2 =
+                vec![ash::vk::SparseImageFormatProperties2::default(); count as usize];
+
+            if self.api_version() >= Version::V1_1 {
+                (fns.v1_1.get_physical_device_sparse_image_format_properties2)(
+                    self.handle,
+                    &format_info2,
+                    &mut count,
+                    sparse_image_format_properties2.as_mut_ptr(),
+                );
+            } else {
+                (fns.khr_get_physical_device_properties2
+                    .get_physical_device_sparse_image_format_properties2_khr)(
+                    self.handle,
+                    &format_info2,
+                    &mut count,
+                    sparse_image_format_properties2.as_mut_ptr(),
+                );
+            }
+
+            sparse_image_format_properties2.set_len(count as usize);
+
+            sparse_image_format_properties2
+                .into_iter()
+                .map(
+                    |sparse_image_format_properties2| SparseImageFormatProperties {
+                        aspects: sparse_image_format_properties2
+                            .properties
+                            .aspect_mask
+                            .into(),
+                        image_granularity: [
+                            sparse_image_format_properties2
+                                .properties
+                                .image_granularity
+                                .width,
+                            sparse_image_format_properties2
+                                .properties
+                                .image_granularity
+                                .height,
+                            sparse_image_format_properties2
+                                .properties
+                                .image_granularity
+                                .depth,
+                        ],
+                        flags: sparse_image_format_properties2.properties.flags.into(),
+                    },
+                )
+                .collect()
+        } else {
+            let mut count = 0;
+
+            (fns.v1_0.get_physical_device_sparse_image_format_properties)(
+                self.handle,
+                format_info2.format,
+                format_info2.ty,
+                format_info2.samples,
+                format_info2.usage,
+                format_info2.tiling,
+                &mut count,
+                ptr::null_mut(),
+            );
+
+            let mut sparse_image_format_properties =
+                vec![ash::vk::SparseImageFormatProperties::default(); count as usize];
+
+            (fns.v1_0.get_physical_device_sparse_image_format_properties)(
+                self.handle,
+                format_info2.format,
+                format_info2.ty,
+                format_info2.samples,
+                format_info2.usage,
+                format_info2.tiling,
+                &mut count,
+                sparse_image_format_properties.as_mut_ptr(),
+            );
+
+            sparse_image_format_properties.set_len(count as usize);
+
+            sparse_image_format_properties
+                .into_iter()
+                .map(
+                    |sparse_image_format_properties| SparseImageFormatProperties {
+                        aspects: sparse_image_format_properties.aspect_mask.into(),
+                        image_granularity: [
+                            sparse_image_format_properties.image_granularity.width,
+                            sparse_image_format_properties.image_granularity.height,
+                            sparse_image_format_properties.image_granularity.depth,
+                        ],
+                        flags: sparse_image_format_properties.flags.into(),
+                    },
+                )
+                .collect()
+        }
+    }
+
     /// Returns the capabilities that are supported by the physical device for the given surface.
     ///
     /// # Panic
@@ -922,6 +1127,21 @@ impl PhysicalDevice {
         surface: &Surface<W>,
         surface_info: &SurfaceInfo,
     ) -> Result<(), SurfacePropertiesError> {
+        if !(self
+            .instance
+            .enabled_extensions()
+            .khr_get_surface_capabilities2
+            || self.instance.enabled_extensions().khr_surface)
+        {
+            return Err(SurfacePropertiesError::RequirementNotMet {
+                required_for: "`surface_capabilities`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_get_surface_capabilities2", "khr_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
         // VUID-vkGetPhysicalDeviceSurfaceCapabilities2KHR-commonparent
         assert_eq!(self.instance(), surface.instance());
 
@@ -1151,6 +1371,21 @@ impl PhysicalDevice {
         surface: &Surface<W>,
         surface_info: &SurfaceInfo,
     ) -> Result<(), SurfacePropertiesError> {
+        if !(self
+            .instance
+            .enabled_extensions()
+            .khr_get_surface_capabilities2
+            || self.instance.enabled_extensions().khr_surface)
+        {
+            return Err(SurfacePropertiesError::RequirementNotMet {
+                required_for: "`surface_formats`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_get_surface_capabilities2", "khr_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
         // VUID-vkGetPhysicalDeviceSurfaceFormats2KHR-commonparent
         assert_eq!(self.instance(), surface.instance());
 
@@ -1346,6 +1581,16 @@ impl PhysicalDevice {
         &self,
         surface: &Surface<W>,
     ) -> Result<(), SurfacePropertiesError> {
+        if !self.instance.enabled_extensions().khr_surface {
+            return Err(SurfacePropertiesError::RequirementNotMet {
+                required_for: "`surface_present_modes`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
         // VUID-vkGetPhysicalDeviceSurfacePresentModesKHR-commonparent
         assert_eq!(self.instance(), surface.instance());
 
@@ -1419,9 +1664,22 @@ impl PhysicalDevice {
         queue_family_index: u32,
         _surface: &Surface<W>,
     ) -> Result<(), SurfacePropertiesError> {
+        if !self.instance.enabled_extensions().khr_surface {
+            return Err(SurfacePropertiesError::RequirementNotMet {
+                required_for: "`surface_support`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
         // VUID-vkGetPhysicalDeviceSurfaceSupportKHR-queueFamilyIndex-01269
         if queue_family_index >= self.queue_family_properties.len() as u32 {
-            todo!()
+            return Err(SurfacePropertiesError::QueueFamilyIndexOutOfRange {
+                queue_family_index,
+                queue_family_count: self.queue_family_properties.len() as u32,
+            });
         }
 
         Ok(())
@@ -1497,195 +1755,6 @@ impl From<ash::vk::ExtensionProperties> for ExtensionProperties {
             spec_version: val.spec_version,
         }
     }
-}
-
-/// Properties of the memory in a physical device.
-#[derive(Clone, Debug)]
-#[non_exhaustive]
-pub struct MemoryProperties {
-    /// The available memory types.
-    pub memory_types: Vec<MemoryType>,
-
-    /// The available memory heaps.
-    pub memory_heaps: Vec<MemoryHeap>,
-}
-
-impl From<ash::vk::PhysicalDeviceMemoryProperties> for MemoryProperties {
-    #[inline]
-    fn from(val: ash::vk::PhysicalDeviceMemoryProperties) -> Self {
-        Self {
-            memory_types: val.memory_types[0..val.memory_type_count as usize]
-                .iter()
-                .map(|vk_memory_type| MemoryType {
-                    property_flags: vk_memory_type.property_flags.into(),
-                    heap_index: vk_memory_type.heap_index,
-                })
-                .collect(),
-            memory_heaps: val.memory_heaps[0..val.memory_heap_count as usize]
-                .iter()
-                .map(|vk_memory_heap| MemoryHeap {
-                    size: vk_memory_heap.size,
-                    flags: vk_memory_heap.flags.into(),
-                })
-                .collect(),
-        }
-    }
-}
-
-/// A memory type in a physical device.
-#[derive(Clone, Debug)]
-#[non_exhaustive]
-pub struct MemoryType {
-    /// The properties of this memory type.
-    pub property_flags: MemoryPropertyFlags,
-
-    /// The index of the memory heap that this memory type corresponds to.
-    pub heap_index: u32,
-}
-
-vulkan_bitflags! {
-    /// Properties of a memory type.
-    #[non_exhaustive]
-    MemoryPropertyFlags = MemoryPropertyFlags(u32);
-
-    /// The memory is located on the device. This usually means that it's efficient for the
-    /// device to access this memory.
-    device_local = DEVICE_LOCAL,
-
-    /// The memory can be accessed by the host.
-    host_visible = HOST_VISIBLE,
-
-    /// Modifications made by the host or the device on this memory type are
-    /// instantaneously visible to the other party. If memory does not have this flag, changes to
-    /// the memory are not visible until they are flushed or invalidated.
-    host_coherent = HOST_COHERENT,
-
-    /// The memory is cached by the host. Host memory accesses to cached memory are faster than for
-    /// uncached memory, but the cache may not be coherent.
-    host_cached = HOST_CACHED,
-
-    /// Allocations made from this memory type are lazy.
-    ///
-    /// This means that no actual allocation is performed. Instead memory is automatically
-    /// allocated by the Vulkan implementation based on need.
-    ///
-    /// Memory of this type can only be used on images created with a certain flag. Memory of this
-    /// type is never host-visible.
-    lazily_allocated = LAZILY_ALLOCATED,
-
-    /// The memory can only be accessed by the device, and allows protected queue access.
-    ///
-    /// Memory of this type is never host visible, host coherent or host cached.
-    protected = PROTECTED {
-        api_version: V1_1,
-    },
-}
-
-/// A memory heap in a physical device.
-#[derive(Clone, Debug)]
-#[non_exhaustive]
-pub struct MemoryHeap {
-    /// The size of the heap in bytes.
-    pub size: DeviceSize,
-
-    /// Attributes of the heap.
-    pub flags: MemoryHeapFlags,
-}
-
-vulkan_bitflags! {
-    /// Attributes of a memory heap.
-    #[non_exhaustive]
-    MemoryHeapFlags = MemoryHeapFlags(u32);
-
-    /// The heap corresponds to device-local memory.
-    device_local = DEVICE_LOCAL,
-
-    /// If used on a logical device that represents more than one physical device, allocations are
-    /// replicated across each physical device's instance of this heap.
-    multi_instance = MULTI_INSTANCE {
-        api_version: V1_1,
-        instance_extensions: [khr_device_group_creation],
-    },
-}
-
-/// Properties of a queue family in a physical device.
-#[derive(Clone, Debug)]
-#[non_exhaustive]
-pub struct QueueFamilyProperties {
-    /// Attributes of the queue family.
-    pub queue_flags: QueueFlags,
-
-    /// The number of queues available in this family.
-    ///
-    /// This guaranteed to be at least 1 (or else that family wouldn't exist).
-    pub queue_count: u32,
-
-    /// If timestamps are supported, the number of bits supported by timestamp operations.
-    /// The returned value will be in the range 36..64.
-    ///
-    /// If timestamps are not supported, this is `None`.
-    pub timestamp_valid_bits: Option<u32>,
-
-    /// The minimum granularity supported for image transfers, in terms of `[width, height, depth]`.
-    pub min_image_transfer_granularity: [u32; 3],
-}
-
-impl QueueFamilyProperties {
-    /// Returns whether the queues of this family support a particular pipeline stage.
-    #[inline]
-    pub fn supports_stage(&self, stage: PipelineStage) -> bool {
-        ash::vk::QueueFlags::from(self.queue_flags).contains(stage.required_queue_flags())
-    }
-}
-
-impl From<ash::vk::QueueFamilyProperties> for QueueFamilyProperties {
-    #[inline]
-    fn from(val: ash::vk::QueueFamilyProperties) -> Self {
-        Self {
-            queue_flags: val.queue_flags.into(),
-            queue_count: val.queue_count,
-            timestamp_valid_bits: (val.timestamp_valid_bits != 0)
-                .then_some(val.timestamp_valid_bits),
-            min_image_transfer_granularity: [
-                val.min_image_transfer_granularity.width,
-                val.min_image_transfer_granularity.height,
-                val.min_image_transfer_granularity.depth,
-            ],
-        }
-    }
-}
-
-vulkan_bitflags! {
-    /// Attributes of a queue or queue family.
-    #[non_exhaustive]
-    QueueFlags = QueueFlags(u32);
-
-    /// Queues of this family can execute graphics operations.
-    graphics = GRAPHICS,
-
-    /// Queues of this family can execute compute operations.
-    compute = COMPUTE,
-
-    /// Queues of this family can execute transfer operations.
-    transfer = TRANSFER,
-
-    /// Queues of this family can execute sparse memory management operations.
-    sparse_binding = SPARSE_BINDING,
-
-    /// Queues of this family can be created using the `protected` flag.
-    protected = PROTECTED {
-        api_version: V1_1,
-    },
-
-    /// Queues of this family can execute video decode operations.
-    video_decode = VIDEO_DECODE_KHR {
-        device_extensions: [khr_video_decode_queue],
-    },
-
-    /// Queues of this family can execute video encode operations.
-    video_encode = VIDEO_ENCODE_KHR {
-        device_extensions: [khr_video_encode_queue],
-    },
 }
 
 vulkan_enum! {
@@ -2018,6 +2087,11 @@ pub enum SurfacePropertiesError {
     // The given `SurfaceInfo` values are not supported for the surface by the physical device.
     NotSupported,
 
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
+    },
+
     /// The provided `queue_family_index` was not less than the number of queue families in the
     /// physical device.
     QueueFamilyIndexOutOfRange {
@@ -2052,6 +2126,16 @@ impl Display for SurfacePropertiesError {
                 f,
                 "the given `SurfaceInfo` values are not supported for the surface by the physical device",
             ),
+
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
+            ),
+
             Self::QueueFamilyIndexOutOfRange {
                 queue_family_index,
                 queue_family_count,

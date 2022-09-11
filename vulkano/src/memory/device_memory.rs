@@ -71,7 +71,7 @@ impl DeviceMemory {
     pub fn allocate(
         device: Arc<Device>,
         mut allocate_info: MemoryAllocateInfo,
-    ) -> Result<Self, DeviceMemoryAllocationError> {
+    ) -> Result<Self, DeviceMemoryError> {
         Self::validate(&device, &mut allocate_info, None)?;
         let handle = unsafe { Self::create(&device, &allocate_info, None)? };
 
@@ -108,7 +108,7 @@ impl DeviceMemory {
         device: Arc<Device>,
         mut allocate_info: MemoryAllocateInfo,
         mut import_info: MemoryImportInfo,
-    ) -> Result<Self, DeviceMemoryAllocationError> {
+    ) -> Result<Self, DeviceMemoryError> {
         Self::validate(&device, &mut allocate_info, Some(&mut import_info))?;
         let handle = Self::create(&device, &allocate_info, Some(import_info))?;
 
@@ -134,7 +134,7 @@ impl DeviceMemory {
         device: &Device,
         allocate_info: &mut MemoryAllocateInfo,
         import_info: Option<&mut MemoryImportInfo>,
-    ) -> Result<(), DeviceMemoryAllocationError> {
+    ) -> Result<(), DeviceMemoryError> {
         let &mut MemoryAllocateInfo {
             allocation_size,
             memory_type_index,
@@ -156,14 +156,14 @@ impl DeviceMemory {
         let memory_type = memory_properties
             .memory_types
             .get(memory_type_index as usize)
-            .ok_or(DeviceMemoryAllocationError::MemoryTypeIndexOutOfRange {
+            .ok_or(DeviceMemoryError::MemoryTypeIndexOutOfRange {
                 memory_type_index,
                 memory_type_count: memory_properties.memory_types.len() as u32,
             })?;
 
         // VUID-VkMemoryAllocateInfo-memoryTypeIndex-01872
         if memory_type.property_flags.protected && !device.enabled_features().protected_memory {
-            return Err(DeviceMemoryAllocationError::RequirementNotMet {
+            return Err(DeviceMemoryError::RequirementNotMet {
                 required_for: "`allocate_info.memory_type_index` refers to a memory type where `property_flags.protected` is set",
                 requires_one_of: RequiresOneOf {
                     features: &["protected_memory"],
@@ -178,7 +178,7 @@ impl DeviceMemory {
         // VUID-vkAllocateMemory-pAllocateInfo-01713
         let heap_size = memory_properties.memory_heaps[memory_type.heap_index as usize].size;
         if heap_size != 0 && allocation_size > heap_size {
-            return Err(DeviceMemoryAllocationError::MemoryTypeHeapSizeExceeded {
+            return Err(DeviceMemoryError::MemoryTypeHeapSizeExceeded {
                 allocation_size,
                 heap_size,
             });
@@ -194,12 +194,10 @@ impl DeviceMemory {
 
                     // VUID-VkMemoryDedicatedAllocateInfo-buffer-02965
                     if allocation_size != required_size {
-                        return Err(
-                            DeviceMemoryAllocationError::DedicatedAllocationSizeMismatch {
-                                allocation_size,
-                                required_size,
-                            },
-                        );
+                        return Err(DeviceMemoryError::DedicatedAllocationSizeMismatch {
+                            allocation_size,
+                            required_size,
+                        });
                     }
                 }
                 DedicatedAllocation::Image(image) => {
@@ -210,12 +208,10 @@ impl DeviceMemory {
 
                     // VUID-VkMemoryDedicatedAllocateInfo-image-02964
                     if allocation_size != required_size {
-                        return Err(
-                            DeviceMemoryAllocationError::DedicatedAllocationSizeMismatch {
-                                allocation_size,
-                                required_size,
-                            },
-                        );
+                        return Err(DeviceMemoryError::DedicatedAllocationSizeMismatch {
+                            allocation_size,
+                            required_size,
+                        });
                     }
                 }
             }
@@ -225,7 +221,7 @@ impl DeviceMemory {
             if !(device.api_version() >= Version::V1_1
                 || device.enabled_extensions().khr_external_memory)
             {
-                return Err(DeviceMemoryAllocationError::RequirementNotMet {
+                return Err(DeviceMemoryError::RequirementNotMet {
                     required_for: "`allocate_info.export_handle_types` is not empty",
                     requires_one_of: RequiresOneOf {
                         api_version: Some(Version::V1_1),
@@ -255,7 +251,7 @@ impl DeviceMemory {
                     file: _,
                 } => {
                     if !device.enabled_extensions().khr_external_memory_fd {
-                        return Err(DeviceMemoryAllocationError::RequirementNotMet {
+                        return Err(DeviceMemoryError::RequirementNotMet {
                             required_for:
                                 "`allocate_info.import_info` is `Some(MemoryImportInfo::Fd)`",
                             requires_one_of: RequiresOneOf {
@@ -289,11 +285,9 @@ impl DeviceMemory {
                             }
                             ExternalMemoryHandleType::DmaBuf => {}
                             _ => {
-                                return Err(
-                                    DeviceMemoryAllocationError::ImportFdHandleTypeNotSupported {
-                                        handle_type,
-                                    },
-                                )
+                                return Err(DeviceMemoryError::ImportFdHandleTypeNotSupported {
+                                    handle_type,
+                                })
                             }
                         }
 
@@ -309,7 +303,7 @@ impl DeviceMemory {
                     handle: _,
                 } => {
                     if !device.enabled_extensions().khr_external_memory_win32 {
-                        return Err(DeviceMemoryAllocationError::RequirementNotMet {
+                        return Err(DeviceMemoryError::RequirementNotMet {
                             required_for:
                                 "`allocate_info.import_info` is `Some(MemoryImportInfo::Win32)`",
                             requires_one_of: RequiresOneOf {
@@ -342,11 +336,11 @@ impl DeviceMemory {
                                 // VUID-VkMemoryDedicatedAllocateInfo-image-01878
                                 // Can't validate, must be ensured by user
                             }
-                            _ => return Err(
-                                DeviceMemoryAllocationError::ImportWin32HandleTypeNotSupported {
+                            _ => {
+                                return Err(DeviceMemoryError::ImportWin32HandleTypeNotSupported {
                                     handle_type,
-                                },
-                            ),
+                                })
+                            }
                         }
 
                         // VUID-VkMemoryAllocateInfo-memoryTypeIndex-00645
@@ -363,7 +357,7 @@ impl DeviceMemory {
         device: &Device,
         allocate_info: &MemoryAllocateInfo,
         import_info: Option<MemoryImportInfo>,
-    ) -> Result<ash::vk::DeviceMemory, DeviceMemoryAllocationError> {
+    ) -> Result<ash::vk::DeviceMemory, DeviceMemoryError> {
         let &MemoryAllocateInfo {
             allocation_size,
             memory_type_index,
@@ -453,7 +447,7 @@ impl DeviceMemory {
                 .properties()
                 .max_memory_allocation_count
         {
-            return Err(DeviceMemoryAllocationError::TooManyObjects);
+            return Err(DeviceMemoryError::TooManyObjects);
         }
 
         let handle = {
@@ -487,6 +481,50 @@ impl DeviceMemory {
         self.allocation_size
     }
 
+    /// Retrieves the amount of lazily-allocated memory that is currently commited to this
+    /// memory object.
+    ///
+    /// The device may change this value at any time, and the returned value may be
+    /// already out-of-date.
+    ///
+    /// `self` must have been allocated from a memory type that has the
+    /// [`lazily_allocated`](crate::memory::MemoryPropertyFlags::lazily_allocated) flag set.
+    #[inline]
+    pub fn commitment(&self) -> Result<DeviceSize, DeviceMemoryError> {
+        self.validate_commitment()?;
+
+        unsafe { Ok(self.commitment_unchecked()) }
+    }
+
+    fn validate_commitment(&self) -> Result<(), DeviceMemoryError> {
+        let memory_type = &self
+            .device
+            .physical_device()
+            .memory_properties()
+            .memory_types[self.memory_type_index as usize];
+
+        // VUID-vkGetDeviceMemoryCommitment-memory-00690
+        if !memory_type.property_flags.lazily_allocated {
+            return Err(DeviceMemoryError::NotLazilyAllocated);
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn commitment_unchecked(&self) -> DeviceSize {
+        let mut output: DeviceSize = 0;
+
+        let fns = self.device.fns();
+        (fns.v1_0.get_device_memory_commitment)(
+            self.device.internal_object(),
+            self.handle,
+            &mut output,
+        );
+
+        output
+    }
+
     /// Exports the device memory into a Unix file descriptor. The caller owns the returned `File`.
     ///
     /// # Panic
@@ -496,7 +534,7 @@ impl DeviceMemory {
     pub fn export_fd(
         &self,
         handle_type: ExternalMemoryHandleType,
-    ) -> Result<std::fs::File, DeviceMemoryExportError> {
+    ) -> Result<std::fs::File, DeviceMemoryError> {
         // VUID-VkMemoryGetFdInfoKHR-handleType-parameter
         handle_type.validate_device(&self.device)?;
 
@@ -505,14 +543,14 @@ impl DeviceMemory {
             handle_type,
             ExternalMemoryHandleType::OpaqueFd | ExternalMemoryHandleType::DmaBuf
         ) {
-            return Err(DeviceMemoryExportError::HandleTypeNotSupported { handle_type });
+            return Err(DeviceMemoryError::HandleTypeNotSupported { handle_type });
         }
 
         // VUID-VkMemoryGetFdInfoKHR-handleType-00671
         if !ash::vk::ExternalMemoryHandleTypeFlags::from(self.export_handle_types)
             .intersects(ash::vk::ExternalMemoryHandleTypeFlags::from(handle_type))
         {
-            return Err(DeviceMemoryExportError::HandleTypeNotSupported { handle_type });
+            return Err(DeviceMemoryError::HandleTypeNotSupported { handle_type });
         }
 
         debug_assert!(self.device().enabled_extensions().khr_external_memory_fd);
@@ -591,165 +629,6 @@ impl Hash for DeviceMemory {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
         self.device.hash(state);
-    }
-}
-
-/// Error type returned by functions related to `DeviceMemory`.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum DeviceMemoryAllocationError {
-    /// Not enough memory available.
-    OomError(OomError),
-
-    /// The maximum number of allocations has been exceeded.
-    TooManyObjects,
-
-    /// An error occurred when mapping the memory.
-    MemoryMapError(MemoryMapError),
-
-    RequirementNotMet {
-        required_for: &'static str,
-        requires_one_of: RequiresOneOf,
-    },
-
-    /// `dedicated_allocation` was `Some`, but the provided `allocation_size`  was different from
-    /// the required size of the buffer or image.
-    DedicatedAllocationSizeMismatch {
-        allocation_size: DeviceSize,
-        required_size: DeviceSize,
-    },
-
-    /// The provided `MemoryImportInfo::Fd::handle_type` is not supported for file descriptors.
-    ImportFdHandleTypeNotSupported {
-        handle_type: ExternalMemoryHandleType,
-    },
-
-    /// The provided `MemoryImportInfo::Win32::handle_type` is not supported.
-    ImportWin32HandleTypeNotSupported {
-        handle_type: ExternalMemoryHandleType,
-    },
-
-    /// The provided `allocation_size` was greater than the memory type's heap size.
-    MemoryTypeHeapSizeExceeded {
-        allocation_size: DeviceSize,
-        heap_size: DeviceSize,
-    },
-
-    /// The provided `memory_type_index` was not less than the number of memory types in the
-    /// physical device.
-    MemoryTypeIndexOutOfRange {
-        memory_type_index: u32,
-        memory_type_count: u32,
-    },
-
-    /// Spec violation, containing the Valid Usage ID (VUID) from the Vulkan spec.
-    // TODO: Remove
-    SpecViolation(u32),
-
-    /// An implicit violation that's convered in the Vulkan spec.
-    // TODO: Remove
-    ImplicitSpecViolation(&'static str),
-}
-
-impl Error for DeviceMemoryAllocationError {
-    #[inline]
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            Self::OomError(ref err) => Some(err),
-            Self::MemoryMapError(ref err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl Display for DeviceMemoryAllocationError {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
-        match *self {
-            Self::OomError(_) => write!(f, "not enough memory available"),
-            Self::TooManyObjects => {
-                write!(f, "the maximum number of allocations has been exceeded")
-            }
-            Self::MemoryMapError(_) => write!(f, "error occurred when mapping the memory"),
-
-            Self::RequirementNotMet {
-                required_for,
-                requires_one_of,
-            } => write!(
-                f,
-                "a requirement was not met for: {}; requires one of: {}",
-                required_for, requires_one_of,
-            ),
-
-            Self::DedicatedAllocationSizeMismatch { allocation_size, required_size } => write!(
-                f,
-                "`dedicated_allocation` was `Some`, but the provided `allocation_size` ({}) was different from the required size of the buffer or image ({})",
-                allocation_size, required_size,
-            ),
-            Self::ImportFdHandleTypeNotSupported { handle_type } => write!(
-                f,
-                "the provided `MemoryImportInfo::Fd::handle_type` ({:?}) is not supported for file descriptors",
-                handle_type,
-            ),
-            Self::ImportWin32HandleTypeNotSupported { handle_type } => write!(
-                f,
-                "the provided `MemoryImportInfo::Win32::handle_type` ({:?}) is not supported",
-                handle_type,
-            ),
-            Self::MemoryTypeHeapSizeExceeded { allocation_size, heap_size } => write!(
-                f,
-                "the provided `allocation_size` ({}) was greater than the memory type's heap size ({})",
-                allocation_size, heap_size,
-            ),
-            Self::MemoryTypeIndexOutOfRange { memory_type_index, memory_type_count } => write!(
-                f,
-                "the provided `memory_type_index` ({}) was not less than the number of memory types in the physical device ({})",
-                memory_type_index, memory_type_count,
-            ),
-
-            Self::SpecViolation(u) => {
-                write!(f, "valid usage ID check {} failed", u)
-            }
-            Self::ImplicitSpecViolation(e) => {
-                write!(f, "Implicit spec violation failed {}", e)
-            }
-        }
-    }
-}
-
-impl From<VulkanError> for DeviceMemoryAllocationError {
-    #[inline]
-    fn from(err: VulkanError) -> Self {
-        match err {
-            e @ VulkanError::OutOfHostMemory | e @ VulkanError::OutOfDeviceMemory => {
-                Self::OomError(e.into())
-            }
-            VulkanError::TooManyObjects => Self::TooManyObjects,
-            _ => panic!("unexpected error: {:?}", err),
-        }
-    }
-}
-
-impl From<OomError> for DeviceMemoryAllocationError {
-    #[inline]
-    fn from(err: OomError) -> Self {
-        Self::OomError(err)
-    }
-}
-
-impl From<MemoryMapError> for DeviceMemoryAllocationError {
-    #[inline]
-    fn from(err: MemoryMapError) -> Self {
-        Self::MemoryMapError(err)
-    }
-}
-
-impl From<RequirementNotMet> for DeviceMemoryAllocationError {
-    #[inline]
-    fn from(err: RequirementNotMet) -> Self {
-        Self::RequirementNotMet {
-            required_for: err.required_for,
-            requires_one_of: err.requires_one_of,
-        }
     }
 }
 
@@ -1020,17 +899,27 @@ impl ExternalMemoryHandleTypes {
 }
 
 /// Error type returned by functions related to `DeviceMemory`.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum DeviceMemoryExportError {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DeviceMemoryError {
     /// Not enough memory available.
     OomError(OomError),
 
     /// The maximum number of allocations has been exceeded.
     TooManyObjects,
 
+    /// An error occurred when mapping the memory.
+    MemoryMapError(MemoryMapError),
+
     RequirementNotMet {
         required_for: &'static str,
         requires_one_of: RequiresOneOf,
+    },
+
+    /// `dedicated_allocation` was `Some`, but the provided `allocation_size`  was different from
+    /// the required size of the buffer or image.
+    DedicatedAllocationSizeMismatch {
+        allocation_size: DeviceSize,
+        required_size: DeviceSize,
     },
 
     /// The requested export handle type is not supported for this operation, or was not provided in
@@ -1038,19 +927,55 @@ pub enum DeviceMemoryExportError {
     HandleTypeNotSupported {
         handle_type: ExternalMemoryHandleType,
     },
+
+    /// The provided `MemoryImportInfo::Fd::handle_type` is not supported for file descriptors.
+    ImportFdHandleTypeNotSupported {
+        handle_type: ExternalMemoryHandleType,
+    },
+
+    /// The provided `MemoryImportInfo::Win32::handle_type` is not supported.
+    ImportWin32HandleTypeNotSupported {
+        handle_type: ExternalMemoryHandleType,
+    },
+
+    /// The provided `allocation_size` was greater than the memory type's heap size.
+    MemoryTypeHeapSizeExceeded {
+        allocation_size: DeviceSize,
+        heap_size: DeviceSize,
+    },
+
+    /// The provided `memory_type_index` was not less than the number of memory types in the
+    /// physical device.
+    MemoryTypeIndexOutOfRange {
+        memory_type_index: u32,
+        memory_type_count: u32,
+    },
+
+    /// The memory type from which this memory was allocated does not have the
+    /// [`lazily_allocated`](crate::memory::MemoryPropertyFlags::lazily_allocated) flag set.
+    NotLazilyAllocated,
+
+    /// Spec violation, containing the Valid Usage ID (VUID) from the Vulkan spec.
+    // TODO: Remove
+    SpecViolation(u32),
+
+    /// An implicit violation that's convered in the Vulkan spec.
+    // TODO: Remove
+    ImplicitSpecViolation(&'static str),
 }
 
-impl Error for DeviceMemoryExportError {
+impl Error for DeviceMemoryError {
     #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             Self::OomError(ref err) => Some(err),
+            Self::MemoryMapError(ref err) => Some(err),
             _ => None,
         }
     }
 }
 
-impl Display for DeviceMemoryExportError {
+impl Display for DeviceMemoryError {
     #[inline]
     fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match *self {
@@ -1058,6 +983,7 @@ impl Display for DeviceMemoryExportError {
             Self::TooManyObjects => {
                 write!(f, "the maximum number of allocations has been exceeded")
             }
+            Self::MemoryMapError(_) => write!(f, "error occurred when mapping the memory"),
 
             Self::RequirementNotMet {
                 required_for,
@@ -1068,6 +994,11 @@ impl Display for DeviceMemoryExportError {
                 required_for, requires_one_of,
             ),
 
+            Self::DedicatedAllocationSizeMismatch { allocation_size, required_size } => write!(
+                f,
+                "`dedicated_allocation` was `Some`, but the provided `allocation_size` ({}) was different from the required size of the buffer or image ({})",
+                allocation_size, required_size,
+            ),
             Self::HandleTypeNotSupported {
                 handle_type,
             } => write!(
@@ -1075,11 +1006,42 @@ impl Display for DeviceMemoryExportError {
                 "the requested export handle type ({:?}) is not supported for this operation, or was not provided in `export_handle_types` when allocating the memory",
                 handle_type,
             ),
+            Self::ImportFdHandleTypeNotSupported { handle_type } => write!(
+                f,
+                "the provided `MemoryImportInfo::Fd::handle_type` ({:?}) is not supported for file descriptors",
+                handle_type,
+            ),
+            Self::ImportWin32HandleTypeNotSupported { handle_type } => write!(
+                f,
+                "the provided `MemoryImportInfo::Win32::handle_type` ({:?}) is not supported",
+                handle_type,
+            ),
+            Self::MemoryTypeHeapSizeExceeded { allocation_size, heap_size } => write!(
+                f,
+                "the provided `allocation_size` ({}) was greater than the memory type's heap size ({})",
+                allocation_size, heap_size,
+            ),
+            Self::MemoryTypeIndexOutOfRange { memory_type_index, memory_type_count } => write!(
+                f,
+                "the provided `memory_type_index` ({}) was not less than the number of memory types in the physical device ({})",
+                memory_type_index, memory_type_count,
+            ),
+            Self::NotLazilyAllocated => write!(
+                f,
+                "the memory type from which this memory was allocated does not have the `lazily_allocated` flag set",
+            ),
+
+            Self::SpecViolation(u) => {
+                write!(f, "valid usage ID check {} failed", u)
+            }
+            Self::ImplicitSpecViolation(e) => {
+                write!(f, "Implicit spec violation failed {}", e)
+            }
         }
     }
 }
 
-impl From<VulkanError> for DeviceMemoryExportError {
+impl From<VulkanError> for DeviceMemoryError {
     #[inline]
     fn from(err: VulkanError) -> Self {
         match err {
@@ -1092,14 +1054,21 @@ impl From<VulkanError> for DeviceMemoryExportError {
     }
 }
 
-impl From<OomError> for DeviceMemoryExportError {
+impl From<OomError> for DeviceMemoryError {
     #[inline]
-    fn from(err: OomError) -> DeviceMemoryExportError {
+    fn from(err: OomError) -> Self {
         Self::OomError(err)
     }
 }
 
-impl From<RequirementNotMet> for DeviceMemoryExportError {
+impl From<MemoryMapError> for DeviceMemoryError {
+    #[inline]
+    fn from(err: MemoryMapError) -> Self {
+        Self::MemoryMapError(err)
+    }
+}
+
+impl From<RequirementNotMet> for DeviceMemoryError {
     #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
@@ -1544,7 +1513,7 @@ impl From<OomError> for MemoryMapError {
 mod tests {
     use super::MemoryAllocateInfo;
     use crate::{
-        memory::{DeviceMemory, DeviceMemoryAllocationError},
+        memory::{DeviceMemory, DeviceMemoryError},
         OomError,
     };
 
@@ -1599,7 +1568,7 @@ mod tests {
                 ..Default::default()
             },
         ) {
-            Err(DeviceMemoryAllocationError::MemoryTypeHeapSizeExceeded { .. }) => (),
+            Err(DeviceMemoryError::MemoryTypeHeapSizeExceeded { .. }) => (),
             _ => panic!(),
         }
     }
@@ -1631,7 +1600,7 @@ mod tests {
                     ..Default::default()
                 },
             ) {
-                Err(DeviceMemoryAllocationError::OomError(OomError::OutOfDeviceMemory)) => return, // test succeeded
+                Err(DeviceMemoryError::OomError(OomError::OutOfDeviceMemory)) => return, // test succeeded
                 Ok(a) => allocs.push(a),
                 _ => (),
             }

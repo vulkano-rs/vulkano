@@ -27,7 +27,7 @@ use crate::{
             AllocFromRequirementsFilter, AllocLayout, MappingRequirement, MemoryPoolAlloc,
             PotentialDedicatedAllocation, StandardMemoryPoolAlloc,
         },
-        DedicatedAllocation, DeviceMemoryAllocationError, MemoryPool,
+        DedicatedAllocation, DeviceMemoryError, MemoryPool,
     },
     sync::Sharing,
     DeviceSize,
@@ -82,7 +82,7 @@ where
         usage: BufferUsage,
         host_cached: bool,
         data: T,
-    ) -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocationError> {
+    ) -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryError> {
         unsafe {
             let uninitialized = CpuAccessibleBuffer::raw(
                 device,
@@ -115,7 +115,7 @@ where
         device: Arc<Device>,
         usage: BufferUsage,
         host_cached: bool,
-    ) -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocationError> {
+    ) -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryError> {
         CpuAccessibleBuffer::raw(device, size_of::<T>() as DeviceSize, usage, host_cached, [])
     }
 }
@@ -136,7 +136,7 @@ where
         usage: BufferUsage,
         host_cached: bool,
         data: I,
-    ) -> Result<Arc<CpuAccessibleBuffer<[T]>>, DeviceMemoryAllocationError>
+    ) -> Result<Arc<CpuAccessibleBuffer<[T]>>, DeviceMemoryError>
     where
         I: IntoIterator<Item = T>,
         I::IntoIter: ExactSizeIterator,
@@ -179,7 +179,7 @@ where
         len: DeviceSize,
         usage: BufferUsage,
         host_cached: bool,
-    ) -> Result<Arc<CpuAccessibleBuffer<[T]>>, DeviceMemoryAllocationError> {
+    ) -> Result<Arc<CpuAccessibleBuffer<[T]>>, DeviceMemoryError> {
         CpuAccessibleBuffer::raw(
             device,
             len * size_of::<T>() as DeviceSize,
@@ -209,7 +209,7 @@ where
         usage: BufferUsage,
         host_cached: bool,
         queue_family_indices: impl IntoIterator<Item = u32>,
-    ) -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocationError> {
+    ) -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryError> {
         let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
 
         let buffer = {

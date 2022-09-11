@@ -31,8 +31,8 @@ use crate::{
             MappingRequirement, MemoryPoolAlloc, PotentialDedicatedAllocation,
             StandardMemoryPoolAlloc,
         },
-        DedicatedAllocation, DeviceMemoryAllocationError, DeviceMemoryExportError,
-        ExternalMemoryHandleType, MemoryPool, MemoryRequirements,
+        DedicatedAllocation, DeviceMemoryError, ExternalMemoryHandleType, MemoryPool,
+        MemoryRequirements,
     },
     sync::{NowFuture, Sharing},
     DeviceSize,
@@ -158,7 +158,7 @@ where
         device: Arc<Device>,
         usage: BufferUsage,
         queue_family_indices: impl IntoIterator<Item = u32>,
-    ) -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryAllocationError> {
+    ) -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryError> {
         unsafe {
             DeviceLocalBuffer::raw(
                 device,
@@ -323,7 +323,7 @@ where
         len: DeviceSize,
         usage: BufferUsage,
         queue_family_indices: impl IntoIterator<Item = u32>,
-    ) -> Result<Arc<DeviceLocalBuffer<[T]>>, DeviceMemoryAllocationError> {
+    ) -> Result<Arc<DeviceLocalBuffer<[T]>>, DeviceMemoryError> {
         unsafe {
             DeviceLocalBuffer::raw(
                 device,
@@ -353,7 +353,7 @@ where
         size: DeviceSize,
         usage: BufferUsage,
         queue_family_indices: impl IntoIterator<Item = u32>,
-    ) -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryAllocationError> {
+    ) -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryError> {
         let queue_family_indices: SmallVec<[_; 4]> = queue_family_indices.into_iter().collect();
 
         let (buffer, mem_reqs) = Self::build_buffer(&device, size, usage, &queue_family_indices)?;
@@ -393,7 +393,7 @@ where
         size: DeviceSize,
         usage: BufferUsage,
         queue_family_indices: impl IntoIterator<Item = u32>,
-    ) -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryAllocationError> {
+    ) -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryError> {
         assert!(device.enabled_extensions().khr_external_memory_fd);
         assert!(device.enabled_extensions().khr_external_memory);
 
@@ -432,7 +432,7 @@ where
         size: DeviceSize,
         usage: BufferUsage,
         queue_family_indices: &SmallVec<[u32; 4]>,
-    ) -> Result<(Arc<UnsafeBuffer>, MemoryRequirements), DeviceMemoryAllocationError> {
+    ) -> Result<(Arc<UnsafeBuffer>, MemoryRequirements), DeviceMemoryError> {
         let buffer = {
             match UnsafeBuffer::new(
                 device.clone(),
@@ -460,7 +460,7 @@ where
     /// Exports posix file descriptor for the allocated memory
     /// requires `khr_external_memory_fd` and `khr_external_memory` extensions to be loaded.
     /// Only works on Linux/BSD.
-    pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryExportError> {
+    pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryError> {
         self.memory
             .memory()
             .export_fd(ExternalMemoryHandleType::OpaqueFd)
@@ -558,7 +558,7 @@ where
 
 #[derive(Clone, Debug)]
 pub enum DeviceLocalBufferCreationError {
-    DeviceMemoryAllocationError(DeviceMemoryAllocationError),
+    DeviceMemoryAllocationError(DeviceMemoryError),
     CommandBufferBeginError(CommandBufferBeginError),
 }
 
@@ -582,9 +582,9 @@ impl Display for DeviceLocalBufferCreationError {
     }
 }
 
-impl From<DeviceMemoryAllocationError> for DeviceLocalBufferCreationError {
+impl From<DeviceMemoryError> for DeviceLocalBufferCreationError {
     #[inline]
-    fn from(e: DeviceMemoryAllocationError) -> Self {
+    fn from(e: DeviceMemoryError) -> Self {
         Self::DeviceMemoryAllocationError(e)
     }
 }

@@ -21,7 +21,7 @@ use super::{
 use crate::{
     buffer::{sys::UnsafeBuffer, BufferAccess},
     command_buffer::CommandBufferInheritanceRenderingInfo,
-    device::{physical::QueueFamilyProperties, Device, DeviceOwned, Queue},
+    device::{Device, DeviceOwned, Queue, QueueFamilyProperties},
     format::Format,
     image::{sys::UnsafeImage, ImageAccess, ImageLayout, ImageSubresourceRange},
     query::{QueryControlFlags, QueryType},

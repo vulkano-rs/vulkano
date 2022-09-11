@@ -574,6 +574,35 @@ impl From<ImageSubresourceLayers> for ImageSubresourceRange {
     }
 }
 
+/// Describes the memory layout of an image.
+///
+/// The address of a texel at `(x, y, z, layer)` is `layer * array_pitch + z * depth_pitch +
+/// y * row_pitch + x * size_of_each_texel + offset`. `size_of_each_texel` must be determined
+/// depending on the format. The same formula applies for compressed formats, except that the
+/// coordinates must be in number of blocks.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SubresourceLayout {
+    /// The number of bytes from the start of the memory where the subresource begins.
+    pub offset: DeviceSize,
+
+    /// The size in bytes in the subresource. It includes any extra memory that is required based on
+    /// `row_pitch`.
+    pub size: DeviceSize,
+
+    /// The number of bytes between adjacent rows of texels.
+    pub row_pitch: DeviceSize,
+
+    /// The number of bytes between adjacent array layers.
+    ///
+    /// This value is undefined for images with only one array layer.
+    pub array_pitch: DeviceSize,
+
+    /// The number of bytes between adjacent depth slices.
+    ///
+    /// This value is undefined for images that are not three-dimensional.
+    pub depth_pitch: DeviceSize,
+}
+
 /// The image configuration to query in
 /// [`PhysicalDevice::image_format_properties`](crate::device::physical::PhysicalDevice::image_format_properties).
 #[derive(Clone, Debug)]
@@ -698,6 +727,7 @@ pub struct ImageFormatProperties {
 }
 
 impl From<ash::vk::ImageFormatProperties> for ImageFormatProperties {
+    #[inline]
     fn from(props: ash::vk::ImageFormatProperties) -> Self {
         Self {
             max_extent: [
@@ -714,6 +744,110 @@ impl From<ash::vk::ImageFormatProperties> for ImageFormatProperties {
             filter_cubic_minmax: false,
         }
     }
+}
+
+/// The image configuration to query in
+/// [`PhysicalDevice::sparse_image_format_properties`](crate::device::physical::PhysicalDevice::sparse_image_format_properties).
+#[derive(Clone, Debug)]
+pub struct SparseImageFormatInfo {
+    /// The `format` that the image will have.
+    ///
+    /// The default value is `None`, which must be overridden.
+    pub format: Option<Format>,
+
+    /// The dimension type that the image will have.
+    ///
+    /// The default value is [`ImageType::Dim2d`].
+    pub image_type: ImageType,
+
+    /// The `samples` that the image will have.
+    ///
+    /// The default value is `SampleCount::Sample1`.
+    pub samples: SampleCount,
+
+    /// The `usage` that the image will have.
+    ///
+    /// The default value is [`ImageUsage::empty()`], which must be overridden.
+    pub usage: ImageUsage,
+
+    /// The `tiling` that the image will have.
+    ///
+    /// The default value is [`ImageTiling::Optimal`].
+    pub tiling: ImageTiling,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for SparseImageFormatInfo {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            format: None,
+            image_type: ImageType::Dim2d,
+            samples: SampleCount::Sample1,
+            usage: ImageUsage::empty(),
+            tiling: ImageTiling::Optimal,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+/// The properties that are supported by a physical device for sparse images of a certain type.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct SparseImageFormatProperties {
+    /// The aspects of the image that the properties apply to.
+    pub aspects: ImageAspects,
+
+    /// The size of the sparse image block, in texels or compressed texel blocks.
+    ///
+    /// If `flags.nonstandard_block_size` is set, then these values do not match the standard
+    /// sparse block dimensions for the given format.
+    pub image_granularity: [u32; 3],
+
+    /// Additional information about the sparse image.
+    pub flags: SparseImageFormatFlags,
+}
+
+vulkan_bitflags! {
+    /// Flags specifying information about a sparse resource.
+    SparseImageFormatFlags = SparseImageFormatFlags(u32);
+
+    /// The image uses a single mip tail region for all array layers, instead of one mip tail region
+    /// per array layer.
+    single_miptail = SINGLE_MIPTAIL,
+
+    /// The image's mip tail region begins with the first mip level whose dimensions are not an
+    /// integer multiple of the corresponding sparse image block dimensions.
+    aligned_mip_size = ALIGNED_MIP_SIZE,
+
+    /// The image uses non-standard sparse image block dimensions.
+    nonstandard_block_size = NONSTANDARD_BLOCK_SIZE,
+}
+
+/// Requirements for binding memory to a sparse image.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct SparseImageMemoryRequirements {
+    /// The properties of the image format.
+    pub format_properties: SparseImageFormatProperties,
+
+    /// The first mip level at which image subresources are included in the mip tail region.
+    pub image_mip_tail_first_lod: u32,
+
+    /// The size in bytes of the mip tail region. This value is guaranteed to be a multiple of the
+    /// sparse block size in bytes.
+    ///
+    /// If `format_properties.flags.single_miptail` is set, then this is the size of the whole
+    /// mip tail. Otherwise it is the size of the mip tail of a single array layer.
+    pub image_mip_tail_size: DeviceSize,
+
+    /// The memory offset that must be used to bind the mip tail region.
+    pub image_mip_tail_offset: DeviceSize,
+
+    /// If `format_properties.flags.single_miptail` is not set, specifies the stride between
+    /// the mip tail regions of each array layer.
+    pub image_mip_tail_stride: Option<DeviceSize>,
 }
 
 #[cfg(test)]

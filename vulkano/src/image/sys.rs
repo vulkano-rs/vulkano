@@ -16,16 +16,19 @@
 use super::{
     ImageAspect, ImageAspects, ImageCreateFlags, ImageDimensions, ImageLayout,
     ImageSubresourceLayers, ImageSubresourceRange, ImageTiling, ImageUsage, SampleCount,
-    SampleCounts,
+    SampleCounts, SparseImageMemoryRequirements,
 };
 use crate::{
     buffer::cpu_access::{ReadLockError, WriteLockError},
     device::{physical::ImageFormatPropertiesError, Device, DeviceOwned},
     format::{ChromaSampling, Format, FormatFeatures, NumericType},
-    image::{view::ImageViewCreationError, ImageFormatInfo, ImageFormatProperties, ImageType},
+    image::{
+        view::ImageViewCreationError, ImageFormatInfo, ImageFormatProperties, ImageType,
+        SparseImageFormatProperties,
+    },
     memory::{
-        DeviceMemory, DeviceMemoryAllocationError, ExternalMemoryHandleType,
-        ExternalMemoryHandleTypes, MemoryRequirements,
+        DeviceMemory, DeviceMemoryError, ExternalMemoryHandleType, ExternalMemoryHandleTypes,
+        MemoryRequirements,
     },
     range_map::RangeMap,
     sync::{AccessError, CurrentAccess, Sharing},
@@ -1011,6 +1014,185 @@ impl UnsafeImage {
         }
     }
 
+    /// Returns the sparse memory requirements for this image.
+    pub fn sparse_memory_requirements(&self) -> Vec<SparseImageMemoryRequirements> {
+        let device = &self.device;
+
+        unsafe {
+            let fns = self.device.fns();
+
+            if device.api_version() >= Version::V1_1
+                || device.enabled_extensions().khr_get_memory_requirements2
+            {
+                let info2 = ash::vk::ImageSparseMemoryRequirementsInfo2 {
+                    image: self.handle,
+                    ..Default::default()
+                };
+
+                let mut count = 0;
+
+                if device.api_version() >= Version::V1_1 {
+                    (fns.v1_1.get_image_sparse_memory_requirements2)(
+                        device.internal_object(),
+                        &info2,
+                        &mut count,
+                        ptr::null_mut(),
+                    );
+                } else {
+                    (fns.khr_get_memory_requirements2
+                        .get_image_sparse_memory_requirements2_khr)(
+                        device.internal_object(),
+                        &info2,
+                        &mut count,
+                        ptr::null_mut(),
+                    );
+                }
+
+                let mut sparse_image_memory_requirements2 =
+                    vec![ash::vk::SparseImageMemoryRequirements2::default(); count as usize];
+
+                if device.api_version() >= Version::V1_1 {
+                    (fns.v1_1.get_image_sparse_memory_requirements2)(
+                        self.device.internal_object(),
+                        &info2,
+                        &mut count,
+                        sparse_image_memory_requirements2.as_mut_ptr(),
+                    );
+                } else {
+                    (fns.khr_get_memory_requirements2
+                        .get_image_sparse_memory_requirements2_khr)(
+                        self.device.internal_object(),
+                        &info2,
+                        &mut count,
+                        sparse_image_memory_requirements2.as_mut_ptr(),
+                    );
+                }
+
+                sparse_image_memory_requirements2.set_len(count as usize);
+
+                sparse_image_memory_requirements2
+                    .into_iter()
+                    .map(
+                        |sparse_image_memory_requirements2| SparseImageMemoryRequirements {
+                            format_properties: SparseImageFormatProperties {
+                                aspects: sparse_image_memory_requirements2
+                                    .memory_requirements
+                                    .format_properties
+                                    .aspect_mask
+                                    .into(),
+                                image_granularity: [
+                                    sparse_image_memory_requirements2
+                                        .memory_requirements
+                                        .format_properties
+                                        .image_granularity
+                                        .width,
+                                    sparse_image_memory_requirements2
+                                        .memory_requirements
+                                        .format_properties
+                                        .image_granularity
+                                        .height,
+                                    sparse_image_memory_requirements2
+                                        .memory_requirements
+                                        .format_properties
+                                        .image_granularity
+                                        .depth,
+                                ],
+                                flags: sparse_image_memory_requirements2
+                                    .memory_requirements
+                                    .format_properties
+                                    .flags
+                                    .into(),
+                            },
+                            image_mip_tail_first_lod: sparse_image_memory_requirements2
+                                .memory_requirements
+                                .image_mip_tail_first_lod,
+                            image_mip_tail_size: sparse_image_memory_requirements2
+                                .memory_requirements
+                                .image_mip_tail_size,
+                            image_mip_tail_offset: sparse_image_memory_requirements2
+                                .memory_requirements
+                                .image_mip_tail_offset,
+                            image_mip_tail_stride: (!sparse_image_memory_requirements2
+                                .memory_requirements
+                                .format_properties
+                                .flags
+                                .intersects(ash::vk::SparseImageFormatFlags::SINGLE_MIPTAIL))
+                            .then_some(
+                                sparse_image_memory_requirements2
+                                    .memory_requirements
+                                    .image_mip_tail_stride,
+                            ),
+                        },
+                    )
+                    .collect()
+            } else {
+                let mut count = 0;
+
+                (fns.v1_0.get_image_sparse_memory_requirements)(
+                    device.internal_object(),
+                    self.handle,
+                    &mut count,
+                    ptr::null_mut(),
+                );
+
+                let mut sparse_image_memory_requirements =
+                    vec![ash::vk::SparseImageMemoryRequirements::default(); count as usize];
+
+                (fns.v1_0.get_image_sparse_memory_requirements)(
+                    device.internal_object(),
+                    self.handle,
+                    &mut count,
+                    sparse_image_memory_requirements.as_mut_ptr(),
+                );
+
+                sparse_image_memory_requirements.set_len(count as usize);
+
+                sparse_image_memory_requirements
+                    .into_iter()
+                    .map(
+                        |sparse_image_memory_requirements| SparseImageMemoryRequirements {
+                            format_properties: SparseImageFormatProperties {
+                                aspects: sparse_image_memory_requirements
+                                    .format_properties
+                                    .aspect_mask
+                                    .into(),
+                                image_granularity: [
+                                    sparse_image_memory_requirements
+                                        .format_properties
+                                        .image_granularity
+                                        .width,
+                                    sparse_image_memory_requirements
+                                        .format_properties
+                                        .image_granularity
+                                        .height,
+                                    sparse_image_memory_requirements
+                                        .format_properties
+                                        .image_granularity
+                                        .depth,
+                                ],
+                                flags: sparse_image_memory_requirements
+                                    .format_properties
+                                    .flags
+                                    .into(),
+                            },
+                            image_mip_tail_first_lod: sparse_image_memory_requirements
+                                .image_mip_tail_first_lod,
+                            image_mip_tail_size: sparse_image_memory_requirements
+                                .image_mip_tail_size,
+                            image_mip_tail_offset: sparse_image_memory_requirements
+                                .image_mip_tail_offset,
+                            image_mip_tail_stride: (!sparse_image_memory_requirements
+                                .format_properties
+                                .flags
+                                .intersects(ash::vk::SparseImageFormatFlags::SINGLE_MIPTAIL))
+                            .then_some(sparse_image_memory_requirements.image_mip_tail_stride),
+                        },
+                    )
+                    .collect()
+            }
+        }
+    }
+
     pub unsafe fn bind_memory(
         &self,
         memory: &DeviceMemory,
@@ -1548,7 +1730,7 @@ impl Default for UnsafeImageCreateInfo {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ImageCreationError {
     /// Allocating memory failed.
-    AllocError(DeviceMemoryAllocationError),
+    AllocError(DeviceMemoryError),
 
     RequirementNotMet {
         required_for: &'static str,
@@ -1794,13 +1976,13 @@ impl Display for ImageCreationError {
 impl From<OomError> for ImageCreationError {
     #[inline]
     fn from(err: OomError) -> Self {
-        Self::AllocError(DeviceMemoryAllocationError::OomError(err))
+        Self::AllocError(DeviceMemoryError::OomError(err))
     }
 }
 
-impl From<DeviceMemoryAllocationError> for ImageCreationError {
+impl From<DeviceMemoryError> for ImageCreationError {
     #[inline]
-    fn from(err: DeviceMemoryAllocationError) -> Self {
+    fn from(err: DeviceMemoryError) -> Self {
         Self::AllocError(err)
     }
 }
@@ -1831,7 +2013,7 @@ impl From<ImageFormatPropertiesError> for ImageCreationError {
     fn from(err: ImageFormatPropertiesError) -> Self {
         match err {
             ImageFormatPropertiesError::OomError(err) => {
-                Self::AllocError(DeviceMemoryAllocationError::OomError(err))
+                Self::AllocError(DeviceMemoryError::OomError(err))
             }
             ImageFormatPropertiesError::RequirementNotMet {
                 required_for,
