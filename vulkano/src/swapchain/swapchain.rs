@@ -1279,6 +1279,7 @@ impl From<SurfacePropertiesError> for SwapchainCreationError {
             SurfacePropertiesError::SurfaceLost => Self::SurfaceLost,
             SurfacePropertiesError::NotSupported => unreachable!(),
             SurfacePropertiesError::QueueFamilyIndexOutOfRange { .. } => unreachable!(),
+            SurfacePropertiesError::RequirementNotMet { .. } => unreachable!(),
         }
     }
 }
