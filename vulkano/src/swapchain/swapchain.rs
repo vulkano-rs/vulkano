@@ -35,7 +35,6 @@ use crate::{
 };
 use parking_lot::Mutex;
 use smallvec::SmallVec;
-use std::num::NonZeroU64;
 use std::{
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
@@ -1576,7 +1575,7 @@ where
 /// usable, but the swapchain should be recreated as the Surface's properties no longer match the swapchain.
 pub fn wait_for_present<W>(
     swapchain: Arc<Swapchain<W>>,
-    present_id: NonZeroU64,
+    present_id: u64,
     timeout: Option<Duration>,
 ) -> Result<bool, PresentWaitError> {
     let retired = swapchain.retired.lock();
@@ -1584,6 +1583,10 @@ pub fn wait_for_present<W>(
     // VUID-vkWaitForPresentKHR-swapchain-04997
     if *retired {
         return Err(PresentWaitError::OutOfDate);
+    }
+
+    if present_id == 0 {
+        return Err(PresentWaitError::PresentIdZero);
     }
 
     // VUID-vkWaitForPresentKHR-presentWait-06234
@@ -1871,6 +1874,9 @@ pub enum PresentWaitError {
         required_for: &'static str,
         requires_one_of: RequiresOneOf,
     },
+
+    /// Present id of zero is invalid.
+    PresentIdZero,
 }
 
 impl Error for PresentWaitError {
@@ -1903,6 +1909,7 @@ impl Display for PresentWaitError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
+            Self::PresentIdZero => write!(f, "present id of zero is invalid"),
         }
     }
 }
