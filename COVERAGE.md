@@ -8,11 +8,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 
 ### Unsupported
 
-- `vkGetDeviceMemoryCommitment`
-- `vkGetImageSparseMemoryRequirements`
-- `vkGetPhysicalDeviceSparseImageFormatProperties`
 - `vkGetImageSubresourceLayout` (used, but not exposed to the user)
-- `vkGetRenderAreaGranularity` (used, but not exposed to the user)
 - `VkAllocationCallbacks`
 - `VkPipelineCreateFlags`
 - Possibly more?
@@ -23,6 +19,8 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 
 - [`VK_KHR_16bit_storage`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_16bit_storage.html)
 - [`VK_KHR_dedicated_allocation`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_dedicated_allocation.html)
+- [`VK_KHR_get_memory_requirements2`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_get_memory_requirements2.html)
+- [`VK_KHR_get_physical_device_properties2`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_get_physical_device_properties2.html)
 - [`VK_KHR_external_memory_capabilities`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_memory_capabilities.html)
 - [`VK_KHR_external_semaphore_capabilities`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_semaphore_capabilities.html)
 - [`VK_KHR_maintenance1`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_maintenance1.html)
@@ -31,6 +29,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_KHR_shader_draw_parameters`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_shader_draw_parameters.html)
 - [`VK_KHR_storage_buffer_storage_class`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_storage_buffer_storage_class.html)
 - [`VK_KHR_variable_pointers`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_variable_pointers.html)
+- `vkEnumerateInstanceVersion`
 
 ### Partially supported
 
@@ -38,10 +37,6 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 	- `VkExternalMemoryBufferCreateInfoKHR`
 - [`VK_KHR_external_semaphore`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_semaphore.html)
 	- `VkSemaphoreImportFlagsKHR`
-- [`VK_KHR_get_memory_requirements2`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_get_memory_requirements2.html)
-	- `vkGetImageSparseMemoryRequirements2KHR`
-- [`VK_KHR_get_physical_device_properties2`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_get_physical_device_properties2.html)
-	- `vkGetPhysicalDeviceSparseImageFormatProperties2KHR`
 - [`VK_KHR_maintenance2`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_maintenance2.html)
 	- `VkImageViewUsageCreateInfoKHR`
 	- `VkPipelineTessellationDomainOriginStateCreateInfoKHR`
@@ -64,7 +59,6 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_KHR_maintenance3`](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VK_KHR_maintenance3.html)
 - Group operations, subgroup scope
 - Protected memory
-- `vkEnumerateInstanceVersion`
 
 ## Vulkan 1.2
 
