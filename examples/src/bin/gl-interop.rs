@@ -43,8 +43,8 @@ mod linux {
         sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
         swapchain::{AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError},
         sync::{
-            now, ExternalSemaphoreHandleTypes, FlushError, GpuFuture, PipelineStages, Semaphore,
-            SemaphoreCreateInfo,
+            now, ExternalSemaphoreHandleType, ExternalSemaphoreHandleTypes, FlushError, GpuFuture,
+            PipelineStages, Semaphore, SemaphoreCreateInfo,
         },
         VulkanLibrary,
     };
@@ -146,8 +146,16 @@ mod linux {
             .unwrap(),
         );
 
-        let acquire_fd = unsafe { acquire_sem.export_opaque_fd().unwrap() };
-        let release_fd = unsafe { release_sem.export_opaque_fd().unwrap() };
+        let acquire_fd = unsafe {
+            acquire_sem
+                .export_fd(ExternalSemaphoreHandleType::OpaqueFd)
+                .unwrap()
+        };
+        let release_fd = unsafe {
+            release_sem
+                .export_fd(ExternalSemaphoreHandleType::OpaqueFd)
+                .unwrap()
+        };
 
         let barrier_clone = barrier.clone();
         let barrier_2_clone = barrier_2.clone();

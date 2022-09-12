@@ -105,7 +105,10 @@
 
 pub use self::{
     event::{Event, EventCreateInfo},
-    fence::{Fence, FenceCreateInfo, FenceWaitError},
+    fence::{
+        ExternalFenceHandleType, ExternalFenceHandleTypes, ExternalFenceInfo,
+        ExternalFenceProperties, Fence, FenceCreateInfo, FenceError, FenceImportFlags,
+    },
     future::{
         now, AccessCheckError, AccessError, FenceSignalFuture, FlushError, GpuFuture, JoinFuture,
         NowFuture, SemaphoreSignalFuture,
@@ -116,7 +119,8 @@ pub use self::{
     },
     semaphore::{
         ExternalSemaphoreHandleType, ExternalSemaphoreHandleTypes, ExternalSemaphoreInfo,
-        ExternalSemaphoreProperties, Semaphore, SemaphoreCreateInfo, SemaphoreCreationError,
+        ExternalSemaphoreProperties, Semaphore, SemaphoreCreateInfo, SemaphoreError,
+        SemaphoreImportFlags,
     },
 };
 use crate::device::Queue;

@@ -23,7 +23,10 @@ use crate::{
         ColorSpace, FullScreenExclusive, PresentMode, SupportedSurfaceTransforms, Surface,
         SurfaceApi, SurfaceCapabilities, SurfaceInfo,
     },
-    sync::{ExternalSemaphoreInfo, ExternalSemaphoreProperties},
+    sync::{
+        ExternalFenceInfo, ExternalFenceProperties, ExternalSemaphoreInfo,
+        ExternalSemaphoreProperties,
+    },
     OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use bytemuck::cast_slice;
@@ -499,6 +502,107 @@ impl PhysicalDevice {
         }
     }
 
+    /// Retrieves the external handle properties supported for fences with a given
+    /// configuration.
+    ///
+    /// The instance API version must be at least 1.1, or the
+    /// [`khr_external_fence_capabilities`](crate::instance::InstanceExtensions::khr_external_fence_capabilities)
+    /// extension must be enabled on the instance.
+    #[inline]
+    pub fn external_fence_properties(
+        &self,
+        info: ExternalFenceInfo,
+    ) -> Result<ExternalFenceProperties, ExternalFenceSemaphorePropertiesError> {
+        self.validate_external_fence_properties(&info)?;
+
+        unsafe { Ok(self.external_fence_properties_unchecked(info)) }
+    }
+
+    fn validate_external_fence_properties(
+        &self,
+        info: &ExternalFenceInfo,
+    ) -> Result<(), ExternalFenceSemaphorePropertiesError> {
+        if !(self.instance.api_version() >= Version::V1_1
+            || self
+                .instance
+                .enabled_extensions()
+                .khr_external_fence_capabilities)
+        {
+            return Err(ExternalFenceSemaphorePropertiesError::RequirementNotMet {
+                required_for: "`external_fence_properties`",
+                requires_one_of: RequiresOneOf {
+                    api_version: Some(Version::V1_1),
+                    instance_extensions: &["khr_external_fence_capabilities"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        let &ExternalFenceInfo {
+            handle_type,
+            _ne: _,
+        } = info;
+
+        // VUID-VkPhysicalDeviceExternalFenceInfo-handleType-parameter
+        handle_type.validate_physical_device(self)?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn external_fence_properties_unchecked(
+        &self,
+        info: ExternalFenceInfo,
+    ) -> ExternalFenceProperties {
+        /* Input */
+
+        let ExternalFenceInfo {
+            handle_type,
+            _ne: _,
+        } = info;
+
+        let external_fence_info = ash::vk::PhysicalDeviceExternalFenceInfo {
+            handle_type: handle_type.into(),
+            ..Default::default()
+        };
+
+        /* Output */
+
+        let mut external_fence_properties = ash::vk::ExternalFenceProperties::default();
+
+        /* Call */
+
+        let fns = self.instance.fns();
+
+        if self.instance.api_version() >= Version::V1_1 {
+            (fns.v1_1.get_physical_device_external_fence_properties)(
+                self.handle,
+                &external_fence_info,
+                &mut external_fence_properties,
+            )
+        } else {
+            (fns.khr_external_fence_capabilities
+                .get_physical_device_external_fence_properties_khr)(
+                self.handle,
+                &external_fence_info,
+                &mut external_fence_properties,
+            );
+        }
+
+        ExternalFenceProperties {
+            exportable: external_fence_properties
+                .external_fence_features
+                .intersects(ash::vk::ExternalFenceFeatureFlags::EXPORTABLE),
+            importable: external_fence_properties
+                .external_fence_features
+                .intersects(ash::vk::ExternalFenceFeatureFlags::IMPORTABLE),
+            export_from_imported_handle_types: external_fence_properties
+                .export_from_imported_handle_types
+                .into(),
+            compatible_handle_types: external_fence_properties.compatible_handle_types.into(),
+        }
+    }
+
     /// Retrieves the external handle properties supported for semaphores with a given
     /// configuration.
     ///
@@ -509,7 +613,7 @@ impl PhysicalDevice {
     pub fn external_semaphore_properties(
         &self,
         info: ExternalSemaphoreInfo,
-    ) -> Result<ExternalSemaphoreProperties, ExternalSemaphorePropertiesError> {
+    ) -> Result<ExternalSemaphoreProperties, ExternalFenceSemaphorePropertiesError> {
         self.validate_external_semaphore_properties(&info)?;
 
         unsafe { Ok(self.external_semaphore_properties_unchecked(info)) }
@@ -518,14 +622,14 @@ impl PhysicalDevice {
     fn validate_external_semaphore_properties(
         &self,
         info: &ExternalSemaphoreInfo,
-    ) -> Result<(), ExternalSemaphorePropertiesError> {
+    ) -> Result<(), ExternalFenceSemaphorePropertiesError> {
         if !(self.instance.api_version() >= Version::V1_1
             || self
                 .instance
                 .enabled_extensions()
                 .khr_external_semaphore_capabilities)
         {
-            return Err(ExternalSemaphorePropertiesError::RequirementNotMet {
+            return Err(ExternalFenceSemaphorePropertiesError::RequirementNotMet {
                 required_for: "`external_semaphore_properties`",
                 requires_one_of: RequiresOneOf {
                     api_version: Some(Version::V1_1),
@@ -1977,18 +2081,18 @@ impl From<RequirementNotMet> for ExternalBufferPropertiesError {
     }
 }
 
-/// Error that can happen when retrieving properties of an external semaphore.
+/// Error that can happen when retrieving properties of an external fence or semaphore.
 #[derive(Clone, Debug)]
-pub enum ExternalSemaphorePropertiesError {
+pub enum ExternalFenceSemaphorePropertiesError {
     RequirementNotMet {
         required_for: &'static str,
         requires_one_of: RequiresOneOf,
     },
 }
 
-impl Error for ExternalSemaphorePropertiesError {}
+impl Error for ExternalFenceSemaphorePropertiesError {}
 
-impl Display for ExternalSemaphorePropertiesError {
+impl Display for ExternalFenceSemaphorePropertiesError {
     #[inline]
     fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match self {
@@ -2004,7 +2108,7 @@ impl Display for ExternalSemaphorePropertiesError {
     }
 }
 
-impl From<RequirementNotMet> for ExternalSemaphorePropertiesError {
+impl From<RequirementNotMet> for ExternalFenceSemaphorePropertiesError {
     #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
