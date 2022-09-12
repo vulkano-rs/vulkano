@@ -394,6 +394,67 @@ impl PhysicalDevice {
         &self.queue_family_properties
     }
 
+    /// Queries whether the physical device supports presenting to DirectFB surfaces from queues of
+    /// the given queue family.
+    ///
+    /// # Safety
+    ///
+    /// - `dfb` must be a valid DirectFB `IDirectFB` handle.
+    #[inline]
+    pub unsafe fn directfb_presentation_support<D>(
+        &self,
+        queue_family_index: u32,
+        dfb: *const D,
+    ) -> Result<bool, SurfacePropertiesError> {
+        self.validate_directfb_presentation_support(queue_family_index, dfb)?;
+
+        Ok(self.directfb_presentation_support_unchecked(queue_family_index, dfb))
+    }
+
+    fn validate_directfb_presentation_support<D>(
+        &self,
+        queue_family_index: u32,
+        _dfb: *const D,
+    ) -> Result<(), SurfacePropertiesError> {
+        if !self.instance.enabled_extensions().ext_directfb_surface {
+            return Err(SurfacePropertiesError::RequirementNotMet {
+                required_for: "`directfb_presentation_support`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["ext_directfb_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceDirectFBPresentationSupportEXT-queueFamilyIndex-04119
+        if queue_family_index >= self.queue_family_properties.len() as u32 {
+            return Err(SurfacePropertiesError::QueueFamilyIndexOutOfRange {
+                queue_family_index,
+                queue_family_count: self.queue_family_properties.len() as u32,
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceDirectFBPresentationSupportEXT-dfb-parameter
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn directfb_presentation_support_unchecked<D>(
+        &self,
+        queue_family_index: u32,
+        dfb: *const D,
+    ) -> bool {
+        let fns = self.instance.fns();
+        (fns.ext_directfb_surface
+            .get_physical_device_direct_fb_presentation_support_ext)(
+            self.handle,
+            queue_family_index,
+            dfb as *mut _,
+        ) != 0
+    }
+
     /// Retrieves the external memory properties supported for buffers with a given configuration.
     ///
     /// Instance API version must be at least 1.1, or the
@@ -907,6 +968,66 @@ impl PhysicalDevice {
             Err(VulkanError::FormatNotSupported) => Ok(None),
             Err(err) => Err(err),
         }
+    }
+
+    /// Queries whether the physical device supports presenting to QNX Screen surfaces from queues
+    /// of the given queue family.
+    ///
+    /// # Safety
+    ///
+    /// - `window` must be a valid QNX Screen `_screen_window` handle.
+    #[inline]
+    pub unsafe fn qnx_screen_presentation_support<W>(
+        &self,
+        queue_family_index: u32,
+        window: *const W,
+    ) -> Result<bool, SurfacePropertiesError> {
+        self.validate_qnx_screen_presentation_support(queue_family_index, window)?;
+
+        Ok(self.qnx_screen_presentation_support_unchecked(queue_family_index, window))
+    }
+
+    fn validate_qnx_screen_presentation_support<W>(
+        &self,
+        queue_family_index: u32,
+        _window: *const W,
+    ) -> Result<(), SurfacePropertiesError> {
+        if !self.instance.enabled_extensions().qnx_screen_surface {
+            return Err(SurfacePropertiesError::RequirementNotMet {
+                required_for: "`qnx_screen_presentation_support`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["qnx_screen_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceScreenPresentationSupportQNX-queueFamilyIndex-04743
+        if queue_family_index >= self.queue_family_properties.len() as u32 {
+            return Err(SurfacePropertiesError::QueueFamilyIndexOutOfRange {
+                queue_family_index,
+                queue_family_count: self.queue_family_properties.len() as u32,
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceScreenPresentationSupportQNX-window-parameter
+        // Can't validate, therefore unsafe
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn qnx_screen_presentation_support_unchecked<W>(
+        &self,
+        queue_family_index: u32,
+        window: *const W,
+    ) -> bool {
+        let fns = self.instance.fns();
+        (fns.qnx_screen_surface
+            .get_physical_device_screen_presentation_support_qnx)(
+            self.handle,
+            queue_family_index,
+            window as *mut _,
+        ) != 0
     }
 
     /// Returns the properties of sparse images with a given image configuration.
@@ -1704,6 +1825,243 @@ impl PhysicalDevice {
         .map_err(VulkanError::from)?;
 
         Ok(output.assume_init() != 0)
+    }
+
+    /// Queries whether the physical device supports presenting to Wayland surfaces from queues of the
+    /// given queue family.
+    ///
+    /// # Safety
+    ///
+    /// - `display` must be a valid Wayland `wl_display` handle.
+    #[inline]
+    pub unsafe fn wayland_presentation_support<D>(
+        &self,
+        queue_family_index: u32,
+        display: *const D,
+    ) -> Result<bool, SurfacePropertiesError> {
+        self.validate_wayland_presentation_support(queue_family_index, display)?;
+
+        Ok(self.wayland_presentation_support_unchecked(queue_family_index, display))
+    }
+
+    fn validate_wayland_presentation_support<D>(
+        &self,
+        queue_family_index: u32,
+        _display: *const D,
+    ) -> Result<(), SurfacePropertiesError> {
+        if !self.instance.enabled_extensions().khr_wayland_surface {
+            return Err(SurfacePropertiesError::RequirementNotMet {
+                required_for: "`wayland_presentation_support`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_wayland_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceWaylandPresentationSupportKHR-queueFamilyIndex-01306
+        if queue_family_index >= self.queue_family_properties.len() as u32 {
+            return Err(SurfacePropertiesError::QueueFamilyIndexOutOfRange {
+                queue_family_index,
+                queue_family_count: self.queue_family_properties.len() as u32,
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceWaylandPresentationSupportKHR-display-parameter
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn wayland_presentation_support_unchecked<D>(
+        &self,
+        queue_family_index: u32,
+        display: *const D,
+    ) -> bool {
+        let fns = self.instance.fns();
+        (fns.khr_wayland_surface
+            .get_physical_device_wayland_presentation_support_khr)(
+            self.handle,
+            queue_family_index,
+            display as *mut _,
+        ) != 0
+    }
+
+    /// Queries whether the physical device supports presenting to Win32 surfaces from queues of the
+    /// given queue family.
+    #[inline]
+    pub fn win32_presentation_support(
+        &self,
+        queue_family_index: u32,
+    ) -> Result<bool, SurfacePropertiesError> {
+        self.validate_win32_presentation_support(queue_family_index)?;
+
+        unsafe { Ok(self.win32_presentation_support_unchecked(queue_family_index)) }
+    }
+
+    fn validate_win32_presentation_support(
+        &self,
+        queue_family_index: u32,
+    ) -> Result<(), SurfacePropertiesError> {
+        if !self.instance.enabled_extensions().khr_win32_surface {
+            return Err(SurfacePropertiesError::RequirementNotMet {
+                required_for: "`win32_presentation_support`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_win32_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceWin32PresentationSupportKHR-queueFamilyIndex-01309
+        if queue_family_index >= self.queue_family_properties.len() as u32 {
+            return Err(SurfacePropertiesError::QueueFamilyIndexOutOfRange {
+                queue_family_index,
+                queue_family_count: self.queue_family_properties.len() as u32,
+            });
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn win32_presentation_support_unchecked(&self, queue_family_index: u32) -> bool {
+        let fns = self.instance.fns();
+        (fns.khr_win32_surface
+            .get_physical_device_win32_presentation_support_khr)(
+            self.handle, queue_family_index
+        ) != 0
+    }
+
+    /// Queries whether the physical device supports presenting to XCB surfaces from queues of the
+    /// given queue family.
+    ///
+    /// # Safety
+    ///
+    /// - `connection` must be a valid X11 `xcb_connection_t` handle.
+    #[inline]
+    pub unsafe fn xcb_presentation_support<C>(
+        &self,
+        queue_family_index: u32,
+        connection: *const C,
+        visual_id: ash::vk::xcb_visualid_t,
+    ) -> Result<bool, SurfacePropertiesError> {
+        self.validate_xcb_presentation_support(queue_family_index, connection, visual_id)?;
+
+        Ok(self.xcb_presentation_support_unchecked(queue_family_index, connection, visual_id))
+    }
+
+    fn validate_xcb_presentation_support<C>(
+        &self,
+        queue_family_index: u32,
+        _connection: *const C,
+        _visual_id: ash::vk::xcb_visualid_t,
+    ) -> Result<(), SurfacePropertiesError> {
+        if !self.instance.enabled_extensions().khr_xcb_surface {
+            return Err(SurfacePropertiesError::RequirementNotMet {
+                required_for: "`xcb_presentation_support`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_xcb_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceXcbPresentationSupportKHR-queueFamilyIndex-01312
+        if queue_family_index >= self.queue_family_properties.len() as u32 {
+            return Err(SurfacePropertiesError::QueueFamilyIndexOutOfRange {
+                queue_family_index,
+                queue_family_count: self.queue_family_properties.len() as u32,
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceXcbPresentationSupportKHR-connection-parameter
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn xcb_presentation_support_unchecked<C>(
+        &self,
+        queue_family_index: u32,
+        connection: *const C,
+        visual_id: ash::vk::VisualID,
+    ) -> bool {
+        let fns = self.instance.fns();
+        (fns.khr_xcb_surface
+            .get_physical_device_xcb_presentation_support_khr)(
+            self.handle,
+            queue_family_index,
+            connection as *mut _,
+            visual_id,
+        ) != 0
+    }
+
+    /// Queries whether the physical device supports presenting to Xlib surfaces from queues of the
+    /// given queue family.
+    ///
+    /// # Safety
+    ///
+    /// - `display` must be a valid Xlib `Display` handle.
+    #[inline]
+    pub unsafe fn xlib_presentation_support<D>(
+        &self,
+        queue_family_index: u32,
+        display: *const D,
+        visual_id: ash::vk::VisualID,
+    ) -> Result<bool, SurfacePropertiesError> {
+        self.validate_xlib_presentation_support(queue_family_index, display, visual_id)?;
+
+        Ok(self.xlib_presentation_support_unchecked(queue_family_index, display, visual_id))
+    }
+
+    fn validate_xlib_presentation_support<D>(
+        &self,
+        queue_family_index: u32,
+        _display: *const D,
+        _visual_id: ash::vk::VisualID,
+    ) -> Result<(), SurfacePropertiesError> {
+        if !self.instance.enabled_extensions().khr_xlib_surface {
+            return Err(SurfacePropertiesError::RequirementNotMet {
+                required_for: "`xlib_presentation_support`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_xlib_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceXlibPresentationSupportKHR-queueFamilyIndex-01315
+        if queue_family_index >= self.queue_family_properties.len() as u32 {
+            return Err(SurfacePropertiesError::QueueFamilyIndexOutOfRange {
+                queue_family_index,
+                queue_family_count: self.queue_family_properties.len() as u32,
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceXlibPresentationSupportKHR-dpy-parameter
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn xlib_presentation_support_unchecked<D>(
+        &self,
+        queue_family_index: u32,
+        display: *const D,
+        visual_id: ash::vk::VisualID,
+    ) -> bool {
+        let fns = self.instance.fns();
+        (fns.khr_xlib_surface
+            .get_physical_device_xlib_presentation_support_khr)(
+            self.handle,
+            queue_family_index,
+            display as *mut _,
+            visual_id,
+        ) != 0
     }
 }
 
