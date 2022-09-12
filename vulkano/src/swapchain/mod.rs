@@ -257,7 +257,7 @@
 //!     // constructed from images[image_num]
 //!     acquire_future
 //!         .then_execute(queue.clone(), command_buffer).unwrap()
-//!         .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
+//!         .then_swapchain_present(queue.clone(), swapchain.clone(), image_num, Default::default())
 //!         .then_signal_fence_and_flush().unwrap();
 //! }
 //! ```
@@ -307,7 +307,7 @@
 //!
 //!     let final_future = acq_future
 //!         // .then_execute(...)
-//!         .then_swapchain_present(queue.clone(), swapchain.clone(), index)
+//!         .then_swapchain_present(queue.clone(), swapchain.clone(), index, Default::default())
 //!         .then_signal_fence_and_flush().unwrap(); // TODO: PresentError?
 //!
 //!     if suboptimal {
@@ -325,10 +325,10 @@ pub use self::{
         SurfaceInfo, SurfaceTransform,
     },
     swapchain::{
-        acquire_next_image, acquire_next_image_raw, present,
-        wait_for_present, AcquireError, AcquiredImage, FullScreenExclusive,
-        FullScreenExclusiveError, PresentFuture, PresentWaitError, Swapchain,
-        SwapchainAcquireFuture, SwapchainCreateInfo, SwapchainCreationError, Win32Monitor, PresentInfoExt,
+        acquire_next_image, acquire_next_image_raw, present, wait_for_present, AcquireError,
+        AcquiredImage, FullScreenExclusive, FullScreenExclusiveError, PresentFuture,
+        PresentInfoExt, PresentWaitError, Swapchain, SwapchainAcquireFuture, SwapchainCreateInfo,
+        SwapchainCreationError, Win32Monitor,
     },
 };
 #[cfg(target_os = "ios")]

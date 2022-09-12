@@ -9,7 +9,7 @@
 
 use crate::{
     device::{DeviceOwned, Queue},
-    swapchain::{Swapchain, PresentInfoExt},
+    swapchain::{PresentInfoExt, Swapchain},
     sync::Semaphore,
     OomError, SynchronizedVulkanObject, VulkanError, VulkanObject,
 };

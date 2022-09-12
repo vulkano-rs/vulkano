@@ -24,7 +24,7 @@ use crate::{
     },
     device::{DeviceOwned, Queue},
     image::{sys::UnsafeImage, ImageLayout},
-    swapchain::{self, PresentFuture, Swapchain, PresentInfoExt},
+    swapchain::{self, PresentFuture, PresentInfoExt, Swapchain},
     DeviceSize, OomError,
 };
 use std::{

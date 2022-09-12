@@ -568,7 +568,12 @@ fn main() {
                     // This function does not actually present the image immediately. Instead it submits a
                     // present command at the end of the queue. This means that it will only be presented once
                     // the GPU has finished executing the command buffer that draws the triangle.
-                    .then_swapchain_present(queue.clone(), swapchain.clone(), image_num, Default::default())
+                    .then_swapchain_present(
+                        queue.clone(),
+                        swapchain.clone(),
+                        image_num,
+                        Default::default(),
+                    )
                     .then_signal_fence_and_flush();
 
                 match future {

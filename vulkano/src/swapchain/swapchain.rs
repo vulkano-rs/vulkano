@@ -2005,52 +2005,30 @@ where
         Ok(match self.previous.build_submission()? {
             SubmitAnyBuilder::Empty => {
                 let mut builder = SubmitPresentBuilder::new();
-
-                builder.add_swapchain(
-                    &self.swapchain,
-                    self.image_id as u32,
-                    &self.info_ext,
-                );
-
+                builder.add_swapchain(&self.swapchain, self.image_id as u32, &self.info_ext);
                 SubmitAnyBuilder::QueuePresent(builder)
             }
             SubmitAnyBuilder::SemaphoresWait(sem) => {
                 let mut builder: SubmitPresentBuilder = sem.into();
-
-                builder.add_swapchain(
-                    &self.swapchain,
-                    self.image_id as u32,
-                    &self.info_ext,
-                );
-
+                builder.add_swapchain(&self.swapchain, self.image_id as u32, &self.info_ext);
                 SubmitAnyBuilder::QueuePresent(builder)
             }
             SubmitAnyBuilder::CommandBuffer(_) => {
                 // submit the command buffer by flushing previous.
                 // Since the implementation should remember being flushed it's safe to call build_submission multiple times
                 self.previous.flush()?;
+
                 let mut builder = SubmitPresentBuilder::new();
-
-                builder.add_swapchain(
-                    &self.swapchain,
-                    self.image_id as u32,
-                    &self.info_ext,
-                );
-
+                builder.add_swapchain(&self.swapchain, self.image_id as u32, &self.info_ext);
                 SubmitAnyBuilder::QueuePresent(builder)
             }
             SubmitAnyBuilder::BindSparse(_) => {
                 // submit the command buffer by flushing previous.
                 // Since the implementation should remember being flushed it's safe to call build_submission multiple times
                 self.previous.flush()?;
+
                 let mut builder = SubmitPresentBuilder::new();
-
-                builder.add_swapchain(
-                    &self.swapchain,
-                    self.image_id as u32,
-                    &self.info_ext,
-                );
-
+                builder.add_swapchain(&self.swapchain, self.image_id as u32, &self.info_ext);
                 SubmitAnyBuilder::QueuePresent(builder)
             }
             SubmitAnyBuilder::QueuePresent(_present) => {
