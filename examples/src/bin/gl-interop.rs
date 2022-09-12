@@ -336,7 +336,7 @@ mod linux {
                     let future = future
                         .then_execute(queue.clone(), command_buffer)
                         .unwrap()
-                        .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
+                        .then_swapchain_present(queue.clone(), swapchain.clone(), image_num, Default::default())
                         .then_signal_fence_and_flush();
 
                     match future {
