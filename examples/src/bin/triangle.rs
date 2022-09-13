@@ -39,7 +39,8 @@ use vulkano::{
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     swapchain::{
-        acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+        acquire_next_image, AcquireError, PresentInfo, Swapchain, SwapchainCreateInfo,
+        SwapchainCreationError,
     },
     sync::{self, FlushError, GpuFuture},
     VulkanLibrary,
@@ -578,9 +579,10 @@ fn main() {
                     // the GPU has finished executing the command buffer that draws the triangle.
                     .then_swapchain_present(
                         queue.clone(),
-                        swapchain.clone(),
-                        image_num,
-                        Default::default(),
+                        PresentInfo {
+                            index: image_num,
+                            ..PresentInfo::swapchain(swapchain.clone())
+                        },
                     )
                     .then_signal_fence_and_flush();
 

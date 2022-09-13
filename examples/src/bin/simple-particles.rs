@@ -37,7 +37,7 @@ use vulkano::{
         GraphicsPipeline, PipelineBindPoint,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, Subpass},
-    swapchain::{PresentMode, Swapchain, SwapchainCreateInfo},
+    swapchain::{PresentInfo, PresentMode, Swapchain, SwapchainCreateInfo},
     sync::{FenceSignalFuture, GpuFuture},
     VulkanLibrary,
 };
@@ -536,9 +536,10 @@ fn main() {
                     .unwrap()
                     .then_swapchain_present(
                         queue.clone(),
-                        swapchain.clone(),
-                        image_index,
-                        Default::default(),
+                        PresentInfo {
+                            index: image_index,
+                            ..PresentInfo::swapchain(swapchain.clone())
+                        },
                     )
                     .then_signal_fence_and_flush();
 

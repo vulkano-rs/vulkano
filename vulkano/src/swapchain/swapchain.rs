@@ -1498,12 +1498,16 @@ pub fn acquire_next_image<W>(
     ))
 }
 
-/// Additional parameters for
+/// Parameters for
 /// [`swapchain::present`](crate::swapchain::present)
 /// and
 /// [`GpuFuture::then_swapchain_present`](crate::sync::GpuFuture::then_swapchain_present).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PresentInfoExt {
+pub struct PresentInfo<W> {
+    /// The `Swapchain` to present to.
+    pub swapchain: Arc<Swapchain<W>>,
+    /// The same index that `acquire_next_image` returned. The image must have been acquired first.
+    pub index: usize,
     /// A present id used for this present call.
     ///
     /// Must be greater than previously used.
@@ -1521,10 +1525,11 @@ pub struct PresentInfoExt {
     pub _ne: crate::NonExhaustive,
 }
 
-impl Default for PresentInfoExt {
-    #[inline]
-    fn default() -> Self {
+impl<W> PresentInfo<W> {
+    pub fn swapchain(swapchain: Arc<Swapchain<W>>) -> Self {
         Self {
+            swapchain,
+            index: 0,
             present_id: None,
             present_region: None,
             _ne: crate::NonExhaustive(()),
@@ -1534,22 +1539,13 @@ impl Default for PresentInfoExt {
 
 /// Presents an image on the screen.
 ///
-/// The parameter is the same index as what `acquire_next_image` returned. The image must
-/// have been acquired first.
-///
 /// The actual behavior depends on the present mode that you passed when creating the
 /// swapchain.
-pub fn present<F, W>(
-    swapchain: Arc<Swapchain<W>>,
-    before: F,
-    queue: Arc<Queue>,
-    index: usize,
-    info_ext: PresentInfoExt,
-) -> PresentFuture<F, W>
+pub fn present<F, W>(before: F, queue: Arc<Queue>, info: PresentInfo<W>) -> PresentFuture<F, W>
 where
     F: GpuFuture,
 {
-    assert!(index < swapchain.images.len());
+    assert!(info.index < info.swapchain.images.len());
 
     // TODO: restore this check with a dummy ImageAccess implementation
     /*let swapchain_image = me.images.lock().unwrap().get(index).unwrap().0.upgrade().unwrap();       // TODO: return error instead
@@ -1561,9 +1557,7 @@ where
     PresentFuture {
         previous: before,
         queue,
-        swapchain,
-        image_id: index,
-        info_ext,
+        info,
         flushed: AtomicBool::new(false),
         finished: AtomicBool::new(false),
     }
@@ -1954,9 +1948,7 @@ where
 {
     previous: P,
     queue: Arc<Queue>,
-    swapchain: Arc<Swapchain<W>>,
-    image_id: usize,
-    info_ext: PresentInfoExt,
+    info: PresentInfo<W>,
     // True if `flush()` has been called on the future, which means that the present command has
     // been submitted.
     flushed: AtomicBool,
@@ -1972,13 +1964,13 @@ where
     /// Returns the index of the image in the list of images returned when creating the swapchain.
     #[inline]
     pub fn image_id(&self) -> usize {
-        self.image_id
+        self.info.index
     }
 
     /// Returns the corresponding swapchain.
     #[inline]
     pub fn swapchain(&self) -> &Arc<Swapchain<W>> {
-        &self.swapchain
+        &self.info.swapchain
     }
 }
 
@@ -2005,12 +1997,12 @@ where
         Ok(match self.previous.build_submission()? {
             SubmitAnyBuilder::Empty => {
                 let mut builder = SubmitPresentBuilder::new();
-                builder.add_swapchain(&self.swapchain, self.image_id as u32, &self.info_ext);
+                builder.add_swapchain(&self.info);
                 SubmitAnyBuilder::QueuePresent(builder)
             }
             SubmitAnyBuilder::SemaphoresWait(sem) => {
                 let mut builder: SubmitPresentBuilder = sem.into();
-                builder.add_swapchain(&self.swapchain, self.image_id as u32, &self.info_ext);
+                builder.add_swapchain(&self.info);
                 SubmitAnyBuilder::QueuePresent(builder)
             }
             SubmitAnyBuilder::CommandBuffer(_) => {
@@ -2019,7 +2011,7 @@ where
                 self.previous.flush()?;
 
                 let mut builder = SubmitPresentBuilder::new();
-                builder.add_swapchain(&self.swapchain, self.image_id as u32, &self.info_ext);
+                builder.add_swapchain(&self.info);
                 SubmitAnyBuilder::QueuePresent(builder)
             }
             SubmitAnyBuilder::BindSparse(_) => {
@@ -2028,7 +2020,7 @@ where
                 self.previous.flush()?;
 
                 let mut builder = SubmitPresentBuilder::new();
-                builder.add_swapchain(&self.swapchain, self.image_id as u32, &self.info_ext);
+                builder.add_swapchain(&self.info);
                 SubmitAnyBuilder::QueuePresent(builder)
             }
             SubmitAnyBuilder::QueuePresent(_present) => {
@@ -2050,7 +2042,8 @@ where
             self.flushed.store(true, Ordering::SeqCst);
 
             if let &Err(FlushError::FullScreenExclusiveModeLost) = &build_submission_result {
-                self.swapchain
+                self.info
+                    .swapchain
                     .full_screen_exclusive_held
                     .store(false, Ordering::SeqCst);
             }
@@ -2061,7 +2054,8 @@ where
                     let present_result = present.submit(&self.queue);
 
                     if let &Err(SubmitPresentError::FullScreenExclusiveModeLost) = &present_result {
-                        self.swapchain
+                        self.info
+                            .swapchain
                             .full_screen_exclusive_held
                             .store(false, Ordering::SeqCst);
                     }
@@ -2118,7 +2112,8 @@ where
         expected_layout: ImageLayout,
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
-        let swapchain_image = self.swapchain.raw_image(self.image_id).unwrap();
+        let swapchain_image = self.info.swapchain.raw_image(self.info.index).unwrap();
+
         if swapchain_image.image.internal_object() == image.internal_object() {
             // This future presents the swapchain image, which "unlocks" it. Therefore any attempt
             // to use this swapchain image afterwards shouldn't get granted automatic access.

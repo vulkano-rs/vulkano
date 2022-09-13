@@ -24,7 +24,7 @@ use crate::{
     },
     device::{DeviceOwned, Queue},
     image::{sys::UnsafeImage, ImageLayout},
-    swapchain::{self, PresentFuture, PresentInfoExt, Swapchain},
+    swapchain::{self, PresentFuture, PresentInfo},
     DeviceSize, OomError,
 };
 use std::{
@@ -257,14 +257,12 @@ pub unsafe trait GpuFuture: DeviceOwned {
     fn then_swapchain_present<W>(
         self,
         queue: Arc<Queue>,
-        swapchain: Arc<Swapchain<W>>,
-        image_index: usize,
-        info_ext: PresentInfoExt,
+        info: PresentInfo<W>,
     ) -> PresentFuture<Self, W>
     where
         Self: Sized,
     {
-        swapchain::present(swapchain, self, queue, image_index, info_ext)
+        swapchain::present(self, queue, info)
     }
 
     /// Turn the current future into a `Box<dyn GpuFuture>`.

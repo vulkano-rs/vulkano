@@ -9,7 +9,7 @@
 
 use crate::{
     device::{DeviceOwned, Queue},
-    swapchain::{PresentInfoExt, Swapchain},
+    swapchain::PresentInfo,
     sync::Semaphore,
     OomError, SynchronizedVulkanObject, VulkanError, VulkanObject,
 };
@@ -90,19 +90,16 @@ impl<'a> SubmitPresentBuilder<'a> {
     ///
     /// - The swapchains and semaphores must all belong to the same device.
     #[inline]
-    pub unsafe fn add_swapchain<W>(
-        &mut self,
-        swapchain: &'a Swapchain<W>,
-        image_num: u32,
-        info_ext: &'a PresentInfoExt,
-    ) {
-        debug_assert!(image_num < swapchain.image_count());
-
-        let PresentInfoExt {
+    pub unsafe fn add_swapchain<W>(&mut self, info: &'a PresentInfo<W>) {
+        let PresentInfo {
+            swapchain,
+            index,
             present_id,
             present_region,
             ..
-        } = info_ext;
+        } = info;
+
+        debug_assert!((*index as u32) < swapchain.image_count());
 
         if swapchain
             .device()
@@ -135,7 +132,7 @@ impl<'a> SubmitPresentBuilder<'a> {
         }
 
         self.swapchains.push(swapchain.internal_object());
-        self.image_indices.push(image_num);
+        self.image_indices.push(*index as u32);
     }
 
     /// Submits the command. Calls `vkQueuePresentKHR`.
