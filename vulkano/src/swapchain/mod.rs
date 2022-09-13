@@ -264,7 +264,6 @@
 //!                 .. PresentInfo::swapchain(swapchain.clone())
 //!             },
 //!         )
-//!         .then_swapchain_present(queue.clone(), swapchain.clone(), image_num, Default::default())
 //!         .then_signal_fence_and_flush().unwrap();
 //! }
 //! ```
