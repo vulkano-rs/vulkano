@@ -41,7 +41,9 @@ mod linux {
         },
         render_pass::{Framebuffer, RenderPass, Subpass},
         sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
-        swapchain::{AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError},
+        swapchain::{
+            AcquireError, PresentInfo, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+        },
         sync::{
             now, ExternalSemaphoreHandleTypes, FlushError, GpuFuture, PipelineStages, Semaphore,
             SemaphoreCreateInfo,
@@ -338,9 +340,10 @@ mod linux {
                         .unwrap()
                         .then_swapchain_present(
                             queue.clone(),
-                            swapchain.clone(),
-                            image_num,
-                            Default::default(),
+                            PresentInfo {
+                                index: image_num,
+                                ..PresentInfo::swapchain(swapchain.clone())
+                            },
                         )
                         .then_signal_fence_and_flush();
 
