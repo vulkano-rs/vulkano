@@ -27,7 +27,6 @@ use std::{
     fmt::{Debug, Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     mem::MaybeUninit,
-    os::raw::c_ulong,
     ptr,
     sync::{atomic::AtomicBool, Arc},
 };
@@ -48,7 +47,7 @@ pub struct Surface<W> {
 }
 
 impl<W> Surface<W> {
-    /// Creates a `Surface` given the raw handle.
+    /// Creates a `Surface` from a raw handle.
     ///
     /// # Safety
     ///
@@ -56,12 +55,13 @@ impl<W> Surface<W> {
     /// - `handle` must have been created from `api`.
     /// - The window object that `handle` was created from must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.
-    pub unsafe fn from_raw_surface(
+    #[inline]
+    pub unsafe fn from_handle(
         instance: Arc<Instance>,
         handle: ash::vk::SurfaceKHR,
         api: SurfaceApi,
         win: W,
-    ) -> Surface<W> {
+    ) -> Self {
         Surface {
             handle,
             instance,
@@ -74,16 +74,87 @@ impl<W> Surface<W> {
         }
     }
 
+    /// Creates a `Surface` with no backing window or display.
+    ///
+    /// Presenting to a headless surface does nothing, so this is mostly useless in itself. However,
+    /// it may be useful for testing, and it is available for future extensions to layer on top of.
+    #[inline]
+    pub fn headless(instance: Arc<Instance>, win: W) -> Result<Arc<Self>, SurfaceCreationError> {
+        Self::validate_headless(&instance)?;
+
+        unsafe { Ok(Self::headless_unchecked(instance, win)?) }
+    }
+
+    fn validate_headless(instance: &Instance) -> Result<(), SurfaceCreationError> {
+        if !instance.enabled_extensions().ext_headless_surface {
+            return Err(SurfaceCreationError::RequirementNotMet {
+                required_for: "`headless`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["ext_headless_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn headless_unchecked(
+        instance: Arc<Instance>,
+        win: W,
+    ) -> Result<Arc<Self>, VulkanError> {
+        let create_info = ash::vk::HeadlessSurfaceCreateInfoEXT {
+            flags: ash::vk::HeadlessSurfaceCreateFlagsEXT::empty(),
+            ..Default::default()
+        };
+
+        let handle = {
+            let fns = instance.fns();
+            let mut output = MaybeUninit::uninit();
+            (fns.ext_headless_surface.create_headless_surface_ext)(
+                instance.internal_object(),
+                &create_info,
+                ptr::null(),
+                output.as_mut_ptr(),
+            )
+            .result()
+            .map_err(VulkanError::from)?;
+            output.assume_init()
+        };
+
+        Ok(Arc::new(Surface {
+            handle,
+            instance,
+            api: SurfaceApi::Headless,
+            window: win,
+
+            has_swapchain: AtomicBool::new(false),
+            #[cfg(target_os = "ios")]
+            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+        }))
+    }
+
     /// Creates a `Surface` from a `DisplayPlane`.
     ///
     /// # Panic
     ///
     /// - Panics if `display_mode` and `plane` don't belong to the same physical device.
     /// - Panics if `plane` doesn't support the display of `display_mode`.
+    #[inline]
     pub fn from_display_plane(
         display_mode: &DisplayMode,
         plane: &DisplayPlane,
     ) -> Result<Arc<Surface<()>>, SurfaceCreationError> {
+        Self::validate_from_display_plane(display_mode, plane)?;
+
+        unsafe { Ok(Self::from_display_plane_unchecked(display_mode, plane)?) }
+    }
+
+    fn validate_from_display_plane(
+        display_mode: &DisplayMode,
+        plane: &DisplayPlane,
+    ) -> Result<(), SurfaceCreationError> {
         if !display_mode
             .display()
             .physical_device()
@@ -101,11 +172,19 @@ impl<W> Surface<W> {
         }
 
         assert_eq!(
-            display_mode.display().physical_device().internal_object(),
-            plane.physical_device().internal_object()
+            display_mode.display().physical_device(),
+            plane.physical_device()
         );
         assert!(plane.supports(display_mode.display()));
 
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn from_display_plane_unchecked(
+        display_mode: &DisplayMode,
+        plane: &DisplayPlane,
+    ) -> Result<Arc<Surface<()>>, VulkanError> {
         let instance = display_mode.display().physical_device().instance();
 
         let create_info = ash::vk::DisplaySurfaceCreateInfoKHR {
@@ -124,7 +203,7 @@ impl<W> Surface<W> {
             ..Default::default()
         };
 
-        let handle = unsafe {
+        let handle = {
             let fns = instance.fns();
             let mut output = MaybeUninit::uninit();
             (fns.khr_display.create_display_plane_surface_khr)(
@@ -154,14 +233,24 @@ impl<W> Surface<W> {
     ///
     /// # Safety
     ///
-    /// - `window` must be a valid handle.
+    /// - `window` must be a valid Android `ANativeWindow` handle.
     /// - The object referred to by `window` must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.
+    #[inline]
     pub unsafe fn from_android<T>(
         instance: Arc<Instance>,
         window: *const T,
         win: W,
-    ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, SurfaceCreationError> {
+        Self::validate_from_android(&instance, window)?;
+
+        Ok(Self::from_android_unchecked(instance, window, win)?)
+    }
+
+    fn validate_from_android<T>(
+        instance: &Instance,
+        _window: *const T,
+    ) -> Result<(), SurfaceCreationError> {
         if !instance.enabled_extensions().khr_android_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
                 required_for: "`from_android`",
@@ -172,6 +261,18 @@ impl<W> Surface<W> {
             });
         }
 
+        // VUID-VkAndroidSurfaceCreateInfoKHR-window-01248
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn from_android_unchecked<T>(
+        instance: Arc<Instance>,
+        window: *const T,
+        win: W,
+    ) -> Result<Arc<Self>, VulkanError> {
         let create_info = ash::vk::AndroidSurfaceCreateInfoKHR {
             flags: ash::vk::AndroidSurfaceCreateFlagsKHR::empty(),
             window: window as *mut _,
@@ -204,20 +305,277 @@ impl<W> Surface<W> {
         }))
     }
 
+    /// Creates a `Surface` from a DirectFB surface.
+    ///
+    /// # Safety
+    ///
+    /// - `dfb` must be a valid DirectFB `IDirectFB` handle.
+    /// - `surface` must be a valid DirectFB `IDirectFBSurface` handle.
+    /// - The object referred to by `dfb` and `surface` must outlive the created `Surface`.
+    ///   The `win` parameter can be used to ensure this.
+    #[inline]
+    pub unsafe fn from_directfb<D, S>(
+        instance: Arc<Instance>,
+        dfb: *const D,
+        surface: *const S,
+        win: W,
+    ) -> Result<Arc<Self>, SurfaceCreationError> {
+        Self::validate_from_directfb(&instance, dfb, surface)?;
+
+        Ok(Self::from_directfb_unchecked(instance, dfb, surface, win)?)
+    }
+
+    fn validate_from_directfb<D, S>(
+        instance: &Instance,
+        _dfb: *const D,
+        _surface: *const S,
+    ) -> Result<(), SurfaceCreationError> {
+        if !instance.enabled_extensions().ext_directfb_surface {
+            return Err(SurfaceCreationError::RequirementNotMet {
+                required_for: "`from_directfb`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["ext_directfb_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        // VUID-VkDirectFBSurfaceCreateInfoEXT-dfb-04117
+        // Can't validate, therefore unsafe
+
+        // VUID-VkDirectFBSurfaceCreateInfoEXT-surface-04118
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn from_directfb_unchecked<D, S>(
+        instance: Arc<Instance>,
+        dfb: *const D,
+        surface: *const S,
+        win: W,
+    ) -> Result<Arc<Self>, VulkanError> {
+        let create_info = ash::vk::DirectFBSurfaceCreateInfoEXT {
+            flags: ash::vk::DirectFBSurfaceCreateFlagsEXT::empty(),
+            dfb: dfb as *mut _,
+            surface: surface as *mut _,
+            ..Default::default()
+        };
+
+        let handle = {
+            let fns = instance.fns();
+            let mut output = MaybeUninit::uninit();
+            (fns.ext_directfb_surface.create_direct_fb_surface_ext)(
+                instance.internal_object(),
+                &create_info,
+                ptr::null(),
+                output.as_mut_ptr(),
+            )
+            .result()
+            .map_err(VulkanError::from)?;
+            output.assume_init()
+        };
+
+        Ok(Arc::new(Surface {
+            handle,
+            instance,
+            api: SurfaceApi::DirectFB,
+            window: win,
+
+            has_swapchain: AtomicBool::new(false),
+            #[cfg(target_os = "ios")]
+            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+        }))
+    }
+
+    /// Creates a `Surface` from an Fuchsia ImagePipe.
+    ///
+    /// # Safety
+    ///
+    /// - `image_pipe_handle` must be a valid Fuchsia `zx_handle_t` handle.
+    /// - The object referred to by `image_pipe_handle` must outlive the created `Surface`.
+    ///   The `win` parameter can be used to ensure this.
+    #[inline]
+    pub unsafe fn from_fuchsia_image_pipe(
+        instance: Arc<Instance>,
+        image_pipe_handle: ash::vk::zx_handle_t,
+        win: W,
+    ) -> Result<Arc<Self>, SurfaceCreationError> {
+        Self::validate_from_fuchsia_image_pipe(&instance, image_pipe_handle)?;
+
+        Ok(Self::from_fuchsia_image_pipe_unchecked(
+            instance,
+            image_pipe_handle,
+            win,
+        )?)
+    }
+
+    fn validate_from_fuchsia_image_pipe(
+        instance: &Instance,
+        _image_pipe_handle: ash::vk::zx_handle_t,
+    ) -> Result<(), SurfaceCreationError> {
+        if !instance.enabled_extensions().fuchsia_imagepipe_surface {
+            return Err(SurfaceCreationError::RequirementNotMet {
+                required_for: "`from_fuchsia_image_pipe`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["fuchsia_imagepipe_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        // VUID-VkImagePipeSurfaceCreateInfoFUCHSIA-imagePipeHandle-04863
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn from_fuchsia_image_pipe_unchecked(
+        instance: Arc<Instance>,
+        image_pipe_handle: ash::vk::zx_handle_t,
+        win: W,
+    ) -> Result<Arc<Self>, VulkanError> {
+        let create_info = ash::vk::ImagePipeSurfaceCreateInfoFUCHSIA {
+            flags: ash::vk::ImagePipeSurfaceCreateFlagsFUCHSIA::empty(),
+            image_pipe_handle,
+            ..Default::default()
+        };
+
+        let handle = {
+            let fns = instance.fns();
+            let mut output = MaybeUninit::uninit();
+            (fns.fuchsia_imagepipe_surface
+                .create_image_pipe_surface_fuchsia)(
+                instance.internal_object(),
+                &create_info,
+                ptr::null(),
+                output.as_mut_ptr(),
+            )
+            .result()
+            .map_err(VulkanError::from)?;
+            output.assume_init()
+        };
+
+        Ok(Arc::new(Surface {
+            handle,
+            instance,
+            api: SurfaceApi::FuchsiaImagePipe,
+            window: win,
+
+            has_swapchain: AtomicBool::new(false),
+            #[cfg(target_os = "ios")]
+            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+        }))
+    }
+
+    /// Creates a `Surface` from a Google Games Platform stream descriptor.
+    ///
+    /// # Safety
+    ///
+    /// - `stream_descriptor` must be a valid Google Games Platform `GgpStreamDescriptor` handle.
+    /// - The object referred to by `stream_descriptor` must outlive the created `Surface`.
+    ///   The `win` parameter can be used to ensure this.
+    #[inline]
+    pub unsafe fn from_ggp_stream_descriptor(
+        instance: Arc<Instance>,
+        stream_descriptor: ash::vk::GgpStreamDescriptor,
+        win: W,
+    ) -> Result<Arc<Self>, SurfaceCreationError> {
+        Self::validate_from_ggp_stream_descriptor(&instance, stream_descriptor)?;
+
+        Ok(Self::from_ggp_stream_descriptor_unchecked(
+            instance,
+            stream_descriptor,
+            win,
+        )?)
+    }
+
+    fn validate_from_ggp_stream_descriptor(
+        instance: &Instance,
+        _stream_descriptor: ash::vk::GgpStreamDescriptor,
+    ) -> Result<(), SurfaceCreationError> {
+        if !instance.enabled_extensions().ggp_stream_descriptor_surface {
+            return Err(SurfaceCreationError::RequirementNotMet {
+                required_for: "`from_ggp_stream_descriptor`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["ggp_stream_descriptor_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        // VUID-VkStreamDescriptorSurfaceCreateInfoGGP-streamDescriptor-02681
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn from_ggp_stream_descriptor_unchecked(
+        instance: Arc<Instance>,
+        stream_descriptor: ash::vk::GgpStreamDescriptor,
+        win: W,
+    ) -> Result<Arc<Self>, VulkanError> {
+        let create_info = ash::vk::StreamDescriptorSurfaceCreateInfoGGP {
+            flags: ash::vk::StreamDescriptorSurfaceCreateFlagsGGP::empty(),
+            stream_descriptor,
+            ..Default::default()
+        };
+
+        let handle = {
+            let fns = instance.fns();
+            let mut output = MaybeUninit::uninit();
+            (fns.ggp_stream_descriptor_surface
+                .create_stream_descriptor_surface_ggp)(
+                instance.internal_object(),
+                &create_info,
+                ptr::null(),
+                output.as_mut_ptr(),
+            )
+            .result()
+            .map_err(VulkanError::from)?;
+            output.assume_init()
+        };
+
+        Ok(Arc::new(Surface {
+            handle,
+            instance,
+            api: SurfaceApi::GgpStreamDescriptor,
+            window: win,
+
+            has_swapchain: AtomicBool::new(false),
+            #[cfg(target_os = "ios")]
+            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+        }))
+    }
+
     /// Creates a `Surface` from an iOS `UIView`.
     ///
     /// # Safety
     ///
-    /// - `view` must be a valid handle.
-    /// - The object referred to by `view` must outlive the created `Surface`.
+    /// - `metal_layer` must be a valid `IOSMetalLayer` handle.
+    /// - The object referred to by `metal_layer` must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.
     /// - The `UIView` must be backed by a `CALayer` instance of type `CAMetalLayer`.
     #[cfg(target_os = "ios")]
+    #[inline]
     pub unsafe fn from_ios(
         instance: Arc<Instance>,
         metal_layer: IOSMetalLayer,
         win: W,
-    ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, SurfaceCreationError> {
+        Self::validate_from_ios(&instance, &metal_layer)?;
+
+        Ok(Self::from_ios_unchecked(instance, metal_layer, win)?)
+    }
+
+    #[cfg(target_os = "ios")]
+    fn validate_from_ios(
+        instance: &Instance,
+        _metal_layer: &IOSMetalLayer,
+    ) -> Result<(), SurfaceCreationError> {
         if !instance.enabled_extensions().mvk_ios_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
                 required_for: "`from_ios`",
@@ -228,6 +586,22 @@ impl<W> Surface<W> {
             });
         }
 
+        // VUID-VkIOSSurfaceCreateInfoMVK-pView-04143
+        // Can't validate, therefore unsafe
+
+        // VUID-VkIOSSurfaceCreateInfoMVK-pView-01316
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg(target_os = "ios")]
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn from_ios_unchecked(
+        instance: Arc<Instance>,
+        metal_layer: IOSMetalLayer,
+        win: W,
+    ) -> Result<Arc<Self>, VulkanError> {
         let create_info = ash::vk::IOSSurfaceCreateInfoMVK {
             flags: ash::vk::IOSSurfaceCreateFlagsMVK::empty(),
             p_view: metal_layer.render_layer.0 as *const _,
@@ -263,16 +637,27 @@ impl<W> Surface<W> {
     ///
     /// # Safety
     ///
-    /// - `view` must be a valid handle.
+    /// - `view` must be a valid `CAMetalLayer` or `NSView` handle.
     /// - The object referred to by `view` must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.
     /// - The `NSView` must be backed by a `CALayer` instance of type `CAMetalLayer`.
     #[cfg(target_os = "macos")]
+    #[inline]
     pub unsafe fn from_mac_os<T>(
         instance: Arc<Instance>,
         view: *const T,
         win: W,
-    ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, SurfaceCreationError> {
+        Self::validate_from_mac_os(&instance, view)?;
+
+        Ok(Self::from_mac_os_unchecked(instance, view, win)?)
+    }
+
+    #[cfg(target_os = "macos")]
+    fn validate_from_mac_os<T>(
+        instance: &Instance,
+        _view: *const T,
+    ) -> Result<(), SurfaceCreationError> {
         if !instance.enabled_extensions().mvk_macos_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
                 required_for: "`from_mac_os`",
@@ -283,6 +668,22 @@ impl<W> Surface<W> {
             });
         }
 
+        // VUID-VkMacOSSurfaceCreateInfoMVK-pView-04144
+        // Can't validate, therefore unsafe
+
+        // VUID-VkMacOSSurfaceCreateInfoMVK-pView-01317
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn from_mac_os_unchecked<T>(
+        instance: Arc<Instance>,
+        view: *const T,
+        win: W,
+    ) -> Result<Arc<Self>, VulkanError> {
         let create_info = ash::vk::MacOSSurfaceCreateInfoMVK {
             flags: ash::vk::MacOSSurfaceCreateFlagsMVK::empty(),
             p_view: view as *const _,
@@ -319,14 +720,24 @@ impl<W> Surface<W> {
     ///
     /// # Safety
     ///
-    /// - `layer` must be a valid handle.
+    /// - `layer` must be a valid Metal `CAMetalLayer` handle.
     /// - The object referred to by `layer` must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.
+    #[inline]
     pub unsafe fn from_metal<T>(
         instance: Arc<Instance>,
         layer: *const T,
         win: W,
-    ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, SurfaceCreationError> {
+        Self::validate_from_metal(&instance, layer)?;
+
+        Ok(Self::from_metal_unchecked(instance, layer, win)?)
+    }
+
+    fn validate_from_metal<T>(
+        instance: &Instance,
+        _layer: *const T,
+    ) -> Result<(), SurfaceCreationError> {
         if !instance.enabled_extensions().ext_metal_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
                 required_for: "`from_metal`",
@@ -337,6 +748,15 @@ impl<W> Surface<W> {
             });
         }
 
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn from_metal_unchecked<T>(
+        instance: Arc<Instance>,
+        layer: *const T,
+        win: W,
+    ) -> Result<Arc<Self>, VulkanError> {
         let create_info = ash::vk::MetalSurfaceCreateInfoEXT {
             flags: ash::vk::MetalSurfaceCreateFlagsEXT::empty(),
             p_layer: layer as *const _,
@@ -369,18 +789,114 @@ impl<W> Surface<W> {
         }))
     }
 
+    /// Creates a `Surface` from a QNX Screen window.
+    ///
+    /// # Safety
+    ///
+    /// - `context` must be a valid QNX Screen `_screen_context` handle.
+    /// - `window` must be a valid QNX Screen `_screen_window` handle.
+    /// - The object referred to by `window` must outlive the created `Surface`.
+    ///   The `win` parameter can be used to ensure this.
+    #[inline]
+    pub unsafe fn from_qnx_screen<T, U>(
+        instance: Arc<Instance>,
+        context: *const T,
+        window: *const U,
+        win: W,
+    ) -> Result<Arc<Self>, SurfaceCreationError> {
+        Self::validate_from_qnx_screen(&instance, context, window)?;
+
+        Ok(Self::from_qnx_screen_unchecked(
+            instance, context, window, win,
+        )?)
+    }
+
+    fn validate_from_qnx_screen<T, U>(
+        instance: &Instance,
+        _context: *const T,
+        _window: *const U,
+    ) -> Result<(), SurfaceCreationError> {
+        if !instance.enabled_extensions().qnx_screen_surface {
+            return Err(SurfaceCreationError::RequirementNotMet {
+                required_for: "`from_qnx_screen`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["qnx_screen_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        // VUID-VkScreenSurfaceCreateInfoQNX-context-04741
+        // Can't validate, therefore unsafe
+
+        // VUID-VkScreenSurfaceCreateInfoQNX-window-04742
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn from_qnx_screen_unchecked<T, U>(
+        instance: Arc<Instance>,
+        context: *const T,
+        window: *const U,
+        win: W,
+    ) -> Result<Arc<Self>, VulkanError> {
+        let create_info = ash::vk::ScreenSurfaceCreateInfoQNX {
+            flags: ash::vk::ScreenSurfaceCreateFlagsQNX::empty(),
+            context: context as *mut _,
+            window: window as *mut _,
+            ..Default::default()
+        };
+
+        let handle = {
+            let fns = instance.fns();
+            let mut output = MaybeUninit::uninit();
+            (fns.qnx_screen_surface.create_screen_surface_qnx)(
+                instance.internal_object(),
+                &create_info,
+                ptr::null(),
+                output.as_mut_ptr(),
+            )
+            .result()
+            .map_err(VulkanError::from)?;
+            output.assume_init()
+        };
+
+        Ok(Arc::new(Surface {
+            handle,
+            instance,
+            api: SurfaceApi::Qnx,
+            window: win,
+
+            has_swapchain: AtomicBool::new(false),
+            #[cfg(target_os = "ios")]
+            metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+        }))
+    }
+
     /// Creates a `Surface` from a `code:nn::code:vi::code:Layer`.
     ///
     /// # Safety
     ///
-    /// - `window` must be a valid handle.
+    /// - `window` must be a valid `nn::vi::NativeWindowHandle` handle.
     /// - The object referred to by `window` must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.
+    #[inline]
     pub unsafe fn from_vi<T>(
         instance: Arc<Instance>,
         window: *const T,
         win: W,
-    ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, SurfaceCreationError> {
+        Self::validate_from_vi(&instance, window)?;
+
+        Ok(Self::from_vi_unchecked(instance, window, win)?)
+    }
+
+    fn validate_from_vi<T>(
+        instance: &Instance,
+        _window: *const T,
+    ) -> Result<(), SurfaceCreationError> {
         if !instance.enabled_extensions().nn_vi_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
                 required_for: "`from_vi`",
@@ -391,6 +907,18 @@ impl<W> Surface<W> {
             });
         }
 
+        // VUID-VkViSurfaceCreateInfoNN-window-01318
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn from_vi_unchecked<T>(
+        instance: Arc<Instance>,
+        window: *const T,
+        win: W,
+    ) -> Result<Arc<Self>, VulkanError> {
         let create_info = ash::vk::ViSurfaceCreateInfoNN {
             flags: ash::vk::ViSurfaceCreateFlagsNN::empty(),
             window: window as *mut _,
@@ -429,15 +957,29 @@ impl<W> Surface<W> {
     ///
     /// # Safety
     ///
-    /// - `display` and `surface` must be valid handles.
+    /// - `display` must be a valid Wayland `wl_display` handle.
+    /// - `surface` must be a valid Wayland `wl_surface` handle.
     /// - The objects referred to by `display` and `surface` must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.
+    #[inline]
     pub unsafe fn from_wayland<D, S>(
         instance: Arc<Instance>,
         display: *const D,
         surface: *const S,
         win: W,
-    ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, SurfaceCreationError> {
+        Self::validate_from_wayland(&instance, display, surface)?;
+
+        Ok(Self::from_wayland_unchecked(
+            instance, display, surface, win,
+        )?)
+    }
+
+    fn validate_from_wayland<D, S>(
+        instance: &Instance,
+        _display: *const D,
+        _surface: *const S,
+    ) -> Result<(), SurfaceCreationError> {
         if !instance.enabled_extensions().khr_wayland_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
                 required_for: "`from_wayland`",
@@ -448,6 +990,22 @@ impl<W> Surface<W> {
             });
         }
 
+        // VUID-VkWaylandSurfaceCreateInfoKHR-display-01304
+        // Can't validate, therefore unsafe
+
+        // VUID-VkWaylandSurfaceCreateInfoKHR-surface-01305
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn from_wayland_unchecked<D, S>(
+        instance: Arc<Instance>,
+        display: *const D,
+        surface: *const S,
+        win: W,
+    ) -> Result<Arc<Self>, VulkanError> {
         let create_info = ash::vk::WaylandSurfaceCreateInfoKHR {
             flags: ash::vk::WaylandSurfaceCreateFlagsKHR::empty(),
             display: display as *mut _,
@@ -487,15 +1045,27 @@ impl<W> Surface<W> {
     ///
     /// # Safety
     ///
-    /// - `hinstance` and `hwnd` must be valid handles.
+    /// - `hinstance` must be a valid Win32 `HINSTANCE` handle.
+    /// - `hwnd` must be a valid Win32 `HWND` handle.
     /// - The objects referred to by `hwnd` and `hinstance` must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.
+    #[inline]
     pub unsafe fn from_win32<T, U>(
         instance: Arc<Instance>,
         hinstance: *const T,
         hwnd: *const U,
         win: W,
-    ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, SurfaceCreationError> {
+        Self::validate_from_win32(&instance, hinstance, hwnd)?;
+
+        Ok(Self::from_win32_unchecked(instance, hinstance, hwnd, win)?)
+    }
+
+    fn validate_from_win32<T, U>(
+        instance: &Instance,
+        _hinstance: *const T,
+        _hwnd: *const U,
+    ) -> Result<(), SurfaceCreationError> {
         if !instance.enabled_extensions().khr_win32_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
                 required_for: "`from_win32`",
@@ -506,6 +1076,22 @@ impl<W> Surface<W> {
             });
         }
 
+        // VUID-VkWin32SurfaceCreateInfoKHR-hinstance-01307
+        // Can't validate, therefore unsafe
+
+        // VUID-VkWin32SurfaceCreateInfoKHR-hwnd-01308
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn from_win32_unchecked<T, U>(
+        instance: Arc<Instance>,
+        hinstance: *const T,
+        hwnd: *const U,
+        win: W,
+    ) -> Result<Arc<Self>, VulkanError> {
         let create_info = ash::vk::Win32SurfaceCreateInfoKHR {
             flags: ash::vk::Win32SurfaceCreateFlagsKHR::empty(),
             hinstance: hinstance as *mut _,
@@ -545,15 +1131,27 @@ impl<W> Surface<W> {
     ///
     /// # Safety
     ///
-    /// - `connection` and `window` must be valid handles.
+    /// - `connection` must be a valid X11 `xcb_connection_t` handle.
+    /// - `window` must be a valid X11 `xcb_window_t` handle.
     /// - The objects referred to by `connection` and `window` must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.
+    #[inline]
     pub unsafe fn from_xcb<C>(
         instance: Arc<Instance>,
         connection: *const C,
-        window: u32,
+        window: ash::vk::xcb_window_t,
         win: W,
-    ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, SurfaceCreationError> {
+        Self::validate_from_xcb(&instance, connection, window)?;
+
+        Ok(Self::from_xcb_unchecked(instance, connection, window, win)?)
+    }
+
+    fn validate_from_xcb<C>(
+        instance: &Instance,
+        _connection: *const C,
+        _window: ash::vk::xcb_window_t,
+    ) -> Result<(), SurfaceCreationError> {
         if !instance.enabled_extensions().khr_xcb_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
                 required_for: "`from_xcb`",
@@ -564,6 +1162,22 @@ impl<W> Surface<W> {
             });
         }
 
+        // VUID-VkXcbSurfaceCreateInfoKHR-connection-01310
+        // Can't validate, therefore unsafe
+
+        // VUID-VkXcbSurfaceCreateInfoKHR-window-01311
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn from_xcb_unchecked<C>(
+        instance: Arc<Instance>,
+        connection: *const C,
+        window: ash::vk::xcb_window_t,
+        win: W,
+    ) -> Result<Arc<Self>, VulkanError> {
         let create_info = ash::vk::XcbSurfaceCreateInfoKHR {
             flags: ash::vk::XcbSurfaceCreateFlagsKHR::empty(),
             connection: connection as *mut _,
@@ -603,15 +1217,27 @@ impl<W> Surface<W> {
     ///
     /// # Safety
     ///
-    /// - `display` and `window` must be valid handles.
+    /// - `display` must be a valid Xlib `Display` handle.
+    /// - `window` must be a valid Xlib `Window` handle.
     /// - The objects referred to by `display` and `window` must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.
+    #[inline]
     pub unsafe fn from_xlib<D>(
         instance: Arc<Instance>,
         display: *const D,
-        window: c_ulong,
+        window: ash::vk::Window,
         win: W,
-    ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
+    ) -> Result<Arc<Self>, SurfaceCreationError> {
+        Self::validate_from_xlib(&instance, display, window)?;
+
+        Ok(Self::from_xlib_unchecked(instance, display, window, win)?)
+    }
+
+    fn validate_from_xlib<D>(
+        instance: &Instance,
+        _display: *const D,
+        _window: ash::vk::Window,
+    ) -> Result<(), SurfaceCreationError> {
         if !instance.enabled_extensions().khr_xlib_surface {
             return Err(SurfaceCreationError::RequirementNotMet {
                 required_for: "`from_xlib`",
@@ -622,6 +1248,22 @@ impl<W> Surface<W> {
             });
         }
 
+        // VUID-VkXlibSurfaceCreateInfoKHR-dpy-01313
+        // Can't validate, therefore unsafe
+
+        // VUID-VkXlibSurfaceCreateInfoKHR-window-01314
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn from_xlib_unchecked<D>(
+        instance: Arc<Instance>,
+        display: *const D,
+        window: ash::vk::Window,
+        win: W,
+    ) -> Result<Arc<Self>, VulkanError> {
         let create_info = ash::vk::XlibSurfaceCreateInfoKHR {
             flags: ash::vk::XlibSurfaceCreateFlagsKHR::empty(),
             dpy: display as *mut _,
@@ -827,13 +1469,18 @@ impl From<VulkanError> for SurfaceCreationError {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum SurfaceApi {
+    Headless,
     DisplayPlane,
 
     // Alphabetical order
     Android,
+    DirectFB,
+    FuchsiaImagePipe,
+    GgpStreamDescriptor,
     Ios,
     MacOs,
     Metal,
+    Qnx,
     Vi,
     Wayland,
     Win32,
