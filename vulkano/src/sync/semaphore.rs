@@ -217,7 +217,7 @@ impl Semaphore {
 
         // VUID-VkMemoryGetFdInfoKHR-handleType-parameter
         handle_type.validate_device(&self.device)?;
-        
+
         // VUID-VkSemaphoreGetFdInfoKHR-handleType-01132
         if !self.export_handle_types.intersects(&handle_type.into()) {
             return Err(SemaphoreError::HandleTypeNotSupported { handle_type });
