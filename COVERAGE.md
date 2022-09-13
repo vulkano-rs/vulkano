@@ -176,7 +176,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_EXT_vertex_attribute_divisor`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_vertex_attribute_divisor.html)
 - [`VK_EXT_ycbcr_image_arrays`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_ycbcr_image_arrays.html)
 - [`VK_FUCHSIA_imagepipe_surface`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_FUCHSIA_imagepipe_surface.html)
-- [`VK_GGP_screen_descriptor_surface`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_GGP_screen_descriptor_surface.html)
+- [`VK_GGP_stream_descriptor_surface`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_GGP_stream_descriptor_surface.html)
 - [`VK_MVK_ios_surface`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_FUCHSIA_imagepipe_surface.html) (deprecated)
 - [`VK_MVK_macos_surface`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_MVK_macos_surface.html) (deprecated)
 - [`VK_QNX_screen_surface`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_QNX_screen_surface.html)
