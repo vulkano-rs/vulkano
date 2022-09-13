@@ -58,10 +58,6 @@ fn main() {
     }
 
     // NOTE: To simplify the example code we won't verify these layer(s) are actually in the layers list:
-    #[cfg(not(target_os = "macos"))]
-    let layers = vec!["VK_LAYER_LUNARG_standard_validation".to_owned()];
-
-    #[cfg(target_os = "macos")]
     let layers = vec!["VK_LAYER_KHRONOS_validation".to_owned()];
 
     // Important: pass the extension(s) and layer(s) when creating the vulkano instance
