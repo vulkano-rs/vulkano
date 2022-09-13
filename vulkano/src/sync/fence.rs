@@ -9,7 +9,8 @@
 
 use crate::{
     device::{Device, DeviceOwned},
-    OomError, VulkanError, VulkanObject,
+    macros::{vulkan_bitflags, vulkan_enum},
+    OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use smallvec::SmallVec;
 use std::{
@@ -35,6 +36,8 @@ pub struct Fence {
     handle: ash::vk::Fence,
     device: Arc<Device>,
 
+    _export_handle_types: ExternalFenceHandleTypes,
+
     // If true, we know that the `Fence` is signaled. If false, we don't know.
     // This variable exists so that we don't need to call `vkGetFenceStatus` or `vkWaitForFences`
     // multiple times.
@@ -47,8 +50,55 @@ pub struct Fence {
 
 impl Fence {
     /// Creates a new `Fence`.
-    pub fn new(device: Arc<Device>, create_info: FenceCreateInfo) -> Result<Fence, OomError> {
-        let FenceCreateInfo { signaled, _ne: _ } = create_info;
+    #[inline]
+    pub fn new(device: Arc<Device>, create_info: FenceCreateInfo) -> Result<Fence, FenceError> {
+        Self::validate_new(&device, &create_info)?;
+
+        unsafe { Ok(Self::new_unchecked(device, create_info)?) }
+    }
+
+    fn validate_new(device: &Device, create_info: &FenceCreateInfo) -> Result<(), FenceError> {
+        let FenceCreateInfo {
+            signaled: _,
+            export_handle_types,
+            _ne: _,
+        } = create_info;
+
+        if !export_handle_types.is_empty() {
+            if !(device.api_version() >= Version::V1_1
+                || device.enabled_extensions().khr_external_fence)
+            {
+                return Err(FenceError::RequirementNotMet {
+                    required_for: "`create_info.export_handle_types` is not empty",
+                    requires_one_of: RequiresOneOf {
+                        api_version: Some(Version::V1_1),
+                        device_extensions: &["khr_external_fence"],
+                        ..Default::default()
+                    },
+                });
+            }
+
+            // VUID-VkExportFenceCreateInfo-handleTypes-01446
+            export_handle_types.validate_device(device)?;
+
+            // VUID-VkExportFenceCreateInfo-handleTypes-01446
+            // TODO: `vkGetPhysicalDeviceExternalFenceProperties` can only be called with one
+            // handle type, so which one do we give it?
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn new_unchecked(
+        device: Arc<Device>,
+        create_info: FenceCreateInfo,
+    ) -> Result<Fence, VulkanError> {
+        let FenceCreateInfo {
+            signaled,
+            export_handle_types,
+            _ne: _,
+        } = create_info;
 
         let mut flags = ash::vk::FenceCreateFlags::empty();
 
@@ -56,17 +106,30 @@ impl Fence {
             flags |= ash::vk::FenceCreateFlags::SIGNALED;
         }
 
-        let create_info = ash::vk::FenceCreateInfo {
+        let mut create_info_vk = ash::vk::FenceCreateInfo {
             flags,
             ..Default::default()
         };
+        let mut export_fence_create_info_vk = None;
 
-        let handle = unsafe {
+        if !export_handle_types.is_empty() {
+            let _ = export_fence_create_info_vk.insert(ash::vk::ExportFenceCreateInfo {
+                handle_types: export_handle_types.into(),
+                ..Default::default()
+            });
+        }
+
+        if let Some(info) = export_fence_create_info_vk.as_mut() {
+            info.p_next = create_info_vk.p_next;
+            create_info_vk.p_next = info as *const _ as *const _;
+        }
+
+        let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
             (fns.v1_0.create_fence)(
                 device.internal_object(),
-                &create_info,
+                &create_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
             )
@@ -78,9 +141,34 @@ impl Fence {
         Ok(Fence {
             handle,
             device,
+            _export_handle_types: export_handle_types,
             is_signaled: AtomicBool::new(signaled),
             must_put_in_pool: false,
         })
+    }
+
+    /// Creates a new `Fence` from an ash-handle
+    /// # Safety
+    /// The `handle` has to be a valid vulkan object handle and
+    /// the `create_info` must match the info used to create said object
+    pub unsafe fn from_handle(
+        handle: ash::vk::Fence,
+        create_info: FenceCreateInfo,
+        device: Arc<Device>,
+    ) -> Fence {
+        let FenceCreateInfo {
+            signaled,
+            export_handle_types,
+            _ne: _,
+        } = create_info;
+
+        Fence {
+            handle,
+            device,
+            _export_handle_types: export_handle_types,
+            is_signaled: AtomicBool::new(signaled),
+            must_put_in_pool: false,
+        }
     }
 
     /// Takes a fence from the vulkano-provided fence pool.
@@ -89,7 +177,7 @@ impl Fence {
     ///
     /// For most applications, using the fence pool should be preferred,
     /// in order to avoid creating new fences every frame.
-    pub fn from_pool(device: Arc<Device>) -> Result<Fence, OomError> {
+    pub fn from_pool(device: Arc<Device>) -> Result<Fence, FenceError> {
         let handle = device.fence_pool().lock().pop();
         let fence = match handle {
             Some(handle) => {
@@ -104,6 +192,7 @@ impl Fence {
                 Fence {
                     handle,
                     device,
+                    _export_handle_types: ExternalFenceHandleTypes::empty(),
                     is_signaled: AtomicBool::new(false),
                     must_put_in_pool: true,
                 }
@@ -117,25 +206,6 @@ impl Fence {
         };
 
         Ok(fence)
-    }
-
-    /// Creates a new `Fence` from an ash-handle
-    /// # Safety
-    /// The `handle` has to be a valid vulkan object handle and
-    /// the `create_info` must match the info used to create said object
-    pub unsafe fn from_handle(
-        handle: ash::vk::Fence,
-        create_info: FenceCreateInfo,
-        device: Arc<Device>,
-    ) -> Fence {
-        let FenceCreateInfo { signaled, _ne: _ } = create_info;
-
-        Fence {
-            handle,
-            device,
-            is_signaled: AtomicBool::new(signaled),
-            must_put_in_pool: false,
-        }
     }
 
     /// Returns true if the fence is signaled.
@@ -164,7 +234,7 @@ impl Fence {
     /// Returns `Ok` if the fence is now signaled. Returns `Err` if the timeout was reached instead.
     ///
     /// If you pass a duration of 0, then the function will return without blocking.
-    pub fn wait(&self, timeout: Option<Duration>) -> Result<(), FenceWaitError> {
+    pub fn wait(&self, timeout: Option<Duration>) -> Result<(), FenceError> {
         unsafe {
             if self.is_signaled.load(Ordering::Relaxed) {
                 return Ok(());
@@ -193,7 +263,7 @@ impl Fence {
                     self.is_signaled.store(true, Ordering::Relaxed);
                     Ok(())
                 }
-                ash::vk::Result::TIMEOUT => Err(FenceWaitError::Timeout),
+                ash::vk::Result::TIMEOUT => Err(FenceError::Timeout),
                 err => Err(VulkanError::from(err).into()),
             }
         }
@@ -204,7 +274,7 @@ impl Fence {
     /// # Panic
     ///
     /// Panics if not all fences belong to the same device.
-    pub fn multi_wait<'a, I>(iter: I, timeout: Option<Duration>) -> Result<(), FenceWaitError>
+    pub fn multi_wait<'a, I>(iter: I, timeout: Option<Duration>) -> Result<(), FenceError>
     where
         I: IntoIterator<Item = &'a Fence>,
     {
@@ -256,7 +326,7 @@ impl Fence {
 
         match result {
             ash::vk::Result::SUCCESS => Ok(()),
-            ash::vk::Result::TIMEOUT => Err(FenceWaitError::Timeout),
+            ash::vk::Result::TIMEOUT => Err(FenceError::Timeout),
             err => Err(VulkanError::from(err).into()),
         }
     }
@@ -377,6 +447,8 @@ pub struct FenceCreateInfo {
     /// The default value is `false`.
     pub signaled: bool,
 
+    pub export_handle_types: ExternalFenceHandleTypes,
+
     pub _ne: crate::NonExhaustive,
 }
 
@@ -385,57 +457,189 @@ impl Default for FenceCreateInfo {
     fn default() -> Self {
         Self {
             signaled: false,
+            export_handle_types: ExternalFenceHandleTypes::empty(),
             _ne: crate::NonExhaustive(()),
         }
     }
 }
 
-/// Error that can be returned when waiting on a fence.
+vulkan_enum! {
+    /// The handle type used for Vulkan external fence APIs.
+    #[non_exhaustive]
+    ExternalFenceHandleType = ExternalFenceHandleTypeFlags(u32);
+
+    // TODO: document
+    OpaqueFd = OPAQUE_FD,
+
+    // TODO: document
+    OpaqueWin32 = OPAQUE_WIN32,
+
+    // TODO: document
+    OpaqueWin32Kmt = OPAQUE_WIN32_KMT,
+
+    // TODO: document
+    SyncFd = SYNC_FD,
+}
+
+vulkan_bitflags! {
+    /// A mask of multiple external fence handle types.
+    #[non_exhaustive]
+    ExternalFenceHandleTypes = ExternalFenceHandleTypeFlags(u32);
+
+    // TODO: document
+    opaque_fd = OPAQUE_FD,
+
+    // TODO: document
+    opaque_win32 = OPAQUE_WIN32,
+
+    // TODO: document
+    opaque_win32_kmt = OPAQUE_WIN32_KMT,
+
+    // TODO: document
+    sync_fd = SYNC_FD,
+}
+
+impl From<ExternalFenceHandleType> for ExternalFenceHandleTypes {
+    #[inline]
+    fn from(val: ExternalFenceHandleType) -> Self {
+        let mut result = Self::empty();
+
+        match val {
+            ExternalFenceHandleType::OpaqueFd => result.opaque_fd = true,
+            ExternalFenceHandleType::OpaqueWin32 => result.opaque_win32 = true,
+            ExternalFenceHandleType::OpaqueWin32Kmt => result.opaque_win32_kmt = true,
+            ExternalFenceHandleType::SyncFd => result.sync_fd = true,
+        }
+
+        result
+    }
+}
+
+vulkan_bitflags! {
+    /// Additional parameters for a fence payload import.
+    #[non_exhaustive]
+    FenceImportFlags = FenceImportFlags(u32);
+
+    /// The fence payload will be imported only temporarily, regardless of the permanence of the
+    /// imported handle type.
+    temporary = TEMPORARY,
+}
+
+/// The fence configuration to query in
+/// [`PhysicalDevice::external_fence_properties`](crate::device::physical::PhysicalDevice::external_fence_properties).
+#[derive(Clone, Debug)]
+pub struct ExternalFenceInfo {
+    /// The external handle type that will be used with the fence.
+    pub handle_type: ExternalFenceHandleType,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl ExternalFenceInfo {
+    /// Returns an `ExternalFenceInfo` with the specified `handle_type`.
+    #[inline]
+    pub fn handle_type(handle_type: ExternalFenceHandleType) -> Self {
+        Self {
+            handle_type,
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+/// The properties for exporting or importing external handles, when a fence is created
+/// with a specific configuration.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct ExternalFenceProperties {
+    /// Whether a handle can be exported to an external source with the queried
+    /// external handle type.
+    pub exportable: bool,
+
+    /// Whether a handle can be imported from an external source with the queried
+    /// external handle type.
+    pub importable: bool,
+
+    /// Which external handle types can be re-exported after the queried external handle type has
+    /// been imported.
+    pub export_from_imported_handle_types: ExternalFenceHandleTypes,
+
+    /// Which external handle types can be enabled along with the queried external handle type
+    /// when creating the fence.
+    pub compatible_handle_types: ExternalFenceHandleTypes,
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum FenceWaitError {
-    /// Not enough memory to complete the wait.
+pub enum FenceError {
+    /// Not enough memory available.
     OomError(OomError),
+
+    /// The device has been lost.
+    DeviceLost,
 
     /// The specified timeout wasn't long enough.
     Timeout,
 
-    /// The device has been lost.
-    DeviceLostError,
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
+    },
 }
 
-impl Error for FenceWaitError {
+impl Error for FenceError {
     #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
-            FenceWaitError::OomError(ref err) => Some(err),
+            Self::OomError(ref err) => Some(err),
             _ => None,
         }
     }
 }
 
-impl Display for FenceWaitError {
-    #[inline]
+impl Display for FenceError {
     fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
-        write!(
-            f,
-            "{}",
-            match *self {
-                FenceWaitError::OomError(_) => "no memory available",
-                FenceWaitError::Timeout => "the timeout has been reached",
-                FenceWaitError::DeviceLostError => "the device was lost",
-            }
-        )
+        match self {
+            Self::OomError(_) => write!(f, "not enough memory available"),
+            Self::DeviceLost => write!(f, "the device was lost"),
+            Self::Timeout => write!(f, "the timeout has been reached"),
+
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
+            ),
+        }
     }
 }
 
-impl From<VulkanError> for FenceWaitError {
+impl From<VulkanError> for FenceError {
     #[inline]
-    fn from(err: VulkanError) -> FenceWaitError {
+    fn from(err: VulkanError) -> Self {
         match err {
-            VulkanError::OutOfHostMemory => FenceWaitError::OomError(From::from(err)),
-            VulkanError::OutOfDeviceMemory => FenceWaitError::OomError(From::from(err)),
-            VulkanError::DeviceLost => FenceWaitError::DeviceLostError,
-            _ => panic!("Unexpected error value"),
+            e @ VulkanError::OutOfHostMemory | e @ VulkanError::OutOfDeviceMemory => {
+                Self::OomError(e.into())
+            }
+            VulkanError::DeviceLost => Self::DeviceLost,
+            _ => panic!("unexpected error: {:?}", err),
+        }
+    }
+}
+
+impl From<OomError> for FenceError {
+    #[inline]
+    fn from(err: OomError) -> Self {
+        Self::OomError(err)
+    }
+}
+
+impl From<RequirementNotMet> for FenceError {
+    #[inline]
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
         }
     }
 }

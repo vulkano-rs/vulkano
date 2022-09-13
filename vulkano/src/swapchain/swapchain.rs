@@ -28,8 +28,8 @@ use crate::{
     macros::vulkan_enum,
     swapchain::{SurfaceApi, SurfaceInfo, SurfaceSwapchainLock},
     sync::{
-        AccessCheckError, AccessError, AccessFlags, Fence, FlushError, GpuFuture, PipelineStages,
-        Semaphore, SemaphoreCreationError, Sharing,
+        AccessCheckError, AccessError, AccessFlags, Fence, FenceError, FlushError, GpuFuture,
+        PipelineStages, Semaphore, SemaphoreError, Sharing,
     },
     DeviceSize, OomError, RequirementNotMet, RequiresOneOf, VulkanError, VulkanObject,
 };
@@ -1777,8 +1777,11 @@ pub enum AcquireError {
     /// surface's new properties and recreate a new swapchain if you want to continue drawing.
     OutOfDate,
 
-    /// Error during semaphore creation
-    SemaphoreError(SemaphoreCreationError),
+    /// Error during fence creation.
+    FenceError(FenceError),
+
+    /// Error during semaphore creation.
+    SemaphoreError(SemaphoreError),
 }
 
 impl Error for AcquireError {
@@ -1806,14 +1809,21 @@ impl Display for AcquireError {
                 AcquireError::FullScreenExclusiveModeLost => {
                     "the swapchain no longer has full-screen exclusivity"
                 }
+                AcquireError::FenceError(_) => "error creating fence",
                 AcquireError::SemaphoreError(_) => "error creating semaphore",
             }
         )
     }
 }
 
-impl From<SemaphoreCreationError> for AcquireError {
-    fn from(err: SemaphoreCreationError) -> Self {
+impl From<FenceError> for AcquireError {
+    fn from(err: FenceError) -> Self {
+        AcquireError::FenceError(err)
+    }
+}
+
+impl From<SemaphoreError> for AcquireError {
+    fn from(err: SemaphoreError) -> Self {
         AcquireError::SemaphoreError(err)
     }
 }

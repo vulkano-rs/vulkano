@@ -13,7 +13,7 @@ pub use self::{
     now::{now, NowFuture},
     semaphore_signal::SemaphoreSignalFuture,
 };
-use super::{AccessFlags, FenceWaitError, PipelineStages};
+use super::{AccessFlags, FenceError, PipelineStages};
 use crate::{
     buffer::sys::UnsafeBuffer,
     command_buffer::{
@@ -568,13 +568,14 @@ impl From<SubmitBindSparseError> for FlushError {
     }
 }
 
-impl From<FenceWaitError> for FlushError {
+impl From<FenceError> for FlushError {
     #[inline]
-    fn from(err: FenceWaitError) -> FlushError {
+    fn from(err: FenceError) -> FlushError {
         match err {
-            FenceWaitError::OomError(err) => FlushError::OomError(err),
-            FenceWaitError::Timeout => FlushError::Timeout,
-            FenceWaitError::DeviceLostError => FlushError::DeviceLost,
+            FenceError::OomError(err) => FlushError::OomError(err),
+            FenceError::Timeout => FlushError::Timeout,
+            FenceError::DeviceLost => FlushError::DeviceLost,
+            FenceError::RequirementNotMet { .. } => unreachable!(),
         }
     }
 }

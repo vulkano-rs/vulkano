@@ -30,18 +30,29 @@ use std::{
 pub struct Semaphore {
     handle: ash::vk::Semaphore,
     device: Arc<Device>,
-    must_put_in_pool: bool,
 
     export_handle_types: ExternalSemaphoreHandleTypes,
+
+    must_put_in_pool: bool,
 }
 
 impl Semaphore {
     /// Creates a new `Semaphore`.
+    #[inline]
     pub fn new(
         device: Arc<Device>,
         create_info: SemaphoreCreateInfo,
-    ) -> Result<Semaphore, SemaphoreCreationError> {
-        let SemaphoreCreateInfo {
+    ) -> Result<Semaphore, SemaphoreError> {
+        Self::validate_new(&device, &create_info)?;
+
+        unsafe { Ok(Self::new_unchecked(device, create_info)?) }
+    }
+
+    fn validate_new(
+        device: &Device,
+        create_info: &SemaphoreCreateInfo,
+    ) -> Result<(), SemaphoreError> {
+        let &SemaphoreCreateInfo {
             export_handle_types,
             _ne: _,
         } = create_info;
@@ -50,7 +61,7 @@ impl Semaphore {
             if !(device.api_version() >= Version::V1_1
                 || device.enabled_extensions().khr_external_semaphore)
             {
-                return Err(SemaphoreCreationError::RequirementNotMet {
+                return Err(SemaphoreError::RequirementNotMet {
                     required_for: "`create_info.export_handle_types` is not empty",
                     requires_one_of: RequiresOneOf {
                         api_version: Some(Version::V1_1),
@@ -61,34 +72,50 @@ impl Semaphore {
             }
 
             // VUID-VkExportSemaphoreCreateInfo-handleTypes-parameter
-            export_handle_types.validate_device(&device)?;
+            export_handle_types.validate_device(device)?;
 
             // VUID-VkExportSemaphoreCreateInfo-handleTypes-01124
             // TODO: `vkGetPhysicalDeviceExternalSemaphoreProperties` can only be called with one
             // handle type, so which one do we give it?
         }
 
-        let mut create_info = ash::vk::SemaphoreCreateInfo::builder();
+        Ok(())
+    }
 
-        let mut export_semaphore_create_info = if !export_handle_types.is_empty() {
-            Some(ash::vk::ExportSemaphoreCreateInfo {
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn new_unchecked(
+        device: Arc<Device>,
+        create_info: SemaphoreCreateInfo,
+    ) -> Result<Semaphore, VulkanError> {
+        let SemaphoreCreateInfo {
+            export_handle_types,
+            _ne: _,
+        } = create_info;
+
+        let mut create_info_vk = ash::vk::SemaphoreCreateInfo {
+            flags: ash::vk::SemaphoreCreateFlags::empty(),
+            ..Default::default()
+        };
+        let mut export_semaphore_create_info_vk = None;
+
+        if !export_handle_types.is_empty() {
+            let _ = export_semaphore_create_info_vk.insert(ash::vk::ExportSemaphoreCreateInfo {
                 handle_types: export_handle_types.into(),
                 ..Default::default()
-            })
-        } else {
-            None
+            });
         };
 
-        if let Some(info) = export_semaphore_create_info.as_mut() {
-            create_info = create_info.push_next(info);
+        if let Some(info) = export_semaphore_create_info_vk.as_mut() {
+            info.p_next = create_info_vk.p_next;
+            create_info_vk.p_next = info as *const _ as *const _;
         }
 
-        let handle = unsafe {
+        let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
             (fns.v1_0.create_semaphore)(
                 device.internal_object(),
-                &create_info.build(),
+                &create_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
             )
@@ -100,37 +127,11 @@ impl Semaphore {
         Ok(Semaphore {
             device,
             handle,
-            must_put_in_pool: false,
 
             export_handle_types,
+
+            must_put_in_pool: false,
         })
-    }
-
-    /// Takes a semaphore from the vulkano-provided semaphore pool.
-    /// If the pool is empty, a new semaphore will be allocated.
-    /// Upon `drop`, the semaphore is put back into the pool.
-    ///
-    /// For most applications, using the pool should be preferred,
-    /// in order to avoid creating new semaphores every frame.
-    pub fn from_pool(device: Arc<Device>) -> Result<Semaphore, SemaphoreCreationError> {
-        let handle = device.semaphore_pool().lock().pop();
-        let semaphore = match handle {
-            Some(handle) => Semaphore {
-                device,
-                handle,
-                must_put_in_pool: true,
-
-                export_handle_types: ExternalSemaphoreHandleTypes::empty(),
-            },
-            None => {
-                // Pool is empty, alloc new semaphore
-                let mut semaphore = Semaphore::new(device, Default::default())?;
-                semaphore.must_put_in_pool = true;
-                semaphore
-            }
-        };
-
-        Ok(semaphore)
     }
 
     /// Creates a new `Semaphore` from an ash-handle
@@ -150,58 +151,138 @@ impl Semaphore {
         Semaphore {
             device,
             handle,
-            must_put_in_pool: false,
 
             export_handle_types,
+
+            must_put_in_pool: false,
         }
     }
 
+    /// Takes a semaphore from the vulkano-provided semaphore pool.
+    /// If the pool is empty, a new semaphore will be allocated.
+    /// Upon `drop`, the semaphore is put back into the pool.
+    ///
+    /// For most applications, using the pool should be preferred,
+    /// in order to avoid creating new semaphores every frame.
+    pub fn from_pool(device: Arc<Device>) -> Result<Semaphore, SemaphoreError> {
+        let handle = device.semaphore_pool().lock().pop();
+        let semaphore = match handle {
+            Some(handle) => Semaphore {
+                device,
+                handle,
+
+                export_handle_types: ExternalSemaphoreHandleTypes::empty(),
+
+                must_put_in_pool: true,
+            },
+            None => {
+                // Pool is empty, alloc new semaphore
+                let mut semaphore = Semaphore::new(device, Default::default())?;
+                semaphore.must_put_in_pool = true;
+                semaphore
+            }
+        };
+
+        Ok(semaphore)
+    }
+
+    /// Exports the semaphore into a POSIX file descriptor. The caller owns the returned `File`.
+    ///
     /// # Safety
     ///
     /// - The semaphore must not be used, or have been used, to acquire a swapchain image.
-    pub unsafe fn export_opaque_fd(&self) -> Result<File, SemaphoreExportError> {
-        // VUID-VkSemaphoreGetFdInfoKHR-handleType-01132
-        if !self.export_handle_types.opaque_fd {
-            return Err(SemaphoreExportError::HandleTypeNotSupported {
-                handle_type: ExternalSemaphoreHandleType::OpaqueFd,
+    #[inline]
+    pub unsafe fn export_fd(
+        &self,
+        handle_type: ExternalSemaphoreHandleType,
+    ) -> Result<File, SemaphoreError> {
+        self.validate_export_fd(handle_type)?;
+
+        Ok(self.export_fd_unchecked(handle_type)?)
+    }
+
+    fn validate_export_fd(
+        &self,
+        handle_type: ExternalSemaphoreHandleType,
+    ) -> Result<(), SemaphoreError> {
+        if !self.device.enabled_extensions().khr_external_semaphore_fd {
+            return Err(SemaphoreError::RequirementNotMet {
+                required_for: "`export_fd`",
+                requires_one_of: RequiresOneOf {
+                    device_extensions: &["khr_external_semaphore_fd"],
+                    ..Default::default()
+                },
             });
         }
 
-        assert!(self.device.enabled_extensions().khr_external_semaphore);
-        assert!(self.device.enabled_extensions().khr_external_semaphore_fd);
+        // VUID-VkMemoryGetFdInfoKHR-handleType-parameter
+        handle_type.validate_device(&self.device)?;
+        
+        // VUID-VkSemaphoreGetFdInfoKHR-handleType-01132
+        if !self.export_handle_types.intersects(&handle_type.into()) {
+            return Err(SemaphoreError::HandleTypeNotSupported { handle_type });
+        }
 
         // VUID-VkSemaphoreGetFdInfoKHR-semaphore-01133
         // Can't validate for swapchain.
 
-        #[cfg(not(unix))]
-        unreachable!("`khr_external_semaphore_fd` was somehow enabled on a non-Unix system");
+        // VUID-VkSemaphoreGetFdInfoKHR-handleType-01134
+        // TODO:
 
-        #[cfg(unix)]
-        {
-            use std::os::unix::io::FromRawFd;
+        // VUID-VkSemaphoreGetFdInfoKHR-handleType-01135
+        // TODO:
 
-            let fns = self.device.fns();
-
-            let fd = {
-                let info = ash::vk::SemaphoreGetFdInfoKHR {
-                    semaphore: self.handle,
-                    handle_type: ash::vk::ExternalSemaphoreHandleTypeFlagsKHR::OPAQUE_FD,
-                    ..Default::default()
-                };
-
-                let mut output = MaybeUninit::uninit();
-                (fns.khr_external_semaphore_fd.get_semaphore_fd_khr)(
-                    self.device.internal_object(),
-                    &info,
-                    output.as_mut_ptr(),
-                )
-                .result()
-                .map_err(VulkanError::from)?;
-                output.assume_init()
-            };
-            let file = File::from_raw_fd(fd);
-            Ok(file)
+        // VUID-VkSemaphoreGetFdInfoKHR-handleType-01136
+        if !matches!(
+            handle_type,
+            ExternalSemaphoreHandleType::OpaqueFd | ExternalSemaphoreHandleType::SyncFd
+        ) {
+            return Err(SemaphoreError::HandleTypeNotSupported { handle_type });
         }
+
+        // VUID-VkSemaphoreGetFdInfoKHR-handleType-03253
+        // TODO:
+
+        // VUID-VkSemaphoreGetFdInfoKHR-handleType-03254
+        // TODO:
+
+        Ok(())
+    }
+
+    #[cfg(not(unix))]
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn export_fd_unchecked(
+        &self,
+        _handle_type: ExternalSemaphoreHandleType,
+    ) -> Result<File, VulkanError> {
+        unreachable!("`khr_external_semaphore_fd` was somehow enabled on a non-Unix system");
+    }
+
+    #[cfg(unix)]
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn export_fd_unchecked(
+        &self,
+        handle_type: ExternalSemaphoreHandleType,
+    ) -> Result<File, VulkanError> {
+        use std::os::unix::io::FromRawFd;
+
+        let info = ash::vk::SemaphoreGetFdInfoKHR {
+            semaphore: self.handle,
+            handle_type: handle_type.into(),
+            ..Default::default()
+        };
+
+        let mut output = MaybeUninit::uninit();
+        let fns = self.device.fns();
+        (fns.khr_external_semaphore_fd.get_semaphore_fd_khr)(
+            self.device.internal_object(),
+            &info,
+            output.as_mut_ptr(),
+        )
+        .result()
+        .map_err(VulkanError::from)?;
+
+        Ok(File::from_raw_fd(output.assume_init()))
     }
 }
 
@@ -257,73 +338,6 @@ impl Hash for Semaphore {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum SemaphoreCreationError {
-    /// Not enough memory available.
-    OomError(OomError),
-
-    RequirementNotMet {
-        required_for: &'static str,
-        requires_one_of: RequiresOneOf,
-    },
-}
-
-impl Error for SemaphoreCreationError {
-    #[inline]
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            Self::OomError(ref err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl Display for SemaphoreCreationError {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
-        match self {
-            Self::OomError(_) => write!(f, "not enough memory available"),
-
-            Self::RequirementNotMet {
-                required_for,
-                requires_one_of,
-            } => write!(
-                f,
-                "a requirement was not met for: {}; requires one of: {}",
-                required_for, requires_one_of,
-            ),
-        }
-    }
-}
-
-impl From<VulkanError> for SemaphoreCreationError {
-    #[inline]
-    fn from(err: VulkanError) -> Self {
-        match err {
-            e @ VulkanError::OutOfHostMemory | e @ VulkanError::OutOfDeviceMemory => {
-                Self::OomError(e.into())
-            }
-            _ => panic!("unexpected error: {:?}", err),
-        }
-    }
-}
-
-impl From<OomError> for SemaphoreCreationError {
-    #[inline]
-    fn from(err: OomError) -> Self {
-        Self::OomError(err)
-    }
-}
-
-impl From<RequirementNotMet> for SemaphoreCreationError {
-    #[inline]
-    fn from(err: RequirementNotMet) -> Self {
-        Self::RequirementNotMet {
-            required_for: err.required_for,
-            requires_one_of: err.requires_one_of,
-        }
-    }
-}
-
 /// Parameters to create a new `Semaphore`.
 #[derive(Clone, Debug)]
 pub struct SemaphoreCreateInfo {
@@ -346,7 +360,7 @@ impl Default for SemaphoreCreateInfo {
 }
 
 vulkan_enum! {
-    /// Describes the handle type used for Vulkan external semaphore APIs.
+    /// The handle type used for Vulkan external semaphore APIs.
     #[non_exhaustive]
     ExternalSemaphoreHandleType = ExternalSemaphoreHandleTypeFlags(u32);
 
@@ -374,7 +388,7 @@ vulkan_enum! {
 }
 
 vulkan_bitflags! {
-    /// A mask of multiple handle types.
+    /// A mask of multiple external semaphore handle types.
     #[non_exhaustive]
     ExternalSemaphoreHandleTypes = ExternalSemaphoreHandleTypeFlags(u32);
 
@@ -399,6 +413,33 @@ vulkan_bitflags! {
         device_extensions: [fuchsia_external_semaphore],
     },
      */
+}
+
+impl From<ExternalSemaphoreHandleType> for ExternalSemaphoreHandleTypes {
+    #[inline]
+    fn from(val: ExternalSemaphoreHandleType) -> Self {
+        let mut result = Self::empty();
+
+        match val {
+            ExternalSemaphoreHandleType::OpaqueFd => result.opaque_fd = true,
+            ExternalSemaphoreHandleType::OpaqueWin32 => result.opaque_win32 = true,
+            ExternalSemaphoreHandleType::OpaqueWin32Kmt => result.opaque_win32_kmt = true,
+            ExternalSemaphoreHandleType::D3D12Fence => result.d3d12_fence = true,
+            ExternalSemaphoreHandleType::SyncFd => result.sync_fd = true,
+        }
+
+        result
+    }
+}
+
+vulkan_bitflags! {
+    /// Additional parameters for a semaphore payload import.
+    #[non_exhaustive]
+    SemaphoreImportFlags = SemaphoreImportFlags(u32);
+
+    /// The semaphore payload will be imported only temporarily, regardless of the permanence of the
+    /// imported handle type.
+    temporary = TEMPORARY,
 }
 
 /// The semaphore configuration to query in
@@ -440,14 +481,20 @@ pub struct ExternalSemaphoreProperties {
     pub export_from_imported_handle_types: ExternalSemaphoreHandleTypes,
 
     /// Which external handle types can be enabled along with the queried external handle type
-    /// when creating the buffer or image.
+    /// when creating the semaphore.
     pub compatible_handle_types: ExternalSemaphoreHandleTypes,
 }
 
+/// Error that can be returned from operations on a semaphore.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum SemaphoreExportError {
+pub enum SemaphoreError {
     /// Not enough memory available.
     OomError(OomError),
+
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
+    },
 
     /// The requested export handle type was not provided in `export_handle_types` when creating the
     /// semaphore.
@@ -456,10 +503,30 @@ pub enum SemaphoreExportError {
     },
 }
 
-impl Display for SemaphoreExportError {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+impl Error for SemaphoreError {
+    #[inline]
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
+            Self::OomError(ref err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl Display for SemaphoreError {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+        match self {
             Self::OomError(_) => write!(f, "not enough memory available"),
+
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
+            ),
+
             Self::HandleTypeNotSupported { handle_type } => write!(
                 f,
                 "the requested export handle type ({:?}) was not provided in `export_handle_types` when creating the semaphore",
@@ -469,7 +536,7 @@ impl Display for SemaphoreExportError {
     }
 }
 
-impl From<VulkanError> for SemaphoreExportError {
+impl From<VulkanError> for SemaphoreError {
     #[inline]
     fn from(err: VulkanError) -> Self {
         match err {
@@ -481,25 +548,26 @@ impl From<VulkanError> for SemaphoreExportError {
     }
 }
 
-impl Error for SemaphoreExportError {
-    #[inline]
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            Self::OomError(ref err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl From<OomError> for SemaphoreExportError {
+impl From<OomError> for SemaphoreError {
     #[inline]
     fn from(err: OomError) -> Self {
         Self::OomError(err)
     }
 }
 
+impl From<RequirementNotMet> for SemaphoreError {
+    #[inline]
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use super::ExternalSemaphoreHandleType;
     use crate::{
         device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo},
         instance::{Instance, InstanceCreateInfo, InstanceExtensions},
@@ -587,6 +655,9 @@ mod tests {
             },
         )
         .unwrap();
-        let _fd = unsafe { sem.export_opaque_fd().unwrap() };
+        let _fd = unsafe {
+            sem.export_fd(ExternalSemaphoreHandleType::OpaqueFd)
+                .unwrap()
+        };
     }
 }

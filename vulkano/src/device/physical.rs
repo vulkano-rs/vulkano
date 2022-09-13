@@ -23,7 +23,10 @@ use crate::{
         ColorSpace, FullScreenExclusive, PresentMode, SupportedSurfaceTransforms, Surface,
         SurfaceApi, SurfaceCapabilities, SurfaceInfo,
     },
-    sync::{ExternalSemaphoreInfo, ExternalSemaphoreProperties},
+    sync::{
+        ExternalFenceInfo, ExternalFenceProperties, ExternalSemaphoreInfo,
+        ExternalSemaphoreProperties,
+    },
     OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use bytemuck::cast_slice;
@@ -394,6 +397,67 @@ impl PhysicalDevice {
         &self.queue_family_properties
     }
 
+    /// Queries whether the physical device supports presenting to DirectFB surfaces from queues of
+    /// the given queue family.
+    ///
+    /// # Safety
+    ///
+    /// - `dfb` must be a valid DirectFB `IDirectFB` handle.
+    #[inline]
+    pub unsafe fn directfb_presentation_support<D>(
+        &self,
+        queue_family_index: u32,
+        dfb: *const D,
+    ) -> Result<bool, SurfacePropertiesError> {
+        self.validate_directfb_presentation_support(queue_family_index, dfb)?;
+
+        Ok(self.directfb_presentation_support_unchecked(queue_family_index, dfb))
+    }
+
+    fn validate_directfb_presentation_support<D>(
+        &self,
+        queue_family_index: u32,
+        _dfb: *const D,
+    ) -> Result<(), SurfacePropertiesError> {
+        if !self.instance.enabled_extensions().ext_directfb_surface {
+            return Err(SurfacePropertiesError::RequirementNotMet {
+                required_for: "`directfb_presentation_support`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["ext_directfb_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceDirectFBPresentationSupportEXT-queueFamilyIndex-04119
+        if queue_family_index >= self.queue_family_properties.len() as u32 {
+            return Err(SurfacePropertiesError::QueueFamilyIndexOutOfRange {
+                queue_family_index,
+                queue_family_count: self.queue_family_properties.len() as u32,
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceDirectFBPresentationSupportEXT-dfb-parameter
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn directfb_presentation_support_unchecked<D>(
+        &self,
+        queue_family_index: u32,
+        dfb: *const D,
+    ) -> bool {
+        let fns = self.instance.fns();
+        (fns.ext_directfb_surface
+            .get_physical_device_direct_fb_presentation_support_ext)(
+            self.handle,
+            queue_family_index,
+            dfb as *mut _,
+        ) != 0
+    }
+
     /// Retrieves the external memory properties supported for buffers with a given configuration.
     ///
     /// Instance API version must be at least 1.1, or the
@@ -499,6 +563,107 @@ impl PhysicalDevice {
         }
     }
 
+    /// Retrieves the external handle properties supported for fences with a given
+    /// configuration.
+    ///
+    /// The instance API version must be at least 1.1, or the
+    /// [`khr_external_fence_capabilities`](crate::instance::InstanceExtensions::khr_external_fence_capabilities)
+    /// extension must be enabled on the instance.
+    #[inline]
+    pub fn external_fence_properties(
+        &self,
+        info: ExternalFenceInfo,
+    ) -> Result<ExternalFenceProperties, ExternalFenceSemaphorePropertiesError> {
+        self.validate_external_fence_properties(&info)?;
+
+        unsafe { Ok(self.external_fence_properties_unchecked(info)) }
+    }
+
+    fn validate_external_fence_properties(
+        &self,
+        info: &ExternalFenceInfo,
+    ) -> Result<(), ExternalFenceSemaphorePropertiesError> {
+        if !(self.instance.api_version() >= Version::V1_1
+            || self
+                .instance
+                .enabled_extensions()
+                .khr_external_fence_capabilities)
+        {
+            return Err(ExternalFenceSemaphorePropertiesError::RequirementNotMet {
+                required_for: "`external_fence_properties`",
+                requires_one_of: RequiresOneOf {
+                    api_version: Some(Version::V1_1),
+                    instance_extensions: &["khr_external_fence_capabilities"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        let &ExternalFenceInfo {
+            handle_type,
+            _ne: _,
+        } = info;
+
+        // VUID-VkPhysicalDeviceExternalFenceInfo-handleType-parameter
+        handle_type.validate_physical_device(self)?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn external_fence_properties_unchecked(
+        &self,
+        info: ExternalFenceInfo,
+    ) -> ExternalFenceProperties {
+        /* Input */
+
+        let ExternalFenceInfo {
+            handle_type,
+            _ne: _,
+        } = info;
+
+        let external_fence_info = ash::vk::PhysicalDeviceExternalFenceInfo {
+            handle_type: handle_type.into(),
+            ..Default::default()
+        };
+
+        /* Output */
+
+        let mut external_fence_properties = ash::vk::ExternalFenceProperties::default();
+
+        /* Call */
+
+        let fns = self.instance.fns();
+
+        if self.instance.api_version() >= Version::V1_1 {
+            (fns.v1_1.get_physical_device_external_fence_properties)(
+                self.handle,
+                &external_fence_info,
+                &mut external_fence_properties,
+            )
+        } else {
+            (fns.khr_external_fence_capabilities
+                .get_physical_device_external_fence_properties_khr)(
+                self.handle,
+                &external_fence_info,
+                &mut external_fence_properties,
+            );
+        }
+
+        ExternalFenceProperties {
+            exportable: external_fence_properties
+                .external_fence_features
+                .intersects(ash::vk::ExternalFenceFeatureFlags::EXPORTABLE),
+            importable: external_fence_properties
+                .external_fence_features
+                .intersects(ash::vk::ExternalFenceFeatureFlags::IMPORTABLE),
+            export_from_imported_handle_types: external_fence_properties
+                .export_from_imported_handle_types
+                .into(),
+            compatible_handle_types: external_fence_properties.compatible_handle_types.into(),
+        }
+    }
+
     /// Retrieves the external handle properties supported for semaphores with a given
     /// configuration.
     ///
@@ -509,7 +674,7 @@ impl PhysicalDevice {
     pub fn external_semaphore_properties(
         &self,
         info: ExternalSemaphoreInfo,
-    ) -> Result<ExternalSemaphoreProperties, ExternalSemaphorePropertiesError> {
+    ) -> Result<ExternalSemaphoreProperties, ExternalFenceSemaphorePropertiesError> {
         self.validate_external_semaphore_properties(&info)?;
 
         unsafe { Ok(self.external_semaphore_properties_unchecked(info)) }
@@ -518,14 +683,14 @@ impl PhysicalDevice {
     fn validate_external_semaphore_properties(
         &self,
         info: &ExternalSemaphoreInfo,
-    ) -> Result<(), ExternalSemaphorePropertiesError> {
+    ) -> Result<(), ExternalFenceSemaphorePropertiesError> {
         if !(self.instance.api_version() >= Version::V1_1
             || self
                 .instance
                 .enabled_extensions()
                 .khr_external_semaphore_capabilities)
         {
-            return Err(ExternalSemaphorePropertiesError::RequirementNotMet {
+            return Err(ExternalFenceSemaphorePropertiesError::RequirementNotMet {
                 required_for: "`external_semaphore_properties`",
                 requires_one_of: RequiresOneOf {
                     api_version: Some(Version::V1_1),
@@ -907,6 +1072,66 @@ impl PhysicalDevice {
             Err(VulkanError::FormatNotSupported) => Ok(None),
             Err(err) => Err(err),
         }
+    }
+
+    /// Queries whether the physical device supports presenting to QNX Screen surfaces from queues
+    /// of the given queue family.
+    ///
+    /// # Safety
+    ///
+    /// - `window` must be a valid QNX Screen `_screen_window` handle.
+    #[inline]
+    pub unsafe fn qnx_screen_presentation_support<W>(
+        &self,
+        queue_family_index: u32,
+        window: *const W,
+    ) -> Result<bool, SurfacePropertiesError> {
+        self.validate_qnx_screen_presentation_support(queue_family_index, window)?;
+
+        Ok(self.qnx_screen_presentation_support_unchecked(queue_family_index, window))
+    }
+
+    fn validate_qnx_screen_presentation_support<W>(
+        &self,
+        queue_family_index: u32,
+        _window: *const W,
+    ) -> Result<(), SurfacePropertiesError> {
+        if !self.instance.enabled_extensions().qnx_screen_surface {
+            return Err(SurfacePropertiesError::RequirementNotMet {
+                required_for: "`qnx_screen_presentation_support`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["qnx_screen_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceScreenPresentationSupportQNX-queueFamilyIndex-04743
+        if queue_family_index >= self.queue_family_properties.len() as u32 {
+            return Err(SurfacePropertiesError::QueueFamilyIndexOutOfRange {
+                queue_family_index,
+                queue_family_count: self.queue_family_properties.len() as u32,
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceScreenPresentationSupportQNX-window-parameter
+        // Can't validate, therefore unsafe
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn qnx_screen_presentation_support_unchecked<W>(
+        &self,
+        queue_family_index: u32,
+        window: *const W,
+    ) -> bool {
+        let fns = self.instance.fns();
+        (fns.qnx_screen_surface
+            .get_physical_device_screen_presentation_support_qnx)(
+            self.handle,
+            queue_family_index,
+            window as *mut _,
+        ) != 0
     }
 
     /// Returns the properties of sparse images with a given image configuration.
@@ -1705,6 +1930,243 @@ impl PhysicalDevice {
 
         Ok(output.assume_init() != 0)
     }
+
+    /// Queries whether the physical device supports presenting to Wayland surfaces from queues of the
+    /// given queue family.
+    ///
+    /// # Safety
+    ///
+    /// - `display` must be a valid Wayland `wl_display` handle.
+    #[inline]
+    pub unsafe fn wayland_presentation_support<D>(
+        &self,
+        queue_family_index: u32,
+        display: *const D,
+    ) -> Result<bool, SurfacePropertiesError> {
+        self.validate_wayland_presentation_support(queue_family_index, display)?;
+
+        Ok(self.wayland_presentation_support_unchecked(queue_family_index, display))
+    }
+
+    fn validate_wayland_presentation_support<D>(
+        &self,
+        queue_family_index: u32,
+        _display: *const D,
+    ) -> Result<(), SurfacePropertiesError> {
+        if !self.instance.enabled_extensions().khr_wayland_surface {
+            return Err(SurfacePropertiesError::RequirementNotMet {
+                required_for: "`wayland_presentation_support`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_wayland_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceWaylandPresentationSupportKHR-queueFamilyIndex-01306
+        if queue_family_index >= self.queue_family_properties.len() as u32 {
+            return Err(SurfacePropertiesError::QueueFamilyIndexOutOfRange {
+                queue_family_index,
+                queue_family_count: self.queue_family_properties.len() as u32,
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceWaylandPresentationSupportKHR-display-parameter
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn wayland_presentation_support_unchecked<D>(
+        &self,
+        queue_family_index: u32,
+        display: *const D,
+    ) -> bool {
+        let fns = self.instance.fns();
+        (fns.khr_wayland_surface
+            .get_physical_device_wayland_presentation_support_khr)(
+            self.handle,
+            queue_family_index,
+            display as *mut _,
+        ) != 0
+    }
+
+    /// Queries whether the physical device supports presenting to Win32 surfaces from queues of the
+    /// given queue family.
+    #[inline]
+    pub fn win32_presentation_support(
+        &self,
+        queue_family_index: u32,
+    ) -> Result<bool, SurfacePropertiesError> {
+        self.validate_win32_presentation_support(queue_family_index)?;
+
+        unsafe { Ok(self.win32_presentation_support_unchecked(queue_family_index)) }
+    }
+
+    fn validate_win32_presentation_support(
+        &self,
+        queue_family_index: u32,
+    ) -> Result<(), SurfacePropertiesError> {
+        if !self.instance.enabled_extensions().khr_win32_surface {
+            return Err(SurfacePropertiesError::RequirementNotMet {
+                required_for: "`win32_presentation_support`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_win32_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceWin32PresentationSupportKHR-queueFamilyIndex-01309
+        if queue_family_index >= self.queue_family_properties.len() as u32 {
+            return Err(SurfacePropertiesError::QueueFamilyIndexOutOfRange {
+                queue_family_index,
+                queue_family_count: self.queue_family_properties.len() as u32,
+            });
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn win32_presentation_support_unchecked(&self, queue_family_index: u32) -> bool {
+        let fns = self.instance.fns();
+        (fns.khr_win32_surface
+            .get_physical_device_win32_presentation_support_khr)(
+            self.handle, queue_family_index
+        ) != 0
+    }
+
+    /// Queries whether the physical device supports presenting to XCB surfaces from queues of the
+    /// given queue family.
+    ///
+    /// # Safety
+    ///
+    /// - `connection` must be a valid X11 `xcb_connection_t` handle.
+    #[inline]
+    pub unsafe fn xcb_presentation_support<C>(
+        &self,
+        queue_family_index: u32,
+        connection: *const C,
+        visual_id: ash::vk::xcb_visualid_t,
+    ) -> Result<bool, SurfacePropertiesError> {
+        self.validate_xcb_presentation_support(queue_family_index, connection, visual_id)?;
+
+        Ok(self.xcb_presentation_support_unchecked(queue_family_index, connection, visual_id))
+    }
+
+    fn validate_xcb_presentation_support<C>(
+        &self,
+        queue_family_index: u32,
+        _connection: *const C,
+        _visual_id: ash::vk::xcb_visualid_t,
+    ) -> Result<(), SurfacePropertiesError> {
+        if !self.instance.enabled_extensions().khr_xcb_surface {
+            return Err(SurfacePropertiesError::RequirementNotMet {
+                required_for: "`xcb_presentation_support`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_xcb_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceXcbPresentationSupportKHR-queueFamilyIndex-01312
+        if queue_family_index >= self.queue_family_properties.len() as u32 {
+            return Err(SurfacePropertiesError::QueueFamilyIndexOutOfRange {
+                queue_family_index,
+                queue_family_count: self.queue_family_properties.len() as u32,
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceXcbPresentationSupportKHR-connection-parameter
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn xcb_presentation_support_unchecked<C>(
+        &self,
+        queue_family_index: u32,
+        connection: *const C,
+        visual_id: ash::vk::VisualID,
+    ) -> bool {
+        let fns = self.instance.fns();
+        (fns.khr_xcb_surface
+            .get_physical_device_xcb_presentation_support_khr)(
+            self.handle,
+            queue_family_index,
+            connection as *mut _,
+            visual_id,
+        ) != 0
+    }
+
+    /// Queries whether the physical device supports presenting to Xlib surfaces from queues of the
+    /// given queue family.
+    ///
+    /// # Safety
+    ///
+    /// - `display` must be a valid Xlib `Display` handle.
+    #[inline]
+    pub unsafe fn xlib_presentation_support<D>(
+        &self,
+        queue_family_index: u32,
+        display: *const D,
+        visual_id: ash::vk::VisualID,
+    ) -> Result<bool, SurfacePropertiesError> {
+        self.validate_xlib_presentation_support(queue_family_index, display, visual_id)?;
+
+        Ok(self.xlib_presentation_support_unchecked(queue_family_index, display, visual_id))
+    }
+
+    fn validate_xlib_presentation_support<D>(
+        &self,
+        queue_family_index: u32,
+        _display: *const D,
+        _visual_id: ash::vk::VisualID,
+    ) -> Result<(), SurfacePropertiesError> {
+        if !self.instance.enabled_extensions().khr_xlib_surface {
+            return Err(SurfacePropertiesError::RequirementNotMet {
+                required_for: "`xlib_presentation_support`",
+                requires_one_of: RequiresOneOf {
+                    instance_extensions: &["khr_xlib_surface"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceXlibPresentationSupportKHR-queueFamilyIndex-01315
+        if queue_family_index >= self.queue_family_properties.len() as u32 {
+            return Err(SurfacePropertiesError::QueueFamilyIndexOutOfRange {
+                queue_family_index,
+                queue_family_count: self.queue_family_properties.len() as u32,
+            });
+        }
+
+        // VUID-vkGetPhysicalDeviceXlibPresentationSupportKHR-dpy-parameter
+        // Can't validate, therefore unsafe
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn xlib_presentation_support_unchecked<D>(
+        &self,
+        queue_family_index: u32,
+        display: *const D,
+        visual_id: ash::vk::VisualID,
+    ) -> bool {
+        let fns = self.instance.fns();
+        (fns.khr_xlib_surface
+            .get_physical_device_xlib_presentation_support_khr)(
+            self.handle,
+            queue_family_index,
+            display as *mut _,
+            visual_id,
+        ) != 0
+    }
 }
 
 unsafe impl VulkanObject for PhysicalDevice {
@@ -1977,18 +2439,18 @@ impl From<RequirementNotMet> for ExternalBufferPropertiesError {
     }
 }
 
-/// Error that can happen when retrieving properties of an external semaphore.
+/// Error that can happen when retrieving properties of an external fence or semaphore.
 #[derive(Clone, Debug)]
-pub enum ExternalSemaphorePropertiesError {
+pub enum ExternalFenceSemaphorePropertiesError {
     RequirementNotMet {
         required_for: &'static str,
         requires_one_of: RequiresOneOf,
     },
 }
 
-impl Error for ExternalSemaphorePropertiesError {}
+impl Error for ExternalFenceSemaphorePropertiesError {}
 
-impl Display for ExternalSemaphorePropertiesError {
+impl Display for ExternalFenceSemaphorePropertiesError {
     #[inline]
     fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match self {
@@ -2004,7 +2466,7 @@ impl Display for ExternalSemaphorePropertiesError {
     }
 }
 
-impl From<RequirementNotMet> for ExternalSemaphorePropertiesError {
+impl From<RequirementNotMet> for ExternalFenceSemaphorePropertiesError {
     #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
