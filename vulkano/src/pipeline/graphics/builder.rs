@@ -25,8 +25,8 @@ use super::{
     render_pass::{PipelineRenderPassType, PipelineRenderingCreateInfo},
     tessellation::TessellationState,
     vertex_input::{
-        BuffersDefinition, Vertex, VertexDefinition, VertexInputBindingDescription,
-        VertexInputState,
+        BuffersDefinition, Vertex, VertexDefinition, VertexInputAttributeDescription,
+        VertexInputBindingDescription, VertexInputState,
     },
     viewport::{Scissor, Viewport, ViewportState},
     GraphicsPipeline, GraphicsPipelineCreationError,
@@ -509,9 +509,12 @@ where
                     {
                         let attachment_index = attachment_index as u32;
 
+                        // VUID-VkGraphicsPipelineCreateInfo-renderPass-06580
+                        format.validate_device(device)?;
+
                         // VUID-VkGraphicsPipelineCreateInfo-renderPass-06582
-                        if !physical_device
-                            .format_properties(format)
+                        // Use unchecked, because all validation has been done above.
+                        if !unsafe { physical_device.format_properties_unchecked(format) }
                             .potential_format_features()
                             .color_attachment
                         {
@@ -524,9 +527,12 @@ where
                     }
 
                     if let Some(format) = depth_attachment_format {
+                        // VUID-VkGraphicsPipelineCreateInfo-renderPass-06583
+                        format.validate_device(device)?;
+
                         // VUID-VkGraphicsPipelineCreateInfo-renderPass-06585
-                        if !physical_device
-                            .format_properties(format)
+                        // Use unchecked, because all validation has been done above.
+                        if !unsafe { physical_device.format_properties_unchecked(format) }
                             .potential_format_features()
                             .depth_stencil_attachment
                         {
@@ -544,9 +550,12 @@ where
                     }
 
                     if let Some(format) = stencil_attachment_format {
+                        // VUID-VkGraphicsPipelineCreateInfo-renderPass-06584
+                        format.validate_device(device)?;
+
                         // VUID-VkGraphicsPipelineCreateInfo-renderPass-06586
-                        if !physical_device
-                            .format_properties(format)
+                        // Use unchecked, because all validation has been done above.
+                        if !unsafe { physical_device.format_properties_unchecked(format) }
                             .potential_format_features()
                             .depth_stencil_attachment
                         {
@@ -687,40 +696,52 @@ where
                 // Ensured by HashMap.
 
                 for (&location, attribute_desc) in attributes {
+                    let &VertexInputAttributeDescription {
+                        binding,
+                        format,
+                        offset,
+                    } = attribute_desc;
+
+                    // VUID-VkVertexInputAttributeDescription-format-parameter
+                    format.validate_device(device)?;
+
                     // TODO:
                     // VUID-VkVertexInputAttributeDescription-location-00620
 
                     // VUID-VkPipelineVertexInputStateCreateInfo-binding-00615
-                    if !bindings.contains_key(&attribute_desc.binding) {
+                    if !bindings.contains_key(&binding) {
                         return Err(
                             GraphicsPipelineCreationError::VertexInputAttributeInvalidBinding {
                                 location,
-                                binding: attribute_desc.binding,
+                                binding,
                             },
                         );
                     }
 
                     // VUID-VkVertexInputAttributeDescription-offset-00622
-                    if attribute_desc.offset > properties.max_vertex_input_attribute_offset {
+                    if offset > properties.max_vertex_input_attribute_offset {
                         return Err(
                             GraphicsPipelineCreationError::MaxVertexInputAttributeOffsetExceeded {
                                 max: properties.max_vertex_input_attribute_offset,
-                                obtained: attribute_desc.offset,
+                                obtained: offset,
                             },
                         );
                     }
 
-                    let format_features = device
-                        .physical_device()
-                        .format_properties(attribute_desc.format)
-                        .buffer_features;
+                    // Use unchecked, because all validation has been done above.
+                    let format_features = unsafe {
+                        device
+                            .physical_device()
+                            .format_properties_unchecked(format)
+                            .buffer_features
+                    };
 
                     // VUID-VkVertexInputAttributeDescription-format-00623
                     if !format_features.vertex_buffer {
                         return Err(
                             GraphicsPipelineCreationError::VertexInputAttributeUnsupportedFormat {
                                 location,
-                                format: attribute_desc.format,
+                                format,
                             },
                         );
                     }
@@ -2220,9 +2241,11 @@ where
 
                     // VUID-VkGraphicsPipelineCreateInfo-renderPass-06041
                     // VUID-VkGraphicsPipelineCreateInfo-renderPass-06062
-                    if !attachment_format.map_or(false, |format| {
+                    // Use unchecked, because all validation has been done above or by the
+                    // render pass creation.
+                    if !attachment_format.map_or(false, |format| unsafe {
                         physical_device
-                            .format_properties(format)
+                            .format_properties_unchecked(format)
                             .potential_format_features()
                             .color_attachment_blend
                     }) {

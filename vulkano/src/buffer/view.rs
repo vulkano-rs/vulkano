@@ -46,7 +46,7 @@ use super::{BufferAccess, BufferAccessObject, BufferInner};
 use crate::{
     device::{Device, DeviceOwned},
     format::{Format, FormatFeatures},
-    DeviceSize, OomError, Version, VulkanError, VulkanObject,
+    DeviceSize, OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use std::{
     error::Error,
@@ -95,16 +95,22 @@ where
         // No VUID, but seems sensible?
         let format = format.unwrap();
 
+        // VUID-VkBufferViewCreateInfo-format-parameter
+        format.validate_device(device)?;
+
         // VUID-VkBufferViewCreateInfo-buffer-00932
         if !(inner_buffer.usage().uniform_texel_buffer || inner_buffer.usage().storage_texel_buffer)
         {
             return Err(BufferViewCreationError::BufferMissingUsage);
         }
 
-        let format_features = device
-            .physical_device()
-            .format_properties(format)
-            .buffer_features;
+        // Use unchecked, because all validation has been done above.
+        let format_features = unsafe {
+            device
+                .physical_device()
+                .format_properties_unchecked(format)
+                .buffer_features
+        };
 
         // VUID-VkBufferViewCreateInfo-buffer-00933
         if inner_buffer.usage().uniform_texel_buffer && !format_features.uniform_texel_buffer {
@@ -324,6 +330,11 @@ pub enum BufferViewCreationError {
     /// Out of memory.
     OomError(OomError),
 
+    RequirementNotMet {
+        required_for: &'static str,
+        requires_one_of: RequiresOneOf,
+    },
+
     /// The buffer was not created with one of the `storage_texel_buffer` or
     /// `uniform_texel_buffer` usages.
     BufferMissingUsage,
@@ -360,28 +371,38 @@ impl Error for BufferViewCreationError {
 impl Display for BufferViewCreationError {
     #[inline]
     fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
-        match *self {
-            BufferViewCreationError::OomError(_) => write!(
+        match self {
+            Self::OomError(_) => write!(
                 f,
                 "out of memory when creating buffer view",
             ),
-            BufferViewCreationError::BufferMissingUsage => write!(
+
+            Self::RequirementNotMet {
+                required_for,
+                requires_one_of,
+            } => write!(
+                f,
+                "a requirement was not met for: {}; requires one of: {}",
+                required_for, requires_one_of,
+            ),
+
+            Self::BufferMissingUsage => write!(
                 f,
                 "the buffer was not created with one of the `storage_texel_buffer` or `uniform_texel_buffer` usages",
             ),
-            BufferViewCreationError::OffsetNotAligned { .. } => write!(
+            Self::OffsetNotAligned { .. } => write!(
                 f,
                 "the offset within the buffer is not a multiple of the required alignment",
             ),
-            BufferViewCreationError::RangeNotAligned { .. } => write!(
+            Self::RangeNotAligned { .. } => write!(
                 f,
                 "the range within the buffer is not a multiple of the required alignment",
             ),
-            BufferViewCreationError::UnsupportedFormat => write!(
+            Self::UnsupportedFormat => write!(
                 f,
                 "the requested format is not supported for this usage",
             ),
-            BufferViewCreationError::MaxTexelBufferElementsExceeded => write!(
+            Self::MaxTexelBufferElementsExceeded => write!(
                 f,
                 "the `max_texel_buffer_elements` limit has been exceeded",
             ),
@@ -391,15 +412,25 @@ impl Display for BufferViewCreationError {
 
 impl From<OomError> for BufferViewCreationError {
     #[inline]
-    fn from(err: OomError) -> BufferViewCreationError {
-        BufferViewCreationError::OomError(err)
+    fn from(err: OomError) -> Self {
+        Self::OomError(err)
     }
 }
 
 impl From<VulkanError> for BufferViewCreationError {
     #[inline]
-    fn from(err: VulkanError) -> BufferViewCreationError {
+    fn from(err: VulkanError) -> Self {
         OomError::from(err).into()
+    }
+}
+
+impl From<RequirementNotMet> for BufferViewCreationError {
+    #[inline]
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
+        }
     }
 }
 

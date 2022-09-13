@@ -20,7 +20,7 @@ use super::{
 };
 use crate::{
     buffer::cpu_access::{ReadLockError, WriteLockError},
-    device::{physical::ImageFormatPropertiesError, Device, DeviceOwned},
+    device::{Device, DeviceOwned},
     format::{ChromaSampling, Format, FormatFeatures, NumericType},
     image::{
         view::ImageViewCreationError, ImageFormatInfo, ImageFormatProperties, ImageType,
@@ -141,7 +141,11 @@ impl UnsafeImage {
 
         // Get format features
         let format_features = {
-            let format_properties = device.physical_device().format_properties(format.unwrap());
+            // Use unchecked, because `create_info` is assumed to match the info of the handle, and
+            // therefore already valid.
+            let format_properties = device
+                .physical_device()
+                .format_properties_unchecked(format.unwrap());
             match tiling {
                 ImageTiling::Linear => format_properties.linear_tiling_features,
                 ImageTiling::Optimal => format_properties.optimal_tiling_features,
@@ -206,7 +210,7 @@ impl UnsafeImage {
         let format = format.unwrap(); // Can be None for "external formats" but Vulkano doesn't support that yet
 
         // VUID-VkImageCreateInfo-format-parameter
-        // TODO: format.validate_device(device)?;
+        format.validate_device(device)?;
 
         // VUID-VkImageCreateInfo-samples-parameter
         samples.validate_device(device)?;
@@ -251,7 +255,8 @@ impl UnsafeImage {
 
         // Get format features
         let format_features = {
-            let format_properties = physical_device.format_properties(format);
+            // Use unchecked, because all validation has been done above.
+            let format_properties = unsafe { physical_device.format_properties_unchecked(format) };
             match tiling {
                 ImageTiling::Linear => format_properties.linear_tiling_features,
                 ImageTiling::Optimal => format_properties.optimal_tiling_features,
@@ -717,10 +722,11 @@ impl UnsafeImage {
                 };
 
             for external_memory_handle_type in external_memory_handle_types {
-                let image_format_properties =
+                // Use unchecked, because all validation has been done above.
+                let image_format_properties = unsafe {
                     device
                         .physical_device()
-                        .image_format_properties(ImageFormatInfo {
+                        .image_format_properties_unchecked(ImageFormatInfo {
                             format: Some(format),
                             image_type,
                             tiling,
@@ -731,7 +737,8 @@ impl UnsafeImage {
                             block_texel_view_compatible,
                             external_memory_handle_type,
                             ..Default::default()
-                        })?;
+                        })?
+                };
 
                 let ImageFormatProperties {
                     max_extent,
@@ -902,9 +909,12 @@ impl UnsafeImage {
         mip_levels: u32,
     ) -> Arc<UnsafeImage> {
         let tiling = ImageTiling::Optimal;
+
+        // Use unchecked, the parameters are assumed to match the info of the swapchain, and
+        // therefore already valid.
         let format_features = device
             .physical_device()
-            .format_properties(format)
+            .format_properties_unchecked(format)
             .optimal_tiling_features;
 
         assert!(ImageCreateFlags {
@@ -2004,24 +2014,6 @@ impl From<RequirementNotMet> for ImageCreationError {
         Self::RequirementNotMet {
             required_for: err.required_for,
             requires_one_of: err.requires_one_of,
-        }
-    }
-}
-
-impl From<ImageFormatPropertiesError> for ImageCreationError {
-    #[inline]
-    fn from(err: ImageFormatPropertiesError) -> Self {
-        match err {
-            ImageFormatPropertiesError::OomError(err) => {
-                Self::AllocError(DeviceMemoryError::OomError(err))
-            }
-            ImageFormatPropertiesError::RequirementNotMet {
-                required_for,
-                requires_one_of,
-            } => Self::RequirementNotMet {
-                required_for,
-                requires_one_of,
-            },
         }
     }
 }
