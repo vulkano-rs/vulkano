@@ -327,7 +327,7 @@ fn main() {
                 let num_vertices = data.len() as u32;
 
                 // Allocate a new chunk from buffer_pool
-                let buffer = buffer_pool.chunk(data.to_vec()).unwrap();
+                let buffer = buffer_pool.from_iter(data.to_vec()).unwrap();
                 let mut builder = AutoCommandBufferBuilder::primary(
                     device.clone(),
                     queue.queue_family_index(),
