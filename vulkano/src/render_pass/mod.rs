@@ -284,7 +284,7 @@ impl RenderPass {
     }
 
     /// Returns `true` if this render pass is compatible with the other render pass,
-    /// as defined in the [`Render Pass Compatibility` section of the Vulkan specs](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap8.html#renderpass-compatibility).
+    /// as defined in the [`Render Pass Compatibility` section of the Vulkan specs](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap8.html#renderpass-compatibility).
     pub fn is_compatible_with(&self, other: &RenderPass) -> bool {
         if self == other {
             return true;
@@ -952,7 +952,7 @@ pub struct AttachmentReference {
     ///
     /// The layout is restricted by the type of attachment that an attachment is being used as. A
     /// full listing of allowed layouts per type can be found in
-    /// [the Vulkan specification](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap8.html#attachment-type-imagelayout).
+    /// [the Vulkan specification](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap8.html#attachment-type-imagelayout).
     ///
     /// The default value is [`ImageLayout::Undefined`], which must be overridden.
     pub layout: ImageLayout,
@@ -996,11 +996,11 @@ impl Default for AttachmentReference {
 /// except that they operate on whole subpasses instead of individual images.
 ///
 /// If `source_subpass` and `destination_subpass` are equal, then this specifies a
-/// [subpass self-dependency](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-pipeline-barriers-subpass-self-dependencies).
+/// [subpass self-dependency](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-pipeline-barriers-subpass-self-dependencies).
 /// The `source_stages` must all be
-/// [logically earlier in the pipeline](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-pipeline-stages-order)
+/// [logically earlier in the pipeline](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-pipeline-stages-order)
 /// than the `destination_stages`, and if they both contain a
-/// [framebuffer-space stage](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-framebuffer-regions),
+/// [framebuffer-space stage](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-framebuffer-regions),
 /// then `by_region` must be activated.
 ///
 /// If `source_subpass` or `destination_subpass` are set to `None`, this specifies an external

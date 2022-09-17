@@ -668,7 +668,7 @@ fn extensions_members(ty: &str, extensions: &IndexMap<&str, &Extension>) -> Vec<
 
 fn make_doc(ext: &mut ExtensionsMember) {
     let writer = &mut ext.doc;
-    write!(writer, "- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/{}.html)", ext.raw).unwrap();
+    write!(writer, "- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/{}.html)", ext.raw).unwrap();
 
     if ext.required_if_supported {
         write!(

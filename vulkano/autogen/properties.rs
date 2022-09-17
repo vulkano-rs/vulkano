@@ -233,7 +233,7 @@ fn properties_members(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<Properti
 
 fn make_doc(prop: &mut PropertiesMember, vulkan_ty_name: &str) {
     let writer = &mut prop.doc;
-    write!(writer, "- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/{}.html#limits-{})", vulkan_ty_name, prop.name).unwrap();
+    write!(writer, "- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/{}.html#limits-{})", vulkan_ty_name, prop.name).unwrap();
 }
 
 #[derive(Clone, Debug)]

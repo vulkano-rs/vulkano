@@ -226,7 +226,7 @@ where
                 *image_inner.format_features()
             };
 
-            // Per https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap12.html#resources-image-view-format-features
+            // Per https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap12.html#resources-image-view-format-features
             if image_inner
                 .device()
                 .enabled_extensions()
@@ -274,7 +274,7 @@ where
 
         // Get usage
         // Can be different from image usage, see
-        // https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkImageViewCreateInfo.html#_description
+        // https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkImageViewCreateInfo.html#_description
         let usage = *image_inner.usage();
 
         // Check for compatibility with the image
@@ -799,7 +799,7 @@ pub enum ImageViewCreationError {
     },
 
     /// The image was not created with
-    /// [one of the required usages](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/vkspec.html#valid-imageview-imageusage)
+    /// [one of the required usages](https://registry.khronos.org/vulkan/specs/1.2-extensions/html/vkspec.html#valid-imageview-imageusage)
     /// for image views.
     ImageMissingUsage,
 

@@ -690,7 +690,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
                 /*
                    Instruction/Sampler/Image View Validation
-                   https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap16.html#textures-input-validation
+                   https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap16.html#textures-input-validation
                 */
 
                 // The SPIR-V Image Format is not compatible with the image view’s format.
@@ -784,7 +784,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
                 /*
                     Instruction/Sampler/Image View Validation
-                    https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap16.html#textures-input-validation
+                    https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap16.html#textures-input-validation
                 */
 
                 // - The SPIR-V instruction is one of the OpImage*Dref* instructions and the sampler
