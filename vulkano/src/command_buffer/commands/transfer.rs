@@ -45,8 +45,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         &mut self,
         copy_buffer_info: impl Into<CopyBufferInfo>,
     ) -> Result<&mut Self, CopyError> {
-        let mut copy_buffer_info = copy_buffer_info.into();
-        self.validate_copy_buffer(&mut copy_buffer_info)?;
+        let copy_buffer_info = copy_buffer_info.into();
+        self.validate_copy_buffer(&copy_buffer_info)?;
 
         unsafe {
             self.inner.copy_buffer(copy_buffer_info)?;
@@ -55,7 +55,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         Ok(self)
     }
 
-    fn validate_copy_buffer(&self, copy_buffer_info: &mut CopyBufferInfo) -> Result<(), CopyError> {
+    fn validate_copy_buffer(&self, copy_buffer_info: &CopyBufferInfo) -> Result<(), CopyError> {
         let device = self.device();
 
         // VUID-vkCmdCopyBuffer2-renderpass
@@ -73,10 +73,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             return Err(CopyError::NotSupportedByQueueFamily);
         }
 
-        let CopyBufferInfo {
-            src_buffer,
-            dst_buffer,
-            regions,
+        let &CopyBufferInfo {
+            ref src_buffer,
+            ref dst_buffer,
+            ref regions,
             _ne: _,
         } = copy_buffer_info;
 
@@ -192,11 +192,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///
     /// - Panics if `src_image` or `dst_image` were not created from the same device
     ///   as `self`.
-    pub fn copy_image(
-        &mut self,
-        mut copy_image_info: CopyImageInfo,
-    ) -> Result<&mut Self, CopyError> {
-        self.validate_copy_image(&mut copy_image_info)?;
+    #[inline]
+    pub fn copy_image(&mut self, copy_image_info: CopyImageInfo) -> Result<&mut Self, CopyError> {
+        self.validate_copy_image(&copy_image_info)?;
 
         unsafe {
             self.inner.copy_image(copy_image_info)?;
@@ -205,7 +203,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         Ok(self)
     }
 
-    fn validate_copy_image(&self, copy_image_info: &mut CopyImageInfo) -> Result<(), CopyError> {
+    fn validate_copy_image(&self, copy_image_info: &CopyImageInfo) -> Result<(), CopyError> {
         let device = self.device();
 
         // VUID-vkCmdCopyImage2-renderpass
@@ -223,7 +221,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             return Err(CopyError::NotSupportedByQueueFamily);
         }
 
-        let &mut CopyImageInfo {
+        let &CopyImageInfo {
             ref src_image,
             src_image_layout,
             ref dst_image,
@@ -248,22 +246,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         let dst_image_inner = dst_image.inner();
         let mut src_image_aspects = src_image.format().aspects();
         let mut dst_image_aspects = dst_image.format().aspects();
-
-        // VUID-VkCopyImageInfo2-aspect-06662
-        if !src_image.usage().transfer_src {
-            return Err(CopyError::MissingUsage {
-                resource: CopyErrorResource::Source,
-                usage: "transfer_src",
-            });
-        }
-
-        // VUID-VkCopyImageInfo2-aspect-06663
-        if !dst_image.usage().transfer_dst {
-            return Err(CopyError::MissingUsage {
-                resource: CopyErrorResource::Destination,
-                usage: "transfer_dst",
-            });
-        }
 
         if device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1 {
             // VUID-VkCopyImageInfo2-srcImage-01995
@@ -361,6 +343,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             dst_image_aspects.color = false;
         }
 
+        let mut src_image_aspects_used = ImageAspects::empty();
+        let mut dst_image_aspects_used = ImageAspects::empty();
         let same_image = src_image_inner.image == dst_image_inner.image;
         let mut overlap_subresource_indices = None;
         let mut overlap_extent_indices = None;
@@ -474,6 +458,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
                 Ok((subresource_format, subresource_extent))
             };
+
+            src_image_aspects_used |= src_subresource.aspects;
+            dst_image_aspects_used |= dst_subresource.aspects;
 
             let (src_subresource_format, src_subresource_extent) = check_subresource(
                 CopyErrorResource::Source,
@@ -816,6 +803,50 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             }
         }
 
+        // VUID-VkCopyImageInfo2-aspect-06662
+        if !(ImageAspects {
+            stencil: false,
+            ..src_image_aspects_used
+        })
+        .is_empty()
+            && !src_image.usage().transfer_src
+        {
+            return Err(CopyError::MissingUsage {
+                resource: CopyErrorResource::Source,
+                usage: "transfer_src",
+            });
+        }
+
+        // VUID-VkCopyImageInfo2-aspect-06663
+        if !(ImageAspects {
+            stencil: false,
+            ..dst_image_aspects_used
+        })
+        .is_empty()
+            && !dst_image.usage().transfer_dst
+        {
+            return Err(CopyError::MissingUsage {
+                resource: CopyErrorResource::Destination,
+                usage: "transfer_dst",
+            });
+        }
+
+        // VUID-VkCopyImageInfo2-aspect-06664
+        if src_image_aspects_used.stencil && !src_image.stencil_usage().transfer_src {
+            return Err(CopyError::MissingUsage {
+                resource: CopyErrorResource::Source,
+                usage: "transfer_src",
+            });
+        }
+
+        // VUID-VkCopyImageInfo2-aspect-06665
+        if dst_image_aspects_used.stencil && !dst_image.stencil_usage().transfer_dst {
+            return Err(CopyError::MissingUsage {
+                resource: CopyErrorResource::Destination,
+                usage: "transfer_dst",
+            });
+        }
+
         // VUID-VkCopyImageInfo2-pRegions-00124
         if let Some((src_region_index, dst_region_index)) = overlap_extent_indices {
             return Err(CopyError::OverlappingRegions {
@@ -841,11 +872,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     /// Copies from a buffer to an image.
+    #[inline]
     pub fn copy_buffer_to_image(
         &mut self,
-        mut copy_buffer_to_image_info: CopyBufferToImageInfo,
+        copy_buffer_to_image_info: CopyBufferToImageInfo,
     ) -> Result<&mut Self, CopyError> {
-        self.validate_copy_buffer_to_image(&mut copy_buffer_to_image_info)?;
+        self.validate_copy_buffer_to_image(&copy_buffer_to_image_info)?;
 
         unsafe {
             self.inner.copy_buffer_to_image(copy_buffer_to_image_info)?;
@@ -856,7 +888,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     fn validate_copy_buffer_to_image(
         &self,
-        copy_buffer_to_image_info: &mut CopyBufferToImageInfo,
+        copy_buffer_to_image_info: &CopyBufferToImageInfo,
     ) -> Result<(), CopyError> {
         let device = self.device();
 
@@ -875,7 +907,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             return Err(CopyError::NotSupportedByQueueFamily);
         }
 
-        let &mut CopyBufferToImageInfo {
+        let &CopyBufferToImageInfo {
             ref src_buffer,
             ref dst_image,
             dst_image_layout,
@@ -1272,11 +1304,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     /// Copies from an image to a buffer.
+    #[inline]
     pub fn copy_image_to_buffer(
         &mut self,
-        mut copy_image_to_buffer_info: CopyImageToBufferInfo,
+        copy_image_to_buffer_info: CopyImageToBufferInfo,
     ) -> Result<&mut Self, CopyError> {
-        self.validate_copy_image_to_buffer(&mut copy_image_to_buffer_info)?;
+        self.validate_copy_image_to_buffer(&copy_image_to_buffer_info)?;
 
         unsafe {
             self.inner.copy_image_to_buffer(copy_image_to_buffer_info)?;
@@ -1287,7 +1320,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     fn validate_copy_image_to_buffer(
         &self,
-        copy_image_to_buffer_info: &mut CopyImageToBufferInfo,
+        copy_image_to_buffer_info: &CopyImageToBufferInfo,
     ) -> Result<(), CopyError> {
         let device = self.device();
 
@@ -1306,7 +1339,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             return Err(CopyError::NotSupportedByQueueFamily);
         }
 
-        let &mut CopyImageToBufferInfo {
+        let &CopyImageToBufferInfo {
             ref src_image,
             src_image_layout,
             ref dst_buffer,
@@ -1706,9 +1739,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     #[inline]
     pub fn fill_buffer(
         &mut self,
-        mut fill_buffer_info: FillBufferInfo,
+        fill_buffer_info: FillBufferInfo,
     ) -> Result<&mut Self, CopyError> {
-        self.validate_fill_buffer(&mut fill_buffer_info)?;
+        self.validate_fill_buffer(&fill_buffer_info)?;
 
         unsafe {
             self.inner.fill_buffer(fill_buffer_info)?;
@@ -1717,7 +1750,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         Ok(self)
     }
 
-    fn validate_fill_buffer(&self, fill_buffer_info: &mut FillBufferInfo) -> Result<(), CopyError> {
+    fn validate_fill_buffer(&self, fill_buffer_info: &FillBufferInfo) -> Result<(), CopyError> {
         let device = self.device();
 
         // VUID-vkCmdFillBuffer-renderpass
@@ -1744,7 +1777,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             }
         }
 
-        let &mut FillBufferInfo {
+        let &FillBufferInfo {
             data: _,
             ref dst_buffer,
             dst_offset,

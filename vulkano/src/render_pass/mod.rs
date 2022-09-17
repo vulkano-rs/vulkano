@@ -642,13 +642,17 @@ impl Subpass {
     }
 
     /// Returns true if the subpass has a depth attachment or a depth-stencil attachment whose
-    /// layout is not `DepthStencilReadOnlyOptimal`.
+    /// layout does not have a read-only depth layout.
     #[inline]
     pub fn has_writable_depth(&self) -> bool {
         let subpass_desc = self.subpass_desc();
         let atch_num = match &subpass_desc.depth_stencil_attachment {
             Some(atch_ref) => {
-                if atch_ref.layout == ImageLayout::DepthStencilReadOnlyOptimal {
+                if matches!(
+                    atch_ref.layout,
+                    ImageLayout::DepthStencilReadOnlyOptimal
+                        | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
+                ) {
                     return false;
                 }
                 atch_ref.attachment
@@ -676,14 +680,18 @@ impl Subpass {
     }
 
     /// Returns true if the subpass has a stencil attachment or a depth-stencil attachment whose
-    /// layout is not `DepthStencilReadOnlyOptimal`.
+    /// layout does not have a read-only stencil layout.
     #[inline]
     pub fn has_writable_stencil(&self) -> bool {
         let subpass_desc = self.subpass_desc();
 
         let atch_num = match &subpass_desc.depth_stencil_attachment {
             Some(atch_ref) => {
-                if atch_ref.layout == ImageLayout::DepthStencilReadOnlyOptimal {
+                if matches!(
+                    atch_ref.layout,
+                    ImageLayout::DepthStencilReadOnlyOptimal
+                        | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
+                ) {
                     return false;
                 }
                 atch_ref.attachment

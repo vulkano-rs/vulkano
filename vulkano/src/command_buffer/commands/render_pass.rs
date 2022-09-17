@@ -163,7 +163,9 @@ where
                             });
                         }
                     }
-                    ImageLayout::DepthStencilAttachmentOptimal
+                    ImageLayout::DepthReadOnlyStencilAttachmentOptimal
+                    | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
+                    | ImageLayout::DepthStencilAttachmentOptimal
                     | ImageLayout::DepthStencilReadOnlyOptimal => {
                         // VUID-vkCmdBeginRenderPass2-initialLayout-03096
                         if !image_view.usage().depth_stencil_attachment {
@@ -234,7 +236,9 @@ where
                             });
                         }
                     }
-                    ImageLayout::DepthStencilAttachmentOptimal
+                    ImageLayout::DepthReadOnlyStencilAttachmentOptimal
+                    | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
+                    | ImageLayout::DepthStencilAttachmentOptimal
                     | ImageLayout::DepthStencilReadOnlyOptimal => {
                         // VUID-vkCmdBeginRenderPass2-initialLayout-03096
                         if !image_view.usage().depth_stencil_attachment {
@@ -376,8 +380,7 @@ where
         }
 
         // VUID-vkCmdBeginRenderPass2-initialLayout-03100
-        // If the initialLayout member of any of the VkAttachmentDescription structures specified when creating the render pass specified in the renderPass member of pRenderPassBegin is not VK_IMAGE_LAYOUT_UNDEFINED, then
-        // each such initialLayout must be equal to the current layout of the corresponding attachment image subresource of the framebuffer specified in the framebuffer member of pRenderPassBegin
+        // TODO:
 
         // VUID-vkCmdBeginRenderPass2-srcStageMask-06453
         // TODO:
@@ -811,6 +814,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             // VUID-VkRenderingAttachmentInfo-imageView-06135
             // VUID-VkRenderingAttachmentInfo-imageView-06145
             // VUID-VkRenderingInfo-colorAttachmentCount-06090
+            // VUID-VkRenderingInfo-colorAttachmentCount-06096
             if matches!(
                 image_layout,
                 ImageLayout::Undefined
@@ -821,6 +825,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                     | ImageLayout::PresentSrc
                     | ImageLayout::DepthStencilAttachmentOptimal
                     | ImageLayout::DepthStencilReadOnlyOptimal
+                    | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
+                    | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
             ) {
                 return Err(RenderPassError::ColorAttachmentLayoutInvalid { attachment_index });
             }
@@ -892,6 +898,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 // VUID-VkRenderingAttachmentInfo-imageView-06136
                 // VUID-VkRenderingAttachmentInfo-imageView-06146
                 // VUID-VkRenderingInfo-colorAttachmentCount-06091
+                // VUID-VkRenderingInfo-colorAttachmentCount-06097
                 if matches!(
                     resolve_image_layout,
                     ImageLayout::Undefined
@@ -902,6 +909,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                         | ImageLayout::PresentSrc
                         | ImageLayout::DepthStencilAttachmentOptimal
                         | ImageLayout::DepthStencilReadOnlyOptimal
+                        | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
+                        | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
                 ) {
                     return Err(RenderPassError::ColorAttachmentResolveLayoutInvalid {
                         attachment_index,
@@ -1019,6 +1028,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 // VUID-VkRenderingAttachmentInfo-imageView-06136
                 // VUID-VkRenderingAttachmentInfo-imageView-06146
                 // VUID-VkRenderingInfo-pDepthAttachment-06093
+                // VUID-VkRenderingInfo-pDepthAttachment-06098
                 if matches!(
                     resolve_image_layout,
                     ImageLayout::Undefined
@@ -1029,6 +1039,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                         | ImageLayout::Preinitialized
                         | ImageLayout::PresentSrc
                         | ImageLayout::ColorAttachmentOptimal
+                        | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
                 ) {
                     return Err(RenderPassError::DepthAttachmentResolveLayoutInvalid);
                 }
@@ -1144,6 +1155,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 // VUID-VkRenderingAttachmentInfo-imageView-06136
                 // VUID-VkRenderingAttachmentInfo-imageView-06146
                 // VUID-VkRenderingInfo-pStencilAttachment-06095
+                // VUID-VkRenderingInfo-pStencilAttachment-06099
                 if matches!(
                     resolve_image_layout,
                     ImageLayout::Undefined
@@ -1154,6 +1166,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                         | ImageLayout::Preinitialized
                         | ImageLayout::PresentSrc
                         | ImageLayout::ColorAttachmentOptimal
+                        | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
                 ) {
                     return Err(RenderPassError::StencilAttachmentResolveLayoutInvalid);
                 }

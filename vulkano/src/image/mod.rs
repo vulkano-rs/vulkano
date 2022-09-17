@@ -627,6 +627,19 @@ pub struct ImageFormatInfo {
     /// The default value is [`ImageUsage::empty()`], which must be overridden.
     pub usage: ImageUsage,
 
+    /// The `stencil_usage` that the image will have.
+    ///
+    /// If `stencil_usage` is empty or if `format` does not have both a depth and a stencil aspect,
+    /// then it is automatically set to equal `usage`.
+    ///
+    /// If after this, `stencil_usage` does not equal `usage`,
+    /// then the physical device API version must be at least 1.2, or the
+    /// [`ext_separate_stencil_usage`](crate::device::DeviceExtensions::ext_separate_stencil_usage)
+    /// extension must be supported by the physical device.
+    ///
+    /// The default value is [`ImageUsage::empty()`].
+    pub stencil_usage: ImageUsage,
+
     /// An external memory handle type that will be imported to or exported from the image.
     ///
     /// This is needed to retrieve the
@@ -680,6 +693,7 @@ impl Default for ImageFormatInfo {
             image_type: ImageType::Dim2d,
             tiling: ImageTiling::Optimal,
             usage: ImageUsage::empty(),
+            stencil_usage: ImageUsage::empty(),
             external_memory_handle_type: None,
             image_view_type: None,
             mutable_format: false,

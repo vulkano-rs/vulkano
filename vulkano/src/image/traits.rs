@@ -97,6 +97,12 @@ pub unsafe trait ImageAccess: DeviceOwned + Send + Sync {
         self.inner().image.usage()
     }
 
+    /// Returns the stencil usage the image was created with.
+    #[inline]
+    fn stencil_usage(&self) -> &ImageUsage {
+        self.inner().image.stencil_usage()
+    }
+
     /// Returns an `ImageSubresourceLayers` covering the first mip level of the image. All aspects
     /// of the image are selected, or `plane0` if the image is multi-planar.
     #[inline]
