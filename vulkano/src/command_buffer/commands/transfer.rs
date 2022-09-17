@@ -1188,7 +1188,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 });
             }
 
-            // https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkBufferImageCopy.html#_description
+            // https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkBufferImageCopy.html#_description
             let image_subresource_block_size = if image_subresource.aspects.stencil {
                 1
             } else if image_subresource.aspects.depth {
@@ -1612,7 +1612,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 });
             }
 
-            // https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkBufferImageCopy.html#_description
+            // https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkBufferImageCopy.html#_description
             let image_subresource_block_size = if image_subresource.aspects.stencil {
                 1
             } else if image_subresource.aspects.depth {
@@ -3451,7 +3451,7 @@ impl Default for BufferImageCopy {
 
 impl BufferImageCopy {
     // Following
-    // https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap20.html#copies-buffers-images-addressing
+    // https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap20.html#copies-buffers-images-addressing
     pub(crate) fn buffer_copy_size(&self, format: Format) -> DeviceSize {
         let &BufferImageCopy {
             buffer_offset: _,
@@ -3493,7 +3493,7 @@ impl BufferImageCopy {
             (image_extent[1] as DeviceSize - 1) * buffer_row_length as DeviceSize;
         let num_blocks = blocks_to_last_slice + blocks_to_last_row + image_extent[0] as DeviceSize;
 
-        // https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkBufferImageCopy.html#_description
+        // https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkBufferImageCopy.html#_description
         let block_size = if image_subresource.aspects.stencil {
             1
         } else if image_subresource.aspects.depth {

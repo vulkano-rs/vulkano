@@ -578,7 +578,7 @@ impl Device {
     ///
     /// To ensure valid usage of the Vulkan API, we cannot call `vkAllocateMemory` when
     /// `maxMemoryAllocationCount` has been exceeded. See the Vulkan specs:
-    /// https://www.khronos.org/registry/vulkan/specs/1.0/html/vkspec.html#vkAllocateMemory
+    /// https://registry.khronos.org/vulkan/specs/1.0/html/vkspec.html#vkAllocateMemory
     ///
     /// Warning: You should never modify this value, except in `device_memory` module
     pub(crate) fn allocation_count(&self) -> &Mutex<u32> {
