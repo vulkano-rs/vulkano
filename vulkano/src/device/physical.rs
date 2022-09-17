@@ -879,6 +879,7 @@ impl PhysicalDevice {
             image_type,
             tiling,
             usage,
+            mut stencil_usage,
             external_memory_handle_type,
             image_view_type,
             mutable_format: _,
@@ -889,6 +890,15 @@ impl PhysicalDevice {
         } = image_format_info;
 
         let format = format.unwrap();
+        let aspects = format.aspects();
+
+        let has_separate_stencil_usage =
+            if stencil_usage.is_empty() || !(aspects.depth && aspects.stencil) {
+                stencil_usage = usage;
+                false
+            } else {
+                stencil_usage == usage
+            };
 
         // VUID-VkPhysicalDeviceImageFormatInfo2-format-parameter
         format.validate_physical_device(self)?;
@@ -904,6 +914,27 @@ impl PhysicalDevice {
 
         // VUID-VkPhysicalDeviceImageFormatInfo2-usage-requiredbitmask
         assert!(!usage.is_empty());
+
+        if has_separate_stencil_usage {
+            if !(self.api_version() >= Version::V1_2
+                || self.supported_extensions().ext_separate_stencil_usage)
+            {
+                return Err(PhysicalDeviceError::RequirementNotMet {
+                    required_for: "`image_format_info.stencil_usage` is `Some` and `image_format_info.format` has both a depth and a stencil aspect",
+                    requires_one_of: RequiresOneOf {
+                        api_version: Some(Version::V1_2),
+                        device_extensions: &["ext_separate_stencil_usage"],
+                        ..Default::default()
+                    },
+                });
+            }
+
+            // VUID-VkImageStencilUsageCreateInfo-stencilUsage-parameter
+            stencil_usage.validate_physical_device(self)?;
+
+            // VUID-VkImageStencilUsageCreateInfo-usage-requiredbitmask
+            assert!(!stencil_usage.is_empty());
+        }
 
         if let Some(handle_type) = external_memory_handle_type {
             if !(self.api_version() >= Version::V1_1
@@ -956,6 +987,7 @@ impl PhysicalDevice {
             image_type,
             tiling,
             usage,
+            mut stencil_usage,
             external_memory_handle_type,
             image_view_type,
             mutable_format,
@@ -965,6 +997,17 @@ impl PhysicalDevice {
             _ne: _,
         } = image_format_info;
 
+        let format = format.unwrap();
+        let aspects = format.aspects();
+
+        let has_separate_stencil_usage =
+            if stencil_usage.is_empty() || !(aspects.depth && aspects.stencil) {
+                stencil_usage = usage;
+                false
+            } else {
+                stencil_usage == usage
+            };
+
         let flags = ImageCreateFlags {
             mutable_format,
             cube_compatible,
@@ -973,55 +1016,69 @@ impl PhysicalDevice {
             ..ImageCreateFlags::empty()
         };
 
-        let mut format_info2 = ash::vk::PhysicalDeviceImageFormatInfo2::builder()
-            .format(format.unwrap().into())
-            .ty(image_type.into())
-            .tiling(tiling.into())
-            .usage(usage.into())
-            .flags(flags.into());
+        let mut info2_vk = ash::vk::PhysicalDeviceImageFormatInfo2 {
+            format: format.into(),
+            ty: image_type.into(),
+            tiling: tiling.into(),
+            usage: usage.into(),
+            flags: flags.into(),
+            ..Default::default()
+        };
+        let mut external_info_vk = None;
+        let mut image_view_info_vk = None;
+        let mut stencil_usage_info_vk = None;
 
-        let mut external_image_format_info = external_memory_handle_type.map(|handle_type| {
-            ash::vk::PhysicalDeviceExternalImageFormatInfo::builder()
-                .handle_type(handle_type.into())
-        });
+        if let Some(handle_type) = external_memory_handle_type {
+            let next = external_info_vk.insert(ash::vk::PhysicalDeviceExternalImageFormatInfo {
+                handle_type: handle_type.into(),
+                ..Default::default()
+            });
 
-        if let Some(next) = external_image_format_info.as_mut() {
-            format_info2 = format_info2.push_next(next);
+            next.p_next = info2_vk.p_next;
+            info2_vk.p_next = next as *const _ as *const _;
         }
 
-        let mut image_view_image_format_info = image_view_type.map(|image_view_type| {
-            ash::vk::PhysicalDeviceImageViewImageFormatInfoEXT::builder()
-                .image_view_type(image_view_type.into())
-        });
+        if let Some(image_view_type) = image_view_type {
+            let next =
+                image_view_info_vk.insert(ash::vk::PhysicalDeviceImageViewImageFormatInfoEXT {
+                    image_view_type: image_view_type.into(),
+                    ..Default::default()
+                });
 
-        if let Some(next) = image_view_image_format_info.as_mut() {
-            format_info2 = format_info2.push_next(next);
+            next.p_next = info2_vk.p_next as *mut _;
+            info2_vk.p_next = next as *const _ as *const _;
+        }
+
+        if has_separate_stencil_usage {
+            let next = stencil_usage_info_vk.insert(ash::vk::ImageStencilUsageCreateInfo {
+                stencil_usage: stencil_usage.into(),
+                ..Default::default()
+            });
+
+            next.p_next = info2_vk.p_next as *mut _;
+            info2_vk.p_next = next as *const _ as *const _;
         }
 
         /* Output */
 
-        let mut image_format_properties2 = ash::vk::ImageFormatProperties2::default();
+        let mut properties2_vk = ash::vk::ImageFormatProperties2::default();
+        let mut external_properties_vk = None;
+        let mut filter_cubic_image_view_properties_vk = None;
 
-        let mut external_image_format_properties = if external_memory_handle_type.is_some() {
-            Some(ash::vk::ExternalImageFormatProperties::default())
-        } else {
-            None
-        };
+        if external_info_vk.is_some() {
+            let next =
+                external_properties_vk.insert(ash::vk::ExternalImageFormatProperties::default());
 
-        if let Some(next) = external_image_format_properties.as_mut() {
-            next.p_next = image_format_properties2.p_next;
-            image_format_properties2.p_next = next as *mut _ as *mut _;
+            next.p_next = properties2_vk.p_next;
+            properties2_vk.p_next = next as *mut _ as *mut _;
         }
 
-        let mut filter_cubic_image_view_image_format_properties = if image_view_type.is_some() {
-            Some(ash::vk::FilterCubicImageViewImageFormatPropertiesEXT::default())
-        } else {
-            None
-        };
+        if image_view_info_vk.is_some() {
+            let next = filter_cubic_image_view_properties_vk
+                .insert(ash::vk::FilterCubicImageViewImageFormatPropertiesEXT::default());
 
-        if let Some(next) = filter_cubic_image_view_image_format_properties.as_mut() {
-            next.p_next = image_format_properties2.p_next;
-            image_format_properties2.p_next = next as *mut _ as *mut _;
+            next.p_next = properties2_vk.p_next;
+            properties2_vk.p_next = next as *mut _ as *mut _;
         }
 
         let result = {
@@ -1030,8 +1087,8 @@ impl PhysicalDevice {
             if self.api_version() >= Version::V1_1 {
                 (fns.v1_1.get_physical_device_image_format_properties2)(
                     self.handle,
-                    &format_info2.build(),
-                    &mut image_format_properties2,
+                    &info2_vk,
+                    &mut properties2_vk,
                 )
             } else if self
                 .instance
@@ -1041,23 +1098,23 @@ impl PhysicalDevice {
                 (fns.khr_get_physical_device_properties2
                     .get_physical_device_image_format_properties2_khr)(
                     self.handle,
-                    &format_info2.build(),
-                    &mut image_format_properties2,
+                    &info2_vk,
+                    &mut properties2_vk,
                 )
             } else {
                 // Can't query this, return unsupported
-                if !format_info2.p_next.is_null() {
+                if !info2_vk.p_next.is_null() {
                     return Ok(None);
                 }
 
                 (fns.v1_0.get_physical_device_image_format_properties)(
                     self.handle,
-                    format_info2.format,
-                    format_info2.ty,
-                    format_info2.tiling,
-                    format_info2.usage,
-                    format_info2.flags,
-                    &mut image_format_properties2.image_format_properties,
+                    info2_vk.format,
+                    info2_vk.ty,
+                    info2_vk.tiling,
+                    info2_vk.usage,
+                    info2_vk.flags,
+                    &mut properties2_vk.image_format_properties,
                 )
             }
             .result()
@@ -1066,18 +1123,17 @@ impl PhysicalDevice {
 
         match result {
             Ok(_) => Ok(Some(ImageFormatProperties {
-                external_memory_properties: external_image_format_properties
+                external_memory_properties: external_properties_vk
                     .map(|properties| properties.external_memory_properties.into())
                     .unwrap_or_default(),
-                filter_cubic: filter_cubic_image_view_image_format_properties
-                    .map_or(false, |properties| {
-                        properties.filter_cubic != ash::vk::FALSE
-                    }),
-                filter_cubic_minmax: filter_cubic_image_view_image_format_properties
+                filter_cubic: filter_cubic_image_view_properties_vk.map_or(false, |properties| {
+                    properties.filter_cubic != ash::vk::FALSE
+                }),
+                filter_cubic_minmax: filter_cubic_image_view_properties_vk
                     .map_or(false, |properties| {
                         properties.filter_cubic_minmax != ash::vk::FALSE
                     }),
-                ..image_format_properties2.image_format_properties.into()
+                ..properties2_vk.image_format_properties.into()
             })),
             Err(VulkanError::FormatNotSupported) => Ok(None),
             Err(err) => Err(err),

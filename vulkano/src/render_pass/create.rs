@@ -98,27 +98,30 @@ impl RenderPass {
                 // VUID-VkAttachmentDescription2-finalLayout-parameter
                 layout.validate_device(device)?;
 
-                match layout {
-                    ImageLayout::ColorAttachmentOptimal => {
-                        // VUID-VkAttachmentDescription2-format-03295
-                        // VUID-VkAttachmentDescription2-format-03297
-                        if aspects.depth || aspects.stencil {
-                            return Err(RenderPassCreationError::AttachmentLayoutInvalid {
-                                attachment: atch_num,
-                            });
-                        }
+                if aspects.depth || aspects.stencil {
+                    // VUID-VkAttachmentDescription2-format-03281
+                    // VUID-VkAttachmentDescription2-format-03283
+                    if matches!(layout, ImageLayout::ColorAttachmentOptimal) {
+                        return Err(RenderPassCreationError::AttachmentLayoutInvalid {
+                            attachment: atch_num,
+                        });
                     }
-                    ImageLayout::DepthStencilAttachmentOptimal
-                    | ImageLayout::DepthStencilReadOnlyOptimal => {
-                        // VUID-VkAttachmentDescription2-format-03294
-                        // VUID-VkAttachmentDescription2-format-03296
-                        if aspects.color {
-                            return Err(RenderPassCreationError::AttachmentLayoutInvalid {
-                                attachment: atch_num,
-                            });
-                        }
+                } else {
+                    // VUID-VkAttachmentDescription2-format-03280
+                    // VUID-VkAttachmentDescription2-format-03282
+                    // VUID-VkAttachmentDescription2-format-06487
+                    // VUID-VkAttachmentDescription2-format-06488
+                    if matches!(
+                        layout,
+                        ImageLayout::DepthStencilAttachmentOptimal
+                            | ImageLayout::DepthStencilReadOnlyOptimal
+                            | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
+                            | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
+                    ) {
+                        return Err(RenderPassCreationError::AttachmentLayoutInvalid {
+                            attachment: atch_num,
+                        });
                     }
-                    _ => (),
                 }
             }
 
@@ -234,20 +237,36 @@ impl RenderPass {
                 let first_use =
                     !std::mem::replace(&mut attachment_used[atch_ref.attachment as usize], true);
 
-                // VUID-VkRenderPassCreateInfo2-pAttachments-02522
-                // VUID-VkRenderPassCreateInfo2-pAttachments-02523
-                if first_use
-                    && matches!(
-                        atch_ref.layout,
-                        ImageLayout::ShaderReadOnlyOptimal
-                            | ImageLayout::DepthStencilReadOnlyOptimal
-                    )
-                    && (atch.load_op == LoadOp::Clear || atch.stencil_load_op == LoadOp::Clear)
-                {
-                    return Err(RenderPassCreationError::AttachmentFirstUseLoadOpInvalid {
-                        attachment: atch_ref.attachment,
-                        first_use_subpass: subpass_num,
-                    });
+                if first_use {
+                    // VUID-VkRenderPassCreateInfo2-pAttachments-02522
+                    if atch.load_op == LoadOp::Clear
+                        && matches!(
+                            atch_ref.layout,
+                            ImageLayout::ShaderReadOnlyOptimal
+                                | ImageLayout::DepthStencilReadOnlyOptimal
+                                | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
+                        )
+                    {
+                        return Err(RenderPassCreationError::AttachmentFirstUseLoadOpInvalid {
+                            attachment: atch_ref.attachment,
+                            first_use_subpass: subpass_num,
+                        });
+                    }
+
+                    // VUID-VkRenderPassCreateInfo2-pAttachments-02523
+                    if atch.stencil_load_op == LoadOp::Clear
+                        && matches!(
+                            atch_ref.layout,
+                            ImageLayout::ShaderReadOnlyOptimal
+                                | ImageLayout::DepthStencilReadOnlyOptimal
+                                | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
+                        )
+                    {
+                        return Err(RenderPassCreationError::AttachmentFirstUseLoadOpInvalid {
+                            attachment: atch_ref.attachment,
+                            first_use_subpass: subpass_num,
+                        });
+                    }
                 }
 
                 let potential_format_features =
@@ -277,10 +296,17 @@ impl RenderPass {
                 }
 
                 // VUID-VkAttachmentReference2-layout-03077
-                // VUID-VkSubpassDescription2-None-04439
-                if !matches!(
+                // VUID-VkSubpassDescription2-attachment-06913
+                // VUID-VkSubpassDescription2-attachment-06916
+                if matches!(
                     atch_ref.layout,
-                    ImageLayout::ColorAttachmentOptimal | ImageLayout::General
+                    ImageLayout::Undefined
+                        | ImageLayout::Preinitialized
+                        | ImageLayout::PresentSrc
+                        | ImageLayout::DepthStencilAttachmentOptimal
+                        | ImageLayout::ShaderReadOnlyOptimal
+                        | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
+                        | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
                 ) {
                     return Err(RenderPassCreationError::SubpassAttachmentLayoutInvalid {
                         subpass: subpass_num,
@@ -333,12 +359,14 @@ impl RenderPass {
                 }
 
                 // VUID-VkAttachmentReference2-layout-03077
-                // VUID-VkSubpassDescription2-None-04439
-                if !matches!(
+                // VUID-VkSubpassDescription2-attachment-06915
+                if matches!(
                     atch_ref.layout,
-                    ImageLayout::DepthStencilAttachmentOptimal
-                        | ImageLayout::DepthStencilReadOnlyOptimal
-                        | ImageLayout::General
+                    ImageLayout::Undefined
+                        | ImageLayout::Preinitialized
+                        | ImageLayout::PresentSrc
+                        | ImageLayout::ColorAttachmentOptimal
+                        | ImageLayout::ShaderReadOnlyOptimal
                 ) {
                     return Err(RenderPassCreationError::SubpassAttachmentLayoutInvalid {
                         subpass: subpass_num,
@@ -403,12 +431,14 @@ impl RenderPass {
                 }
 
                 // VUID-VkAttachmentReference2-layout-03077
-                // VUID-VkSubpassDescription2-None-04439
-                if !matches!(
+                // VUID-VkSubpassDescription2-attachment-06912
+                if matches!(
                     atch_ref.layout,
-                    ImageLayout::DepthStencilReadOnlyOptimal
-                        | ImageLayout::ShaderReadOnlyOptimal
-                        | ImageLayout::General
+                    ImageLayout::Undefined
+                        | ImageLayout::Preinitialized
+                        | ImageLayout::PresentSrc
+                        | ImageLayout::ColorAttachmentOptimal
+                        | ImageLayout::DepthStencilAttachmentOptimal
                 ) {
                     return Err(RenderPassCreationError::SubpassAttachmentLayoutInvalid {
                         subpass: subpass_num,
@@ -493,12 +523,17 @@ impl RenderPass {
                 }
 
                 // VUID-VkAttachmentReference2-layout-03077
-                // VUID-VkSubpassDescription2-None-04439
-                // TODO: the spec doesn't mention anything about layouts for resolve attachments
-                // specifically, so this just does a general check.
+                // VUID-VkSubpassDescription2-attachment-06914
+                // VUID-VkSubpassDescription2-attachment-06917
                 if matches!(
                     atch_ref.layout,
-                    ImageLayout::Undefined | ImageLayout::Preinitialized | ImageLayout::PresentSrc
+                    ImageLayout::Undefined
+                        | ImageLayout::Preinitialized
+                        | ImageLayout::PresentSrc
+                        | ImageLayout::DepthStencilAttachmentOptimal
+                        | ImageLayout::ShaderReadOnlyOptimal
+                        | ImageLayout::DepthAttachmentStencilReadOnlyOptimal
+                        | ImageLayout::DepthReadOnlyStencilAttachmentOptimal
                 ) {
                     return Err(RenderPassCreationError::SubpassAttachmentLayoutInvalid {
                         subpass: subpass_num,

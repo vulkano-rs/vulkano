@@ -64,12 +64,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// # Panic
     ///
     /// - Panics if the source or the destination was not created with `device`.
-    ///
-    pub fn blit_image(
-        &mut self,
-        mut blit_image_info: BlitImageInfo,
-    ) -> Result<&mut Self, CopyError> {
-        self.validate_blit_image(&mut blit_image_info)?;
+    #[inline]
+    pub fn blit_image(&mut self, blit_image_info: BlitImageInfo) -> Result<&mut Self, CopyError> {
+        self.validate_blit_image(&blit_image_info)?;
 
         unsafe {
             self.inner.blit_image(blit_image_info)?;
@@ -78,7 +75,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         Ok(self)
     }
 
-    fn validate_blit_image(&self, blit_image_info: &mut BlitImageInfo) -> Result<(), CopyError> {
+    fn validate_blit_image(&self, blit_image_info: &BlitImageInfo) -> Result<(), CopyError> {
         let device = self.device();
 
         // VUID-vkCmdBlitImage2-renderpass
@@ -93,7 +90,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             return Err(CopyError::NotSupportedByQueueFamily);
         }
 
-        let &mut BlitImageInfo {
+        let &BlitImageInfo {
             ref src_image,
             src_image_layout,
             ref dst_image,
@@ -564,11 +561,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     /// Clears a color image with a specific value.
+    #[inline]
     pub fn clear_color_image(
         &mut self,
-        mut clear_info: ClearColorImageInfo,
+        clear_info: ClearColorImageInfo,
     ) -> Result<&mut Self, CopyError> {
-        self.validate_clear_color_image(&mut clear_info)?;
+        self.validate_clear_color_image(&clear_info)?;
 
         unsafe {
             self.inner.clear_color_image(clear_info)?;
@@ -579,7 +577,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     fn validate_clear_color_image(
         &self,
-        clear_info: &mut ClearColorImageInfo,
+        clear_info: &ClearColorImageInfo,
     ) -> Result<(), CopyError> {
         let device = self.device();
 
@@ -597,7 +595,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             return Err(CopyError::NotSupportedByQueueFamily);
         }
 
-        let &mut ClearColorImageInfo {
+        let &ClearColorImageInfo {
             ref image,
             image_layout,
             clear_value: _,
@@ -716,11 +714,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     /// Clears a depth/stencil image with a specific value.
+    #[inline]
     pub fn clear_depth_stencil_image(
         &mut self,
-        mut clear_info: ClearDepthStencilImageInfo,
+        clear_info: ClearDepthStencilImageInfo,
     ) -> Result<&mut Self, CopyError> {
-        self.validate_clear_depth_stencil_image(&mut clear_info)?;
+        self.validate_clear_depth_stencil_image(&clear_info)?;
 
         unsafe {
             self.inner.clear_depth_stencil_image(clear_info)?;
@@ -731,7 +730,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     fn validate_clear_depth_stencil_image(
         &self,
-        clear_info: &mut ClearDepthStencilImageInfo,
+        clear_info: &ClearDepthStencilImageInfo,
     ) -> Result<(), CopyError> {
         let device = self.device();
 
@@ -747,7 +746,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             return Err(CopyError::NotSupportedByQueueFamily);
         }
 
-        let &mut ClearDepthStencilImageInfo {
+        let &ClearDepthStencilImageInfo {
             ref image,
             image_layout,
             clear_value,
@@ -760,17 +759,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
         // VUID-vkCmdClearDepthStencilImage-commonparent
         assert_eq!(device, image.device());
-
-        // VUID-vkCmdClearDepthStencilImage-pRanges-02659
-        // VUID-vkCmdClearDepthStencilImage-pRanges-02660
-        if !image.usage().transfer_dst {
-            if !image.usage().transfer_dst {
-                return Err(CopyError::MissingUsage {
-                    resource: CopyErrorResource::Destination,
-                    usage: "transfer_dst",
-                });
-            }
-        }
 
         if device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1 {
             // VUID-vkCmdClearDepthStencilImage-image-01994
@@ -817,6 +805,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             });
         }
 
+        let mut image_aspects_used = ImageAspects::empty();
+
         for (region_index, subresource_range) in regions.iter().enumerate() {
             // VUID-VkImageSubresourceRange-aspectMask-parameter
             subresource_range.aspects.validate_device(device)?;
@@ -835,6 +825,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                     allowed_aspects: image_aspects,
                 });
             }
+
+            image_aspects_used |= subresource_range.aspects;
 
             // VUID-VkImageSubresourceRange-levelCount-01720
             assert!(!subresource_range.mip_levels.is_empty());
@@ -865,6 +857,29 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             }
         }
 
+        // VUID-vkCmdClearDepthStencilImage-pRanges-02658
+        // VUID-vkCmdClearDepthStencilImage-pRanges-02659
+        if image_aspects_used.stencil && !image.stencil_usage().transfer_dst {
+            return Err(CopyError::MissingUsage {
+                resource: CopyErrorResource::Destination,
+                usage: "transfer_dst",
+            });
+        }
+
+        // VUID-vkCmdClearDepthStencilImage-pRanges-02660
+        if !(ImageAspects {
+            stencil: false,
+            ..image_aspects_used
+        })
+        .is_empty()
+            && !image.usage().transfer_dst
+        {
+            return Err(CopyError::MissingUsage {
+                resource: CopyErrorResource::Destination,
+                usage: "transfer_dst",
+            });
+        }
+
         Ok(())
     }
 
@@ -874,11 +889,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///
     /// - Panics if `src_image` or `dst_image` were not created from the same device
     ///   as `self`.
+    #[inline]
     pub fn resolve_image(
         &mut self,
-        mut resolve_image_info: ResolveImageInfo,
+        resolve_image_info: ResolveImageInfo,
     ) -> Result<&mut Self, CopyError> {
-        self.validate_resolve_image(&mut resolve_image_info)?;
+        self.validate_resolve_image(&resolve_image_info)?;
 
         unsafe {
             self.inner.resolve_image(resolve_image_info)?;
@@ -889,7 +905,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     fn validate_resolve_image(
         &self,
-        resolve_image_info: &mut ResolveImageInfo,
+        resolve_image_info: &ResolveImageInfo,
     ) -> Result<(), CopyError> {
         let device = self.device();
 
@@ -905,7 +921,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             return Err(CopyError::NotSupportedByQueueFamily);
         }
 
-        let &mut ResolveImageInfo {
+        let &ResolveImageInfo {
             ref src_image,
             src_image_layout,
             ref dst_image,

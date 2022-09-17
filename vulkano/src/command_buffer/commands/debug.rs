@@ -200,6 +200,7 @@ impl SyncCommandBufferBuilder {
     /// Calls `vkCmdEndDebugUtilsLabelEXT` on the builder.
     ///
     /// # Safety
+    ///
     /// - The command pool that this command buffer was allocated from must support graphics or
     /// compute operations
     /// - There must be an outstanding `debug_marker_begin` command prior to the

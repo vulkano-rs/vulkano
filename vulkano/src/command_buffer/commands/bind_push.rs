@@ -288,21 +288,21 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 if pipeline_rendering_info.color_attachment_formats
                     != last_pipeline_rendering_info.color_attachment_formats
                 {
-                    todo!()
+                    return Err(BindPushError::PreviousPipelineColorAttachmentFormatMismatch);
                 }
 
                 // VUID-vkCmdBindPipeline-pipeline-06197
                 if pipeline_rendering_info.depth_attachment_format
                     != last_pipeline_rendering_info.depth_attachment_format
                 {
-                    todo!()
+                    return Err(BindPushError::PreviousPipelineDepthAttachmentFormatMismatch);
                 }
 
                 // VUID-vkCmdBindPipeline-pipeline-06194
                 if pipeline_rendering_info.stencil_attachment_format
                     != last_pipeline_rendering_info.stencil_attachment_format
                 {
-                    todo!()
+                    return Err(BindPushError::PreviousPipelineStencilAttachmentFormatMismatch);
                 }
             }
         }
@@ -1231,6 +1231,18 @@ enum BindPushError {
     /// The queue family doesn't allow this operation.
     NotSupportedByQueueFamily,
 
+    /// The newly set pipeline has color attachment formats that do not match the
+    /// previously used pipeline.
+    PreviousPipelineColorAttachmentFormatMismatch,
+
+    /// The newly set pipeline has a depth attachment format that does not match the
+    /// previously used pipeline.
+    PreviousPipelineDepthAttachmentFormatMismatch,
+
+    /// The newly set pipeline has a stencil attachment format that does not match the
+    /// previously used pipeline.
+    PreviousPipelineStencilAttachmentFormatMismatch,
+
     /// The push constants data to be written at an offset is not included in any push constant
     /// range of the pipeline layout.
     PushConstantsDataOutOfRange {
@@ -1300,6 +1312,18 @@ impl Display for BindPushError {
             Self::NotSupportedByQueueFamily => write!(
                 f,
                 "the queue family doesn't allow this operation",
+            ),
+            Self::PreviousPipelineColorAttachmentFormatMismatch => write!(
+                f,
+                "the newly set pipeline has color attachment formats that do not match the previously used pipeline",
+            ),
+            Self::PreviousPipelineDepthAttachmentFormatMismatch => write!(
+                f,
+                "the newly set pipeline has a depth attachment format that does not match the previously used pipeline",
+            ),
+            Self::PreviousPipelineStencilAttachmentFormatMismatch => write!(
+                f,
+                "the newly set pipeline has a stencil attachment format that does not match the previously used pipeline"
             ),
             Self::PushConstantsDataOutOfRange {
                 offset,

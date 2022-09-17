@@ -73,19 +73,20 @@ vulkan_enum! {
     /// tiling, optimal tiling gives undefined results.
     Preinitialized = PREINITIALIZED,
 
-    /*
-    // TODO: document
+    // A combination of `DepthStencilReadOnlyOptimal` for the depth aspect of the image,
+    // and `DepthStencilAttachmentOptimal` for the stencil aspect of the image.
     DepthReadOnlyStencilAttachmentOptimal = DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL {
         api_version: V1_1,
         device_extensions: [khr_maintenance2],
     },
 
-    // TODO: document
+    // A combination of `DepthStencilAttachmentOptimal` for the depth aspect of the image,
+    // and `DepthStencilReadOnlyOptimal` for the stencil aspect of the image.
     DepthAttachmentStencilReadOnlyOptimal = DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL {
         api_version: V1_1,
         device_extensions: [khr_maintenance2],
     },
-
+    /*
     // TODO: document
     DepthAttachmentOptimal = DEPTH_ATTACHMENT_OPTIMAL {
         api_version: V1_2,
