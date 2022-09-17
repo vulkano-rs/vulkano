@@ -92,6 +92,9 @@
 - Added support for the `ext_headless_surface`, `ext_directfb_surface`, `fuchsia_imagepipe_surface`, `ggp_stream_descriptor_surface` and `qnx_screen_surface` surface for creating surfaces from these APIs.
 - Added support for the `ext_tooling_info` extension.
 - Added support for external memory to `UnsafeBuffer`.
+- Added support for the `ext_separate_stencil_usage` extension. `UnsafeImage` and the `ImageAccess` trait now have a `stencil_usage` method.
+- Added the `DepthReadOnlyStencilAttachmentOptimal` and `DepthAttachmentStencilReadOnlyOptimal` image layouts.
+- Added the ability to choose a usage for image views, that is a subset of the usage of the parent image.
 
 # Version 0.30.0 (2022-07-20)
 
