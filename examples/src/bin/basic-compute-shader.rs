@@ -232,4 +232,6 @@ fn main() {
     for n in 0..65536u32 {
         assert_eq!(data_buffer_content[n as usize], n * 12);
     }
+
+    println!("Success");
 }

@@ -183,4 +183,6 @@ fn main() {
         assert_eq!(data_buffer_content[n as usize], n * 12);
         assert_eq!(data_buffer_content[n as usize + 65536 / 2], n * 12);
     }
+
+    println!("Success");
 }

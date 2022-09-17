@@ -24,5 +24,4 @@ png = "0.17"
 serde = { version = "1.0", features = ["derive"] }
 ron = "0.7"
 rand = "0.8.4"
-
-glium = { git = "https://github.com/glium/glium.git", rev = "60889a2" }
+glium = "0.32.1"
