@@ -48,6 +48,14 @@
   - `Queue::family` has been renamed to `queue_family_index`.
 - **Breaking** `Semaphore::export_opaque_fd` has been renamed to `export_fd` and now takes an `ExternalSemaphoreHandleType` to specify the handle type to export.
 - **Breaking** `Surface::from_raw_surface` has been renamed to `from_handle` to match the `from_handle` methods that were added for other types.
+- **Breaking** Changes to swapchain presentation:
+  - `swapchain::present` now takes `PresentInfo` parameter.
+  - `swapchain::present_incremental` has been removed.
+  - `GpuFuture::then_swapchain_present` now takes `PresentInfo` parameter.
+  - `GpuFuture::then_swapchain_present_incremental` has been removed.
+  - `SubmitPresentBuilder::swapchain` now takes `PresentInfo`.
+  - Added support for `present_id` feature with `present_id` field on `PresentInfo`.
+  - Added support for `present_wait` feature by adding method `swapchain::wait_for_present`.
 - **Potentially Breaking** Fix iOS compilation:
   - Removed dependency to `cocoa` and `metal`
   - Fixed iOS compilation errors
