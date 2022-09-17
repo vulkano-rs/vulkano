@@ -110,77 +110,7 @@ impl UnsafeImage {
         Self::validate(&device, &mut create_info)?;
         let handle = unsafe { Self::create(&device, &create_info)? };
 
-        unsafe { Ok(UnsafeImage::from_handle(handle, create_info, device)) }
-    }
-
-    /// Creates a new `UnsafeImage` from an ash-handle
-    /// # Safety
-    /// The `handle` has to be a valid vulkan object handle and
-    /// the `create_info` must match the info used to create said object
-    pub unsafe fn from_handle(
-        handle: ash::vk::Image,
-        create_info: UnsafeImageCreateInfo,
-        device: Arc<Device>,
-    ) -> Arc<UnsafeImage> {
-        let UnsafeImageCreateInfo {
-            dimensions,
-            format,
-            mip_levels,
-            samples,
-            tiling,
-            usage,
-            sharing: _,
-            initial_layout,
-            external_memory_handle_types: _,
-            mutable_format,
-            cube_compatible,
-            array_2d_compatible,
-            block_texel_view_compatible,
-            _ne: _,
-        } = create_info;
-
-        // Get format features
-        let format_features = {
-            // Use unchecked, because `create_info` is assumed to match the info of the handle, and
-            // therefore already valid.
-            let format_properties = device
-                .physical_device()
-                .format_properties_unchecked(format.unwrap());
-            match tiling {
-                ImageTiling::Linear => format_properties.linear_tiling_features,
-                ImageTiling::Optimal => format_properties.optimal_tiling_features,
-            }
-        };
-        let aspects = format.unwrap().aspects();
-        let aspect_list: SmallVec<[ImageAspect; 4]> = aspects.iter().collect();
-        let mip_level_size = dimensions.array_layers() as DeviceSize;
-        let aspect_size = mip_level_size * mip_levels as DeviceSize;
-        let range_size = aspect_list.len() as DeviceSize * aspect_size;
-
-        Arc::new(UnsafeImage {
-            device,
-            handle,
-
-            dimensions,
-            format,
-            format_features,
-            mip_levels,
-            initial_layout,
-            samples,
-            tiling,
-            usage,
-            mutable_format,
-            cube_compatible,
-            array_2d_compatible,
-            block_texel_view_compatible,
-
-            aspect_list,
-            aspect_size,
-            mip_level_size,
-            needs_destruction: true,
-            range_size,
-            state: Mutex::new(ImageState::new(range_size, initial_layout)),
-        })
+        unsafe { Ok(UnsafeImage::from_handle(device, handle, create_info)) }
     }
 
     fn validate(
@@ -893,6 +823,78 @@ impl UnsafeImage {
         };
 
         Ok(handle)
+    }
+
+    /// Creates a new `UnsafeImage` from a raw object handle.
+    ///
+    /// # Safety
+    ///
+    /// - `handle` must be a valid Vulkan object handle created from `device`.
+    /// - `create_info` must match the info used to create the object.
+    pub unsafe fn from_handle(
+        device: Arc<Device>,
+        handle: ash::vk::Image,
+        create_info: UnsafeImageCreateInfo,
+    ) -> Arc<UnsafeImage> {
+        let UnsafeImageCreateInfo {
+            dimensions,
+            format,
+            mip_levels,
+            samples,
+            tiling,
+            usage,
+            sharing: _,
+            initial_layout,
+            external_memory_handle_types: _,
+            mutable_format,
+            cube_compatible,
+            array_2d_compatible,
+            block_texel_view_compatible,
+            _ne: _,
+        } = create_info;
+
+        // Get format features
+        let format_features = {
+            // Use unchecked, because `create_info` is assumed to match the info of the handle, and
+            // therefore already valid.
+            let format_properties = device
+                .physical_device()
+                .format_properties_unchecked(format.unwrap());
+            match tiling {
+                ImageTiling::Linear => format_properties.linear_tiling_features,
+                ImageTiling::Optimal => format_properties.optimal_tiling_features,
+            }
+        };
+        let aspects = format.unwrap().aspects();
+        let aspect_list: SmallVec<[ImageAspect; 4]> = aspects.iter().collect();
+        let mip_level_size = dimensions.array_layers() as DeviceSize;
+        let aspect_size = mip_level_size * mip_levels as DeviceSize;
+        let range_size = aspect_list.len() as DeviceSize * aspect_size;
+
+        Arc::new(UnsafeImage {
+            device,
+            handle,
+
+            dimensions,
+            format,
+            format_features,
+            mip_levels,
+            initial_layout,
+            samples,
+            tiling,
+            usage,
+            mutable_format,
+            cube_compatible,
+            array_2d_compatible,
+            block_texel_view_compatible,
+
+            aspect_list,
+            aspect_size,
+            mip_level_size,
+            needs_destruction: true,
+            range_size,
+            state: Mutex::new(ImageState::new(range_size, initial_layout)),
+        })
     }
 
     /// Creates an image from a raw handle. The image won't be destroyed.

@@ -76,9 +76,14 @@ pub struct PhysicalDevice {
 }
 
 impl PhysicalDevice {
+    /// Creates a new `PhysicalDevice` from a raw object handle.
+    ///
+    /// # Safety
+    ///
+    /// - `handle` must be a valid Vulkan object handle created from `instance`.
     pub unsafe fn from_handle(
-        handle: ash::vk::PhysicalDevice,
         instance: Arc<Instance>,
+        handle: ash::vk::PhysicalDevice,
     ) -> Result<Arc<Self>, VulkanError> {
         let api_version = Self::get_api_version(handle, &instance);
         let extension_properties = Self::get_extension_properties(handle, &instance)?;

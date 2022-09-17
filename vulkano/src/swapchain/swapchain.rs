@@ -1577,7 +1577,7 @@ pub fn wait_for_present<W>(
         (swapchain.device.fns().khr_present_wait.wait_for_present_khr)(
             swapchain.device.internal_object(),
             swapchain.handle,
-            present_id.into(),
+            present_id,
             timeout_ns,
         )
     };
@@ -1585,7 +1585,7 @@ pub fn wait_for_present<W>(
     match result {
         ash::vk::Result::SUCCESS => Ok(false),
         ash::vk::Result::SUBOPTIMAL_KHR => Ok(true),
-        ash::vk::Result::TIMEOUT => return Err(PresentWaitError::Timeout),
+        ash::vk::Result::TIMEOUT => Err(PresentWaitError::Timeout),
         err => {
             let err = VulkanError::from(err).into();
 

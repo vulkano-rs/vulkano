@@ -134,30 +134,6 @@ impl Semaphore {
         })
     }
 
-    /// Creates a new `Semaphore` from an ash-handle
-    /// # Safety
-    /// The `handle` has to be a valid vulkan object handle and
-    /// the `create_info` must match the info used to create said object
-    pub unsafe fn from_handle(
-        handle: ash::vk::Semaphore,
-        create_info: SemaphoreCreateInfo,
-        device: Arc<Device>,
-    ) -> Semaphore {
-        let SemaphoreCreateInfo {
-            export_handle_types,
-            _ne: _,
-        } = create_info;
-
-        Semaphore {
-            device,
-            handle,
-
-            export_handle_types,
-
-            must_put_in_pool: false,
-        }
-    }
-
     /// Takes a semaphore from the vulkano-provided semaphore pool.
     /// If the pool is empty, a new semaphore will be allocated.
     /// Upon `drop`, the semaphore is put back into the pool.
@@ -184,6 +160,32 @@ impl Semaphore {
         };
 
         Ok(semaphore)
+    }
+
+    /// Creates a new `Semaphore` from a raw object handle.
+    ///
+    /// # Safety
+    ///
+    /// - `handle` must be a valid Vulkan object handle created from `device`.
+    /// - `create_info` must match the info used to create the object.
+    pub unsafe fn from_handle(
+        device: Arc<Device>,
+        handle: ash::vk::Semaphore,
+        create_info: SemaphoreCreateInfo,
+    ) -> Semaphore {
+        let SemaphoreCreateInfo {
+            export_handle_types,
+            _ne: _,
+        } = create_info;
+
+        Semaphore {
+            device,
+            handle,
+
+            export_handle_types,
+
+            must_put_in_pool: false,
+        }
     }
 
     /// Exports the semaphore into a POSIX file descriptor. The caller owns the returned `File`.

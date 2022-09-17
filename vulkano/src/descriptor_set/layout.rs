@@ -66,14 +66,16 @@ impl DescriptorSetLayout {
         }))
     }
 
-    /// Creates a new `DescriptorSetLayout` from an ash-handle
+    /// Creates a new `DescriptorSetLayout` from a raw object handle.
+    ///
     /// # Safety
-    /// The `handle` has to be a valid vulkan object handle and
-    /// the `create_info` must match the info used to create said object
+    ///
+    /// - `handle` must be a valid Vulkan object handle created from `device`.
+    /// - `create_info` must match the info used to create the object.
     pub unsafe fn from_handle(
+        device: Arc<Device>,
         handle: ash::vk::DescriptorSetLayout,
         create_info: DescriptorSetLayoutCreateInfo,
-        device: Arc<Device>,
     ) -> Arc<DescriptorSetLayout> {
         let DescriptorSetLayoutCreateInfo {
             bindings,

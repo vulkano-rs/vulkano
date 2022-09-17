@@ -51,7 +51,7 @@ impl<W> Surface<W> {
     ///
     /// # Safety
     ///
-    /// - `handle` must be a valid Vulkan surface handle owned by `instance`.
+    /// - `handle` must be a valid Vulkan object handle created from `instance`.
     /// - `handle` must have been created from `api`.
     /// - The window object that `handle` was created from must outlive the created `Surface`.
     ///   The `win` parameter can be used to ensure this.

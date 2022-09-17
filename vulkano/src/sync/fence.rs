@@ -147,30 +147,6 @@ impl Fence {
         })
     }
 
-    /// Creates a new `Fence` from an ash-handle
-    /// # Safety
-    /// The `handle` has to be a valid vulkan object handle and
-    /// the `create_info` must match the info used to create said object
-    pub unsafe fn from_handle(
-        handle: ash::vk::Fence,
-        create_info: FenceCreateInfo,
-        device: Arc<Device>,
-    ) -> Fence {
-        let FenceCreateInfo {
-            signaled,
-            export_handle_types,
-            _ne: _,
-        } = create_info;
-
-        Fence {
-            handle,
-            device,
-            _export_handle_types: export_handle_types,
-            is_signaled: AtomicBool::new(signaled),
-            must_put_in_pool: false,
-        }
-    }
-
     /// Takes a fence from the vulkano-provided fence pool.
     /// If the pool is empty, a new fence will be created.
     /// Upon `drop`, the fence is put back into the pool.
@@ -206,6 +182,32 @@ impl Fence {
         };
 
         Ok(fence)
+    }
+
+    /// Creates a new `Fence` from a raw object handle.
+    ///
+    /// # Safety
+    ///
+    /// - `handle` must be a valid Vulkan object handle created from `device`.
+    /// - `create_info` must match the info used to create the object.
+    pub unsafe fn from_handle(
+        device: Arc<Device>,
+        handle: ash::vk::Fence,
+        create_info: FenceCreateInfo,
+    ) -> Fence {
+        let FenceCreateInfo {
+            signaled,
+            export_handle_types,
+            _ne: _,
+        } = create_info;
+
+        Fence {
+            handle,
+            device,
+            _export_handle_types: export_handle_types,
+            is_signaled: AtomicBool::new(signaled),
+            must_put_in_pool: false,
+        }
     }
 
     /// Returns true if the fence is signaled.
