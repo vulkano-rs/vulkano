@@ -191,6 +191,9 @@ fn main() {
     // in the byte blob here, but it should still work.
     // If it doesn't, please check if there is an issue describing this problem, and if
     // not open a new one, on the GitHub page.
-    println!("first : {:?}", pipeline_cache.get_data().unwrap());
-    println!("second: {:?}", second_cache.get_data().unwrap());
+    assert_eq!(
+        pipeline_cache.get_data().unwrap(),
+        second_cache.get_data().unwrap()
+    );
+    println!("Success");
 }

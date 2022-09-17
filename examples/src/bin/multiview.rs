@@ -387,4 +387,8 @@ fn write_image_buffer_to_file(
     encoder.set_depth(png::BitDepth::Eight);
     let mut writer = encoder.write_header().unwrap();
     writer.write_image_data(&buffer_content).unwrap();
+
+    if let Ok(path) = path.canonicalize() {
+        println!("Saved to {}", path.display());
+    }
 }

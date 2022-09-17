@@ -1,6 +1,8 @@
 fn main() {
     #[cfg(target_os = "linux")]
     linux::main();
+    #[cfg(not(target_os = "linux"))]
+    println!("Not Implemented");
 }
 
 // TODO: Can this be demonstrated for other platforms as well?

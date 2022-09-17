@@ -44,7 +44,7 @@ fn main() {
         &context,
         &WindowDescriptor {
             title: "Fractal".to_string(),
-            present_mode: PresentMode::Immediate,
+            present_mode: PresentMode::Fifo,
             ..Default::default()
         },
         |_| {},

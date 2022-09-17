@@ -86,7 +86,7 @@ fn handle_events(
 ) -> bool {
     let mut is_running = true;
     event_loop.run_return(|event, _, control_flow| {
-        *control_flow = ControlFlow::Wait;
+        *control_flow = ControlFlow::Poll;
         match &event {
             Event::WindowEvent {
                 event, window_id, ..
