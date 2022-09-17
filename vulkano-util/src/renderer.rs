@@ -19,7 +19,9 @@ use vulkano::{
     format::Format,
     image::{view::ImageView, ImageAccess, ImageViewAbstract},
     swapchain,
-    swapchain::{AcquireError, Surface, Swapchain, SwapchainCreateInfo, SwapchainCreationError},
+    swapchain::{
+        AcquireError, PresentInfo, Surface, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+    },
     sync,
     sync::{FlushError, GpuFuture},
 };
@@ -279,8 +281,10 @@ impl VulkanoWindowRenderer {
         let future = after_future
             .then_swapchain_present(
                 self.graphics_queue.clone(),
-                self.swap_chain.clone(),
-                self.image_index,
+                PresentInfo {
+                    index: self.image_index,
+                    ..PresentInfo::swapchain(self.swap_chain.clone())
+                },
             )
             .then_signal_fence_and_flush();
         match future {

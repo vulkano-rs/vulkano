@@ -243,7 +243,7 @@
 //!    command to present the image on the screen after the draw operations are finished.
 //!
 //! ```
-//! use vulkano::swapchain;
+//! use vulkano::swapchain::{self, PresentInfo};
 //! use vulkano::sync::GpuFuture;
 //! # let queue: ::std::sync::Arc<::vulkano::device::Queue> = return;
 //! # let mut swapchain: ::std::sync::Arc<swapchain::Swapchain<()>> = return;
@@ -257,7 +257,13 @@
 //!     // constructed from images[image_num]
 //!     acquire_future
 //!         .then_execute(queue.clone(), command_buffer).unwrap()
-//!         .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
+//!         .then_swapchain_present(
+//!             queue.clone(),
+//!             PresentInfo {
+//!                 index: image_num,
+//!                 .. PresentInfo::swapchain(swapchain.clone())
+//!             },
+//!         )
 //!         .then_signal_fence_and_flush().unwrap();
 //! }
 //! ```
@@ -276,7 +282,7 @@
 //!
 //! ```
 //! use vulkano::swapchain;
-//! use vulkano::swapchain::{AcquireError, SwapchainCreateInfo};
+//! use vulkano::swapchain::{AcquireError, SwapchainCreateInfo, PresentInfo};
 //! use vulkano::sync::GpuFuture;
 //!
 //! // let (swapchain, images) = Swapchain::new(...);
@@ -307,7 +313,13 @@
 //!
 //!     let final_future = acq_future
 //!         // .then_execute(...)
-//!         .then_swapchain_present(queue.clone(), swapchain.clone(), index)
+//!         .then_swapchain_present(
+//!             queue.clone(),
+//!             PresentInfo {
+//!                 index,
+//!                 .. PresentInfo::swapchain(swapchain.clone())
+//!             },
+//!         )
 //!         .then_signal_fence_and_flush().unwrap(); // TODO: PresentError?
 //!
 //!     if suboptimal {
@@ -325,9 +337,10 @@ pub use self::{
         SurfaceInfo, SurfaceTransform,
     },
     swapchain::{
-        acquire_next_image, acquire_next_image_raw, present, present_incremental, AcquireError,
-        AcquiredImage, FullScreenExclusive, FullScreenExclusiveError, PresentFuture, Swapchain,
-        SwapchainAcquireFuture, SwapchainCreateInfo, SwapchainCreationError, Win32Monitor,
+        acquire_next_image, acquire_next_image_raw, present, wait_for_present, AcquireError,
+        AcquiredImage, FullScreenExclusive, FullScreenExclusiveError, PresentFuture, PresentInfo,
+        PresentWaitError, Swapchain, SwapchainAcquireFuture, SwapchainCreateInfo,
+        SwapchainCreationError, Win32Monitor,
     },
 };
 #[cfg(target_os = "ios")]

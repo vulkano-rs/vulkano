@@ -12,7 +12,7 @@ use crate::swapchain::Swapchain;
 /// Represents a region on an image.
 ///
 /// A region consists of an arbitrary amount of rectangles.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PresentRegion {
     pub rectangles: Vec<RectangleLayer>,
 }

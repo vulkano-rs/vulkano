@@ -607,6 +607,7 @@ impl Device {
     /// # Safety
     ///
     /// - `file` must be a handle to external memory that was created outside the Vulkan API.
+    #[cfg_attr(not(unix), allow(unused_variables))]
     pub unsafe fn memory_fd_properties(
         &self,
         handle_type: ExternalMemoryHandleType,

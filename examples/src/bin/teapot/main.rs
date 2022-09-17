@@ -34,7 +34,8 @@ use vulkano::{
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     shader::ShaderModule,
     swapchain::{
-        acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+        acquire_next_image, AcquireError, PresentInfo, Swapchain, SwapchainCreateInfo,
+        SwapchainCreationError,
     },
     sync::{self, FlushError, GpuFuture},
     VulkanLibrary,
@@ -360,7 +361,13 @@ fn main() {
                     .join(acquire_future)
                     .then_execute(queue.clone(), command_buffer)
                     .unwrap()
-                    .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
+                    .then_swapchain_present(
+                        queue.clone(),
+                        PresentInfo {
+                            index: image_num,
+                            ..PresentInfo::swapchain(swapchain.clone())
+                        },
+                    )
                     .then_signal_fence_and_flush();
 
                 match future {

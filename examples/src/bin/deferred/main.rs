@@ -37,7 +37,8 @@ use vulkano::{
     image::{view::ImageView, ImageUsage},
     instance::{Instance, InstanceCreateInfo},
     swapchain::{
-        acquire_next_image, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+        acquire_next_image, AcquireError, PresentInfo, Swapchain, SwapchainCreateInfo,
+        SwapchainCreationError,
     },
     sync::{self, FlushError, GpuFuture},
     VulkanLibrary,
@@ -247,7 +248,13 @@ fn main() {
 
             let future = after_future
                 .unwrap()
-                .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
+                .then_swapchain_present(
+                    queue.clone(),
+                    PresentInfo {
+                        index: image_num,
+                        ..PresentInfo::swapchain(swapchain.clone())
+                    },
+                )
                 .then_signal_fence_and_flush();
 
             match future {

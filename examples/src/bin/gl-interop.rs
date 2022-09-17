@@ -41,7 +41,9 @@ mod linux {
         },
         render_pass::{Framebuffer, RenderPass, Subpass},
         sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
-        swapchain::{AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError},
+        swapchain::{
+            AcquireError, PresentInfo, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+        },
         sync::{
             now, ExternalSemaphoreHandleType, ExternalSemaphoreHandleTypes, FlushError, GpuFuture,
             PipelineStages, Semaphore, SemaphoreCreateInfo,
@@ -344,7 +346,13 @@ mod linux {
                     let future = future
                         .then_execute(queue.clone(), command_buffer)
                         .unwrap()
-                        .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
+                        .then_swapchain_present(
+                            queue.clone(),
+                            PresentInfo {
+                                index: image_num,
+                                ..PresentInfo::swapchain(swapchain.clone())
+                            },
+                        )
                         .then_signal_fence_and_flush();
 
                     match future {

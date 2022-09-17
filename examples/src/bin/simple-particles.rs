@@ -37,7 +37,7 @@ use vulkano::{
         GraphicsPipeline, PipelineBindPoint,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, Subpass},
-    swapchain::{PresentMode, Swapchain, SwapchainCreateInfo},
+    swapchain::{PresentInfo, PresentMode, Swapchain, SwapchainCreateInfo},
     sync::{FenceSignalFuture, GpuFuture},
     VulkanLibrary,
 };
@@ -534,7 +534,13 @@ fn main() {
                     .join(acquire_future)
                     .then_execute(queue.clone(), command_buffer)
                     .unwrap()
-                    .then_swapchain_present(queue.clone(), swapchain.clone(), image_index)
+                    .then_swapchain_present(
+                        queue.clone(),
+                        PresentInfo {
+                            index: image_index,
+                            ..PresentInfo::swapchain(swapchain.clone())
+                        },
+                    )
                     .then_signal_fence_and_flush();
 
                 // Update this frame's future with current fence.

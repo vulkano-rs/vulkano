@@ -24,7 +24,7 @@ use crate::{
     },
     device::{DeviceOwned, Queue},
     image::{sys::UnsafeImage, ImageLayout},
-    swapchain::{self, PresentFuture, PresentRegion, Swapchain},
+    swapchain::{self, PresentFuture, PresentInfo},
     DeviceSize, OomError,
 };
 use std::{
@@ -257,30 +257,12 @@ pub unsafe trait GpuFuture: DeviceOwned {
     fn then_swapchain_present<W>(
         self,
         queue: Arc<Queue>,
-        swapchain: Arc<Swapchain<W>>,
-        image_index: usize,
+        info: PresentInfo<W>,
     ) -> PresentFuture<Self, W>
     where
         Self: Sized,
     {
-        swapchain::present(swapchain, self, queue, image_index)
-    }
-
-    /// Same as `then_swapchain_present`, except it allows specifying a present region.
-    ///
-    /// > **Note**: This is just a shortcut for the `Swapchain::present_incremental()` function.
-    #[inline]
-    fn then_swapchain_present_incremental<W>(
-        self,
-        queue: Arc<Queue>,
-        swapchain: Arc<Swapchain<W>>,
-        image_index: usize,
-        present_region: PresentRegion,
-    ) -> PresentFuture<Self, W>
-    where
-        Self: Sized,
-    {
-        swapchain::present_incremental(swapchain, self, queue, image_index, present_region)
+        swapchain::present(self, queue, info)
     }
 
     /// Turn the current future into a `Box<dyn GpuFuture>`.
@@ -499,6 +481,10 @@ pub enum FlushError {
 
     /// The flush operation needed to block, but the timeout has elapsed.
     Timeout,
+
+    /// A non-zero present_id must be greater than any non-zero present_id passed previously
+    /// for the same swapchain.
+    PresentIdLessThanOrEqual,
 }
 
 impl Error for FlushError {
@@ -531,6 +517,9 @@ impl Display for FlushError {
                     "the flush operation needed to block, but the timeout has \
                                     elapsed"
                 }
+                FlushError::PresentIdLessThanOrEqual => {
+                    "present id is less than or equal to previous"
+                }
             }
         )
     }
@@ -554,6 +543,7 @@ impl From<SubmitPresentError> for FlushError {
             SubmitPresentError::FullScreenExclusiveModeLost => {
                 FlushError::FullScreenExclusiveModeLost
             }
+            SubmitPresentError::PresentIdLessThanOrEqual => FlushError::PresentIdLessThanOrEqual,
         }
     }
 }
