@@ -298,7 +298,7 @@ fn main() {
                         proj: proj.into(),
                     };
 
-                    uniform_buffer.next(uniform_data).unwrap()
+                    uniform_buffer.from_data(uniform_data).unwrap()
                 };
 
                 let layout = pipeline.layout().set_layouts().get(0).unwrap();

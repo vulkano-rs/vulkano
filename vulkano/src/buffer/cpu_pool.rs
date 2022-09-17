@@ -74,7 +74,7 @@ use std::{
 /// for n in 0 .. 25u32 {
 ///     // Each loop grabs a new entry from that ring buffer and stores ` data` in it.
 ///     let data: [f32; 4] = [1.0, 0.5, n as f32 / 24.0, 0.0];
-///     let sub_buffer = buffer.next(data).unwrap();
+///     let sub_buffer = buffer.from_data(data).unwrap();
 ///
 ///     // You can then use `sub_buffer` as if it was an entirely separate buffer.
 ///     AutoCommandBufferBuilder::primary(device.clone(), queue.queue_family_index(), CommandBufferUsage::OneTimeSubmit)
@@ -346,13 +346,16 @@ where
     /// > **Note**: You can think of it like a `Vec`. If you insert an element and the `Vec` is not
     /// > large enough, a new chunk of memory is automatically allocated.
     #[inline]
-    pub fn next(&self, data: T) -> Result<Arc<CpuBufferPoolSubbuffer<T, A>>, DeviceMemoryError> {
+    pub fn from_data(
+        &self,
+        data: T,
+    ) -> Result<Arc<CpuBufferPoolSubbuffer<T, A>>, DeviceMemoryError> {
         Ok(Arc::new(CpuBufferPoolSubbuffer {
             chunk: self.chunk_impl([data].into_iter())?,
         }))
     }
 
-    /// Grants access to a new subbuffer and puts `data` in it.
+    /// Grants access to a new subbuffer and puts all elements of `iter` in it.
     ///
     /// If no subbuffer is available (because they are still in use by the GPU), a new buffer will
     /// automatically be allocated.
@@ -362,14 +365,15 @@ where
     ///
     /// # Panic
     ///
-    /// Panics if the length of the iterator didn't match the actual number of element.
+    /// Panics if the length of the iterator didn't match the actual number of elements.
     ///
-    pub fn chunk<I>(&self, data: I) -> Result<Arc<CpuBufferPoolChunk<T, A>>, DeviceMemoryError>
+    #[inline]
+    pub fn from_iter<I>(&self, iter: I) -> Result<Arc<CpuBufferPoolChunk<T, A>>, DeviceMemoryError>
     where
         I: IntoIterator<Item = T>,
         I::IntoIter: ExactSizeIterator,
     {
-        self.chunk_impl(data.into_iter()).map(Arc::new)
+        self.chunk_impl(iter.into_iter()).map(Arc::new)
     }
 
     fn chunk_impl(
@@ -910,12 +914,12 @@ mod tests {
         let pool = CpuBufferPool::upload(device);
         assert_eq!(pool.capacity(), 0);
 
-        pool.next(12).unwrap();
+        pool.from_data(12).unwrap();
         let first_cap = pool.capacity();
         assert!(first_cap >= 1);
 
         for _ in 0..first_cap + 5 {
-            mem::forget(pool.next(12).unwrap());
+            mem::forget(pool.from_data(12).unwrap());
         }
 
         assert!(pool.capacity() > first_cap);
@@ -930,7 +934,7 @@ mod tests {
 
         let mut capacity = None;
         for _ in 0..64 {
-            pool.next(12).unwrap();
+            pool.from_data(12).unwrap();
 
             let new_cap = pool.capacity();
             assert!(new_cap >= 1);
@@ -948,12 +952,12 @@ mod tests {
         let pool = CpuBufferPool::<u8>::upload(device);
         pool.reserve(5).unwrap();
 
-        let a = pool.chunk(vec![0, 0]).unwrap();
-        let b = pool.chunk(vec![0, 0]).unwrap();
+        let a = pool.from_iter(vec![0, 0]).unwrap();
+        let b = pool.from_iter(vec![0, 0]).unwrap();
         assert_eq!(b.index, 2);
         drop(a);
 
-        let c = pool.chunk(vec![0, 0]).unwrap();
+        let c = pool.from_iter(vec![0, 0]).unwrap();
         assert_eq!(c.index, 0);
 
         assert_eq!(pool.capacity(), 5);
@@ -965,7 +969,7 @@ mod tests {
 
         let pool = CpuBufferPool::<u8>::upload(device);
 
-        let _ = pool.chunk(vec![]).unwrap();
-        let _ = pool.chunk(vec![0, 0]).unwrap();
+        let _ = pool.from_iter(vec![]).unwrap();
+        let _ = pool.from_iter(vec![0, 0]).unwrap();
     }
 }
