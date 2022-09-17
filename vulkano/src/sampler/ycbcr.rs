@@ -145,6 +145,16 @@ impl SamplerYcbcrConversion {
             });
         }
 
+        let format = match format {
+            Some(f) => f,
+            None => {
+                return Err(SamplerYcbcrConversionCreationError::FormatMissing);
+            }
+        };
+
+        // VUID-VkSamplerYcbcrConversionCreateInfo-format-parameter
+        format.validate_device(&device)?;
+
         // VUID-VkSamplerYcbcrConversionCreateInfo-ycbcrModel-parameter
         ycbcr_model.validate_device(&device)?;
 
@@ -172,13 +182,6 @@ impl SamplerYcbcrConversion {
         // VUID-VkSamplerYcbcrConversionCreateInfo-chromaFilter-parameter
         chroma_filter.validate_device(&device)?;
 
-        let format = match format {
-            Some(f) => f,
-            None => {
-                return Err(SamplerYcbcrConversionCreationError::FormatMissing);
-            }
-        };
-
         // VUID-VkSamplerYcbcrConversionCreateInfo-format-04061
         if !format
             .type_color()
@@ -187,10 +190,13 @@ impl SamplerYcbcrConversion {
             return Err(SamplerYcbcrConversionCreationError::FormatNotUnorm);
         }
 
-        let potential_format_features = device
-            .physical_device()
-            .format_properties(format)
-            .potential_format_features();
+        // Use unchecked, because all validation has been done above.
+        let potential_format_features = unsafe {
+            device
+                .physical_device()
+                .format_properties_unchecked(format)
+                .potential_format_features()
+        };
 
         // VUID-VkSamplerYcbcrConversionCreateInfo-format-01650
         if !(potential_format_features.midpoint_chroma_samples

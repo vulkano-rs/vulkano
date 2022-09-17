@@ -16,10 +16,7 @@ use crate::{
     command_buffer::submit::{
         SubmitAnyBuilder, SubmitPresentBuilder, SubmitPresentError, SubmitSemaphoresWaitBuilder,
     },
-    device::{
-        physical::{ImageFormatPropertiesError, SurfacePropertiesError},
-        Device, DeviceOwned, Queue,
-    },
+    device::{Device, DeviceOwned, Queue},
     format::Format,
     image::{
         sys::UnsafeImage, ImageCreateFlags, ImageDimensions, ImageFormatInfo, ImageInner,
@@ -111,21 +108,6 @@ impl<W> Swapchain<W> {
         surface: Arc<Surface<W>>,
         mut create_info: SwapchainCreateInfo,
     ) -> Result<(Arc<Swapchain<W>>, Vec<Arc<SwapchainImage<W>>>), SwapchainCreationError> {
-        assert_eq!(
-            device.instance().internal_object(),
-            surface.instance().internal_object()
-        );
-
-        if !device.enabled_extensions().khr_swapchain {
-            return Err(SwapchainCreationError::RequirementNotMet {
-                required_for: "`Swapchain`",
-                requires_one_of: RequiresOneOf {
-                    device_extensions: &["khr_swapchain"],
-                    ..Default::default()
-                },
-            });
-        }
-
         Self::validate(&device, &surface, &mut create_info)?;
 
         // Checking that the surface doesn't already have a swapchain.
@@ -305,6 +287,18 @@ impl<W> Swapchain<W> {
             _ne: _,
         } = create_info;
 
+        if !device.enabled_extensions().khr_swapchain {
+            return Err(SwapchainCreationError::RequirementNotMet {
+                required_for: "`Swapchain`",
+                requires_one_of: RequiresOneOf {
+                    device_extensions: &["khr_swapchain"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        assert_eq!(device.instance(), surface.instance());
+
         // VUID-VkSwapchainCreateInfoKHR-imageColorSpace-parameter
         image_color_space.validate_device(device)?;
 
@@ -353,18 +347,21 @@ impl<W> Swapchain<W> {
 
         // VUID-VkSwapchainCreateInfoKHR-surface-01270
         *image_format = Some({
-            let surface_formats = device.physical_device().surface_formats(
-                surface,
-                SurfaceInfo {
-                    full_screen_exclusive,
-                    win32_monitor,
-                    ..Default::default()
-                },
-            )?;
+            // Use unchecked, because all validation has been done above.
+            let surface_formats = unsafe {
+                device.physical_device().surface_formats_unchecked(
+                    surface,
+                    SurfaceInfo {
+                        full_screen_exclusive,
+                        win32_monitor,
+                        ..Default::default()
+                    },
+                )?
+            };
 
             if let Some(format) = image_format {
                 // VUID-VkSwapchainCreateInfoKHR-imageFormat-parameter
-                // TODO: format.validate_device(device)?;
+                format.validate_device(device)?;
 
                 // VUID-VkSwapchainCreateInfoKHR-imageFormat-01273
                 if !surface_formats
@@ -386,14 +383,17 @@ impl<W> Swapchain<W> {
             }
         });
 
-        let surface_capabilities = device.physical_device().surface_capabilities(
-            surface,
-            SurfaceInfo {
-                full_screen_exclusive,
-                win32_monitor,
-                ..Default::default()
-            },
-        )?;
+        // Use unchecked, because all validation has been done above.
+        let surface_capabilities = unsafe {
+            device.physical_device().surface_capabilities_unchecked(
+                surface,
+                SurfaceInfo {
+                    full_screen_exclusive,
+                    win32_monitor,
+                    ..Default::default()
+                },
+            )?
+        };
 
         // VUID-VkSwapchainCreateInfoKHR-minImageCount-01272
         // VUID-VkSwapchainCreateInfoKHR-presentMode-02839
@@ -505,25 +505,31 @@ impl<W> Swapchain<W> {
         }
 
         // VUID-VkSwapchainCreateInfoKHR-presentMode-01281
-        if !device
-            .physical_device()
-            .surface_present_modes(surface)?
-            .any(|mode| mode == present_mode)
+        // Use unchecked, because all validation has been done above.
+        if !unsafe {
+            device
+                .physical_device()
+                .surface_present_modes_unchecked(surface)?
+        }
+        .any(|mode| mode == present_mode)
         {
             return Err(SwapchainCreationError::PresentModeNotSupported);
         }
 
         // VUID-VkSwapchainCreateInfoKHR-imageFormat-01778
-        if device
-            .physical_device()
-            .image_format_properties(ImageFormatInfo {
-                format: *image_format,
-                image_type: ImageType::Dim2d,
-                tiling: ImageTiling::Optimal,
-                usage: image_usage,
-                ..Default::default()
-            })?
-            .is_none()
+        // Use unchecked, because all validation has been done above.
+        if unsafe {
+            device
+                .physical_device()
+                .image_format_properties_unchecked(ImageFormatInfo {
+                    format: *image_format,
+                    image_type: ImageType::Dim2d,
+                    tiling: ImageTiling::Optimal,
+                    usage: image_usage,
+                    ..Default::default()
+                })?
+        }
+        .is_none()
         {
             return Err(SwapchainCreationError::ImageFormatPropertiesNotSupported);
         }
@@ -1278,41 +1284,12 @@ impl From<OomError> for SwapchainCreationError {
     }
 }
 
-impl From<SurfacePropertiesError> for SwapchainCreationError {
-    #[inline]
-    fn from(err: SurfacePropertiesError) -> SwapchainCreationError {
-        match err {
-            SurfacePropertiesError::OomError(err) => Self::OomError(err),
-            SurfacePropertiesError::SurfaceLost => Self::SurfaceLost,
-            SurfacePropertiesError::NotSupported => unreachable!(),
-            SurfacePropertiesError::QueueFamilyIndexOutOfRange { .. } => unreachable!(),
-            SurfacePropertiesError::RequirementNotMet { .. } => unreachable!(),
-        }
-    }
-}
-
 impl From<RequirementNotMet> for SwapchainCreationError {
     #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
             required_for: err.required_for,
             requires_one_of: err.requires_one_of,
-        }
-    }
-}
-
-impl From<ImageFormatPropertiesError> for SwapchainCreationError {
-    #[inline]
-    fn from(err: ImageFormatPropertiesError) -> Self {
-        match err {
-            ImageFormatPropertiesError::OomError(err) => Self::OomError(err),
-            ImageFormatPropertiesError::RequirementNotMet {
-                required_for,
-                requires_one_of,
-            } => Self::RequirementNotMet {
-                required_for,
-                requires_one_of,
-            },
         }
     }
 }

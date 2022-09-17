@@ -15,7 +15,7 @@
 
 use super::{ImageAccess, ImageDimensions, ImageFormatInfo, ImageSubresourceRange, ImageUsage};
 use crate::{
-    device::{physical::ImageFormatPropertiesError, Device, DeviceOwned},
+    device::{Device, DeviceOwned},
     format::{ChromaSampling, Format, FormatFeatures},
     image::{ImageAspects, ImageTiling, ImageType, SampleCount},
     macros::vulkan_enum,
@@ -85,17 +85,22 @@ where
         let image_inner = image.inner().image;
         let image_type = image.dimensions().image_type();
 
-        let (filter_cubic, filter_cubic_minmax) = image
+        let mut filter_cubic = false;
+        let mut filter_cubic_minmax = false;
+
+        if image
             .device()
             .physical_device()
             .supported_extensions()
             .ext_filter_cubic
-            .then_some(())
-            .and_then(|_| {
+        {
+            // Use unchecked, because all validation has been done above or is validated by the
+            // image.
+            let properties = unsafe {
                 image_inner
                     .device()
                     .physical_device()
-                    .image_format_properties(ImageFormatInfo {
+                    .image_format_properties_unchecked(ImageFormatInfo {
                         format: image_inner.format(),
                         image_type,
                         tiling: image_inner.tiling(),
@@ -106,12 +111,14 @@ where
                         array_2d_compatible: image_inner.array_2d_compatible(),
                         block_texel_view_compatible: image_inner.block_texel_view_compatible(),
                         ..Default::default()
-                    })
-                    .unwrap()
-            })
-            .map_or((false, false), |properties| {
-                (properties.filter_cubic, properties.filter_cubic_minmax)
-            });
+                    })?
+            };
+
+            if let Some(properties) = properties {
+                filter_cubic = properties.filter_cubic;
+                filter_cubic_minmax = properties.filter_cubic_minmax;
+            }
+        }
 
         Ok(Arc::new(ImageView {
             handle,
@@ -143,6 +150,7 @@ where
             _ne: _,
         } = create_info;
 
+        let device = image.device();
         let format = format.unwrap();
         let image_inner = image.inner().image;
         let level_count = subresource_range.mip_levels.end - subresource_range.mip_levels.start;
@@ -152,25 +160,25 @@ where
         assert!(layer_count != 0);
 
         // VUID-VkImageViewCreateInfo-viewType-parameter
-        view_type.validate_device(image.device())?;
+        view_type.validate_device(device)?;
 
         // VUID-VkImageViewCreateInfo-format-parameter
-        // TODO: format.validate_device(image.device())?;
+        format.validate_device(device)?;
 
         // VUID-VkComponentMapping-r-parameter
-        component_mapping.r.validate_device(image.device())?;
+        component_mapping.r.validate_device(device)?;
 
         // VUID-VkComponentMapping-g-parameter
-        component_mapping.g.validate_device(image.device())?;
+        component_mapping.g.validate_device(device)?;
 
         // VUID-VkComponentMapping-b-parameter
-        component_mapping.b.validate_device(image.device())?;
+        component_mapping.b.validate_device(device)?;
 
         // VUID-VkComponentMapping-a-parameter
-        component_mapping.a.validate_device(image.device())?;
+        component_mapping.a.validate_device(device)?;
 
         // VUID-VkImageSubresourceRange-aspectMask-parameter
-        subresource_range.aspects.validate_device(image.device())?;
+        subresource_range.aspects.validate_device(device)?;
 
         {
             let ImageAspects {
@@ -202,10 +210,13 @@ where
         // Get format features
         let format_features = {
             let format_features = if Some(format) != image_inner.format() {
-                let format_properties = image_inner
-                    .device()
-                    .physical_device()
-                    .format_properties(format);
+                // Use unchecked, because all validation has been done above.
+                let format_properties = unsafe {
+                    image_inner
+                        .device()
+                        .physical_device()
+                        .format_properties_unchecked(format)
+                };
 
                 match image_inner.tiling() {
                     ImageTiling::Optimal => format_properties.optimal_tiling_features,
@@ -974,22 +985,6 @@ impl From<RequirementNotMet> for ImageViewCreationError {
         Self::RequirementNotMet {
             required_for: err.required_for,
             requires_one_of: err.requires_one_of,
-        }
-    }
-}
-
-impl From<ImageFormatPropertiesError> for ImageViewCreationError {
-    #[inline]
-    fn from(err: ImageFormatPropertiesError) -> Self {
-        match err {
-            ImageFormatPropertiesError::OomError(err) => Self::OomError(err),
-            ImageFormatPropertiesError::RequirementNotMet {
-                required_for,
-                requires_one_of,
-            } => Self::RequirementNotMet {
-                required_for,
-                requires_one_of,
-            },
         }
     }
 }

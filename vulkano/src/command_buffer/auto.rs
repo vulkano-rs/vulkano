@@ -335,7 +335,7 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
                             ref color_attachment_formats,
                             depth_attachment_format,
                             stencil_attachment_format,
-                            rasterization_samples: _, // TODO: ?
+                            rasterization_samples,
                         } = rendering_info;
 
                         // VUID-VkCommandBufferInheritanceRenderingInfo-multiview-06008
@@ -366,9 +366,12 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
                         {
                             let attachment_index = attachment_index as u32;
 
+                            // VUID-VkCommandBufferInheritanceRenderingInfo-pColorAttachmentFormats-parameter
+                            format.validate_device(device)?;
+
                             // VUID-VkCommandBufferInheritanceRenderingInfo-pColorAttachmentFormats-06006
-                            if !physical_device
-                                .format_properties(format)
+                            // Use unchecked, because all validation has been done above.
+                            if !unsafe { physical_device.format_properties_unchecked(format) }
                                 .potential_format_features()
                                 .color_attachment
                             {
@@ -381,6 +384,9 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
                         }
 
                         if let Some(format) = depth_attachment_format {
+                            // VUID-VkCommandBufferInheritanceRenderingInfo-depthAttachmentFormat-parameter
+                            format.validate_device(device)?;
+
                             // VUID-VkCommandBufferInheritanceRenderingInfo-depthAttachmentFormat-06540
                             if !format.aspects().depth {
                                 return Err(
@@ -389,8 +395,8 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
                             }
 
                             // VUID-VkCommandBufferInheritanceRenderingInfo-depthAttachmentFormat-06007
-                            if !physical_device
-                                .format_properties(format)
+                            // Use unchecked, because all validation has been done above.
+                            if !unsafe { physical_device.format_properties_unchecked(format) }
                                 .potential_format_features()
                                 .depth_stencil_attachment
                             {
@@ -401,6 +407,9 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
                         }
 
                         if let Some(format) = stencil_attachment_format {
+                            // VUID-VkCommandBufferInheritanceRenderingInfo-stencilAttachmentFormat-parameter
+                            format.validate_device(device)?;
+
                             // VUID-VkCommandBufferInheritanceRenderingInfo-stencilAttachmentFormat-06541
                             if !format.aspects().stencil {
                                 return Err(
@@ -409,8 +418,8 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
                             }
 
                             // VUID-VkCommandBufferInheritanceRenderingInfo-stencilAttachmentFormat-06199
-                            if !physical_device
-                                .format_properties(format)
+                            // Use unchecked, because all validation has been done above.
+                            if !unsafe { physical_device.format_properties_unchecked(format) }
                                 .potential_format_features()
                                 .depth_stencil_attachment
                             {
@@ -430,6 +439,9 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
                                 );
                             }
                         }
+
+                        // VUID-VkCommandBufferInheritanceRenderingInfo-rasterizationSamples-parameter
+                        rasterization_samples.validate_device(device)?;
                     }
                 }
             }

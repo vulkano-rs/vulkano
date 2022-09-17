@@ -43,16 +43,16 @@ struct ExtensionsMember {
     doc: String,
     raw: String,
     required_if_supported: bool,
-    requires: Vec<OneOfDependencies>,
+    requires: Vec<RequiresOneOf>,
     conflicts_device_extensions: Vec<Ident>,
     status: Option<ExtensionStatus>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
-struct OneOfDependencies {
-    api_version: Option<(String, String)>,
-    device_extensions: Vec<Ident>,
-    instance_extensions: Vec<Ident>,
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RequiresOneOf {
+    pub api_version: Option<(String, String)>,
+    pub device_extensions: Vec<Ident>,
+    pub instance_extensions: Vec<Ident>,
 }
 
 #[derive(Clone, Debug)]
@@ -556,7 +556,7 @@ fn extensions_members(ty: &str, extensions: &IndexMap<&str, &Extension>) -> Vec<
 
             if let Some(core) = ext.requires_core.as_ref() {
                 let (major, minor) = core.split_once('.').unwrap();
-                requires.push(OneOfDependencies {
+                requires.push(RequiresOneOf {
                     api_version: Some((major.to_owned(), minor.to_owned())),
                     ..Default::default()
                 });
@@ -564,7 +564,7 @@ fn extensions_members(ty: &str, extensions: &IndexMap<&str, &Extension>) -> Vec<
 
             if let Some(req) = ext.requires.as_ref() {
                 requires.extend(req.split(',').map(|mut vk_name| {
-                    let mut dependencies = OneOfDependencies::default();
+                    let mut dependencies = RequiresOneOf::default();
 
                     loop {
                         if let Some(version) = vk_name.strip_prefix("VK_VERSION_") {

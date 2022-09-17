@@ -312,10 +312,13 @@ impl Sampler {
         {
             assert_eq!(&device, sampler_ycbcr_conversion.device());
 
-            let potential_format_features = device
-                .physical_device()
-                .format_properties(sampler_ycbcr_conversion.format().unwrap())
-                .potential_format_features();
+            // Use unchecked, because all validation has been done by the SamplerYcbcrConversion.
+            let potential_format_features = unsafe {
+                device
+                    .physical_device()
+                    .format_properties_unchecked(sampler_ycbcr_conversion.format().unwrap())
+                    .potential_format_features()
+            };
 
             // VUID-VkSamplerCreateInfo-minFilter-01645
             if !potential_format_features

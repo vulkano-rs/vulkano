@@ -75,12 +75,8 @@ impl RenderPass {
             let format = format.unwrap();
             let aspects = format.aspects();
 
-            attachment_potential_format_features.push(
-                device
-                    .physical_device()
-                    .format_properties(format)
-                    .potential_format_features(),
-            );
+            // VUID-VkAttachmentDescription2-format-parameter
+            format.validate_device(device)?;
 
             // VUID-VkAttachmentDescription2-samples-parameter
             samples.validate_device(device)?;
@@ -125,6 +121,14 @@ impl RenderPass {
                     _ => (),
                 }
             }
+
+            // Use unchecked, because all validation has been done above.
+            attachment_potential_format_features.push(unsafe {
+                device
+                    .physical_device()
+                    .format_properties_unchecked(format)
+                    .potential_format_features()
+            });
         }
 
         /*

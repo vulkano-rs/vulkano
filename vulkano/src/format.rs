@@ -108,7 +108,7 @@ impl Format {
     )]
     #[inline]
     pub fn properties(&self, physical_device: PhysicalDevice) -> FormatProperties {
-        physical_device.format_properties(*self)
+        physical_device.format_properties(*self).unwrap()
     }
 
     /// Returns whether the format can be used with a storage image, without specifying
