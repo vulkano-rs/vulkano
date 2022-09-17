@@ -176,33 +176,6 @@ impl PipelineLayout {
         push_constant_ranges_disjoint
     }
 
-    /// Creates a new `PipelineLayout` from an ash-handle
-    /// # Safety
-    /// The `handle` has to be a valid vulkan object handle and
-    /// the `create_info` must match the info used to create said object
-    pub unsafe fn from_handle(
-        handle: ash::vk::PipelineLayout,
-        create_info: PipelineLayoutCreateInfo,
-        device: Arc<Device>,
-    ) -> Arc<PipelineLayout> {
-        let PipelineLayoutCreateInfo {
-            set_layouts,
-            push_constant_ranges,
-            _ne: _,
-        } = create_info;
-
-        let push_constant_ranges_disjoint =
-            Self::create_push_constant_ranges_disjoint(&push_constant_ranges);
-
-        Arc::new(PipelineLayout {
-            handle,
-            device,
-            set_layouts,
-            push_constant_ranges,
-            push_constant_ranges_disjoint,
-        })
-    }
-
     fn validate(
         device: &Device,
         create_info: &mut PipelineLayoutCreateInfo,
@@ -550,6 +523,35 @@ impl PipelineLayout {
         };
 
         Ok(handle)
+    }
+
+    /// Creates a new `PipelineLayout` from a raw object handle.
+    ///
+    /// # Safety
+    ///
+    /// - `handle` must be a valid Vulkan object handle created from `device`.
+    /// - `create_info` must match the info used to create the object.
+    pub unsafe fn from_handle(
+        device: Arc<Device>,
+        handle: ash::vk::PipelineLayout,
+        create_info: PipelineLayoutCreateInfo,
+    ) -> Arc<PipelineLayout> {
+        let PipelineLayoutCreateInfo {
+            set_layouts,
+            push_constant_ranges,
+            _ne: _,
+        } = create_info;
+
+        let push_constant_ranges_disjoint =
+            Self::create_push_constant_ranges_disjoint(&push_constant_ranges);
+
+        Arc::new(PipelineLayout {
+            handle,
+            device,
+            set_layouts,
+            push_constant_ranges,
+            push_constant_ranges_disjoint,
+        })
     }
 
     /// Returns the descriptor set layouts this pipeline layout was created from.

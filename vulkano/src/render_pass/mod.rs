@@ -176,14 +176,32 @@ impl RenderPass {
         [out.width, out.height]
     }
 
-    /// Creates a new `RenderPass` from an ash-handle
+    /// Builds a render pass with one subpass and no attachment.
+    ///
+    /// This method is useful for quick tests.
+    #[inline]
+    pub fn empty_single_pass(
+        device: Arc<Device>,
+    ) -> Result<Arc<RenderPass>, RenderPassCreationError> {
+        RenderPass::new(
+            device,
+            RenderPassCreateInfo {
+                subpasses: vec![SubpassDescription::default()],
+                ..Default::default()
+            },
+        )
+    }
+
+    /// Creates a new `RenderPass` from a raw object handle.
+    ///
     /// # Safety
-    /// The `handle` has to be a valid vulkan object handle and
-    /// the `create_info` must match the info used to create said object
+    ///
+    /// - `handle` must be a valid Vulkan object handle created from `device`.
+    /// - `create_info` must match the info used to create the object.
     pub unsafe fn from_handle(
+        device: Arc<Device>,
         handle: ash::vk::RenderPass,
         create_info: RenderPassCreateInfo,
-        device: Arc<Device>,
     ) -> Result<Arc<RenderPass>, RenderPassCreationError> {
         let views_used = create_info
             .subpasses
@@ -213,22 +231,6 @@ impl RenderPass {
             granularity,
             views_used,
         }))
-    }
-
-    /// Builds a render pass with one subpass and no attachment.
-    ///
-    /// This method is useful for quick tests.
-    #[inline]
-    pub fn empty_single_pass(
-        device: Arc<Device>,
-    ) -> Result<Arc<RenderPass>, RenderPassCreationError> {
-        RenderPass::new(
-            device,
-            RenderPassCreateInfo {
-                subpasses: vec![SubpassDescription::default()],
-                ..Default::default()
-            },
-        )
     }
 
     /// Returns the attachments of the render pass.

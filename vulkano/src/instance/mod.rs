@@ -550,7 +550,7 @@ impl Instance {
 
             let physical_devices: SmallVec<[_; 4]> = handles
                 .into_iter()
-                .map(|handle| PhysicalDevice::from_handle(handle, self.clone()))
+                .map(|handle| PhysicalDevice::from_handle(self.clone(), handle))
                 .collect::<Result<_, _>>()?;
 
             Ok(physical_devices.into_iter())

@@ -330,14 +330,16 @@ impl Framebuffer {
         }))
     }
 
-    /// Creates a new `Framebuffer` from an ash-handle
+    /// Creates a new `Framebuffer` from a raw object handle.
+    ///
     /// # Safety
-    /// The `handle` has to be a valid vulkan object handle and
-    /// the `create_info` must match the info used to create said object
+    ///
+    /// - `handle` must be a valid Vulkan object handle created from `render_pass`.
+    /// - `create_info` must match the info used to create the object.
     pub unsafe fn from_handle(
+        render_pass: Arc<RenderPass>,
         handle: ash::vk::Framebuffer,
         create_info: FramebufferCreateInfo,
-        render_pass: Arc<RenderPass>,
     ) -> Arc<Framebuffer> {
         let FramebufferCreateInfo {
             attachments,

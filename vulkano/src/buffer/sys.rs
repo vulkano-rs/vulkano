@@ -208,14 +208,16 @@ impl UnsafeBuffer {
         Ok(Arc::new(buffer))
     }
 
-    /// Creates a new `UnsafeBuffer` from an ash-handle
+    /// Creates a new `UnsafeBuffer` from a raw object handle.
+    ///
     /// # Safety
-    /// The `handle` has to be a valid vulkan object handle and
-    /// the `create_info` must match the info used to create said object
+    ///
+    /// - `handle` must be a valid Vulkan object handle created from `device`.
+    /// - `create_info` must match the info used to create the object.
     pub unsafe fn from_handle(
+        device: Arc<Device>,
         handle: ash::vk::Buffer,
         create_info: UnsafeBufferCreateInfo,
-        device: Arc<Device>,
     ) -> Arc<UnsafeBuffer> {
         let UnsafeBufferCreateInfo { size, usage, .. } = create_info;
 
