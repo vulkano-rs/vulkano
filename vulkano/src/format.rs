@@ -19,7 +19,7 @@
 //! you can query a device beforehand for its support by calling `format_properties` on the physical
 //! device. You can use this to select a usable format from one or more suitable alternatives.
 //! Some formats are required to be always supported for a particular usage. These are listed in the
-//! [tables in the Vulkan specification](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap43.html#features-required-format-support).
+//! [tables in the Vulkan specification](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap43.html#features-required-format-support).
 //!
 //! # Special format types
 //!
@@ -171,7 +171,7 @@ impl From<Format> for ash::vk::Format {
     }
 }
 
-// https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap46.html#spirvenv-image-formats
+// https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap46.html#spirvenv-image-formats
 impl From<ImageFormat> for Option<Format> {
     fn from(val: ImageFormat) -> Self {
         match val {
@@ -733,7 +733,7 @@ impl Default for FormatProperties {
 
 impl FormatProperties {
     /// Returns the potential format features, following the definition of
-    /// <https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap43.html#potential-format-features>.
+    /// <https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap43.html#potential-format-features>.
     #[inline]
     pub fn potential_format_features(&self) -> FormatFeatures {
         self.linear_tiling_features | self.optimal_tiling_features

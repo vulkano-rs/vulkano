@@ -935,7 +935,7 @@ pub enum ImageViewCreationError {
     },
 
     /// The image was not created with
-    /// [one of the required usages](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/vkspec.html#valid-imageview-imageusage)
+    /// [one of the required usages](https://registry.khronos.org/vulkan/specs/1.2-extensions/html/vkspec.html#valid-imageview-imageusage)
     /// for image views.
     ImageMissingUsage,
 

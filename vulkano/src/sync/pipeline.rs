@@ -273,7 +273,7 @@ impl PipelineStages {
     /// Returns the access types that are supported with the given pipeline stages.
     ///
     /// Corresponds to the table
-    /// "[Supported access types](https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-access-types-supported)"
+    /// "[Supported access types](https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap7.html#synchronization-access-types-supported)"
     /// in the Vulkan specification.
     #[inline]
     pub fn supported_access(&self) -> AccessFlags {

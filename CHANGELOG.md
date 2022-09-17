@@ -91,6 +91,7 @@
 - Added the missing `wayland_presentation_support`, `win32_presentation_support` `xcb_presentation_support` and `xlib_presentation_support` methods to `PhysicalDevice`.
 - Added support for the `ext_headless_surface`, `ext_directfb_surface`, `fuchsia_imagepipe_surface`, `ggp_stream_descriptor_surface` and `qnx_screen_surface` surface for creating surfaces from these APIs.
 - Added support for the `ext_tooling_info` extension.
+- Added support for external memory to `UnsafeBuffer`.
 
 # Version 0.30.0 (2022-07-20)
 

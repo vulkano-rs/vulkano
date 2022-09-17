@@ -13,7 +13,7 @@
 //! validation, but you should not assume that code that is read successfully is valid.
 //!
 //! For more information about SPIR-V modules, instructions and types, see the
-//! [SPIR-V specification](https://www.khronos.org/registry/SPIR-V/specs/unified1/SPIRV.html).
+//! [SPIR-V specification](https://registry.khronos.org/SPIR-V/specs/unified1/SPIRV.html).
 
 use crate::Version;
 use std::{

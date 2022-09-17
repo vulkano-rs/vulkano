@@ -972,7 +972,7 @@ pub enum ShaderScalarType {
     Uint,
 }
 
-// https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/chap43.html#formats-numericformat
+// https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap43.html#formats-numericformat
 impl From<NumericType> for ShaderScalarType {
     fn from(val: NumericType) -> Self {
         match val {
