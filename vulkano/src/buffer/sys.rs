@@ -31,7 +31,7 @@ use super::{
 use crate::{
     device::{Device, DeviceOwned},
     macros::vulkan_bitflags,
-    memory::{DeviceMemory, DeviceMemoryError, MemoryRequirements},
+    memory::{DeviceMemory, DeviceMemoryError, ExternalMemoryHandleTypes, MemoryRequirements},
     range_map::RangeMap,
     sync::{AccessError, CurrentAccess, Sharing},
     DeviceSize, OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
@@ -57,6 +57,7 @@ pub struct UnsafeBuffer {
 
     size: DeviceSize,
     usage: BufferUsage,
+    external_memory_handle_types: ExternalMemoryHandleTypes,
 
     state: Mutex<BufferState>,
 }
@@ -70,30 +71,47 @@ impl UnsafeBuffer {
     ///   items.
     /// - Panics if `create_info.size` is zero.
     /// - Panics if `create_info.usage` is empty.
+    #[inline]
     pub fn new(
         device: Arc<Device>,
-        create_info: UnsafeBufferCreateInfo,
-    ) -> Result<Arc<UnsafeBuffer>, BufferCreationError> {
-        let UnsafeBufferCreateInfo {
-            mut sharing,
+        mut create_info: UnsafeBufferCreateInfo,
+    ) -> Result<Arc<Self>, BufferCreationError> {
+        match &mut create_info.sharing {
+            Sharing::Exclusive => (),
+            Sharing::Concurrent(queue_family_indices) => {
+                // VUID-VkBufferCreateInfo-sharingMode-01419
+                queue_family_indices.sort_unstable();
+                queue_family_indices.dedup();
+            }
+        }
+
+        Self::validate_new(&device, &create_info)?;
+
+        unsafe { Ok(Self::new_unchecked(device, create_info)?) }
+    }
+
+    fn validate_new(
+        device: &Device,
+        create_info: &UnsafeBufferCreateInfo,
+    ) -> Result<(), BufferCreationError> {
+        let &UnsafeBufferCreateInfo {
+            ref sharing,
             size,
             sparse,
             usage,
+            external_memory_handle_types,
             _ne: _,
         } = create_info;
 
-        // VUID-VkBufferCreateInfo-size-00912
-        assert!(size != 0);
-
         // VUID-VkBufferCreateInfo-usage-parameter
-        usage.validate_device(&device)?;
+        usage.validate_device(device)?;
 
         // VUID-VkBufferCreateInfo-usage-requiredbitmask
         assert!(!usage.is_empty());
 
-        let mut flags = ash::vk::BufferCreateFlags::empty();
+        // VUID-VkBufferCreateInfo-size-00912
+        assert!(size != 0);
 
-        // Check sparse features
         if let Some(sparse_level) = sparse {
             // VUID-VkBufferCreateInfo-flags-00915
             if !device.enabled_features().sparse_binding {
@@ -129,16 +147,12 @@ impl UnsafeBuffer {
             }
 
             // VUID-VkBufferCreateInfo-flags-00918
-            flags |= sparse_level.into();
         }
 
-        // Check sharing mode and queue families
-        let (sharing_mode, queue_family_indices) = match &mut sharing {
-            Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, &[] as _),
+        match sharing {
+            Sharing::Exclusive => (),
             Sharing::Concurrent(queue_family_indices) => {
                 // VUID-VkBufferCreateInfo-sharingMode-00914
-                queue_family_indices.sort_unstable();
-                queue_family_indices.dedup();
                 assert!(queue_family_indices.len() >= 2);
 
                 for &queue_family_index in queue_family_indices.iter() {
@@ -155,13 +169,8 @@ impl UnsafeBuffer {
                         });
                     }
                 }
-
-                (
-                    ash::vk::SharingMode::CONCURRENT,
-                    queue_family_indices.as_slice(),
-                )
             }
-        };
+        }
 
         if let Some(max_buffer_size) = device.physical_device().properties().max_buffer_size {
             // VUID-VkBufferCreateInfo-size-06409
@@ -173,20 +182,86 @@ impl UnsafeBuffer {
             }
         }
 
-        // Everything now ok. Creating the buffer.
-        let create_info = ash::vk::BufferCreateInfo::builder()
-            .flags(flags)
-            .size(size)
-            .usage(usage.into())
-            .sharing_mode(sharing_mode)
-            .queue_family_indices(queue_family_indices);
+        if !external_memory_handle_types.is_empty() {
+            if !(device.api_version() >= Version::V1_1
+                || device.enabled_extensions().khr_external_memory)
+            {
+                return Err(BufferCreationError::RequirementNotMet {
+                    required_for: "`create_info.external_memory_handle_types` is not empty",
+                    requires_one_of: RequiresOneOf {
+                        api_version: Some(Version::V1_1),
+                        device_extensions: &["khr_external_memory"],
+                        ..Default::default()
+                    },
+                });
+            }
 
-        let handle = unsafe {
+            // VUID-VkExternalMemoryBufferCreateInfo-handleTypes-parameter
+            external_memory_handle_types.validate_device(device)?;
+
+            // VUID-VkBufferCreateInfo-pNext-00920
+            // TODO:
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn new_unchecked(
+        device: Arc<Device>,
+        create_info: UnsafeBufferCreateInfo,
+    ) -> Result<Arc<Self>, VulkanError> {
+        let &UnsafeBufferCreateInfo {
+            ref sharing,
+            size,
+            sparse,
+            usage,
+            external_memory_handle_types,
+            _ne: _,
+        } = &create_info;
+
+        let mut flags = ash::vk::BufferCreateFlags::empty();
+
+        if let Some(sparse_level) = sparse {
+            flags |= sparse_level.into();
+        }
+
+        let (sharing_mode, p_queue_family_indices) = match sharing {
+            Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, &[] as _),
+            Sharing::Concurrent(queue_family_indices) => (
+                ash::vk::SharingMode::CONCURRENT,
+                queue_family_indices.as_ptr(),
+            ),
+        };
+
+        let mut create_info_vk = ash::vk::BufferCreateInfo {
+            flags,
+            size,
+            usage: usage.into(),
+            sharing_mode,
+            p_queue_family_indices,
+            ..Default::default()
+        };
+        let mut external_memory_info_vk = None;
+
+        if !external_memory_handle_types.is_empty() {
+            let _ = external_memory_info_vk.insert(ash::vk::ExternalMemoryBufferCreateInfo {
+                handle_types: external_memory_handle_types.into(),
+                ..Default::default()
+            });
+        }
+
+        if let Some(next) = external_memory_info_vk.as_mut() {
+            next.p_next = create_info_vk.p_next;
+            create_info_vk.p_next = next as *const _ as *const _;
+        }
+
+        let handle = {
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
             (fns.v1_0.create_buffer)(
                 device.internal_object(),
-                &create_info.build(),
+                &create_info_vk,
                 ptr::null(),
                 output.as_mut_ptr(),
             )
@@ -195,17 +270,7 @@ impl UnsafeBuffer {
             output.assume_init()
         };
 
-        let buffer = UnsafeBuffer {
-            handle,
-            device,
-
-            size,
-            usage,
-
-            state: Mutex::new(BufferState::new(size)),
-        };
-
-        Ok(Arc::new(buffer))
+        Ok(Self::from_handle(device, handle, create_info))
     }
 
     /// Creates a new `UnsafeBuffer` from a raw object handle.
@@ -218,8 +283,15 @@ impl UnsafeBuffer {
         device: Arc<Device>,
         handle: ash::vk::Buffer,
         create_info: UnsafeBufferCreateInfo,
-    ) -> Arc<UnsafeBuffer> {
-        let UnsafeBufferCreateInfo { size, usage, .. } = create_info;
+    ) -> Arc<Self> {
+        let UnsafeBufferCreateInfo {
+            size,
+            usage,
+            sharing: _,
+            sparse: _,
+            external_memory_handle_types,
+            _ne: _,
+        } = create_info;
 
         Arc::new(UnsafeBuffer {
             handle,
@@ -227,6 +299,7 @@ impl UnsafeBuffer {
 
             size,
             usage,
+            external_memory_handle_types,
 
             state: Mutex::new(BufferState::new(size)),
         })
@@ -389,6 +462,12 @@ impl UnsafeBuffer {
         &self.usage
     }
 
+    /// Returns the external memory handle types that are supported with this buffer.
+    #[inline]
+    pub fn external_memory_handle_types(&self) -> ExternalMemoryHandleTypes {
+        self.external_memory_handle_types
+    }
+
     /// Returns a key unique to each `UnsafeBuffer`. Can be used for the `conflicts_key` method.
     #[inline]
     pub fn key(&self) -> u64 {
@@ -462,6 +541,15 @@ pub struct UnsafeBufferCreateInfo {
     /// The default value is [`BufferUsage::empty()`], which must be overridden.
     pub usage: BufferUsage,
 
+    /// The external memory handle types that are going to be used with the buffer.
+    ///
+    /// If any of the fields in this value are set, the device must either support API version 1.1
+    /// or the [`khr_external_memory`](crate::device::DeviceExtensions::khr_external_memory)
+    /// extension must be enabled.
+    ///
+    /// The default value is [`ExternalMemoryHandleTypes::empty()`].
+    pub external_memory_handle_types: ExternalMemoryHandleTypes,
+
     pub _ne: crate::NonExhaustive,
 }
 
@@ -473,6 +561,7 @@ impl Default for UnsafeBufferCreateInfo {
             size: 0,
             sparse: None,
             usage: BufferUsage::empty(),
+            external_memory_handle_types: ExternalMemoryHandleTypes::empty(),
             _ne: crate::NonExhaustive(()),
         }
     }
