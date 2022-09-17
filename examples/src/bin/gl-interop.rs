@@ -60,18 +60,18 @@ mod linux {
     };
 
     pub fn main() {
-        let event_loop_gl = glutin::event_loop::EventLoop::new();
+        let event_loop = EventLoop::new();
         // For some reason, this must be created before the vulkan window
         let hrb = glutin::ContextBuilder::new()
             .with_gl_debug_flag(true)
             .with_gl(glutin::GlRequest::Latest)
-            .build_surfaceless(&event_loop_gl)
+            .build_surfaceless(&event_loop)
             .unwrap();
 
         let hrb_vk = glutin::ContextBuilder::new()
             .with_gl_debug_flag(true)
             .with_gl(glutin::GlRequest::Latest)
-            .build_surfaceless(&event_loop_gl)
+            .build_surfaceless(&event_loop)
             .unwrap();
 
         let display = glium::HeadlessRenderer::with_debug(
@@ -84,7 +84,6 @@ mod linux {
             _instance,
             mut swapchain,
             surface,
-            event_loop,
             mut viewport,
             queue,
             render_pass,
@@ -92,7 +91,7 @@ mod linux {
             sampler,
             pipeline,
             vertex_buffer,
-        ) = vk_setup(display);
+        ) = vk_setup(display, &event_loop);
 
         let image = StorageImage::new_with_exportable_fd(
             device.clone(),
@@ -388,12 +387,12 @@ mod linux {
     #[allow(clippy::type_complexity)]
     fn vk_setup(
         display: glium::HeadlessRenderer,
+        event_loop: &EventLoop<()>,
     ) -> (
         Arc<vulkano::device::Device>,
         Arc<vulkano::instance::Instance>,
         Arc<Swapchain<winit::window::Window>>,
         Arc<vulkano::swapchain::Surface<winit::window::Window>>,
-        winit::event_loop::EventLoop<()>,
         vulkano::pipeline::graphics::viewport::Viewport,
         Arc<Queue>,
         Arc<RenderPass>,
@@ -442,7 +441,6 @@ mod linux {
             .unwrap()
         };
 
-        let event_loop = EventLoop::new();
         let surface = WindowBuilder::new()
             .build_vk_surface(&event_loop, instance.clone())
             .unwrap();
@@ -630,7 +628,6 @@ mod linux {
             instance,
             swapchain,
             surface,
-            event_loop,
             viewport,
             queue,
             render_pass,
