@@ -1939,6 +1939,111 @@ impl PhysicalDevice {
         Ok(output.assume_init() != 0)
     }
 
+    /// Retrieves the properties of tools that are currently active on the physical device.
+    ///
+    /// These properties may change during runtime, so this function only returns the current
+    /// situation.
+    ///
+    /// The physical device API version must be at least 1.3, or the
+    /// [`ext_tooling_info`](crate::device::DeviceExtensions::ext_tooling_info)
+    /// extension must be supported by the physical device.
+    #[inline]
+    pub fn tool_properties(&self) -> Result<Vec<ToolProperties>, PhysicalDeviceError> {
+        self.validate_tool_properties()?;
+
+        unsafe { Ok(self.tool_properties_unchecked()?) }
+    }
+
+    fn validate_tool_properties(&self) -> Result<(), PhysicalDeviceError> {
+        if !(self.api_version() >= Version::V1_3 || self.supported_extensions().ext_tooling_info) {
+            return Err(PhysicalDeviceError::RequirementNotMet {
+                required_for: "`tooling_properties`",
+                requires_one_of: RequiresOneOf {
+                    api_version: Some(Version::V1_3),
+                    device_extensions: &["ext_tooling_info"],
+                    ..Default::default()
+                },
+            });
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn tool_properties_unchecked(&self) -> Result<Vec<ToolProperties>, VulkanError> {
+        let fns = self.instance.fns();
+
+        loop {
+            let mut count = 0;
+
+            if self.api_version() >= Version::V1_3 {
+                (fns.v1_3.get_physical_device_tool_properties)(
+                    self.internal_object(),
+                    &mut count,
+                    ptr::null_mut(),
+                )
+            } else {
+                (fns.ext_tooling_info.get_physical_device_tool_properties_ext)(
+                    self.internal_object(),
+                    &mut count,
+                    ptr::null_mut(),
+                )
+            }
+            .result()
+            .map_err(VulkanError::from)?;
+
+            let mut tool_properties = Vec::with_capacity(count as usize);
+            let result = if self.api_version() >= Version::V1_3 {
+                (fns.v1_3.get_physical_device_tool_properties)(
+                    self.internal_object(),
+                    &mut count,
+                    tool_properties.as_mut_ptr(),
+                )
+            } else {
+                (fns.ext_tooling_info.get_physical_device_tool_properties_ext)(
+                    self.internal_object(),
+                    &mut count,
+                    tool_properties.as_mut_ptr(),
+                )
+            };
+
+            match result {
+                ash::vk::Result::INCOMPLETE => (),
+                ash::vk::Result::SUCCESS => {
+                    tool_properties.set_len(count as usize);
+
+                    return Ok(tool_properties
+                        .into_iter()
+                        .map(|tool_properties| ToolProperties {
+                            name: {
+                                let bytes = cast_slice(tool_properties.name.as_slice());
+                                let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+                                String::from_utf8_lossy(&bytes[0..end]).into()
+                            },
+                            version: {
+                                let bytes = cast_slice(tool_properties.version.as_slice());
+                                let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+                                String::from_utf8_lossy(&bytes[0..end]).into()
+                            },
+                            purposes: tool_properties.purposes.into(),
+                            description: {
+                                let bytes = cast_slice(tool_properties.description.as_slice());
+                                let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+                                String::from_utf8_lossy(&bytes[0..end]).into()
+                            },
+                            layer: {
+                                let bytes = cast_slice(tool_properties.layer.as_slice());
+                                let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+                                String::from_utf8_lossy(&bytes[0..end]).into()
+                            },
+                        })
+                        .collect());
+                }
+                err => return Err(VulkanError::from(err)),
+            }
+        }
+    }
+
     /// Queries whether the physical device supports presenting to Wayland surfaces from queues of the
     /// given queue family.
     ///
@@ -2334,6 +2439,60 @@ vulkan_enum! {
 
     // TODO: document
     MoltenVK = MOLTENVK,
+}
+
+/// Information provided about an active tool.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct ToolProperties {
+    /// The name of the tool.
+    pub name: String,
+
+    /// The version of the tool.
+    pub version: String,
+
+    /// The purposes supported by the tool.
+    pub purposes: ToolPurposes,
+
+    /// A description of the tool.
+    pub description: String,
+
+    /// The layer implementing the tool, or empty if it is not implemented by a layer.
+    pub layer: String,
+}
+
+vulkan_bitflags! {
+    /// The purpose of an active tool.
+    #[non_exhaustive]
+    ToolPurposes = ToolPurposeFlags(u32);
+
+    /// The tool provides validation of API usage.
+    validation = VALIDATION,
+
+    /// The tool provides profiling of API usage.
+    profiling = PROFILING,
+
+    /// The tool is capturing data about the application's API usage.
+    tracing = TRACING,
+
+    /// The tool provides additional API features or extensions on top of the underlying
+    /// implementation.
+    additional_features = ADDITIONAL_FEATURES,
+
+    /// The tool modifies the API features, limits or extensions presented to the application.
+    modifying_features = MODIFYING_FEATURES,
+
+    /// The tool reports information to the user via a [`DebugUtilsMessenger`].
+    debug_reporting = DEBUG_REPORTING_EXT {
+        instance_extensions: [ext_debug_utils, ext_debug_report],
+    },
+
+    /// The tool consumes debug markers or object debug annotation, queue labels or command buffer
+    /// labels.
+    debug_markers = DEBUG_MARKERS_EXT {
+        device_extensions: [ext_debug_marker],
+        instance_extensions: [ext_debug_utils],
+    },
 }
 
 vulkan_bitflags! {
