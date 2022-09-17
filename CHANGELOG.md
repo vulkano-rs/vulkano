@@ -56,6 +56,8 @@
   - `SubmitPresentBuilder::swapchain` now takes `PresentInfo`.
   - Added support for `present_id` feature with `present_id` field on `PresentInfo`.
   - Added support for `present_wait` feature by adding method `swapchain::wait_for_present`.
+- **Breaking** Changes to `CpuBufferPool`:
+  - The methods `next` and `chunk` have been renamed to `from_data` and `from_iter` respectively, to be clearer and to match the constructor methods of other buffer and image types.
 - **Potentially Breaking** Fix iOS compilation:
   - Removed dependency to `cocoa` and `metal`
   - Fixed iOS compilation errors
