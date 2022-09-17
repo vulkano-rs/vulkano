@@ -90,6 +90,7 @@
 - Added support for the `khr_external_fence` and `khr_external_fence_capabilities` extensions. No import or export functions are defined yet, but those can be added more easily now.
 - Added the missing `wayland_presentation_support`, `win32_presentation_support` `xcb_presentation_support` and `xlib_presentation_support` methods to `PhysicalDevice`.
 - Added support for the `ext_headless_surface`, `ext_directfb_surface`, `fuchsia_imagepipe_surface`, `ggp_stream_descriptor_surface` and `qnx_screen_surface` surface for creating surfaces from these APIs.
+- Added support for the `ext_tooling_info` extension.
 
 # Version 0.30.0 (2022-07-20)
 
