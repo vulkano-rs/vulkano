@@ -1,6 +1,6 @@
 [package]
 name = "vulkano"
-version = "0.30.0"
+version = "0.31.0"
 edition = "2021"
 authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>", "The vulkano contributors"]
 repository = "https://github.com/vulkano-rs/vulkano"
@@ -19,7 +19,7 @@ build = "build.rs"
 ash = "0.37"
 bytemuck = { version = "1.7", features = ["derive", "extern_crate_std", "min_const_generics"] }
 crossbeam-queue = "0.3"
-half = "1.8"
+half = "2"
 libloading = "0.7"
 nalgebra = { version = "0.31.0", optional = true }
 parking_lot = { version = "0.12", features = ["send_guard"] }
@@ -38,7 +38,7 @@ quote = "1.0"
 regex = "1.5"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-vk-parse = "0.7"
+vk-parse = "0.8"
 
 [features]
 document_unchecked = []

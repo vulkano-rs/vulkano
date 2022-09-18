@@ -6,9 +6,13 @@
     description. They will be transferred to this file right after the
     Pull Request merge. 
 -->
+
+# Version 0.31.0 (2022-09-18)
+
 - **Breaking** Public dependency updates:
   - Winit 0.27
   - raw-window-handle 0.5
+  - half 2
 - **Breaking** Changes to `Instance` and Vulkan initialization:
   - `FunctionPointers` is renamed to `VulkanLibrary`, and now resides in a separate `library` module. It is re-exported from the crate root.
   - The `Loader` trait is now in the `library` module.
