@@ -6,6 +6,9 @@
     description. They will be transferred to this file right after the
     Pull Request merge. 
 -->
+
+# Version 0.31.0 (2022-09-18)
+
 - **Breaking** Public dependency updates:
   - Winit 0.27
   - raw-window-handle 0.5
