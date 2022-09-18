@@ -81,6 +81,7 @@
   - `BufferUsage` and `ImageUsage` no longer have constructors for some specific combinations.
 - Bugs fixed:
   - [#1896](https://github.com/vulkano-rs/vulkano/issues/1896): Vulkano-shaders generates invalid struct definitions when struct field names are stripped out by the compiler.
+  - Atomic writes in shaders are not treated as write access for the purposes of synchronization.
 - Improvements to compiler linting:
   - Most clippy warnings and errors have been fixed, and the remainder is explicitly allowed in each crate root. Some of these may be re-enabled in the future if desired.
   - Warnings for dead code and unused variables have been re-enabled and fixed.

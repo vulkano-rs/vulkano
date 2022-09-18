@@ -293,8 +293,23 @@ fn inspect_entry_point(
                 }
             } else {
                 match instruction {
-                    &Instruction::AtomicLoad { pointer, .. }
-                    | &Instruction::AtomicStore { pointer, .. }
+                    &Instruction::AtomicLoad { pointer, .. } => {
+                        // Storage buffer
+                        instruction_chain(result, global, spirv, [], pointer);
+
+                        // Storage image
+                        if let Some((variable, Some(index))) = instruction_chain(
+                            result,
+                            global,
+                            spirv,
+                            [inst_image_texel_pointer],
+                            pointer,
+                        ) {
+                            variable.reqs.storage_image_atomic.insert(index);
+                        }
+                    }
+
+                    &Instruction::AtomicStore { pointer, .. }
                     | &Instruction::AtomicExchange { pointer, .. }
                     | &Instruction::AtomicCompareExchange { pointer, .. }
                     | &Instruction::AtomicCompareExchangeWeak { pointer, .. }
@@ -315,7 +330,11 @@ fn inspect_entry_point(
                     | &Instruction::AtomicFMaxEXT { pointer, .. }
                     | &Instruction::AtomicFAddEXT { pointer, .. } => {
                         // Storage buffer
-                        instruction_chain(result, global, spirv, [], pointer);
+                        if let Some((variable, Some(index))) =
+                            instruction_chain(result, global, spirv, [], pointer)
+                        {
+                            variable.reqs.storage_write.insert(index);
+                        }
 
                         // Storage image
                         if let Some((variable, Some(index))) = instruction_chain(
@@ -325,6 +344,7 @@ fn inspect_entry_point(
                             [inst_image_texel_pointer],
                             pointer,
                         ) {
+                            variable.reqs.storage_write.insert(index);
                             variable.reqs.storage_image_atomic.insert(index);
                         }
                     }
