@@ -23,6 +23,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_KHR_get_physical_device_properties2`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_get_physical_device_properties2.html)
 - [`VK_KHR_external_fence`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_fence.html)
 - [`VK_KHR_external_fence_capabilities`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_fence_capabilities.html)
+- [`VK_KHR_external_memory`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_memory.html)
 - [`VK_KHR_external_memory_capabilities`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_memory_capabilities.html)
 - [`VK_KHR_external_semaphore`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_semaphore.html)
 - [`VK_KHR_external_semaphore_capabilities`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_semaphore_capabilities.html)
@@ -36,14 +37,9 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 
 ### Partially supported
 
-- [`VK_KHR_external_memory`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_external_memory.html)
-	- `VkExternalMemoryBufferCreateInfoKHR`
 - [`VK_KHR_maintenance2`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_maintenance2.html)
-	- `VkImageViewUsageCreateInfoKHR`
 	- `VkPipelineTessellationDomainOriginStateCreateInfoKHR`
 	- `VK_IMAGE_CREATE_EXTENDED_USAGE_BIT`
-	- `VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL_KHR`
-	- `VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL_KHR`
 - [`VK_KHR_sampler_ycbcr_conversion`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_sampler_ycbcr_conversion.html)
 	- `VkBindImagePlaneMemoryInfoKHR`
 	- `VkSamplerYcbcrConversionImageFormatPropertiesKHR`
@@ -75,6 +71,7 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_KHR_vulkan_memory_model`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_vulkan_memory_model.html)
 - [`VK_EXT_sampler_filter_minmax`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_sampler_filter_minmax.html)
 - [`VK_EXT_scalar_block_layout`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_scalar_block_layout.html)
+- [`VK_EXT_separate_stencil_usage`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_separate_stencil_usage.html)
 - [`VK_EXT_shader_viewport_index_layer`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_shader_viewport_index_layer.html)
 - SPIR-V 1.4 and 1.5
 
@@ -99,7 +96,6 @@ Coverage of support for Vulkan core features and extensions in Vulkano.
 - [`VK_KHR_separate_depth_stencil_layouts`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_separate_depth_stencil_layouts.html)
 - [`VK_KHR_timeline_semaphore`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_timeline_semaphore.html)
 - [`VK_EXT_host_query_reset`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_host_query_reset.html)
-- [`VK_EXT_separate_stencil_usage`](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_separate_stencil_usage.html)
 - `framebufferIntegerColorSampleCounts`
 
 ## Vulkan 1.3

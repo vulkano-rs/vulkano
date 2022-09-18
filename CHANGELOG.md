@@ -40,7 +40,7 @@
   - Added `SingleLayoutVariableDescSetPool`.
 - **Breaking** Changes to memory pools:
   - Renamed `StdMemoryPool[Alloc]`, `StdHostVisibleMemoryTypePool[Alloc]`, `StdNonHostVisibleMemoryTypePool[Alloc]` to `Standard{...}`.
-  - Removed `Device::standard_pool` in favor of `Device::standard_memory_pool`, which returns `&Arc<StandardMemoryPool>`.
+  - Renamed `Device::standard_pool` to `Device::standard_memory_pool`.
 - **Breaking** Changes to `PhysicalDevice`:
   - `PhysicalDevice::enumerate` has been replaced with `Instance::enumerate_physical_devices`. This function returns `Arc<PhysicalDevice>`.
   - Enumerating physical devices multiple times now retrieves the list of devices each time, instead of only at instance creation. This makes it possible to handle devices that are added/removed during runtime.
