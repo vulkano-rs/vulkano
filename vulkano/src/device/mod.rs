@@ -123,7 +123,6 @@ pub use crate::{
     fns::DeviceFunctions,
 };
 use ash::vk::Handle;
-use once_cell::sync::OnceCell;
 use parking_lot::{Mutex, MutexGuard};
 use smallvec::SmallVec;
 use std::{
@@ -137,7 +136,7 @@ use std::{
     mem::MaybeUninit,
     ops::Deref,
     ptr,
-    sync::Arc,
+    sync::{Arc, Weak},
 };
 
 pub(crate) mod extensions;
@@ -156,7 +155,7 @@ pub struct Device {
     api_version: Version,
 
     fns: DeviceFunctions,
-    standard_memory_pool: OnceCell<Arc<StandardMemoryPool>>,
+    standard_memory_pool: Mutex<Weak<StandardMemoryPool>>,
     enabled_extensions: DeviceExtensions,
     enabled_features: Features,
     active_queue_family_indices: SmallVec<[u32; 2]>,
@@ -416,7 +415,7 @@ impl Device {
             physical_device,
             api_version,
             fns,
-            standard_memory_pool: OnceCell::new(),
+            standard_memory_pool: Mutex::new(Weak::new()),
             enabled_extensions,
             enabled_features,
             active_queue_family_indices,
@@ -503,9 +502,18 @@ impl Device {
     }
 
     /// Returns the standard memory pool used by default if you don't provide any other pool.
-    pub fn standard_memory_pool<'a>(self: &'a Arc<Self>) -> &'a Arc<StandardMemoryPool> {
-        self.standard_memory_pool
-            .get_or_init(|| StandardMemoryPool::new(self.clone()))
+    pub fn standard_memory_pool(self: &Arc<Self>) -> Arc<StandardMemoryPool> {
+        let mut pool = self.standard_memory_pool.lock();
+
+        if let Some(p) = pool.upgrade() {
+            return p;
+        }
+
+        // The weak pointer is empty, so we create the pool.
+        let new_pool = StandardMemoryPool::new(self.clone());
+        *pool = Arc::downgrade(&new_pool);
+
+        new_pool
     }
 
     /// Gives you access to the standard descriptor pool that is used by default if you don't
