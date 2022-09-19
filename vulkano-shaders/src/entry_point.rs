@@ -111,9 +111,7 @@ fn write_descriptor_requirements(
             quote! { ::vulkano::descriptor_set::layout::DescriptorType::#ident }
         });
         let descriptor_count = match descriptor_count {
-            Some(descriptor_count) => {
-                quote! { Some(#descriptor_count) }
-            }
+            Some(descriptor_count) => quote! { Some(#descriptor_count) },
             None => quote! { None },
         };
         let image_format = match image_format {
