@@ -722,8 +722,8 @@ impl DescriptorSetLayoutBinding {
         &self,
         descriptor_requirements: &DescriptorRequirements,
     ) -> Result<(), DescriptorRequirementsNotMet> {
-        let DescriptorRequirements {
-            descriptor_types,
+        let &DescriptorRequirements {
+            ref descriptor_types,
             descriptor_count,
             image_format: _,
             image_multisampled: _,
@@ -746,16 +746,18 @@ impl DescriptorSetLayoutBinding {
             });
         }
 
-        if self.descriptor_count < *descriptor_count {
-            return Err(DescriptorRequirementsNotMet::DescriptorCount {
-                required: *descriptor_count,
-                obtained: self.descriptor_count,
-            });
+        if let Some(required) = descriptor_count {
+            if self.descriptor_count < required {
+                return Err(DescriptorRequirementsNotMet::DescriptorCount {
+                    required,
+                    obtained: self.descriptor_count,
+                });
+            }
         }
 
-        if !self.stages.contains(stages) {
+        if !self.stages.contains(&stages) {
             return Err(DescriptorRequirementsNotMet::ShaderStages {
-                required: *stages,
+                required: stages,
                 obtained: self.stages,
             });
         }
@@ -768,7 +770,7 @@ impl From<&DescriptorRequirements> for DescriptorSetLayoutBinding {
     fn from(reqs: &DescriptorRequirements) -> Self {
         Self {
             descriptor_type: reqs.descriptor_types[0],
-            descriptor_count: reqs.descriptor_count,
+            descriptor_count: reqs.descriptor_count.unwrap_or(0),
             variable_descriptor_count: false,
             stages: reqs.stages,
             immutable_samplers: Vec::new(),

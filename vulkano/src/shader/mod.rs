@@ -542,7 +542,10 @@ pub struct DescriptorRequirements {
 
     /// The number of descriptors (array elements) that the shader requires. The descriptor set
     /// layout can declare more than this, but never less.
-    pub descriptor_count: u32,
+    ///
+    /// `None` means that the shader declares this as a runtime-sized array, and could potentially
+    /// access every array element provided in the descriptor set.
+    pub descriptor_count: Option<u32>,
 
     /// The image format that is required for image views bound to this descriptor. If this is
     /// `None`, then any image format is allowed.

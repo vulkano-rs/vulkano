@@ -110,6 +110,12 @@ fn write_descriptor_requirements(
             let ident = format_ident!("{}", format!("{:?}", ty));
             quote! { ::vulkano::descriptor_set::layout::DescriptorType::#ident }
         });
+        let descriptor_count = match descriptor_count {
+            Some(descriptor_count) => {
+                quote! { Some(#descriptor_count) }
+            }
+            None => quote! { None },
+        };
         let image_format = match image_format {
             Some(image_format) => {
                 let ident = format_ident!("{}", format!("{:?}", image_format));
