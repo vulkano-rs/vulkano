@@ -2138,7 +2138,7 @@ where
 
             if !*self.finished.get_mut() {
                 // Block until the queue finished.
-                self.queue().unwrap().wait().unwrap();
+                self.queue().unwrap().lock().wait_idle().unwrap();
                 self.previous.signal_finished();
             }
         }
