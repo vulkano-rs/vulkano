@@ -26,7 +26,7 @@ use parking_lot::Mutex;
 use std::{
     borrow::Cow,
     error::Error,
-    fmt::{Display, Error as FmtError, Formatter},
+    fmt::{Debug, Display, Error as FmtError, Formatter},
     ops::Range,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -153,6 +153,12 @@ pub unsafe trait PrimaryCommandBuffer: DeviceOwned + Send + Sync {
         expected_layout: ImageLayout,
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError>;
+}
+
+impl Debug for dyn PrimaryCommandBuffer {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+        Debug::fmt(self.inner(), f)
+    }
 }
 
 unsafe impl<T> PrimaryCommandBuffer for T
@@ -501,7 +507,7 @@ where
                 // TODO: handle errors?
                 self.flush().unwrap();
                 // Block until the queue finished.
-                self.queue.wait().unwrap();
+                self.queue.lock().wait_idle().unwrap();
                 self.command_buffer.unlock();
                 self.previous.signal_finished();
             }
