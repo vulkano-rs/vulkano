@@ -37,7 +37,9 @@ use vulkano::{
         GraphicsPipeline, PipelineBindPoint,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, Subpass},
-    swapchain::{PresentInfo, PresentMode, Swapchain, SwapchainCreateInfo},
+    swapchain::{
+        PresentMode, Swapchain, SwapchainAbstract, SwapchainCreateInfo, SwapchainPresentInfo,
+    },
     sync::{FenceSignalFuture, GpuFuture},
     VulkanLibrary,
 };
@@ -432,7 +434,7 @@ fn main() {
         .unwrap();
 
     let mut fences: Vec<Option<Arc<FenceSignalFuture<_>>>> = vec![None; framebuffers.len()];
-    let mut previous_fence_index = 0;
+    let mut previous_fence_index = 0u32;
 
     let start_time = SystemTime::now();
     let mut last_frame_time = start_time;
@@ -481,12 +483,12 @@ fn main() {
 
                 // If this image buffer already has a future then attempt to cleanup fence resources.
                 // Usually the future for this index will have completed by the time we are rendering it again.
-                if let Some(image_fence) = &mut fences[image_index] {
+                if let Some(image_fence) = &mut fences[image_index as usize] {
                     image_fence.cleanup_finished()
                 }
 
                 // If the previous image has a fence then use it for synchronization, else create a new one.
-                let previous_future = match fences[previous_fence_index].clone() {
+                let previous_future = match fences[previous_fence_index as usize].clone() {
                     // Ensure current frame is synchronized with previous.
                     Some(fence) => fence.boxed(),
 
@@ -517,7 +519,9 @@ fn main() {
                     .begin_render_pass(
                         RenderPassBeginInfo {
                             clear_values: vec![Some([0., 0., 0., 1.].into())],
-                            ..RenderPassBeginInfo::framebuffer(framebuffers[image_index].clone())
+                            ..RenderPassBeginInfo::framebuffer(
+                                framebuffers[image_index as usize].clone(),
+                            )
                         },
                         SubpassContents::Inline,
                     )
@@ -536,15 +540,12 @@ fn main() {
                     .unwrap()
                     .then_swapchain_present(
                         queue.clone(),
-                        PresentInfo {
-                            index: image_index,
-                            ..PresentInfo::swapchain(swapchain.clone())
-                        },
+                        SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index),
                     )
                     .then_signal_fence_and_flush();
 
                 // Update this frame's future with current fence.
-                fences[image_index] = match future {
+                fences[image_index as usize] = match future {
                     // Success, store result into vector.
                     Ok(future) => Some(Arc::new(future)),
 

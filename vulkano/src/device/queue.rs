@@ -9,18 +9,27 @@
 
 use super::{Device, DeviceOwned};
 use crate::{
-    command_buffer::PrimaryCommandBuffer,
+    buffer::BufferAccess,
+    command_buffer::{SemaphoreSubmitInfo, SubmitInfo},
+    image::ImageAccess,
     instance::debug::DebugUtilsLabel,
     macros::vulkan_bitflags,
-    sync::{PipelineStage, PipelineStages, Semaphore},
-    OomError, RequiresOneOf, SynchronizedVulkanObject, VulkanError,
+    memory::{
+        BindSparseInfo, SparseBufferMemoryBind, SparseImageMemoryBind, SparseImageOpaqueMemoryBind,
+    },
+    swapchain::{PresentInfo, SwapchainPresentInfo},
+    sync::{Fence, PipelineStage},
+    OomError, RequirementNotMet, RequiresOneOf, SynchronizedVulkanObject, Version, VulkanError,
+    VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
+use smallvec::SmallVec;
 use std::{
     error::Error,
     ffi::CString,
     fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
+    ptr,
     sync::Arc,
 };
 
@@ -133,6 +142,618 @@ impl<'a> QueueGuard<'a> {
         }
     }
 
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub(crate) unsafe fn bind_sparse_unchecked(
+        &mut self,
+        bind_infos: impl IntoIterator<Item = BindSparseInfo>,
+        fence: Option<Arc<Fence>>,
+    ) -> Result<(), VulkanError> {
+        let bind_infos = bind_infos.into_iter();
+
+        #[allow(unused)]
+        struct PerBindSparseInfo {
+            wait_semaphores_vk: SmallVec<[ash::vk::Semaphore; 4]>,
+            buffer_bind_infos_vk: SmallVec<[ash::vk::SparseBufferMemoryBindInfo; 4]>,
+            buffer_binds_vk: SmallVec<[SmallVec<[ash::vk::SparseMemoryBind; 4]>; 4]>,
+            image_opaque_bind_infos_vk: SmallVec<[ash::vk::SparseImageOpaqueMemoryBindInfo; 4]>,
+            image_opaque_binds_vk: SmallVec<[SmallVec<[ash::vk::SparseMemoryBind; 4]>; 4]>,
+            image_bind_infos_vk: SmallVec<[ash::vk::SparseImageMemoryBindInfo; 4]>,
+            image_binds_vk: SmallVec<[SmallVec<[ash::vk::SparseImageMemoryBind; 4]>; 4]>,
+            signal_semaphores_vk: SmallVec<[ash::vk::Semaphore; 4]>,
+        }
+
+        let (mut bind_infos_vk, mut per_bind_vk): (SmallVec<[_; 4]>, SmallVec<[_; 4]>) = bind_infos
+            .map(|bind_info| {
+                let &BindSparseInfo {
+                    ref wait_semaphores,
+                    ref buffer_binds,
+                    ref image_opaque_binds,
+                    ref image_binds,
+                    ref signal_semaphores,
+                    _ne: _,
+                } = &bind_info;
+
+                let wait_semaphores_vk: SmallVec<[_; 4]> = wait_semaphores
+                    .iter()
+                    .map(|semaphore| semaphore.internal_object())
+                    .collect();
+
+                let (buffer_bind_infos_vk, buffer_binds_vk): (SmallVec<[_; 4]>, SmallVec<[_; 4]>) =
+                    buffer_binds
+                        .iter()
+                        .map(|(buffer, memory_binds)| {
+                            (
+                                ash::vk::SparseBufferMemoryBindInfo {
+                                    buffer: buffer.inner().buffer.internal_object(),
+                                    bind_count: 0,
+                                    p_binds: ptr::null(),
+                                },
+                                memory_binds
+                                    .iter()
+                                    .map(|memory_bind| {
+                                        let &SparseBufferMemoryBind {
+                                            resource_offset,
+                                            size,
+                                            ref memory,
+                                        } = memory_bind;
+
+                                        let (memory, memory_offset) = memory.as_ref().map_or_else(
+                                            Default::default,
+                                            |(memory, memory_offset)| {
+                                                (memory.internal_object(), *memory_offset)
+                                            },
+                                        );
+
+                                        ash::vk::SparseMemoryBind {
+                                            resource_offset,
+                                            size,
+                                            memory,
+                                            memory_offset,
+                                            flags: ash::vk::SparseMemoryBindFlags::empty(),
+                                        }
+                                    })
+                                    .collect::<SmallVec<[_; 4]>>(),
+                            )
+                        })
+                        .unzip();
+
+                let (image_opaque_bind_infos_vk, image_opaque_binds_vk): (
+                    SmallVec<[_; 4]>,
+                    SmallVec<[_; 4]>,
+                ) = image_opaque_binds
+                    .iter()
+                    .map(|(image, memory_binds)| {
+                        (
+                            ash::vk::SparseImageOpaqueMemoryBindInfo {
+                                image: image.inner().image.internal_object(),
+                                bind_count: 0,
+                                p_binds: ptr::null(),
+                            },
+                            memory_binds
+                                .iter()
+                                .map(|memory_bind| {
+                                    let &SparseImageOpaqueMemoryBind {
+                                        resource_offset,
+                                        size,
+                                        ref memory,
+                                        metadata,
+                                    } = memory_bind;
+
+                                    let (memory, memory_offset) = memory.as_ref().map_or_else(
+                                        Default::default,
+                                        |(memory, memory_offset)| {
+                                            (memory.internal_object(), *memory_offset)
+                                        },
+                                    );
+
+                                    ash::vk::SparseMemoryBind {
+                                        resource_offset,
+                                        size,
+                                        memory,
+                                        memory_offset,
+                                        flags: if metadata {
+                                            ash::vk::SparseMemoryBindFlags::METADATA
+                                        } else {
+                                            ash::vk::SparseMemoryBindFlags::empty()
+                                        },
+                                    }
+                                })
+                                .collect::<SmallVec<[_; 4]>>(),
+                        )
+                    })
+                    .unzip();
+
+                let (image_bind_infos_vk, image_binds_vk): (SmallVec<[_; 4]>, SmallVec<[_; 4]>) =
+                    image_binds
+                        .iter()
+                        .map(|(image, memory_binds)| {
+                            (
+                                ash::vk::SparseImageMemoryBindInfo {
+                                    image: image.inner().image.internal_object(),
+                                    bind_count: 0,
+                                    p_binds: ptr::null(),
+                                },
+                                memory_binds
+                                    .iter()
+                                    .map(|memory_bind| {
+                                        let &SparseImageMemoryBind {
+                                            aspects,
+                                            mip_level,
+                                            array_layer,
+                                            offset,
+                                            extent,
+                                            ref memory,
+                                        } = memory_bind;
+
+                                        let (memory, memory_offset) = memory.as_ref().map_or_else(
+                                            Default::default,
+                                            |(memory, memory_offset)| {
+                                                (memory.internal_object(), *memory_offset)
+                                            },
+                                        );
+
+                                        ash::vk::SparseImageMemoryBind {
+                                            subresource: ash::vk::ImageSubresource {
+                                                aspect_mask: aspects.into(),
+                                                mip_level,
+                                                array_layer,
+                                            },
+                                            offset: ash::vk::Offset3D {
+                                                x: offset[0] as i32,
+                                                y: offset[1] as i32,
+                                                z: offset[2] as i32,
+                                            },
+                                            extent: ash::vk::Extent3D {
+                                                width: extent[0],
+                                                height: extent[1],
+                                                depth: extent[2],
+                                            },
+                                            memory,
+                                            memory_offset,
+                                            flags: ash::vk::SparseMemoryBindFlags::empty(),
+                                        }
+                                    })
+                                    .collect::<SmallVec<[_; 4]>>(),
+                            )
+                        })
+                        .unzip();
+
+                let signal_semaphores_vk: SmallVec<[_; 4]> = signal_semaphores
+                    .iter()
+                    .map(|semaphore| semaphore.internal_object())
+                    .collect();
+
+                (
+                    ash::vk::BindSparseInfo::default(),
+                    PerBindSparseInfo {
+                        wait_semaphores_vk,
+                        buffer_bind_infos_vk,
+                        buffer_binds_vk,
+                        image_opaque_bind_infos_vk,
+                        image_opaque_binds_vk,
+                        image_bind_infos_vk,
+                        image_binds_vk,
+                        signal_semaphores_vk,
+                    },
+                )
+            })
+            .unzip();
+
+        for (
+            bind_info_vk,
+            PerBindSparseInfo {
+                wait_semaphores_vk,
+                buffer_bind_infos_vk,
+                buffer_binds_vk,
+                image_opaque_bind_infos_vk,
+                image_opaque_binds_vk,
+                image_bind_infos_vk,
+                image_binds_vk,
+                signal_semaphores_vk,
+            },
+        ) in (bind_infos_vk.iter_mut()).zip(per_bind_vk.iter_mut())
+        {
+            for (buffer_bind_infos_vk, buffer_binds_vk) in
+                (buffer_bind_infos_vk.iter_mut()).zip(buffer_binds_vk.iter())
+            {
+                *buffer_bind_infos_vk = ash::vk::SparseBufferMemoryBindInfo {
+                    bind_count: buffer_binds_vk.len() as u32,
+                    p_binds: buffer_binds_vk.as_ptr(),
+                    ..*buffer_bind_infos_vk
+                };
+            }
+
+            for (image_opaque_bind_infos_vk, image_opaque_binds_vk) in
+                (image_opaque_bind_infos_vk.iter_mut()).zip(image_opaque_binds_vk.iter())
+            {
+                *image_opaque_bind_infos_vk = ash::vk::SparseImageOpaqueMemoryBindInfo {
+                    bind_count: image_opaque_binds_vk.len() as u32,
+                    p_binds: image_opaque_binds_vk.as_ptr(),
+                    ..*image_opaque_bind_infos_vk
+                };
+            }
+
+            for (image_bind_infos_vk, image_binds_vk) in
+                (image_bind_infos_vk.iter_mut()).zip(image_binds_vk.iter())
+            {
+                *image_bind_infos_vk = ash::vk::SparseImageMemoryBindInfo {
+                    bind_count: image_binds_vk.len() as u32,
+                    p_binds: image_binds_vk.as_ptr(),
+                    ..*image_bind_infos_vk
+                };
+            }
+
+            *bind_info_vk = ash::vk::BindSparseInfo {
+                wait_semaphore_count: wait_semaphores_vk.len() as u32,
+                p_wait_semaphores: wait_semaphores_vk.as_ptr(),
+                buffer_bind_count: buffer_bind_infos_vk.len() as u32,
+                p_buffer_binds: buffer_bind_infos_vk.as_ptr(),
+                image_opaque_bind_count: image_opaque_bind_infos_vk.len() as u32,
+                p_image_opaque_binds: image_opaque_bind_infos_vk.as_ptr(),
+                image_bind_count: image_bind_infos_vk.len() as u32,
+                p_image_binds: image_bind_infos_vk.as_ptr(),
+                signal_semaphore_count: signal_semaphores_vk.len() as u32,
+                p_signal_semaphores: signal_semaphores_vk.as_ptr(),
+                ..*bind_info_vk
+            }
+        }
+
+        let fns = self.queue.device.fns();
+        (fns.v1_0.queue_bind_sparse)(
+            *self.handle,
+            bind_infos_vk.len() as u32,
+            bind_infos_vk.as_ptr(),
+            fence.map_or_else(Default::default, |fence| fence.internal_object()),
+        )
+        .result()
+        .map_err(VulkanError::from)?;
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub(crate) unsafe fn present_unchecked(
+        &mut self,
+        present_info: PresentInfo,
+    ) -> impl ExactSizeIterator<Item = Result<(), VulkanError>> {
+        let &PresentInfo {
+            ref wait_semaphores,
+            ref swapchain_infos,
+            _ne: _,
+        } = &present_info;
+
+        let wait_semaphores_vk: SmallVec<[_; 4]> = wait_semaphores
+            .iter()
+            .map(|semaphore| semaphore.internal_object())
+            .collect();
+
+        let mut swapchains_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(swapchain_infos.len());
+        let mut image_indices_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(swapchain_infos.len());
+        let mut present_ids_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(swapchain_infos.len());
+        let mut present_regions_vk: SmallVec<[_; 4]> =
+            SmallVec::with_capacity(swapchain_infos.len());
+        let mut rectangles_vk: SmallVec<[_; 4]> = SmallVec::with_capacity(swapchain_infos.len());
+
+        let mut has_present_ids = false;
+        let mut has_present_regions = false;
+
+        for swapchain_info in swapchain_infos {
+            let &SwapchainPresentInfo {
+                ref swapchain,
+                image_index,
+                present_id,
+                ref present_regions,
+                _ne: _,
+            } = swapchain_info;
+
+            swapchains_vk.push(swapchain.internal_object());
+            image_indices_vk.push(image_index);
+            present_ids_vk.push(present_id.map_or(0, u64::from));
+            present_regions_vk.push(ash::vk::PresentRegionKHR::default());
+            rectangles_vk.push(
+                present_regions
+                    .iter()
+                    .map(ash::vk::RectLayerKHR::from)
+                    .collect::<SmallVec<[_; 4]>>(),
+            );
+
+            if present_id.is_some() {
+                has_present_ids = true;
+            }
+
+            if !present_regions.is_empty() {
+                has_present_regions = true;
+            }
+        }
+
+        let mut results = vec![ash::vk::Result::SUCCESS; swapchain_infos.len()];
+        let mut info_vk = ash::vk::PresentInfoKHR {
+            wait_semaphore_count: wait_semaphores_vk.len() as u32,
+            p_wait_semaphores: wait_semaphores_vk.as_ptr(),
+            swapchain_count: swapchains_vk.len() as u32,
+            p_swapchains: swapchains_vk.as_ptr(),
+            p_image_indices: image_indices_vk.as_ptr(),
+            p_results: results.as_mut_ptr(),
+            ..Default::default()
+        };
+        let mut present_id_info_vk = None;
+        let mut present_region_info_vk = None;
+
+        if has_present_ids {
+            let next = present_id_info_vk.insert(ash::vk::PresentIdKHR {
+                swapchain_count: present_ids_vk.len() as u32,
+                p_present_ids: present_ids_vk.as_ptr(),
+                ..Default::default()
+            });
+
+            next.p_next = info_vk.p_next;
+            info_vk.p_next = next as *const _ as *const _;
+        }
+
+        if has_present_regions {
+            for (present_regions_vk, rectangles_vk) in
+                (present_regions_vk.iter_mut()).zip(rectangles_vk.iter())
+            {
+                *present_regions_vk = ash::vk::PresentRegionKHR {
+                    rectangle_count: rectangles_vk.len() as u32,
+                    p_rectangles: rectangles_vk.as_ptr(),
+                };
+            }
+
+            let next = present_region_info_vk.insert(ash::vk::PresentRegionsKHR {
+                swapchain_count: present_regions_vk.len() as u32,
+                p_regions: present_regions_vk.as_ptr(),
+                ..Default::default()
+            });
+
+            next.p_next = info_vk.p_next;
+            info_vk.p_next = next as *const _ as *const _;
+        }
+
+        let fns = self.queue.device().fns();
+        let _ = (fns.khr_swapchain.queue_present_khr)(*self.handle, &info_vk);
+
+        results
+            .into_iter()
+            .map(|result| result.result().map_err(VulkanError::from))
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub(crate) unsafe fn submit_unchecked(
+        &mut self,
+        submits: impl IntoIterator<Item = SubmitInfo>,
+        fence: Option<Arc<Fence>>,
+    ) -> Result<(), VulkanError> {
+        let submits = submits.into_iter();
+
+        if self.queue.device.enabled_features().synchronization2 {
+            struct PerSubmitInfo {
+                wait_semaphore_infos_vk: SmallVec<[ash::vk::SemaphoreSubmitInfo; 4]>,
+                command_buffer_infos_vk: SmallVec<[ash::vk::CommandBufferSubmitInfo; 4]>,
+                signal_semaphore_infos_vk: SmallVec<[ash::vk::SemaphoreSubmitInfo; 4]>,
+            }
+
+            let (mut submit_info_vk, per_submit_vk): (SmallVec<[_; 4]>, SmallVec<[_; 4]>) = submits
+                .map(|submit_info| {
+                    let SubmitInfo {
+                        wait_semaphores,
+                        command_buffers,
+                        signal_semaphores,
+                        _ne: _,
+                    } = submit_info;
+
+                    let wait_semaphore_infos_vk = wait_semaphores
+                        .into_iter()
+                        .map(|semaphore_submit_info| {
+                            let SemaphoreSubmitInfo {
+                                semaphore,
+                                stages,
+                                _ne: _,
+                            } = semaphore_submit_info;
+
+                            ash::vk::SemaphoreSubmitInfo {
+                                semaphore: semaphore.internal_object(),
+                                value: 0, // TODO:
+                                stage_mask: stages.into(),
+                                device_index: 0, // TODO:
+                                ..Default::default()
+                            }
+                        })
+                        .collect();
+
+                    let command_buffer_infos_vk = command_buffers
+                        .into_iter()
+                        .map(|cb| ash::vk::CommandBufferSubmitInfo {
+                            command_buffer: cb.inner().internal_object(),
+                            device_mask: 0, // TODO:
+                            ..Default::default()
+                        })
+                        .collect();
+
+                    let signal_semaphore_infos_vk = signal_semaphores
+                        .into_iter()
+                        .map(|semaphore_submit_info| {
+                            let SemaphoreSubmitInfo {
+                                semaphore,
+                                stages,
+                                _ne: _,
+                            } = semaphore_submit_info;
+
+                            ash::vk::SemaphoreSubmitInfo {
+                                semaphore: semaphore.internal_object(),
+                                value: 0, // TODO:
+                                stage_mask: stages.into(),
+                                device_index: 0, // TODO:
+                                ..Default::default()
+                            }
+                        })
+                        .collect();
+
+                    (
+                        ash::vk::SubmitInfo2 {
+                            flags: ash::vk::SubmitFlags::empty(), // TODO:
+                            wait_semaphore_info_count: 0,
+                            p_wait_semaphore_infos: ptr::null(),
+                            command_buffer_info_count: 0,
+                            p_command_buffer_infos: ptr::null(),
+                            signal_semaphore_info_count: 0,
+                            p_signal_semaphore_infos: ptr::null(),
+                            ..Default::default()
+                        },
+                        PerSubmitInfo {
+                            wait_semaphore_infos_vk,
+                            command_buffer_infos_vk,
+                            signal_semaphore_infos_vk,
+                        },
+                    )
+                })
+                .unzip();
+
+            for (
+                submit_info_vk,
+                PerSubmitInfo {
+                    wait_semaphore_infos_vk,
+                    command_buffer_infos_vk,
+                    signal_semaphore_infos_vk,
+                },
+            ) in (submit_info_vk.iter_mut()).zip(per_submit_vk.iter())
+            {
+                *submit_info_vk = ash::vk::SubmitInfo2 {
+                    wait_semaphore_info_count: wait_semaphore_infos_vk.len() as u32,
+                    p_wait_semaphore_infos: wait_semaphore_infos_vk.as_ptr(),
+                    command_buffer_info_count: command_buffer_infos_vk.len() as u32,
+                    p_command_buffer_infos: command_buffer_infos_vk.as_ptr(),
+                    signal_semaphore_info_count: signal_semaphore_infos_vk.len() as u32,
+                    p_signal_semaphore_infos: signal_semaphore_infos_vk.as_ptr(),
+                    ..*submit_info_vk
+                };
+            }
+
+            let fns = self.queue.device.fns();
+
+            if self.queue.device.api_version() >= Version::V1_3 {
+                (fns.v1_3.queue_submit2)(
+                    *self.handle,
+                    submit_info_vk.len() as u32,
+                    submit_info_vk.as_ptr(),
+                    fence.map_or_else(Default::default, |fence| fence.internal_object()),
+                )
+            } else {
+                debug_assert!(self.queue.device.enabled_extensions().khr_synchronization2);
+                (fns.khr_synchronization2.queue_submit2_khr)(
+                    *self.handle,
+                    submit_info_vk.len() as u32,
+                    submit_info_vk.as_ptr(),
+                    fence.map_or_else(Default::default, |fence| fence.internal_object()),
+                )
+            }
+            .result()
+            .map_err(VulkanError::from)?;
+        } else {
+            struct PerSubmitInfo {
+                wait_semaphores_vk: SmallVec<[ash::vk::Semaphore; 4]>,
+                wait_dst_stage_mask_vk: SmallVec<[ash::vk::PipelineStageFlags; 4]>,
+                command_buffers_vk: SmallVec<[ash::vk::CommandBuffer; 4]>,
+                signal_semaphores_vk: SmallVec<[ash::vk::Semaphore; 4]>,
+            }
+
+            let (mut submit_info_vk, per_submit_vk): (SmallVec<[_; 4]>, SmallVec<[_; 4]>) = submits
+                .map(|submit_info| {
+                    let SubmitInfo {
+                        wait_semaphores,
+                        command_buffers,
+                        signal_semaphores,
+                        _ne: _,
+                    } = submit_info;
+
+                    let (wait_semaphores_vk, wait_dst_stage_mask_vk) = wait_semaphores
+                        .into_iter()
+                        .map(|semaphore_submit_info| {
+                            let SemaphoreSubmitInfo {
+                                semaphore,
+                                stages,
+                                _ne: _,
+                            } = semaphore_submit_info;
+
+                            (semaphore.internal_object(), stages.into())
+                        })
+                        .unzip();
+
+                    let command_buffers_vk = command_buffers
+                        .into_iter()
+                        .map(|cb| cb.inner().internal_object())
+                        .collect();
+
+                    let signal_semaphores_vk = signal_semaphores
+                        .into_iter()
+                        .map(|semaphore_submit_info| {
+                            let SemaphoreSubmitInfo {
+                                semaphore,
+                                stages: _,
+                                _ne: _,
+                            } = semaphore_submit_info;
+
+                            semaphore.internal_object()
+                        })
+                        .collect();
+
+                    (
+                        ash::vk::SubmitInfo {
+                            wait_semaphore_count: 0,
+                            p_wait_semaphores: ptr::null(),
+                            p_wait_dst_stage_mask: ptr::null(),
+                            command_buffer_count: 0,
+                            p_command_buffers: ptr::null(),
+                            signal_semaphore_count: 0,
+                            p_signal_semaphores: ptr::null(),
+                            ..Default::default()
+                        },
+                        PerSubmitInfo {
+                            wait_semaphores_vk,
+                            wait_dst_stage_mask_vk,
+                            command_buffers_vk,
+                            signal_semaphores_vk,
+                        },
+                    )
+                })
+                .unzip();
+
+            for (
+                submit_info_vk,
+                PerSubmitInfo {
+                    wait_semaphores_vk,
+                    wait_dst_stage_mask_vk,
+                    command_buffers_vk,
+                    signal_semaphores_vk,
+                },
+            ) in (submit_info_vk.iter_mut()).zip(per_submit_vk.iter())
+            {
+                *submit_info_vk = ash::vk::SubmitInfo {
+                    wait_semaphore_count: wait_semaphores_vk.len() as u32,
+                    p_wait_semaphores: wait_semaphores_vk.as_ptr(),
+                    p_wait_dst_stage_mask: wait_dst_stage_mask_vk.as_ptr(),
+                    command_buffer_count: command_buffers_vk.len() as u32,
+                    p_command_buffers: command_buffers_vk.as_ptr(),
+                    signal_semaphore_count: signal_semaphores_vk.len() as u32,
+                    p_signal_semaphores: signal_semaphores_vk.as_ptr(),
+                    ..*submit_info_vk
+                };
+            }
+
+            let fns = self.queue.device.fns();
+            (fns.v1_0.queue_submit)(
+                *self.handle,
+                submit_info_vk.len() as u32,
+                submit_info_vk.as_ptr(),
+                fence.map_or_else(Default::default, |fence| fence.internal_object()),
+            )
+            .result()
+            .map_err(VulkanError::from)?;
+        }
+
+        Ok(())
+    }
+
     /// Opens a queue debug label region.
     ///
     /// The [`ext_debug_utils`](crate::instance::InstanceExtensions::ext_debug_utils) must be
@@ -141,7 +762,7 @@ impl<'a> QueueGuard<'a> {
     pub fn begin_debug_utils_label(
         &mut self,
         label_info: DebugUtilsLabel,
-    ) -> Result<(), DebugUtilsError> {
+    ) -> Result<(), QueueError> {
         self.validate_begin_debug_utils_label(&label_info)?;
 
         unsafe {
@@ -153,7 +774,7 @@ impl<'a> QueueGuard<'a> {
     fn validate_begin_debug_utils_label(
         &self,
         _label_info: &DebugUtilsLabel,
-    ) -> Result<(), DebugUtilsError> {
+    ) -> Result<(), QueueError> {
         if !self
             .queue
             .device
@@ -161,7 +782,7 @@ impl<'a> QueueGuard<'a> {
             .enabled_extensions()
             .ext_debug_utils
         {
-            return Err(DebugUtilsError::RequirementNotMet {
+            return Err(QueueError::RequirementNotMet {
                 required_for: "`begin_debug_utils_label`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["ext_debug_utils"],
@@ -202,14 +823,14 @@ impl<'a> QueueGuard<'a> {
     /// - There must be an outstanding queue label region begun with `begin_debug_utils_label` in
     ///   the queue.
     #[inline]
-    pub unsafe fn end_debug_utils_label(&mut self) -> Result<(), DebugUtilsError> {
+    pub unsafe fn end_debug_utils_label(&mut self) -> Result<(), QueueError> {
         self.validate_end_debug_utils_label()?;
 
         self.end_debug_utils_label_unchecked();
         Ok(())
     }
 
-    fn validate_end_debug_utils_label(&self) -> Result<(), DebugUtilsError> {
+    fn validate_end_debug_utils_label(&self) -> Result<(), QueueError> {
         if !self
             .queue
             .device
@@ -217,7 +838,7 @@ impl<'a> QueueGuard<'a> {
             .enabled_extensions()
             .ext_debug_utils
         {
-            return Err(DebugUtilsError::RequirementNotMet {
+            return Err(QueueError::RequirementNotMet {
                 required_for: "`end_debug_utils_label`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["ext_debug_utils"],
@@ -246,7 +867,7 @@ impl<'a> QueueGuard<'a> {
     pub fn insert_debug_utils_label(
         &mut self,
         label_info: DebugUtilsLabel,
-    ) -> Result<(), DebugUtilsError> {
+    ) -> Result<(), QueueError> {
         self.validate_insert_debug_utils_label(&label_info)?;
 
         unsafe {
@@ -258,7 +879,7 @@ impl<'a> QueueGuard<'a> {
     fn validate_insert_debug_utils_label(
         &self,
         _label_info: &DebugUtilsLabel,
-    ) -> Result<(), DebugUtilsError> {
+    ) -> Result<(), QueueError> {
         if !self
             .queue
             .device
@@ -266,7 +887,7 @@ impl<'a> QueueGuard<'a> {
             .enabled_extensions()
             .ext_debug_utils
         {
-            return Err(DebugUtilsError::RequirementNotMet {
+            return Err(QueueError::RequirementNotMet {
                 required_for: "`insert_debug_utils_label`",
                 requires_one_of: RequiresOneOf {
                     instance_extensions: &["ext_debug_utils"],
@@ -296,21 +917,6 @@ impl<'a> QueueGuard<'a> {
         let fns = self.queue.device.instance().fns();
         (fns.ext_debug_utils.queue_insert_debug_utils_label_ext)(*self.handle, &label_info);
     }
-}
-
-#[derive(Clone, Debug)]
-pub struct SubmitInfo {
-    pub wait_semaphores: Vec<SemaphoreSubmitInfo>,
-    pub command_buffers: Vec<Arc<dyn PrimaryCommandBuffer>>,
-    pub signal_semaphores: Vec<SemaphoreSubmitInfo>,
-    pub _ne: crate::NonExhaustive,
-}
-
-#[derive(Clone, Debug)]
-pub struct SemaphoreSubmitInfo {
-    pub semaphore: Arc<Semaphore>,
-    pub stages: PipelineStages,
-    pub _ne: crate::NonExhaustive,
 }
 
 /// Properties of a queue family in a physical device.
@@ -393,21 +999,32 @@ vulkan_bitflags! {
     },
 }
 
-/// Error that can happen when submitting a debug utils command to a queue.
+/// Error that can happen when submitting work to a queue.
 #[derive(Clone, Debug)]
-pub enum DebugUtilsError {
+pub enum QueueError {
+    VulkanError(VulkanError),
+
     RequirementNotMet {
         required_for: &'static str,
         requires_one_of: RequiresOneOf,
     },
 }
 
-impl Error for DebugUtilsError {}
+impl Error for QueueError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            QueueError::VulkanError(err) => Some(err),
+            _ => None,
+        }
+    }
+}
 
-impl Display for DebugUtilsError {
+impl Display for QueueError {
     #[inline]
     fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         match self {
+            Self::VulkanError(_) => write!(f, "a runtime error occurred",),
+
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -416,6 +1033,23 @@ impl Display for DebugUtilsError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
+        }
+    }
+}
+
+impl From<VulkanError> for QueueError {
+    #[inline]
+    fn from(err: VulkanError) -> Self {
+        Self::VulkanError(err)
+    }
+}
+
+impl From<RequirementNotMet> for QueueError {
+    #[inline]
+    fn from(err: RequirementNotMet) -> Self {
+        Self::RequirementNotMet {
+            required_for: err.required_for,
+            requires_one_of: err.requires_one_of,
         }
     }
 }

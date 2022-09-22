@@ -77,7 +77,7 @@ pub unsafe trait PrimaryCommandBuffer: DeviceOwned + Send + Sync {
     fn execute(
         self,
         queue: Arc<Queue>,
-    ) -> Result<CommandBufferExecFuture<NowFuture, Self>, CommandBufferExecError>
+    ) -> Result<CommandBufferExecFuture<NowFuture>, CommandBufferExecError>
     where
         Self: Sized + 'static,
     {
@@ -112,7 +112,7 @@ pub unsafe trait PrimaryCommandBuffer: DeviceOwned + Send + Sync {
         self,
         future: F,
         queue: Arc<Queue>,
-    ) -> Result<CommandBufferExecFuture<F, Self>, CommandBufferExecError>
+    ) -> Result<CommandBufferExecFuture<F>, CommandBufferExecError>
     where
         Self: Sized + 'static,
         F: GpuFuture,
@@ -130,7 +130,7 @@ pub unsafe trait PrimaryCommandBuffer: DeviceOwned + Send + Sync {
 
         Ok(CommandBufferExecFuture {
             previous: future,
-            command_buffer: self,
+            command_buffer: Arc::new(self),
             queue,
             submitted: Mutex::new(false),
             finished: AtomicBool::new(false),
@@ -328,13 +328,12 @@ where
 /// Represents a command buffer being executed by the GPU and the moment when the execution
 /// finishes.
 #[must_use = "Dropping this object will immediately block the thread until the GPU has finished processing the submission"]
-pub struct CommandBufferExecFuture<F, Cb>
+pub struct CommandBufferExecFuture<F>
 where
     F: GpuFuture,
-    Cb: PrimaryCommandBuffer,
 {
     previous: F,
-    command_buffer: Cb,
+    command_buffer: Arc<dyn PrimaryCommandBuffer>,
     queue: Arc<Queue>,
     // True if the command buffer has already been submitted.
     // If flush is called multiple times, we want to block so that only one flushing is executed.
@@ -343,10 +342,9 @@ where
     finished: AtomicBool,
 }
 
-impl<F, Cb> CommandBufferExecFuture<F, Cb>
+impl<F> CommandBufferExecFuture<F>
 where
     F: GpuFuture,
-    Cb: PrimaryCommandBuffer,
 {
     // Implementation of `build_submission`. Doesn't check whenever the future was already flushed.
     // You must make sure to not submit same command buffer multiple times.
@@ -354,17 +352,17 @@ where
         Ok(match self.previous.build_submission()? {
             SubmitAnyBuilder::Empty => {
                 let mut builder = SubmitCommandBufferBuilder::new();
-                builder.add_command_buffer(self.command_buffer.inner());
+                builder.add_command_buffer(self.command_buffer.clone());
                 SubmitAnyBuilder::CommandBuffer(builder)
             }
             SubmitAnyBuilder::SemaphoresWait(sem) => {
                 let mut builder: SubmitCommandBufferBuilder = sem.into();
-                builder.add_command_buffer(self.command_buffer.inner());
+                builder.add_command_buffer(self.command_buffer.clone());
                 SubmitAnyBuilder::CommandBuffer(builder)
             }
             SubmitAnyBuilder::CommandBuffer(mut builder) => {
                 // FIXME: add pipeline barrier
-                builder.add_command_buffer(self.command_buffer.inner());
+                builder.add_command_buffer(self.command_buffer.clone());
                 SubmitAnyBuilder::CommandBuffer(builder)
             }
             SubmitAnyBuilder::QueuePresent(_) | SubmitAnyBuilder::BindSparse(_) => {
@@ -378,10 +376,9 @@ where
     }
 }
 
-unsafe impl<F, Cb> GpuFuture for CommandBufferExecFuture<F, Cb>
+unsafe impl<F> GpuFuture for CommandBufferExecFuture<F>
 where
     F: GpuFuture,
-    Cb: PrimaryCommandBuffer,
 {
     #[inline]
     fn cleanup_finished(&mut self) {
@@ -485,10 +482,9 @@ where
     }
 }
 
-unsafe impl<F, Cb> DeviceOwned for CommandBufferExecFuture<F, Cb>
+unsafe impl<F> DeviceOwned for CommandBufferExecFuture<F>
 where
     F: GpuFuture,
-    Cb: PrimaryCommandBuffer,
 {
     #[inline]
     fn device(&self) -> &Arc<Device> {
@@ -496,10 +492,9 @@ where
     }
 }
 
-impl<F, Cb> Drop for CommandBufferExecFuture<F, Cb>
+impl<F> Drop for CommandBufferExecFuture<F>
 where
     F: GpuFuture,
-    Cb: PrimaryCommandBuffer,
 {
     fn drop(&mut self) {
         unsafe {

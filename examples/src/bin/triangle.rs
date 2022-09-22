@@ -39,8 +39,8 @@ use vulkano::{
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     swapchain::{
-        acquire_next_image, AcquireError, PresentInfo, Swapchain, SwapchainCreateInfo,
-        SwapchainCreationError,
+        acquire_next_image, AcquireError, Swapchain, SwapchainAbstract,
+        SwapchainCreateInfo, SwapchainCreationError, SwapchainPresentInfo,
     },
     sync::{self, FlushError, GpuFuture},
     VulkanLibrary,
@@ -496,7 +496,7 @@ fn main() {
                 //
                 // This function can block if no image is available. The parameter is an optional timeout
                 // after which the function call will return an error.
-                let (image_num, suboptimal, acquire_future) =
+                let (image_index, suboptimal, acquire_future) =
                     match acquire_next_image(swapchain.clone(), None) {
                         Ok(r) => r,
                         Err(AcquireError::OutOfDate) => {
@@ -540,7 +540,9 @@ fn main() {
                             // Only attachments that have `LoadOp::Clear` are provided with clear
                             // values, any others should use `ClearValue::None` as the clear value.
                             clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into())],
-                            ..RenderPassBeginInfo::framebuffer(framebuffers[image_num].clone())
+                            ..RenderPassBeginInfo::framebuffer(
+                                framebuffers[image_index as usize].clone(),
+                            )
                         },
                         // The contents of the first (and only) subpass. This can be either
                         // `Inline` or `SecondaryCommandBuffers`. The latter is a bit more advanced
@@ -579,10 +581,7 @@ fn main() {
                     // the GPU has finished executing the command buffer that draws the triangle.
                     .then_swapchain_present(
                         queue.clone(),
-                        PresentInfo {
-                            index: image_num,
-                            ..PresentInfo::swapchain(swapchain.clone())
-                        },
+                        SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index),
                     )
                     .then_signal_fence_and_flush();
 

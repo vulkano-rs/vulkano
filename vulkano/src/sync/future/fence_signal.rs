@@ -29,7 +29,7 @@ where
 
     assert!(future.queue().is_some()); // TODO: document
 
-    let fence = Fence::from_pool(device.clone()).unwrap();
+    let fence = Arc::new(Fence::from_pool(device.clone()).unwrap());
     FenceSignalFuture {
         device,
         state: Mutex::new(FenceSignalFutureState::Pending(future, fence)),
@@ -98,17 +98,17 @@ where
 // been dropped).
 enum FenceSignalFutureState<F> {
     // Newly-created. Not submitted yet.
-    Pending(F, Fence),
+    Pending(F, Arc<Fence>),
 
     // Partially submitted to the queue. Only happens in situations where submitting requires two
     // steps, and when the first step succeeded while the second step failed.
     //
     // Note that if there's ever a submit operation that needs three steps we will need to rework
     // this code, as it was designed for two-step operations only.
-    PartiallyFlushed(F, Fence),
+    PartiallyFlushed(F, Arc<Fence>),
 
     // Submitted to the queue.
-    Flushed(F, Fence),
+    Flushed(F, Arc<Fence>),
 
     // The submission is finished. The previous future and the fence have been cleaned.
     Cleaned,
@@ -233,7 +233,7 @@ where
                 SubmitAnyBuilder::Empty => {
                     debug_assert!(!partially_flushed);
                     let mut b = SubmitCommandBufferBuilder::new();
-                    b.set_fence_signal(&fence);
+                    b.set_fence_signal(fence.clone());
                     b.submit(&queue).map_err(|err| OutcomeErr::Full(err.into()))
                 }
                 SubmitAnyBuilder::SemaphoresWait(sem) => {
@@ -250,7 +250,7 @@ where
                     // disastrous and hard to debug. Therefore we prefer to just use a regular
                     // assertion.
                     assert!(!cb_builder.has_fence());
-                    cb_builder.set_fence_signal(&fence);
+                    cb_builder.set_fence_signal(fence.clone());
                     cb_builder
                         .submit(&queue)
                         .map_err(|err| OutcomeErr::Full(err.into()))
@@ -259,7 +259,7 @@ where
                     debug_assert!(!partially_flushed);
                     // Same remark as `CommandBuffer`.
                     assert!(!sparse.has_fence());
-                    sparse.set_fence_signal(&fence);
+                    sparse.set_fence_signal(fence.clone());
                     sparse
                         .submit(&queue)
                         .map_err(|err| OutcomeErr::Full(err.into()))
@@ -273,7 +273,7 @@ where
                     match intermediary_result {
                         Ok(()) => {
                             let mut b = SubmitCommandBufferBuilder::new();
-                            b.set_fence_signal(&fence);
+                            b.set_fence_signal(fence.clone());
                             b.submit(&queue)
                                 .map_err(|err| OutcomeErr::Partial(err.into()))
                         }

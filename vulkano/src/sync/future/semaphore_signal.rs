@@ -39,7 +39,7 @@ where
 
     SemaphoreSignalFuture {
         previous: future,
-        semaphore: Semaphore::from_pool(device).unwrap(),
+        semaphore: Arc::new(Semaphore::from_pool(device).unwrap()),
         wait_submitted: Mutex::new(false),
         finished: AtomicBool::new(false),
     }
@@ -53,7 +53,7 @@ where
     F: GpuFuture,
 {
     previous: F,
-    semaphore: Semaphore,
+    semaphore: Arc<Semaphore>,
     // True if the signaling command has already been submitted.
     // If flush is called multiple times, we want to block so that only one flushing is executed.
     // Therefore we use a `Mutex<bool>` and not an `AtomicBool`.
@@ -76,7 +76,7 @@ where
         self.flush()?;
 
         let mut sem = SubmitSemaphoresWaitBuilder::new();
-        sem.add_wait_semaphore(&self.semaphore);
+        sem.add_wait_semaphore(self.semaphore.clone());
         Ok(SubmitAnyBuilder::SemaphoresWait(sem))
     }
 
@@ -93,17 +93,17 @@ where
             match self.previous.build_submission()? {
                 SubmitAnyBuilder::Empty => {
                     let mut builder = SubmitCommandBufferBuilder::new();
-                    builder.add_signal_semaphore(&self.semaphore);
+                    builder.add_signal_semaphore(self.semaphore.clone());
                     builder.submit(&queue)?;
                 }
                 SubmitAnyBuilder::SemaphoresWait(sem) => {
                     let mut builder: SubmitCommandBufferBuilder = sem.into();
-                    builder.add_signal_semaphore(&self.semaphore);
+                    builder.add_signal_semaphore(self.semaphore.clone());
                     builder.submit(&queue)?;
                 }
                 SubmitAnyBuilder::CommandBuffer(mut builder) => {
                     debug_assert_eq!(builder.num_signal_semaphores(), 0);
-                    builder.add_signal_semaphore(&self.semaphore);
+                    builder.add_signal_semaphore(self.semaphore.clone());
                     builder.submit(&queue)?;
                 }
                 SubmitAnyBuilder::BindSparse(_) => {
@@ -115,7 +115,7 @@ where
                 SubmitAnyBuilder::QueuePresent(present) => {
                     present.submit(&queue)?;
                     let mut builder = SubmitCommandBufferBuilder::new();
-                    builder.add_signal_semaphore(&self.semaphore);
+                    builder.add_signal_semaphore(self.semaphore.clone());
                     builder.submit(&queue)?; // FIXME: problematic because if we return an error and flush() is called again, then we'll submit the present twice
                 }
             };

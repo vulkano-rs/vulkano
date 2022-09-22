@@ -100,8 +100,13 @@ pub use self::{
     pool::MemoryPool,
 };
 use crate::{
-    buffer::sys::UnsafeBuffer, image::sys::UnsafeImage, macros::vulkan_bitflags, DeviceSize,
+    buffer::{sys::UnsafeBuffer, BufferAccess},
+    image::{sys::UnsafeImage, ImageAccess, ImageAspects},
+    macros::vulkan_bitflags,
+    sync::Semaphore,
+    DeviceSize,
 };
+use std::sync::Arc;
 
 mod device_memory;
 pub mod pool;
@@ -310,4 +315,164 @@ impl From<ash::vk::ExternalMemoryProperties> for ExternalMemoryProperties {
             compatible_handle_types: val.compatible_handle_types.into(),
         }
     }
+}
+
+/// Parameters to execute sparse bind operations on a queue.
+#[derive(Clone, Debug)]
+pub struct BindSparseInfo {
+    /// The semaphores to wait for before beginning the execution of this batch of
+    /// sparse bind operations.
+    ///
+    /// The default value is empty.
+    pub wait_semaphores: Vec<Arc<Semaphore>>,
+
+    /// The bind operations to perform for buffers.
+    ///
+    /// The default value is empty.
+    pub buffer_binds: Vec<(Arc<dyn BufferAccess>, Vec<SparseBufferMemoryBind>)>,
+
+    /// The bind operations to perform for images with an opaque memory layout.
+    ///
+    /// This should be used for mip tail regions, the metadata aspect, and for the normal regions
+    /// of images that do not have the `sparse_residency` flag set.
+    ///
+    /// The default value is empty.
+    pub image_opaque_binds: Vec<(Arc<dyn ImageAccess>, Vec<SparseImageOpaqueMemoryBind>)>,
+
+    /// The bind operations to perform for images with a known memory layout.
+    ///
+    /// This type of sparse bind can only be used for images that have the `sparse_residency`
+    /// flag set.
+    /// Only the normal texel regions can be bound this way, not the mip tail regions or metadata
+    /// aspect.
+    ///
+    /// The default value is empty.
+    pub image_binds: Vec<(Arc<dyn ImageAccess>, Vec<SparseImageMemoryBind>)>,
+
+    /// The semaphores to signal after the execution of this batch of sparse bind operations
+    /// has completed.
+    ///
+    /// The default value is empty.
+    pub signal_semaphores: Vec<Arc<Semaphore>>,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for BindSparseInfo {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            wait_semaphores: Vec::new(),
+            buffer_binds: Vec::new(),
+            image_opaque_binds: Vec::new(),
+            image_binds: Vec::new(),
+            signal_semaphores: Vec::new(),
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+/// Parameters for a single sparse bind operation on a buffer.
+#[derive(Clone, Debug, Default)]
+pub struct SparseBufferMemoryBind {
+    /// The offset in bytes from the start of the buffer's memory, where memory is to be (un)bound.
+    ///
+    /// The default value is `0`.
+    pub resource_offset: DeviceSize,
+
+    /// The size in bytes of the memory to be (un)bound.
+    ///
+    /// The default value is `0`, which must be overridden.
+    pub size: DeviceSize,
+
+    /// If `Some`, specifies the memory and an offset into that memory that is to be bound.
+    /// The provided memory must match the buffer's memory requirements.
+    ///
+    /// If `None`, specifies that existing memory at the specified location is to be unbound.
+    ///
+    /// The default value is `None`.
+    pub memory: Option<(Arc<DeviceMemory>, DeviceSize)>,
+}
+
+/// Parameters for a single sparse bind operation on parts of an image with an opaque memory layout.
+///
+/// This type of sparse bind should be used for mip tail regions, the metadata aspect, and for the
+/// normal regions of images that do not have the `sparse_residency` flag set.
+#[derive(Clone, Debug, Default)]
+pub struct SparseImageOpaqueMemoryBind {
+    /// The offset in bytes from the start of the image's memory, where memory is to be (un)bound.
+    ///
+    /// The default value is `0`.
+    pub resource_offset: DeviceSize,
+
+    /// The size in bytes of the memory to be (un)bound.
+    ///
+    /// The default value is `0`, which must be overridden.
+    pub size: DeviceSize,
+
+    /// If `Some`, specifies the memory and an offset into that memory that is to be bound.
+    /// The provided memory must match the image's memory requirements.
+    ///
+    /// If `None`, specifies that existing memory at the specified location is to be unbound.
+    ///
+    /// The default value is `None`.
+    pub memory: Option<(Arc<DeviceMemory>, DeviceSize)>,
+
+    /// Sets whether the binding should apply to the metadata aspect of the image, or to the
+    /// normal texel data.
+    ///
+    /// The default value is `false`.
+    pub metadata: bool,
+}
+
+/// Parameters for a single sparse bind operation on parts of an image with a known memory layout.
+///
+/// This type of sparse bind can only be used for images that have the `sparse_residency` flag set.
+/// Only the normal texel regions can be bound this way, not the mip tail regions or metadata
+/// aspect.
+#[derive(Clone, Debug, Default)]
+pub struct SparseImageMemoryBind {
+    /// The aspects of the image where memory is to be (un)bound.
+    ///
+    /// The default value is `ImageAspects::empty()`, which must be overridden.
+    pub aspects: ImageAspects,
+
+    /// The mip level of the image where memory is to be (un)bound.
+    ///
+    /// The default value is `0`.
+    pub mip_level: u32,
+
+    /// The array layer of the image where memory is to be (un)bound.
+    ///
+    /// The default value is `0`.
+    pub array_layer: u32,
+
+    /// The offset in texels (or for compressed images, texel blocks) from the origin of the image,
+    /// where memory is to be (un)bound.
+    ///
+    /// This must be a multiple of the
+    /// [`SparseImageFormatProperties::image_granularity`](crate::image::SparseImageFormatProperties::image_granularity)
+    /// value of the image.
+    ///
+    /// The default value is `[0; 3]`.
+    pub offset: [u32; 3],
+
+    /// The extent in texels (or for compressed images, texel blocks) of the image where
+    /// memory is to be (un)bound.
+    ///
+    /// This must be a multiple of the
+    /// [`SparseImageFormatProperties::image_granularity`](crate::image::SparseImageFormatProperties::image_granularity)
+    /// value of the image, or `offset + extent` for that dimension must equal the image's total
+    /// extent.
+    ///
+    /// The default value is `[0; 3]`, which must be overridden.
+    pub extent: [u32; 3],
+
+    /// If `Some`, specifies the memory and an offset into that memory that is to be bound.
+    /// The provided memory must match the image's memory requirements.
+    ///
+    /// If `None`, specifies that existing memory at the specified location is to be unbound.
+    ///
+    /// The default value is `None`.
+    pub memory: Option<(Arc<DeviceMemory>, DeviceSize)>,
 }
