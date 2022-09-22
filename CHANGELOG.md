@@ -7,6 +7,9 @@
     Pull Request merge. 
 -->
 
+- Bugs fixed:
+  - Incorrect check for descriptor set validity when the shader declares a runtime-sized array.
+
 # Version 0.31.0 (2022-09-18)
 
 - **Breaking** Public dependency updates:
