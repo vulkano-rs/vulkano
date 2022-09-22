@@ -7,6 +7,8 @@
     Pull Request merge. 
 -->
 
+- **Breaking** Changes to queues:
+  - When doing operations on a queue, you must now first call `lock()` on the queue, which prevents concurrent access.
 - Bugs fixed:
   - Incorrect check for descriptor set validity when the shader declares a runtime-sized array.
 
