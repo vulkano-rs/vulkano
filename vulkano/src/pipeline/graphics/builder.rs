@@ -399,15 +399,15 @@ where
 
             vertex_input_state, // Can be None if there's a mesh shader, but we don't support that yet
             input_assembly_state, // Can be None if there's a mesh shader, but we don't support that yet
-            tessellation_state: has.tessellation_state.then(|| tessellation_state),
-            viewport_state: has.viewport_state.then(|| viewport_state),
+            tessellation_state: has.tessellation_state.then_some(tessellation_state),
+            viewport_state: has.viewport_state.then_some(viewport_state),
             discard_rectangle_state: has
                 .pre_rasterization_shader_state
-                .then(|| discard_rectangle_state),
+                .then_some(discard_rectangle_state),
             rasterization_state,
-            multisample_state: has.fragment_output_state.then(|| multisample_state),
-            depth_stencil_state: has.depth_stencil_state.then(|| depth_stencil_state),
-            color_blend_state: has.color_blend_state.then(|| color_blend_state),
+            multisample_state: has.fragment_output_state.then_some(multisample_state),
+            depth_stencil_state: has.depth_stencil_state.then_some(depth_stencil_state),
+            color_blend_state: has.color_blend_state.then_some(color_blend_state),
             dynamic_state,
         }))
     }

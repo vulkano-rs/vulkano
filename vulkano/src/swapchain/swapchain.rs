@@ -377,7 +377,7 @@ impl<W> Swapchain<W> {
                     .find_map(|(f, c)| {
                         (c == image_color_space
                             && [Format::R8G8B8A8_UNORM, Format::B8G8R8A8_UNORM].contains(&f))
-                        .then(|| f)
+                        .then_some(f)
                     })
                     .ok_or(SwapchainCreationError::FormatColorSpaceNotSupported)?
             }
