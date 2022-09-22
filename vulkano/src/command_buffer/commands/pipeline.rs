@@ -573,10 +573,25 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             elements: &[Option<T>],
             mut extra_check: impl FnMut(u32, &T) -> Result<(), DescriptorResourceInvalidError>,
         ) -> Result<(), PipelineExecutionError> {
-            for (index, element) in elements[0..reqs.descriptor_count as usize]
-                .iter()
-                .enumerate()
-            {
+            let elements_to_check = if let Some(descriptor_count) = reqs.descriptor_count {
+                // The shader has a fixed-sized array, so it will never access more than
+                // the first `descriptor_count` elements.
+                elements.get(..descriptor_count as usize).ok_or({
+                    // There are less than `descriptor_count` elements in `elements`
+                    PipelineExecutionError::DescriptorResourceInvalid {
+                        set_num,
+                        binding_num,
+                        index: elements.len() as u32,
+                        error: DescriptorResourceInvalidError::Missing,
+                    }
+                })?
+            } else {
+                // The shader has a runtime-sized array, so any element could potentially
+                // be accessed. We must check them all.
+                elements
+            };
+
+            for (index, element) in elements_to_check.iter().enumerate() {
                 let index = index as u32;
 
                 // VUID-vkCmdDispatch-None-02699

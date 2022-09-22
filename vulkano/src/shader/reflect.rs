@@ -711,7 +711,7 @@ fn descriptor_requirements_of(spirv: &Spirv, variable_id: Id) -> DescriptorVaria
     let variable_id_info = spirv.id(variable_id);
 
     let mut reqs = DescriptorRequirements {
-        descriptor_count: 1,
+        descriptor_count: Some(1),
         ..Default::default()
     };
 
@@ -878,12 +878,15 @@ fn descriptor_requirements_of(spirv: &Spirv, variable_id: Id) -> DescriptorVaria
                     _ => panic!("failed to find array length"),
                 };
 
-                reqs.descriptor_count *= len as u32;
+                if let Some(count) = reqs.descriptor_count.as_mut() {
+                    *count *= len as u32
+                }
+
                 Some(element_type)
             }
 
             &Instruction::TypeRuntimeArray { element_type, .. } => {
-                reqs.descriptor_count = 0;
+                reqs.descriptor_count = None;
                 Some(element_type)
             }
 
