@@ -103,6 +103,7 @@ use crate::{
     buffer::sys::UnsafeBuffer, image::sys::UnsafeImage, macros::vulkan_bitflags, DeviceSize,
 };
 
+pub mod allocator;
 mod device_memory;
 pub mod pool;
 
