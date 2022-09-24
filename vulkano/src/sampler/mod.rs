@@ -429,7 +429,7 @@ impl Sampler {
             border_color: address_mode
                 .into_iter()
                 .any(|mode| mode == SamplerAddressMode::ClampToBorder)
-                .then(|| border_color),
+                .then_some(border_color),
             compare,
             lod,
             mag_filter,
@@ -478,7 +478,7 @@ impl Sampler {
             border_color: address_mode
                 .into_iter()
                 .any(|mode| mode == SamplerAddressMode::ClampToBorder)
-                .then(|| border_color),
+                .then_some(border_color),
             compare,
             lod,
             mag_filter,

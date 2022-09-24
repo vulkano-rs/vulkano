@@ -879,19 +879,19 @@ impl ExternalMemoryHandleTypes {
         } = *self;
 
         [
-            opaque_fd.then(|| ExternalMemoryHandleType::OpaqueFd),
-            opaque_win32.then(|| ExternalMemoryHandleType::OpaqueWin32),
-            opaque_win32_kmt.then(|| ExternalMemoryHandleType::OpaqueWin32Kmt),
-            d3d11_texture.then(|| ExternalMemoryHandleType::D3D11Texture),
-            d3d11_texture_kmt.then(|| ExternalMemoryHandleType::D3D11TextureKmt),
-            d3d12_heap.then(|| ExternalMemoryHandleType::D3D12Heap),
-            d3d12_resource.then(|| ExternalMemoryHandleType::D3D12Resource),
-            dma_buf.then(|| ExternalMemoryHandleType::DmaBuf),
-            android_hardware_buffer.then(|| ExternalMemoryHandleType::AndroidHardwareBuffer),
-            host_allocation.then(|| ExternalMemoryHandleType::HostAllocation),
-            host_mapped_foreign_memory.then(|| ExternalMemoryHandleType::HostMappedForeignMemory),
-            zircon_vmo.then(|| ExternalMemoryHandleType::HostMappedForeignMemory),
-            rdma_address.then(|| ExternalMemoryHandleType::HostMappedForeignMemory),
+            opaque_fd.then_some(ExternalMemoryHandleType::OpaqueFd),
+            opaque_win32.then_some(ExternalMemoryHandleType::OpaqueWin32),
+            opaque_win32_kmt.then_some(ExternalMemoryHandleType::OpaqueWin32Kmt),
+            d3d11_texture.then_some(ExternalMemoryHandleType::D3D11Texture),
+            d3d11_texture_kmt.then_some(ExternalMemoryHandleType::D3D11TextureKmt),
+            d3d12_heap.then_some(ExternalMemoryHandleType::D3D12Heap),
+            d3d12_resource.then_some(ExternalMemoryHandleType::D3D12Resource),
+            dma_buf.then_some(ExternalMemoryHandleType::DmaBuf),
+            android_hardware_buffer.then_some(ExternalMemoryHandleType::AndroidHardwareBuffer),
+            host_allocation.then_some(ExternalMemoryHandleType::HostAllocation),
+            host_mapped_foreign_memory.then_some(ExternalMemoryHandleType::HostMappedForeignMemory),
+            zircon_vmo.then_some(ExternalMemoryHandleType::HostMappedForeignMemory),
+            rdma_address.then_some(ExternalMemoryHandleType::HostMappedForeignMemory),
         ]
         .into_iter()
         .flatten()
