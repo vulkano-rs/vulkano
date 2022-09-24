@@ -24,7 +24,7 @@ Changes to `Foo`:
 - Renamed to `Bar`.
 
 ### Additions
-- Support for the `khr_foorbar` extension.
+- Support for the `khr_foobar` extension.
 
 ### Bugs fixed
 - `bar` panics when calling `foo`.
