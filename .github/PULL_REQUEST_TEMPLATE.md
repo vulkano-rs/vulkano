@@ -21,7 +21,7 @@ Changelog:
  
 ### Breaking changes
 Changes to `Foo`:
-- Renamed to `Bar`
+- Renamed to `Bar`.
 
 ### Additions
 - Support for the `khr_foorbar` extension.
