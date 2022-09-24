@@ -84,7 +84,6 @@
 pub use ash::vk::Handle;
 pub use half;
 pub use library::{LoadingError, VulkanLibrary};
-use parking_lot::MutexGuard;
 use std::{
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
@@ -137,16 +136,6 @@ pub unsafe trait VulkanObject {
 
     /// Returns a reference to the object.
     fn internal_object(&self) -> Self::Object;
-}
-
-/// Gives access to the internal identifier of an object.
-// TODO: remove ; crappy design
-pub unsafe trait SynchronizedVulkanObject {
-    /// The type of the object.
-    type Object: ash::vk::Handle;
-
-    /// Returns a reference to the object.
-    fn internal_object_guard(&self) -> MutexGuard<Self::Object>;
 }
 
 /// Error type returned by most Vulkan functions.
