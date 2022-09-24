@@ -3,8 +3,12 @@ name: Rust
 on:
   push:
     branches: [ master ]
+    paths-ignore:
+      - '**.md'
   pull_request:
     branches: [ master ]
+    paths-ignore:
+      - '**.md'
 
 env:
   CARGO_TERM_COLOR: always
@@ -14,14 +18,14 @@ jobs:
     runs-on: windows-latest
     steps:
     - name: Ninja Install
-      uses: crazy-max/ghaction-chocolatey@v1.3.1
+      uses: crazy-max/ghaction-chocolatey@v2
       with:
         args: install ninja
     - name: Python3 Install
-      uses: crazy-max/ghaction-chocolatey@v1.3.1
+      uses: crazy-max/ghaction-chocolatey@v2
       with:
         args: install python3 --params "/InstallAllUsers"
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - name: Build
       run: cargo build --verbose
     - name: Run tests
@@ -29,7 +33,7 @@ jobs:
   linux_stable:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - name: Build
       run: cargo build --verbose
     - name: Run tests
@@ -37,7 +41,7 @@ jobs:
   macos_stable:
     runs-on: macos-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - name: Build
       run: cargo build --verbose
     - name: Run tests
