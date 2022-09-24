@@ -11,6 +11,7 @@
 
 Changes to queue operations:
 - When doing operations on a queue, you must now first call `lock()` on the queue, which prevents concurrent access.
+- The `wait` method of devices and queues is renamed to `wait_idle` to match Vulkan.
 - `PresentInfo` as been renamed to `SwapchainPresentInfo` and has differently named members and constructor.
 - `acquire_next_image` returns an `u32` index to match Vulkan.
 - `SubmitAnyBuilder` and its wrapped types no longer have a lifetime parameter, as they own their data instead. Various methods of these types now take their arguments by value.
