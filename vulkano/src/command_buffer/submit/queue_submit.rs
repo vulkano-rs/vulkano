@@ -8,41 +8,32 @@
 // according to those terms.
 
 use crate::{
-    command_buffer::sys::UnsafeCommandBuffer,
+    command_buffer::{PrimaryCommandBuffer, SemaphoreSubmitInfo, SubmitInfo},
     device::Queue,
     sync::{Fence, PipelineStages, Semaphore},
-    OomError, SynchronizedVulkanObject, VulkanError, VulkanObject,
+    OomError, VulkanError,
 };
-use smallvec::SmallVec;
 use std::{
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
-    marker::PhantomData,
+    sync::Arc,
 };
 
 /// Prototype for a submission that executes command buffers.
 // TODO: example here
 #[derive(Debug)]
-pub struct SubmitCommandBufferBuilder<'a> {
-    wait_semaphores: SmallVec<[ash::vk::Semaphore; 16]>,
-    destination_stages: SmallVec<[ash::vk::PipelineStageFlags; 8]>,
-    signal_semaphores: SmallVec<[ash::vk::Semaphore; 16]>,
-    command_buffers: SmallVec<[ash::vk::CommandBuffer; 4]>,
-    fence: ash::vk::Fence,
-    marker: PhantomData<&'a ()>,
+pub struct SubmitCommandBufferBuilder {
+    submit_info: SubmitInfo,
+    fence: Option<Arc<Fence>>,
 }
 
-impl<'a> SubmitCommandBufferBuilder<'a> {
+impl SubmitCommandBufferBuilder {
     /// Builds a new empty `SubmitCommandBufferBuilder`.
     #[inline]
-    pub fn new() -> SubmitCommandBufferBuilder<'a> {
+    pub fn new() -> Self {
         SubmitCommandBufferBuilder {
-            wait_semaphores: SmallVec::new(),
-            destination_stages: SmallVec::new(),
-            signal_semaphores: SmallVec::new(),
-            command_buffers: SmallVec::new(),
-            fence: ash::vk::Fence::null(),
-            marker: PhantomData,
+            submit_info: Default::default(),
+            fence: None,
         }
     }
 
@@ -53,20 +44,21 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
     /// ```
     /// use vulkano::command_buffer::submit::SubmitCommandBufferBuilder;
     /// use vulkano::sync::Fence;
+    /// # use std::sync::Arc;
     /// # let device: std::sync::Arc<vulkano::device::Device> = return;
     ///
     /// unsafe {
-    ///     let fence = Fence::from_pool(device.clone()).unwrap();
+    ///     let fence = Arc::new(Fence::from_pool(device.clone()).unwrap());
     ///
     ///     let mut builder = SubmitCommandBufferBuilder::new();
     ///     assert!(!builder.has_fence());
-    ///     builder.set_fence_signal(&fence);
+    ///     builder.set_fence_signal(fence);
     ///     assert!(builder.has_fence());
     /// }
     /// ```
     #[inline]
     pub fn has_fence(&self) -> bool {
-        self.fence != ash::vk::Fence::null()
+        self.fence.is_some()
     }
 
     /// Adds an operation that signals a fence after this submission ends.
@@ -77,14 +69,15 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
     /// use std::time::Duration;
     /// use vulkano::command_buffer::submit::SubmitCommandBufferBuilder;
     /// use vulkano::sync::Fence;
+    /// # use std::sync::Arc;
     /// # let device: std::sync::Arc<vulkano::device::Device> = return;
     /// # let queue: std::sync::Arc<vulkano::device::Queue> = return;
     ///
     /// unsafe {
-    ///     let fence = Fence::from_pool(device.clone()).unwrap();
+    ///     let fence = Arc::new(Fence::from_pool(device.clone()).unwrap());
     ///
     ///     let mut builder = SubmitCommandBufferBuilder::new();
-    ///     builder.set_fence_signal(&fence);
+    ///     builder.set_fence_signal(fence);
     ///
     ///     builder.submit(&queue).unwrap();
     ///
@@ -107,8 +100,8 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
     /// - The fence, command buffers, and semaphores must all belong to the same device.
     ///
     #[inline]
-    pub unsafe fn set_fence_signal(&mut self, fence: &'a Fence) {
-        self.fence = fence.internal_object();
+    pub unsafe fn set_fence_signal(&mut self, fence: Arc<Fence>) {
+        self.fence = Some(fence);
     }
 
     /// Adds a semaphore to be waited upon before the command buffers are executed.
@@ -134,11 +127,13 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
     /// - The fence, command buffers, and semaphores must all belong to the same device.
     ///
     #[inline]
-    pub unsafe fn add_wait_semaphore(&mut self, semaphore: &'a Semaphore, stages: PipelineStages) {
-        debug_assert!(!ash::vk::PipelineStageFlags::from(stages).is_empty());
+    pub unsafe fn add_wait_semaphore(&mut self, semaphore: Arc<Semaphore>, stages: PipelineStages) {
+        debug_assert!(!stages.is_empty());
         // TODO: debug assert that the device supports the stages
-        self.wait_semaphores.push(semaphore.internal_object());
-        self.destination_stages.push(stages.into());
+        self.submit_info.wait_semaphores.push(SemaphoreSubmitInfo {
+            stages,
+            ..SemaphoreSubmitInfo::semaphore(semaphore)
+        });
     }
 
     /// Adds a command buffer that is executed as part of this command.
@@ -160,8 +155,8 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
     /// TODO: more here
     ///
     #[inline]
-    pub unsafe fn add_command_buffer(&mut self, command_buffer: &'a UnsafeCommandBuffer) {
-        self.command_buffers.push(command_buffer.internal_object());
+    pub unsafe fn add_command_buffer(&mut self, command_buffer: Arc<dyn PrimaryCommandBuffer>) {
+        self.submit_info.command_buffers.push(command_buffer);
     }
 
     /// Returns the number of semaphores to signal.
@@ -169,7 +164,7 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
     /// In other words, this is the number of times `add_signal_semaphore` has been called.
     #[inline]
     pub fn num_signal_semaphores(&self) -> usize {
-        self.signal_semaphores.len()
+        self.submit_info.signal_semaphores.len()
     }
 
     /// Adds a semaphore that is going to be signaled at the end of the submission.
@@ -185,8 +180,10 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
     /// - The fence, command buffers, and semaphores must all belong to the same device.
     ///
     #[inline]
-    pub unsafe fn add_signal_semaphore(&mut self, semaphore: &'a Semaphore) {
-        self.signal_semaphores.push(semaphore.internal_object());
+    pub unsafe fn add_signal_semaphore(&mut self, semaphore: Arc<Semaphore>) {
+        self.submit_info
+            .signal_semaphores
+            .push(SemaphoreSubmitInfo::semaphore(semaphore));
     }
 
     /// Submits the command buffer to the given queue.
@@ -195,28 +192,9 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
     /// > possible together and avoid submitting them one by one.
     ///
     pub fn submit(self, queue: &Queue) -> Result<(), SubmitCommandBufferError> {
-        unsafe {
-            let fns = queue.device().fns();
-            let queue = queue.internal_object_guard();
+        let mut queue_guard = queue.lock();
 
-            debug_assert_eq!(self.wait_semaphores.len(), self.destination_stages.len());
-
-            let batch = ash::vk::SubmitInfo {
-                wait_semaphore_count: self.wait_semaphores.len() as u32,
-                p_wait_semaphores: self.wait_semaphores.as_ptr(),
-                p_wait_dst_stage_mask: self.destination_stages.as_ptr(),
-                command_buffer_count: self.command_buffers.len() as u32,
-                p_command_buffers: self.command_buffers.as_ptr(),
-                signal_semaphore_count: self.signal_semaphores.len() as u32,
-                p_signal_semaphores: self.signal_semaphores.as_ptr(),
-                ..Default::default()
-            };
-
-            (fns.v1_0.queue_submit)(*queue, 1, &batch, self.fence)
-                .result()
-                .map_err(VulkanError::from)?;
-            Ok(())
-        }
+        unsafe { Ok(queue_guard.submit_unchecked([self.submit_info], self.fence)?) }
     }
 
     /// Merges this builder with another builder.
@@ -227,16 +205,21 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
     // TODO: create multiple batches instead
     pub fn merge(mut self, other: Self) -> Self {
         assert!(
-            self.fence == ash::vk::Fence::null() || other.fence == ash::vk::Fence::null(),
+            self.fence.is_none() || other.fence.is_none(),
             "Can't merge two queue submits that both have a fence"
         );
 
-        self.wait_semaphores.extend(other.wait_semaphores);
-        self.destination_stages.extend(other.destination_stages); // TODO: meh? will be solved if we submit multiple batches
-        self.signal_semaphores.extend(other.signal_semaphores);
-        self.command_buffers.extend(other.command_buffers);
+        self.submit_info
+            .wait_semaphores
+            .extend(other.submit_info.wait_semaphores);
+        self.submit_info
+            .command_buffers
+            .extend(other.submit_info.command_buffers);
+        self.submit_info
+            .signal_semaphores
+            .extend(other.submit_info.signal_semaphores);
 
-        if self.fence == ash::vk::Fence::null() {
+        if self.fence.is_none() {
             self.fence = other.fence;
         }
 
@@ -314,11 +297,11 @@ mod tests {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
 
-            let fence = Fence::new(device, Default::default()).unwrap();
+            let fence = Arc::new(Fence::new(device, Default::default()).unwrap());
             assert!(!fence.is_signaled().unwrap());
 
             let mut builder = SubmitCommandBufferBuilder::new();
-            builder.set_fence_signal(&fence);
+            builder.set_fence_signal(fence.clone());
 
             builder.submit(&queue).unwrap();
             fence.wait(Some(Duration::from_secs(5))).unwrap();
@@ -331,11 +314,11 @@ mod tests {
         unsafe {
             let (device, _queue) = gfx_dev_and_queue!();
 
-            let fence = Fence::new(device, Default::default()).unwrap();
+            let fence = Arc::new(Fence::new(device, Default::default()).unwrap());
 
             let mut builder = SubmitCommandBufferBuilder::new();
             assert!(!builder.has_fence());
-            builder.set_fence_signal(&fence);
+            builder.set_fence_signal(fence);
             assert!(builder.has_fence());
         }
     }
@@ -345,13 +328,13 @@ mod tests {
         unsafe {
             let (device, _) = gfx_dev_and_queue!();
 
-            let fence1 = Fence::new(device.clone(), Default::default()).unwrap();
-            let fence2 = Fence::new(device, Default::default()).unwrap();
+            let fence1 = Arc::new(Fence::new(device.clone(), Default::default()).unwrap());
+            let fence2 = Arc::new(Fence::new(device, Default::default()).unwrap());
 
             let mut builder1 = SubmitCommandBufferBuilder::new();
-            builder1.set_fence_signal(&fence1);
+            builder1.set_fence_signal(fence1);
             let mut builder2 = SubmitCommandBufferBuilder::new();
-            builder2.set_fence_signal(&fence2);
+            builder2.set_fence_signal(fence2);
 
             assert_should_panic!("Can't merge two queue submits that both have a fence", {
                 let _ = builder1.merge(builder2);

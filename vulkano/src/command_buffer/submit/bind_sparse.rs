@@ -8,36 +8,40 @@
 // according to those terms.
 
 use crate::{
-    buffer::sys::UnsafeBuffer,
+    buffer::BufferAccess,
     device::Queue,
-    image::sys::UnsafeImage,
-    memory::DeviceMemory,
+    image::ImageAccess,
+    memory::{
+        BindSparseInfo, DeviceMemory, SparseBufferMemoryBind, SparseImageMemoryBind,
+        SparseImageOpaqueMemoryBind,
+    },
     sync::{Fence, Semaphore},
-    DeviceSize, OomError, SynchronizedVulkanObject, VulkanError, VulkanObject,
+    DeviceSize, OomError, VulkanError,
 };
 use smallvec::SmallVec;
 use std::{
     error::Error,
     fmt::{Debug, Display, Error as FmtError, Formatter},
-    marker::PhantomData,
+    sync::Arc,
 };
 
 // TODO: correctly implement Debug on all the structs of this module
 
 /// Prototype for a submission that binds sparse memory.
 // TODO: example here
-pub struct SubmitBindSparseBuilder<'a> {
-    infos: SmallVec<[SubmitBindSparseBatchBuilder<'a>; 1]>,
-    fence: ash::vk::Fence,
+#[derive(Debug)]
+pub struct SubmitBindSparseBuilder {
+    bind_infos: SmallVec<[BindSparseInfo; 1]>,
+    fence: Option<Arc<Fence>>,
 }
 
-impl<'a> SubmitBindSparseBuilder<'a> {
+impl SubmitBindSparseBuilder {
     /// Builds a new empty `SubmitBindSparseBuilder`.
     #[inline]
-    pub fn new() -> SubmitBindSparseBuilder<'a> {
+    pub fn new() -> Self {
         SubmitBindSparseBuilder {
-            infos: SmallVec::new(),
-            fence: ash::vk::Fence::null(),
+            bind_infos: SmallVec::new(),
+            fence: None,
         }
     }
 
@@ -47,8 +51,8 @@ impl<'a> SubmitBindSparseBuilder<'a> {
     /// wait semaphore added to a batch will apply to further batches as well, but when a semaphore
     /// is signalled, it does **not** mean that previous batches have been completed.
     #[inline]
-    pub fn add(&mut self, builder: SubmitBindSparseBatchBuilder<'a>) {
-        self.infos.push(builder);
+    pub fn add(&mut self, builder: SubmitBindSparseBatchBuilder) {
+        self.bind_infos.push(builder.bind_info);
     }
 
     /// Returns true if this builder will signal a fence when submitted.
@@ -58,20 +62,21 @@ impl<'a> SubmitBindSparseBuilder<'a> {
     /// ```
     /// use vulkano::command_buffer::submit::SubmitBindSparseBuilder;
     /// use vulkano::sync::Fence;
+    /// # use std::sync::Arc;
     /// # let device: std::sync::Arc<vulkano::device::Device> = return;
     ///
     /// unsafe {
-    ///     let fence = Fence::from_pool(device.clone()).unwrap();
+    ///     let fence = Arc::new(Fence::from_pool(device.clone()).unwrap());
     ///
     ///     let mut builder = SubmitBindSparseBuilder::new();
     ///     assert!(!builder.has_fence());
-    ///     builder.set_fence_signal(&fence);
+    ///     builder.set_fence_signal(fence);
     ///     assert!(builder.has_fence());
     /// }
     /// ```
     #[inline]
     pub fn has_fence(&self) -> bool {
-        self.fence != ash::vk::Fence::null()
+        self.fence.is_some()
     }
 
     /// Adds an operation that signals a fence after this submission ends.
@@ -82,14 +87,15 @@ impl<'a> SubmitBindSparseBuilder<'a> {
     /// use std::time::Duration;
     /// use vulkano::command_buffer::submit::SubmitBindSparseBuilder;
     /// use vulkano::sync::Fence;
+    /// # use std::sync::Arc;
     /// # let device: std::sync::Arc<vulkano::device::Device> = return;
     /// # let queue: std::sync::Arc<vulkano::device::Queue> = return;
     ///
     /// unsafe {
-    ///     let fence = Fence::from_pool(device.clone()).unwrap();
+    ///     let fence = Arc::new(Fence::from_pool(device.clone()).unwrap());
     ///
     ///     let mut builder = SubmitBindSparseBuilder::new();
-    ///     builder.set_fence_signal(&fence);
+    ///     builder.set_fence_signal(fence.clone());
     ///
     ///     builder.submit(&queue).unwrap();
     ///
@@ -112,8 +118,8 @@ impl<'a> SubmitBindSparseBuilder<'a> {
     /// - The fence, buffers, images, and semaphores must all belong to the same device.
     ///
     #[inline]
-    pub unsafe fn set_fence_signal(&mut self, fence: &'a Fence) {
-        self.fence = fence.internal_object();
+    pub unsafe fn set_fence_signal(&mut self, fence: Arc<Fence>) {
+        self.fence = Some(fence);
     }
 
     /// Attempts to merge this builder with another one.
@@ -121,15 +127,12 @@ impl<'a> SubmitBindSparseBuilder<'a> {
     /// If both builders have a fence already set, then this function will return `other` as an
     /// error.
     #[inline]
-    pub fn merge(
-        &mut self,
-        other: SubmitBindSparseBuilder<'a>,
-    ) -> Result<(), SubmitBindSparseBuilder<'a>> {
-        if self.fence != ash::vk::Fence::null() && other.fence != ash::vk::Fence::null() {
+    pub fn merge(&mut self, other: SubmitBindSparseBuilder) -> Result<(), SubmitBindSparseBuilder> {
+        if self.fence.is_some() && other.fence.is_some() {
             return Err(other);
         }
 
-        self.infos.extend(other.infos.into_iter());
+        self.bind_infos.extend(other.bind_infos.into_iter());
         Ok(())
     }
 
@@ -143,162 +146,45 @@ impl<'a> SubmitBindSparseBuilder<'a> {
                     .sparse_binding
             );
 
-            let fns = queue.device().fns();
-            let queue = queue.internal_object_guard();
-
-            // We start by storing all the `VkSparseBufferMemoryBindInfo`s of the whole command
-            // in the same collection.
-            let buffer_binds_storage: SmallVec<[_; 4]> = self
-                .infos
-                .iter()
-                .flat_map(|infos| infos.buffer_binds.iter())
-                .map(|buf_bind| ash::vk::SparseBufferMemoryBindInfo {
-                    buffer: buf_bind.buffer,
-                    bind_count: buf_bind.binds.len() as u32,
-                    p_binds: buf_bind.binds.as_ptr(),
-                })
-                .collect();
-
-            // Same for all the `VkSparseImageOpaqueMemoryBindInfo`s.
-            let image_opaque_binds_storage: SmallVec<[_; 4]> = self
-                .infos
-                .iter()
-                .flat_map(|infos| infos.image_opaque_binds.iter())
-                .map(|img_bind| ash::vk::SparseImageOpaqueMemoryBindInfo {
-                    image: img_bind.image,
-                    bind_count: img_bind.binds.len() as u32,
-                    p_binds: img_bind.binds.as_ptr(),
-                })
-                .collect();
-
-            // And finally the `VkSparseImageMemoryBindInfo`s.
-            let image_binds_storage: SmallVec<[_; 4]> = self
-                .infos
-                .iter()
-                .flat_map(|infos| infos.image_binds.iter())
-                .map(|img_bind| ash::vk::SparseImageMemoryBindInfo {
-                    image: img_bind.image,
-                    bind_count: img_bind.binds.len() as u32,
-                    p_binds: img_bind.binds.as_ptr(),
-                })
-                .collect();
-
-            // Now building the collection of `VkBindSparseInfo`s.
-            let bs_infos = {
-                let mut bs_infos: SmallVec<[_; 4]> = SmallVec::new();
-
-                // Since we stores all the bind infos contiguously, we keep track of the current
-                // offset within these containers.
-                let mut next_buffer_bind = 0;
-                let mut next_image_opaque_bind = 0;
-                let mut next_image_bind = 0;
-
-                for builder in self.infos.iter() {
-                    bs_infos.push(ash::vk::BindSparseInfo {
-                        wait_semaphore_count: builder.wait_semaphores.len() as u32,
-                        p_wait_semaphores: builder.wait_semaphores.as_ptr(),
-                        buffer_bind_count: builder.buffer_binds.len() as u32,
-                        p_buffer_binds: if next_buffer_bind != 0 {
-                            // We need that `if` because `.as_ptr().offset(0)` is technically UB.
-                            buffer_binds_storage.as_ptr().offset(next_buffer_bind)
-                        } else {
-                            buffer_binds_storage.as_ptr()
-                        },
-                        image_opaque_bind_count: builder.image_opaque_binds.len() as u32,
-                        p_image_opaque_binds: if next_image_opaque_bind != 0 {
-                            // We need that `if` because `.as_ptr().offset(0)` is technically UB.
-                            image_opaque_binds_storage
-                                .as_ptr()
-                                .offset(next_image_opaque_bind)
-                        } else {
-                            image_opaque_binds_storage.as_ptr()
-                        },
-                        image_bind_count: builder.image_binds.len() as u32,
-                        p_image_binds: if next_image_bind != 0 {
-                            // We need that `if` because `.as_ptr().offset(0)` is technically UB.
-                            image_binds_storage.as_ptr().offset(next_image_bind)
-                        } else {
-                            image_binds_storage.as_ptr()
-                        },
-                        signal_semaphore_count: builder.signal_semaphores.len() as u32,
-                        p_signal_semaphores: builder.signal_semaphores.as_ptr(),
-                        ..Default::default()
-                    });
-
-                    next_buffer_bind += builder.buffer_binds.len() as isize;
-                    next_image_opaque_bind += builder.image_opaque_binds.len() as isize;
-                    next_image_bind += builder.image_binds.len() as isize;
-                }
-
-                // If these assertions fail, then there's something wrong in the code above.
-                debug_assert_eq!(next_buffer_bind as usize, buffer_binds_storage.len());
-                debug_assert_eq!(
-                    next_image_opaque_bind as usize,
-                    image_opaque_binds_storage.len()
-                );
-                debug_assert_eq!(next_image_bind as usize, image_binds_storage.len());
-
-                bs_infos
-            };
-
-            // Finally executing the command.
-            (fns.v1_0.queue_bind_sparse)(
-                *queue,
-                bs_infos.len() as u32,
-                bs_infos.as_ptr(),
-                self.fence,
-            )
-            .result()
-            .map_err(VulkanError::from)?;
-            Ok(())
+            let mut queue_guard = queue.lock();
+            Ok(queue_guard.bind_sparse_unchecked(self.bind_infos, self.fence)?)
         }
-    }
-}
-
-impl<'a> Debug for SubmitBindSparseBuilder<'a> {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
-        write!(f, "<Bind sparse operation>")
     }
 }
 
 /// A single batch of a sparse bind operation.
-pub struct SubmitBindSparseBatchBuilder<'a> {
-    wait_semaphores: SmallVec<[ash::vk::Semaphore; 8]>,
-    buffer_binds: SmallVec<[SubmitBindSparseBufferBindBuilder<'a>; 2]>,
-    image_opaque_binds: SmallVec<[SubmitBindSparseImageOpaqueBindBuilder<'a>; 2]>,
-    image_binds: SmallVec<[SubmitBindSparseImageBindBuilder<'a>; 2]>,
-    signal_semaphores: SmallVec<[ash::vk::Semaphore; 8]>,
-    marker: PhantomData<&'a ()>,
+pub struct SubmitBindSparseBatchBuilder {
+    bind_info: BindSparseInfo,
 }
 
-impl<'a> SubmitBindSparseBatchBuilder<'a> {
+impl SubmitBindSparseBatchBuilder {
     /// Builds a new empty `SubmitBindSparseBatchBuilder`.
     #[inline]
-    pub fn new() -> SubmitBindSparseBatchBuilder<'a> {
+    pub fn new() -> Self {
         SubmitBindSparseBatchBuilder {
-            wait_semaphores: SmallVec::new(),
-            buffer_binds: SmallVec::new(),
-            image_opaque_binds: SmallVec::new(),
-            image_binds: SmallVec::new(),
-            signal_semaphores: SmallVec::new(),
-            marker: PhantomData,
+            bind_info: Default::default(),
         }
     }
 
     /// Adds an operation that binds memory to a buffer.
-    pub fn add_buffer(&mut self, cmd: SubmitBindSparseBufferBindBuilder<'a>) {
-        self.buffer_binds.push(cmd);
+    pub fn add_buffer(&mut self, cmd: SubmitBindSparseBufferBindBuilder) {
+        self.bind_info
+            .buffer_binds
+            .push((cmd.buffer, cmd.binds.into_iter().collect()));
     }
 
     /// Adds an operation that binds memory to an opaque image.
-    pub fn add_image_opaque(&mut self, cmd: SubmitBindSparseImageOpaqueBindBuilder<'a>) {
-        self.image_opaque_binds.push(cmd);
+    pub fn add_image_opaque(&mut self, cmd: SubmitBindSparseImageOpaqueBindBuilder) {
+        self.bind_info
+            .image_opaque_binds
+            .push((cmd.image, cmd.binds.into_iter().collect()));
     }
 
     /// Adds an operation that binds memory to an image.
-    pub fn add_image(&mut self, cmd: SubmitBindSparseImageBindBuilder<'a>) {
-        self.image_binds.push(cmd);
+    pub fn add_image(&mut self, cmd: SubmitBindSparseImageBindBuilder) {
+        self.bind_info
+            .image_binds
+            .push((cmd.image, cmd.binds.into_iter().collect()));
     }
 
     /// Adds a semaphore to be waited upon before the sparse binding is executed.
@@ -319,8 +205,8 @@ impl<'a> SubmitBindSparseBatchBuilder<'a> {
     /// - The fence, buffers, images, and semaphores must all belong to the same device.
     ///
     #[inline]
-    pub unsafe fn add_wait_semaphore(&mut self, semaphore: &'a Semaphore) {
-        self.wait_semaphores.push(semaphore.internal_object());
+    pub unsafe fn add_wait_semaphore(&mut self, semaphore: Arc<Semaphore>) {
+        self.bind_info.wait_semaphores.push(semaphore);
     }
 
     /// Returns the number of semaphores to signal.
@@ -328,7 +214,7 @@ impl<'a> SubmitBindSparseBatchBuilder<'a> {
     /// In other words, this is the number of times `add_signal_semaphore` has been called.
     #[inline]
     pub fn num_signal_semaphores(&self) -> usize {
-        self.signal_semaphores.len()
+        self.bind_info.signal_semaphores.len()
     }
 
     /// Adds a semaphore that is going to be signaled at the end of the submission.
@@ -344,124 +230,108 @@ impl<'a> SubmitBindSparseBatchBuilder<'a> {
     /// - The fence, buffers, images, and semaphores must all belong to the same device.
     ///
     #[inline]
-    pub unsafe fn add_signal_semaphore(&mut self, semaphore: &'a Semaphore) {
-        self.signal_semaphores.push(semaphore.internal_object());
+    pub unsafe fn add_signal_semaphore(&mut self, semaphore: Arc<Semaphore>) {
+        self.bind_info.signal_semaphores.push(semaphore);
     }
 }
 
-pub struct SubmitBindSparseBufferBindBuilder<'a> {
-    buffer: ash::vk::Buffer,
-    binds: SmallVec<[ash::vk::SparseMemoryBind; 1]>,
-    marker: PhantomData<&'a ()>,
+pub struct SubmitBindSparseBufferBindBuilder {
+    buffer: Arc<dyn BufferAccess>,
+    binds: SmallVec<[SparseBufferMemoryBind; 1]>,
 }
 
-impl<'a> SubmitBindSparseBufferBindBuilder<'a> {
+impl SubmitBindSparseBufferBindBuilder {
     ///
     /// # Safety
     ///
     /// - `buffer` must be a buffer with sparse binding enabled.
-    pub unsafe fn new(buffer: &'a UnsafeBuffer) -> SubmitBindSparseBufferBindBuilder {
+    pub unsafe fn new(buffer: Arc<dyn BufferAccess>) -> Self {
         SubmitBindSparseBufferBindBuilder {
-            buffer: buffer.internal_object(),
+            buffer,
             binds: SmallVec::new(),
-            marker: PhantomData,
         }
     }
 
     pub unsafe fn add_bind(
         &mut self,
-        offset: DeviceSize,
+        resource_offset: DeviceSize,
         size: DeviceSize,
-        memory: &DeviceMemory,
+        memory: Arc<DeviceMemory>,
         memory_offset: DeviceSize,
     ) {
-        self.binds.push(ash::vk::SparseMemoryBind {
-            resource_offset: offset,
+        self.binds.push(SparseBufferMemoryBind {
+            resource_offset,
             size,
-            memory: memory.internal_object(),
-            memory_offset,
-            flags: ash::vk::SparseMemoryBindFlags::empty(), // Flags are only relevant for images.
+            memory: Some((memory, memory_offset)),
         });
     }
 
-    pub unsafe fn add_unbind(&mut self, offset: DeviceSize, size: DeviceSize) {
-        self.binds.push(ash::vk::SparseMemoryBind {
-            resource_offset: offset,
+    pub unsafe fn add_unbind(&mut self, resource_offset: DeviceSize, size: DeviceSize) {
+        self.binds.push(SparseBufferMemoryBind {
+            resource_offset,
             size,
-            memory: ash::vk::DeviceMemory::null(),
-            memory_offset: 0,
-            flags: ash::vk::SparseMemoryBindFlags::empty(),
+            memory: None,
         });
     }
 }
 
-pub struct SubmitBindSparseImageOpaqueBindBuilder<'a> {
-    image: ash::vk::Image,
-    binds: SmallVec<[ash::vk::SparseMemoryBind; 1]>,
-    marker: PhantomData<&'a ()>,
+pub struct SubmitBindSparseImageOpaqueBindBuilder {
+    image: Arc<dyn ImageAccess>,
+    binds: SmallVec<[SparseImageOpaqueMemoryBind; 1]>,
 }
 
-impl<'a> SubmitBindSparseImageOpaqueBindBuilder<'a> {
+impl SubmitBindSparseImageOpaqueBindBuilder {
     ///
     /// # Safety
     ///
     /// - `image` must be an image with sparse binding enabled.
-    pub unsafe fn new(image: &'a UnsafeImage) -> SubmitBindSparseImageOpaqueBindBuilder {
+    pub unsafe fn new(image: Arc<dyn ImageAccess>) -> Self {
         SubmitBindSparseImageOpaqueBindBuilder {
-            image: image.internal_object(),
+            image,
             binds: SmallVec::new(),
-            marker: PhantomData,
         }
     }
 
     pub unsafe fn add_bind(
         &mut self,
-        offset: DeviceSize,
+        resource_offset: DeviceSize,
         size: DeviceSize,
-        memory: &DeviceMemory,
+        memory: Arc<DeviceMemory>,
         memory_offset: DeviceSize,
-        bind_metadata: bool,
+        metadata: bool,
     ) {
-        self.binds.push(ash::vk::SparseMemoryBind {
-            resource_offset: offset,
+        self.binds.push(SparseImageOpaqueMemoryBind {
+            resource_offset,
             size,
-            memory: memory.internal_object(),
-            memory_offset,
-            flags: if bind_metadata {
-                ash::vk::SparseMemoryBindFlags::METADATA
-            } else {
-                ash::vk::SparseMemoryBindFlags::empty()
-            },
+            memory: Some((memory, memory_offset)),
+            metadata,
         });
     }
 
-    pub unsafe fn add_unbind(&mut self, offset: DeviceSize, size: DeviceSize) {
-        self.binds.push(ash::vk::SparseMemoryBind {
-            resource_offset: offset,
+    pub unsafe fn add_unbind(&mut self, resource_offset: DeviceSize, size: DeviceSize) {
+        self.binds.push(SparseImageOpaqueMemoryBind {
+            resource_offset,
             size,
-            memory: ash::vk::DeviceMemory::null(),
-            memory_offset: 0,
-            flags: ash::vk::SparseMemoryBindFlags::empty(), // TODO: is that relevant?
+            memory: None,
+            metadata: false,
         });
     }
 }
 
-pub struct SubmitBindSparseImageBindBuilder<'a> {
-    image: ash::vk::Image,
-    binds: SmallVec<[ash::vk::SparseImageMemoryBind; 1]>,
-    marker: PhantomData<&'a ()>,
+pub struct SubmitBindSparseImageBindBuilder {
+    image: Arc<dyn ImageAccess>,
+    binds: SmallVec<[SparseImageMemoryBind; 1]>,
 }
 
-impl<'a> SubmitBindSparseImageBindBuilder<'a> {
+impl SubmitBindSparseImageBindBuilder {
     ///
     /// # Safety
     ///
     /// - `image` must be an image with sparse binding enabled.
-    pub unsafe fn new(image: &'a UnsafeImage) -> SubmitBindSparseImageBindBuilder {
+    pub unsafe fn new(image: Arc<dyn ImageAccess>) -> Self {
         SubmitBindSparseImageBindBuilder {
-            image: image.internal_object(),
+            image,
             binds: SmallVec::new(),
-            marker: PhantomData,
         }
     }
 

@@ -24,7 +24,7 @@ use crate::{
     },
     device::{DeviceOwned, Queue},
     image::{sys::UnsafeImage, ImageLayout},
-    swapchain::{self, PresentFuture, PresentInfo},
+    swapchain::{self, PresentFuture, SwapchainPresentInfo},
     DeviceSize, OomError,
 };
 use std::{
@@ -162,7 +162,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
         self,
         queue: Arc<Queue>,
         command_buffer: Cb,
-    ) -> Result<CommandBufferExecFuture<Self, Cb>, CommandBufferExecError>
+    ) -> Result<CommandBufferExecFuture<Self>, CommandBufferExecError>
     where
         Self: Sized,
         Cb: PrimaryCommandBuffer + 'static,
@@ -178,7 +178,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     fn then_execute_same_queue<Cb>(
         self,
         command_buffer: Cb,
-    ) -> Result<CommandBufferExecFuture<Self, Cb>, CommandBufferExecError>
+    ) -> Result<CommandBufferExecFuture<Self>, CommandBufferExecError>
     where
         Self: Sized,
         Cb: PrimaryCommandBuffer + 'static,
@@ -254,15 +254,15 @@ pub unsafe trait GpuFuture: DeviceOwned {
     ///
     /// > **Note**: This is just a shortcut for the `Swapchain::present()` function.
     #[inline]
-    fn then_swapchain_present<W>(
+    fn then_swapchain_present(
         self,
         queue: Arc<Queue>,
-        info: PresentInfo<W>,
-    ) -> PresentFuture<Self, W>
+        swapchain_info: SwapchainPresentInfo,
+    ) -> PresentFuture<Self>
     where
         Self: Sized,
     {
-        swapchain::present(self, queue, info)
+        swapchain::present(self, queue, swapchain_info)
     }
 
     /// Turn the current future into a `Box<dyn GpuFuture>`.

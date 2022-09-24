@@ -12,20 +12,21 @@ use crate::{
     sync::{PipelineStages, Semaphore},
 };
 use smallvec::SmallVec;
+use std::sync::Arc;
 
 /// Prototype for a submission that waits on semaphores.
 ///
 /// This prototype can't actually be submitted because it doesn't correspond to anything in Vulkan.
 /// However you can convert it into another builder prototype through the `Into` trait.
 #[derive(Debug)]
-pub struct SubmitSemaphoresWaitBuilder<'a> {
-    semaphores: SmallVec<[&'a Semaphore; 8]>,
+pub struct SubmitSemaphoresWaitBuilder {
+    pub(crate) semaphores: SmallVec<[Arc<Semaphore>; 8]>,
 }
 
-impl<'a> SubmitSemaphoresWaitBuilder<'a> {
+impl SubmitSemaphoresWaitBuilder {
     /// Builds a new empty `SubmitSemaphoresWaitBuilder`.
     #[inline]
-    pub fn new() -> SubmitSemaphoresWaitBuilder<'a> {
+    pub fn new() -> Self {
         SubmitSemaphoresWaitBuilder {
             semaphores: SmallVec::new(),
         }
@@ -35,20 +36,20 @@ impl<'a> SubmitSemaphoresWaitBuilder<'a> {
     ///
     /// The semaphore must be signaled by a previous submission.
     #[inline]
-    pub unsafe fn add_wait_semaphore(&mut self, semaphore: &'a Semaphore) {
+    pub unsafe fn add_wait_semaphore(&mut self, semaphore: Arc<Semaphore>) {
         self.semaphores.push(semaphore);
     }
 
     /// Merges this builder with another builder.
     #[inline]
-    pub fn merge(&mut self, mut other: SubmitSemaphoresWaitBuilder<'a>) {
+    pub fn merge(&mut self, mut other: SubmitSemaphoresWaitBuilder) {
         self.semaphores.extend(other.semaphores.drain(..));
     }
 }
 
-impl<'a> From<SubmitSemaphoresWaitBuilder<'a>> for SubmitCommandBufferBuilder<'a> {
+impl From<SubmitSemaphoresWaitBuilder> for SubmitCommandBufferBuilder {
     #[inline]
-    fn from(mut val: SubmitSemaphoresWaitBuilder<'a>) -> Self {
+    fn from(mut val: SubmitSemaphoresWaitBuilder) -> Self {
         unsafe {
             let mut builder = SubmitCommandBufferBuilder::new();
             for sem in val.semaphores.drain(..) {
@@ -66,9 +67,9 @@ impl<'a> From<SubmitSemaphoresWaitBuilder<'a>> for SubmitCommandBufferBuilder<'a
     }
 }
 
-impl<'a> From<SubmitSemaphoresWaitBuilder<'a>> for SubmitPresentBuilder<'a> {
+impl From<SubmitSemaphoresWaitBuilder> for SubmitPresentBuilder {
     #[inline]
-    fn from(mut val: SubmitSemaphoresWaitBuilder<'a>) -> Self {
+    fn from(mut val: SubmitSemaphoresWaitBuilder) -> Self {
         unsafe {
             let mut builder = SubmitPresentBuilder::new();
             for sem in val.semaphores.drain(..) {

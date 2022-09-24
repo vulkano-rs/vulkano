@@ -46,8 +46,8 @@ use vulkano::{
     },
     render_pass::{LoadOp, StoreOp},
     swapchain::{
-        acquire_next_image, AcquireError, PresentInfo, Swapchain, SwapchainCreateInfo,
-        SwapchainCreationError,
+        acquire_next_image, AcquireError, Swapchain, SwapchainAbstract,
+        SwapchainCreateInfo, SwapchainCreationError, SwapchainPresentInfo,
     },
     sync::{self, FlushError, GpuFuture},
     Version, VulkanLibrary,
@@ -479,7 +479,7 @@ fn main() {
                 //
                 // This function can block if no image is available. The parameter is an optional timeout
                 // after which the function call will return an error.
-                let (image_num, suboptimal, acquire_future) =
+                let (image_index, suboptimal, acquire_future) =
                     match acquire_next_image(swapchain.clone(), None) {
                         Ok(r) => r,
                         Err(AcquireError::OutOfDate) => {
@@ -535,7 +535,7 @@ fn main() {
                             ..RenderingAttachmentInfo::image_view(
                                 // We specify image view corresponding to the currently acquired
                                 // swapchain image, to use for this attachment.
-                                attachment_image_views[image_num].clone(),
+                                attachment_image_views[image_index as usize].clone(),
                             )
                         })],
                         ..Default::default()
@@ -571,10 +571,7 @@ fn main() {
                     // the GPU has finished executing the command buffer that draws the triangle.
                     .then_swapchain_present(
                         queue.clone(),
-                        PresentInfo {
-                            index: image_num,
-                            ..PresentInfo::swapchain(swapchain.clone())
-                        },
+                        SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index),
                     )
                     .then_signal_fence_and_flush();
 

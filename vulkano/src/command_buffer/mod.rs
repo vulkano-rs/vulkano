@@ -124,6 +124,7 @@ use crate::{
     macros::vulkan_enum,
     query::{QueryControlFlags, QueryPipelineStatisticFlags},
     render_pass::{Framebuffer, Subpass},
+    sync::{PipelineStages, Semaphore},
 };
 use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
@@ -393,5 +394,78 @@ impl From<CommandBufferUsage> for ash::vk::CommandBufferUsageFlags {
     #[inline]
     fn from(val: CommandBufferUsage) -> Self {
         Self::from_raw(val as u32)
+    }
+}
+
+/// Parameters to submit command buffers to a queue.
+#[derive(Clone, Debug)]
+pub struct SubmitInfo {
+    /// The semaphores to wait for before beginning the execution of this batch of
+    /// command buffer operations.
+    ///
+    /// The default value is empty.
+    pub wait_semaphores: Vec<SemaphoreSubmitInfo>,
+
+    /// The command buffers to execute.
+    ///
+    /// The default value is empty.
+    pub command_buffers: Vec<Arc<dyn PrimaryCommandBuffer>>,
+
+    /// The semaphores to signal after the execution of this batch of command buffer operations
+    /// has completed.
+    ///
+    /// The default value is empty.
+    pub signal_semaphores: Vec<SemaphoreSubmitInfo>,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for SubmitInfo {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            wait_semaphores: Vec::new(),
+            command_buffers: Vec::new(),
+            signal_semaphores: Vec::new(),
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+/// Parameters for a semaphore signal or wait operation in a command buffer submission.
+#[derive(Clone, Debug)]
+pub struct SemaphoreSubmitInfo {
+    /// The semaphore to signal or wait for.
+    pub semaphore: Arc<Semaphore>,
+
+    /// For a semaphore wait operation, specifies the pipeline stages in the second synchronization
+    /// scope: stages of queue operations following the wait operation that can start executing
+    /// after the semaphore is signalled.
+    ///
+    /// For a semaphore signal operation, specifies the pipeline stages in the first synchronization
+    /// scope: stages of queue operations preceding the signal operation that must complete before
+    /// the semaphore is signalled.
+    /// If not set to `all_commands` only, the
+    /// [`synchronization2`](crate::device::Features::synchronization2) feature must be enabled
+    /// on the device.
+    ///
+    /// The default value has only `all_commands` set.
+    pub stages: PipelineStages,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl SemaphoreSubmitInfo {
+    /// Returns a `SemaphoreSubmitInfo` with the specified `semaphore`.
+    #[inline]
+    pub fn semaphore(semaphore: Arc<Semaphore>) -> Self {
+        Self {
+            semaphore,
+            stages: PipelineStages {
+                all_commands: true,
+                ..PipelineStages::empty()
+            },
+            _ne: crate::NonExhaustive(()),
+        }
     }
 }

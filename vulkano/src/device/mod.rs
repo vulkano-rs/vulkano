@@ -106,7 +106,7 @@ pub(crate) use self::{features::FeaturesFfi, properties::PropertiesFfi};
 pub use self::{
     features::{FeatureRestriction, FeatureRestrictionError, Features},
     properties::Properties,
-    queue::{DebugUtilsError, Queue, QueueFamilyProperties, QueueFlags, QueueGuard},
+    queue::{Queue, QueueError, QueueFamilyProperties, QueueFlags, QueueGuard},
 };
 use crate::{
     command_buffer::pool::StandardCommandPool,

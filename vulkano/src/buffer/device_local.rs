@@ -22,7 +22,7 @@ use super::{
 use crate::{
     command_buffer::{
         AutoCommandBufferBuilder, CommandBufferBeginError, CommandBufferExecFuture,
-        CommandBufferUsage, CopyBufferInfo, PrimaryAutoCommandBuffer, PrimaryCommandBuffer,
+        CommandBufferUsage, CopyBufferInfo, PrimaryCommandBuffer,
     },
     device::{Device, DeviceOwned, Queue},
     memory::{
@@ -171,8 +171,7 @@ where
 }
 
 // TODO: make this prettier
-type DeviceLocalBufferFromBufferFuture =
-    CommandBufferExecFuture<NowFuture, PrimaryAutoCommandBuffer>;
+type DeviceLocalBufferFromBufferFuture = CommandBufferExecFuture<NowFuture>;
 
 impl<T> DeviceLocalBuffer<T>
 where

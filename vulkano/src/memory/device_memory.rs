@@ -481,6 +481,12 @@ impl DeviceMemory {
         self.allocation_size
     }
 
+    /// Returns the handle types that can be exported from the memory allocation.
+    #[inline]
+    pub fn export_handle_types(&self) -> ExternalMemoryHandleTypes {
+        self.export_handle_types
+    }
+
     /// Retrieves the amount of lazily-allocated memory that is currently commited to this
     /// memory object.
     ///

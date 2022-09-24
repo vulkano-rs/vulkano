@@ -34,8 +34,8 @@ use vulkano::{
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     shader::ShaderModule,
     swapchain::{
-        acquire_next_image, AcquireError, PresentInfo, Swapchain, SwapchainCreateInfo,
-        SwapchainCreationError,
+        acquire_next_image, AcquireError, Swapchain, SwapchainAbstract,
+        SwapchainCreateInfo, SwapchainCreationError, SwapchainPresentInfo,
     },
     sync::{self, FlushError, GpuFuture},
     VulkanLibrary,
@@ -308,7 +308,7 @@ fn main() {
                 )
                 .unwrap();
 
-                let (image_num, suboptimal, acquire_future) =
+                let (image_index, suboptimal, acquire_future) =
                     match acquire_next_image(swapchain.clone(), None) {
                         Ok(r) => r,
                         Err(AcquireError::OutOfDate) => {
@@ -335,7 +335,9 @@ fn main() {
                                 Some([0.0, 0.0, 1.0, 1.0].into()),
                                 Some(1f32.into()),
                             ],
-                            ..RenderPassBeginInfo::framebuffer(framebuffers[image_num].clone())
+                            ..RenderPassBeginInfo::framebuffer(
+                                framebuffers[image_index as usize].clone(),
+                            )
                         },
                         SubpassContents::Inline,
                     )
@@ -363,10 +365,7 @@ fn main() {
                     .unwrap()
                     .then_swapchain_present(
                         queue.clone(),
-                        PresentInfo {
-                            index: image_num,
-                            ..PresentInfo::swapchain(swapchain.clone())
-                        },
+                        SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index),
                     )
                     .then_signal_fence_and_flush();
 
