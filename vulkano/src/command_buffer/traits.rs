@@ -419,10 +419,7 @@ where
 
     #[inline]
     unsafe fn signal_finished(&self) {
-        if !self.finished.swap(true, Ordering::SeqCst) {
-            self.command_buffer.unlock();
-        }
-
+        self.finished.store(true, Ordering::SeqCst);
         self.previous.signal_finished();
     }
 
@@ -503,7 +500,6 @@ where
                 self.flush().unwrap();
                 // Block until the queue finished.
                 self.queue.lock().wait_idle().unwrap();
-                self.command_buffer.unlock();
                 self.previous.signal_finished();
             }
         }

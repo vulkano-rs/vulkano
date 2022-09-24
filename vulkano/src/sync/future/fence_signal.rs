@@ -153,6 +153,11 @@ where
                 unsafe {
                     previous.signal_finished();
                 }
+
+                if let Some(queue) = previous.queue() {
+                    queue.lock().cleanup_finished();
+                }
+
                 Ok(())
             }
             FenceSignalFutureState::Cleaned => Ok(()),
@@ -174,27 +179,28 @@ where
         match *state {
             FenceSignalFutureState::Flushed(ref mut prev, ref fence) => {
                 match fence.wait(Some(Duration::from_secs(0))) {
-                    Ok(()) => unsafe { prev.signal_finished() },
+                    Ok(()) => {
+                        unsafe { prev.signal_finished() }
+
+                        if let Some(queue) = prev.queue() {
+                            queue.lock().cleanup_finished();
+                        }
+
+                        *state = FenceSignalFutureState::Cleaned;
+                    }
                     Err(_) => {
                         prev.cleanup_finished();
-                        return;
                     }
                 }
             }
             FenceSignalFutureState::Pending(ref mut prev, _) => {
                 prev.cleanup_finished();
-                return;
             }
             FenceSignalFutureState::PartiallyFlushed(ref mut prev, _) => {
                 prev.cleanup_finished();
-                return;
             }
-            _ => return,
-        };
-
-        // This code can only be reached if we're already flushed and waiting on the fence
-        // succeeded.
-        *state = FenceSignalFutureState::Cleaned;
+            _ => (),
+        }
     }
 
     // Implementation of `flush`. You must lock the state and pass the mutex guard here.
@@ -443,6 +449,10 @@ where
                 fence.wait(None).unwrap();
                 unsafe {
                     previous.signal_finished();
+
+                    if let Some(queue) = previous.queue() {
+                        queue.lock().cleanup_finished();
+                    }
                 }
             }
             FenceSignalFutureState::Cleaned => {
