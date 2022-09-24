@@ -159,7 +159,7 @@
 //! +-----+-------------------+-------+-----------+-- - - --+
 //! ```
 //!
-//! The allocations were all done in order, and natually there is no fragmentation at this point.
+//! The allocations were all done in order, and naturally there is no fragmentation at this point.
 //! Now if we free B and D, since these are done out of order, we will be left with holes between
 //! the other allocations, and we won't be able to fit allocation E anywhere:
 //!
@@ -748,8 +748,8 @@ impl FreeListAllocator {
         assert!(region.allocation_type == AllocationType::Unknown);
 
         let capacity = (region.size / AVERAGE_ALLOCATION_SIZE) as usize;
-        let mut nodes = host::PoolAllocator::new(capacity);
-        let mut free_list = Vec::with_capacity(capacity / 16);
+        let mut nodes = host::PoolAllocator::new(capacity + 64);
+        let mut free_list = Vec::with_capacity(capacity / 16 + 16);
         let root_id = nodes.allocate(SuballocationListNode {
             prev: None,
             next: None,
@@ -844,7 +844,9 @@ impl FreeListAllocator {
                     }
 
                     if offset + size <= suballoc.offset + suballoc.size {
+                        inner.allocate(id);
                         inner.split(id, offset, size);
+                        inner.nodes.get_mut(id).ty = allocation_type.into();
 
                         return Ok(MemoryAlloc {
                             offset,
@@ -971,7 +973,7 @@ impl FreeListAllocatorInner {
                 {
                     let mut index = index;
                     loop {
-                        index -= 1;
+                        index = index.wrapping_sub(1);
                         if let Some(&id) = self.free_list.get(index) {
                             if id == node_id {
                                 self.free_list.remove(index);
@@ -1205,6 +1207,7 @@ impl PoolAllocator {
     /// # Panics
     ///
     /// - Panics if `create_info.block_size` is zero.
+    /// - Panics if `region.size < create_info.block_size`.
     #[inline]
     pub fn new(region: MemoryAlloc, create_info: PoolAllocatorCreateInfo) -> Arc<Self> {
         let PoolAllocatorCreateInfo {
@@ -1534,7 +1537,9 @@ impl BuddyAllocator {
         fn prev_power_of_two(val: DeviceSize) -> DeviceSize {
             const MAX_POWER_OF_TWO: DeviceSize = 1 << (DeviceSize::BITS - 1);
 
-            MAX_POWER_OF_TWO >> val.leading_zeros()
+            MAX_POWER_OF_TWO
+                .checked_shr(val.leading_zeros())
+                .unwrap_or(0)
         }
 
         let SuballocationCreateInfo {
@@ -1551,7 +1556,8 @@ impl BuddyAllocator {
             alignment = DeviceSize::max(alignment, self.region.buffer_image_granularity);
         }
 
-        let min_order = (size.next_power_of_two() / Self::MIN_NODE_SIZE).trailing_zeros() as usize;
+        let size = DeviceSize::max(size, Self::MIN_NODE_SIZE).next_power_of_two();
+        let min_order = (size / Self::MIN_NODE_SIZE).trailing_zeros() as usize;
         let mut inner = self.inner.lock();
 
         // Start searching at the lowest possible order going up.
@@ -1562,21 +1568,21 @@ impl BuddyAllocator {
 
                     // Go in the opposite direction, splitting nodes from higher orders. The lowest
                     // order doesn't need any splitting.
-                    for order in (min_order + 1..=order).rev() {
+                    for order in (min_order..order).rev() {
                         let size = Self::MIN_NODE_SIZE << order;
                         let right_child = offset + size;
 
-                        // Insert the right child in order.
-                        let index = match inner.free_list[order - 1].binary_search(&right_child) {
+                        // Insert the right child in sorted order.
+                        let index = match inner.free_list[order].binary_search(&right_child) {
                             Ok(index) => index,
                             Err(index) => index,
                         };
-                        inner.free_list[order - 1].insert(index, right_child);
+                        inner.free_list[order].insert(index, right_child);
 
                         // Repeat splitting for the left child if required in the next loop turn.
                     }
 
-                    inner.free_size -= Self::MIN_NODE_SIZE << min_order;
+                    inner.free_size -= size;
 
                     return Ok(MemoryAlloc {
                         offset,
@@ -1602,13 +1608,13 @@ impl BuddyAllocator {
         }
     }
 
-    fn free(&self, order: usize, mut offset: DeviceSize) {
+    fn free(&self, min_order: usize, mut offset: DeviceSize) {
         let mut inner = self.inner.lock();
 
-        // Keep incrementing the order trying to coalesce nodes.
-        for order in order..self.order_count {
+        // Try to coalesce nodes while incrementing the order.
+        for order in min_order..self.order_count {
             let size = Self::MIN_NODE_SIZE << order;
-            let buddy_offset = (offset - self.region.offset) ^ size + self.region.offset;
+            let buddy_offset = ((offset - self.region.offset) ^ size) + self.region.offset;
 
             match inner.free_list[order].binary_search(&buddy_offset) {
                 // If the buddy is in the free-list, we can coalesce.
@@ -1623,7 +1629,7 @@ impl BuddyAllocator {
                         Err(index) => index,
                     };
                     inner.free_list[order].insert(index, offset);
-                    inner.free_size += size;
+                    inner.free_size += Self::MIN_NODE_SIZE << min_order;
 
                     break;
                 }
@@ -1895,7 +1901,7 @@ impl SyncBumpAllocator {
     #[inline]
     pub fn new(region: MemoryAlloc) -> Arc<Self> {
         Arc::new(SyncBumpAllocator {
-            state: AtomicU64::new(region.allocation_type as u64).into(),
+            state: AtomicU64::new(region.allocation_type as u64),
             region,
         })
     }
@@ -1950,7 +1956,7 @@ impl SyncBumpAllocator {
     /// Returns the amount of free space that is left.
     #[inline]
     pub fn free_size(&self) -> DeviceSize {
-        self.region.size - self.state.load(Ordering::Relaxed) >> 2
+        self.region.size - (self.state.load(Ordering::Relaxed) >> 2)
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
@@ -2136,11 +2142,10 @@ mod host {
     ///   traversing the whole structure otherwise.
     /// - Cache locality is somewhat improved for linked structures with few nodes.
     ///
-    /// The allocator doesn't hand out pointers but rather IDs (indices) that are relative to the
-    /// pool. This simplifies the logic because the pool can easily be moved and hence also
-    /// resized, but the downside is that the whole pool and possibly also the free-list must be
-    /// copied when it runs out of memory. It is therefore best to start out with a safely large
-    /// capacity.
+    /// The allocator doesn't hand out pointers but rather IDs that are relative to the pool. This
+    /// simplifies the logic because the pool can easily be moved and hence also resized, but the
+    /// downside is that the whole pool and possibly also the free-list must be copied when it runs
+    /// out of memory. It is therefore best to start out with a safely large capacity.
     #[derive(Debug)]
     pub(super) struct PoolAllocator<T> {
         pool: Vec<T>,
@@ -2157,8 +2162,8 @@ mod host {
             let mut free_list = Vec::new();
             pool.reserve_exact(capacity);
             free_list.reserve_exact(capacity);
-            // All indices are free at the start, except 0, which is reserved.
-            for index in (1..capacity).rev() {
+            // All IDs are free at the start.
+            for index in (1..=capacity).rev() {
                 free_list.push(SlotId(NonZeroUsize::new(index).unwrap()));
             }
 
@@ -2174,32 +2179,32 @@ mod host {
                 self.pool.reserve_exact(additional);
                 self.free_list.reserve_exact(additional);
 
-                // Add the new indices to the free-list.
+                // Add the new IDs to the free-list.
                 let len = self.pool.len();
                 let cap = self.pool.capacity();
-                for index in (len + 1..cap).rev() {
+                for id in (len + 2..=cap).rev() {
                     // SAFETY: The `new_unchecked` is safe because:
-                    // - `index` is bound to the range [len + 1, cap).
-                    // - There is no way to add 1 to an unsigned integer (`len`) such that the
+                    // - `id` is bound to the range [len + 2, cap].
+                    // - There is no way to add 2 to an unsigned integer (`len`) such that the
                     //   result is 0, except for an overflow, which is why rustc can't optimize this
                     //   out (unlike in the above loop where the range has a constant start).
                     // - `Vec::reserve_exact` panics if the new capacity exceeds `isize::MAX` bytes,
-                    //   so the length of the pool can not be `usize::MAX`.
-                    let id = SlotId(unsafe { NonZeroUsize::new_unchecked(index) });
+                    //   so the length of the pool can not be `usize::MAX - 1`.
+                    let id = SlotId(unsafe { NonZeroUsize::new_unchecked(id) });
                     self.free_list.push(id);
                 }
 
-                // Smallest free index.
-                SlotId(NonZeroUsize::new(len).unwrap())
+                // Smallest free ID.
+                SlotId(NonZeroUsize::new(len + 1).unwrap())
             });
 
-            if let Some(x) = self.pool.get_mut(id.0.get()) {
+            if let Some(x) = self.pool.get_mut(id.0.get() - 1) {
                 // We're reusing a slot, initialize it with the new value.
                 *x = val;
             } else {
-                // We're using a fresh slot. We always insert indices in order into the free-list,
-                // so the next free index must be right after the end of the occupied slots.
-                debug_assert!(id.0.get() == self.pool.len());
+                // We're using a fresh slot. We always pick IDs in order into the free-list, so the
+                //  next free ID must be for the slot right after the end of the occupied slots.
+                debug_assert!(id.0.get() - 1 == self.pool.len());
                 self.pool.push(val);
             }
 
@@ -2219,9 +2224,9 @@ mod host {
 
             // SAFETY: This is safe because:
             // - The only way to obtain a `SlotId` is through `Self::allocate`.
-            // - `Self::allocate` returns `SlotId`s in the range [1, self.pool.len()).
+            // - `Self::allocate` returns `SlotId`s in the range [1, self.pool.len()].
             // - `self.pool` only grows and never shrinks.
-            unsafe { self.pool.get_unchecked_mut(id.0.get()) }
+            unsafe { self.pool.get_unchecked_mut(id.0.get() - 1) }
         }
     }
 
@@ -2231,7 +2236,7 @@ mod host {
             debug_assert!(!self.free_list.contains(&id));
 
             // SAFETY: Same as the `get_unchecked_mut` above.
-            *unsafe { self.pool.get_unchecked(id.0.get()) }
+            *unsafe { self.pool.get_unchecked(id.0.get() - 1) }
         }
     }
 
@@ -2239,4 +2244,471 @@ mod host {
     /// of the actual ID to this `host` module, making it easier to reason about unsafe code.
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub(super) struct SlotId(NonZeroUsize);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::thread;
+
+    const DUMMY_INFO: SuballocationCreateInfo = SuballocationCreateInfo {
+        size: 1,
+        alignment: 1,
+        allocation_type: AllocationType::Unknown,
+        _ne: crate::NonExhaustive(()),
+    };
+
+    const DUMMY_INFO_LINEAR: SuballocationCreateInfo = SuballocationCreateInfo {
+        allocation_type: AllocationType::Linear,
+        ..DUMMY_INFO
+    };
+
+    #[test]
+    fn free_list_allocator_capacity() {
+        const THREADS: DeviceSize = 12;
+        const ALLOCATIONS_PER_THREAD: DeviceSize = 100;
+        const ALLOCATION_STEP: DeviceSize = 117;
+        const REGION_SIZE: DeviceSize =
+            (ALLOCATION_STEP * (THREADS + 1) * THREADS / 2) * ALLOCATIONS_PER_THREAD;
+
+        let allocator = FreeListAllocator::new(dummy_alloc!(REGION_SIZE));
+        let allocs = ArrayQueue::new((ALLOCATIONS_PER_THREAD * THREADS) as usize);
+
+        // Using threads to randomize allocation order.
+        thread::scope(|scope| {
+            for i in 1..=THREADS {
+                let (allocator, allocs) = (&allocator, &allocs);
+
+                scope.spawn(move || {
+                    let size = i * ALLOCATION_STEP;
+
+                    for _ in 0..ALLOCATIONS_PER_THREAD {
+                        allocs
+                            .push(
+                                allocator
+                                    .allocate(SuballocationCreateInfo { size, ..DUMMY_INFO })
+                                    .unwrap(),
+                            )
+                            .unwrap();
+                    }
+                });
+            }
+        });
+
+        assert!(allocator.allocate(DUMMY_INFO).is_err());
+        assert!(allocator.free_size() == 0);
+
+        drop(allocs);
+        assert!(allocator.free_size() == REGION_SIZE);
+        assert!(allocator
+            .allocate(SuballocationCreateInfo {
+                size: REGION_SIZE,
+                ..DUMMY_INFO
+            })
+            .is_ok());
+    }
+
+    #[test]
+    fn free_list_allocator_respects_alignment() {
+        const INFO: SuballocationCreateInfo = SuballocationCreateInfo {
+            alignment: 256,
+            ..DUMMY_INFO
+        };
+        const REGION_SIZE: DeviceSize = 10 * INFO.alignment;
+
+        let allocator = FreeListAllocator::new(dummy_alloc!(REGION_SIZE));
+        let mut allocs = Vec::with_capacity(10);
+
+        for _ in 0..10 {
+            allocs.push(allocator.allocate(INFO).unwrap());
+        }
+
+        assert!(allocator.allocate(INFO).is_err());
+        assert!(allocator.free_size() == REGION_SIZE - 10);
+    }
+
+    #[test]
+    fn free_list_allocator_respects_granularity() {
+        const GRANULARITY: DeviceSize = 16;
+        const REGION_SIZE: DeviceSize = 2 * GRANULARITY;
+
+        let allocator = FreeListAllocator::new(dummy_alloc!(REGION_SIZE, GRANULARITY));
+        let mut linear_allocs = Vec::with_capacity(GRANULARITY as usize);
+        let mut non_linear_allocs = Vec::with_capacity(GRANULARITY as usize);
+
+        for i in 0..REGION_SIZE {
+            if i % 2 == 0 {
+                linear_allocs.push(
+                    allocator
+                        .allocate(SuballocationCreateInfo {
+                            allocation_type: AllocationType::Linear,
+                            ..DUMMY_INFO
+                        })
+                        .unwrap(),
+                );
+            } else {
+                non_linear_allocs.push(
+                    allocator
+                        .allocate(SuballocationCreateInfo {
+                            allocation_type: AllocationType::NonLinear,
+                            ..DUMMY_INFO
+                        })
+                        .unwrap(),
+                );
+            }
+        }
+
+        assert!(allocator.allocate(DUMMY_INFO_LINEAR).is_err());
+        assert!(allocator.free_size() == 0);
+
+        drop(linear_allocs);
+        assert!(allocator
+            .allocate(SuballocationCreateInfo {
+                size: GRANULARITY,
+                ..DUMMY_INFO
+            })
+            .is_ok());
+
+        let _alloc = allocator.allocate(DUMMY_INFO).unwrap();
+        assert!(allocator.allocate(DUMMY_INFO).is_err());
+        assert!(allocator.allocate(DUMMY_INFO_LINEAR).is_err());
+    }
+
+    #[test]
+    fn pool_allocator_capacity() {
+        const POOL_INFO: PoolAllocatorCreateInfo = PoolAllocatorCreateInfo {
+            block_size: 1024,
+            _ne: crate::NonExhaustive(()),
+        };
+
+        assert_should_panic!({ PoolAllocator::new(dummy_alloc!(1024 - 1), POOL_INFO) });
+
+        let allocator = PoolAllocator::new(dummy_alloc!(2 * 1024 - 1), POOL_INFO);
+        {
+            let alloc = allocator.allocate(DUMMY_INFO).unwrap();
+            assert!(allocator.allocate(DUMMY_INFO).is_err());
+
+            drop(alloc);
+            let _alloc = allocator.allocate(DUMMY_INFO).unwrap();
+        }
+
+        let allocator = PoolAllocator::new(dummy_alloc!(2 * 1024), POOL_INFO);
+        {
+            let alloc1 = allocator.allocate(DUMMY_INFO).unwrap();
+            let alloc2 = allocator.allocate(DUMMY_INFO).unwrap();
+            assert!(allocator.allocate(DUMMY_INFO).is_err());
+
+            drop(alloc1);
+            let alloc1 = allocator.allocate(DUMMY_INFO).unwrap();
+            assert!(allocator.allocate(DUMMY_INFO).is_err());
+
+            drop(alloc1);
+            drop(alloc2);
+            let _alloc1 = allocator.allocate(DUMMY_INFO).unwrap();
+            let _alloc2 = allocator.allocate(DUMMY_INFO).unwrap();
+        }
+    }
+
+    #[test]
+    fn pool_allocator_respects_alignment() {
+        const BLOCK_SIZE: DeviceSize = 1024 + 128;
+        const INFO_A: SuballocationCreateInfo = SuballocationCreateInfo {
+            size: BLOCK_SIZE,
+            alignment: 256,
+            ..DUMMY_INFO
+        };
+        const INFO_B: SuballocationCreateInfo = SuballocationCreateInfo {
+            size: 1024,
+            ..INFO_A
+        };
+
+        let allocator = PoolAllocator::new(
+            dummy_alloc!(10 * BLOCK_SIZE),
+            PoolAllocatorCreateInfo {
+                block_size: BLOCK_SIZE,
+                _ne: crate::NonExhaustive(()),
+            },
+        );
+
+        // This uses the fact that block indices are inserted into the free-list in order, so
+        // the first allocation succeeds because the block has an even index, while the second
+        // has an odd index.
+        allocator.allocate(INFO_A).unwrap();
+        assert!(allocator.allocate(INFO_A).is_err());
+        allocator.allocate(INFO_A).unwrap();
+        assert!(allocator.allocate(INFO_A).is_err());
+
+        for _ in 0..10 {
+            allocator.allocate(INFO_B).unwrap();
+        }
+    }
+
+    #[test]
+    fn pool_allocator_respects_granularity() {
+        const POOL_INFO: PoolAllocatorCreateInfo = PoolAllocatorCreateInfo {
+            block_size: 128,
+            _ne: crate::NonExhaustive(()),
+        };
+
+        let allocator =
+            PoolAllocator::new(dummy_alloc!(1024, 256, AllocationType::Unknown), POOL_INFO);
+        assert!(allocator.block_count() == 4);
+
+        let allocator =
+            PoolAllocator::new(dummy_alloc!(1024, 256, AllocationType::Linear), POOL_INFO);
+        assert!(allocator.block_count() == 8);
+
+        let allocator = PoolAllocator::new(
+            dummy_alloc!(1024, 256, AllocationType::NonLinear),
+            POOL_INFO,
+        );
+        assert!(allocator.block_count() == 8);
+    }
+
+    #[test]
+    fn buddy_allocator_capacity() {
+        const MAX_ORDER: usize = 10;
+        const REGION_SIZE: DeviceSize = BuddyAllocator::MIN_NODE_SIZE << MAX_ORDER;
+
+        let allocator = BuddyAllocator::new(dummy_alloc!(REGION_SIZE));
+        assert!(allocator.order_count() == MAX_ORDER + 1);
+        let mut allocs = Vec::with_capacity(1 << MAX_ORDER);
+
+        for order in 0..=MAX_ORDER {
+            let size = BuddyAllocator::MIN_NODE_SIZE << order;
+
+            for _ in 0..1 << (MAX_ORDER - order) {
+                allocs.push(
+                    allocator
+                        .allocate(SuballocationCreateInfo { size, ..DUMMY_INFO })
+                        .unwrap(),
+                );
+            }
+
+            assert!(allocator.allocate(DUMMY_INFO).is_err());
+            assert!(allocator.free_size() == 0);
+            allocs.clear();
+        }
+
+        let mut orders = (0..MAX_ORDER).collect::<Vec<_>>();
+
+        for mid in 0..MAX_ORDER {
+            orders.rotate_left(mid);
+
+            for &order in &orders {
+                let size = BuddyAllocator::MIN_NODE_SIZE << order;
+                allocs.push(
+                    allocator
+                        .allocate(SuballocationCreateInfo { size, ..DUMMY_INFO })
+                        .unwrap(),
+                );
+            }
+
+            let _alloc = allocator.allocate(DUMMY_INFO).unwrap();
+            assert!(allocator.allocate(DUMMY_INFO).is_err());
+            assert!(allocator.free_size() == 0);
+            allocs.clear();
+        }
+    }
+
+    #[test]
+    fn buddy_allocator_respects_alignment() {
+        const REGION_SIZE: DeviceSize = 4096;
+
+        let allocator = BuddyAllocator::new(dummy_alloc!(REGION_SIZE));
+
+        {
+            const INFO: SuballocationCreateInfo = SuballocationCreateInfo {
+                alignment: 4096,
+                ..DUMMY_INFO
+            };
+
+            let _alloc = allocator.allocate(INFO).unwrap();
+            assert!(allocator.allocate(INFO).is_err());
+            assert!(allocator.free_size() == REGION_SIZE - BuddyAllocator::MIN_NODE_SIZE);
+        }
+
+        {
+            const INFO_A: SuballocationCreateInfo = SuballocationCreateInfo {
+                alignment: 256,
+                ..DUMMY_INFO
+            };
+            const ALLOCATIONS_A: DeviceSize = REGION_SIZE / INFO_A.alignment;
+            const INFO_B: SuballocationCreateInfo = SuballocationCreateInfo {
+                alignment: 16,
+                ..DUMMY_INFO
+            };
+            const ALLOCATIONS_B: DeviceSize = REGION_SIZE / INFO_B.alignment - ALLOCATIONS_A;
+
+            let mut allocs =
+                Vec::with_capacity((REGION_SIZE / BuddyAllocator::MIN_NODE_SIZE) as usize);
+
+            for _ in 0..ALLOCATIONS_A {
+                allocs.push(allocator.allocate(INFO_A).unwrap());
+            }
+
+            assert!(allocator.allocate(INFO_A).is_err());
+            assert!(
+                allocator.free_size()
+                    == REGION_SIZE - ALLOCATIONS_A * BuddyAllocator::MIN_NODE_SIZE
+            );
+
+            for _ in 0..ALLOCATIONS_B {
+                allocs.push(allocator.allocate(INFO_B).unwrap());
+            }
+
+            assert!(allocator.allocate(DUMMY_INFO).is_err());
+            assert!(allocator.free_size() == 0);
+        }
+    }
+
+    #[test]
+    fn buddy_allocator_respects_granularity() {
+        const GRANULARITY: DeviceSize = 256;
+        const REGION_SIZE: DeviceSize = 2 * GRANULARITY;
+
+        let allocator = BuddyAllocator::new(dummy_alloc!(REGION_SIZE, GRANULARITY));
+
+        {
+            const ALLOCATIONS: DeviceSize = REGION_SIZE / BuddyAllocator::MIN_NODE_SIZE;
+
+            let mut allocs = Vec::with_capacity(ALLOCATIONS as usize);
+            for _ in 0..ALLOCATIONS {
+                allocs.push(allocator.allocate(DUMMY_INFO_LINEAR).unwrap());
+            }
+
+            assert!(allocator.allocate(DUMMY_INFO_LINEAR).is_err());
+            assert!(allocator.free_size() == 0);
+        }
+
+        {
+            let _alloc1 = allocator.allocate(DUMMY_INFO).unwrap();
+            let _alloc2 = allocator.allocate(DUMMY_INFO).unwrap();
+            assert!(allocator.allocate(DUMMY_INFO).is_err());
+            assert!(allocator.free_size() == 0);
+        }
+    }
+
+    #[test]
+    fn bump_allocator_respects_alignment() {
+        const INFO: SuballocationCreateInfo = SuballocationCreateInfo {
+            alignment: 16,
+            ..DUMMY_INFO
+        };
+
+        let allocator = BumpAllocator::new(dummy_alloc!(INFO.alignment * 10));
+
+        for _ in 0..10 {
+            allocator.allocate(INFO).unwrap();
+        }
+
+        assert!(allocator.allocate(INFO).is_err());
+
+        for _ in 0..INFO.alignment - 1 {
+            allocator.allocate(DUMMY_INFO).unwrap();
+        }
+
+        assert!(allocator.allocate(INFO).is_err());
+        assert!(allocator.free_size() == 0);
+    }
+
+    #[test]
+    fn bump_allocator_respects_granularity() {
+        const ALLOCATIONS: DeviceSize = 10;
+        const GRANULARITY: DeviceSize = 1024;
+
+        let mut allocator =
+            BumpAllocator::new(dummy_alloc!(GRANULARITY * ALLOCATIONS, GRANULARITY));
+
+        for i in 0..ALLOCATIONS {
+            for _ in 0..GRANULARITY {
+                allocator
+                    .allocate(SuballocationCreateInfo {
+                        allocation_type: if i % 2 == 0 {
+                            AllocationType::NonLinear
+                        } else {
+                            AllocationType::Linear
+                        },
+                        ..DUMMY_INFO
+                    })
+                    .unwrap();
+            }
+        }
+
+        assert!(allocator.allocate(DUMMY_INFO_LINEAR).is_err());
+        assert!(allocator.free_size() == 0);
+
+        allocator.try_reset().unwrap();
+
+        for i in 0..ALLOCATIONS {
+            allocator
+                .allocate(SuballocationCreateInfo {
+                    allocation_type: if i % 2 == 0 {
+                        AllocationType::Linear
+                    } else {
+                        AllocationType::NonLinear
+                    },
+                    ..DUMMY_INFO
+                })
+                .unwrap();
+        }
+
+        assert!(allocator.allocate(DUMMY_INFO_LINEAR).is_err());
+        assert!(allocator.free_size() == GRANULARITY - 1);
+    }
+
+    #[test]
+    fn sync_bump_allocator_syncness() {
+        const THREADS: DeviceSize = 12;
+        const ALLOCATIONS_PER_THREAD: DeviceSize = 10000;
+        const ALLOCATION_STEP: DeviceSize = 117;
+        const REGION_SIZE: DeviceSize =
+            (ALLOCATION_STEP * (THREADS + 1) * THREADS / 2) * ALLOCATIONS_PER_THREAD;
+
+        let mut allocator = SyncBumpAllocator::new(dummy_alloc!(REGION_SIZE));
+
+        thread::scope(|scope| {
+            for i in 1..=THREADS {
+                let allocator = &allocator;
+
+                scope.spawn(move || {
+                    let size = i * ALLOCATION_STEP;
+
+                    for _ in 0..ALLOCATIONS_PER_THREAD {
+                        allocator
+                            .allocate(SuballocationCreateInfo { size, ..DUMMY_INFO })
+                            .unwrap();
+                    }
+                });
+            }
+        });
+
+        assert!(allocator.allocate(DUMMY_INFO).is_err());
+        assert!(allocator.free_size() == 0);
+
+        allocator.try_reset().unwrap();
+        assert!(allocator.free_size() == REGION_SIZE);
+    }
+
+    macro_rules! dummy_alloc {
+        ($size:expr) => {
+            dummy_alloc!($size, 1)
+        };
+        ($size:expr, $granularity:expr) => {
+            dummy_alloc!($size, $granularity, AllocationType::Unknown)
+        };
+        ($size:expr, $granularity:expr, $type:expr) => {
+            MemoryAlloc {
+                offset: 0,
+                size: $size,
+                allocation_type: $type,
+                parent: AllocParent::None,
+                memory: ash::vk::DeviceMemory::null(),
+                memory_type_index: 0,
+                buffer_image_granularity: $granularity,
+            }
+        };
+    }
+
+    pub(self) use dummy_alloc;
 }
