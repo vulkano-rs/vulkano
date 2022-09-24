@@ -27,5 +27,5 @@ Changes to `Foo`:
 - Support for the `khr_foorbar` extension.
 
 ### Bugs fixed
-- `bar` no longer panics when calling `foo`.
+- `bar` panics when calling `foo`.
 ````
