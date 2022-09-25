@@ -1152,7 +1152,37 @@ impl FreeListAllocatorInner {
 ///
 /// The way this is done is that every suballocation inherits the allocation type of the region.
 /// The latter is done by using a region whose allocation type is [`Unknown`]. You are discouraged
-/// from using this type if you can avoid it, see [`block_size`] for more info.
+/// from using this type if you can avoid it.
+///
+/// The block size can end up bigger than specified if the allocator is created with a region whose
+/// allocation type is `Unknown`. In that case all blocks are aligned to the buffer-image
+/// granularity, which may or may not cause signifficant memory usage increase. Say for example
+/// your driver reports a granularity of 4KiB. If you need a block size of 8KiB, you would waste no
+/// memory. On the other hand, if you needed a block size of 6KiB, you would be wasting 25% of the
+/// memory. In such a scenario you are highly encouraged to use a different allocation type.
+///
+/// The reverse is also true: with an allocation type other than `Unknown`, not all memory within a
+/// block may be usable depending on the requested [suballocation]. For instance, with a block size
+/// of 1152B (9 * 128B) and a suballocation with `alignment: 256`, a block at an odd index could
+/// not utilize its first 128B, reducing its effective size to 1024B. This is usually only relevant
+/// with small block sizes, as [alignment requirements] are usually rather small, but it completely
+/// depends on the resource and driver.
+///
+/// In summary, the block size you choose has a signifficant impact on internal fragmentation due
+/// to the two reasons described above. You need to choose your block size carefully, *especially*
+/// if you require small allocations. Some rough guidelines:
+///
+/// - Always [align] your blocks to a sufficiently large power of 2. This does **not** mean your
+///   block size must be a power of two. For example with a block size of 3KiB, your blocks would
+///   be aligned to 1KiB.
+/// - Prefer not using the allocation type `Unknown`. You can always create as many
+///   `PoolAllocator`s as you like for different allocation types and sizes, and they can all work
+///   within the same memory block. You should be safe from fragmentation if your blocks are
+///   aligned to 1KiB.
+/// - If you must use the allocation type `Unknown`, then you should be safe from fragmentation on
+///   pretty much any driver if your blocks are aligned to 64KiB. Keep in mind that this might
+///   change any time as new devices appear or new drivers come out. Always look at the properties
+///   of the devices you want to support before relying on any such data.
 ///
 /// See also [the `Suballocator` implementation].
 ///
@@ -1191,6 +1221,9 @@ impl FreeListAllocatorInner {
 /// [`NonLinear`]: AllocationType::NonLinear
 /// [`block_size`]: PoolAllocatorCreateInfo::block_size
 /// [`Unknown`]: AllocationType::Unknown
+/// [suballocation]: SuballocationCreateInfo
+/// [alignment requirements]: self#memory-requirements
+/// [align]: self#alignment
 /// [the `Suballocator` implementation]: Suballocator#impl-Suballocator-for-Arc<PoolAllocator>
 /// [hierarchy]: Suballocator#memory-hierarchies
 #[derive(Debug)]
@@ -1206,15 +1239,10 @@ impl PoolAllocator {
     ///
     /// # Panics
     ///
-    /// - Panics if `create_info.block_size` is zero.
-    /// - Panics if `region.size < create_info.block_size`.
+    /// - Panics if `block_size` is zero.
+    /// - Panics if `region.size < block_size`.
     #[inline]
-    pub fn new(region: MemoryAlloc, create_info: PoolAllocatorCreateInfo) -> Arc<Self> {
-        let PoolAllocatorCreateInfo {
-            mut block_size,
-            _ne: _,
-        } = create_info;
-
+    pub fn new(region: MemoryAlloc, mut block_size: DeviceSize) -> Arc<Self> {
         assert!(block_size > 0);
 
         if region.allocation_type == AllocationType::Unknown {
@@ -1338,66 +1366,6 @@ impl Suballocator for Arc<PoolAllocator> {
     #[inline]
     fn region(&self) -> &MemoryAlloc {
         &self.region
-    }
-}
-
-/// Parameters to create a new [`PoolAllocator`].
-#[derive(Clone, Debug)]
-pub struct PoolAllocatorCreateInfo {
-    /// The *minimum* size of the blocks.
-    ///
-    /// The block size can end up bigger than requested if the allocator is created with a region
-    /// whose allocation type is [`Unknown`]. In that case all blocks are aligned to the
-    /// [buffer-image granularity], which may or may not cause signifficant memory usage increase.
-    /// Say for example your driver reports a granularity of 4KiB. If you need a block size of
-    /// 8KiB, you would waste no memory. On the other hand, if you needed a block size of 6KiB, you
-    /// would be wasting 25% of the memory. In such a scenario you are highly encouraged to use a
-    /// different allocation type.
-    ///
-    /// The reverse is also true: with an allocation type other than `Unknown`, not all memory
-    /// within a block may be usable depending on the requested [suballocation]. For instance, with
-    /// a block size of 1152B (9 * 128B) and a suballocation with `alignment: 256`, a block at an
-    /// odd index could not utilize its first 128B, reducing its effective size to 1024B. This is
-    /// usually only relevant with small block sizes, as [alignment requirements] are usually rather
-    /// small, but it completely depends on the resource and driver.
-    ///
-    /// In summary, the block size you choose has a signifficant impact on [internal fragmentation]
-    /// due to the two reasons described above. You need to choose your block size carefully,
-    /// *especially* if you require small allocations. Some rough guidelines:
-    ///
-    /// - Always [align] your blocks to a sufficiently large power of 2. This does **not** mean your
-    ///   block size must be a power of two. For example with a block size of 3KiB, your blocks
-    ///   would be aligned to 1KiB.
-    /// - Prefer not using the allocation type `Unknown`. You can always create as many
-    ///   `PoolAllocator`s as you like for different allocation types and sizes, and they can all
-    ///   work within the same memory block. You should be safe from fragmentation if your blocks
-    ///   are aligned to 1KiB.
-    /// - If you must use the allocation type `Unknown`, then you should be safe from
-    ///   fragmentation on pretty much any driver if your blocks are aligned to 64KiB. Keep in mind
-    ///   that this might change any time as new devices appear or new drivers come out. Always
-    ///   look at the properties of the devices you want to support before relying on any such data.
-    ///
-    /// The default value is `0`, which must be overridden.
-    ///
-    /// [`allocation_type`]: Self::allocation_type
-    /// [buffer-image granularity]: self#buffer-image-granularity
-    /// [suballocation]: SuballocationCreateInfo
-    /// [alignment requirements]: self#memory-requirements
-    /// [`Unknown`]: AllocationType::Unknown
-    /// [internal fragmentation]: self#internal-fragmentation
-    /// [align]: self#alignment
-    pub block_size: DeviceSize,
-
-    pub _ne: crate::NonExhaustive,
-}
-
-impl Default for PoolAllocatorCreateInfo {
-    #[inline]
-    fn default() -> Self {
-        PoolAllocatorCreateInfo {
-            block_size: 0,
-            _ne: crate::NonExhaustive(()),
-        }
     }
 }
 
@@ -2376,14 +2344,11 @@ mod tests {
 
     #[test]
     fn pool_allocator_capacity() {
-        const POOL_INFO: PoolAllocatorCreateInfo = PoolAllocatorCreateInfo {
-            block_size: 1024,
-            _ne: crate::NonExhaustive(()),
-        };
+        const BLOCK_SIZE: DeviceSize = 1024;
 
-        assert_should_panic!({ PoolAllocator::new(dummy_alloc!(1024 - 1), POOL_INFO) });
+        assert_should_panic!({ PoolAllocator::new(dummy_alloc!(1024 - 1), BLOCK_SIZE) });
 
-        let allocator = PoolAllocator::new(dummy_alloc!(2 * 1024 - 1), POOL_INFO);
+        let allocator = PoolAllocator::new(dummy_alloc!(2 * 1024 - 1), BLOCK_SIZE);
         {
             let alloc = allocator.allocate(DUMMY_INFO).unwrap();
             assert!(allocator.allocate(DUMMY_INFO).is_err());
@@ -2392,7 +2357,7 @@ mod tests {
             let _alloc = allocator.allocate(DUMMY_INFO).unwrap();
         }
 
-        let allocator = PoolAllocator::new(dummy_alloc!(2 * 1024), POOL_INFO);
+        let allocator = PoolAllocator::new(dummy_alloc!(2 * 1024), BLOCK_SIZE);
         {
             let alloc1 = allocator.allocate(DUMMY_INFO).unwrap();
             let alloc2 = allocator.allocate(DUMMY_INFO).unwrap();
@@ -2422,13 +2387,7 @@ mod tests {
             ..INFO_A
         };
 
-        let allocator = PoolAllocator::new(
-            dummy_alloc!(10 * BLOCK_SIZE),
-            PoolAllocatorCreateInfo {
-                block_size: BLOCK_SIZE,
-                _ne: crate::NonExhaustive(()),
-            },
-        );
+        let allocator = PoolAllocator::new(dummy_alloc!(10 * BLOCK_SIZE), BLOCK_SIZE);
 
         // This uses the fact that block indices are inserted into the free-list in order, so
         // the first allocation succeeds because the block has an even index, while the second
@@ -2445,22 +2404,19 @@ mod tests {
 
     #[test]
     fn pool_allocator_respects_granularity() {
-        const POOL_INFO: PoolAllocatorCreateInfo = PoolAllocatorCreateInfo {
-            block_size: 128,
-            _ne: crate::NonExhaustive(()),
-        };
+        const BLOCK_SIZE: DeviceSize = 128;
 
         let allocator =
-            PoolAllocator::new(dummy_alloc!(1024, 256, AllocationType::Unknown), POOL_INFO);
+            PoolAllocator::new(dummy_alloc!(1024, 256, AllocationType::Unknown), BLOCK_SIZE);
         assert!(allocator.block_count() == 4);
 
         let allocator =
-            PoolAllocator::new(dummy_alloc!(1024, 256, AllocationType::Linear), POOL_INFO);
+            PoolAllocator::new(dummy_alloc!(1024, 256, AllocationType::Linear), BLOCK_SIZE);
         assert!(allocator.block_count() == 8);
 
         let allocator = PoolAllocator::new(
             dummy_alloc!(1024, 256, AllocationType::NonLinear),
-            POOL_INFO,
+            BLOCK_SIZE,
         );
         assert!(allocator.block_count() == 8);
     }
