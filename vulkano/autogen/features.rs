@@ -550,7 +550,7 @@ fn features_members(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<FeaturesMe
                             name: format_ident!("{}", name),
                             doc: String::new(),
                             ffi_name: format_ident!("{}", name),
-                            raw: name,
+                            raw: vulkan_name.to_owned(),
                             ffi_members: vec![ty_name.clone()],
                             requires_features: requires_features
                                 .iter()
@@ -596,7 +596,13 @@ fn features_members(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<FeaturesMe
 
 fn make_doc(feat: &mut FeaturesMember, vulkan_ty_name: &str) {
     let writer = &mut feat.doc;
-    write!(writer, "- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/{}.html#features-{})", vulkan_ty_name, feat.name).unwrap();
+    write!(
+        writer,
+        "- [Vulkan documentation](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/{}.html#features-{})",
+        vulkan_ty_name,
+        feat.raw
+    )
+    .unwrap();
 
     if !feat.requires_features.is_empty() {
         let links: Vec<_> = feat
