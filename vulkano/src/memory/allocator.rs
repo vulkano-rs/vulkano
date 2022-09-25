@@ -571,6 +571,13 @@ unsafe impl VulkanObject for MemoryAlloc {
 /// [allocations]: MemoryAlloc
 /// [pages]: self#pages
 pub trait Suballocator {
+    /// Creates a new suballocator for the given [region].
+    ///
+    /// [region]: Self#regions
+    fn new(region: MemoryAlloc) -> Self
+    where
+        Self: Sized;
+
     /// Creates a new suballocation within the [region].
     ///
     /// [region]: Self#regions
@@ -583,6 +590,15 @@ pub trait Suballocator {
     ///
     /// [region]: Self#regions
     fn region(&self) -> &MemoryAlloc;
+
+    /// Returns the underlying [region] if there are no other strong references to the allocator,
+    /// otherwise hands you back the allocator wrapped in [`Err`]. Allocations made with the
+    /// allocator count as references for as long as they are alive.
+    ///
+    /// [region]: Self#regions
+    fn try_into_region(self) -> Result<MemoryAlloc, Self>
+    where
+        Self: Sized;
 }
 
 /// Parameters to create a new [allocation] using a [suballocator].
@@ -691,6 +707,8 @@ impl Error for SuballocationError {}
 /// size, consider the [`PoolAllocator`]. Lastly, if you need to allocate very often, then
 /// [`BumpAllocator`] is best suited.
 ///
+/// See also [the `Suballocator` implementation].
+///
 /// # Algorithm
 ///
 /// The free-list stores suballocations which can have any offset and size. When an allocation
@@ -723,6 +741,7 @@ impl Error for SuballocationError {}
 /// [suballocator]: Suballocator
 /// [free-list]: Suballocator#free-lists
 /// [external fragmentation]: self#external-fragmentation
+/// [the `Suballocator` implementation]: Suballocator#impl-Suballocator-for-Arc<FreeListAllocator>
 /// [internal fragmentation]: self#internal-fragmentation
 /// [alignment requirements]: self#alignment
 #[derive(Debug)]
@@ -732,16 +751,17 @@ pub struct FreeListAllocator {
 }
 
 impl FreeListAllocator {
-    /// Creates a new `FreeListAllocator`.
+    /// Creates a new `FreeListAllocator` for the given [region].
     ///
     /// # Panics
     ///
     /// - Panics if `region.allocation_type` is not [`AllocationType::Unknown`]. This is done to
     ///   avoid checking for a special case of [buffer-image granularity] conflict.
     ///
+    /// [region]: Suballocator#regions
     /// [buffer-image granularity]: self#buffer-image-granularity
     #[inline]
-    pub fn new(region: MemoryAlloc) -> Arc<Self> {
+    fn new(region: MemoryAlloc) -> Arc<Self> {
         // NOTE(Marc): This number was pulled straight out of my a-
         const AVERAGE_ALLOCATION_SIZE: DeviceSize = 64 * 1024;
 
@@ -769,16 +789,6 @@ impl FreeListAllocator {
             region,
             inner: Mutex::new(inner),
         })
-    }
-
-    /// Returns the underlying [region] if there are no other strong references to the allocator,
-    /// otherwise hands you back the allocator wrapped in [`Err`]. Allocations made with the
-    /// allocator count as references for as long as they are alive.
-    ///
-    /// [region]: Suballocator#regions
-    #[inline]
-    pub fn try_into_region(self: Arc<Self>) -> Result<MemoryAlloc, Arc<Self>> {
-        Arc::try_unwrap(self).map(|allocator| allocator.region)
     }
 
     /// Returns the amount of free space left in the region.
@@ -884,6 +894,13 @@ impl FreeListAllocator {
 }
 
 impl Suballocator for Arc<FreeListAllocator> {
+    #[inline]
+    fn new(region: MemoryAlloc) -> Self {
+        FreeListAllocator::new(region)
+    }
+
+    /// Creates a new suballocation within the [region].
+    ///
     /// # Errors
     ///
     /// - Returns [`OutOfRegionMemory`] if there are no free suballocations large enough so satisfy
@@ -891,6 +908,7 @@ impl Suballocator for Arc<FreeListAllocator> {
     /// - Returns [`FragmentedRegion`] if a suballocation large enough to satisfy the request could
     ///   have been formed, but wasn't because of [external fragmentation].
     ///
+    /// [region]: Suballocator#regions
     /// [`OutOfRegionMemory`]: SuballocationError::OutOfRegionMemory
     /// [`FragmentedRegion`]: SuballocationError::FragmentedRegion
     /// [external fragmentation]: self#external-fragmentation
@@ -907,6 +925,11 @@ impl Suballocator for Arc<FreeListAllocator> {
     #[inline]
     fn region(&self) -> &MemoryAlloc {
         &self.region
+    }
+
+    #[inline]
+    fn try_into_region(self) -> Result<MemoryAlloc, Self> {
+        Arc::try_unwrap(self).map(|allocator| allocator.region)
     }
 }
 
@@ -1135,6 +1158,8 @@ impl FreeListAllocatorInner {
 /// the allocations get. This is generally a good trade-off, as internal fragmentation is nowhere
 /// near as hard to deal with as [external fragmentation].
 ///
+/// See also [the `Suballocator` implementation].
+///
 /// # Algorithm
 ///
 /// The free-list contains indices of blocks in the region that are available, so allocation
@@ -1184,8 +1209,6 @@ impl FreeListAllocatorInner {
 ///   change any time as new devices appear or new drivers come out. Always look at the properties
 ///   of the devices you want to support before relying on any such data.
 ///
-/// See also [the `Suballocator` implementation].
-///
 /// # Efficiency
 ///
 /// In theory, a pool allocator is the ideal one because it causes no external fragmentation, and
@@ -1215,6 +1238,7 @@ impl FreeListAllocatorInner {
 /// [free-list]: Suballocator#free-lists
 /// [internal fragmentation]: self#internal-fragmentation
 /// [external fragmentation]: self#external-fragmentation
+/// [the `Suballocator` implementation]: Suballocator#impl-Suballocator-for-Arc<PoolAllocator<BLOCK_SIZE>>
 /// [region]: Suballocator#regions
 /// [buffer-image granularity]: self#buffer-image-granularity
 /// [`Linear`]: AllocationType::Linear
@@ -1223,7 +1247,6 @@ impl FreeListAllocatorInner {
 /// [suballocation]: SuballocationCreateInfo
 /// [alignment requirements]: self#memory-requirements
 /// [align]: self#alignment
-/// [the `Suballocator` implementation]: Suballocator#impl-Suballocator-for-Arc<PoolAllocator>
 /// [hierarchy]: Suballocator#memory-hierarchies
 #[derive(Debug)]
 #[repr(transparent)]
@@ -1232,13 +1255,15 @@ pub struct PoolAllocator<const BLOCK_SIZE: DeviceSize> {
 }
 
 impl<const BLOCK_SIZE: DeviceSize> PoolAllocator<BLOCK_SIZE> {
-    /// Creates a new `PoolAllocator`.
+    /// Creates a new `PoolAllocator` for the given [region].
     ///
     /// # Panics
     ///
     /// - Panics if `region.size < BLOCK_SIZE`.
+    ///
+    /// [region]: Suballocator#regions
     #[inline]
-    pub fn new(region: MemoryAlloc) -> Arc<Self> {
+    fn new(region: MemoryAlloc) -> Arc<Self> {
         // SAFETY: `PoolAllocator<BLOCK_SIZE>` and `PoolAllocatorInner` have the same layout.
         unsafe {
             Arc::from_raw(
@@ -1248,16 +1273,6 @@ impl<const BLOCK_SIZE: DeviceSize> PoolAllocator<BLOCK_SIZE> {
         }
     }
 
-    /// Returns the underlying [region] if there are no other strong references to the allocator,
-    /// otherwise hands you back the allocator wrapped in [`Err`]. Allocations made with the
-    /// allocator count as references for as long as they are alive.
-    ///
-    /// [region]: Suballocator#regions
-    #[inline]
-    pub fn try_into_region(self: Arc<Self>) -> Result<MemoryAlloc, Arc<Self>> {
-        Arc::try_unwrap(self).map(|allocator| allocator.inner.region)
-    }
-
     /// Size of a block. Can be bigger than `BLOCK_SIZE` due to alignment requirements.
     #[inline]
     pub fn block_size(&self) -> DeviceSize {
@@ -1265,7 +1280,7 @@ impl<const BLOCK_SIZE: DeviceSize> PoolAllocator<BLOCK_SIZE> {
     }
 
     /// Total number of blocks available to the allocator. This is always equal to
-    /// `self.size() / self.block_size()`.
+    /// `self.region().size() / self.block_size()`.
     #[inline]
     pub fn block_count(&self) -> usize {
         self.inner.free_list.capacity()
@@ -1294,6 +1309,13 @@ impl<const BLOCK_SIZE: DeviceSize> PoolAllocator<BLOCK_SIZE> {
 }
 
 impl<const BLOCK_SIZE: DeviceSize> Suballocator for Arc<PoolAllocator<BLOCK_SIZE>> {
+    #[inline]
+    fn new(region: MemoryAlloc) -> Self {
+        PoolAllocator::new(region)
+    }
+
+    /// Creates a new suballocation within the [region].
+    ///
     /// > **Note**: `create_info.allocation_type` is silently ignored because all suballocations
     /// > inherit the same allocation type from the allocator.
     ///
@@ -1305,6 +1327,7 @@ impl<const BLOCK_SIZE: DeviceSize> Suballocator for Arc<PoolAllocator<BLOCK_SIZE
     ///   [internal fragmentation] but a different one would be, you still get this error. See the
     ///   [type-level documentation] for details on how to properly configure your allocator.
     ///
+    /// [region]: Suballocator#regions
     /// [`OutOfRegionMemory`]: SuballocationError::OutOfRegionMemory
     /// [free-list]: Suballocator#free-lists
     /// [internal fragmentation]: self#internal-fragmentation
@@ -1322,6 +1345,11 @@ impl<const BLOCK_SIZE: DeviceSize> Suballocator for Arc<PoolAllocator<BLOCK_SIZE
     #[inline]
     fn region(&self) -> &MemoryAlloc {
         &self.inner.region
+    }
+
+    #[inline]
+    fn try_into_region(self) -> Result<MemoryAlloc, Self> {
+        Arc::try_unwrap(self).map(|allocator| allocator.inner.region)
     }
 }
 
@@ -1407,6 +1435,8 @@ impl PoolAllocatorInner {
 /// then the [`PoolAllocator`] would be a better choice and would eliminate external fragmentation
 /// completely.
 ///
+/// See also [the `Suballocator` implementation].
+///
 /// # Algorithm
 ///
 /// Say you have a region of size 256MiB, and you want to allocate 14MiB. Assuming there are no
@@ -1430,8 +1460,6 @@ impl PoolAllocatorInner {
 /// would be when you need to allocate regions for other allocators, such as the `PoolAllocator` or
 /// the [`BumpAllocator`].
 ///
-/// See also [the `Suballocator` implementation].
-///
 /// # Efficiency
 ///
 /// The allocator is synchronized internally with a lock, which is held only for a very short
@@ -1442,9 +1470,9 @@ impl PoolAllocatorInner {
 /// [suballocator]: Suballocator
 /// [internal fragmentation]: self#internal-fragmentation
 /// [external fragmentation]: self#external-fragmentation
+/// [the `Suballocator` implementation]: Suballocator#impl-Suballocator-for-Arc<BuddyAllocator>
 /// [region]: Suballocator#regions
 /// [buffer-image granularity]: self#buffer-image-granularity
-/// [the `Suballocator` implementation]: #impl-Suballocator-for-Arc<BuddyAllocator>
 #[derive(Debug)]
 pub struct BuddyAllocator {
     region: MemoryAlloc,
@@ -1459,7 +1487,7 @@ impl BuddyAllocator {
     /// size of 16, this is enough for a 64GiB region.
     const MAX_ORDERS: usize = 32;
 
-    /// Creates a new `BuddyAllocator`.
+    /// Creates a new `BuddyAllocator` for the given [region].
     ///
     /// # Panics
     ///
@@ -1468,18 +1496,21 @@ impl BuddyAllocator {
     /// - Panics if `region.size` is not a power of two.
     /// - Panics if `region.size` is not in the range \[16B,&nbsp;64GiB\].
     ///
+    /// [region]: Suballocator#regions
     /// [buffer-image granularity]: self#buffer-image-granularity
     #[inline]
-    pub fn new(region: MemoryAlloc) -> Arc<Self> {
+    fn new(region: MemoryAlloc) -> Arc<Self> {
         const EMPTY_FREE_LIST: Vec<DeviceSize> = Vec::new();
 
-        let max_order = (region.size / Self::MIN_NODE_SIZE).trailing_zeros() as usize;
+        let max_order = (region.size / BuddyAllocator::MIN_NODE_SIZE).trailing_zeros() as usize;
 
         assert!(region.allocation_type == AllocationType::Unknown);
         assert!(region.size.is_power_of_two());
-        assert!(region.size >= Self::MIN_NODE_SIZE && max_order < Self::MAX_ORDERS);
+        assert!(
+            region.size >= BuddyAllocator::MIN_NODE_SIZE && max_order < BuddyAllocator::MAX_ORDERS
+        );
 
-        let mut free_list = [EMPTY_FREE_LIST; Self::MAX_ORDERS];
+        let mut free_list = [EMPTY_FREE_LIST; BuddyAllocator::MAX_ORDERS];
         // The root node has the lowest offset and highest order, so it's the whole region.
         free_list[max_order].push(region.offset);
         let inner = BuddyAllocatorInner {
@@ -1492,16 +1523,6 @@ impl BuddyAllocator {
             order_count: max_order + 1,
             inner: Mutex::new(inner),
         })
-    }
-
-    /// Returns the underlying [region] if there are no other strong references to the allocator,
-    /// otherwise hands you back the allocator wrapped in [`Err`]. Allocations made with the
-    /// allocator count as references for as long as they are alive.
-    ///
-    /// [region]: Suballocator#regions
-    #[inline]
-    pub fn try_into_region(self: Arc<Self>) -> Result<MemoryAlloc, Arc<Self>> {
-        Arc::try_unwrap(self).map(|allocator| allocator.region)
     }
 
     /// Number of orders in the tree. This is always equal to log(*region&nbsp;size*)&nbsp;-&nbsp;3
@@ -1633,6 +1654,13 @@ impl BuddyAllocator {
 }
 
 impl Suballocator for Arc<BuddyAllocator> {
+    #[inline]
+    fn new(region: MemoryAlloc) -> Self {
+        BuddyAllocator::new(region)
+    }
+
+    /// Creates a new suballocation within the [region].
+    ///
     /// # Errors
     ///
     /// - Returns [`OutOfRegionMemory`] if there are no free nodes large enough so satisfy the
@@ -1640,6 +1668,7 @@ impl Suballocator for Arc<BuddyAllocator> {
     /// - Returns [`FragmentedRegion`] if a node large enough to satisfy the request could have
     ///   been formed, but wasn't because of [external fragmentation].
     ///
+    /// [region]: Suballocator#regions
     /// [`OutOfRegionMemory`]: SuballocationError::OutOfRegionMemory
     /// [`FragmentedRegion`]: SuballocationError::FragmentedRegion
     /// [external fragmentation]: self#external-fragmentation
@@ -1656,6 +1685,11 @@ impl Suballocator for Arc<BuddyAllocator> {
     #[inline]
     fn region(&self) -> &MemoryAlloc {
         &self.region
+    }
+
+    #[inline]
+    fn try_into_region(self) -> Result<MemoryAlloc, Self> {
+        Arc::try_unwrap(self).map(|allocator| allocator.region)
     }
 }
 
@@ -1682,6 +1716,8 @@ struct BuddyAllocatorInner {
 /// you reset it and allocate your resources with it. You write to the resources, render with them,
 /// and drop them at the end of the frame.
 ///
+/// See also [the `Suballocator` implementation].
+///
 /// # Algorithm
 ///
 /// What happens is that every time you make an allocation, you receive one with an offset
@@ -1690,8 +1726,6 @@ struct BuddyAllocatorInner {
 /// because it doesn't need to keep a [free-list]. It only needs to do a few additions and
 /// comparisons. But beware, **fast is about all this is**. It is horribly memory inefficient when
 /// used wrong, and is very susceptible to [memory leaks].
-///
-/// See also [the `Suballocator` implementation].
 ///
 /// # Efficiency
 ///
@@ -1707,10 +1741,10 @@ struct BuddyAllocatorInner {
 /// from multiple threads.
 ///
 /// [suballocator]: Suballocator
+/// [the `Suballocator` implementation]: Suballocator#impl-Suballocator-for-Arc<BumpAllocator>
 /// [region]: Suballocator#regions
 /// [free-list]: Suballocator#free-lists
 /// [memory leaks]: self#leakage
-/// [the `Suballocator` implementation]: Suballocator#impl-Suballocator-for-Arc<BumpAllocator>
 #[derive(Debug)]
 pub struct BumpAllocator {
     region: MemoryAlloc,
@@ -1721,24 +1755,16 @@ pub struct BumpAllocator {
 }
 
 impl BumpAllocator {
-    /// Creates a new `BumpAllocator`.
+    /// Creates a new `BumpAllocator` for the given [region].
+    ///
+    /// [region]: Suballocator#regions
     #[inline]
-    pub fn new(region: MemoryAlloc) -> Arc<Self> {
+    fn new(region: MemoryAlloc) -> Arc<Self> {
         Arc::new(BumpAllocator {
             free_start: Cell::new(0),
             prev_alloc_type: Cell::new(region.allocation_type),
             region,
         })
-    }
-
-    /// Returns the underlying [region] if there are no other strong references to the allocator,
-    /// otherwise hands you back the allocator wrapped in [`Err`]. Allocations made with the
-    /// allocator count as references for as long as they are alive.
-    ///
-    /// [region]: Suballocator#regions
-    #[inline]
-    pub fn try_into_region(self: Arc<Self>) -> Result<MemoryAlloc, Arc<Self>> {
-        Arc::try_unwrap(self).map(|allocator| allocator.region)
     }
 
     /// Resets the free-start back to the beginning of the [region] if there are no other strong
@@ -1835,13 +1861,20 @@ impl BumpAllocator {
 }
 
 impl Suballocator for Arc<BumpAllocator> {
+    #[inline]
+    fn new(region: MemoryAlloc) -> Self {
+        BumpAllocator::new(region)
+    }
+
+    /// Creates a new suballocation within the [region].
+    ///
     /// # Errors
     ///
     /// - Returns [`OutOfRegionMemory`] if the requested allocation can't fit in the free space
-    ///   remaining in the [region].
+    ///   remaining in the region.
     ///
-    /// [`OutOfRegionMemory`]: SuballocationError::OutOfRegionMemory
     /// [region]: Suballocator#regions
+    /// [`OutOfRegionMemory`]: SuballocationError::OutOfRegionMemory
     #[inline]
     fn allocate(
         &self,
@@ -1856,6 +1889,11 @@ impl Suballocator for Arc<BumpAllocator> {
     fn region(&self) -> &MemoryAlloc {
         &self.region
     }
+
+    #[inline]
+    fn try_into_region(self) -> Result<MemoryAlloc, Self> {
+        Arc::try_unwrap(self).map(|allocator| allocator.region)
+    }
 }
 
 /// A thread-safe version of the [`BumpAllocator`].
@@ -1866,6 +1904,8 @@ impl Suballocator for Arc<BumpAllocator> {
 /// used concurrently. In such a scenario it's best not to reset it at all and instead drop it once
 /// it reaches the end of the [region], freeing the region to a higher level in the [hierarchy]
 /// once all threads have dropped their reference to the allocator.
+///
+/// See also [the `Suballocator` implementation].
 ///
 /// # Algorithm
 ///
@@ -1880,6 +1920,7 @@ impl Suballocator for Arc<BumpAllocator> {
 ///
 /// [region]: Suballocator#regions
 /// [hierarchy]: Suballocator#memory-hierarchies
+/// [the `Suballocator` implementation]: Suballocator#impl-Suballocator-for-Arc<SyncBumpAllocator>
 /// [single-threaded version]: BumpAllocator#algorithm
 /// [`SeqCst`]: Ordering::SeqCst
 #[derive(Debug)]
@@ -1891,23 +1932,15 @@ pub struct SyncBumpAllocator {
 }
 
 impl SyncBumpAllocator {
-    /// Creates a new `SyncBumpAllocator`.
+    /// Creates a new `SyncBumpAllocator` for the given [region].
+    ///
+    /// [region]: Suballocator#regions
     #[inline]
-    pub fn new(region: MemoryAlloc) -> Arc<Self> {
+    fn new(region: MemoryAlloc) -> Arc<Self> {
         Arc::new(SyncBumpAllocator {
             state: AtomicU64::new(region.allocation_type as u64),
             region,
         })
-    }
-
-    /// Returns the underlying [region] if there are no other strong references to the allocator,
-    /// otherwise hands you back the allocator wrapped in [`Err`]. Allocations made with the
-    /// allocator count as references for as long as they are alive.
-    ///
-    /// [region]: Suballocator#regions
-    #[inline]
-    pub fn try_into_region(self: Arc<Self>) -> Result<MemoryAlloc, Arc<Self>> {
-        Arc::try_unwrap(self).map(|allocator| allocator.region)
     }
 
     /// Resets the free start back to the beginning of the [region] if there are no other strong
@@ -2058,13 +2091,20 @@ impl SyncBumpAllocator {
 }
 
 impl Suballocator for Arc<SyncBumpAllocator> {
+    #[inline]
+    fn new(region: MemoryAlloc) -> Self {
+        SyncBumpAllocator::new(region)
+    }
+
+    /// Creates a new suballocation within the [region].
+    ///
     /// # Errors
     ///
     /// - Returns [`OutOfRegionMemory`] if the requested allocation can't fit in the free space
-    ///   remaining in the [region].
+    ///   remaining in the region.
     ///
-    /// [`OutOfRegionMemory`]: SuballocationError::OutOfRegionMemory
     /// [region]: Suballocator#regions
+    /// [`OutOfRegionMemory`]: SuballocationError::OutOfRegionMemory
     #[inline]
     fn allocate(
         &self,
@@ -2078,6 +2118,11 @@ impl Suballocator for Arc<SyncBumpAllocator> {
     #[inline]
     fn region(&self) -> &MemoryAlloc {
         &self.region
+    }
+
+    #[inline]
+    fn try_into_region(self) -> Result<MemoryAlloc, Self> {
+        Arc::try_unwrap(self).map(|allocator| allocator.region)
     }
 }
 
