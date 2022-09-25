@@ -31,7 +31,7 @@ use std::{
     hash::{Hash, Hasher},
     mem::take,
     ptr,
-    sync::Arc,
+    sync::{atomic::Ordering, Arc},
 };
 
 /// Represents a queue where commands can be submitted.
@@ -183,7 +183,7 @@ impl<'a> QueueGuard<'a> {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub(crate) unsafe fn bind_sparse_unchecked(
+    pub unsafe fn bind_sparse_unchecked(
         &mut self,
         bind_infos: impl IntoIterator<Item = BindSparseInfo>,
         fence: Option<Arc<Fence>>,
@@ -457,10 +457,10 @@ impl<'a> QueueGuard<'a> {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub(crate) unsafe fn present_unchecked(
+    pub unsafe fn present_unchecked(
         &mut self,
         present_info: PresentInfo,
-    ) -> impl ExactSizeIterator<Item = Result<(), VulkanError>> {
+    ) -> impl ExactSizeIterator<Item = Result<bool, VulkanError>> {
         let &PresentInfo {
             ref wait_semaphores,
             ref swapchain_infos,
@@ -558,17 +558,30 @@ impl<'a> QueueGuard<'a> {
         let fns = self.queue.device().fns();
         let _ = (fns.khr_swapchain.queue_present_khr)(self.queue.handle, &info_vk);
 
+        // If a presentation results in a loss of full-screen exclusive mode,
+        // signal that to the relevant swapchain.
+        for (&result, swapchain_info) in results.iter().zip(&present_info.swapchain_infos) {
+            if result == ash::vk::Result::ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT {
+                swapchain_info
+                    .swapchain
+                    .full_screen_exclusive_held()
+                    .store(false, Ordering::SeqCst);
+            }
+        }
+
         // Some presents may succeed and some may fail. Since we don't know what the implementation
         // is going to do, we act as if they all succeeded.
         self.state.operations.push_back((present_info.into(), None));
 
-        results
-            .into_iter()
-            .map(|result| result.result().map_err(VulkanError::from))
+        results.into_iter().map(|result| match result {
+            ash::vk::Result::SUCCESS => Ok(false),
+            ash::vk::Result::SUBOPTIMAL_KHR => Ok(true),
+            err => Err(VulkanError::from(err)),
+        })
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    pub(crate) unsafe fn submit_unchecked(
+    pub unsafe fn submit_unchecked(
         &mut self,
         submit_infos: impl IntoIterator<Item = SubmitInfo>,
         fence: Option<Arc<Fence>>,
@@ -1192,5 +1205,41 @@ impl From<SmallVec<[SubmitInfo; 4]>> for QueueOperation {
     #[inline]
     fn from(val: SmallVec<[SubmitInfo; 4]>) -> Self {
         Self::Submit(val)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::sync::Fence;
+    use std::{sync::Arc, time::Duration};
+
+    #[test]
+    fn empty_submit() {
+        let (_device, queue) = gfx_dev_and_queue!();
+
+        unsafe {
+            let mut queue_guard = queue.lock();
+            queue_guard
+                .submit_unchecked([Default::default()], None)
+                .unwrap();
+        }
+    }
+
+    #[test]
+    fn signal_fence() {
+        unsafe {
+            let (device, queue) = gfx_dev_and_queue!();
+
+            let fence = Arc::new(Fence::new(device, Default::default()).unwrap());
+            assert!(!fence.is_signaled().unwrap());
+
+            let mut queue_guard = queue.lock();
+            queue_guard
+                .submit_unchecked([Default::default()], Some(fence.clone()))
+                .unwrap();
+
+            fence.wait(Some(Duration::from_secs(5))).unwrap();
+            assert!(fence.is_signaled().unwrap());
+        }
     }
 }

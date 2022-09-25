@@ -7,10 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{AccessCheckError, FlushError, GpuFuture};
+use super::{AccessCheckError, FlushError, GpuFuture, SubmitAnyBuilder};
 use crate::{
     buffer::sys::UnsafeBuffer,
-    command_buffer::submit::SubmitAnyBuilder,
     device::{Device, DeviceOwned, Queue},
     image::{sys::UnsafeImage, ImageLayout},
     sync::{AccessFlags, PipelineStages},
@@ -93,14 +92,14 @@ where
             (SubmitAnyBuilder::Empty, b) => b,
             (a, SubmitAnyBuilder::Empty) => a,
             (SubmitAnyBuilder::SemaphoresWait(mut a), SubmitAnyBuilder::SemaphoresWait(b)) => {
-                a.merge(b);
+                a.extend(b);
                 SubmitAnyBuilder::SemaphoresWait(a)
             }
-            (SubmitAnyBuilder::SemaphoresWait(a), SubmitAnyBuilder::CommandBuffer(_)) => {
+            (SubmitAnyBuilder::SemaphoresWait(a), SubmitAnyBuilder::CommandBuffer(_, _)) => {
                 self.second.flush()?;
                 SubmitAnyBuilder::SemaphoresWait(a)
             }
-            (SubmitAnyBuilder::CommandBuffer(_), SubmitAnyBuilder::SemaphoresWait(b)) => {
+            (SubmitAnyBuilder::CommandBuffer(_, _), SubmitAnyBuilder::SemaphoresWait(b)) => {
                 self.first.flush()?;
                 SubmitAnyBuilder::SemaphoresWait(b)
             }
@@ -112,51 +111,70 @@ where
                 self.first.flush()?;
                 SubmitAnyBuilder::SemaphoresWait(b)
             }
-            (SubmitAnyBuilder::SemaphoresWait(a), SubmitAnyBuilder::BindSparse(_)) => {
+            (SubmitAnyBuilder::SemaphoresWait(a), SubmitAnyBuilder::BindSparse(_, _)) => {
                 self.second.flush()?;
                 SubmitAnyBuilder::SemaphoresWait(a)
             }
-            (SubmitAnyBuilder::BindSparse(_), SubmitAnyBuilder::SemaphoresWait(b)) => {
+            (SubmitAnyBuilder::BindSparse(_, _), SubmitAnyBuilder::SemaphoresWait(b)) => {
                 self.first.flush()?;
                 SubmitAnyBuilder::SemaphoresWait(b)
             }
-            (SubmitAnyBuilder::CommandBuffer(a), SubmitAnyBuilder::CommandBuffer(b)) => {
-                // TODO: we may want to add debug asserts here
-                let new = a.merge(b);
-                SubmitAnyBuilder::CommandBuffer(new)
+            (
+                SubmitAnyBuilder::CommandBuffer(mut submit_info_a, fence_a),
+                SubmitAnyBuilder::CommandBuffer(submit_info_b, fence_b),
+            ) => {
+                assert!(
+                    fence_a.is_none() || fence_b.is_none(),
+                    "Can't merge two queue submits that both have a fence"
+                );
+
+                submit_info_a
+                    .wait_semaphores
+                    .extend(submit_info_b.wait_semaphores);
+                submit_info_a
+                    .command_buffers
+                    .extend(submit_info_b.command_buffers);
+                submit_info_a
+                    .signal_semaphores
+                    .extend(submit_info_b.signal_semaphores);
+
+                SubmitAnyBuilder::CommandBuffer(submit_info_a, fence_a.or(fence_b))
             }
             (SubmitAnyBuilder::QueuePresent(_), SubmitAnyBuilder::QueuePresent(_)) => {
                 self.first.flush()?;
                 self.second.flush()?;
                 SubmitAnyBuilder::Empty
             }
-            (SubmitAnyBuilder::CommandBuffer(_), SubmitAnyBuilder::QueuePresent(_)) => {
+            (SubmitAnyBuilder::CommandBuffer(_, _), SubmitAnyBuilder::QueuePresent(_)) => {
                 unimplemented!()
             }
-            (SubmitAnyBuilder::QueuePresent(_), SubmitAnyBuilder::CommandBuffer(_)) => {
+            (SubmitAnyBuilder::QueuePresent(_), SubmitAnyBuilder::CommandBuffer(_, _)) => {
                 unimplemented!()
             }
-            (SubmitAnyBuilder::BindSparse(_), SubmitAnyBuilder::QueuePresent(_)) => {
+            (SubmitAnyBuilder::BindSparse(_, _), SubmitAnyBuilder::QueuePresent(_)) => {
                 unimplemented!()
             }
-            (SubmitAnyBuilder::QueuePresent(_), SubmitAnyBuilder::BindSparse(_)) => {
+            (SubmitAnyBuilder::QueuePresent(_), SubmitAnyBuilder::BindSparse(_, _)) => {
                 unimplemented!()
             }
-            (SubmitAnyBuilder::BindSparse(_), SubmitAnyBuilder::CommandBuffer(_)) => {
+            (SubmitAnyBuilder::BindSparse(_, _), SubmitAnyBuilder::CommandBuffer(_, _)) => {
                 unimplemented!()
             }
-            (SubmitAnyBuilder::CommandBuffer(_), SubmitAnyBuilder::BindSparse(_)) => {
+            (SubmitAnyBuilder::CommandBuffer(_, _), SubmitAnyBuilder::BindSparse(_, _)) => {
                 unimplemented!()
             }
-            (SubmitAnyBuilder::BindSparse(mut a), SubmitAnyBuilder::BindSparse(b)) => {
-                match a.merge(b) {
-                    Ok(()) => SubmitAnyBuilder::BindSparse(a),
-                    Err(_) => {
-                        // TODO: this happens if both bind sparse have been given a fence already
-                        //       annoying, but not impossible, to handle
-                        unimplemented!()
-                    }
+            (
+                SubmitAnyBuilder::BindSparse(mut bind_infos_a, fence_a),
+                SubmitAnyBuilder::BindSparse(bind_infos_b, fence_b),
+            ) => {
+                if fence_a.is_some() && fence_b.is_some() {
+                    // TODO: this happens if both bind sparse have been given a fence already
+                    //       annoying, but not impossible, to handle
+                    unimplemented!()
                 }
+
+                bind_infos_a.extend(bind_infos_b);
+                SubmitAnyBuilder::BindSparse(bind_infos_a, fence_a)
             }
         })
     }

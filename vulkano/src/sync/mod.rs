@@ -111,7 +111,7 @@ pub use self::{
     },
     future::{
         now, AccessCheckError, AccessError, FenceSignalFuture, FlushError, GpuFuture, JoinFuture,
-        NowFuture, SemaphoreSignalFuture,
+        NowFuture, SemaphoreSignalFuture, SubmitAnyBuilder,
     },
     pipeline::{
         AccessFlags, BufferMemoryBarrier, DependencyInfo, ImageMemoryBarrier, MemoryBarrier,

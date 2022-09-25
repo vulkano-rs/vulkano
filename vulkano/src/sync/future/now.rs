@@ -7,10 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{AccessCheckError, FlushError, GpuFuture};
+use super::{AccessCheckError, FlushError, GpuFuture, SubmitAnyBuilder};
 use crate::{
     buffer::sys::UnsafeBuffer,
-    command_buffer::submit::SubmitAnyBuilder,
     device::{Device, DeviceOwned, Queue},
     image::{sys::UnsafeImage, ImageLayout},
     sync::{AccessFlags, PipelineStages},

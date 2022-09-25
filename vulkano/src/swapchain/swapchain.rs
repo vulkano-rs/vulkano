@@ -13,9 +13,6 @@ use super::{
 };
 use crate::{
     buffer::sys::UnsafeBuffer,
-    command_buffer::submit::{
-        SubmitAnyBuilder, SubmitPresentBuilder, SubmitPresentError, SubmitSemaphoresWaitBuilder,
-    },
     device::{Device, DeviceOwned, Queue},
     format::Format,
     image::{
@@ -23,20 +20,21 @@ use crate::{
         ImageLayout, ImageTiling, ImageType, ImageUsage, SampleCount, SwapchainImage,
     },
     macros::vulkan_enum,
-    swapchain::{SurfaceApi, SurfaceInfo, SurfaceSwapchainLock},
+    swapchain::{PresentInfo, SurfaceApi, SurfaceInfo, SurfaceSwapchainLock},
     sync::{
         AccessCheckError, AccessError, AccessFlags, Fence, FenceError, FlushError, GpuFuture,
-        PipelineStages, Semaphore, SemaphoreError, Sharing,
+        PipelineStages, Semaphore, SemaphoreError, Sharing, SubmitAnyBuilder,
     },
     DeviceSize, OomError, RequirementNotMet, RequiresOneOf, VulkanError, VulkanObject,
 };
 use parking_lot::Mutex;
-use smallvec::SmallVec;
+use smallvec::{smallvec, SmallVec};
 use std::{
     error::Error,
     fmt::{Debug, Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
     mem::MaybeUninit,
+    num::NonZeroU64,
     ops::Range,
     ptr,
     sync::{
@@ -982,7 +980,7 @@ pub unsafe trait SwapchainAbstract:
     fn image_array_layers(&self) -> u32;
 
     #[doc(hidden)]
-    unsafe fn prev_present_id(&self) -> &AtomicU64;
+    unsafe fn try_claim_present_id(&self, present_id: NonZeroU64) -> bool;
 
     #[doc(hidden)]
     unsafe fn full_screen_exclusive_held(&self) -> &AtomicBool;
@@ -1034,8 +1032,9 @@ where
     }
 
     #[inline]
-    unsafe fn prev_present_id(&self) -> &AtomicU64 {
-        &self.prev_present_id
+    unsafe fn try_claim_present_id(&self, present_id: NonZeroU64) -> bool {
+        let present_id = u64::from(present_id);
+        self.prev_present_id.fetch_max(present_id, Ordering::SeqCst) < present_id
     }
 }
 
@@ -1702,8 +1701,7 @@ where
     #[inline]
     unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
         if let Some(ref semaphore) = self.semaphore {
-            let mut sem = SubmitSemaphoresWaitBuilder::new();
-            sem.add_wait_semaphore(semaphore.clone());
+            let sem = smallvec![semaphore.clone()];
             Ok(SubmitAnyBuilder::SemaphoresWait(sem))
         } else {
             Ok(SubmitAnyBuilder::Empty)
@@ -2043,46 +2041,65 @@ where
             return Ok(SubmitAnyBuilder::Empty);
         }
 
+        let mut swapchain_info = self.swapchain_info.clone();
+        debug_assert!((swapchain_info.image_index as u32) < swapchain_info.swapchain.image_count());
+        let device = swapchain_info.swapchain.device();
+
+        if !device.enabled_features().present_id {
+            swapchain_info.present_id = None;
+        }
+
+        if device.enabled_extensions().khr_incremental_present {
+            for rectangle in &swapchain_info.present_regions {
+                assert!(rectangle.is_compatible_with(swapchain_info.swapchain.as_ref()));
+            }
+        } else {
+            swapchain_info.present_regions = Default::default();
+        }
+
         let _queue = self.previous.queue();
 
         // TODO: if the swapchain image layout is not PRESENT, should add a transition command
         // buffer
 
         Ok(match self.previous.build_submission()? {
-            SubmitAnyBuilder::Empty => {
-                let mut builder = SubmitPresentBuilder::new();
-                builder.add_swapchain(self.swapchain_info.clone());
-                SubmitAnyBuilder::QueuePresent(builder)
+            SubmitAnyBuilder::Empty => SubmitAnyBuilder::QueuePresent(PresentInfo {
+                swapchain_infos: vec![self.swapchain_info.clone()],
+                ..Default::default()
+            }),
+            SubmitAnyBuilder::SemaphoresWait(semaphores) => {
+                SubmitAnyBuilder::QueuePresent(PresentInfo {
+                    wait_semaphores: semaphores.into_iter().collect(),
+                    swapchain_infos: vec![self.swapchain_info.clone()],
+                    ..Default::default()
+                })
             }
-            SubmitAnyBuilder::SemaphoresWait(sem) => {
-                let mut builder: SubmitPresentBuilder = sem.into();
-                builder.add_swapchain(self.swapchain_info.clone());
-                SubmitAnyBuilder::QueuePresent(builder)
-            }
-            SubmitAnyBuilder::CommandBuffer(_) => {
+            SubmitAnyBuilder::CommandBuffer(_, _) => {
                 // submit the command buffer by flushing previous.
                 // Since the implementation should remember being flushed it's safe to call build_submission multiple times
                 self.previous.flush()?;
 
-                let mut builder = SubmitPresentBuilder::new();
-                builder.add_swapchain(self.swapchain_info.clone());
-                SubmitAnyBuilder::QueuePresent(builder)
+                SubmitAnyBuilder::QueuePresent(PresentInfo {
+                    swapchain_infos: vec![self.swapchain_info.clone()],
+                    ..Default::default()
+                })
             }
-            SubmitAnyBuilder::BindSparse(_) => {
+            SubmitAnyBuilder::BindSparse(_, _) => {
                 // submit the command buffer by flushing previous.
                 // Since the implementation should remember being flushed it's safe to call build_submission multiple times
                 self.previous.flush()?;
 
-                let mut builder = SubmitPresentBuilder::new();
-                builder.add_swapchain(self.swapchain_info.clone());
-                SubmitAnyBuilder::QueuePresent(builder)
+                SubmitAnyBuilder::QueuePresent(PresentInfo {
+                    swapchain_infos: vec![self.swapchain_info.clone()],
+                    ..Default::default()
+                })
             }
-            SubmitAnyBuilder::QueuePresent(_present) => {
-                unimplemented!() // TODO:
-                                 /*present.submit();
-                                 let mut builder = SubmitPresentBuilder::new();
-                                 builder.add_swapchain(self.command_buffer.inner(), self.image_id);
-                                 SubmitAnyBuilder::CommandBuffer(builder)*/
+            SubmitAnyBuilder::QueuePresent(mut present_info) => {
+                present_info
+                    .swapchain_infos
+                    .push(self.swapchain_info.clone());
+
+                SubmitAnyBuilder::QueuePresent(present_info)
             }
         })
     }
@@ -2095,31 +2112,26 @@ where
             let build_submission_result = self.build_submission();
             self.flushed.store(true, Ordering::SeqCst);
 
-            if let &Err(FlushError::FullScreenExclusiveModeLost) = &build_submission_result {
-                self.swapchain_info
-                    .swapchain
-                    .full_screen_exclusive_held()
-                    .store(false, Ordering::SeqCst);
-            }
-
             match build_submission_result? {
-                SubmitAnyBuilder::Empty => {}
-                SubmitAnyBuilder::QueuePresent(present) => {
-                    let present_result = present.submit(&self.queue);
-
-                    if let &Err(SubmitPresentError::FullScreenExclusiveModeLost) = &present_result {
-                        self.swapchain_info
-                            .swapchain
-                            .full_screen_exclusive_held()
-                            .store(false, Ordering::SeqCst);
+                SubmitAnyBuilder::Empty => Ok(()),
+                SubmitAnyBuilder::QueuePresent(present_info) => {
+                    // VUID-VkPresentIdKHR-presentIds-04999
+                    for swapchain_info in &present_info.swapchain_infos {
+                        if swapchain_info.present_id.map_or(false, |present_id| {
+                            !swapchain_info.swapchain.try_claim_present_id(present_id)
+                        }) {
+                            return Err(FlushError::PresentIdLessThanOrEqual);
+                        }
                     }
 
-                    present_result?;
+                    let mut queue_guard = self.queue.lock();
+                    Ok(queue_guard
+                        .present_unchecked(present_info)
+                        .map(|r| r.map(|_| ()))
+                        .fold(Ok(()), Result::and)?)
                 }
                 _ => unreachable!(),
             }
-
-            Ok(())
         }
     }
 

@@ -13,20 +13,19 @@ pub use self::{
     now::{now, NowFuture},
     semaphore_signal::SemaphoreSignalFuture,
 };
-use super::{AccessFlags, FenceError, PipelineStages};
+use super::{AccessFlags, Fence, FenceError, PipelineStages, Semaphore};
 use crate::{
     buffer::sys::UnsafeBuffer,
     command_buffer::{
-        submit::{
-            SubmitAnyBuilder, SubmitBindSparseError, SubmitCommandBufferError, SubmitPresentError,
-        },
-        CommandBufferExecError, CommandBufferExecFuture, PrimaryCommandBuffer,
+        CommandBufferExecError, CommandBufferExecFuture, PrimaryCommandBuffer, SubmitInfo,
     },
     device::{DeviceOwned, Queue},
     image::{sys::UnsafeImage, ImageLayout},
-    swapchain::{self, PresentFuture, SwapchainPresentInfo},
-    DeviceSize, OomError,
+    memory::BindSparseInfo,
+    swapchain::{self, PresentFuture, PresentInfo, SwapchainPresentInfo},
+    DeviceSize, OomError, VulkanError,
 };
+use smallvec::SmallVec;
 use std::{
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
@@ -364,6 +363,24 @@ where
     }
 }
 
+/// Contains all the possible submission builders.
+#[derive(Debug)]
+pub enum SubmitAnyBuilder {
+    Empty,
+    SemaphoresWait(SmallVec<[Arc<Semaphore>; 8]>),
+    CommandBuffer(SubmitInfo, Option<Arc<Fence>>),
+    QueuePresent(PresentInfo),
+    BindSparse(SmallVec<[BindSparseInfo; 1]>, Option<Arc<Fence>>),
+}
+
+impl SubmitAnyBuilder {
+    /// Returns true if equal to `SubmitAnyBuilder::Empty`.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        matches!(self, SubmitAnyBuilder::Empty)
+    }
+}
+
 /// Access to a resource was denied.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AccessError {
@@ -532,38 +549,18 @@ impl From<AccessError> for FlushError {
     }
 }
 
-impl From<SubmitPresentError> for FlushError {
+impl From<VulkanError> for FlushError {
     #[inline]
-    fn from(err: SubmitPresentError) -> FlushError {
+    fn from(err: VulkanError) -> Self {
         match err {
-            SubmitPresentError::OomError(err) => FlushError::OomError(err),
-            SubmitPresentError::DeviceLost => FlushError::DeviceLost,
-            SubmitPresentError::SurfaceLost => FlushError::SurfaceLost,
-            SubmitPresentError::OutOfDate => FlushError::OutOfDate,
-            SubmitPresentError::FullScreenExclusiveModeLost => {
-                FlushError::FullScreenExclusiveModeLost
+            VulkanError::OutOfHostMemory | VulkanError::OutOfDeviceMemory => {
+                Self::OomError(err.into())
             }
-            SubmitPresentError::PresentIdLessThanOrEqual => FlushError::PresentIdLessThanOrEqual,
-        }
-    }
-}
-
-impl From<SubmitCommandBufferError> for FlushError {
-    #[inline]
-    fn from(err: SubmitCommandBufferError) -> FlushError {
-        match err {
-            SubmitCommandBufferError::OomError(err) => FlushError::OomError(err),
-            SubmitCommandBufferError::DeviceLost => FlushError::DeviceLost,
-        }
-    }
-}
-
-impl From<SubmitBindSparseError> for FlushError {
-    #[inline]
-    fn from(err: SubmitBindSparseError) -> FlushError {
-        match err {
-            SubmitBindSparseError::OomError(err) => FlushError::OomError(err),
-            SubmitBindSparseError::DeviceLost => FlushError::DeviceLost,
+            VulkanError::DeviceLost => Self::DeviceLost,
+            VulkanError::SurfaceLost => Self::SurfaceLost,
+            VulkanError::OutOfDate => Self::OutOfDate,
+            VulkanError::FullScreenExclusiveModeLost => Self::FullScreenExclusiveModeLost,
+            _ => panic!("unexpected error: {:?}", err),
         }
     }
 }
