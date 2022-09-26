@@ -587,6 +587,7 @@ pub trait Suballocator {
     /// - Panics if `create_info.alignment` is not a power of two.
     ///
     /// [region]: Self#regions
+    #[inline]
     fn allocate(
         &self,
         create_info: SuballocationCreateInfo,
@@ -600,6 +601,8 @@ pub trait Suballocator {
 
     /// Creates a new suballocation within the [region] without checking the parameters.
     ///
+    /// See [`allocate`] for the safe version.
+    ///
     /// # Safety
     ///
     /// - `create_info.size` must not be zero.
@@ -607,6 +610,7 @@ pub trait Suballocator {
     /// - `create_info.alignment` must be a power of two.
     ///
     /// [region]: Self#regions
+    /// [`allocate`]: Self::allocate
     unsafe fn allocate_unchecked(
         &self,
         create_info: SuballocationCreateInfo,
@@ -625,6 +629,11 @@ pub trait Suballocator {
     fn try_into_region(self) -> Result<MemoryAlloc, Self>
     where
         Self: Sized;
+
+    /// Returns the amount of free space that is left in the [region].
+    ///
+    /// [region]: Self#regions
+    fn free_size(&self) -> DeviceSize;
 }
 
 /// Parameters to create a new [allocation] using a [suballocator].
@@ -809,12 +818,6 @@ impl FreeListAllocator {
         })
     }
 
-    /// Returns the amount of free space left in the region.
-    #[inline]
-    pub fn free_size(&self) -> DeviceSize {
-        self.inner.lock().free_size
-    }
-
     fn free(&self, id: SlotId) {
         let mut inner = self.inner.lock();
         inner.nodes.get_mut(id).ty = SuballocationType::Free;
@@ -946,6 +949,11 @@ impl Suballocator for Arc<FreeListAllocator> {
     #[inline]
     fn try_into_region(self) -> Result<MemoryAlloc, Self> {
         Arc::try_unwrap(self).map(|allocator| allocator.region)
+    }
+
+    #[inline]
+    fn free_size(&self) -> DeviceSize {
+        self.inner.lock().free_size
     }
 }
 
@@ -1365,6 +1373,11 @@ impl<const BLOCK_SIZE: DeviceSize> Suballocator for Arc<PoolAllocator<BLOCK_SIZE
     fn try_into_region(self) -> Result<MemoryAlloc, Self> {
         Arc::try_unwrap(self).map(|allocator| allocator.inner.region)
     }
+
+    #[inline]
+    fn free_size(&self) -> DeviceSize {
+        self.free_count() as DeviceSize * self.block_size()
+    }
 }
 
 #[derive(Debug)]
@@ -1546,16 +1559,6 @@ impl BuddyAllocator {
         self.order_count
     }
 
-    /// Returns the amount of free space left in the [region] that is available to the allocator,
-    /// which means that [internal fragmentation] is excluded.
-    ///
-    /// [region]: Suballocator#regions
-    /// [internal fragmentation]: self#internal-fragmentation
-    #[inline]
-    pub fn free_size(&self) -> DeviceSize {
-        self.inner.lock().free_size
-    }
-
     fn free(&self, min_order: usize, mut offset: DeviceSize) {
         let mut inner = self.inner.lock();
 
@@ -1703,6 +1706,16 @@ impl Suballocator for Arc<BuddyAllocator> {
     fn try_into_region(self) -> Result<MemoryAlloc, Self> {
         Arc::try_unwrap(self).map(|allocator| allocator.region)
     }
+
+    /// Returns the amount of free space left in the [region] that is available to the allocator,
+    /// which means that [internal fragmentation] is excluded.
+    ///
+    /// [region]: Suballocator#regions
+    /// [internal fragmentation]: self#internal-fragmentation
+    #[inline]
+    fn free_size(&self) -> DeviceSize {
+        self.inner.lock().free_size
+    }
 }
 
 #[derive(Debug)]
@@ -1777,12 +1790,6 @@ impl BumpAllocator {
             prev_alloc_type: Cell::new(region.allocation_type),
             region,
         })
-    }
-
-    /// Returns the amount of free space left in the region.
-    #[inline]
-    pub fn free_size(&self) -> DeviceSize {
-        self.region.size - self.free_start.get()
     }
 
     /// Resets the free-start back to the beginning of the [region] if there are no other strong
@@ -1904,6 +1911,12 @@ impl Suballocator for Arc<BumpAllocator> {
     fn try_into_region(self) -> Result<MemoryAlloc, Self> {
         Arc::try_unwrap(self).map(|allocator| allocator.region)
     }
+
+    /// Returns the amount of free space left in the region.
+    #[inline]
+    fn free_size(&self) -> DeviceSize {
+        self.region.size - self.free_start.get()
+    }
 }
 
 /// A thread-safe version of the [`BumpAllocator`].
@@ -1951,12 +1964,6 @@ impl SyncBumpAllocator {
             state: AtomicU64::new(region.allocation_type as u64),
             region,
         })
-    }
-
-    /// Returns the amount of free space that is left.
-    #[inline]
-    pub fn free_size(&self) -> DeviceSize {
-        self.region.size - (self.state.load(Ordering::Relaxed) >> 2)
     }
 
     /// Resets the free start back to the beginning of the [region] if there are no other strong
@@ -2131,6 +2138,11 @@ impl Suballocator for Arc<SyncBumpAllocator> {
     #[inline]
     fn try_into_region(self) -> Result<MemoryAlloc, Self> {
         Arc::try_unwrap(self).map(|allocator| allocator.region)
+    }
+
+    #[inline]
+    fn free_size(&self) -> DeviceSize {
+        self.region.size - (self.state.load(Ordering::Relaxed) >> 2)
     }
 }
 
