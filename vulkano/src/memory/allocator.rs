@@ -580,8 +580,34 @@ pub trait Suballocator {
 
     /// Creates a new suballocation within the [region].
     ///
+    /// # Panics
+    ///
+    /// - Panics if `create_info.size` is zero.
+    /// - Panics if `create_info.alignment` is zero.
+    /// - Panics if `create_info.alignment` is not a power of two.
+    ///
     /// [region]: Self#regions
     fn allocate(
+        &self,
+        create_info: SuballocationCreateInfo,
+    ) -> Result<MemoryAlloc, SuballocationError> {
+        assert!(create_info.size > 0);
+        assert!(create_info.alignment > 0);
+        assert!(create_info.alignment.is_power_of_two());
+
+        unsafe { self.allocate_unchecked(create_info) }
+    }
+
+    /// Creates a new suballocation within the [region] without checking the parameters.
+    ///
+    /// # Safety
+    ///
+    /// - `create_info.size` must not be zero.
+    /// - `create_info.alignment` must not be zero.
+    /// - `create_info.alignment` must be a power of two.
+    ///
+    /// [region]: Self#regions
+    unsafe fn allocate_unchecked(
         &self,
         create_info: SuballocationCreateInfo,
     ) -> Result<MemoryAlloc, SuballocationError>;
@@ -636,14 +662,6 @@ impl Default for SuballocationCreateInfo {
             allocation_type: AllocationType::Unknown,
             _ne: crate::NonExhaustive(()),
         }
-    }
-}
-
-impl SuballocationCreateInfo {
-    fn validate(&self) {
-        assert!(self.size > 0);
-        assert!(self.alignment > 0);
-        assert!(self.alignment.is_power_of_two());
     }
 }
 
@@ -797,10 +815,45 @@ impl FreeListAllocator {
         self.inner.lock().free_size
     }
 
-    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    fn free(&self, id: SlotId) {
+        let mut inner = self.inner.lock();
+        inner.nodes.get_mut(id).ty = SuballocationType::Free;
+        inner.coalesce(id);
+        inner.free(id);
+    }
+}
+
+impl Suballocator for Arc<FreeListAllocator> {
     #[inline]
-    pub unsafe fn allocate_unchecked(
-        self: &Arc<Self>,
+    fn new(region: MemoryAlloc) -> Self {
+        FreeListAllocator::new(region)
+    }
+
+    /// Creates a new suballocation within the [region] without checking the parameters.
+    ///
+    /// See [`allocate`] for the safe version.
+    ///
+    /// # Errors
+    ///
+    /// - Returns [`OutOfRegionMemory`] if there are no free suballocations large enough so satisfy
+    ///   the request.
+    /// - Returns [`FragmentedRegion`] if a suballocation large enough to satisfy the request could
+    ///   have been formed, but wasn't because of [external fragmentation].
+    ///
+    /// # Safety
+    ///
+    /// - `create_info.size` must not be zero.
+    /// - `create_info.alignment` must not be zero.
+    /// - `create_info.alignment` must be a power of two.
+    ///
+    /// [region]: Suballocator#regions
+    /// [`allocate`]: Suballocator::allocate
+    /// [`OutOfRegionMemory`]: SuballocationError::OutOfRegionMemory
+    /// [`FragmentedRegion`]: SuballocationError::FragmentedRegion
+    /// [external fragmentation]: self#external-fragmentation
+    #[inline]
+    unsafe fn allocate_unchecked(
+        &self,
         create_info: SuballocationCreateInfo,
     ) -> Result<MemoryAlloc, SuballocationError> {
         fn has_granularity_conflict(prev_ty: SuballocationType, ty: AllocationType) -> bool {
@@ -883,43 +936,6 @@ impl FreeListAllocator {
             // There is no space at all.
             None => Err(SuballocationError::OutOfRegionMemory),
         }
-    }
-
-    fn free(&self, id: SlotId) {
-        let mut inner = self.inner.lock();
-        inner.nodes.get_mut(id).ty = SuballocationType::Free;
-        inner.coalesce(id);
-        inner.free(id);
-    }
-}
-
-impl Suballocator for Arc<FreeListAllocator> {
-    #[inline]
-    fn new(region: MemoryAlloc) -> Self {
-        FreeListAllocator::new(region)
-    }
-
-    /// Creates a new suballocation within the [region].
-    ///
-    /// # Errors
-    ///
-    /// - Returns [`OutOfRegionMemory`] if there are no free suballocations large enough so satisfy
-    ///   the request.
-    /// - Returns [`FragmentedRegion`] if a suballocation large enough to satisfy the request could
-    ///   have been formed, but wasn't because of [external fragmentation].
-    ///
-    /// [region]: Suballocator#regions
-    /// [`OutOfRegionMemory`]: SuballocationError::OutOfRegionMemory
-    /// [`FragmentedRegion`]: SuballocationError::FragmentedRegion
-    /// [external fragmentation]: self#external-fragmentation
-    #[inline]
-    fn allocate(
-        &self,
-        create_info: SuballocationCreateInfo,
-    ) -> Result<MemoryAlloc, SuballocationError> {
-        create_info.validate();
-
-        unsafe { self.allocate_unchecked(create_info) }
     }
 
     #[inline]
@@ -1291,21 +1307,6 @@ impl<const BLOCK_SIZE: DeviceSize> PoolAllocator<BLOCK_SIZE> {
     pub fn free_count(&self) -> usize {
         self.inner.free_list.len()
     }
-
-    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    #[inline]
-    pub unsafe fn allocate_unchecked(
-        self: &Arc<Self>,
-        create_info: SuballocationCreateInfo,
-    ) -> Result<MemoryAlloc, SuballocationError> {
-        // SAFETY: `PoolAllocator<BLOCK_SIZE>` and `PoolAllocatorInner` have the same layout.
-        //
-        // This is not quite optimal, because we are always cloning the `Arc` even if allocation
-        // fails, in which case the `Arc` gets cloned and dropped for no reason. Unfortunately,
-        // there is currently no way to turn `&Arc<T>` into `&Arc<U>` that is sound.
-        Arc::from_raw(Arc::into_raw(self.clone()).cast::<PoolAllocatorInner>())
-            .allocate_unchecked(create_info)
-    }
 }
 
 impl<const BLOCK_SIZE: DeviceSize> Suballocator for Arc<PoolAllocator<BLOCK_SIZE>> {
@@ -1314,7 +1315,9 @@ impl<const BLOCK_SIZE: DeviceSize> Suballocator for Arc<PoolAllocator<BLOCK_SIZE
         PoolAllocator::new(region)
     }
 
-    /// Creates a new suballocation within the [region].
+    /// Creates a new suballocation within the [region] without checking the parameters.
+    ///
+    /// See [`allocate`] for the safe version.
     ///
     /// > **Note**: `create_info.allocation_type` is silently ignored because all suballocations
     /// > inherit the same allocation type from the allocator.
@@ -1327,19 +1330,30 @@ impl<const BLOCK_SIZE: DeviceSize> Suballocator for Arc<PoolAllocator<BLOCK_SIZE
     ///   [internal fragmentation] but a different one would be, you still get this error. See the
     ///   [type-level documentation] for details on how to properly configure your allocator.
     ///
+    /// # Safety
+    ///
+    /// - `create_info.size` must not be zero.
+    /// - `create_info.alignment` must not be zero.
+    /// - `create_info.alignment` must be a power of two.
+    ///
     /// [region]: Suballocator#regions
+    /// [`allocate`]: Suballocator::allocate
     /// [`OutOfRegionMemory`]: SuballocationError::OutOfRegionMemory
     /// [free-list]: Suballocator#free-lists
     /// [internal fragmentation]: self#internal-fragmentation
     /// [type-level documentation]: PoolAllocator
     #[inline]
-    fn allocate(
+    unsafe fn allocate_unchecked(
         &self,
         create_info: SuballocationCreateInfo,
     ) -> Result<MemoryAlloc, SuballocationError> {
-        create_info.validate();
-
-        unsafe { self.allocate_unchecked(create_info) }
+        // SAFETY: `PoolAllocator<BLOCK_SIZE>` and `PoolAllocatorInner` have the same layout.
+        //
+        // This is not quite optimal, because we are always cloning the `Arc` even if allocation
+        // fails, in which case the `Arc` gets cloned and dropped for no reason. Unfortunately,
+        // there is currently no way to turn `&Arc<T>` into `&Arc<U>` that is sound.
+        Arc::from_raw(Arc::into_raw(self.clone()).cast::<PoolAllocatorInner>())
+            .allocate_unchecked(create_info)
     }
 
     #[inline]
@@ -1542,87 +1556,6 @@ impl BuddyAllocator {
         self.inner.lock().free_size
     }
 
-    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
-    #[inline]
-    pub unsafe fn allocate_unchecked(
-        self: &Arc<Self>,
-        create_info: SuballocationCreateInfo,
-    ) -> Result<MemoryAlloc, SuballocationError> {
-        /// Returns the largest power of two smaller or equal to the input.
-        fn prev_power_of_two(val: DeviceSize) -> DeviceSize {
-            const MAX_POWER_OF_TWO: DeviceSize = 1 << (DeviceSize::BITS - 1);
-
-            MAX_POWER_OF_TWO
-                .checked_shr(val.leading_zeros())
-                .unwrap_or(0)
-        }
-
-        let SuballocationCreateInfo {
-            mut size,
-            mut alignment,
-            allocation_type,
-            _ne: _,
-        } = create_info;
-
-        if allocation_type == AllocationType::Unknown
-            || allocation_type == AllocationType::NonLinear
-        {
-            size = align_up(size, self.region.buffer_image_granularity);
-            alignment = DeviceSize::max(alignment, self.region.buffer_image_granularity);
-        }
-
-        let size = DeviceSize::max(size, Self::MIN_NODE_SIZE).next_power_of_two();
-        let min_order = (size / Self::MIN_NODE_SIZE).trailing_zeros() as usize;
-        let mut inner = self.inner.lock();
-
-        // Start searching at the lowest possible order going up.
-        for order in min_order..self.order_count {
-            for (index, offset) in inner.free_list[order].iter().copied().enumerate() {
-                if offset % alignment == 0 {
-                    inner.free_list[order].remove(index);
-
-                    // Go in the opposite direction, splitting nodes from higher orders. The lowest
-                    // order doesn't need any splitting.
-                    for order in (min_order..order).rev() {
-                        let size = Self::MIN_NODE_SIZE << order;
-                        let right_child = offset + size;
-
-                        // Insert the right child in sorted order.
-                        let index = match inner.free_list[order].binary_search(&right_child) {
-                            Ok(index) => index,
-                            Err(index) => index,
-                        };
-                        inner.free_list[order].insert(index, right_child);
-
-                        // Repeat splitting for the left child if required in the next loop turn.
-                    }
-
-                    inner.free_size -= size;
-
-                    return Ok(MemoryAlloc {
-                        offset,
-                        size: create_info.size,
-                        allocation_type,
-                        parent: AllocParent::Buddy {
-                            allocator: self.clone(),
-                            order: min_order,
-                        },
-                        memory: self.region.memory,
-                        memory_type_index: self.region.memory_type_index,
-                        buffer_image_granularity: self.region.buffer_image_granularity,
-                    });
-                }
-            }
-        }
-
-        if prev_power_of_two(inner.free_size) >= create_info.size {
-            // A node large enough could be formed if the region wasn't so fragmented.
-            Err(SuballocationError::FragmentedRegion)
-        } else {
-            Err(SuballocationError::OutOfRegionMemory)
-        }
-    }
-
     fn free(&self, min_order: usize, mut offset: DeviceSize) {
         let mut inner = self.inner.lock();
 
@@ -1659,7 +1592,9 @@ impl Suballocator for Arc<BuddyAllocator> {
         BuddyAllocator::new(region)
     }
 
-    /// Creates a new suballocation within the [region].
+    /// Creates a new suballocation within the [region] without checking the parameters.
+    ///
+    /// See [`allocate`] for the safe version.
     ///
     /// # Errors
     ///
@@ -1668,18 +1603,95 @@ impl Suballocator for Arc<BuddyAllocator> {
     /// - Returns [`FragmentedRegion`] if a node large enough to satisfy the request could have
     ///   been formed, but wasn't because of [external fragmentation].
     ///
+    /// # Safety
+    ///
+    /// - `create_info.size` must not be zero.
+    /// - `create_info.alignment` must not be zero.
+    /// - `create_info.alignment` must be a power of two.
+    ///
     /// [region]: Suballocator#regions
+    /// [`allocate`]: Suballocator::allocate
     /// [`OutOfRegionMemory`]: SuballocationError::OutOfRegionMemory
     /// [`FragmentedRegion`]: SuballocationError::FragmentedRegion
     /// [external fragmentation]: self#external-fragmentation
     #[inline]
-    fn allocate(
+    unsafe fn allocate_unchecked(
         &self,
         create_info: SuballocationCreateInfo,
     ) -> Result<MemoryAlloc, SuballocationError> {
-        create_info.validate();
+        /// Returns the largest power of two smaller or equal to the input.
+        fn prev_power_of_two(val: DeviceSize) -> DeviceSize {
+            const MAX_POWER_OF_TWO: DeviceSize = 1 << (DeviceSize::BITS - 1);
 
-        unsafe { self.allocate_unchecked(create_info) }
+            MAX_POWER_OF_TWO
+                .checked_shr(val.leading_zeros())
+                .unwrap_or(0)
+        }
+
+        let SuballocationCreateInfo {
+            mut size,
+            mut alignment,
+            allocation_type,
+            _ne: _,
+        } = create_info;
+
+        if allocation_type == AllocationType::Unknown
+            || allocation_type == AllocationType::NonLinear
+        {
+            size = align_up(size, self.region.buffer_image_granularity);
+            alignment = DeviceSize::max(alignment, self.region.buffer_image_granularity);
+        }
+
+        let size = DeviceSize::max(size, BuddyAllocator::MIN_NODE_SIZE).next_power_of_two();
+        let min_order = (size / BuddyAllocator::MIN_NODE_SIZE).trailing_zeros() as usize;
+        let mut inner = self.inner.lock();
+
+        // Start searching at the lowest possible order going up.
+        for order in min_order..self.order_count {
+            for (index, offset) in inner.free_list[order].iter().copied().enumerate() {
+                if offset % alignment == 0 {
+                    inner.free_list[order].remove(index);
+
+                    // Go in the opposite direction, splitting nodes from higher orders. The lowest
+                    // order doesn't need any splitting.
+                    for order in (min_order..order).rev() {
+                        let size = BuddyAllocator::MIN_NODE_SIZE << order;
+                        let right_child = offset + size;
+
+                        // Insert the right child in sorted order.
+                        let index = match inner.free_list[order].binary_search(&right_child) {
+                            Ok(index) => index,
+                            Err(index) => index,
+                        };
+                        inner.free_list[order].insert(index, right_child);
+
+                        // Repeat splitting for the left child if required in the next loop turn.
+                    }
+
+                    inner.free_size -= size;
+
+                    return Ok(MemoryAlloc {
+                        offset,
+                        size: create_info.size,
+                        allocation_type,
+                        parent: AllocParent::Buddy {
+                            allocator: self.clone(),
+                            order: min_order,
+                        },
+                        memory: self.region.memory,
+                        memory_type_index: self.region.memory_type_index,
+                        buffer_image_granularity: self.region.buffer_image_granularity,
+                    });
+                }
+            }
+        }
+
+        if prev_power_of_two(inner.free_size) >= create_info.size {
+            // A node large enough could be formed if the region wasn't so fragmented.
+            Err(SuballocationError::FragmentedRegion)
+        } else {
+            Err(SuballocationError::OutOfRegionMemory)
+        }
     }
 
     #[inline]
@@ -1767,6 +1779,12 @@ impl BumpAllocator {
         })
     }
 
+    /// Returns the amount of free space left in the region.
+    #[inline]
+    pub fn free_size(&self) -> DeviceSize {
+        self.region.size - self.free_start.get()
+    }
+
     /// Resets the free-start back to the beginning of the [region] if there are no other strong
     /// references to the allocator.
     ///
@@ -1799,21 +1817,39 @@ impl BumpAllocator {
     /// [region]: Suballocator#regions
     /// [`try_reset`]: Self::try_reset
     #[inline]
-    pub unsafe fn reset_unchecked(self: &Arc<Self>) {
+    pub unsafe fn reset_unchecked(&self) {
         self.free_start.set(0);
         self.prev_alloc_type.set(self.region.allocation_type);
     }
+}
 
-    /// Returns the amount of free space left in the region.
+impl Suballocator for Arc<BumpAllocator> {
     #[inline]
-    pub fn free_size(&self) -> DeviceSize {
-        self.region.size - self.free_start.get()
+    fn new(region: MemoryAlloc) -> Self {
+        BumpAllocator::new(region)
     }
 
-    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    /// Creates a new suballocation within the [region] withut checking the parameters.
+    ///
+    /// See [`allocate`] for the safe version.
+    ///
+    /// # Errors
+    ///
+    /// - Returns [`OutOfRegionMemory`] if the requested allocation can't fit in the free space
+    ///   remaining in the region.
+    ///
+    /// # Safety
+    ///
+    /// - `create_info.size` must not be zero.
+    /// - `create_info.alignment` must not be zero.
+    /// - `create_info.alignment` must be a power of two.
+    ///
+    /// [region]: Suballocator#regions
+    /// [`allocate`]: Suballocator::allocate
+    /// [`OutOfRegionMemory`]: SuballocationError::OutOfRegionMemory
     #[inline]
-    pub unsafe fn allocate_unchecked(
-        self: &Arc<Self>,
+    unsafe fn allocate_unchecked(
+        &self,
         create_info: SuballocationCreateInfo,
     ) -> Result<MemoryAlloc, SuballocationError> {
         fn has_granularity_conflict(prev_ty: AllocationType, ty: AllocationType) -> bool {
@@ -1857,32 +1893,6 @@ impl BumpAllocator {
             memory_type_index: self.region.memory_type_index,
             buffer_image_granularity: self.region.buffer_image_granularity,
         })
-    }
-}
-
-impl Suballocator for Arc<BumpAllocator> {
-    #[inline]
-    fn new(region: MemoryAlloc) -> Self {
-        BumpAllocator::new(region)
-    }
-
-    /// Creates a new suballocation within the [region].
-    ///
-    /// # Errors
-    ///
-    /// - Returns [`OutOfRegionMemory`] if the requested allocation can't fit in the free space
-    ///   remaining in the region.
-    ///
-    /// [region]: Suballocator#regions
-    /// [`OutOfRegionMemory`]: SuballocationError::OutOfRegionMemory
-    #[inline]
-    fn allocate(
-        &self,
-        create_info: SuballocationCreateInfo,
-    ) -> Result<MemoryAlloc, SuballocationError> {
-        create_info.validate();
-
-        unsafe { self.allocate_unchecked(create_info) }
     }
 
     #[inline]
@@ -1943,6 +1953,12 @@ impl SyncBumpAllocator {
         })
     }
 
+    /// Returns the amount of free space that is left.
+    #[inline]
+    pub fn free_size(&self) -> DeviceSize {
+        self.region.size - (self.state.load(Ordering::Relaxed) >> 2)
+    }
+
     /// Resets the free start back to the beginning of the [region] if there are no other strong
     /// references to the allocator.
     ///
@@ -1975,21 +1991,39 @@ impl SyncBumpAllocator {
     /// [region]: Suballocator#regions
     /// [hierarchy]: Suballocator#memory-hierarchies
     #[inline]
-    pub unsafe fn reset_unchecked(self: &Arc<Self>) {
+    pub unsafe fn reset_unchecked(&self) {
         self.state
             .store(self.region.allocation_type as u64, Ordering::SeqCst);
     }
+}
 
-    /// Returns the amount of free space that is left.
+impl Suballocator for Arc<SyncBumpAllocator> {
     #[inline]
-    pub fn free_size(&self) -> DeviceSize {
-        self.region.size - (self.state.load(Ordering::Relaxed) >> 2)
+    fn new(region: MemoryAlloc) -> Self {
+        SyncBumpAllocator::new(region)
     }
 
-    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    /// Creates a new suballocation within the [region] without checking the parameters.
+    ///
+    /// See [`allocate`] for the safe version.
+    ///
+    /// # Errors
+    ///
+    /// - Returns [`OutOfRegionMemory`] if the requested allocation can't fit in the free space
+    ///   remaining in the region.
+    ///
+    /// # Safety
+    ///
+    /// - `create_info.size` must not be zero.
+    /// - `create_info.alignment` must not be zero.
+    /// - `create_info.alignment` must be a power of two.
+    ///
+    /// [region]: Suballocator#regions
+    /// [`allocate`]: Suballocator::allocate
+    /// [`OutOfRegionMemory`]: SuballocationError::OutOfRegionMemory
     #[inline]
-    pub unsafe fn allocate_unchecked(
-        self: &Arc<Self>,
+    unsafe fn allocate_unchecked(
+        &self,
         create_info: SuballocationCreateInfo,
     ) -> Result<MemoryAlloc, SuballocationError> {
         const SPIN_LIMIT: u32 = 6;
@@ -2087,32 +2121,6 @@ impl SyncBumpAllocator {
                 }
             }
         }
-    }
-}
-
-impl Suballocator for Arc<SyncBumpAllocator> {
-    #[inline]
-    fn new(region: MemoryAlloc) -> Self {
-        SyncBumpAllocator::new(region)
-    }
-
-    /// Creates a new suballocation within the [region].
-    ///
-    /// # Errors
-    ///
-    /// - Returns [`OutOfRegionMemory`] if the requested allocation can't fit in the free space
-    ///   remaining in the region.
-    ///
-    /// [region]: Suballocator#regions
-    /// [`OutOfRegionMemory`]: SuballocationError::OutOfRegionMemory
-    #[inline]
-    fn allocate(
-        &self,
-        create_info: SuballocationCreateInfo,
-    ) -> Result<MemoryAlloc, SuballocationError> {
-        create_info.validate();
-
-        unsafe { self.allocate_unchecked(create_info) }
     }
 
     #[inline]
