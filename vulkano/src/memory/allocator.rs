@@ -779,7 +779,7 @@ impl FreeListAllocator {
     /// [region]: Suballocator#regions
     /// [buffer-image granularity]: self#buffer-image-granularity
     #[inline]
-    fn new(region: MemoryAlloc) -> Arc<Self> {
+    pub fn new(region: MemoryAlloc) -> Arc<Self> {
         // NOTE(Marc): This number was pulled straight out of my a-
         const AVERAGE_ALLOCATION_SIZE: DeviceSize = 64 * 1024;
 
@@ -1279,7 +1279,7 @@ impl<const BLOCK_SIZE: DeviceSize> PoolAllocator<BLOCK_SIZE> {
     ///
     /// [region]: Suballocator#regions
     #[inline]
-    fn new(region: MemoryAlloc) -> Arc<Self> {
+    pub fn new(region: MemoryAlloc) -> Arc<Self> {
         // SAFETY: `PoolAllocator<BLOCK_SIZE>` and `PoolAllocatorInner` have the same layout.
         unsafe {
             Arc::from_raw(
@@ -1513,7 +1513,7 @@ impl BuddyAllocator {
     /// [region]: Suballocator#regions
     /// [buffer-image granularity]: self#buffer-image-granularity
     #[inline]
-    fn new(region: MemoryAlloc) -> Arc<Self> {
+    pub fn new(region: MemoryAlloc) -> Arc<Self> {
         const EMPTY_FREE_LIST: Vec<DeviceSize> = Vec::new();
 
         let max_order = (region.size / BuddyAllocator::MIN_NODE_SIZE).trailing_zeros() as usize;
@@ -1771,7 +1771,7 @@ impl BumpAllocator {
     ///
     /// [region]: Suballocator#regions
     #[inline]
-    fn new(region: MemoryAlloc) -> Arc<Self> {
+    pub fn new(region: MemoryAlloc) -> Arc<Self> {
         Arc::new(BumpAllocator {
             free_start: Cell::new(0),
             prev_alloc_type: Cell::new(region.allocation_type),
