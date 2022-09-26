@@ -160,20 +160,28 @@ vulkan_bitflags! {
     #[non_exhaustive]
     MemoryPropertyFlags = MemoryPropertyFlags(u32);
 
-    /// The memory is located on the device.
+    /// The memory is located on the device, and is allocated from a heap that also has the
+    /// [`device_local`](MemoryHeapFlags::device_local) flag set.
     ///
-    /// Data transfer between host and device involves sending the data over the PCI bus that
-    /// connects the two. Accesses are faster if they do not have to cross this barrier:
-    /// device-local memory is fast for the device to access, but slower to access by the host.
-    /// Therefore, device-local memory is strongly preferred for data that will only be accessed
-    /// by the device.
+    /// For some devices, particularly integrated GPUs, the device shares memory with the host and
+    /// all memory may be device-local, so the distinction is moot. However, if the device has
+    /// non-device-local memory, it is usually faster for the device to access device-local memory.
+    /// Therefore, device-local memory is preferred for data that will only be accessed by
+    /// the device.
+    ///
+    /// If the device and host do not share memory, data transfer between host and device may
+    /// involve sending the data over the data bus that connects the two. Accesses are faster if
+    /// they do not have to cross this barrier: device-local memory is fast for the device to
+    /// access, but slower to access by the host. However, there are devices that share memory with
+    /// the host, yet have distinct device-local and non-device local memory types. In that case,
+    /// the speed difference may not be large.
     ///
     /// For data transfer between host and device, it is most efficient if the memory is located
-    /// at the destination of the transfer. Thus, device-local memory is preferred for
-    /// host-to-device data transfer, while non-device-local memory is preferred for
-    /// device-to-host data transfer. This is because data is usually written only once but
-    /// potentially read several times, and because reads can take advantage of caching while writes
-    /// cannot.
+    /// at the destination of the transfer. Thus, if `host_visible` versions of both are available,
+    /// device-local memory is preferred for host-to-device data transfer, while non-device-local
+    /// memory is preferred for device-to-host data transfer. This is because data is usually
+    /// written only once but potentially read several times, and because reads can take advantage
+    /// of caching while writes cannot.
     ///
     /// Devices may have memory types that are neither `device_local` nor `host_visible`. This is
     /// regular host memory that is made available to the device exclusively. Although it will be
@@ -185,7 +193,7 @@ vulkan_bitflags! {
     ///
     /// Memory of this type is required to transfer data between the host and the device. If
     /// the memory is going to be accessed by the device more than a few times, it is recommended
-    /// to copy the data to non-`host_visible` memory first.
+    /// to copy the data to non-`host_visible` memory first if it is available.
     ///
     /// `host_visible` memory is always at least either `host_coherent` or `host_cached`, but it
     /// can be both.
@@ -199,8 +207,10 @@ vulkan_bitflags! {
 
     /// The memory is cached by the host.
     ///
-    /// Memory of this type is fast to read from the host, so it is preferred for
-    /// device-to-host data transfer.
+    /// `host_cached` memory is fast for reads and random access from the host, so it is preferred
+    /// for device-to-host data transfer. Memory that is `host_visible` but not `host_cached` is
+    /// often slow for all accesses other than sequential writing, so it is more suited for
+    /// host-to-device transfer, and it is often beneficial to write the data in sequence.
     host_cached = HOST_CACHED,
 
     /// Allocations made from the memory are lazy.
