@@ -160,36 +160,96 @@ vulkan_bitflags! {
     #[non_exhaustive]
     MemoryPropertyFlags = MemoryPropertyFlags(u32);
 
-    /// The memory is located on the device. This usually means that it's efficient for the
-    /// device to access this memory.
+    /// The memory is located on the device, and is allocated from a heap that also has the
+    /// [`device_local`](MemoryHeapFlags::device_local) flag set.
+    ///
+    /// For some devices, particularly integrated GPUs, the device shares memory with the host and
+    /// all memory may be device-local, so the distinction is moot. However, if the device has
+    /// non-device-local memory, it is usually faster for the device to access device-local memory.
+    /// Therefore, device-local memory is preferred for data that will only be accessed by
+    /// the device.
+    ///
+    /// If the device and host do not share memory, data transfer between host and device may
+    /// involve sending the data over the data bus that connects the two. Accesses are faster if
+    /// they do not have to cross this barrier: device-local memory is fast for the device to
+    /// access, but slower to access by the host. However, there are devices that share memory with
+    /// the host, yet have distinct device-local and non-device local memory types. In that case,
+    /// the speed difference may not be large.
+    ///
+    /// For data transfer between host and device, it is most efficient if the memory is located
+    /// at the destination of the transfer. Thus, if `host_visible` versions of both are available,
+    /// device-local memory is preferred for host-to-device data transfer, while non-device-local
+    /// memory is preferred for device-to-host data transfer. This is because data is usually
+    /// written only once but potentially read several times, and because reads can take advantage
+    /// of caching while writes cannot.
+    ///
+    /// Devices may have memory types that are neither `device_local` nor `host_visible`. This is
+    /// regular host memory that is made available to the device exclusively. Although it will be
+    /// slower to access from the device than `device_local` memory, it can be faster than
+    /// `host_visible` memory. It can be used as overflow space if the device is out of memory.
     device_local = DEVICE_LOCAL,
 
-    /// The memory can be accessed by the host.
+    /// The memory can be mapped into the memory space of the host and accessed as regular RAM.
+    ///
+    /// Memory of this type is required to transfer data between the host and the device. If
+    /// the memory is going to be accessed by the device more than a few times, it is recommended
+    /// to copy the data to non-`host_visible` memory first if it is available.
+    ///
+    /// `host_visible` memory is always at least either `host_coherent` or `host_cached`, but it
+    /// can be both.
     host_visible = HOST_VISIBLE,
 
-    /// Modifications made by the host or the device on this memory type are
-    /// instantaneously visible to the other party. If memory does not have this flag, changes to
-    /// the memory are not visible until they are flushed or invalidated.
+    /// Host access to the memory does not require calling
+    /// [`invalidate_range`](MappedDeviceMemory::invalidate_range) to make device writes visible to
+    /// the host, nor [`flush_range`](MappedDeviceMemory::flush_range) to flush host writes back
+    /// to the device.
     host_coherent = HOST_COHERENT,
 
-    /// The memory is cached by the host. Host memory accesses to cached memory are faster than for
-    /// uncached memory, but the cache may not be coherent.
+    /// The memory is cached by the host.
+    ///
+    /// `host_cached` memory is fast for reads and random access from the host, so it is preferred
+    /// for device-to-host data transfer. Memory that is `host_visible` but not `host_cached` is
+    /// often slow for all accesses other than sequential writing, so it is more suited for
+    /// host-to-device transfer, and it is often beneficial to write the data in sequence.
     host_cached = HOST_CACHED,
 
-    /// Allocations made from this memory type are lazy.
+    /// Allocations made from the memory are lazy.
     ///
     /// This means that no actual allocation is performed. Instead memory is automatically
-    /// allocated by the Vulkan implementation based on need.
+    /// allocated by the Vulkan implementation based on need. You can call
+    /// [`DeviceMemory::commitment`] to query how much memory is currently committed to an
+    /// allocation.
     ///
-    /// Memory of this type can only be used on images created with a certain flag. Memory of this
-    /// type is never host-visible.
+    /// Memory of this type can only be used on images created with a certain flag, and is never
+    /// `host_visible`.
     lazily_allocated = LAZILY_ALLOCATED,
 
     /// The memory can only be accessed by the device, and allows protected queue access.
     ///
-    /// Memory of this type is never host visible, host coherent or host cached.
+    /// Memory of this type is never `host_visible`, `host_coherent` or `host_cached`.
     protected = PROTECTED {
         api_version: V1_1,
+    },
+
+    /// Device accesses to the memory are automatically made available and visible to other device
+    /// accesses.
+    ///
+    /// Memory of this type is slower to access by the device, so it is best avoided for general
+    /// purpose use. Because of its coherence properties, however, it may be useful for debugging.
+    device_coherent = DEVICE_COHERENT_AMD {
+        device_extensions: [amd_device_coherent_memory],
+    },
+
+    /// The memory is not cached on the device.
+    ///
+    /// `device_uncached` memory is always also `device_coherent`.
+    device_uncached = DEVICE_UNCACHED_AMD {
+        device_extensions: [amd_device_coherent_memory],
+    },
+
+    /// Other devices can access the memory via remote direct memory access (RDMA).
+    rdma_capable = RDMA_CAPABLE_NV {
+        device_extensions: [nv_external_memory_rdma],
     },
 }
 
