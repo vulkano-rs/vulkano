@@ -55,7 +55,7 @@ pub struct Surface<W> {
     pub(crate) surface_formats:
         DashMap<(ash::vk::PhysicalDevice, SurfaceInfo), Vec<(Format, ColorSpace)>>,
     pub(crate) surface_present_modes: DashMap<ash::vk::PhysicalDevice, Vec<PresentMode>>,
-    pub(crate) surface_support: DashMap<ash::vk::PhysicalDevice, bool>,
+    pub(crate) surface_support: DashMap<(ash::vk::PhysicalDevice, u32), bool>,
 }
 
 impl<W> Surface<W> {

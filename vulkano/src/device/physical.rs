@@ -2147,7 +2147,10 @@ impl PhysicalDevice {
         queue_family_index: u32,
         surface: &Surface<W>,
     ) -> Result<bool, VulkanError> {
-        match surface.surface_support.entry(self.handle) {
+        match surface
+            .surface_support
+            .entry((self.handle, queue_family_index))
+        {
             DashMapEntry::Occupied(entry) => Ok(*entry.get()),
             DashMapEntry::Vacant(entry) => {
                 let result = {
