@@ -132,7 +132,6 @@ use std::sync::Arc;
 mod auto;
 mod commands;
 pub mod pool;
-pub mod submit;
 pub mod synced;
 pub mod sys;
 mod traits;

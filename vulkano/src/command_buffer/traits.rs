@@ -8,9 +8,7 @@
 // according to those terms.
 
 use super::{
-    submit::{SubmitAnyBuilder, SubmitCommandBufferBuilder},
-    sys::UnsafeCommandBuffer,
-    CommandBufferInheritanceInfo,
+    sys::UnsafeCommandBuffer, CommandBufferInheritanceInfo, SemaphoreSubmitInfo, SubmitInfo,
 };
 use crate::{
     buffer::{sys::UnsafeBuffer, BufferAccess},
@@ -18,7 +16,7 @@ use crate::{
     image::{sys::UnsafeImage, ImageAccess, ImageLayout, ImageSubresourceRange},
     sync::{
         now, AccessCheckError, AccessError, AccessFlags, FlushError, GpuFuture, NowFuture,
-        PipelineMemoryAccess, PipelineStages,
+        PipelineMemoryAccess, PipelineStages, SubmitAnyBuilder,
     },
     DeviceSize, SafeDeref, VulkanObject,
 };
@@ -350,22 +348,43 @@ where
     // You must make sure to not submit same command buffer multiple times.
     unsafe fn build_submission_impl(&self) -> Result<SubmitAnyBuilder, FlushError> {
         Ok(match self.previous.build_submission()? {
-            SubmitAnyBuilder::Empty => {
-                let mut builder = SubmitCommandBufferBuilder::new();
-                builder.add_command_buffer(self.command_buffer.clone());
-                SubmitAnyBuilder::CommandBuffer(builder)
+            SubmitAnyBuilder::Empty => SubmitAnyBuilder::CommandBuffer(
+                SubmitInfo {
+                    command_buffers: vec![self.command_buffer.clone()],
+                    ..Default::default()
+                },
+                None,
+            ),
+            SubmitAnyBuilder::SemaphoresWait(semaphores) => {
+                SubmitAnyBuilder::CommandBuffer(
+                    SubmitInfo {
+                        wait_semaphores: semaphores
+                            .into_iter()
+                            .map(|semaphore| {
+                                SemaphoreSubmitInfo {
+                                    stages: PipelineStages {
+                                        // TODO: correct stages ; hard
+                                        all_commands: true,
+                                        ..PipelineStages::empty()
+                                    },
+                                    ..SemaphoreSubmitInfo::semaphore(semaphore)
+                                }
+                            })
+                            .collect(),
+                        command_buffers: vec![self.command_buffer.clone()],
+                        ..Default::default()
+                    },
+                    None,
+                )
             }
-            SubmitAnyBuilder::SemaphoresWait(sem) => {
-                let mut builder: SubmitCommandBufferBuilder = sem.into();
-                builder.add_command_buffer(self.command_buffer.clone());
-                SubmitAnyBuilder::CommandBuffer(builder)
-            }
-            SubmitAnyBuilder::CommandBuffer(mut builder) => {
+            SubmitAnyBuilder::CommandBuffer(mut submit_info, fence) => {
                 // FIXME: add pipeline barrier
-                builder.add_command_buffer(self.command_buffer.clone());
-                SubmitAnyBuilder::CommandBuffer(builder)
+                submit_info
+                    .command_buffers
+                    .push(self.command_buffer.clone());
+                SubmitAnyBuilder::CommandBuffer(submit_info, fence)
             }
-            SubmitAnyBuilder::QueuePresent(_) | SubmitAnyBuilder::BindSparse(_) => {
+            SubmitAnyBuilder::QueuePresent(_) | SubmitAnyBuilder::BindSparse(_, _) => {
                 unimplemented!() // TODO:
                                  /*present.submit();     // TODO: wrong
                                  let mut builder = SubmitCommandBufferBuilder::new();
@@ -405,8 +424,9 @@ where
 
             match self.build_submission_impl()? {
                 SubmitAnyBuilder::Empty => {}
-                SubmitAnyBuilder::CommandBuffer(builder) => {
-                    builder.submit(&queue)?;
+                SubmitAnyBuilder::CommandBuffer(submit_info, fence) => {
+                    let mut queue_guard = queue.lock();
+                    queue_guard.submit_unchecked([submit_info], fence)?;
                 }
                 _ => unreachable!(),
             };

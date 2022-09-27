@@ -17,8 +17,8 @@ mod linux {
     use vulkano::{
         buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
         command_buffer::{
-            submit::SubmitCommandBufferBuilder, AutoCommandBufferBuilder, CommandBufferUsage,
-            RenderPassBeginInfo, SubpassContents,
+            AutoCommandBufferBuilder, CommandBufferUsage, RenderPassBeginInfo, SemaphoreSubmitInfo,
+            SubmitInfo, SubpassContents,
         },
         descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
         device::{
@@ -49,7 +49,7 @@ mod linux {
         },
         sync::{
             now, ExternalSemaphoreHandleType, ExternalSemaphoreHandleTypes, FlushError, GpuFuture,
-            PipelineStages, Semaphore, SemaphoreCreateInfo,
+            Semaphore, SemaphoreCreateInfo,
         },
         VulkanLibrary,
     };
@@ -255,24 +255,36 @@ mod linux {
                 }
                 Event::RedrawEventsCleared => {
                     unsafe {
-                        let mut builder = SubmitCommandBufferBuilder::new();
-                        builder.add_signal_semaphore(acquire_sem.clone());
-                        builder.submit(&queue).unwrap();
+                        let mut queue_guard = queue.lock();
+                        queue_guard
+                            .submit_unchecked(
+                                [SubmitInfo {
+                                    signal_semaphores: vec![SemaphoreSubmitInfo::semaphore(
+                                        acquire_sem.clone(),
+                                    )],
+                                    ..Default::default()
+                                }],
+                                None,
+                            )
+                            .unwrap();
                     };
 
                     barrier.wait();
                     barrier_2.wait();
 
                     unsafe {
-                        let mut builder = SubmitCommandBufferBuilder::new();
-                        builder.add_wait_semaphore(
-                            release_sem.clone(),
-                            PipelineStages {
-                                all_commands: true,
-                                ..PipelineStages::empty()
-                            },
-                        );
-                        builder.submit(&queue).unwrap();
+                        let mut queue_guard = queue.lock();
+                        queue_guard
+                            .submit_unchecked(
+                                [SubmitInfo {
+                                    wait_semaphores: vec![SemaphoreSubmitInfo::semaphore(
+                                        release_sem.clone(),
+                                    )],
+                                    ..Default::default()
+                                }],
+                                None,
+                            )
+                            .unwrap();
                     };
 
                     previous_frame_end.as_mut().unwrap().cleanup_finished();
