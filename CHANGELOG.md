@@ -25,6 +25,7 @@ Changes to `Swapchain`:
 
 ### Additions
 - Added `bind_sparse_unchecked`, `present_unchecked` and `submit_unchecked` methods to `QueueGuard`.
+- Added the `device_coherent`, `device_uncached` and `rdma_capable` flags to `MemoryPropertyFlags`, and improved the documentation of all flags with additional usage advice.
 
 ### Bugs fixed
 - Incorrect check for descriptor set validity when the shader declares a runtime-sized array.
