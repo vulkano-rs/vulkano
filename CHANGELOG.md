@@ -14,14 +14,17 @@ Changes to queue operations:
 - The `wait` method of devices and queues is renamed to `wait_idle` to match Vulkan.
 - `PresentInfo` as been renamed to `SwapchainPresentInfo` and has differently named members and constructor.
 - `acquire_next_image` returns an `u32` index to match Vulkan.
-- `SubmitAnyBuilder` and its wrapped types no longer have a lifetime parameter, as they own their data instead. Various methods of these types now take their arguments by value.
 - `Queue` now implements `VulkanObject` instead of `SynchronizedVulkanObject`, which is removed.
 - `Queue` now takes ownership of resources belonging to operations that you execute on it, to keep them from being destroyed while in use.
 - `QueueGuard` now has a `cleanup_finished` method, which does the same thing as on futures. Calling this method on a future will automatically forward it to its queue.
 - If `Queue` is dropped, it will call `wait_idle` to block the current thread until all operations on it have completed.
+- The `command_buffer::submit` module has been removed. The `SubmitAnyBuilder` enum is moved to the `sync` module, and no longer has a lifetime parameter.
 
 Changes to `Swapchain`:
 - The `W` parameter must now implement `Send + Sync`.
+
+### Additions
+- Added `bind_sparse_unchecked`, `present_unchecked` and `submit_unchecked` methods to `QueueGuard`.
 
 ### Bugs fixed
 - Incorrect check for descriptor set validity when the shader declares a runtime-sized array.
