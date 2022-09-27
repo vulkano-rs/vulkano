@@ -2839,7 +2839,7 @@ pub enum PhysicalDeviceError {
         queue_family_count: u32,
     },
 
-    // The provided `surface` is not supported by the physical device for any queue family.
+    // The provided `surface` is not supported by any of the physical device's queue families.
     SurfaceNotSupported,
 }
 
@@ -2885,7 +2885,7 @@ impl Display for PhysicalDeviceError {
             ),
             Self::SurfaceNotSupported => write!(
                 f,
-                "the provided `surface` is not supported by the physical device for any queue family",
+                "the provided `surface` is not supported by any of the physical device's queue families",
             ),
         }
     }
