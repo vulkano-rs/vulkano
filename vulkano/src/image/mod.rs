@@ -605,7 +605,7 @@ pub struct SubresourceLayout {
 
 /// The image configuration to query in
 /// [`PhysicalDevice::image_format_properties`](crate::device::physical::PhysicalDevice::image_format_properties).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ImageFormatInfo {
     /// The `format` that the image will have.
     ///
@@ -762,7 +762,7 @@ impl From<ash::vk::ImageFormatProperties> for ImageFormatProperties {
 
 /// The image configuration to query in
 /// [`PhysicalDevice::sparse_image_format_properties`](crate::device::physical::PhysicalDevice::sparse_image_format_properties).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SparseImageFormatInfo {
     /// The `format` that the image will have.
     ///
