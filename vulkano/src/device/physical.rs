@@ -1554,14 +1554,19 @@ impl PhysicalDevice {
         // VUID-vkGetPhysicalDeviceSurfaceCapabilities2KHR-commonparent
         assert_eq!(self.instance(), surface.instance());
 
+        // VUID-vkGetPhysicalDeviceSurfaceCapabilities2KHR-pSurfaceInfo-06210
+        if !(0..self.queue_family_properties.len() as u32).any(|index| unsafe {
+            self.surface_support_unchecked(index, surface)
+                .unwrap_or_default()
+        }) {
+            return Err(PhysicalDeviceError::SurfaceNotSupported);
+        }
+
         let &SurfaceInfo {
             full_screen_exclusive,
             win32_monitor,
             _ne: _,
         } = surface_info;
-
-        // VUID-vkGetPhysicalDeviceSurfaceCapabilities2KHR-pSurfaceInfo-06210
-        // TODO:
 
         if !self.supported_extensions().ext_full_screen_exclusive
             && full_screen_exclusive != FullScreenExclusive::Default
@@ -1821,7 +1826,12 @@ impl PhysicalDevice {
         assert_eq!(self.instance(), surface.instance());
 
         // VUID-vkGetPhysicalDeviceSurfaceFormats2KHR-pSurfaceInfo-06522
-        // TODO:
+        if !(0..self.queue_family_properties.len() as u32).any(|index| unsafe {
+            self.surface_support_unchecked(index, surface)
+                .unwrap_or_default()
+        }) {
+            return Err(PhysicalDeviceError::SurfaceNotSupported);
+        }
 
         let &SurfaceInfo {
             full_screen_exclusive,
@@ -2041,7 +2051,12 @@ impl PhysicalDevice {
         assert_eq!(self.instance(), surface.instance());
 
         // VUID-vkGetPhysicalDeviceSurfacePresentModesKHR-surface-06525
-        // TODO:
+        if !(0..self.queue_family_properties.len() as u32).any(|index| unsafe {
+            self.surface_support_unchecked(index, surface)
+                .unwrap_or_default()
+        }) {
+            return Err(PhysicalDeviceError::SurfaceNotSupported);
+        }
 
         Ok(())
     }
@@ -2823,6 +2838,9 @@ pub enum PhysicalDeviceError {
         queue_family_index: u32,
         queue_family_count: u32,
     },
+
+    // The provided `surface` is not supported by the physical device for any queue family.
+    SurfaceNotSupported,
 }
 
 impl Error for PhysicalDeviceError {
@@ -2864,6 +2882,10 @@ impl Display for PhysicalDeviceError {
                 f,
                 "the provided `queue_family_index` ({}) was not less than the number of queue families in the physical device ({})",
                 queue_family_index, queue_family_count,
+            ),
+            Self::SurfaceNotSupported => write!(
+                f,
+                "the provided `surface` is not supported by the physical device for any queue family",
             ),
         }
     }
