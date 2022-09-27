@@ -677,6 +677,11 @@ impl<W> Surface<W> {
 
             has_swapchain: AtomicBool::new(false),
             metal_layer,
+
+            surface_capabilities: DashMap::new(),
+            surface_formats: DashMap::new(),
+            surface_present_modes: DashMap::new(),
+            surface_support: DashMap::new(),
         }))
     }
 
@@ -760,6 +765,11 @@ impl<W> Surface<W> {
             has_swapchain: AtomicBool::new(false),
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
+
+            surface_capabilities: DashMap::new(),
+            surface_formats: DashMap::new(),
+            surface_present_modes: DashMap::new(),
+            surface_support: DashMap::new(),
         }))
     }
 
