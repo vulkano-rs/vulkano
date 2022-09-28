@@ -37,8 +37,8 @@ use vulkano::{
     image::{view::ImageView, ImageUsage},
     instance::{Instance, InstanceCreateInfo},
     swapchain::{
-        acquire_next_image, AcquireError, PresentInfo, Swapchain, SwapchainCreateInfo,
-        SwapchainCreationError,
+        acquire_next_image, AcquireError, Swapchain, SwapchainAbstract, SwapchainCreateInfo,
+        SwapchainCreationError, SwapchainPresentInfo,
     },
     sync::{self, FlushError, GpuFuture},
     VulkanLibrary,
@@ -209,7 +209,7 @@ fn main() {
                 recreate_swapchain = false;
             }
 
-            let (image_num, suboptimal, acquire_future) =
+            let (image_index, suboptimal, acquire_future) =
                 match acquire_next_image(swapchain.clone(), None) {
                     Ok(r) => r,
                     Err(AcquireError::OutOfDate) => {
@@ -224,8 +224,11 @@ fn main() {
             }
 
             let future = previous_frame_end.take().unwrap().join(acquire_future);
-            let mut frame =
-                frame_system.frame(future, images[image_num].clone(), Matrix4::identity());
+            let mut frame = frame_system.frame(
+                future,
+                images[image_index as usize].clone(),
+                Matrix4::identity(),
+            );
             let mut after_future = None;
             while let Some(pass) = frame.next_pass() {
                 match pass {
@@ -250,10 +253,7 @@ fn main() {
                 .unwrap()
                 .then_swapchain_present(
                     queue.clone(),
-                    PresentInfo {
-                        index: image_num,
-                        ..PresentInfo::swapchain(swapchain.clone())
-                    },
+                    SwapchainPresentInfo::swapchain_image_index(swapchain.clone(), image_index),
                 )
                 .then_signal_fence_and_flush();
 

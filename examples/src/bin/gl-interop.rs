@@ -17,8 +17,8 @@ mod linux {
     use vulkano::{
         buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess},
         command_buffer::{
-            submit::SubmitCommandBufferBuilder, AutoCommandBufferBuilder, CommandBufferUsage,
-            RenderPassBeginInfo, SubpassContents,
+            AutoCommandBufferBuilder, CommandBufferUsage, RenderPassBeginInfo, SemaphoreSubmitInfo,
+            SubmitInfo, SubpassContents,
         },
         descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
         device::{
@@ -44,11 +44,12 @@ mod linux {
         render_pass::{Framebuffer, RenderPass, Subpass},
         sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
         swapchain::{
-            AcquireError, PresentInfo, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
+            AcquireError, Swapchain, SwapchainAbstract, SwapchainCreateInfo,
+            SwapchainCreationError, SwapchainPresentInfo,
         },
         sync::{
             now, ExternalSemaphoreHandleType, ExternalSemaphoreHandleTypes, FlushError, GpuFuture,
-            PipelineStages, Semaphore, SemaphoreCreateInfo,
+            Semaphore, SemaphoreCreateInfo,
         },
         VulkanLibrary,
     };
@@ -254,24 +255,36 @@ mod linux {
                 }
                 Event::RedrawEventsCleared => {
                     unsafe {
-                        let mut builder = SubmitCommandBufferBuilder::new();
-                        builder.add_signal_semaphore(&acquire_sem);
-                        builder.submit(&queue).unwrap();
+                        let mut queue_guard = queue.lock();
+                        queue_guard
+                            .submit_unchecked(
+                                [SubmitInfo {
+                                    signal_semaphores: vec![SemaphoreSubmitInfo::semaphore(
+                                        acquire_sem.clone(),
+                                    )],
+                                    ..Default::default()
+                                }],
+                                None,
+                            )
+                            .unwrap();
                     };
 
                     barrier.wait();
                     barrier_2.wait();
 
                     unsafe {
-                        let mut builder = SubmitCommandBufferBuilder::new();
-                        builder.add_wait_semaphore(
-                            &release_sem,
-                            PipelineStages {
-                                all_commands: true,
-                                ..PipelineStages::empty()
-                            },
-                        );
-                        builder.submit(&queue).unwrap();
+                        let mut queue_guard = queue.lock();
+                        queue_guard
+                            .submit_unchecked(
+                                [SubmitInfo {
+                                    wait_semaphores: vec![SemaphoreSubmitInfo::semaphore(
+                                        release_sem.clone(),
+                                    )],
+                                    ..Default::default()
+                                }],
+                                None,
+                            )
+                            .unwrap();
                     };
 
                     previous_frame_end.as_mut().unwrap().cleanup_finished();
@@ -298,7 +311,7 @@ mod linux {
                         recreate_swapchain = false;
                     }
 
-                    let (image_num, suboptimal, acquire_future) =
+                    let (image_index, suboptimal, acquire_future) =
                         match vulkano::swapchain::acquire_next_image(swapchain.clone(), None) {
                             Ok(r) => r,
                             Err(AcquireError::OutOfDate) => {
@@ -322,7 +335,9 @@ mod linux {
                         .begin_render_pass(
                             RenderPassBeginInfo {
                                 clear_values: vec![Some([0.0, 0.0, 1.0, 1.0].into())],
-                                ..RenderPassBeginInfo::framebuffer(framebuffers[image_num].clone())
+                                ..RenderPassBeginInfo::framebuffer(
+                                    framebuffers[image_index as usize].clone(),
+                                )
                             },
                             SubpassContents::Inline,
                         )
@@ -349,10 +364,10 @@ mod linux {
                         .unwrap()
                         .then_swapchain_present(
                             queue.clone(),
-                            PresentInfo {
-                                index: image_num,
-                                ..PresentInfo::swapchain(swapchain.clone())
-                            },
+                            SwapchainPresentInfo::swapchain_image_index(
+                                swapchain.clone(),
+                                image_index,
+                            ),
                         )
                         .then_signal_fence_and_flush();
 

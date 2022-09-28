@@ -16,8 +16,7 @@ use crate::{
     buffer::{BufferAccess, BufferContents, BufferUsage, CpuAccessibleBuffer},
     command_buffer::{
         AutoCommandBufferBuilder, BlitImageInfo, CommandBufferBeginError, CommandBufferExecFuture,
-        CommandBufferUsage, CopyBufferToImageInfo, ImageBlit, PrimaryAutoCommandBuffer,
-        PrimaryCommandBuffer,
+        CommandBufferUsage, CopyBufferToImageInfo, ImageBlit, PrimaryCommandBuffer,
     },
     device::{Device, DeviceOwned, Queue},
     format::Format,
@@ -230,13 +229,7 @@ impl ImmutableImage {
         mip_levels: MipmapsCount,
         format: Format,
         queue: Arc<Queue>,
-    ) -> Result<
-        (
-            Arc<Self>,
-            CommandBufferExecFuture<NowFuture, PrimaryAutoCommandBuffer>,
-        ),
-        ImmutableImageCreationError,
-    >
+    ) -> Result<(Arc<Self>, CommandBufferExecFuture<NowFuture>), ImmutableImageCreationError>
     where
         [Px]: BufferContents,
         I: IntoIterator<Item = Px>,
@@ -261,13 +254,7 @@ impl ImmutableImage {
         mip_levels: MipmapsCount,
         format: Format,
         queue: Arc<Queue>,
-    ) -> Result<
-        (
-            Arc<Self>,
-            CommandBufferExecFuture<NowFuture, PrimaryAutoCommandBuffer>,
-        ),
-        ImmutableImageCreationError,
-    > {
+    ) -> Result<(Arc<Self>, CommandBufferExecFuture<NowFuture>), ImmutableImageCreationError> {
         let need_to_generate_mipmaps = has_mipmaps(mip_levels);
         let usage = ImageUsage {
             transfer_dst: true,

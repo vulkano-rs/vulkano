@@ -130,16 +130,16 @@ impl ImageAspects {
         } = *self;
 
         [
-            color.then(|| ImageAspect::Color),
-            depth.then(|| ImageAspect::Depth),
-            stencil.then(|| ImageAspect::Stencil),
-            metadata.then(|| ImageAspect::Metadata),
-            plane0.then(|| ImageAspect::Plane0),
-            plane1.then(|| ImageAspect::Plane1),
-            plane2.then(|| ImageAspect::Plane2),
-            memory_plane0.then(|| ImageAspect::MemoryPlane0),
-            memory_plane1.then(|| ImageAspect::MemoryPlane1),
-            memory_plane2.then(|| ImageAspect::MemoryPlane2),
+            color.then_some(ImageAspect::Color),
+            depth.then_some(ImageAspect::Depth),
+            stencil.then_some(ImageAspect::Stencil),
+            metadata.then_some(ImageAspect::Metadata),
+            plane0.then_some(ImageAspect::Plane0),
+            plane1.then_some(ImageAspect::Plane1),
+            plane2.then_some(ImageAspect::Plane2),
+            memory_plane0.then_some(ImageAspect::MemoryPlane0),
+            memory_plane1.then_some(ImageAspect::MemoryPlane1),
+            memory_plane2.then_some(ImageAspect::MemoryPlane2),
         ]
         .into_iter()
         .flatten()

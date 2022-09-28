@@ -10,7 +10,7 @@
 use super::{traits::ImageContent, ImageAccess, ImageDescriptorLayouts, ImageInner, ImageLayout};
 use crate::{
     device::{Device, DeviceOwned},
-    swapchain::Swapchain,
+    swapchain::{Swapchain, SwapchainAbstract},
     OomError,
 };
 use std::{
@@ -34,20 +34,23 @@ use std::{
 #[derive(Debug)]
 pub struct SwapchainImage<W> {
     swapchain: Arc<Swapchain<W>>,
-    image_offset: usize,
+    image_index: u32,
 }
 
-impl<W> SwapchainImage<W> {
+impl<W> SwapchainImage<W>
+where
+    W: Send + Sync,
+{
     /// Builds a `SwapchainImage` from raw components.
     ///
     /// This is an internal method that you shouldn't call.
     pub unsafe fn from_raw(
         swapchain: Arc<Swapchain<W>>,
-        id: usize,
+        image_index: u32,
     ) -> Result<Arc<SwapchainImage<W>>, OomError> {
         Ok(Arc::new(SwapchainImage {
             swapchain,
-            image_offset: id,
+            image_index,
         }))
     }
 
@@ -59,18 +62,17 @@ impl<W> SwapchainImage<W> {
 
     #[inline]
     fn my_image(&self) -> ImageInner {
-        self.swapchain.raw_image(self.image_offset).unwrap()
+        self.swapchain.raw_image(self.image_index).unwrap()
     }
 
     #[inline]
     fn layout_initialized(&self) {
-        self.swapchain.image_layout_initialized(self.image_offset);
+        self.swapchain.image_layout_initialized(self.image_index);
     }
 
     #[inline]
     fn is_layout_initialized(&self) -> bool {
-        self.swapchain
-            .is_image_layout_initialized(self.image_offset)
+        self.swapchain.is_image_layout_initialized(self.image_index)
     }
 }
 

@@ -100,8 +100,13 @@ pub use self::{
     pool::MemoryPool,
 };
 use crate::{
-    buffer::sys::UnsafeBuffer, image::sys::UnsafeImage, macros::vulkan_bitflags, DeviceSize,
+    buffer::{sys::UnsafeBuffer, BufferAccess},
+    image::{sys::UnsafeImage, ImageAccess, ImageAspects},
+    macros::vulkan_bitflags,
+    sync::Semaphore,
+    DeviceSize,
 };
+use std::sync::Arc;
 
 pub mod allocator;
 mod device_memory;
@@ -156,36 +161,96 @@ vulkan_bitflags! {
     #[non_exhaustive]
     MemoryPropertyFlags = MemoryPropertyFlags(u32);
 
-    /// The memory is located on the device. This usually means that it's efficient for the
-    /// device to access this memory.
+    /// The memory is located on the device, and is allocated from a heap that also has the
+    /// [`device_local`](MemoryHeapFlags::device_local) flag set.
+    ///
+    /// For some devices, particularly integrated GPUs, the device shares memory with the host and
+    /// all memory may be device-local, so the distinction is moot. However, if the device has
+    /// non-device-local memory, it is usually faster for the device to access device-local memory.
+    /// Therefore, device-local memory is preferred for data that will only be accessed by
+    /// the device.
+    ///
+    /// If the device and host do not share memory, data transfer between host and device may
+    /// involve sending the data over the data bus that connects the two. Accesses are faster if
+    /// they do not have to cross this barrier: device-local memory is fast for the device to
+    /// access, but slower to access by the host. However, there are devices that share memory with
+    /// the host, yet have distinct device-local and non-device local memory types. In that case,
+    /// the speed difference may not be large.
+    ///
+    /// For data transfer between host and device, it is most efficient if the memory is located
+    /// at the destination of the transfer. Thus, if `host_visible` versions of both are available,
+    /// device-local memory is preferred for host-to-device data transfer, while non-device-local
+    /// memory is preferred for device-to-host data transfer. This is because data is usually
+    /// written only once but potentially read several times, and because reads can take advantage
+    /// of caching while writes cannot.
+    ///
+    /// Devices may have memory types that are neither `device_local` nor `host_visible`. This is
+    /// regular host memory that is made available to the device exclusively. Although it will be
+    /// slower to access from the device than `device_local` memory, it can be faster than
+    /// `host_visible` memory. It can be used as overflow space if the device is out of memory.
     device_local = DEVICE_LOCAL,
 
-    /// The memory can be accessed by the host.
+    /// The memory can be mapped into the memory space of the host and accessed as regular RAM.
+    ///
+    /// Memory of this type is required to transfer data between the host and the device. If
+    /// the memory is going to be accessed by the device more than a few times, it is recommended
+    /// to copy the data to non-`host_visible` memory first if it is available.
+    ///
+    /// `host_visible` memory is always at least either `host_coherent` or `host_cached`, but it
+    /// can be both.
     host_visible = HOST_VISIBLE,
 
-    /// Modifications made by the host or the device on this memory type are
-    /// instantaneously visible to the other party. If memory does not have this flag, changes to
-    /// the memory are not visible until they are flushed or invalidated.
+    /// Host access to the memory does not require calling
+    /// [`invalidate_range`](MappedDeviceMemory::invalidate_range) to make device writes visible to
+    /// the host, nor [`flush_range`](MappedDeviceMemory::flush_range) to flush host writes back
+    /// to the device.
     host_coherent = HOST_COHERENT,
 
-    /// The memory is cached by the host. Host memory accesses to cached memory are faster than for
-    /// uncached memory, but the cache may not be coherent.
+    /// The memory is cached by the host.
+    ///
+    /// `host_cached` memory is fast for reads and random access from the host, so it is preferred
+    /// for device-to-host data transfer. Memory that is `host_visible` but not `host_cached` is
+    /// often slow for all accesses other than sequential writing, so it is more suited for
+    /// host-to-device transfer, and it is often beneficial to write the data in sequence.
     host_cached = HOST_CACHED,
 
-    /// Allocations made from this memory type are lazy.
+    /// Allocations made from the memory are lazy.
     ///
     /// This means that no actual allocation is performed. Instead memory is automatically
-    /// allocated by the Vulkan implementation based on need.
+    /// allocated by the Vulkan implementation based on need. You can call
+    /// [`DeviceMemory::commitment`] to query how much memory is currently committed to an
+    /// allocation.
     ///
-    /// Memory of this type can only be used on images created with a certain flag. Memory of this
-    /// type is never host-visible.
+    /// Memory of this type can only be used on images created with a certain flag, and is never
+    /// `host_visible`.
     lazily_allocated = LAZILY_ALLOCATED,
 
     /// The memory can only be accessed by the device, and allows protected queue access.
     ///
-    /// Memory of this type is never host visible, host coherent or host cached.
+    /// Memory of this type is never `host_visible`, `host_coherent` or `host_cached`.
     protected = PROTECTED {
         api_version: V1_1,
+    },
+
+    /// Device accesses to the memory are automatically made available and visible to other device
+    /// accesses.
+    ///
+    /// Memory of this type is slower to access by the device, so it is best avoided for general
+    /// purpose use. Because of its coherence properties, however, it may be useful for debugging.
+    device_coherent = DEVICE_COHERENT_AMD {
+        device_extensions: [amd_device_coherent_memory],
+    },
+
+    /// The memory is not cached on the device.
+    ///
+    /// `device_uncached` memory is always also `device_coherent`.
+    device_uncached = DEVICE_UNCACHED_AMD {
+        device_extensions: [amd_device_coherent_memory],
+    },
+
+    /// Other devices can access the memory via remote direct memory access (RDMA).
+    rdma_capable = RDMA_CAPABLE_NV {
+        device_extensions: [nv_external_memory_rdma],
     },
 }
 
@@ -311,4 +376,164 @@ impl From<ash::vk::ExternalMemoryProperties> for ExternalMemoryProperties {
             compatible_handle_types: val.compatible_handle_types.into(),
         }
     }
+}
+
+/// Parameters to execute sparse bind operations on a queue.
+#[derive(Clone, Debug)]
+pub struct BindSparseInfo {
+    /// The semaphores to wait for before beginning the execution of this batch of
+    /// sparse bind operations.
+    ///
+    /// The default value is empty.
+    pub wait_semaphores: Vec<Arc<Semaphore>>,
+
+    /// The bind operations to perform for buffers.
+    ///
+    /// The default value is empty.
+    pub buffer_binds: Vec<(Arc<dyn BufferAccess>, Vec<SparseBufferMemoryBind>)>,
+
+    /// The bind operations to perform for images with an opaque memory layout.
+    ///
+    /// This should be used for mip tail regions, the metadata aspect, and for the normal regions
+    /// of images that do not have the `sparse_residency` flag set.
+    ///
+    /// The default value is empty.
+    pub image_opaque_binds: Vec<(Arc<dyn ImageAccess>, Vec<SparseImageOpaqueMemoryBind>)>,
+
+    /// The bind operations to perform for images with a known memory layout.
+    ///
+    /// This type of sparse bind can only be used for images that have the `sparse_residency`
+    /// flag set.
+    /// Only the normal texel regions can be bound this way, not the mip tail regions or metadata
+    /// aspect.
+    ///
+    /// The default value is empty.
+    pub image_binds: Vec<(Arc<dyn ImageAccess>, Vec<SparseImageMemoryBind>)>,
+
+    /// The semaphores to signal after the execution of this batch of sparse bind operations
+    /// has completed.
+    ///
+    /// The default value is empty.
+    pub signal_semaphores: Vec<Arc<Semaphore>>,
+
+    pub _ne: crate::NonExhaustive,
+}
+
+impl Default for BindSparseInfo {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            wait_semaphores: Vec::new(),
+            buffer_binds: Vec::new(),
+            image_opaque_binds: Vec::new(),
+            image_binds: Vec::new(),
+            signal_semaphores: Vec::new(),
+            _ne: crate::NonExhaustive(()),
+        }
+    }
+}
+
+/// Parameters for a single sparse bind operation on a buffer.
+#[derive(Clone, Debug, Default)]
+pub struct SparseBufferMemoryBind {
+    /// The offset in bytes from the start of the buffer's memory, where memory is to be (un)bound.
+    ///
+    /// The default value is `0`.
+    pub resource_offset: DeviceSize,
+
+    /// The size in bytes of the memory to be (un)bound.
+    ///
+    /// The default value is `0`, which must be overridden.
+    pub size: DeviceSize,
+
+    /// If `Some`, specifies the memory and an offset into that memory that is to be bound.
+    /// The provided memory must match the buffer's memory requirements.
+    ///
+    /// If `None`, specifies that existing memory at the specified location is to be unbound.
+    ///
+    /// The default value is `None`.
+    pub memory: Option<(Arc<DeviceMemory>, DeviceSize)>,
+}
+
+/// Parameters for a single sparse bind operation on parts of an image with an opaque memory layout.
+///
+/// This type of sparse bind should be used for mip tail regions, the metadata aspect, and for the
+/// normal regions of images that do not have the `sparse_residency` flag set.
+#[derive(Clone, Debug, Default)]
+pub struct SparseImageOpaqueMemoryBind {
+    /// The offset in bytes from the start of the image's memory, where memory is to be (un)bound.
+    ///
+    /// The default value is `0`.
+    pub resource_offset: DeviceSize,
+
+    /// The size in bytes of the memory to be (un)bound.
+    ///
+    /// The default value is `0`, which must be overridden.
+    pub size: DeviceSize,
+
+    /// If `Some`, specifies the memory and an offset into that memory that is to be bound.
+    /// The provided memory must match the image's memory requirements.
+    ///
+    /// If `None`, specifies that existing memory at the specified location is to be unbound.
+    ///
+    /// The default value is `None`.
+    pub memory: Option<(Arc<DeviceMemory>, DeviceSize)>,
+
+    /// Sets whether the binding should apply to the metadata aspect of the image, or to the
+    /// normal texel data.
+    ///
+    /// The default value is `false`.
+    pub metadata: bool,
+}
+
+/// Parameters for a single sparse bind operation on parts of an image with a known memory layout.
+///
+/// This type of sparse bind can only be used for images that have the `sparse_residency` flag set.
+/// Only the normal texel regions can be bound this way, not the mip tail regions or metadata
+/// aspect.
+#[derive(Clone, Debug, Default)]
+pub struct SparseImageMemoryBind {
+    /// The aspects of the image where memory is to be (un)bound.
+    ///
+    /// The default value is `ImageAspects::empty()`, which must be overridden.
+    pub aspects: ImageAspects,
+
+    /// The mip level of the image where memory is to be (un)bound.
+    ///
+    /// The default value is `0`.
+    pub mip_level: u32,
+
+    /// The array layer of the image where memory is to be (un)bound.
+    ///
+    /// The default value is `0`.
+    pub array_layer: u32,
+
+    /// The offset in texels (or for compressed images, texel blocks) from the origin of the image,
+    /// where memory is to be (un)bound.
+    ///
+    /// This must be a multiple of the
+    /// [`SparseImageFormatProperties::image_granularity`](crate::image::SparseImageFormatProperties::image_granularity)
+    /// value of the image.
+    ///
+    /// The default value is `[0; 3]`.
+    pub offset: [u32; 3],
+
+    /// The extent in texels (or for compressed images, texel blocks) of the image where
+    /// memory is to be (un)bound.
+    ///
+    /// This must be a multiple of the
+    /// [`SparseImageFormatProperties::image_granularity`](crate::image::SparseImageFormatProperties::image_granularity)
+    /// value of the image, or `offset + extent` for that dimension must equal the image's total
+    /// extent.
+    ///
+    /// The default value is `[0; 3]`, which must be overridden.
+    pub extent: [u32; 3],
+
+    /// If `Some`, specifies the memory and an offset into that memory that is to be bound.
+    /// The provided memory must match the image's memory requirements.
+    ///
+    /// If `None`, specifies that existing memory at the specified location is to be unbound.
+    ///
+    /// The default value is `None`.
+    pub memory: Option<(Arc<DeviceMemory>, DeviceSize)>,
 }
