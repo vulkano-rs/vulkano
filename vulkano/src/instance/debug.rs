@@ -452,10 +452,10 @@ mod tests {
                     ..DebugUtilsMessengerCreateInfo::user_callback(Arc::new(|_| {}))
                 },
             )
-        };
+        }
+        .unwrap();
         thread::spawn(move || {
-            let _ = &callback;
-            let _ = callback;
+            drop(callback);
         });
     }
 }
