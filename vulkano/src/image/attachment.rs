@@ -567,7 +567,7 @@ where
     A: MemoryPoolAlloc,
 {
     #[inline]
-    fn inner(&self) -> ImageInner {
+    fn inner(&self) -> ImageInner<'_> {
         ImageInner {
             image: &self.image,
             first_layer: 0,

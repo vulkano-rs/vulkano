@@ -1451,7 +1451,7 @@ unsafe impl<W> VulkanObject for Surface<W> {
 
 impl<W> Debug for Surface<W> {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         let Self {
             handle,
             instance,
@@ -1519,7 +1519,7 @@ impl Error for SurfaceCreationError {
 
 impl Display for SurfaceCreationError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             SurfaceCreationError::OomError(_) => write!(f, "not enough memory available"),
 

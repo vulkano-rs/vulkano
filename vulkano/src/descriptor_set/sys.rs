@@ -118,7 +118,7 @@ unsafe impl VulkanObject for UnsafeDescriptorSet {
 }
 
 impl Debug for UnsafeDescriptorSet {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(f, "<Vulkan descriptor set {:?}>", self.handle)
     }
 }

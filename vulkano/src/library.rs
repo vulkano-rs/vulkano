@@ -274,7 +274,7 @@ where
 
 impl Debug for dyn Loader {
     #[inline]
-    fn fmt(&self, _f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, _f: &mut Formatter<'_>) -> Result<(), FmtError> {
         Ok(())
     }
 }
@@ -378,7 +378,7 @@ impl Error for LoadingError {
 
 impl Display for LoadingError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
             "{}",

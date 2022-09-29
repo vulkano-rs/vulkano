@@ -1451,7 +1451,7 @@ impl UnsafeImage {
     }
 
     #[inline]
-    pub(crate) fn state(&self) -> MutexGuard<ImageState> {
+    pub(crate) fn state(&self) -> MutexGuard<'_, ImageState> {
         self.state.lock()
     }
 
@@ -2008,7 +2008,7 @@ impl Error for ImageCreationError {
 
 impl Display for ImageCreationError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::AllocError(_) => write!(f, "allocating memory failed"),
 

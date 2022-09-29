@@ -83,7 +83,7 @@ impl Queue {
 
     /// Locks the queue, making it possible to perform operations on the queue, such as submissions.
     #[inline]
-    pub fn lock(&self) -> QueueGuard {
+    pub fn lock(&self) -> QueueGuard<'_> {
         QueueGuard {
             queue: self,
             state: self.state.lock(),
@@ -1097,7 +1097,7 @@ impl Error for QueueError {
 
 impl Display for QueueError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::VulkanError(_) => write!(f, "a runtime error occurred",),
 

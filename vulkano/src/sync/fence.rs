@@ -598,7 +598,7 @@ impl Error for FenceError {
 }
 
 impl Display for FenceError {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::OomError(_) => write!(f, "not enough memory available"),
             Self::DeviceLost => write!(f, "the device was lost"),

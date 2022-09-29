@@ -2471,7 +2471,7 @@ impl Error for PipelineExecutionError {
 
 impl Display for PipelineExecutionError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::SyncCommandBufferBuilderError(_) => write!(f, "a SyncCommandBufferBuilderError"),
 
@@ -2735,7 +2735,7 @@ impl Error for DescriptorResourceInvalidError {
 
 impl Display for DescriptorResourceInvalidError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::ImageViewFormatMismatch { provided, required } => write!(
                 f,

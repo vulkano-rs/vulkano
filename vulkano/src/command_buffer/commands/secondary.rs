@@ -395,7 +395,7 @@ impl SyncCommandBufferBuilder {
     /// Starts the process of executing secondary command buffers. Returns an intermediate struct
     /// which can be used to add the command buffers.
     #[inline]
-    pub unsafe fn execute_commands(&mut self) -> SyncCommandBufferBuilderExecuteCommands {
+    pub unsafe fn execute_commands(&mut self) -> SyncCommandBufferBuilderExecuteCommands<'_> {
         SyncCommandBufferBuilderExecuteCommands {
             builder: self,
             inner: Vec::new(),
@@ -711,7 +711,7 @@ impl Error for ExecuteCommandsError {
 
 impl Display for ExecuteCommandsError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::SyncCommandBufferBuilderError(_) => write!(f, "a SyncCommandBufferBuilderError"),
 

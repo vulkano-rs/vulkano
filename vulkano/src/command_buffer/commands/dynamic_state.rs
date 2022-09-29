@@ -2881,7 +2881,7 @@ impl Error for SetDynamicStateError {}
 
 impl Display for SetDynamicStateError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::RequirementNotMet {
                 required_for,

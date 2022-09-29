@@ -61,7 +61,7 @@ where
     }
 
     #[inline]
-    fn my_image(&self) -> ImageInner {
+    fn my_image(&self) -> ImageInner<'_> {
         self.swapchain.raw_image(self.image_index).unwrap()
     }
 
@@ -87,7 +87,7 @@ where
     W: Send + Sync,
 {
     #[inline]
-    fn inner(&self) -> ImageInner {
+    fn inner(&self) -> ImageInner<'_> {
         self.my_image()
     }
 

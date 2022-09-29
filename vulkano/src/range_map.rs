@@ -585,7 +585,7 @@ where
     K: Ord + Clone,
     V: Eq + Clone,
 {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         f.debug_map().entries(self.iter()).finish()
     }
 }

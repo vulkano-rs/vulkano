@@ -868,7 +868,7 @@ impl Error for SamplerCreationError {
 
 impl Display for SamplerCreationError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match *self {
             Self::OomError(_) => write!(f, "not enough memory available"),
             Self::TooManyObjects => write!(f, "too many simultaneous sampler objects",),
@@ -1476,7 +1476,7 @@ pub enum SamplerImageViewIncompatibleError {
 impl Error for SamplerImageViewIncompatibleError {}
 
 impl Display for SamplerImageViewIncompatibleError {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::BorderColorFormatNotCompatible => write!(f, "the sampler has a border color with a numeric type different from the image view"),
             Self::BorderColorOpaqueBlackNotIdentitySwizzled => write!(f, "the sampler has an opaque black border color, but the image view is not identity swizzled"),

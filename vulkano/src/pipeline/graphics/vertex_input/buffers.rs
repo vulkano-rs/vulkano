@@ -34,7 +34,7 @@ struct VertexBuffer {
 }
 
 impl Debug for VertexBuffer {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         f.debug_struct("VertexBuffer")
             .field("stride", &self.stride)
             .field("input_rate", &self.input_rate)

@@ -396,7 +396,7 @@ impl Spirv {
     /// - Panics if `id` is not defined in this module. This can in theory only happpen if you are
     ///   mixing `Id`s from different modules.
     #[inline]
-    pub fn id(&self, id: Id) -> IdInfo {
+    pub fn id(&self, id: Id) -> IdInfo<'_> {
         IdInfo {
             data_indices: &self.ids[&id],
             instructions: &self.instructions,
@@ -571,7 +571,7 @@ impl From<Id> for u32 {
 }
 
 impl Display for Id {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(f, "%{}", self.0)
     }
 }

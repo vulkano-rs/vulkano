@@ -543,7 +543,7 @@ impl Error for CommandBufferBeginError {
 
 impl Display for CommandBufferBeginError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::OomError(_) => write!(f, "not enough memory available"),
 
@@ -686,7 +686,7 @@ impl Error for BuildError {
 }
 
 impl Display for BuildError {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::OomError(_) => write!(f, "out of memory"),
             Self::RenderPassActive => {
@@ -712,7 +712,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     /// Returns the binding/setting state.
     #[inline]
-    pub fn state(&self) -> CommandBufferState {
+    pub fn state(&self) -> CommandBufferState<'_> {
         self.inner.state()
     }
 }

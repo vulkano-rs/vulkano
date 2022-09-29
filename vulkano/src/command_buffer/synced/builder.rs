@@ -174,7 +174,7 @@ impl SyncCommandBufferBuilder {
 
     /// Returns the binding/setting state.
     #[inline]
-    pub fn state(&self) -> CommandBufferState {
+    pub fn state(&self) -> CommandBufferState<'_> {
         CommandBufferState {
             current_state: &self.current_state,
         }
@@ -862,7 +862,7 @@ unsafe impl DeviceOwned for SyncCommandBufferBuilder {
 
 impl Debug for SyncCommandBufferBuilder {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         Debug::fmt(&self.inner, f)
     }
 }
@@ -885,7 +885,7 @@ impl Error for SyncCommandBufferBuilderError {}
 
 impl Display for SyncCommandBufferBuilderError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             SyncCommandBufferBuilderError::Conflict { .. } => write!(f, "unsolvable conflict"),
             SyncCommandBufferBuilderError::ExecError(err) => Display::fmt(err, f),

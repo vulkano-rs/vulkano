@@ -99,13 +99,13 @@ impl FromStr for Version {
 }
 
 impl Debug for Version {
-    fn fmt(&self, formatter: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(formatter, "{}.{}.{}", self.major, self.minor, self.patch)
     }
 }
 
 impl Display for Version {
-    fn fmt(&self, formatter: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> Result<(), FmtError> {
         Debug::fmt(self, formatter)
     }
 }
