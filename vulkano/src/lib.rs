@@ -62,7 +62,7 @@
 //!
 
 //#![warn(missing_docs)]        // TODO: activate
-
+#![warn(rust_2018_idioms, rust_2021_compatibility)]
 // These lints are a bit too pedantic, so they're disabled here.
 #![allow(
     clippy::collapsible_else_if,
