@@ -213,7 +213,7 @@ where
     T: Send + Sync + ?Sized,
 {
     #[inline]
-    fn inner(&self) -> BufferInner {
+    fn inner(&self) -> BufferInner<'_> {
         let inner = self.resource.inner();
         BufferInner {
             buffer: inner.buffer,

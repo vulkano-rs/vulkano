@@ -212,7 +212,7 @@ impl Error for GraphicsPipelineCreationError {
 
 impl Display for GraphicsPipelineCreationError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match *self {
             Self::RequirementNotMet {
                 required_for,

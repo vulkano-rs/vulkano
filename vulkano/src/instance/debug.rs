@@ -54,7 +54,7 @@ use std::{
     sync::Arc,
 };
 
-pub(super) type UserCallback = Arc<dyn Fn(&Message) + RefUnwindSafe + Send + Sync>;
+pub(super) type UserCallback = Arc<dyn Fn(&Message<'_>) + RefUnwindSafe + Send + Sync>;
 
 /// Registration of a callback called by validation layers.
 ///
@@ -190,7 +190,7 @@ impl Drop for DebugUtilsMessenger {
 }
 
 impl Debug for DebugUtilsMessenger {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         let Self {
             handle,
             instance,
@@ -255,7 +255,7 @@ impl Error for DebugUtilsMessengerCreationError {}
 
 impl Display for DebugUtilsMessengerCreationError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::RequirementNotMet {
                 required_for,
@@ -336,7 +336,7 @@ impl DebugUtilsMessengerCreateInfo {
 }
 
 impl Debug for DebugUtilsMessengerCreateInfo {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         let Self {
             message_severity,
             message_type,
@@ -454,6 +454,7 @@ mod tests {
             )
         };
         thread::spawn(move || {
+            let _ = &callback;
             let _ = callback;
         });
     }

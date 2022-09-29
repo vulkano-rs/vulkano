@@ -28,7 +28,7 @@ impl Error for FeatureRestrictionError {}
 
 impl Display for FeatureRestrictionError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
             "a restriction for the feature {} was not met: {}",
@@ -51,7 +51,7 @@ pub enum FeatureRestriction {
 
 impl Display for FeatureRestriction {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match *self {
             FeatureRestriction::NotSupported => {
                 write!(f, "not supported by the physical device")

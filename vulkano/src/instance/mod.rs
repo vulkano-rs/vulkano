@@ -595,7 +595,7 @@ impl Hash for Instance {
 }
 
 impl Debug for Instance {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         let Self {
             handle,
             fns,
@@ -755,7 +755,7 @@ impl Error for InstanceCreationError {
 
 impl Display for InstanceCreationError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::OomError(_) => write!(f, "not enough memory available"),
             Self::InitializationFailed => write!(f, "initialization failed"),

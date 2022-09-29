@@ -384,7 +384,7 @@ impl Error for UnsafeCommandPoolCreationError {
 
 impl Display for UnsafeCommandPoolCreationError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match *self {
             Self::OomError(_) => write!(f, "not enough memory",),
             Self::QueueFamilyIndexOutOfRange {
@@ -533,7 +533,7 @@ impl Error for CommandPoolTrimError {}
 
 impl Display for CommandPoolTrimError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::RequirementNotMet {
                 required_for,

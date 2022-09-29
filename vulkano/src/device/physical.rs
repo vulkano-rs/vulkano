@@ -2443,13 +2443,13 @@ impl From<ash::vk::ConformanceVersion> for ConformanceVersion {
 }
 
 impl Debug for ConformanceVersion {
-    fn fmt(&self, formatter: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(formatter, "{}.{}.{}", self.major, self.minor, self.patch)
     }
 }
 
 impl Display for ConformanceVersion {
-    fn fmt(&self, formatter: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> Result<(), FmtError> {
         Debug::fmt(self, formatter)
     }
 }
@@ -2663,7 +2663,7 @@ impl Error for PhysicalDeviceError {
 
 impl Display for PhysicalDeviceError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::VulkanError(_) => write!(
                 f,

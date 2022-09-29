@@ -781,7 +781,7 @@ impl Error for DeviceCreationError {}
 
 impl Display for DeviceCreationError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match *self {
             Self::InitializationFailed => {
                 write!(
@@ -971,7 +971,7 @@ impl Error for MemoryFdPropertiesError {}
 
 impl Display for MemoryFdPropertiesError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match *self {
             Self::OutOfHostMemory => write!(f, "no memory available on the host"),
 

@@ -430,7 +430,7 @@ impl Error for DescriptorPoolAllocError {}
 
 impl Display for DescriptorPoolAllocError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
             "{}",

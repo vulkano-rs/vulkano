@@ -70,7 +70,7 @@ impl DeviceMemory {
     ///   image does not belong to `device`.
     pub fn allocate(
         device: Arc<Device>,
-        mut allocate_info: MemoryAllocateInfo,
+        mut allocate_info: MemoryAllocateInfo<'_>,
     ) -> Result<Self, DeviceMemoryError> {
         Self::validate(&device, &mut allocate_info, None)?;
         let handle = unsafe { Self::create(&device, &allocate_info, None)? };
@@ -106,7 +106,7 @@ impl DeviceMemory {
     ///   image does not belong to `device`.
     pub unsafe fn import(
         device: Arc<Device>,
-        mut allocate_info: MemoryAllocateInfo,
+        mut allocate_info: MemoryAllocateInfo<'_>,
         mut import_info: MemoryImportInfo,
     ) -> Result<Self, DeviceMemoryError> {
         Self::validate(&device, &mut allocate_info, Some(&mut import_info))?;
@@ -132,7 +132,7 @@ impl DeviceMemory {
 
     fn validate(
         device: &Device,
-        allocate_info: &mut MemoryAllocateInfo,
+        allocate_info: &mut MemoryAllocateInfo<'_>,
         import_info: Option<&mut MemoryImportInfo>,
     ) -> Result<(), DeviceMemoryError> {
         let &mut MemoryAllocateInfo {
@@ -355,7 +355,7 @@ impl DeviceMemory {
 
     unsafe fn create(
         device: &Device,
-        allocate_info: &MemoryAllocateInfo,
+        allocate_info: &MemoryAllocateInfo<'_>,
         import_info: Option<MemoryImportInfo>,
     ) -> Result<ash::vk::DeviceMemory, DeviceMemoryError> {
         let &MemoryAllocateInfo {
@@ -983,7 +983,7 @@ impl Error for DeviceMemoryError {
 
 impl Display for DeviceMemoryError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match *self {
             Self::OomError(_) => write!(f, "not enough memory available"),
             Self::TooManyObjects => {
@@ -1473,7 +1473,7 @@ impl Error for MemoryMapError {
 
 impl Display for MemoryMapError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match *self {
             Self::OomError(_) => write!(f, "not enough memory available"),
             Self::MemoryMapFailed => write!(f, "memory map failed"),

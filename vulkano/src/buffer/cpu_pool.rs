@@ -419,7 +419,7 @@ where
     // `cur_buf_mutex` must be an active lock of `self.current_buffer`.
     fn reset_buf(
         &self,
-        cur_buf_mutex: &mut MutexGuard<Option<Arc<ActualBuffer<A>>>>,
+        cur_buf_mutex: &mut MutexGuard<'_, Option<Arc<ActualBuffer<A>>>>,
         capacity: DeviceSize,
     ) -> Result<(), DeviceMemoryError> {
         let size = match (size_of::<T>() as DeviceSize).checked_mul(capacity) {
@@ -478,7 +478,7 @@ where
     //
     fn try_next_impl<I>(
         &self,
-        cur_buf_mutex: &mut MutexGuard<Option<Arc<ActualBuffer<A>>>>,
+        cur_buf_mutex: &mut MutexGuard<'_, Option<Arc<ActualBuffer<A>>>>,
         data: I,
     ) -> Result<CpuBufferPoolChunk<T, A>, I::IntoIter>
     where
@@ -688,7 +688,7 @@ where
     A: MemoryPool,
 {
     #[inline]
-    fn inner(&self) -> BufferInner {
+    fn inner(&self) -> BufferInner<'_> {
         BufferInner {
             buffer: &self.buffer.inner,
             offset: self.index * size_of::<T>() as DeviceSize + self.align_offset,
@@ -810,7 +810,7 @@ where
     A: MemoryPool,
 {
     #[inline]
-    fn inner(&self) -> BufferInner {
+    fn inner(&self) -> BufferInner<'_> {
         self.chunk.inner()
     }
 

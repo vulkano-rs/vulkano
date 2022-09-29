@@ -507,7 +507,7 @@ impl Error for DescriptorSetCreationError {
 
 impl Display for DescriptorSetCreationError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::DescriptorSetUpdateError(_) => {
                 write!(f, "an error occurred while updating the descriptor set")

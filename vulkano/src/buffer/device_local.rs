@@ -493,7 +493,7 @@ where
     A: Send + Sync,
 {
     #[inline]
-    fn inner(&self) -> BufferInner {
+    fn inner(&self) -> BufferInner<'_> {
         BufferInner {
             buffer: &self.inner,
             offset: 0,
@@ -573,7 +573,7 @@ impl Error for DeviceLocalBufferCreationError {
 
 impl Display for DeviceLocalBufferCreationError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::DeviceMemoryAllocationError(err) => err.fmt(f),
             Self::CommandBufferBeginError(err) => err.fmt(f),

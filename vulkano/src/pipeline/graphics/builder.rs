@@ -169,7 +169,7 @@ where
         F: FnOnce(&mut [DescriptorSetLayoutCreateInfo]),
     {
         let (set_layout_create_infos, push_constant_ranges) = {
-            let stages: SmallVec<[&EntryPoint; 5]> = [
+            let stages: SmallVec<[&EntryPoint<'_>; 5]> = [
                 self.vertex_shader.as_ref().map(|s| &s.0),
                 self.tessellation_shaders.as_ref().map(|s| &s.control.0),
                 self.tessellation_shaders.as_ref().map(|s| &s.evaluation.0),

@@ -307,7 +307,7 @@ impl Error for ShaderCreationError {
 }
 
 impl Display for ShaderCreationError {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::OomError(_) => write!(f, "not enough memory available"),
             Self::SpirvCapabilityNotSupported { capability, .. } => write!(
@@ -352,7 +352,7 @@ pub enum ShaderSupportError {
 impl Error for ShaderSupportError {}
 
 impl Display for ShaderSupportError {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::NotSupportedByVulkan => write!(f, "not supported by Vulkan"),
             Self::RequirementsNotMet(requirements) => write!(
@@ -688,7 +688,7 @@ pub enum DescriptorRequirementsIncompatible {
 impl Error for DescriptorRequirementsIncompatible {}
 
 impl Display for DescriptorRequirementsIncompatible {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             DescriptorRequirementsIncompatible::DescriptorType => write!(
                 f,
@@ -1024,7 +1024,7 @@ impl Error for ShaderInterfaceMismatchError {}
 
 impl Display for ShaderInterfaceMismatchError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
             "{}",

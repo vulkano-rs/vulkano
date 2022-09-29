@@ -206,7 +206,7 @@ where
     // Implementation of `flush`. You must lock the state and pass the mutex guard here.
     fn flush_impl(
         &self,
-        state: &mut MutexGuard<FenceSignalFutureState<F>>,
+        state: &mut MutexGuard<'_, FenceSignalFutureState<F>>,
     ) -> Result<(), FlushError> {
         unsafe {
             // In this function we temporarily replace the current state with `Poisoned` at the

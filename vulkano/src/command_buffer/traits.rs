@@ -154,7 +154,7 @@ pub unsafe trait PrimaryCommandBuffer: DeviceOwned + Send + Sync {
 }
 
 impl Debug for dyn PrimaryCommandBuffer {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         Debug::fmt(self.inner(), f)
     }
 }
@@ -559,7 +559,7 @@ impl Error for CommandBufferExecError {
 
 impl Display for CommandBufferExecError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
             "{}",

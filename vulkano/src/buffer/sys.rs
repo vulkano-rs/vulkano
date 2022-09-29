@@ -446,7 +446,7 @@ impl UnsafeBuffer {
         Ok(())
     }
 
-    pub(crate) fn state(&self) -> MutexGuard<BufferState> {
+    pub(crate) fn state(&self) -> MutexGuard<'_, BufferState> {
         self.state.lock()
     }
 
@@ -601,7 +601,7 @@ impl Error for BufferCreationError {
 
 impl Display for BufferCreationError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::AllocError(_) => write!(f, "allocating memory failed"),
             Self::RequirementNotMet {

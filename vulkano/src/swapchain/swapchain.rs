@@ -908,7 +908,7 @@ impl<W> Hash for Swapchain<W> {
 
 impl<W> Debug for Swapchain<W> {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         let Self {
             handle,
             device,
@@ -962,7 +962,7 @@ pub unsafe trait SwapchainAbstract:
     VulkanObject<Object = ash::vk::SwapchainKHR> + DeviceOwned + Debug + Send + Sync
 {
     /// Returns one of the images that belongs to this swapchain.
-    fn raw_image(&self, index: u32) -> Option<ImageInner>;
+    fn raw_image(&self, index: u32) -> Option<ImageInner<'_>>;
 
     /// Returns the number of images of the swapchain.
     fn image_count(&self) -> u32;
@@ -991,7 +991,7 @@ where
     W: Send + Sync,
 {
     #[inline]
-    fn raw_image(&self, image_index: u32) -> Option<ImageInner> {
+    fn raw_image(&self, image_index: u32) -> Option<ImageInner<'_>> {
         self.images.get(image_index as usize).map(|i| ImageInner {
             image: &i.image,
             first_layer: 0,
@@ -1277,7 +1277,7 @@ impl Error for SwapchainCreationError {
 
 impl Display for SwapchainCreationError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match *self {
             Self::OomError(_) => write!(f, "not enough memory available",),
             Self::DeviceLost => write!(f, "the device was lost",),
@@ -1469,7 +1469,7 @@ impl Error for FullScreenExclusiveError {
 
 impl Display for FullScreenExclusiveError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
             "{}",
@@ -1838,7 +1838,7 @@ impl Error for AcquireError {
 
 impl Display for AcquireError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
             "{}",
@@ -1937,7 +1937,7 @@ impl Error for PresentWaitError {
 
 impl Display for PresentWaitError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match *self {
             Self::OomError(e) => write!(f, "{}", e),
             Self::DeviceLost => write!(f, "the connection to the device has been lost"),

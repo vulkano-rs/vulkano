@@ -516,7 +516,7 @@ impl Error for SemaphoreError {
 }
 
 impl Display for SemaphoreError {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::OomError(_) => write!(f, "not enough memory available"),
 
