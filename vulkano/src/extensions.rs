@@ -26,7 +26,7 @@ impl Error for ExtensionRestrictionError {}
 
 impl Display for ExtensionRestrictionError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
             "a restriction for the extension {} was not met: {}",
@@ -49,7 +49,7 @@ pub enum ExtensionRestriction {
 
 impl Display for ExtensionRestriction {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match *self {
             ExtensionRestriction::NotSupported => {
                 write!(f, "not supported by the loader or physical device")

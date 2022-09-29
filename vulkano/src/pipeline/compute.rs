@@ -70,7 +70,7 @@ impl ComputePipeline {
     /// to add dynamic buffers or immutable samplers.
     pub fn new<Css, F>(
         device: Arc<Device>,
-        shader: EntryPoint,
+        shader: EntryPoint<'_>,
         specialization_constants: &Css,
         cache: Option<Arc<PipelineCache>>,
         func: F,
@@ -117,7 +117,7 @@ impl ComputePipeline {
     /// uses.
     pub fn with_pipeline_layout<Css>(
         device: Arc<Device>,
-        shader: EntryPoint,
+        shader: EntryPoint<'_>,
         specialization_constants: &Css,
         layout: Arc<PipelineLayout>,
         cache: Option<Arc<PipelineCache>>,
@@ -158,7 +158,7 @@ impl ComputePipeline {
     /// superset of what the shader expects.
     pub unsafe fn with_unchecked_pipeline_layout<Css>(
         device: Arc<Device>,
-        shader: EntryPoint,
+        shader: EntryPoint<'_>,
         specialization_constants: &Css,
         layout: Arc<PipelineLayout>,
         cache: Option<Arc<PipelineCache>>,
@@ -274,7 +274,7 @@ impl Pipeline for ComputePipeline {
 
 impl Debug for ComputePipeline {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(f, "<Vulkan compute pipeline {:?}>", self.handle)
     }
 }
@@ -344,7 +344,7 @@ impl Error for ComputePipelineCreationError {
 
 impl Display for ComputePipelineCreationError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
             "{}",

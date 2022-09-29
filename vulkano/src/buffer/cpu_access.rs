@@ -295,7 +295,7 @@ where
     /// that uses it in exclusive mode will fail. You can still submit this buffer for non-exclusive
     /// accesses (ie. reads).
     #[inline]
-    pub fn read(&self) -> Result<ReadLock<T, A>, ReadLockError> {
+    pub fn read(&self) -> Result<ReadLock<'_, T, A>, ReadLockError> {
         let mut state = self.inner.state();
         let buffer_range = self.inner().offset..self.inner().offset + self.size();
 
@@ -336,7 +336,7 @@ where
     /// After this function successfully locks the buffer, any attempt to submit a command buffer
     /// that uses it and any attempt to call `read()` will return an error.
     #[inline]
-    pub fn write(&self) -> Result<WriteLock<T, A>, WriteLockError> {
+    pub fn write(&self) -> Result<WriteLock<'_, T, A>, WriteLockError> {
         let mut state = self.inner.state();
         let buffer_range = self.inner().offset..self.inner().offset + self.size();
 
@@ -371,7 +371,7 @@ where
     A: Send + Sync,
 {
     #[inline]
-    fn inner(&self) -> BufferInner {
+    fn inner(&self) -> BufferInner<'_> {
         BufferInner {
             buffer: &self.inner,
             offset: 0,
@@ -450,7 +450,7 @@ where
 #[derive(Debug)]
 pub struct ReadLock<'a, T, A>
 where
-    T: BufferContents + ?Sized + 'a,
+    T: BufferContents + ?Sized,
     A: MemoryPoolAlloc,
 {
     inner: &'a CpuAccessibleBuffer<T, A>,
@@ -492,7 +492,7 @@ where
 #[derive(Debug)]
 pub struct WriteLock<'a, T, A>
 where
-    T: BufferContents + ?Sized + 'a,
+    T: BufferContents + ?Sized,
     A: MemoryPoolAlloc,
 {
     inner: &'a CpuAccessibleBuffer<T, A>,
@@ -559,7 +559,7 @@ impl Error for ReadLockError {}
 
 impl Display for ReadLockError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
             "{}",
@@ -588,7 +588,7 @@ impl Error for WriteLockError {}
 
 impl Display for WriteLockError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
             "{}",

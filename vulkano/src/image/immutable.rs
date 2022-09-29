@@ -319,7 +319,7 @@ where
     A: MemoryPoolAlloc,
 {
     #[inline]
-    fn inner(&self) -> ImageInner {
+    fn inner(&self) -> ImageInner<'_> {
         ImageInner {
             image: &self.image,
             first_layer: 0,
@@ -403,7 +403,7 @@ where
     A: MemoryPoolAlloc,
 {
     #[inline]
-    fn inner(&self) -> ImageInner {
+    fn inner(&self) -> ImageInner<'_> {
         self.image.inner()
     }
 
@@ -465,7 +465,7 @@ impl Error for ImmutableImageCreationError {
 
 impl Display for ImmutableImageCreationError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::ImageCreationError(err) => err.fmt(f),
             Self::DeviceMemoryAllocationError(err) => err.fmt(f),

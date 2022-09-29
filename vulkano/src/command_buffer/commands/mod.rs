@@ -286,7 +286,7 @@ impl Error for CopyError {
 
 impl Display for CopyError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::SyncCommandBufferBuilderError(_) => write!(f, "a SyncCommandBufferBuilderError"),
 
@@ -611,7 +611,7 @@ pub enum CopyErrorResource {
 
 impl Display for CopyErrorResource {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::Source => write!(f, "source"),
             Self::Destination => write!(f, "destination"),

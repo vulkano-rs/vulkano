@@ -669,7 +669,7 @@ impl SyncCommandBufferBuilder {
 impl UnsafeCommandBufferBuilder {
     /// Calls `vkCmdBeginQuery` on the builder.
     #[inline]
-    pub unsafe fn begin_query(&mut self, query: Query, flags: QueryControlFlags) {
+    pub unsafe fn begin_query(&mut self, query: Query<'_>, flags: QueryControlFlags) {
         let fns = self.device.fns();
         let flags = if flags.precise {
             ash::vk::QueryControlFlags::PRECISE
@@ -686,14 +686,14 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdEndQuery` on the builder.
     #[inline]
-    pub unsafe fn end_query(&mut self, query: Query) {
+    pub unsafe fn end_query(&mut self, query: Query<'_>) {
         let fns = self.device.fns();
         (fns.v1_0.cmd_end_query)(self.handle, query.pool().internal_object(), query.index());
     }
 
     /// Calls `vkCmdWriteTimestamp` on the builder.
     #[inline]
-    pub unsafe fn write_timestamp(&mut self, query: Query, stage: PipelineStage) {
+    pub unsafe fn write_timestamp(&mut self, query: Query<'_>, stage: PipelineStage) {
         let fns = self.device.fns();
         (fns.v1_0.cmd_write_timestamp)(
             self.handle,
@@ -707,7 +707,7 @@ impl UnsafeCommandBufferBuilder {
     #[inline]
     pub unsafe fn copy_query_pool_results<D, T>(
         &mut self,
-        queries: QueriesRange,
+        queries: QueriesRange<'_>,
         destination: &D,
         stride: DeviceSize,
         flags: QueryResultFlags,
@@ -737,7 +737,7 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdResetQueryPool` on the builder.
     #[inline]
-    pub unsafe fn reset_query_pool(&mut self, queries: QueriesRange) {
+    pub unsafe fn reset_query_pool(&mut self, queries: QueriesRange<'_>) {
         let range = queries.range();
         let fns = self.device.fns();
         (fns.v1_0.cmd_reset_query_pool)(
@@ -806,7 +806,7 @@ impl Error for QueryError {}
 
 impl Display for QueryError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match *self {
             Self::SyncCommandBufferBuilderError(_) => write!(
                 f,

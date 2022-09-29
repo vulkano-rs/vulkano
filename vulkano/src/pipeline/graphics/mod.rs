@@ -266,7 +266,7 @@ unsafe impl DeviceOwned for GraphicsPipeline {
 
 impl Debug for GraphicsPipeline {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(f, "<Vulkan graphics pipeline {:?}>", self.handle)
     }
 }

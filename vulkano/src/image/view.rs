@@ -995,7 +995,7 @@ impl Error for ImageViewCreationError {
 
 impl Display for ImageViewCreationError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::OomError(_) => write!(
                 f,

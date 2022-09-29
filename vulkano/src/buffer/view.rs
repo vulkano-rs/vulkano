@@ -370,7 +370,7 @@ impl Error for BufferViewCreationError {
 
 impl Display for BufferViewCreationError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::OomError(_) => write!(
                 f,

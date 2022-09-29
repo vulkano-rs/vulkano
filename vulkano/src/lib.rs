@@ -62,7 +62,7 @@
 //!
 
 //#![warn(missing_docs)]        // TODO: activate
-
+#![warn(rust_2018_idioms, rust_2021_compatibility)]
 // These lints are a bit too pedantic, so they're disabled here.
 #![allow(
     clippy::collapsible_else_if,
@@ -151,7 +151,7 @@ impl Error for OomError {}
 
 impl Display for OomError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
             "{}",
@@ -180,7 +180,7 @@ include!(concat!(env!("OUT_DIR"), "/errors.rs"));
 impl Error for VulkanError {}
 
 impl Display for VulkanError {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             VulkanError::OutOfHostMemory => write!(
                 f,
@@ -325,7 +325,7 @@ impl RequiresOneOf {
 
 impl Display for RequiresOneOf {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         let mut members_written = 0;
 
         if let Some(version) = self.api_version {
