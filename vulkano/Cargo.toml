@@ -19,7 +19,6 @@ build = "build.rs"
 ash = "0.37"
 bytemuck = { version = "1.7", features = ["derive", "extern_crate_std", "min_const_generics"] }
 crossbeam-queue = "0.3"
-dashmap = "5"
 half = "2"
 libloading = "0.7"
 nalgebra = { version = "0.31.0", optional = true }
