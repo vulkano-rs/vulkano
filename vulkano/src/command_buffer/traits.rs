@@ -497,6 +497,15 @@ where
             }
         }
     }
+
+    #[inline]
+    fn check_swapchain_image_acquired(
+        &self,
+        image: &UnsafeImage,
+        _before: bool,
+    ) -> Result<(), AccessCheckError> {
+        self.previous.check_swapchain_image_acquired(image, false)
+    }
 }
 
 unsafe impl<F> DeviceOwned for CommandBufferExecFuture<F>

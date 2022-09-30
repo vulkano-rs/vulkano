@@ -44,8 +44,8 @@ use vulkano::{
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     shader::ShaderModule,
     swapchain::{
-        acquire_next_image, AcquireError, Swapchain, SwapchainAbstract,
-        SwapchainCreateInfo, SwapchainCreationError, SwapchainPresentInfo,
+        acquire_next_image, AcquireError, Swapchain, SwapchainAbstract, SwapchainCreateInfo,
+        SwapchainCreationError, SwapchainPresentInfo,
     },
     sync::{self, FlushError, GpuFuture},
     VulkanLibrary,

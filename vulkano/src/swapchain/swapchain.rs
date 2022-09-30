@@ -1774,6 +1774,25 @@ where
 
         Ok(None)
     }
+
+    #[inline]
+    fn check_swapchain_image_acquired(
+        &self,
+        image: &UnsafeImage,
+        before: bool,
+    ) -> Result<(), AccessCheckError> {
+        if before {
+            Ok(())
+        } else {
+            let swapchain_image = self.swapchain.raw_image(self.image_index).unwrap();
+
+            if swapchain_image.image.internal_object() == image.internal_object() {
+                Ok(())
+            } else {
+                Err(AccessCheckError::Unknown)
+            }
+        }
+    }
 }
 
 impl<W> Drop for SwapchainAcquireFuture<W> {
@@ -2124,6 +2143,21 @@ where
                         }
                     }
 
+                    match self.previous.check_swapchain_image_acquired(
+                        self.swapchain_info
+                            .swapchain
+                            .raw_image(self.swapchain_info.image_index)
+                            .unwrap()
+                            .image,
+                        true,
+                    ) {
+                        Ok(_) => (),
+                        Err(AccessCheckError::Unknown) => {
+                            return Err(AccessError::SwapchainImageNotAcquired.into())
+                        }
+                        Err(AccessCheckError::Denied(e)) => return Err(e.into()),
+                    }
+
                     let mut queue_guard = self.queue.lock();
                     Ok(queue_guard
                         .present_unchecked(present_info)
@@ -2193,6 +2227,27 @@ where
         } else {
             self.previous
                 .check_image_access(image, range, exclusive, expected_layout, queue)
+        }
+    }
+
+    #[inline]
+    fn check_swapchain_image_acquired(
+        &self,
+        image: &UnsafeImage,
+        before: bool,
+    ) -> Result<(), AccessCheckError> {
+        let swapchain_image = self
+            .swapchain_info
+            .swapchain
+            .raw_image(self.swapchain_info.image_index)
+            .unwrap();
+
+        if before {
+            self.previous.check_swapchain_image_acquired(image, false)
+        } else if swapchain_image.image.internal_object() == image.internal_object() {
+            Err(AccessError::SwapchainImageNotAcquired.into())
+        } else {
+            self.previous.check_swapchain_image_acquired(image, false)
         }
     }
 }

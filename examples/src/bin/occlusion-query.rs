@@ -38,8 +38,8 @@ use vulkano::{
     query::{QueryControlFlags, QueryPool, QueryPoolCreateInfo, QueryResultFlags, QueryType},
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     swapchain::{
-        acquire_next_image, AcquireError, Swapchain, SwapchainAbstract,
-        SwapchainCreateInfo, SwapchainCreationError, SwapchainPresentInfo,
+        acquire_next_image, AcquireError, Swapchain, SwapchainAbstract, SwapchainCreateInfo,
+        SwapchainCreationError, SwapchainPresentInfo,
     },
     sync::{self, FlushError, GpuFuture},
     VulkanLibrary,

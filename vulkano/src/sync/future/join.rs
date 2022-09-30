@@ -271,13 +271,35 @@ where
                 Err(AccessCheckError::Denied(e1))
             } // TODO: which one?
             (Ok(_), Err(AccessCheckError::Denied(_)))
-            | (Err(AccessCheckError::Denied(_)), Ok(_)) => panic!(
-                "Contradictory information \
-                                                                 between two futures"
-            ),
+            | (Err(AccessCheckError::Denied(_)), Ok(_)) => {
+                panic!("Contradictory information between two futures")
+            }
             (Ok(None), Ok(None)) => Ok(None),
             (Ok(Some(a)), Ok(None)) | (Ok(None), Ok(Some(a))) => Ok(Some(a)),
             (Ok(Some((a1, a2))), Ok(Some((b1, b2)))) => Ok(Some((a1 | b1, a2 | b2))),
+        }
+    }
+
+    #[inline]
+    fn check_swapchain_image_acquired(
+        &self,
+        image: &UnsafeImage,
+        _before: bool,
+    ) -> Result<(), AccessCheckError> {
+        let first = self.first.check_swapchain_image_acquired(image, false);
+        let second = self.second.check_swapchain_image_acquired(image, false);
+
+        match (first, second) {
+            (v, Err(AccessCheckError::Unknown)) => v,
+            (Err(AccessCheckError::Unknown), v) => v,
+            (Err(AccessCheckError::Denied(e1)), Err(AccessCheckError::Denied(_))) => {
+                Err(AccessCheckError::Denied(e1))
+            } // TODO: which one?
+            (Ok(_), Err(AccessCheckError::Denied(_)))
+            | (Err(AccessCheckError::Denied(_)), Ok(_)) => {
+                panic!("Contradictory information between two futures")
+            }
+            (Ok(_), Ok(_)) => Ok(()), // TODO: Double Acquired?
         }
     }
 }
