@@ -1786,7 +1786,7 @@ where
         } else {
             let swapchain_image = self.swapchain.raw_image(self.image_index).unwrap();
 
-            if swapchain_image.image.internal_object() == image.internal_object() {
+            if **swapchain_image.image == *image {
                 Ok(())
             } else {
                 Err(AccessCheckError::Unknown)
@@ -2244,7 +2244,7 @@ where
 
         if before {
             self.previous.check_swapchain_image_acquired(image, false)
-        } else if swapchain_image.image.internal_object() == image.internal_object() {
+        } else if **swapchain_image.image == *image {
             Err(AccessError::SwapchainImageNotAcquired.into())
         } else {
             self.previous.check_swapchain_image_acquired(image, false)
