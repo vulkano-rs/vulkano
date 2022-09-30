@@ -431,18 +431,45 @@ impl Default for DebugUtilsLabel {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        instance::{InstanceCreateInfo, InstanceExtensions},
+        VulkanLibrary,
+    };
     use std::thread;
 
     #[test]
     fn ensure_sendable() {
         // It's useful to be able to initialize a DebugUtilsMessenger on one thread
         // and keep it alive on another thread.
-        let instance = instance!();
+        let instance = {
+            let library = match VulkanLibrary::new() {
+                Ok(x) => x,
+                Err(_) => return,
+            };
+
+            match Instance::new(
+                library,
+                InstanceCreateInfo {
+                    enabled_extensions: InstanceExtensions {
+                        ext_debug_utils: true,
+                        ..InstanceExtensions::empty()
+                    },
+                    ..Default::default()
+                },
+            ) {
+                Ok(x) => x,
+                Err(_) => return,
+            }
+        };
+
         let callback = unsafe {
             DebugUtilsMessenger::new(
                 instance,
                 DebugUtilsMessengerCreateInfo {
-                    message_severity: DebugUtilsMessageSeverity::empty(),
+                    message_severity: DebugUtilsMessageSeverity {
+                        error: true,
+                        ..DebugUtilsMessageSeverity::empty()
+                    },
                     message_type: DebugUtilsMessageType {
                         general: true,
                         validation: true,

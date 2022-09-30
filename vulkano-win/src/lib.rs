@@ -1,5 +1,6 @@
 #![doc(html_logo_url = "https://raw.githubusercontent.com/vulkano-rs/vulkano/master/logo.png")]
 #![allow(clippy::missing_safety_doc)]
+#![warn(rust_2018_idioms, rust_2021_compatibility)]
 
 /// Create a surface either using winit or a RawWindowHandle
 /// Its possible to disable either one using features

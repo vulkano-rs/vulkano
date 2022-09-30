@@ -229,7 +229,7 @@ fn instruction_output(members: &[InstructionMember], spec_constant: bool) -> Tok
 
         impl #enum_name {
             #[allow(dead_code)]
-            fn parse(reader: &mut InstructionReader) -> Result<Self, ParseError> {
+            fn parse(reader: &mut InstructionReader<'_>) -> Result<Self, ParseError> {
                 let opcode = (reader.next_u32()? & 0xffff) as u16;
 
                 Ok(match opcode {
@@ -392,7 +392,7 @@ fn bit_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
 
             impl #name {
                 #[allow(dead_code)]
-                fn parse(reader: &mut InstructionReader) -> Result<#name, ParseError> {
+                fn parse(reader: &mut InstructionReader<'_>) -> Result<#name, ParseError> {
                     let value = reader.next_u32()?;
 
                     Ok(Self {
@@ -536,7 +536,7 @@ fn value_enum_output(enums: &[(Ident, Vec<KindEnumMember>)]) -> TokenStream {
 
             impl #name {
                 #[allow(dead_code)]
-                fn parse(reader: &mut InstructionReader) -> Result<#name, ParseError> {
+                fn parse(reader: &mut InstructionReader<'_>) -> Result<#name, ParseError> {
                     Ok(match reader.next_u32()? {
                         #(#parse_items)*
                         value => return Err(reader.map_err(ParseErrors::UnknownEnumerant(#name_string, value))),

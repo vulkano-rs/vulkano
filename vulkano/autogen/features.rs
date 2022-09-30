@@ -486,7 +486,7 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
 
         impl std::fmt::Debug for Features {
             #[allow(unused_assignments)]
-            fn fmt(&self, f: &mut std::fmt:: Formatter) -> Result<(), std::fmt::Error> {
+            fn fmt(&self, f: &mut std::fmt:: Formatter<'_>) -> Result<(), std::fmt::Error> {
                 write!(f, "[")?;
 
                 let mut first = true;
