@@ -75,6 +75,18 @@ impl DeviceMemory {
         Self::validate(&device, &mut allocate_info, None)?;
         let handle = unsafe { Self::create(&device, &allocate_info, None)? };
 
+        unsafe { Ok(DeviceMemory::from_handle(handle, allocate_info, device)) }
+    }
+
+    /// Creates a new `DeviceMemory` from an ash-handle
+    /// # Safety
+    /// The `handle` has to be a valid vulkan object handle and
+    /// the `allocate_info` must match the info used to create said object
+    pub unsafe fn from_handle(
+        handle: ash::vk::DeviceMemory,
+        allocate_info: MemoryAllocateInfo<'_>,
+        device: Arc<Device>,
+    ) -> DeviceMemory {
         let MemoryAllocateInfo {
             allocation_size,
             memory_type_index,
@@ -83,14 +95,14 @@ impl DeviceMemory {
             _ne: _,
         } = allocate_info;
 
-        Ok(DeviceMemory {
+        DeviceMemory {
             handle,
             device,
 
             allocation_size,
             memory_type_index,
             export_handle_types,
-        })
+        }
     }
 
     /// Imports a block of memory from an external source.
