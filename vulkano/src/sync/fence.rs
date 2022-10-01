@@ -8,10 +8,11 @@
 // according to those terms.
 
 use crate::{
-    device::{Device, DeviceOwned},
+    device::{Device, DeviceOwned, Queue},
     macros::{vulkan_bitflags, vulkan_enum},
     OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
+use parking_lot::{Mutex, MutexGuard};
 use smallvec::SmallVec;
 use std::{
     error::Error,
@@ -19,33 +20,45 @@ use std::{
     hash::{Hash, Hasher},
     mem::MaybeUninit,
     ptr,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
+    sync::{Arc, Weak},
     time::Duration,
 };
 
-/// A fence is used to know when a command buffer submission has finished its execution.
+/// A two-state synchronization primitive that is signalled by the device and waited on by the host.
 ///
-/// When a command buffer accesses a resource, you have to ensure that the CPU doesn't access
-/// the same resource simultaneously (except for concurrent reads). Therefore in order to know
-/// when the CPU can access a resource again, a fence has to be used.
+/// # Queue-to-host synchronization
+///
+/// The primary use of a fence is to know when execution of a queue has reached a particular point.
+/// When adding a command to a queue, a fence can be provided with the command, to be signaled
+/// when the operation finishes. You can check for a fence's current status by calling
+/// `is_signaled` or `wait` on it. If the fence is found to be signaled, that means that the queue
+/// has completed the operation that is associated with the fence, and all operations that were
+/// submitted before it have been completed as well.
+///
+/// When a queue command accesses a resource, it must be kept alive until the queue command has
+/// finished executing, and you may not be allowed to perform certain other operations (or even any)
+/// while the resource is in use. By calling `is_signaled` or `wait`, the queue will be notified
+/// when the fence is signaled, so that all resources of the associated queue operation and
+/// preceding operations can be released.
+///
+/// Because of this, it is highly recommended to call `is_signaled` or `wait` on your fences.
+/// Otherwise, the queue will hold onto resources indefinitely (using up memory)
+/// and resource locks will not be released, which may cause errors when submitting future
+/// queue operations. It is not strictly necessary to wait for *every* fence, as a fence
+/// that was signaled later in the queue will automatically clean up resources associated with
+/// earlier fences too.
 #[derive(Debug)]
 pub struct Fence {
     handle: ash::vk::Fence,
     device: Arc<Device>,
 
-    _export_handle_types: ExternalFenceHandleTypes,
-
-    // If true, we know that the `Fence` is signaled. If false, we don't know.
-    // This variable exists so that we don't need to call `vkGetFenceStatus` or `vkWaitForFences`
-    // multiple times.
-    is_signaled: AtomicBool,
-
     // Indicates whether this fence was taken from the fence pool.
     // If true, will be put back into fence pool on drop.
     must_put_in_pool: bool,
+
+    _export_handle_types: ExternalFenceHandleTypes,
+
+    state: Mutex<FenceState>,
 }
 
 impl Fence {
@@ -141,9 +154,14 @@ impl Fence {
         Ok(Fence {
             handle,
             device,
-            _export_handle_types: export_handle_types,
-            is_signaled: AtomicBool::new(signaled),
             must_put_in_pool: false,
+
+            _export_handle_types: export_handle_types,
+
+            state: Mutex::new(FenceState {
+                is_signaled: signaled,
+                ..Default::default()
+            }),
         })
     }
 
@@ -168,9 +186,11 @@ impl Fence {
                 Fence {
                     handle,
                     device,
-                    _export_handle_types: ExternalFenceHandleTypes::empty(),
-                    is_signaled: AtomicBool::new(false),
                     must_put_in_pool: true,
+
+                    _export_handle_types: ExternalFenceHandleTypes::empty(),
+
+                    state: Mutex::new(Default::default()),
                 }
             }
             None => {
@@ -204,31 +224,50 @@ impl Fence {
         Fence {
             handle,
             device,
-            _export_handle_types: export_handle_types,
-            is_signaled: AtomicBool::new(signaled),
             must_put_in_pool: false,
+
+            _export_handle_types: export_handle_types,
+
+            state: Mutex::new(FenceState {
+                is_signaled: signaled,
+                ..Default::default()
+            }),
         }
     }
 
     /// Returns true if the fence is signaled.
-    #[inline]
     pub fn is_signaled(&self) -> Result<bool, OomError> {
-        unsafe {
-            if self.is_signaled.load(Ordering::Relaxed) {
-                return Ok(true);
+        let queue_to_signal = {
+            let mut state = self.lock();
+
+            // If the fence is already signaled, or it's unsignaled but there's no queue that
+            // could signal it, return the currently known value.
+            if let Some(is_signaled) = state.status() {
+                return Ok(is_signaled);
             }
 
-            let fns = self.device.fns();
-            let result = (fns.v1_0.get_fence_status)(self.device.internal_object(), self.handle);
+            // We must ask Vulkan for the state.
+            let result = unsafe {
+                let fns = self.device.fns();
+                (fns.v1_0.get_fence_status)(self.device.internal_object(), self.handle)
+            };
+
             match result {
-                ash::vk::Result::SUCCESS => {
-                    self.is_signaled.store(true, Ordering::Relaxed);
-                    Ok(true)
-                }
-                ash::vk::Result::NOT_READY => Ok(false),
-                err => Err(VulkanError::from(err).into()),
+                ash::vk::Result::SUCCESS => unsafe { state.set_signaled() },
+                ash::vk::Result::NOT_READY => return Ok(false),
+                err => return Err(VulkanError::from(err).into()),
+            }
+        };
+
+        // If we have a queue that we need to signal our status to,
+        // do so now after the state lock is dropped, to avoid deadlocks.
+        if let Some(queue) = queue_to_signal {
+            unsafe {
+                queue.with(|mut q| q.fence_signaled(self));
             }
         }
+
+        Ok(true)
     }
 
     /// Waits until the fence is signaled, or at least until the timeout duration has elapsed.
@@ -237,38 +276,48 @@ impl Fence {
     ///
     /// If you pass a duration of 0, then the function will return without blocking.
     pub fn wait(&self, timeout: Option<Duration>) -> Result<(), FenceError> {
-        unsafe {
-            if self.is_signaled.load(Ordering::Relaxed) {
+        let queue_to_signal = {
+            let mut state = self.state.lock();
+
+            // If the fence is already signaled, we don't need to wait.
+            if let Some(true) = state.status() {
                 return Ok(());
             }
 
-            let timeout_ns = if let Some(timeout) = timeout {
+            let timeout_ns = timeout.map_or(u64::MAX, |timeout| {
                 timeout
                     .as_secs()
                     .saturating_mul(1_000_000_000)
                     .saturating_add(timeout.subsec_nanos() as u64)
-            } else {
-                u64::MAX
+            });
+
+            let result = unsafe {
+                let fns = self.device.fns();
+                (fns.v1_0.wait_for_fences)(
+                    self.device.internal_object(),
+                    1,
+                    &self.handle,
+                    ash::vk::TRUE,
+                    timeout_ns,
+                )
             };
 
-            let fns = self.device.fns();
-            let result = (fns.v1_0.wait_for_fences)(
-                self.device.internal_object(),
-                1,
-                &self.handle,
-                ash::vk::TRUE,
-                timeout_ns,
-            );
-
             match result {
-                ash::vk::Result::SUCCESS => {
-                    self.is_signaled.store(true, Ordering::Relaxed);
-                    Ok(())
-                }
-                ash::vk::Result::TIMEOUT => Err(FenceError::Timeout),
-                err => Err(VulkanError::from(err).into()),
+                ash::vk::Result::SUCCESS => unsafe { state.set_signaled() },
+                ash::vk::Result::TIMEOUT => return Err(FenceError::Timeout),
+                err => return Err(VulkanError::from(err).into()),
+            }
+        };
+
+        // If we have a queue that we need to signal our status to,
+        // do so now after the state lock is dropped, to avoid deadlocks.
+        if let Some(queue) = queue_to_signal {
+            unsafe {
+                queue.with(|mut q| q.fence_signaled(self));
             }
         }
+
+        Ok(())
     }
 
     /// Waits for multiple fences at once.
@@ -276,120 +325,228 @@ impl Fence {
     /// # Panic
     ///
     /// Panics if not all fences belong to the same device.
-    pub fn multi_wait<'a, I>(iter: I, timeout: Option<Duration>) -> Result<(), FenceError>
-    where
-        I: IntoIterator<Item = &'a Fence>,
-    {
-        let mut device: Option<&Device> = None;
+    #[inline]
+    pub fn multi_wait<'a>(
+        fences: impl IntoIterator<Item = &'a Fence>,
+        timeout: Option<Duration>,
+    ) -> Result<(), FenceError> {
+        let fences: SmallVec<[_; 8]> = fences.into_iter().collect();
+        Self::validate_multi_wait(&fences, timeout)?;
 
-        let fences: SmallVec<[ash::vk::Fence; 8]> = iter
-            .into_iter()
-            .filter_map(|fence| {
-                match &mut device {
-                    dev @ &mut None => *dev = Some(&*fence.device),
-                    &mut Some(dev) if std::ptr::eq(dev, &*fence.device) => {}
-                    _ => panic!(
-                        "Tried to wait for multiple fences that didn't belong to the \
-                                 same device"
-                    ),
-                };
+        unsafe { Self::multi_wait_unchecked(fences, timeout) }
+    }
 
-                if fence.is_signaled.load(Ordering::Relaxed) {
-                    None
-                } else {
-                    Some(fence.handle)
+    fn validate_multi_wait(
+        fences: &[&Fence],
+        _timeout: Option<Duration>,
+    ) -> Result<(), FenceError> {
+        if fences.is_empty() {
+            return Ok(());
+        }
+
+        let device = &fences[0].device;
+
+        for fence in fences {
+            // VUID-vkWaitForFences-pFences-parent
+            assert_eq!(device, &fence.device);
+        }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn multi_wait_unchecked<'a>(
+        fences: impl IntoIterator<Item = &'a Fence>,
+        timeout: Option<Duration>,
+    ) -> Result<(), FenceError> {
+        let queues_to_signal: SmallVec<[_; 8]> = {
+            let iter = fences.into_iter();
+            let mut fences_vk: SmallVec<[_; 8]> = SmallVec::new();
+            let mut fences: SmallVec<[_; 8]> = SmallVec::new();
+            let mut states: SmallVec<[_; 8]> = SmallVec::new();
+
+            for fence in iter {
+                let state = fence.state.lock();
+
+                // Skip the fences that are already signaled.
+                if !state.status().unwrap_or(false) {
+                    fences_vk.push(fence.handle);
+                    fences.push(fence);
+                    states.push(state);
                 }
-            })
-            .collect();
+            }
 
-        let timeout_ns = if let Some(timeout) = timeout {
-            timeout
-                .as_secs()
-                .saturating_mul(1_000_000_000)
-                .saturating_add(timeout.subsec_nanos() as u64)
-        } else {
-            u64::MAX
-        };
+            // VUID-vkWaitForFences-fenceCount-arraylength
+            // If there are no fences, or all the fences are signaled, we don't need to wait.
+            if fences_vk.is_empty() {
+                return Ok(());
+            }
 
-        let result = if let Some(device) = device {
-            unsafe {
+            let device = &fences[0].device;
+            let timeout_ns = timeout.map_or(u64::MAX, |timeout| {
+                timeout
+                    .as_secs()
+                    .saturating_mul(1_000_000_000)
+                    .saturating_add(timeout.subsec_nanos() as u64)
+            });
+
+            let result = {
                 let fns = device.fns();
                 (fns.v1_0.wait_for_fences)(
                     device.internal_object(),
-                    fences.len() as u32,
-                    fences.as_ptr(),
-                    ash::vk::TRUE,
+                    fences_vk.len() as u32,
+                    fences_vk.as_ptr(),
+                    ash::vk::TRUE, // TODO: let the user choose false here?
                     timeout_ns,
                 )
+            };
+
+            match result {
+                ash::vk::Result::SUCCESS => fences
+                    .into_iter()
+                    .zip(&mut states)
+                    .filter_map(|(fence, state)| state.set_signaled().map(|state| (state, fence)))
+                    .collect(),
+                ash::vk::Result::TIMEOUT => return Err(FenceError::Timeout),
+                err => return Err(VulkanError::from(err).into()),
             }
-        } else {
-            return Ok(());
         };
 
-        match result {
-            ash::vk::Result::SUCCESS => Ok(()),
-            ash::vk::Result::TIMEOUT => Err(FenceError::Timeout),
-            err => Err(VulkanError::from(err).into()),
+        // If we have queues that we need to signal our status to,
+        // do so now after the state locks are dropped, to avoid deadlocks.
+        for (queue, fence) in queues_to_signal {
+            queue.with(|mut q| q.fence_signaled(fence));
         }
+
+        Ok(())
     }
 
     /// Resets the fence.
-    // This function takes a `&mut self` because the Vulkan API requires that the fence be
-    // externally synchronized.
+    ///
+    /// The fence must not be in use by a queue operation.
     #[inline]
-    pub fn reset(&mut self) -> Result<(), OomError> {
-        unsafe {
-            let fns = self.device.fns();
-            (fns.v1_0.reset_fences)(self.device.internal_object(), 1, &self.handle)
-                .result()
-                .map_err(VulkanError::from)?;
-            self.is_signaled.store(false, Ordering::Relaxed);
-            Ok(())
+    pub fn reset(&self) -> Result<(), FenceError> {
+        let mut state = self.state.lock();
+        self.validate_reset(&state)?;
+
+        unsafe { Ok(self.reset_unchecked_locked(&mut state)?) }
+    }
+
+    fn validate_reset(&self, state: &FenceState) -> Result<(), FenceError> {
+        // VUID-vkResetFences-pFences-01123
+        if state.is_in_use() {
+            return Err(FenceError::InUse);
         }
+
+        Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    pub unsafe fn reset_unchecked(&self) -> Result<(), VulkanError> {
+        let mut state = self.state.lock();
+        self.reset_unchecked_locked(&mut state)
+    }
+
+    unsafe fn reset_unchecked_locked(&self, state: &mut FenceState) -> Result<(), VulkanError> {
+        let fns = self.device.fns();
+        (fns.v1_0.reset_fences)(self.device.internal_object(), 1, &self.handle)
+            .result()
+            .map_err(VulkanError::from)?;
+
+        state.reset();
+
+        Ok(())
     }
 
     /// Resets multiple fences at once.
     ///
+    /// The fences must not be in use by a queue operation.
+    ///
     /// # Panic
     ///
     /// - Panics if not all fences belong to the same device.
-    ///
-    pub fn multi_reset<'a, I>(iter: I) -> Result<(), OomError>
-    where
-        I: IntoIterator<Item = &'a mut Fence>,
-    {
-        let mut device: Option<&Device> = None;
-
-        let fences: SmallVec<[ash::vk::Fence; 8]> = iter
+    #[inline]
+    pub fn multi_reset<'a>(fences: impl IntoIterator<Item = &'a Fence>) -> Result<(), FenceError> {
+        let (fences, mut states): (SmallVec<[_; 8]>, SmallVec<[_; 8]>) = fences
             .into_iter()
             .map(|fence| {
-                match &mut device {
-                    dev @ &mut None => *dev = Some(&*fence.device),
-                    &mut Some(dev) if std::ptr::eq(dev, &*fence.device) => {}
-                    _ => panic!(
-                        "Tried to reset multiple fences that didn't belong to the same \
-                                 device"
-                    ),
-                };
-
-                fence.is_signaled.store(false, Ordering::Relaxed);
-                fence.handle
+                let state = fence.state.lock();
+                (fence, state)
             })
-            .collect();
+            .unzip();
+        Self::validate_multi_reset(&fences, &states)?;
 
-        if let Some(device) = device {
-            unsafe {
-                let fns = device.fns();
-                (fns.v1_0.reset_fences)(
-                    device.internal_object(),
-                    fences.len() as u32,
-                    fences.as_ptr(),
-                )
-                .result()
-                .map_err(VulkanError::from)?;
+        unsafe { Ok(Self::multi_reset_unchecked_locked(&fences, &mut states)?) }
+    }
+
+    fn validate_multi_reset(
+        fences: &[&Fence],
+        states: &[MutexGuard<'_, FenceState>],
+    ) -> Result<(), FenceError> {
+        if fences.is_empty() {
+            return Ok(());
+        }
+
+        let device = &fences[0].device;
+
+        for (fence, state) in fences.iter().zip(states) {
+            // VUID-vkResetFences-pFences-parent
+            assert_eq!(device, &fence.device);
+
+            // VUID-vkResetFences-pFences-01123
+            if state.is_in_use() {
+                return Err(FenceError::InUse);
             }
         }
+
         Ok(())
+    }
+
+    #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
+    pub unsafe fn multi_reset_unchecked<'a>(
+        fences: impl IntoIterator<Item = &'a Fence>,
+    ) -> Result<(), VulkanError> {
+        let (fences, mut states): (SmallVec<[_; 8]>, SmallVec<[_; 8]>) = fences
+            .into_iter()
+            .map(|fence| {
+                let state = fence.state.lock();
+                (fence, state)
+            })
+            .unzip();
+        Self::multi_reset_unchecked_locked(&fences, &mut states)
+    }
+
+    unsafe fn multi_reset_unchecked_locked(
+        fences: &[&Fence],
+        states: &mut [MutexGuard<'_, FenceState>],
+    ) -> Result<(), VulkanError> {
+        if fences.is_empty() {
+            return Ok(());
+        }
+
+        let device = &fences[0].device;
+        let fences_vk: SmallVec<[_; 8]> = fences.iter().map(|fence| fence.handle).collect();
+
+        let fns = device.fns();
+        (fns.v1_0.reset_fences)(
+            device.internal_object(),
+            fences_vk.len() as u32,
+            fences_vk.as_ptr(),
+        )
+        .result()
+        .map_err(VulkanError::from)?;
+
+        for state in states {
+            state.reset();
+        }
+
+        Ok(())
+    }
+
+    #[inline]
+    pub(crate) fn lock(&self) -> MutexGuard<'_, FenceState> {
+        self.state.lock()
     }
 }
 
@@ -438,6 +595,53 @@ impl Hash for Fence {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
         self.device().hash(state);
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct FenceState {
+    is_signaled: bool,
+    in_use_by: Option<Weak<Queue>>,
+}
+
+impl FenceState {
+    /// If the fence is already signaled, or it's unsignaled but there's no queue that
+    /// could signal it, returns the currently known value.
+    #[inline]
+    pub(crate) fn status(&self) -> Option<bool> {
+        (self.is_signaled || self.in_use_by.is_none()).then_some(self.is_signaled)
+    }
+
+    #[inline]
+    pub(crate) fn is_in_use(&self) -> bool {
+        self.in_use_by.is_some()
+    }
+
+    #[inline]
+    pub(crate) unsafe fn add_to_queue(&mut self, queue: &Arc<Queue>) {
+        self.is_signaled = false;
+        self.in_use_by = Some(Arc::downgrade(queue));
+    }
+
+    /// Called when a fence first discovers that it is signaled.
+    /// Returns the queue that should be informed about it.
+    #[inline]
+    pub(crate) unsafe fn set_signaled(&mut self) -> Option<Arc<Queue>> {
+        self.is_signaled = true;
+        self.in_use_by.take().and_then(|queue| queue.upgrade())
+    }
+
+    /// Called when a queue is unlocking resources.
+    #[inline]
+    pub(crate) unsafe fn set_finished(&mut self) {
+        self.is_signaled = true;
+        self.in_use_by = None;
+    }
+
+    #[inline]
+    pub(crate) unsafe fn reset(&mut self) {
+        debug_assert!(self.in_use_by.is_none());
+        self.is_signaled = false;
     }
 }
 
@@ -585,6 +789,9 @@ pub enum FenceError {
         required_for: &'static str,
         requires_one_of: RequiresOneOf,
     },
+
+    /// The fence is currently in use by a queue.
+    InUse,
 }
 
 impl Error for FenceError {
@@ -612,6 +819,8 @@ impl Display for FenceError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
+
+            Self::InUse => write!(f, "the fence is currently in use by a queue"),
         }
     }
 }
@@ -696,7 +905,7 @@ mod tests {
     fn fence_reset() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let mut fence = Fence::new(
+        let fence = Fence::new(
             device,
             FenceCreateInfo {
                 signaled: true,
@@ -713,33 +922,29 @@ mod tests {
         let (device1, _) = gfx_dev_and_queue!();
         let (device2, _) = gfx_dev_and_queue!();
 
-        assert_should_panic!(
-            "Tried to wait for multiple fences that didn't belong \
-                              to the same device",
-            {
-                let fence1 = Fence::new(
-                    device1.clone(),
-                    FenceCreateInfo {
-                        signaled: true,
-                        ..Default::default()
-                    },
-                )
-                .unwrap();
-                let fence2 = Fence::new(
-                    device2.clone(),
-                    FenceCreateInfo {
-                        signaled: true,
-                        ..Default::default()
-                    },
-                )
-                .unwrap();
+        assert_should_panic!({
+            let fence1 = Fence::new(
+                device1.clone(),
+                FenceCreateInfo {
+                    signaled: true,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            let fence2 = Fence::new(
+                device2.clone(),
+                FenceCreateInfo {
+                    signaled: true,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
 
-                let _ = Fence::multi_wait(
-                    [&fence1, &fence2].iter().cloned(),
-                    Some(Duration::new(0, 10)),
-                );
-            }
-        );
+            let _ = Fence::multi_wait(
+                [&fence1, &fence2].iter().cloned(),
+                Some(Duration::new(0, 10)),
+            );
+        });
     }
 
     #[test]
@@ -747,30 +952,26 @@ mod tests {
         let (device1, _) = gfx_dev_and_queue!();
         let (device2, _) = gfx_dev_and_queue!();
 
-        assert_should_panic!(
-            "Tried to reset multiple fences that didn't belong \
-                              to the same device",
-            {
-                let mut fence1 = Fence::new(
-                    device1.clone(),
-                    FenceCreateInfo {
-                        signaled: true,
-                        ..Default::default()
-                    },
-                )
-                .unwrap();
-                let mut fence2 = Fence::new(
-                    device2.clone(),
-                    FenceCreateInfo {
-                        signaled: true,
-                        ..Default::default()
-                    },
-                )
-                .unwrap();
+        assert_should_panic!({
+            let fence1 = Fence::new(
+                device1.clone(),
+                FenceCreateInfo {
+                    signaled: true,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            let fence2 = Fence::new(
+                device2.clone(),
+                FenceCreateInfo {
+                    signaled: true,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
 
-                let _ = Fence::multi_reset([&mut fence1, &mut fence2]);
-            }
-        );
+            let _ = Fence::multi_reset([&fence1, &fence2]);
+        });
     }
 
     #[test]

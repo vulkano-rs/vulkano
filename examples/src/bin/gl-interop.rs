@@ -254,10 +254,9 @@ mod linux {
                     recreate_swapchain = true;
                 }
                 Event::RedrawEventsCleared => {
-                    unsafe {
-                        let mut queue_guard = queue.lock();
-                        queue_guard
-                            .submit_unchecked(
+                    queue
+                        .with(|mut q| unsafe {
+                            q.submit_unchecked(
                                 [SubmitInfo {
                                     signal_semaphores: vec![SemaphoreSubmitInfo::semaphore(
                                         acquire_sem.clone(),
@@ -266,16 +265,15 @@ mod linux {
                                 }],
                                 None,
                             )
-                            .unwrap();
-                    };
+                        })
+                        .unwrap();
 
                     barrier.wait();
                     barrier_2.wait();
 
-                    unsafe {
-                        let mut queue_guard = queue.lock();
-                        queue_guard
-                            .submit_unchecked(
+                    queue
+                        .with(|mut q| unsafe {
+                            q.submit_unchecked(
                                 [SubmitInfo {
                                     wait_semaphores: vec![SemaphoreSubmitInfo::semaphore(
                                         release_sem.clone(),
@@ -284,8 +282,8 @@ mod linux {
                                 }],
                                 None,
                             )
-                            .unwrap();
-                    };
+                        })
+                        .unwrap();
 
                     previous_frame_end.as_mut().unwrap().cleanup_finished();
 

@@ -2124,9 +2124,9 @@ where
                         }
                     }
 
-                    let mut queue_guard = self.queue.lock();
-                    Ok(queue_guard
-                        .present_unchecked(present_info)
+                    Ok(self
+                        .queue
+                        .with(|mut q| q.present_unchecked(present_info))
                         .map(|r| r.map(|_| ()))
                         .fold(Ok(()), Result::and)?)
                 }
@@ -2221,7 +2221,7 @@ where
 
             if !*self.finished.get_mut() {
                 // Block until the queue finished.
-                self.queue().unwrap().lock().wait_idle().unwrap();
+                self.queue().unwrap().with(|mut q| q.wait_idle()).unwrap();
                 self.previous.signal_finished();
             }
         }
