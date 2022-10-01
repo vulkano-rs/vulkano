@@ -158,14 +158,26 @@ impl<'a> QueueGuard<'a> {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
     pub unsafe fn bind_sparse_unchecked(
         &mut self,
         bind_infos: impl IntoIterator<Item = BindSparseInfo>,
         fence: Option<Arc<Fence>>,
     ) -> Result<(), VulkanError> {
-        let bind_infos: SmallVec<[_; 4]> = bind_infos.into_iter().collect();
+        self.bind_sparse_unchecked_locked(
+            bind_infos.into_iter().collect(),
+            fence.as_ref().map(|fence| {
+                let state = fence.lock();
+                (fence, state)
+            }),
+        )
+    }
 
-        #[allow(unused)]
+    unsafe fn bind_sparse_unchecked_locked(
+        &mut self,
+        bind_infos: SmallVec<[BindSparseInfo; 4]>,
+        fence: Option<(&Arc<Fence>, MutexGuard<'_, FenceState>)>,
+    ) -> Result<(), VulkanError> {
         struct PerBindSparseInfo {
             wait_semaphores_vk: SmallVec<[ash::vk::Semaphore; 4]>,
             buffer_bind_infos_vk: SmallVec<[ash::vk::SparseBufferMemoryBindInfo; 4]>,
@@ -421,10 +433,15 @@ impl<'a> QueueGuard<'a> {
             bind_infos_vk.as_ptr(),
             fence
                 .as_ref()
-                .map_or_else(Default::default, |fence| fence.internal_object()),
+                .map_or_else(Default::default, |(fence, _)| fence.internal_object()),
         )
         .result()
         .map_err(VulkanError::from)?;
+
+        let fence = fence.map(|(fence, mut state)| {
+            state.add_to_queue(self.queue);
+            fence.clone()
+        });
 
         self.state.operations.push_back((bind_infos.into(), fence));
 
@@ -556,6 +573,7 @@ impl<'a> QueueGuard<'a> {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
     pub unsafe fn submit_unchecked(
         &mut self,
         submit_infos: impl IntoIterator<Item = SubmitInfo>,
