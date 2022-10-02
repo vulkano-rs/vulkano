@@ -93,6 +93,35 @@ impl DeviceMemory {
         })
     }
 
+    /// Creates a new `DeviceMemory` from a raw object handle.
+    ///
+    /// # Safety
+    ///
+    /// - `handle` must be a valid Vulkan object handle created from `device`.
+    /// - `allocate_info` must match the info used to create the object.
+    pub unsafe fn from_handle(
+        device: Arc<Device>,
+        handle: ash::vk::DeviceMemory,
+        allocate_info: MemoryAllocateInfo<'_>,
+    ) -> DeviceMemory {
+        let MemoryAllocateInfo {
+            allocation_size,
+            memory_type_index,
+            dedicated_allocation: _,
+            export_handle_types,
+            _ne: _,
+        } = allocate_info;
+
+        DeviceMemory {
+            handle,
+            device,
+
+            allocation_size,
+            memory_type_index,
+            export_handle_types,
+        }
+    }
+
     /// Imports a block of memory from an external source.
     ///
     /// # Safety
