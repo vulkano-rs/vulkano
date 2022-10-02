@@ -142,7 +142,7 @@ impl QueryPool {
 
     /// Returns a reference to a single query slot, or `None` if the index is out of range.
     #[inline]
-    pub fn query(&self, index: u32) -> Option<Query> {
+    pub fn query(&self, index: u32) -> Option<Query<'_>> {
         if index < self.query_count {
             Some(Query { pool: self, index })
         } else {
@@ -156,7 +156,7 @@ impl QueryPool {
     ///
     /// Panics if the range is empty.
     #[inline]
-    pub fn queries_range(&self, range: Range<u32>) -> Option<QueriesRange> {
+    pub fn queries_range(&self, range: Range<u32>) -> Option<QueriesRange<'_>> {
         assert!(!range.is_empty());
 
         if range.end <= self.query_count {
@@ -259,7 +259,7 @@ impl Error for QueryPoolCreationError {
 
 impl Display for QueryPoolCreationError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
             "{}",
@@ -472,7 +472,7 @@ impl Error for GetResultsError {
 
 impl Display for GetResultsError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::OomError(_) => write!(f, "not enough memory available"),
             Self::DeviceLost => write!(f, "the connection to the device has been lost"),

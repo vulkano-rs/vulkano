@@ -346,6 +346,21 @@ where
         }
 
         // VUID-VkSwapchainCreateInfoKHR-surface-01270
+        if !device
+            .active_queue_family_indices()
+            .iter()
+            .copied()
+            .any(|index| unsafe {
+                // Use unchecked, because all validation has been done above.
+                device
+                    .physical_device()
+                    .surface_support_unchecked(index, surface)
+                    .unwrap_or_default()
+            })
+        {
+            return Err(SwapchainCreationError::SurfaceNotSupported);
+        }
+
         *image_format = Some({
             // Use unchecked, because all validation has been done above.
             let surface_formats = unsafe {
@@ -908,7 +923,7 @@ impl<W> Hash for Swapchain<W> {
 
 impl<W> Debug for Swapchain<W> {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         let Self {
             handle,
             device,
@@ -962,7 +977,7 @@ pub unsafe trait SwapchainAbstract:
     VulkanObject<Object = ash::vk::SwapchainKHR> + DeviceOwned + Debug + Send + Sync
 {
     /// Returns one of the images that belongs to this swapchain.
-    fn raw_image(&self, index: u32) -> Option<ImageInner>;
+    fn raw_image(&self, index: u32) -> Option<ImageInner<'_>>;
 
     /// Returns the number of images of the swapchain.
     fn image_count(&self) -> u32;
@@ -991,7 +1006,7 @@ where
     W: Send + Sync,
 {
     #[inline]
-    fn raw_image(&self, image_index: u32) -> Option<ImageInner> {
+    fn raw_image(&self, image_index: u32) -> Option<ImageInner<'_>> {
         self.images.get(image_index as usize).map(|i| ImageInner {
             image: &i.image,
             first_layer: 0,
@@ -1206,7 +1221,10 @@ pub enum SwapchainCreationError {
 
     /// The provided `image_array_layers` is greater than what is supported by the surface for this
     /// device.
-    ImageArrayLayersNotSupported { provided: u32, max_supported: u32 },
+    ImageArrayLayersNotSupported {
+        provided: u32,
+        max_supported: u32,
+    },
 
     /// The provided `image_extent` is not within the range supported by the surface for this
     /// device.
@@ -1258,6 +1276,9 @@ pub enum SwapchainCreationError {
         supported: SupportedSurfaceTransforms,
     },
 
+    // The provided `surface` is not supported by any of the device's queue families.
+    SurfaceNotSupported,
+
     /// The swapchain has already been used to create a new one.
     SwapchainAlreadyRetired,
 
@@ -1277,8 +1298,8 @@ impl Error for SwapchainCreationError {
 
 impl Display for SwapchainCreationError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
-        match *self {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        match self {
             Self::OomError(_) => write!(f, "not enough memory available",),
             Self::DeviceLost => write!(f, "the device was lost",),
             Self::SurfaceLost => write!(f, "the surface was lost",),
@@ -1345,6 +1366,10 @@ impl Display for SwapchainCreationError {
             Self::PreTransformNotSupported { .. } => write!(
                 f,
                 "the provided `pre_transform` is not supported by the surface for this device",
+            ),
+            Self::SurfaceNotSupported => write!(
+                f,
+                "the provided `surface` is not supported by any of the device's queue families",
             ),
             Self::SwapchainAlreadyRetired => write!(
                 f,
@@ -1469,7 +1494,7 @@ impl Error for FullScreenExclusiveError {
 
 impl Display for FullScreenExclusiveError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
             "{}",
@@ -1857,7 +1882,7 @@ impl Error for AcquireError {
 
 impl Display for AcquireError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
             "{}",
@@ -1956,7 +1981,7 @@ impl Error for PresentWaitError {
 
 impl Display for PresentWaitError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match *self {
             Self::OomError(e) => write!(f, "{}", e),
             Self::DeviceLost => write!(f, "the connection to the device has been lost"),
@@ -2158,9 +2183,9 @@ where
                         Err(AccessCheckError::Denied(e)) => return Err(e.into()),
                     }
 
-                    let mut queue_guard = self.queue.lock();
-                    Ok(queue_guard
-                        .present_unchecked(present_info)
+                    Ok(self
+                        .queue
+                        .with(|mut q| q.present_unchecked(present_info))
                         .map(|r| r.map(|_| ()))
                         .fold(Ok(()), Result::and)?)
                 }
@@ -2276,7 +2301,7 @@ where
 
             if !*self.finished.get_mut() {
                 // Block until the queue finished.
-                self.queue().unwrap().lock().wait_idle().unwrap();
+                self.queue().unwrap().with(|mut q| q.wait_idle()).unwrap();
                 self.previous.signal_finished();
             }
         }

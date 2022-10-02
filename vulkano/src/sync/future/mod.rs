@@ -432,7 +432,7 @@ impl Error for AccessError {}
 
 impl Display for AccessError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
             "{}",
@@ -473,7 +473,7 @@ impl Error for AccessCheckError {}
 
 impl Display for AccessCheckError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
             "{}",
@@ -536,7 +536,7 @@ impl Error for FlushError {
 
 impl Display for FlushError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
             "{}",
@@ -591,7 +591,7 @@ impl From<FenceError> for FlushError {
             FenceError::OomError(err) => FlushError::OomError(err),
             FenceError::Timeout => FlushError::Timeout,
             FenceError::DeviceLost => FlushError::DeviceLost,
-            FenceError::RequirementNotMet { .. } => unreachable!(),
+            FenceError::RequirementNotMet { .. } | FenceError::InUse => unreachable!(),
         }
     }
 }

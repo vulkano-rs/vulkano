@@ -90,7 +90,7 @@ fn fns_output(extension_members: &[FnsMember], fns_level: &str, doc: &str) -> To
 
         impl std::fmt::Debug for #struct_name {
             #[inline]
-            fn fmt(&self, _f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+            fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
                 Ok(())
             }
         }

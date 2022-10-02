@@ -54,7 +54,7 @@ use std::{
     sync::Arc,
 };
 
-pub(super) type UserCallback = Arc<dyn Fn(&Message) + RefUnwindSafe + Send + Sync>;
+pub(super) type UserCallback = Arc<dyn Fn(&Message<'_>) + RefUnwindSafe + Send + Sync>;
 
 /// Registration of a callback called by validation layers.
 ///
@@ -190,7 +190,7 @@ impl Drop for DebugUtilsMessenger {
 }
 
 impl Debug for DebugUtilsMessenger {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         let Self {
             handle,
             instance,
@@ -255,7 +255,7 @@ impl Error for DebugUtilsMessengerCreationError {}
 
 impl Display for DebugUtilsMessengerCreationError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::RequirementNotMet {
                 required_for,
@@ -336,7 +336,7 @@ impl DebugUtilsMessengerCreateInfo {
 }
 
 impl Debug for DebugUtilsMessengerCreateInfo {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         let Self {
             message_severity,
             message_type,
@@ -431,18 +431,45 @@ impl Default for DebugUtilsLabel {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        instance::{InstanceCreateInfo, InstanceExtensions},
+        VulkanLibrary,
+    };
     use std::thread;
 
     #[test]
     fn ensure_sendable() {
         // It's useful to be able to initialize a DebugUtilsMessenger on one thread
         // and keep it alive on another thread.
-        let instance = instance!();
+        let instance = {
+            let library = match VulkanLibrary::new() {
+                Ok(x) => x,
+                Err(_) => return,
+            };
+
+            match Instance::new(
+                library,
+                InstanceCreateInfo {
+                    enabled_extensions: InstanceExtensions {
+                        ext_debug_utils: true,
+                        ..InstanceExtensions::empty()
+                    },
+                    ..Default::default()
+                },
+            ) {
+                Ok(x) => x,
+                Err(_) => return,
+            }
+        };
+
         let callback = unsafe {
             DebugUtilsMessenger::new(
                 instance,
                 DebugUtilsMessengerCreateInfo {
-                    message_severity: DebugUtilsMessageSeverity::empty(),
+                    message_severity: DebugUtilsMessageSeverity {
+                        error: true,
+                        ..DebugUtilsMessageSeverity::empty()
+                    },
                     message_type: DebugUtilsMessageType {
                         general: true,
                         validation: true,
@@ -452,9 +479,10 @@ mod tests {
                     ..DebugUtilsMessengerCreateInfo::user_callback(Arc::new(|_| {}))
                 },
             )
-        };
+        }
+        .unwrap();
         thread::spawn(move || {
-            let _ = callback;
+            drop(callback);
         });
     }
 }

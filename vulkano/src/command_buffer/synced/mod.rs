@@ -520,7 +520,7 @@ pub(super) trait Command: Send + Sync {
 }
 
 impl Debug for dyn Command {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         f.write_str(self.name())
     }
 }

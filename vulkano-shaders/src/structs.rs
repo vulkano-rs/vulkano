@@ -286,7 +286,7 @@ fn write_impls<'a>(
 
         quote! {
             impl std::fmt::Debug for #struct_ident {
-                fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
                     f
                         .debug_struct(#struct_name)
                         #( #fields )*
@@ -306,7 +306,7 @@ fn write_impls<'a>(
 
         quote! {
             impl std::fmt::Display for #struct_ident {
-                fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
                     f
                         .debug_struct(#struct_name)
                         #( #fields )*

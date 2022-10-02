@@ -25,7 +25,7 @@ use std::{
 /// Trait for types that represent the way a GPU can access an image.
 pub unsafe trait ImageAccess: DeviceOwned + Send + Sync {
     /// Returns the inner unsafe image object used by this image.
-    fn inner(&self) -> ImageInner;
+    fn inner(&self) -> ImageInner<'_>;
 
     /// Returns the dimensions of the image.
     #[inline]
@@ -230,7 +230,7 @@ pub struct ImageInner<'a> {
 }
 
 impl Debug for dyn ImageAccess {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         f.debug_struct("dyn ImageAccess")
             .field("inner", &self.inner())
             .finish()
@@ -275,7 +275,7 @@ where
     I: ImageAccess,
 {
     #[inline]
-    fn inner(&self) -> ImageInner {
+    fn inner(&self) -> ImageInner<'_> {
         self.image.inner()
     }
 
@@ -332,7 +332,7 @@ where
     T::Target: ImageAccess,
 {
     #[inline]
-    fn inner(&self) -> ImageInner {
+    fn inner(&self) -> ImageInner<'_> {
         (**self).inner()
     }
 

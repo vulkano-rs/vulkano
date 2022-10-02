@@ -90,41 +90,43 @@ where
 
             match self.previous.build_submission()? {
                 SubmitAnyBuilder::Empty => {
-                    let mut queue_guard = queue.lock();
-                    queue_guard.submit_unchecked(
-                        [SubmitInfo {
-                            signal_semaphores: vec![SemaphoreSubmitInfo::semaphore(
-                                self.semaphore.clone(),
-                            )],
-                            ..Default::default()
-                        }],
-                        None,
-                    )?;
+                    queue.with(|mut q| {
+                        q.submit_unchecked(
+                            [SubmitInfo {
+                                signal_semaphores: vec![SemaphoreSubmitInfo::semaphore(
+                                    self.semaphore.clone(),
+                                )],
+                                ..Default::default()
+                            }],
+                            None,
+                        )
+                    })?;
                 }
                 SubmitAnyBuilder::SemaphoresWait(semaphores) => {
-                    let mut queue_guard = queue.lock();
-                    queue_guard.submit_unchecked(
-                        [SubmitInfo {
-                            wait_semaphores: semaphores
-                                .into_iter()
-                                .map(|semaphore| {
-                                    SemaphoreSubmitInfo {
-                                        stages: PipelineStages {
-                                            // TODO: correct stages ; hard
-                                            all_commands: true,
-                                            ..PipelineStages::empty()
-                                        },
-                                        ..SemaphoreSubmitInfo::semaphore(semaphore)
-                                    }
-                                })
-                                .collect(),
-                            signal_semaphores: vec![SemaphoreSubmitInfo::semaphore(
-                                self.semaphore.clone(),
-                            )],
-                            ..Default::default()
-                        }],
-                        None,
-                    )?;
+                    queue.with(|mut q| {
+                        q.submit_unchecked(
+                            [SubmitInfo {
+                                wait_semaphores: semaphores
+                                    .into_iter()
+                                    .map(|semaphore| {
+                                        SemaphoreSubmitInfo {
+                                            stages: PipelineStages {
+                                                // TODO: correct stages ; hard
+                                                all_commands: true,
+                                                ..PipelineStages::empty()
+                                            },
+                                            ..SemaphoreSubmitInfo::semaphore(semaphore)
+                                        }
+                                    })
+                                    .collect(),
+                                signal_semaphores: vec![SemaphoreSubmitInfo::semaphore(
+                                    self.semaphore.clone(),
+                                )],
+                                ..Default::default()
+                            }],
+                            None,
+                        )
+                    })?;
                 }
                 SubmitAnyBuilder::CommandBuffer(mut submit_info, fence) => {
                     debug_assert!(submit_info.signal_semaphores.is_empty());
@@ -133,8 +135,7 @@ where
                         .signal_semaphores
                         .push(SemaphoreSubmitInfo::semaphore(self.semaphore.clone()));
 
-                    let mut queue_guard = queue.lock();
-                    queue_guard.submit_unchecked([submit_info], fence)?;
+                    queue.with(|mut q| q.submit_unchecked([submit_info], fence))?;
                 }
                 SubmitAnyBuilder::BindSparse(_, _) => {
                     unimplemented!() // TODO: how to do that?
@@ -167,22 +168,22 @@ where
                         }
                     }
 
-                    let mut queue_guard = queue.lock();
-                    queue_guard
-                        .present_unchecked(present_info)
-                        .map(|r| r.map(|_| ()))
-                        .fold(Ok(()), Result::and)?;
-
-                    // FIXME: problematic because if we return an error and flush() is called again, then we'll submit the present twice
-                    queue_guard.submit_unchecked(
-                        [SubmitInfo {
-                            signal_semaphores: vec![SemaphoreSubmitInfo::semaphore(
-                                self.semaphore.clone(),
-                            )],
-                            ..Default::default()
-                        }],
-                        None,
-                    )?;
+                    queue.with(|mut q| {
+                        q.present_unchecked(present_info)
+                            .map(|r| r.map(|_| ()))
+                            .fold(Ok(()), Result::and)?;
+                        // FIXME: problematic because if we return an error and flush() is called again, then we'll submit the present twice
+                        q.submit_unchecked(
+                            [SubmitInfo {
+                                signal_semaphores: vec![SemaphoreSubmitInfo::semaphore(
+                                    self.semaphore.clone(),
+                                )],
+                                ..Default::default()
+                            }],
+                            None,
+                        )?;
+                        Ok::<_, FlushError>(())
+                    })?;
                 }
             };
 
@@ -266,7 +267,7 @@ where
                 // TODO: handle errors?
                 self.flush().unwrap();
                 // Block until the queue finished.
-                self.queue().unwrap().lock().wait_idle().unwrap();
+                self.queue().unwrap().with(|mut q| q.wait_idle()).unwrap();
                 self.previous.signal_finished();
             }
         }

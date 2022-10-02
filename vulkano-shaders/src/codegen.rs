@@ -41,7 +41,7 @@ fn include_callback(
     include_directories: &[impl AsRef<Path>],
     root_source_has_path: bool,
     base_path: &impl AsRef<Path>,
-    mut includes_tracker: RefMut<Vec<String>>,
+    mut includes_tracker: RefMut<'_, Vec<String>>,
 ) -> Result<ResolvedInclude, String> {
     let file_to_include = match directive_type {
         IncludeType::Relative => {

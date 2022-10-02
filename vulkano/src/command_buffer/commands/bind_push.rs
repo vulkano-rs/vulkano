@@ -607,7 +607,7 @@ impl SyncCommandBufferBuilder {
     /// Starts the process of binding descriptor sets. Returns an intermediate struct which can be
     /// used to add the sets.
     #[inline]
-    pub fn bind_descriptor_sets(&mut self) -> SyncCommandBufferBuilderBindDescriptorSets {
+    pub fn bind_descriptor_sets(&mut self) -> SyncCommandBufferBuilderBindDescriptorSets<'_> {
         SyncCommandBufferBuilderBindDescriptorSets {
             builder: self,
             descriptor_sets: SmallVec::new(),
@@ -693,7 +693,7 @@ impl SyncCommandBufferBuilder {
     /// Starts the process of binding vertex buffers. Returns an intermediate struct which can be
     /// used to add the buffers.
     #[inline]
-    pub fn bind_vertex_buffers(&mut self) -> SyncCommandBufferBuilderBindVertexBuffer {
+    pub fn bind_vertex_buffers(&mut self) -> SyncCommandBufferBuilderBindVertexBuffer<'_> {
         SyncCommandBufferBuilderBindVertexBuffer {
             builder: self,
             inner: UnsafeCommandBufferBuilderBindVertexBuffer::new(),
@@ -1270,7 +1270,7 @@ impl error::Error for BindPushError {
 
 impl Display for BindPushError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::RequirementNotMet {
                 required_for,

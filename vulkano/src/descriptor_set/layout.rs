@@ -520,7 +520,7 @@ impl Error for DescriptorSetLayoutCreationError {}
 
 impl Display for DescriptorSetLayoutCreationError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match *self {
             Self::OomError(_) => {
                 write!(f, "out of memory")
@@ -802,7 +802,7 @@ impl Error for DescriptorRequirementsNotMet {}
 
 impl Display for DescriptorRequirementsNotMet {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::DescriptorType { required, obtained } => write!(
                 f,

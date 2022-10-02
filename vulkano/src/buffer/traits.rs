@@ -24,7 +24,7 @@ use std::{
 /// See also `TypedBufferAccess`.
 pub unsafe trait BufferAccess: DeviceOwned + Send + Sync {
     /// Returns the inner information about this buffer.
-    fn inner(&self) -> BufferInner;
+    fn inner(&self) -> BufferInner<'_>;
 
     /// Returns the size of the buffer in bytes.
     fn size(&self) -> DeviceSize;
@@ -142,7 +142,7 @@ where
     T::Target: BufferAccess,
 {
     #[inline]
-    fn inner(&self) -> BufferInner {
+    fn inner(&self) -> BufferInner<'_> {
         (**self).inner()
     }
 
@@ -175,7 +175,7 @@ where
 }
 
 impl Debug for dyn BufferAccess {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         f.debug_struct("dyn BufferAccess")
             .field("inner", &self.inner())
             .finish()
@@ -214,7 +214,7 @@ impl Error for BufferDeviceAddressError {}
 
 impl Display for BufferDeviceAddressError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::RequirementNotMet {
                 required_for,

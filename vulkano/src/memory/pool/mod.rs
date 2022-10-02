@@ -80,7 +80,7 @@ pub(crate) fn alloc_dedicated_with_exportable_fd<F>(
     requirements: &MemoryRequirements,
     _layout: AllocLayout,
     map: MappingRequirement,
-    dedicated_allocation: DedicatedAllocation,
+    dedicated_allocation: DedicatedAllocation<'_>,
     filter: F,
 ) -> Result<PotentialDedicatedAllocation<StandardMemoryPoolAlloc>, DeviceMemoryError>
 where
@@ -181,7 +181,7 @@ pub unsafe trait MemoryPool: DeviceOwned {
         requirements: &MemoryRequirements,
         layout: AllocLayout,
         map: MappingRequirement,
-        dedicated_allocation: Option<DedicatedAllocation>,
+        dedicated_allocation: Option<DedicatedAllocation<'_>>,
         filter: F,
     ) -> Result<PotentialDedicatedAllocation<Self::Alloc>, DeviceMemoryError>
     where

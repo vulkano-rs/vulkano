@@ -103,6 +103,7 @@
 //! TODO: talk about fence + semaphore simultaneously
 //! TODO: talk about using fences to clean up
 
+pub(crate) use self::fence::FenceState;
 pub use self::{
     event::{Event, EventCreateInfo},
     fence::{

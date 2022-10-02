@@ -324,7 +324,7 @@ impl Error for DebugUtilsError {}
 
 impl Display for DebugUtilsError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::RequirementNotMet {
                 required_for,

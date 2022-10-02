@@ -153,11 +153,6 @@ where
                 unsafe {
                     previous.signal_finished();
                 }
-
-                if let Some(queue) = previous.queue() {
-                    queue.lock().cleanup_finished();
-                }
-
                 Ok(())
             }
             FenceSignalFutureState::Cleaned => Ok(()),
@@ -181,11 +176,6 @@ where
                 match fence.wait(Some(Duration::from_secs(0))) {
                     Ok(()) => {
                         unsafe { prev.signal_finished() }
-
-                        if let Some(queue) = prev.queue() {
-                            queue.lock().cleanup_finished();
-                        }
-
                         *state = FenceSignalFutureState::Cleaned;
                     }
                     Err(_) => {
@@ -206,7 +196,7 @@ where
     // Implementation of `flush`. You must lock the state and pass the mutex guard here.
     fn flush_impl(
         &self,
-        state: &mut MutexGuard<FenceSignalFutureState<F>>,
+        state: &mut MutexGuard<'_, FenceSignalFutureState<F>>,
     ) -> Result<(), FlushError> {
         unsafe {
             // In this function we temporarily replace the current state with `Poisoned` at the
@@ -239,35 +229,37 @@ where
                 SubmitAnyBuilder::Empty => {
                     debug_assert!(!partially_flushed);
 
-                    let mut queue_guard = queue.lock();
-                    queue_guard
-                        .submit_unchecked([Default::default()], Some(new_fence.clone()))
+                    queue
+                        .with(|mut q| {
+                            q.submit_unchecked([Default::default()], Some(new_fence.clone()))
+                        })
                         .map_err(|err| OutcomeErr::Full(err.into()))
                 }
                 SubmitAnyBuilder::SemaphoresWait(semaphores) => {
                     debug_assert!(!partially_flushed);
 
-                    let mut queue_guard = queue.lock();
-                    queue_guard
-                        .submit_unchecked(
-                            [SubmitInfo {
-                                wait_semaphores: semaphores
-                                    .into_iter()
-                                    .map(|semaphore| {
-                                        SemaphoreSubmitInfo {
-                                            stages: PipelineStages {
-                                                // TODO: correct stages ; hard
-                                                all_commands: true,
-                                                ..PipelineStages::empty()
-                                            },
-                                            ..SemaphoreSubmitInfo::semaphore(semaphore)
-                                        }
-                                    })
-                                    .collect(),
-                                ..Default::default()
-                            }],
-                            None,
-                        )
+                    queue
+                        .with(|mut q| {
+                            q.submit_unchecked(
+                                [SubmitInfo {
+                                    wait_semaphores: semaphores
+                                        .into_iter()
+                                        .map(|semaphore| {
+                                            SemaphoreSubmitInfo {
+                                                stages: PipelineStages {
+                                                    // TODO: correct stages ; hard
+                                                    all_commands: true,
+                                                    ..PipelineStages::empty()
+                                                },
+                                                ..SemaphoreSubmitInfo::semaphore(semaphore)
+                                            }
+                                        })
+                                        .collect(),
+                                    ..Default::default()
+                                }],
+                                None,
+                            )
+                        })
                         .map_err(|err| OutcomeErr::Full(err.into()))
                 }
                 SubmitAnyBuilder::CommandBuffer(submit_info, fence) => {
@@ -279,9 +271,8 @@ where
                     // assertion.
                     assert!(fence.is_none());
 
-                    let mut queue_guard = queue.lock();
-                    queue_guard
-                        .submit_unchecked([submit_info], Some(new_fence.clone()))
+                    queue
+                        .with(|mut q| q.submit_unchecked([submit_info], Some(new_fence.clone())))
                         .map_err(|err| OutcomeErr::Full(err.into()))
                 }
                 SubmitAnyBuilder::BindSparse(bind_infos, fence) => {
@@ -295,9 +286,8 @@ where
                             .sparse_binding
                     );
 
-                    let mut queue_guard = queue.lock();
-                    queue_guard
-                        .bind_sparse_unchecked(bind_infos, Some(new_fence.clone()))
+                    queue
+                        .with(|mut q| q.bind_sparse_unchecked(bind_infos, Some(new_fence.clone())))
                         .map_err(|err| OutcomeErr::Full(err.into()))
                 }
                 SubmitAnyBuilder::QueuePresent(present_info) => {
@@ -326,20 +316,18 @@ where
                             }
                         }
 
-                        let mut queue_guard = queue.lock();
-                        queue_guard
-                            .present_unchecked(present_info)
+                        queue
+                            .with(|mut q| q.present_unchecked(present_info))
                             .map(|r| r.map(|_| ()))
                             .fold(Ok(()), Result::and)
                     };
 
                     match intermediary_result {
-                        Ok(()) => {
-                            let mut queue_guard = queue.lock();
-                            queue_guard
-                                .submit_unchecked([Default::default()], Some(new_fence.clone()))
-                                .map_err(|err| OutcomeErr::Partial(err.into()))
-                        }
+                        Ok(()) => queue
+                            .with(|mut q| {
+                                q.submit_unchecked([Default::default()], Some(new_fence.clone()))
+                            })
+                            .map_err(|err| OutcomeErr::Partial(err.into())),
                         Err(err) => Err(OutcomeErr::Full(err.into())),
                     }
                 }
@@ -519,10 +507,6 @@ where
                 fence.wait(None).unwrap();
                 unsafe {
                     previous.signal_finished();
-
-                    if let Some(queue) = previous.queue() {
-                        queue.lock().cleanup_finished();
-                    }
                 }
             }
             FenceSignalFutureState::Cleaned => {

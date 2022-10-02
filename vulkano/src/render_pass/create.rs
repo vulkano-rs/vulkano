@@ -1588,7 +1588,7 @@ impl Error for RenderPassCreationError {
 
 impl Display for RenderPassCreationError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match *self {
             Self::OomError(_) => write!(f, "not enough memory available",),
 

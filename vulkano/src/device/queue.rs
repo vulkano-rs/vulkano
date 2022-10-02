@@ -18,7 +18,7 @@ use crate::{
         BindSparseInfo, SparseBufferMemoryBind, SparseImageMemoryBind, SparseImageOpaqueMemoryBind,
     },
     swapchain::{PresentInfo, SwapchainPresentInfo},
-    sync::{Fence, PipelineStage},
+    sync::{Fence, FenceState, PipelineStage},
     OomError, RequirementNotMet, RequiresOneOf, Version, VulkanError, VulkanObject,
 };
 use parking_lot::{Mutex, MutexGuard};
@@ -81,21 +81,22 @@ impl Queue {
         self.id
     }
 
-    /// Locks the queue, making it possible to perform operations on the queue, such as submissions.
+    /// Locks the queue and then calls the provided closure, providing it with an object that
+    /// can be used to perform operations on the queue, such as command buffer submissions.
     #[inline]
-    pub fn lock(&self) -> QueueGuard {
-        QueueGuard {
+    pub fn with<'a, R>(self: &'a Arc<Self>, func: impl FnOnce(QueueGuard<'a>) -> R) -> R {
+        func(QueueGuard {
             queue: self,
             state: self.state.lock(),
-        }
+        })
     }
 }
 
 impl Drop for Queue {
     #[inline]
     fn drop(&mut self) {
-        let mut queue_guard = self.lock();
-        queue_guard.wait_idle().unwrap();
+        let state = self.state.get_mut();
+        let _ = state.wait_idle(&self.device, self.handle);
     }
 }
 
@@ -134,26 +135,13 @@ impl Hash for Queue {
 }
 
 pub struct QueueGuard<'a> {
-    queue: &'a Queue,
+    queue: &'a Arc<Queue>,
     state: MutexGuard<'a, QueueState>,
 }
 
 impl<'a> QueueGuard<'a> {
-    /// Releases ownership of resources belonging to queue operations that have completed.
-    ///
-    /// This is implemented by checking for operations that have a signaled fence, and then
-    /// releasing the resources of that operation and all preceding ones. If you execute an
-    /// operation without a fence, it will not be cleaned up until you execute another operation
-    /// with a fence after it, as a fence is the only way for the CPU to know that the queue has
-    /// reached a certain point in its execution.
-    ///
-    /// It is highly recommended to call `cleanup_finished` from time to time, for example once
-    /// every frame. Otherwise, the queue will hold onto resources indefinitely (using up memory)
-    /// and resource locks will not be released, which may cause errors when submitting future
-    /// queue operations.
-    #[inline]
-    pub fn cleanup_finished(&mut self) {
-        self.state.cleanup_finished();
+    pub(crate) unsafe fn fence_signaled(&mut self, fence: &Fence) {
+        self.state.fence_signaled(fence)
     }
 
     /// Waits until all work on this queue has finished, then releases ownership of all resources
@@ -166,31 +154,30 @@ impl<'a> QueueGuard<'a> {
     /// program.
     #[inline]
     pub fn wait_idle(&mut self) -> Result<(), OomError> {
-        unsafe {
-            let fns = self.queue.device.fns();
-            (fns.v1_0.queue_wait_idle)(self.queue.handle)
-                .result()
-                .map_err(VulkanError::from)?;
-
-            // Since we now know that the queue is finished with all work,
-            // we can safely release all resources.
-            for (operation, _) in take(&mut self.state.operations) {
-                operation.unlock();
-            }
-
-            Ok(())
-        }
+        self.state.wait_idle(&self.queue.device, self.queue.handle)
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
     pub unsafe fn bind_sparse_unchecked(
         &mut self,
         bind_infos: impl IntoIterator<Item = BindSparseInfo>,
         fence: Option<Arc<Fence>>,
     ) -> Result<(), VulkanError> {
-        let bind_infos: SmallVec<[_; 4]> = bind_infos.into_iter().collect();
+        self.bind_sparse_unchecked_locked(
+            bind_infos.into_iter().collect(),
+            fence.as_ref().map(|fence| {
+                let state = fence.lock();
+                (fence, state)
+            }),
+        )
+    }
 
-        #[allow(unused)]
+    unsafe fn bind_sparse_unchecked_locked(
+        &mut self,
+        bind_infos: SmallVec<[BindSparseInfo; 4]>,
+        fence: Option<(&Arc<Fence>, MutexGuard<'_, FenceState>)>,
+    ) -> Result<(), VulkanError> {
         struct PerBindSparseInfo {
             wait_semaphores_vk: SmallVec<[ash::vk::Semaphore; 4]>,
             buffer_bind_infos_vk: SmallVec<[ash::vk::SparseBufferMemoryBindInfo; 4]>,
@@ -446,10 +433,15 @@ impl<'a> QueueGuard<'a> {
             bind_infos_vk.as_ptr(),
             fence
                 .as_ref()
-                .map_or_else(Default::default, |fence| fence.internal_object()),
+                .map_or_else(Default::default, |(fence, _)| fence.internal_object()),
         )
         .result()
         .map_err(VulkanError::from)?;
+
+        let fence = fence.map(|(fence, mut state)| {
+            state.add_to_queue(self.queue);
+            fence.clone()
+        });
 
         self.state.operations.push_back((bind_infos.into(), fence));
 
@@ -581,13 +573,26 @@ impl<'a> QueueGuard<'a> {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
     pub unsafe fn submit_unchecked(
         &mut self,
         submit_infos: impl IntoIterator<Item = SubmitInfo>,
         fence: Option<Arc<Fence>>,
     ) -> Result<(), VulkanError> {
-        let submit_infos: SmallVec<[_; 4]> = submit_infos.into_iter().collect();
+        self.submit_unchecked_locked(
+            submit_infos.into_iter().collect(),
+            fence.as_ref().map(|fence| {
+                let state = fence.lock();
+                (fence, state)
+            }),
+        )
+    }
 
+    unsafe fn submit_unchecked_locked(
+        &mut self,
+        submit_infos: SmallVec<[SubmitInfo; 4]>,
+        fence: Option<(&Arc<Fence>, MutexGuard<'_, FenceState>)>,
+    ) -> Result<(), VulkanError> {
         if self.queue.device.enabled_features().synchronization2 {
             struct PerSubmitInfo {
                 wait_semaphore_infos_vk: SmallVec<[ash::vk::SemaphoreSubmitInfo; 4]>,
@@ -702,7 +707,7 @@ impl<'a> QueueGuard<'a> {
                     submit_info_vk.as_ptr(),
                     fence
                         .as_ref()
-                        .map_or_else(Default::default, |fence| fence.internal_object()),
+                        .map_or_else(Default::default, |(fence, _)| fence.internal_object()),
                 )
             } else {
                 debug_assert!(self.queue.device.enabled_extensions().khr_synchronization2);
@@ -712,7 +717,7 @@ impl<'a> QueueGuard<'a> {
                     submit_info_vk.as_ptr(),
                     fence
                         .as_ref()
-                        .map_or_else(Default::default, |fence| fence.internal_object()),
+                        .map_or_else(Default::default, |(fence, _)| fence.internal_object()),
                 )
             }
             .result()
@@ -817,11 +822,16 @@ impl<'a> QueueGuard<'a> {
                 submit_info_vk.as_ptr(),
                 fence
                     .as_ref()
-                    .map_or_else(Default::default, |fence| fence.internal_object()),
+                    .map_or_else(Default::default, |(fence, _)| fence.internal_object()),
             )
             .result()
             .map_err(VulkanError::from)?;
         }
+
+        let fence = fence.map(|(fence, mut state)| {
+            state.add_to_queue(self.queue);
+            fence.clone()
+        });
 
         self.state
             .operations
@@ -1097,7 +1107,7 @@ impl Error for QueueError {
 
 impl Display for QueueError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::VulkanError(_) => write!(f, "a runtime error occurred",),
 
@@ -1136,26 +1146,44 @@ struct QueueState {
 }
 
 impl QueueState {
-    fn cleanup_finished(&mut self) {
-        // Find the most recent operation that has a signaled fence.
-        let last_signaled_fence_index =
-            self.operations
-                .iter()
-                .enumerate()
-                .rev()
-                .find_map(|(index, (_, fence))| {
-                    fence
-                        .as_ref()
-                        // If `is_signaled` returns an error, treat it as not signaled.
-                        .map_or(false, |fence| fence.is_signaled().unwrap_or(false))
-                        .then_some(index)
-                });
+    fn wait_idle(&mut self, device: &Device, handle: ash::vk::Queue) -> Result<(), OomError> {
+        unsafe {
+            let fns = device.fns();
+            (fns.v1_0.queue_wait_idle)(handle)
+                .result()
+                .map_err(VulkanError::from)?;
 
-        if let Some(index) = last_signaled_fence_index {
+            // Since we now know that the queue is finished with all work,
+            // we can safely release all resources.
+            for (operation, _) in take(&mut self.operations) {
+                operation.unlock();
+            }
+
+            Ok(())
+        }
+    }
+
+    /// Called by `fence` when it finds that it is signaled.
+    fn fence_signaled(&mut self, fence: &Fence) {
+        // Find the most recent operation that uses `fence`.
+        let fence_index = self
+            .operations
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(index, (_, f))| {
+                f.as_ref().map_or(false, |f| **f == *fence).then_some(index)
+            });
+
+        if let Some(index) = fence_index {
             // Remove all operations up to this index, and perform cleanup if needed.
-            for (operation, _) in self.operations.drain(..index + 1) {
+            for (operation, fence) in self.operations.drain(..index + 1) {
                 unsafe {
                     operation.unlock();
+
+                    if let Some(fence) = fence {
+                        fence.lock().set_finished();
+                    }
                 }
             }
         }
@@ -1217,12 +1245,9 @@ mod tests {
     fn empty_submit() {
         let (_device, queue) = gfx_dev_and_queue!();
 
-        unsafe {
-            let mut queue_guard = queue.lock();
-            queue_guard
-                .submit_unchecked([Default::default()], None)
-                .unwrap();
-        }
+        queue
+            .with(|mut q| unsafe { q.submit_unchecked([Default::default()], None) })
+            .unwrap();
     }
 
     #[test]
@@ -1233,9 +1258,8 @@ mod tests {
             let fence = Arc::new(Fence::new(device, Default::default()).unwrap());
             assert!(!fence.is_signaled().unwrap());
 
-            let mut queue_guard = queue.lock();
-            queue_guard
-                .submit_unchecked([Default::default()], Some(fence.clone()))
+            queue
+                .with(|mut q| q.submit_unchecked([Default::default()], Some(fence.clone())))
                 .unwrap();
 
             fence.wait(Some(Duration::from_secs(5))).unwrap();

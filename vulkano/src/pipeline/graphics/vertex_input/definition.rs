@@ -104,7 +104,7 @@ impl Error for IncompatibleVertexDefinitionError {}
 
 impl Display for IncompatibleVertexDefinitionError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match *self {
             IncompatibleVertexDefinitionError::MissingAttribute { .. } => {
                 write!(f, "an attribute is missing",)

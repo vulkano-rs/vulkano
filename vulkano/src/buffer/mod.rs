@@ -173,7 +173,7 @@ where
 
 /// The buffer configuration to query in
 /// [`PhysicalDevice::external_buffer_properties`](crate::device::physical::PhysicalDevice::external_buffer_properties).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ExternalBufferInfo {
     /// The external handle type that will be used with the buffer.
     pub handle_type: ExternalMemoryHandleType,

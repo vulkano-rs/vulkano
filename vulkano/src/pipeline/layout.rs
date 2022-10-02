@@ -833,7 +833,7 @@ impl Error for PipelineLayoutCreationError {
 
 impl Display for PipelineLayoutCreationError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match *self {
             Self::OomError(_) => write!(f, "not enough memory available"),
 
@@ -1007,7 +1007,7 @@ impl Error for PipelineLayoutSupersetError {
 
 impl Display for PipelineLayoutSupersetError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             PipelineLayoutSupersetError::DescriptorRequirementsNotMet { set_num, binding_num, .. } => write!(
                 f,
