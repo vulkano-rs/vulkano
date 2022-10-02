@@ -21,12 +21,12 @@
 pub use crate::fns::EntryFunctions;
 use crate::{
     instance::{InstanceExtensions, LayerProperties},
-    OomError, SafeDeref, Version, VulkanError,
+    ExtensionProperties, OomError, SafeDeref, Version, VulkanError,
 };
 use libloading::{Error as LibloadingError, Library};
 use std::{
     error::Error,
-    ffi::CStr,
+    ffi::{CStr, CString},
     fmt::{Debug, Display, Error as FmtError, Formatter},
     mem::transmute,
     os::raw::c_char,
@@ -42,6 +42,7 @@ pub struct VulkanLibrary {
     fns: EntryFunctions,
 
     api_version: Version,
+    extension_properties: Vec<ExtensionProperties>,
     supported_extensions: InstanceExtensions,
 }
 
@@ -92,72 +93,87 @@ impl VulkanLibrary {
                 .get_instance_proc_addr(ash::vk::Instance::null(), name.as_ptr())
                 .map_or(ptr::null(), |func| func as _)
         });
-        // Per the Vulkan spec:
-        // If the vkGetInstanceProcAddr returns NULL for vkEnumerateInstanceVersion, it is a
-        // Vulkan 1.0 implementation. Otherwise, the application can call vkEnumerateInstanceVersion
-        // to determine the version of Vulkan.
-        let api_version = unsafe {
-            let name = CStr::from_bytes_with_nul_unchecked(b"vkEnumerateInstanceVersion\0");
-            let func = loader.get_instance_proc_addr(ash::vk::Instance::null(), name.as_ptr());
 
-            if let Some(func) = func {
-                let func: ash::vk::PFN_vkEnumerateInstanceVersion = transmute(func);
-                let mut api_version = 0;
-                func(&mut api_version).result().map_err(VulkanError::from)?;
-                Version::from(api_version)
-            } else {
-                Version {
-                    major: 1,
-                    minor: 0,
-                    patch: 0,
-                }
-            }
-        };
-
-        let supported_extensions = unsafe {
-            let extension_properties = loop {
-                let mut count = 0;
-                (fns.v1_0.enumerate_instance_extension_properties)(
-                    ptr::null(),
-                    &mut count,
-                    ptr::null_mut(),
-                )
-                .result()
-                .map_err(VulkanError::from)?;
-
-                let mut properties = Vec::with_capacity(count as usize);
-                let result = (fns.v1_0.enumerate_instance_extension_properties)(
-                    ptr::null(),
-                    &mut count,
-                    properties.as_mut_ptr(),
-                );
-
-                match result {
-                    ash::vk::Result::SUCCESS => {
-                        properties.set_len(count as usize);
-                        break properties;
-                    }
-                    ash::vk::Result::INCOMPLETE => (),
-                    err => return Err(VulkanError::from(err).into()),
-                }
-            };
-
-            extension_properties
-                .iter()
-                .map(|property| {
-                    CStr::from_ptr(property.extension_name.as_ptr())
-                        .to_str()
-                        .unwrap()
-                })
-                .collect()
-        };
+        let api_version = unsafe { Self::get_api_version(&loader)? };
+        let extension_properties = unsafe { Self::get_extension_properties(&fns, None)? };
+        let supported_extensions = extension_properties
+            .iter()
+            .map(|property| property.extension_name.as_str())
+            .collect();
 
         Ok(Arc::new(VulkanLibrary {
             loader: Box::new(loader),
             fns,
             api_version,
+            extension_properties,
             supported_extensions,
         }))
+    }
+
+    unsafe fn get_api_version<L>(loader: &L) -> Result<Version, VulkanError>
+    where
+        L: Loader,
+    {
+        // Per the Vulkan spec:
+        // If the vkGetInstanceProcAddr returns NULL for vkEnumerateInstanceVersion, it is a
+        // Vulkan 1.0 implementation. Otherwise, the application can call vkEnumerateInstanceVersion
+        // to determine the version of Vulkan.
+
+        let name = CStr::from_bytes_with_nul_unchecked(b"vkEnumerateInstanceVersion\0");
+        let func = loader.get_instance_proc_addr(ash::vk::Instance::null(), name.as_ptr());
+
+        let version = if let Some(func) = func {
+            let func: ash::vk::PFN_vkEnumerateInstanceVersion = transmute(func);
+            let mut api_version = 0;
+            func(&mut api_version).result().map_err(VulkanError::from)?;
+            Version::from(api_version)
+        } else {
+            Version {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            }
+        };
+
+        Ok(version)
+    }
+
+    unsafe fn get_extension_properties(
+        fns: &EntryFunctions,
+        layer: Option<&str>,
+    ) -> Result<Vec<ExtensionProperties>, VulkanError> {
+        let layer_vk = layer.map(|layer| CString::new(layer).unwrap());
+
+        loop {
+            let mut count = 0;
+            (fns.v1_0.enumerate_instance_extension_properties)(
+                layer_vk
+                    .as_ref()
+                    .map_or(ptr::null(), |layer| layer.as_ptr()),
+                &mut count,
+                ptr::null_mut(),
+            )
+            .result()
+            .map_err(VulkanError::from)?;
+
+            let mut output = Vec::with_capacity(count as usize);
+            let result = (fns.v1_0.enumerate_instance_extension_properties)(
+                layer_vk
+                    .as_ref()
+                    .map_or(ptr::null(), |layer| layer.as_ptr()),
+                &mut count,
+                output.as_mut_ptr(),
+            );
+
+            match result {
+                ash::vk::Result::SUCCESS => {
+                    output.set_len(count as usize);
+                    return Ok(output.into_iter().map(Into::into).collect());
+                }
+                ash::vk::Result::INCOMPLETE => (),
+                err => return Err(VulkanError::from(err)),
+            }
+        }
     }
 
     /// Returns pointers to the raw global Vulkan functions of the library.
@@ -171,7 +187,13 @@ impl VulkanLibrary {
         self.api_version
     }
 
-    /// Returns the extensions that are supported by this Vulkan library.
+    /// Returns the extension properties reported by the core library.
+    #[inline]
+    pub fn extension_properties(&self) -> &[ExtensionProperties] {
+        &self.extension_properties
+    }
+
+    /// Returns the extensions that are supported by the core library.
     #[inline]
     pub fn supported_extensions(&self) -> &InstanceExtensions {
         &self.supported_extensions
@@ -232,6 +254,43 @@ impl VulkanLibrary {
         Ok(layer_properties
             .into_iter()
             .map(|p| LayerProperties { props: p }))
+    }
+
+    /// Returns the extension properties that are reported by the given layer.
+    #[inline]
+    pub fn layer_extension_properties(
+        &self,
+        layer: &str,
+    ) -> Result<Vec<ExtensionProperties>, VulkanError> {
+        unsafe { Self::get_extension_properties(&self.fns, Some(layer)) }
+    }
+
+    /// Returns the extensions that are supported by the given layer.
+    #[inline]
+    pub fn supported_layer_extensions(
+        &self,
+        layer: &str,
+    ) -> Result<InstanceExtensions, VulkanError> {
+        Ok(self
+            .layer_extension_properties(layer)?
+            .iter()
+            .map(|property| property.extension_name.as_str())
+            .collect())
+    }
+
+    /// Returns the union of the extensions that are supported by the core library and all
+    /// the given layers.
+    #[inline]
+    pub fn supported_extensions_with_layers<'a>(
+        &self,
+        layers: impl IntoIterator<Item = &'a str>,
+    ) -> Result<InstanceExtensions, VulkanError> {
+        layers
+            .into_iter()
+            .try_fold(self.supported_extensions, |extensions, layer| {
+                self.supported_layer_extensions(layer)
+                    .map(|layer_extensions| extensions.union(&layer_extensions))
+            })
     }
 
     /// Calls `get_instance_proc_addr` on the underlying loader.

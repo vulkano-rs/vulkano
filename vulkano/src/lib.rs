@@ -90,7 +90,7 @@ use std::{
     ops::Deref,
     sync::Arc,
 };
-pub use version::Version;
+pub use {extensions::ExtensionProperties, version::Version};
 
 #[macro_use]
 mod tests;
