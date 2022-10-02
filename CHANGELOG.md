@@ -22,6 +22,10 @@ Changes to swapchains and operations:
 - `PresentInfo` as been renamed to `SwapchainPresentInfo` and has differently named members and constructor.
 - `acquire_next_image` returns an `u32` index to match Vulkan.
 
+Changes to `GpuFuture`:
+- Added required method `check_swapchain_image_acquired`.
+- `AccessError::SwapchainImageAcquireOnly` has been renamed to `SwapchainImageNotAcquired`.
+
 ### Additions
 - Added `bind_sparse_unchecked`, `present_unchecked` and `submit_unchecked` methods to `QueueGuard`.
 - Added the `device_coherent`, `device_uncached` and `rdma_capable` flags to `MemoryPropertyFlags`, and improved the documentation of all flags with additional usage advice.
@@ -31,6 +35,7 @@ Changes to swapchains and operations:
 
 ### Bugs fixed
 - Incorrect check for descriptor set validity when the shader declares a runtime-sized array.
+- [#2004](https://github.com/vulkano-rs/vulkano/issues/2004): A swapchain image could be presented without being acquired.
 
 # Version 0.31.0 (2022-09-18)
 
