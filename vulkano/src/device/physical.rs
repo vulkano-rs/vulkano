@@ -1567,62 +1567,61 @@ impl PhysicalDevice {
                     _ne: _,
                 } = surface_info;
 
-                let mut surface_full_screen_exclusive_info = self
-                    .supported_extensions()
-                    .ext_full_screen_exclusive
-                    .then(|| ash::vk::SurfaceFullScreenExclusiveInfoEXT {
-                        full_screen_exclusive: full_screen_exclusive.into(),
-                        ..Default::default()
-                    });
-
-                let mut surface_full_screen_exclusive_win32_info =
-                    win32_monitor.map(|win32_monitor| {
-                        ash::vk::SurfaceFullScreenExclusiveWin32InfoEXT {
-                            hmonitor: win32_monitor.0,
-                            ..Default::default()
-                        }
-                    });
-
-                let mut surface_info2 = ash::vk::PhysicalDeviceSurfaceInfo2KHR {
+                let mut info2 = ash::vk::PhysicalDeviceSurfaceInfo2KHR {
                     surface: surface.internal_object(),
                     ..Default::default()
                 };
+                let mut full_screen_exclusive_info = None;
+                let mut full_screen_exclusive_win32_info = None;
 
-                if let Some(surface_full_screen_exclusive_info) =
-                    surface_full_screen_exclusive_info.as_mut()
-                {
-                    surface_full_screen_exclusive_info.p_next = surface_info2.p_next as *mut _;
-                    surface_info2.p_next =
-                        surface_full_screen_exclusive_info as *const _ as *const _;
+                if self.supported_extensions().ext_full_screen_exclusive {
+                    let next = full_screen_exclusive_info.insert(
+                        ash::vk::SurfaceFullScreenExclusiveInfoEXT {
+                            full_screen_exclusive: full_screen_exclusive.into(),
+                            ..Default::default()
+                        },
+                    );
+
+                    next.p_next = info2.p_next as *mut _;
+                    info2.p_next = next as *const _ as *const _;
                 }
 
-                if let Some(surface_full_screen_exclusive_win32_info) =
-                    surface_full_screen_exclusive_win32_info.as_mut()
-                {
-                    surface_full_screen_exclusive_win32_info.p_next =
-                        surface_info2.p_next as *mut _;
-                    surface_info2.p_next =
-                        surface_full_screen_exclusive_win32_info as *const _ as *const _;
+                if let Some(win32_monitor) = win32_monitor {
+                    let next = full_screen_exclusive_win32_info.insert(
+                        ash::vk::SurfaceFullScreenExclusiveWin32InfoEXT {
+                            hmonitor: win32_monitor.0,
+                            ..Default::default()
+                        },
+                    );
+
+                    next.p_next = info2.p_next as *mut _;
+                    info2.p_next = next as *const _ as *const _;
                 }
 
                 /* Output */
 
-                let mut surface_capabilities2 = ash::vk::SurfaceCapabilities2KHR::default();
+                let mut capabilities2 = ash::vk::SurfaceCapabilities2KHR::default();
+                let mut capabilities_full_screen_exclusive = None;
+                let mut protected_capabilities = None;
 
-                let mut surface_capabilities_full_screen_exclusive =
-                    if surface_full_screen_exclusive_info.is_some() {
-                        Some(ash::vk::SurfaceCapabilitiesFullScreenExclusiveEXT::default())
-                    } else {
-                        None
-                    };
+                if full_screen_exclusive_info.is_some() {
+                    let next = capabilities_full_screen_exclusive
+                        .insert(ash::vk::SurfaceCapabilitiesFullScreenExclusiveEXT::default());
 
-                if let Some(surface_capabilities_full_screen_exclusive) =
-                    surface_capabilities_full_screen_exclusive.as_mut()
+                    next.p_next = info2.p_next as *mut _;
+                    info2.p_next = next as *const _ as *const _;
+                }
+
+                if self
+                    .instance
+                    .enabled_extensions()
+                    .khr_surface_protected_capabilities
                 {
-                    surface_capabilities_full_screen_exclusive.p_next =
-                        surface_capabilities2.p_next as *mut _;
-                    surface_capabilities2.p_next =
-                        surface_capabilities_full_screen_exclusive as *mut _ as *mut _;
+                    let next = protected_capabilities
+                        .insert(ash::vk::SurfaceProtectedCapabilitiesKHR::default());
+
+                    next.p_next = info2.p_next as *mut _;
+                    info2.p_next = next as *const _ as *const _;
                 }
 
                 let fns = self.instance.fns();
@@ -1635,103 +1634,77 @@ impl PhysicalDevice {
                     (fns.khr_get_surface_capabilities2
                         .get_physical_device_surface_capabilities2_khr)(
                         self.internal_object(),
-                        &surface_info2,
-                        &mut surface_capabilities2,
+                        &info2,
+                        &mut capabilities2,
                     )
                     .result()
                     .map_err(VulkanError::from)?;
                 } else {
                     (fns.khr_surface.get_physical_device_surface_capabilities_khr)(
                         self.internal_object(),
-                        surface_info2.surface,
-                        &mut surface_capabilities2.surface_capabilities,
+                        info2.surface,
+                        &mut capabilities2.surface_capabilities,
                     )
                     .result()
                     .map_err(VulkanError::from)?;
                 };
 
                 Ok(SurfaceCapabilities {
-                    min_image_count: surface_capabilities2.surface_capabilities.min_image_count,
-                    max_image_count: if surface_capabilities2.surface_capabilities.max_image_count
-                        == 0
-                    {
+                    min_image_count: capabilities2.surface_capabilities.min_image_count,
+                    max_image_count: if capabilities2.surface_capabilities.max_image_count == 0 {
                         None
                     } else {
-                        Some(surface_capabilities2.surface_capabilities.max_image_count)
+                        Some(capabilities2.surface_capabilities.max_image_count)
                     },
-                    current_extent: if surface_capabilities2
-                        .surface_capabilities
-                        .current_extent
-                        .width
+                    current_extent: if capabilities2.surface_capabilities.current_extent.width
                         == 0xffffffff
-                        && surface_capabilities2
-                            .surface_capabilities
-                            .current_extent
-                            .height
-                            == 0xffffffff
+                        && capabilities2.surface_capabilities.current_extent.height == 0xffffffff
                     {
                         None
                     } else {
                         Some([
-                            surface_capabilities2
-                                .surface_capabilities
-                                .current_extent
-                                .width,
-                            surface_capabilities2
-                                .surface_capabilities
-                                .current_extent
-                                .height,
+                            capabilities2.surface_capabilities.current_extent.width,
+                            capabilities2.surface_capabilities.current_extent.height,
                         ])
                     },
                     min_image_extent: [
-                        surface_capabilities2
-                            .surface_capabilities
-                            .min_image_extent
-                            .width,
-                        surface_capabilities2
-                            .surface_capabilities
-                            .min_image_extent
-                            .height,
+                        capabilities2.surface_capabilities.min_image_extent.width,
+                        capabilities2.surface_capabilities.min_image_extent.height,
                     ],
                     max_image_extent: [
-                        surface_capabilities2
-                            .surface_capabilities
-                            .max_image_extent
-                            .width,
-                        surface_capabilities2
-                            .surface_capabilities
-                            .max_image_extent
-                            .height,
+                        capabilities2.surface_capabilities.max_image_extent.width,
+                        capabilities2.surface_capabilities.max_image_extent.height,
                     ],
-                    max_image_array_layers: surface_capabilities2
+                    max_image_array_layers: capabilities2
                         .surface_capabilities
                         .max_image_array_layers,
-                    supported_transforms: surface_capabilities2
+                    supported_transforms: capabilities2
                         .surface_capabilities
                         .supported_transforms
                         .into(),
 
                     current_transform: SupportedSurfaceTransforms::from(
-                        surface_capabilities2.surface_capabilities.current_transform,
+                        capabilities2.surface_capabilities.current_transform,
                     )
                     .iter()
                     .next()
                     .unwrap(), // TODO:
-                    supported_composite_alpha: surface_capabilities2
+                    supported_composite_alpha: capabilities2
                         .surface_capabilities
                         .supported_composite_alpha
                         .into(),
                     supported_usage_flags: {
                         let usage = ImageUsage::from(
-                            surface_capabilities2
-                                .surface_capabilities
-                                .supported_usage_flags,
+                            capabilities2.surface_capabilities.supported_usage_flags,
                         );
                         debug_assert!(usage.color_attachment); // specs say that this must be true
                         usage
                     },
 
-                    full_screen_exclusive_supported: surface_capabilities_full_screen_exclusive
+                    supports_protected: protected_capabilities
+                        .map_or(false, |c| c.supports_protected != 0),
+
+                    full_screen_exclusive_supported: capabilities_full_screen_exclusive
                         .map_or(false, |c| c.full_screen_exclusive_supported != 0),
                 })
             },
