@@ -77,6 +77,15 @@ unsafe impl GpuFuture for NowFuture {
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         Err(AccessCheckError::Unknown)
     }
+
+    #[inline]
+    fn check_swapchain_image_acquired(
+        &self,
+        _image: &UnsafeImage,
+        _before: bool,
+    ) -> Result<(), AccessCheckError> {
+        Err(AccessCheckError::Unknown)
+    }
 }
 
 unsafe impl DeviceOwned for NowFuture {

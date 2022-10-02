@@ -142,6 +142,16 @@ pub unsafe trait GpuFuture: DeviceOwned {
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError>;
 
+    /// Checks whether accessing a swapchain image is permitted.
+    ///
+    /// > **Note**: Setting `before` to `true` should skip checking the current future and always
+    /// > forward the call to the future before. 
+    fn check_swapchain_image_acquired(
+        &self,
+        image: &UnsafeImage,
+        before: bool,
+    ) -> Result<(), AccessCheckError>;
+
     /// Joins this future with another one, representing the moment when both events have happened.
     // TODO: handle errors
     fn join<F>(self, other: F) -> JoinFuture<Self, F>
@@ -361,6 +371,15 @@ where
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         (**self).check_image_access(image, range, exclusive, expected_layout, queue)
     }
+
+    #[inline]
+    fn check_swapchain_image_acquired(
+        &self,
+        image: &UnsafeImage,
+        before: bool,
+    ) -> Result<(), AccessCheckError> {
+        (**self).check_swapchain_image_acquired(image, before)
+    }
 }
 
 /// Contains all the possible submission builders.
@@ -406,7 +425,7 @@ pub enum AccessError {
     BufferNotInitialized,
 
     /// Trying to use a swapchain image without depending on a corresponding acquire image future.
-    SwapchainImageAcquireOnly,
+    SwapchainImageNotAcquired,
 }
 
 impl Error for AccessError {}
@@ -432,7 +451,7 @@ impl Display for AccessError {
                 AccessError::BufferNotInitialized => {
                     "trying to use a buffer that still contains garbage data"
                 }
-                AccessError::SwapchainImageAcquireOnly => {
+                AccessError::SwapchainImageNotAcquired => {
                     "trying to use a swapchain image without depending on a corresponding acquire \
                  image future"
                 }

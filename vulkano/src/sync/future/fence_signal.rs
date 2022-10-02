@@ -13,7 +13,7 @@ use crate::{
     command_buffer::{SemaphoreSubmitInfo, SubmitInfo},
     device::{Device, DeviceOwned, Queue},
     image::{sys::UnsafeImage, ImageLayout},
-    sync::{AccessFlags, Fence, PipelineStages, SubmitAnyBuilder},
+    sync::{AccessError, AccessFlags, Fence, PipelineStages, SubmitAnyBuilder},
     DeviceSize, OomError,
 };
 use parking_lot::{Mutex, MutexGuard};
@@ -301,6 +301,19 @@ where
                             }) {
                                 return Err(FlushError::PresentIdLessThanOrEqual);
                             }
+
+                            match previous.check_swapchain_image_acquired(
+                                swapchain_info
+                                    .swapchain
+                                    .raw_image(swapchain_info.image_index)
+                                    .unwrap()
+                                    .image,
+                                true,
+                            ) {
+                                Ok(_) => (),
+                                Err(AccessCheckError::Unknown) => return Err(AccessError::SwapchainImageNotAcquired.into()),
+                                Err(AccessCheckError::Denied(e)) => return Err(e.into()),
+                            }
                         }
 
                         queue
@@ -452,6 +465,19 @@ where
             Err(AccessCheckError::Unknown)
         }
     }
+
+    #[inline]
+    fn check_swapchain_image_acquired(
+        &self,
+        image: &UnsafeImage,
+        _before: bool,
+    ) -> Result<(), AccessCheckError> {
+        if let Some(previous) = self.state.lock().get_prev() {
+            previous.check_swapchain_image_acquired(image, false)
+        } else {
+            Err(AccessCheckError::Unknown)
+        }
+    }
 }
 
 unsafe impl<F> DeviceOwned for FenceSignalFuture<F>
@@ -555,5 +581,14 @@ where
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         (**self).check_image_access(image, range, exclusive, expected_layout, queue)
+    }
+
+    #[inline]
+    fn check_swapchain_image_acquired(
+        &self,
+        image: &UnsafeImage,
+        before: bool,
+    ) -> Result<(), AccessCheckError> {
+        (**self).check_swapchain_image_acquired(image, before)
     }
 }

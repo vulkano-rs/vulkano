@@ -13,7 +13,7 @@ use crate::{
     command_buffer::{SemaphoreSubmitInfo, SubmitInfo},
     device::{Device, DeviceOwned, Queue},
     image::{sys::UnsafeImage, ImageLayout},
-    sync::{AccessFlags, PipelineStages, Semaphore},
+    sync::{AccessError, AccessFlags, PipelineStages, Semaphore},
     DeviceSize,
 };
 use parking_lot::Mutex;
@@ -151,6 +151,21 @@ where
                         }) {
                             return Err(FlushError::PresentIdLessThanOrEqual);
                         }
+
+                        match self.previous.check_swapchain_image_acquired(
+                            swapchain_info
+                                .swapchain
+                                .raw_image(swapchain_info.image_index)
+                                .unwrap()
+                                .image,
+                            true,
+                        ) {
+                            Ok(_) => (),
+                            Err(AccessCheckError::Unknown) => {
+                                return Err(AccessError::SwapchainImageNotAcquired.into())
+                            }
+                            Err(AccessCheckError::Denied(e)) => return Err(e.into()),
+                        }
                     }
 
                     queue.with(|mut q| {
@@ -220,6 +235,15 @@ where
         self.previous
             .check_image_access(image, range, exclusive, expected_layout, queue)
             .map(|_| None)
+    }
+
+    #[inline]
+    fn check_swapchain_image_acquired(
+        &self,
+        image: &UnsafeImage,
+        _before: bool,
+    ) -> Result<(), AccessCheckError> {
+        self.previous.check_swapchain_image_acquired(image, false)
     }
 }
 
