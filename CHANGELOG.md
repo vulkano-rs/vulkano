@@ -10,7 +10,7 @@
 ### Breaking changes
 
 Changes to queue operations:
-- To do operations on a queue, you must now call `with` to gain access.
+- To do operations on a queue, you must now call `with` to gain access. This takes a closure that is passed a 
 - The `wait` method of devices and queues is renamed to `wait_idle` to match Vulkan.
 - `Queue` now implements `VulkanObject` instead of `SynchronizedVulkanObject`, which is removed.
 - `Queue` now takes ownership of resources belonging to operations that you execute on it, to keep them from being destroyed while in use.
