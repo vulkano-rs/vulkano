@@ -12,15 +12,15 @@
 Changes to queue operations:
 - To do operations on a queue, you must now call `with` to gain access.
 - The `wait` method of devices and queues is renamed to `wait_idle` to match Vulkan.
-- `PresentInfo` as been renamed to `SwapchainPresentInfo` and has differently named members and constructor.
-- `acquire_next_image` returns an `u32` index to match Vulkan.
 - `Queue` now implements `VulkanObject` instead of `SynchronizedVulkanObject`, which is removed.
 - `Queue` now takes ownership of resources belonging to operations that you execute on it, to keep them from being destroyed while in use.
 - If `Queue` is dropped, it will call `wait_idle` to block the current thread until all operations on it have completed.
 - The `command_buffer::submit` module has been removed. The `SubmitAnyBuilder` enum is moved to the `sync` module, and no longer has a lifetime parameter.
 
-Changes to `Swapchain`:
+Changes to swapchains and operations:
 - The `W` parameter must now implement `Send + Sync`.
+- `PresentInfo` as been renamed to `SwapchainPresentInfo` and has differently named members and constructor.
+- `acquire_next_image` returns an `u32` index to match Vulkan.
 
 ### Additions
 - Added `bind_sparse_unchecked`, `present_unchecked` and `submit_unchecked` methods to `QueueGuard`.
