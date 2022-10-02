@@ -1875,9 +1875,6 @@ vulkan_enum! {
     ///   or to store non-color data.
     /// - Swapchain images should have a format with the `Srgb` suffix.
     ///
-    /// > **Note**: It is unclear whether the `SrgbNonLinear` color space is always supported by the
-    /// > the implementation or not. See <https://github.com/KhronosGroup/Vulkan-Docs/issues/442>.
-    ///
     /// > **Note**: Lots of developers are confused by color spaces. You can sometimes find articles
     /// > talking about gamma correction and suggestion to put your colors to the power 2.2 for
     /// > example. These are all hacks and you should use the sRGB pixel formats instead.
@@ -1892,77 +1889,75 @@ vulkan_enum! {
     // TODO: document
     SrgbNonLinear = SRGB_NONLINEAR,
 
-    /*
     // TODO: document
     DisplayP3NonLinear = DISPLAY_P3_NONLINEAR_EXT {
-        device_extensions: [ext_swapchain_colorspace],
+        instance_extensions: [ext_swapchain_colorspace],
     },
 
     // TODO: document
     ExtendedSrgbLinear = EXTENDED_SRGB_LINEAR_EXT {
-        device_extensions: [ext_swapchain_colorspace],
+        instance_extensions: [ext_swapchain_colorspace],
     },
 
     // TODO: document
     ExtendedSrgbNonLinear = EXTENDED_SRGB_NONLINEAR_EXT {
-        device_extensions: [ext_swapchain_colorspace],
+        instance_extensions: [ext_swapchain_colorspace],
     },
 
     // TODO: document
     DisplayP3Linear = DISPLAY_P3_LINEAR_EXT {
-        device_extensions: [ext_swapchain_colorspace],
+        instance_extensions: [ext_swapchain_colorspace],
     },
 
     // TODO: document
     DciP3NonLinear = DCI_P3_NONLINEAR_EXT {
-        device_extensions: [ext_swapchain_colorspace],
+        instance_extensions: [ext_swapchain_colorspace],
     },
 
     // TODO: document
     Bt709Linear = BT709_LINEAR_EXT {
-        device_extensions: [ext_swapchain_colorspace],
+        instance_extensions: [ext_swapchain_colorspace],
     },
 
     // TODO: document
     Bt709NonLinear = BT709_NONLINEAR_EXT {
-        device_extensions: [ext_swapchain_colorspace],
+        instance_extensions: [ext_swapchain_colorspace],
     },
 
     // TODO: document
     Bt2020Linear = BT2020_LINEAR_EXT {
-        device_extensions: [ext_swapchain_colorspace],
+        instance_extensions: [ext_swapchain_colorspace],
     },
 
     // TODO: document
     Hdr10St2084 = HDR10_ST2084_EXT {
-        device_extensions: [ext_swapchain_colorspace],
+        instance_extensions: [ext_swapchain_colorspace],
     },
 
     // TODO: document
     DolbyVision = DOLBYVISION_EXT {
-        device_extensions: [ext_swapchain_colorspace],
+        instance_extensions: [ext_swapchain_colorspace],
     },
 
     // TODO: document
     Hdr10Hlg = HDR10_HLG_EXT {
-        device_extensions: [ext_swapchain_colorspace],
+        instance_extensions: [ext_swapchain_colorspace],
     },
 
     // TODO: document
     AdobeRgbLinear = ADOBERGB_LINEAR_EXT {
-        device_extensions: [ext_swapchain_colorspace],
+        instance_extensions: [ext_swapchain_colorspace],
     },
 
     // TODO: document
     AdobeRgbNonLinear = ADOBERGB_NONLINEAR_EXT {
-        device_extensions: [ext_swapchain_colorspace],
+        instance_extensions: [ext_swapchain_colorspace],
     },
 
     // TODO: document
     PassThrough = PASS_THROUGH_EXT {
-        device_extensions: [ext_swapchain_colorspace],
+        instance_extensions: [ext_swapchain_colorspace],
     },
-     */
 
     // TODO: document
     DisplayNative = DISPLAY_NATIVE_AMD {
