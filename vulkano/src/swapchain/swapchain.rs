@@ -346,6 +346,21 @@ where
         }
 
         // VUID-VkSwapchainCreateInfoKHR-surface-01270
+        if !device
+            .active_queue_family_indices()
+            .iter()
+            .copied()
+            .any(|index| unsafe {
+                // Use unchecked, because all validation has been done above.
+                device
+                    .physical_device()
+                    .surface_support_unchecked(index, surface)
+                    .unwrap_or_default()
+            })
+        {
+            return Err(SwapchainCreationError::SurfaceNotSupported);
+        }
+
         *image_format = Some({
             // Use unchecked, because all validation has been done above.
             let surface_formats = unsafe {
@@ -1206,7 +1221,10 @@ pub enum SwapchainCreationError {
 
     /// The provided `image_array_layers` is greater than what is supported by the surface for this
     /// device.
-    ImageArrayLayersNotSupported { provided: u32, max_supported: u32 },
+    ImageArrayLayersNotSupported {
+        provided: u32,
+        max_supported: u32,
+    },
 
     /// The provided `image_extent` is not within the range supported by the surface for this
     /// device.
@@ -1258,6 +1276,9 @@ pub enum SwapchainCreationError {
         supported: SupportedSurfaceTransforms,
     },
 
+    // The provided `surface` is not supported by any of the device's queue families.
+    SurfaceNotSupported,
+
     /// The swapchain has already been used to create a new one.
     SwapchainAlreadyRetired,
 
@@ -1278,7 +1299,7 @@ impl Error for SwapchainCreationError {
 impl Display for SwapchainCreationError {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match *self {
+        match self {
             Self::OomError(_) => write!(f, "not enough memory available",),
             Self::DeviceLost => write!(f, "the device was lost",),
             Self::SurfaceLost => write!(f, "the surface was lost",),
@@ -1345,6 +1366,10 @@ impl Display for SwapchainCreationError {
             Self::PreTransformNotSupported { .. } => write!(
                 f,
                 "the provided `pre_transform` is not supported by the surface for this device",
+            ),
+            Self::SurfaceNotSupported => write!(
+                f,
+                "the provided `surface` is not supported by any of the device's queue families",
             ),
             Self::SwapchainAlreadyRetired => write!(
                 f,
