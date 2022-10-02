@@ -425,8 +425,7 @@ where
             match self.build_submission_impl()? {
                 SubmitAnyBuilder::Empty => {}
                 SubmitAnyBuilder::CommandBuffer(submit_info, fence) => {
-                    let mut queue_guard = queue.lock();
-                    queue_guard.submit_unchecked([submit_info], fence)?;
+                    queue.with(|mut q| q.submit_unchecked([submit_info], fence))?;
                 }
                 _ => unreachable!(),
             };
@@ -519,7 +518,7 @@ where
                 // TODO: handle errors?
                 self.flush().unwrap();
                 // Block until the queue finished.
-                self.queue.lock().wait_idle().unwrap();
+                self.queue.with(|mut q| q.wait_idle()).unwrap();
                 self.previous.signal_finished();
             }
         }
