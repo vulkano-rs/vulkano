@@ -509,7 +509,7 @@ fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) ->
 
         impl std::fmt::Debug for #struct_name {
             #[allow(unused_assignments)]
-            fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
                 write!(f, "[")?;
 
                 let mut first = true;

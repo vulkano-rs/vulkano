@@ -217,12 +217,12 @@
 
 #![doc(html_logo_url = "https://raw.githubusercontent.com/vulkano-rs/vulkano/master/logo.png")]
 #![recursion_limit = "1024"]
+#![warn(rust_2018_idioms, rust_2021_compatibility)]
 
 #[macro_use]
 extern crate quote;
 #[macro_use]
 extern crate syn;
-extern crate proc_macro;
 
 use crate::codegen::ShaderKind;
 use shaderc::{EnvVersion, SpirvVersion};
@@ -367,7 +367,7 @@ struct MacroInput {
 }
 
 impl Parse for MacroInput {
-    fn parse(input: ParseStream) -> Result<Self> {
+    fn parse(input: ParseStream<'_>) -> Result<Self> {
         let mut dump = None;
         let mut exact_entrypoint_interface = None;
         let mut include_directories = Vec::new();
@@ -381,7 +381,7 @@ impl Parse for MacroInput {
         fn parse_shader_fields<'k>(
             output: &mut (Option<ShaderKind>, Option<SourceKind>),
             name: &'k str,
-            input: ParseStream,
+            input: ParseStream<'_>,
         ) -> Result<()> {
             match name {
                 "ty" => {

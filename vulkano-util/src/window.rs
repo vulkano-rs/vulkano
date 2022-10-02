@@ -231,12 +231,12 @@ impl VulkanoWindows {
     }
 
     /// Return iterator over window renderers
-    pub fn iter(&self) -> Iter<WindowId, VulkanoWindowRenderer> {
+    pub fn iter(&self) -> Iter<'_, WindowId, VulkanoWindowRenderer> {
         self.windows.iter()
     }
 
     /// Return iterator over mutable window renderers
-    pub fn iter_mut(&mut self) -> IterMut<WindowId, VulkanoWindowRenderer> {
+    pub fn iter_mut(&mut self) -> IterMut<'_, WindowId, VulkanoWindowRenderer> {
         self.windows.iter_mut()
     }
 }
