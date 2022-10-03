@@ -282,10 +282,10 @@ impl UnsafeDescriptorPool {
     /// - The descriptor sets must not be free'd twice.
     /// - The descriptor sets must not be in use by the GPU.
     ///
-    pub unsafe fn free_descriptor_sets<I>(&mut self, descriptor_sets: I) -> Result<(), OomError>
-    where
-        I: IntoIterator<Item = UnsafeDescriptorSet>,
-    {
+    pub unsafe fn free_descriptor_sets(
+        &mut self,
+        descriptor_sets: impl IntoIterator<Item = UnsafeDescriptorSet>,
+    ) -> Result<(), OomError> {
         let sets: SmallVec<[_; 8]> = descriptor_sets
             .into_iter()
             .map(|s| s.internal_object())

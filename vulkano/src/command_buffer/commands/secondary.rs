@@ -412,10 +412,7 @@ pub struct SyncCommandBufferBuilderExecuteCommands<'a> {
 impl<'a> SyncCommandBufferBuilderExecuteCommands<'a> {
     /// Adds a command buffer to the list.
     #[inline]
-    pub fn add<C>(&mut self, command_buffer: C)
-    where
-        C: SecondaryCommandBuffer + 'static,
-    {
+    pub fn add(&mut self, command_buffer: impl SecondaryCommandBuffer + 'static) {
         self.inner.push(Box::new(command_buffer));
     }
 
@@ -545,10 +542,7 @@ impl UnsafeCommandBufferBuilderExecuteCommands {
 
     /// Adds a command buffer to the list.
     #[inline]
-    pub fn add<C>(&mut self, cb: &C)
-    where
-        C: ?Sized + SecondaryCommandBuffer,
-    {
+    pub fn add(&mut self, cb: &(impl SecondaryCommandBuffer + ?Sized)) {
         // TODO: debug assert that it is a secondary command buffer?
         self.raw_cbs.push(cb.inner().internal_object());
     }
