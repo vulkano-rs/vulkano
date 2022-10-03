@@ -34,6 +34,7 @@ Changes to `GpuFuture`:
 - When calling `Fence::is_signaled` or `Fence::wait`, if the fence is associated with a queue, any resources of the associated queue operation will be released.
 - `VulkanLibrary::extension_properties`, to mirror the equivalent function on `PhysicalDevice`.
 - `VulkanLibrary` methods `layer_extension_properties`, `supported_layer_extensions` and `supported_extensions_with_layers`, to query the extensions supported by layers.
+- Added the remaining missing variants of the `ColorSpace` enum.
 
 ### Bugs fixed
 - Incorrect check for descriptor set validity when the shader declares a runtime-sized array.
