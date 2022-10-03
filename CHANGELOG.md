@@ -35,6 +35,7 @@ Changes to `GpuFuture`:
 - `VulkanLibrary::extension_properties`, to mirror the equivalent function on `PhysicalDevice`.
 - `VulkanLibrary` methods `layer_extension_properties`, `supported_layer_extensions` and `supported_extensions_with_layers`, to query the extensions supported by layers.
 - Added the remaining missing variants of the `ColorSpace` enum.
+- Added a `supports_protected` member to `SurfaceCapabilities` for the `khr_surface_protected_capabilities` extension.
 
 ### Bugs fixed
 - Incorrect check for descriptor set validity when the shader declares a runtime-sized array.
