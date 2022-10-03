@@ -54,7 +54,9 @@
 //! Once you have chosen a physical device, you can create a `Device` object from it. See the
 //! `device` module for more info.
 
-use self::debug::{DebugUtilsMessengerCreateInfo, UserCallback};
+use self::debug::{
+    DebugUtilsMessengerCreateInfo, UserCallback, ValidationFeatureDisable, ValidationFeatureEnable,
+};
 pub use self::{extensions::InstanceExtensions, layers::LayerProperties};
 use crate::{
     device::physical::PhysicalDevice, instance::debug::trampoline, OomError, RequiresOneOf,
@@ -294,6 +296,8 @@ impl Instance {
             engine_version,
             max_api_version,
             enumerate_portability,
+            enabled_validation_features,
+            disabled_validation_features,
             _ne: _,
         } = create_info;
 
@@ -359,7 +363,18 @@ impl Instance {
             ..Default::default()
         };
 
-        let mut create_info = ash::vk::InstanceCreateInfo {
+        let enable_validation_features_vk: SmallVec<[_; 5]> = enabled_validation_features
+            .iter()
+            .copied()
+            .map(Into::into)
+            .collect();
+        let disable_validation_features_vk: SmallVec<[_; 8]> = disabled_validation_features
+            .iter()
+            .copied()
+            .map(Into::into)
+            .collect();
+
+        let mut create_info_vk = ash::vk::InstanceCreateInfo {
             flags,
             p_application_info: &application_info,
             enabled_layer_count: enabled_layers_ptrs.len() as u32,
@@ -368,6 +383,43 @@ impl Instance {
             pp_enabled_extension_names: enabled_extensions_ptrs.as_ptr(),
             ..Default::default()
         };
+        let mut validation_features_vk = None;
+
+        if !enabled_validation_features.is_empty() || !disabled_validation_features.is_empty() {
+            if !enabled_extensions.ext_validation_features {
+                return Err(InstanceCreationError::RequirementNotMet {
+                    required_for: "`enabled_validation_features` or `disabled_validation_features` are not empty",
+                    requires_one_of: RequiresOneOf {
+                        instance_extensions: &["ext_validation_features"],
+                        ..Default::default()
+                    },
+                });
+            }
+
+            // VUID-VkValidationFeaturesEXT-pEnabledValidationFeatures-02967
+            assert!(
+                !enabled_validation_features
+                    .contains(&ValidationFeatureEnable::GpuAssistedReserveBindingSlot)
+                    || enabled_validation_features.contains(&ValidationFeatureEnable::GpuAssisted)
+            );
+
+            // VUID-VkValidationFeaturesEXT-pEnabledValidationFeatures-02968
+            assert!(
+                !(enabled_validation_features.contains(&ValidationFeatureEnable::DebugPrintf)
+                    && enabled_validation_features.contains(&ValidationFeatureEnable::GpuAssisted))
+            );
+
+            let next = validation_features_vk.insert(ash::vk::ValidationFeaturesEXT {
+                enabled_validation_feature_count: enable_validation_features_vk.len() as u32,
+                p_enabled_validation_features: enable_validation_features_vk.as_ptr(),
+                disabled_validation_feature_count: disable_validation_features_vk.len() as u32,
+                p_disabled_validation_features: disable_validation_features_vk.as_ptr(),
+                ..Default::default()
+            });
+
+            next.p_next = create_info_vk.p_next;
+            create_info_vk.p_next = next as *const _ as *const _;
+        }
 
         // Handle debug messengers
         let debug_utils_messengers = debug_utils_messengers.into_iter();
@@ -429,14 +481,14 @@ impl Instance {
         }
 
         if let Some(info) = debug_utils_messenger_create_infos.first() {
-            create_info.p_next = info as *const _ as *const _;
+            create_info_vk.p_next = info as *const _ as *const _;
         }
 
         // Creating the Vulkan instance.
         let handle = {
             let mut output = MaybeUninit::uninit();
             let fns = library.fns();
-            (fns.v1_0.create_instance)(&create_info, ptr::null(), output.as_mut_ptr())
+            (fns.v1_0.create_instance)(&create_info_vk, ptr::null(), output.as_mut_ptr())
                 .result()
                 .map_err(VulkanError::from)?;
             output.assume_init()
@@ -675,6 +727,20 @@ pub struct InstanceCreateInfo {
     ///   extension will automatically be enabled.
     pub enumerate_portability: bool,
 
+    /// Features of the validation layer to enable.
+    ///
+    /// If not empty, the
+    /// [`ext_validation_features`](crate::instance::InstanceExtensions::ext_validation_features)
+    /// extension must be enabled on the instance.
+    pub enabled_validation_features: Vec<ValidationFeatureEnable>,
+
+    /// Features of the validation layer to disable.
+    ///
+    /// If not empty, the
+    /// [`ext_validation_features`](crate::instance::InstanceExtensions::ext_validation_features)
+    /// extension must be enabled on the instance.
+    pub disabled_validation_features: Vec<ValidationFeatureDisable>,
+
     pub _ne: crate::NonExhaustive,
 }
 
@@ -690,6 +756,8 @@ impl Default for InstanceCreateInfo {
             engine_version: Version::major_minor(0, 0),
             max_api_version: None,
             enumerate_portability: false,
+            enabled_validation_features: Vec::new(),
+            disabled_validation_features: Vec::new(),
             _ne: crate::NonExhaustive(()),
         }
     }
