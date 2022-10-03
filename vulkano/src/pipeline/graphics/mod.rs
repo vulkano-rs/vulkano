@@ -123,6 +123,7 @@ pub struct GraphicsPipeline {
 impl GraphicsPipeline {
     /// Starts the building process of a graphics pipeline. Returns a builder object that you can
     /// fill with the various parameters.
+    #[inline]
     pub fn start() -> GraphicsPipelineBuilder<
         'static,
         'static,
@@ -155,7 +156,8 @@ impl GraphicsPipeline {
     ///
     /// `None` is returned if the pipeline does not contain this shader.
     ///
-    /// Compatibility note: `()` is temporary, it will be replaced with something else in the future.
+    /// Compatibility note: `()` is temporary, it will be replaced with something else in the
+    /// future.
     // TODO: ^ implement and make this public
     #[inline]
     pub(crate) fn shader(&self, stage: ShaderStage) -> Option<()> {
@@ -230,11 +232,13 @@ impl GraphicsPipeline {
     ///
     /// `None` is returned if the pipeline does not contain this state. Previously set dynamic
     /// state is not disturbed when binding it.
+    #[inline]
     pub fn dynamic_state(&self, state: DynamicState) -> Option<bool> {
         self.dynamic_state.get(&state).copied()
     }
 
     /// Returns all potentially dynamic states in the pipeline, and whether they are dynamic or not.
+    #[inline]
     pub fn dynamic_states(&self) -> impl ExactSizeIterator<Item = (DynamicState, bool)> + '_ {
         self.dynamic_state.iter().map(|(k, v)| (*k, *v))
     }
@@ -265,7 +269,6 @@ unsafe impl DeviceOwned for GraphicsPipeline {
 }
 
 impl Debug for GraphicsPipeline {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(f, "<Vulkan graphics pipeline {:?}>", self.handle)
     }
@@ -300,7 +303,6 @@ impl PartialEq for GraphicsPipeline {
 impl Eq for GraphicsPipeline {}
 
 impl Hash for GraphicsPipeline {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
         self.device.hash(state);

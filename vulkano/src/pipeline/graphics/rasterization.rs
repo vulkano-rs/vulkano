@@ -298,6 +298,7 @@ vulkan_enum! {
 
 impl Default for LineRasterizationMode {
     /// Returns `LineRasterizationMode::Default`.
+    #[inline]
     fn default() -> Self {
         Self::Default
     }

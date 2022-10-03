@@ -124,6 +124,7 @@ impl UnsafeDescriptorPool {
     ///
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     /// - `create_info` must match the info used to create the object.
+    #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
         handle: ash::vk::DescriptorPool,
@@ -170,7 +171,7 @@ impl UnsafeDescriptorPool {
     /// The `FragmentedPool` errors often can't be prevented. If the function returns this error,
     /// you should just create a new pool.
     ///
-    /// # Panic
+    /// # Panics
     ///
     /// - Panics if one of the layouts wasn't created with the same device as the pool.
     ///
@@ -182,7 +183,6 @@ impl UnsafeDescriptorPool {
     /// - The total number of descriptor sets allocated from the pool must not overflow the pool.
     /// - You must ensure that the allocated descriptor sets are no longer in use when the pool
     ///   is destroyed, as destroying the pool is equivalent to freeing all the sets.
-    ///
     pub unsafe fn allocate_descriptor_sets<'a>(
         &mut self,
         allocate_info: impl IntoIterator<Item = DescriptorSetAllocateInfo<'a>>,
@@ -281,7 +281,6 @@ impl UnsafeDescriptorPool {
     /// - The descriptor sets must have been allocated from the pool.
     /// - The descriptor sets must not be free'd twice.
     /// - The descriptor sets must not be in use by the GPU.
-    ///
     pub unsafe fn free_descriptor_sets<I>(&mut self, descriptor_sets: I) -> Result<(), OomError>
     where
         I: IntoIterator<Item = UnsafeDescriptorSet>,
@@ -308,6 +307,7 @@ impl UnsafeDescriptorPool {
     /// Resets the pool.
     ///
     /// This destroys all descriptor sets and empties the pool.
+    #[inline]
     pub unsafe fn reset(&mut self) -> Result<(), OomError> {
         let fns = self.device.fns();
         (fns.v1_0.reset_descriptor_pool)(
@@ -317,6 +317,7 @@ impl UnsafeDescriptorPool {
         )
         .result()
         .map_err(VulkanError::from)?;
+
         Ok(())
     }
 }
@@ -361,7 +362,6 @@ impl PartialEq for UnsafeDescriptorPool {
 impl Eq for UnsafeDescriptorPool {}
 
 impl Hash for UnsafeDescriptorPool {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
         self.device().hash(state);
@@ -429,12 +429,11 @@ pub enum DescriptorPoolAllocError {
 impl Error for DescriptorPoolAllocError {}
 
 impl Display for DescriptorPoolAllocError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
             "{}",
-            match *self {
+            match self {
                 DescriptorPoolAllocError::OutOfHostMemory => "no memory available on the host",
                 DescriptorPoolAllocError::OutOfDeviceMemory => {
                     "no memory available on the graphical device"

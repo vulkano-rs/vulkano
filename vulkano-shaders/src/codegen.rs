@@ -295,14 +295,12 @@ pub enum Error {
 }
 
 impl From<IoError> for Error {
-    #[inline]
     fn from(err: IoError) -> Error {
         Error::IoError(err)
     }
 }
 
 impl From<SpirvError> for Error {
-    #[inline]
     fn from(err: SpirvError) -> Error {
         Error::SpirvError(err)
     }

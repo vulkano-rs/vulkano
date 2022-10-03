@@ -35,11 +35,11 @@ pub type DeviceImageView = Arc<ImageView<StorageImage>>;
 /// Most common image format
 pub const DEFAULT_IMAGE_FORMAT: Format = Format::R8G8B8A8_UNORM;
 
-/// A window renderer struct holding the winit window surface and functionality for organizing your render
-/// between frames.
+/// A window renderer struct holding the winit window surface and functionality for organizing your
+/// render between frames.
 ///
-/// Begin rendering with [`VulkanoWindowRenderer::acquire`] and finish with [`VulkanoWindowRenderer::present`].
-/// Between those, you should execute your command buffers.
+/// Begin rendering with [`VulkanoWindowRenderer::acquire`] and finish with
+/// [`VulkanoWindowRenderer::present`]. Between those, you should execute your command buffers.
 ///
 /// The intended usage of this struct is through [`crate::window::VulkanoWindows`].
 pub struct VulkanoWindowRenderer {
@@ -58,8 +58,9 @@ pub struct VulkanoWindowRenderer {
 }
 
 impl VulkanoWindowRenderer {
-    /// Creates a new [`VulkanoWindowRenderer`] which is used to orchestrate your rendering with Vulkano.
-    /// Pass [`WindowDescriptor`] and optionally a function modifying the [`SwapchainCreateInfo`](vulkano::swapchain::SwapchainCreateInfo) parameters.
+    /// Creates a new [`VulkanoWindowRenderer`] which is used to orchestrate your rendering with
+    /// Vulkano. Pass [`WindowDescriptor`] and optionally a function modifying the
+    /// [`SwapchainCreateInfo`](vulkano::swapchain::SwapchainCreateInfo) parameters.
     pub fn new(
         vulkano_context: &VulkanoContext,
         window: winit::window::Window,
@@ -144,6 +145,7 @@ impl VulkanoWindowRenderer {
     }
 
     /// Set window renderer present mode. This triggers a swapchain recreation.
+    #[inline]
     pub fn set_present_mode(&mut self, present_mode: vulkano::swapchain::PresentMode) {
         if self.present_mode != present_mode {
             self.present_mode = present_mode;
@@ -151,55 +153,65 @@ impl VulkanoWindowRenderer {
         }
     }
 
-    /// Return swapchain image format
+    /// Return swapchain image format.
+    #[inline]
     pub fn swapchain_format(&self) -> Format {
         self.final_views[self.image_index as usize]
             .format()
             .unwrap()
     }
 
-    /// Returns the index of last swapchain image that is the next render target
+    /// Returns the index of last swapchain image that is the next render target.
+    #[inline]
     pub fn image_index(&self) -> u32 {
         self.image_index
     }
 
-    /// Graphics queue of this window. You also can access this through [`VulkanoContext`]
+    /// Graphics queue of this window. You also can access this through [`VulkanoContext`].
+    #[inline]
     pub fn graphics_queue(&self) -> Arc<Queue> {
         self.graphics_queue.clone()
     }
 
-    /// Compute queue of this window. You can also access this through [`VulkanoContext`]
+    /// Compute queue of this window. You can also access this through [`VulkanoContext`].
+    #[inline]
     pub fn compute_queue(&self) -> Arc<Queue> {
         self.compute_queue.clone()
     }
 
-    /// Render target surface
+    /// Render target surface.
+    #[inline]
     pub fn surface(&self) -> Arc<Surface<Window>> {
         self.surface.clone()
     }
 
     /// Winit window (you can manipulate window through this).
+    #[inline]
     pub fn window(&self) -> &Window {
         self.surface.window()
     }
 
-    /// Size of the physical window
+    /// Size of the physical window.
+    #[inline]
     pub fn window_size(&self) -> [f32; 2] {
         let size = self.window().inner_size();
         [size.width as f32, size.height as f32]
     }
 
-    /// Size of the final swapchain image (surface)
+    /// Size of the final swapchain image (surface).
+    #[inline]
     pub fn swapchain_image_size(&self) -> [u32; 2] {
         self.final_views[0].image().dimensions().width_height()
     }
 
-    /// Return the current swapchain image view
+    /// Return the current swapchain image view.
+    #[inline]
     pub fn swapchain_image_view(&self) -> SwapchainImageView {
         self.final_views[self.image_index as usize].clone()
     }
 
-    /// Return scale factor accounted window size
+    /// Return scale factor accounted window size.
+    #[inline]
     pub fn resolution(&self) -> [f32; 2] {
         let size = self.window().inner_size();
         let scale_factor = self.window().scale_factor();
@@ -209,17 +221,21 @@ impl VulkanoWindowRenderer {
         ]
     }
 
+    #[inline]
     pub fn aspect_ratio(&self) -> f32 {
         let dims = self.window_size();
         dims[0] / dims[1]
     }
 
-    /// Resize swapchain and camera view images at the beginning of next frame based on window dimensions
+    /// Resize swapchain and camera view images at the beginning of next frame based on window
+    /// dimensions.
+    #[inline]
     pub fn resize(&mut self) {
         self.recreate_swapchain = true;
     }
 
-    /// Add interim image view that resizes with window
+    /// Add interim image view that resizes with window.
+    #[inline]
     pub fn add_additional_image_view(&mut self, key: usize, format: Format, usage: ImageUsage) {
         let size = self.swapchain_image_size();
         let image = StorageImage::general_purpose_image_view(
@@ -232,20 +248,24 @@ impl VulkanoWindowRenderer {
         self.additional_image_views.insert(key, image);
     }
 
-    /// Get additional image view by key
+    /// Get additional image view by key.
+    #[inline]
     pub fn get_additional_image_view(&mut self, key: usize) -> DeviceImageView {
         self.additional_image_views.get(&key).unwrap().clone()
     }
 
-    /// Remove additional image by key
+    /// Remove additional image by key.
+    #[inline]
     pub fn remove_additional_image_view(&mut self, key: usize) {
         self.additional_image_views.remove(&key);
     }
 
     /// Begin your rendering by calling `acquire`.
-    /// Returns a [`GpuFuture`](vulkano::sync::GpuFuture) representing the time after which the swapchain image has been acquired
-    /// and previous frame ended.
-    /// Execute your command buffers after calling this function and finish rendering by calling [`VulkanoWindowRenderer::present`].
+    /// Returns a [`GpuFuture`](vulkano::sync::GpuFuture) representing the time after which the
+    /// swapchain image has been acquired and previous frame ended.
+    /// Execute your command buffers after calling this function and finish rendering by calling
+    /// [`VulkanoWindowRenderer::present`].
+    #[inline]
     pub fn acquire(&mut self) -> std::result::Result<Box<dyn GpuFuture>, AcquireError> {
         // Recreate swap chain if needed (when resizing of window occurs or swapchain is outdated)
         // Also resize render views if needed
@@ -274,10 +294,13 @@ impl VulkanoWindowRenderer {
         Ok(future.boxed())
     }
 
-    /// Finishes rendering by presenting the swapchain. Pass your last future as an input to this function.
+    /// Finishes rendering by presenting the swapchain. Pass your last future as an input to this
+    /// function.
     ///
-    /// Depending on your implementation, you may want to wait on your future. For example, a compute shader
-    /// dispatch using an image that's being later drawn should probably be waited on.
+    /// Depending on your implementation, you may want to wait on your future. For example, a
+    /// compute shader dispatch using an image that's being later drawn should probably be waited
+    /// on.
+    #[inline]
     pub fn present(&mut self, after_future: Box<dyn GpuFuture>, wait_future: bool) {
         let future = after_future
             .then_swapchain_present(
@@ -315,7 +338,7 @@ impl VulkanoWindowRenderer {
         }
     }
 
-    /// Recreates swapchain images and image views which follow the window size
+    /// Recreates swapchain images and image views which follow the window size.
     fn recreate_swapchain_and_views(&mut self) {
         let dimensions: [u32; 2] = self.window().inner_size().into();
         let (new_swapchain, new_images) = match self.swapchain.recreate(SwapchainCreateInfo {

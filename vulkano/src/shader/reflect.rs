@@ -31,6 +31,7 @@ use std::{
 };
 
 /// Returns an iterator of the capabilities used by `spirv`.
+#[inline]
 pub fn spirv_capabilities(spirv: &Spirv) -> impl Iterator<Item = &Capability> {
     spirv
         .iter_capability()
@@ -41,6 +42,7 @@ pub fn spirv_capabilities(spirv: &Spirv) -> impl Iterator<Item = &Capability> {
 }
 
 /// Returns an iterator of the extensions used by `spirv`.
+#[inline]
 pub fn spirv_extensions(spirv: &Spirv) -> impl Iterator<Item = &str> {
     spirv
         .iter_extension()
@@ -51,6 +53,7 @@ pub fn spirv_extensions(spirv: &Spirv) -> impl Iterator<Item = &str> {
 }
 
 /// Returns an iterator over all entry points in `spirv`, with information about the entry point.
+#[inline]
 pub fn entry_points(
     spirv: &Spirv,
 ) -> impl Iterator<Item = (String, ExecutionModel, EntryPointInfo)> + '_ {
@@ -58,13 +61,13 @@ pub fn entry_points(
 
     spirv.iter_entry_point().filter_map(move |instruction| {
         let (execution_model, function_id, entry_point_name, interface) = match instruction {
-            &Instruction::EntryPoint {
-                ref execution_model,
+            Instruction::EntryPoint {
+                execution_model,
                 entry_point,
-                ref name,
-                ref interface,
+                name,
+                interface,
                 ..
-            } => (execution_model, entry_point, name, interface),
+            } => (execution_model, *entry_point, name, interface),
             _ => return None,
         };
 
@@ -212,7 +215,6 @@ fn inspect_entry_point(
     spirv: &Spirv,
     entry_point: Id,
 ) -> HashMap<(u32, u32), DescriptorRequirements> {
-    #[inline]
     fn instruction_chain<'a, const N: usize>(
         result: &'a mut HashMap<Id, DescriptorVariable>,
         global: &HashMap<Id, DescriptorVariable>,
@@ -228,8 +230,8 @@ fn inspect_entry_point(
             return Some((variable, Some(0)));
         }
 
-        let (id, indexes) = match spirv.id(id).instruction() {
-            &Instruction::AccessChain {
+        let (id, indexes) = match *spirv.id(id).instruction() {
+            Instruction::AccessChain {
                 base, ref indexes, ..
             } => (base, indexes),
             _ => return None,
@@ -239,8 +241,8 @@ fn inspect_entry_point(
             // Variable was accessed with an access chain.
             // Retrieve index from instruction if it's a constant value.
             // TODO: handle a `None` index too?
-            let index = match spirv.id(*indexes.first().unwrap()).instruction() {
-                &Instruction::Constant { ref value, .. } => Some(value[0]),
+            let index = match *spirv.id(*indexes.first().unwrap()).instruction() {
+                Instruction::Constant { ref value, .. } => Some(value[0]),
                 _ => None,
             };
             let variable = result.entry(id).or_insert_with(|| variable.clone());
@@ -250,26 +252,23 @@ fn inspect_entry_point(
         None
     }
 
-    #[inline]
     fn inst_image_texel_pointer(spirv: &Spirv, id: Id) -> Option<Id> {
-        match spirv.id(id).instruction() {
-            &Instruction::ImageTexelPointer { image, .. } => Some(image),
+        match *spirv.id(id).instruction() {
+            Instruction::ImageTexelPointer { image, .. } => Some(image),
             _ => None,
         }
     }
 
-    #[inline]
     fn inst_load(spirv: &Spirv, id: Id) -> Option<Id> {
-        match spirv.id(id).instruction() {
-            &Instruction::Load { pointer, .. } => Some(pointer),
+        match *spirv.id(id).instruction() {
+            Instruction::Load { pointer, .. } => Some(pointer),
             _ => None,
         }
     }
 
-    #[inline]
     fn inst_sampled_image(spirv: &Spirv, id: Id) -> Option<Id> {
-        match spirv.id(id).instruction() {
-            &Instruction::SampledImage { sampler, .. } => Some(sampler),
+        match *spirv.id(id).instruction() {
+            Instruction::SampledImage { sampler, .. } => Some(sampler),
             _ => Some(id),
         }
     }
@@ -285,15 +284,15 @@ fn inspect_entry_point(
         let mut in_function = false;
         for instruction in spirv.instructions() {
             if !in_function {
-                match instruction {
-                    Instruction::Function { result_id, .. } if result_id == &function => {
+                match *instruction {
+                    Instruction::Function { result_id, .. } if result_id == function => {
                         in_function = true;
                     }
                     _ => {}
                 }
             } else {
-                match instruction {
-                    &Instruction::AtomicLoad { pointer, .. } => {
+                match *instruction {
+                    Instruction::AtomicLoad { pointer, .. } => {
                         // Storage buffer
                         instruction_chain(result, global, spirv, [], pointer);
 
@@ -309,26 +308,26 @@ fn inspect_entry_point(
                         }
                     }
 
-                    &Instruction::AtomicStore { pointer, .. }
-                    | &Instruction::AtomicExchange { pointer, .. }
-                    | &Instruction::AtomicCompareExchange { pointer, .. }
-                    | &Instruction::AtomicCompareExchangeWeak { pointer, .. }
-                    | &Instruction::AtomicIIncrement { pointer, .. }
-                    | &Instruction::AtomicIDecrement { pointer, .. }
-                    | &Instruction::AtomicIAdd { pointer, .. }
-                    | &Instruction::AtomicISub { pointer, .. }
-                    | &Instruction::AtomicSMin { pointer, .. }
-                    | &Instruction::AtomicUMin { pointer, .. }
-                    | &Instruction::AtomicSMax { pointer, .. }
-                    | &Instruction::AtomicUMax { pointer, .. }
-                    | &Instruction::AtomicAnd { pointer, .. }
-                    | &Instruction::AtomicOr { pointer, .. }
-                    | &Instruction::AtomicXor { pointer, .. }
-                    | &Instruction::AtomicFlagTestAndSet { pointer, .. }
-                    | &Instruction::AtomicFlagClear { pointer, .. }
-                    | &Instruction::AtomicFMinEXT { pointer, .. }
-                    | &Instruction::AtomicFMaxEXT { pointer, .. }
-                    | &Instruction::AtomicFAddEXT { pointer, .. } => {
+                    Instruction::AtomicStore { pointer, .. }
+                    | Instruction::AtomicExchange { pointer, .. }
+                    | Instruction::AtomicCompareExchange { pointer, .. }
+                    | Instruction::AtomicCompareExchangeWeak { pointer, .. }
+                    | Instruction::AtomicIIncrement { pointer, .. }
+                    | Instruction::AtomicIDecrement { pointer, .. }
+                    | Instruction::AtomicIAdd { pointer, .. }
+                    | Instruction::AtomicISub { pointer, .. }
+                    | Instruction::AtomicSMin { pointer, .. }
+                    | Instruction::AtomicUMin { pointer, .. }
+                    | Instruction::AtomicSMax { pointer, .. }
+                    | Instruction::AtomicUMax { pointer, .. }
+                    | Instruction::AtomicAnd { pointer, .. }
+                    | Instruction::AtomicOr { pointer, .. }
+                    | Instruction::AtomicXor { pointer, .. }
+                    | Instruction::AtomicFlagTestAndSet { pointer, .. }
+                    | Instruction::AtomicFlagClear { pointer, .. }
+                    | Instruction::AtomicFMinEXT { pointer, .. }
+                    | Instruction::AtomicFMaxEXT { pointer, .. }
+                    | Instruction::AtomicFAddEXT { pointer, .. } => {
                         // Storage buffer
                         if let Some((variable, Some(index))) =
                             instruction_chain(result, global, spirv, [], pointer)
@@ -349,16 +348,16 @@ fn inspect_entry_point(
                         }
                     }
 
-                    &Instruction::CopyMemory { target, source, .. } => {
+                    Instruction::CopyMemory { target, source, .. } => {
                         instruction_chain(result, global, spirv, [], target);
                         instruction_chain(result, global, spirv, [], source);
                     }
 
-                    &Instruction::CopyObject { operand, .. } => {
+                    Instruction::CopyObject { operand, .. } => {
                         instruction_chain(result, global, spirv, [], operand);
                     }
 
-                    &Instruction::ExtInst { ref operands, .. } => {
+                    Instruction::ExtInst { ref operands, .. } => {
                         // We don't know which extended instructions take pointers,
                         // so we must interpret every operand as a pointer.
                         for &operand in operands {
@@ -366,7 +365,7 @@ fn inspect_entry_point(
                         }
                     }
 
-                    &Instruction::FunctionCall {
+                    Instruction::FunctionCall {
                         function,
                         ref arguments,
                         ..
@@ -388,16 +387,16 @@ fn inspect_entry_point(
                         }
                     }
 
-                    &Instruction::FunctionEnd => return,
+                    Instruction::FunctionEnd => return,
 
-                    &Instruction::ImageGather {
+                    Instruction::ImageGather {
                         sampled_image,
-                        ref image_operands,
+                        image_operands,
                         ..
                     }
-                    | &Instruction::ImageSparseGather {
+                    | Instruction::ImageSparseGather {
                         sampled_image,
-                        ref image_operands,
+                        image_operands,
                         ..
                     } => {
                         if let Some((variable, Some(index))) = instruction_chain(
@@ -422,8 +421,8 @@ fn inspect_entry_point(
                         }
                     }
 
-                    &Instruction::ImageDrefGather { sampled_image, .. }
-                    | &Instruction::ImageSparseDrefGather { sampled_image, .. } => {
+                    Instruction::ImageDrefGather { sampled_image, .. }
+                    | Instruction::ImageSparseDrefGather { sampled_image, .. } => {
                         if let Some((variable, Some(index))) = instruction_chain(
                             result,
                             global,
@@ -439,24 +438,24 @@ fn inspect_entry_point(
                         }
                     }
 
-                    &Instruction::ImageSampleImplicitLod {
+                    Instruction::ImageSampleImplicitLod {
                         sampled_image,
-                        ref image_operands,
+                        image_operands,
                         ..
                     }
-                    | &Instruction::ImageSampleProjImplicitLod {
+                    | Instruction::ImageSampleProjImplicitLod {
                         sampled_image,
-                        ref image_operands,
+                        image_operands,
                         ..
                     }
-                    | &Instruction::ImageSparseSampleProjImplicitLod {
+                    | Instruction::ImageSparseSampleProjImplicitLod {
                         sampled_image,
-                        ref image_operands,
+                        image_operands,
                         ..
                     }
-                    | &Instruction::ImageSparseSampleImplicitLod {
+                    | Instruction::ImageSparseSampleImplicitLod {
                         sampled_image,
-                        ref image_operands,
+                        image_operands,
                         ..
                     } => {
                         if let Some((variable, Some(index))) = instruction_chain(
@@ -480,14 +479,14 @@ fn inspect_entry_point(
                         }
                     }
 
-                    &Instruction::ImageSampleProjExplicitLod {
+                    Instruction::ImageSampleProjExplicitLod {
                         sampled_image,
-                        ref image_operands,
+                        image_operands,
                         ..
                     }
-                    | &Instruction::ImageSparseSampleProjExplicitLod {
+                    | Instruction::ImageSparseSampleProjExplicitLod {
                         sampled_image,
-                        ref image_operands,
+                        image_operands,
                         ..
                     } => {
                         if let Some((variable, Some(index))) = instruction_chain(
@@ -510,24 +509,24 @@ fn inspect_entry_point(
                         }
                     }
 
-                    &Instruction::ImageSampleDrefImplicitLod {
+                    Instruction::ImageSampleDrefImplicitLod {
                         sampled_image,
-                        ref image_operands,
+                        image_operands,
                         ..
                     }
-                    | &Instruction::ImageSampleProjDrefImplicitLod {
+                    | Instruction::ImageSampleProjDrefImplicitLod {
                         sampled_image,
-                        ref image_operands,
+                        image_operands,
                         ..
                     }
-                    | &Instruction::ImageSparseSampleDrefImplicitLod {
+                    | Instruction::ImageSparseSampleDrefImplicitLod {
                         sampled_image,
-                        ref image_operands,
+                        image_operands,
                         ..
                     }
-                    | &Instruction::ImageSparseSampleProjDrefImplicitLod {
+                    | Instruction::ImageSparseSampleProjDrefImplicitLod {
                         sampled_image,
-                        ref image_operands,
+                        image_operands,
                         ..
                     } => {
                         if let Some((variable, Some(index))) = instruction_chain(
@@ -552,24 +551,24 @@ fn inspect_entry_point(
                         }
                     }
 
-                    &Instruction::ImageSampleDrefExplicitLod {
+                    Instruction::ImageSampleDrefExplicitLod {
                         sampled_image,
-                        ref image_operands,
+                        image_operands,
                         ..
                     }
-                    | &Instruction::ImageSampleProjDrefExplicitLod {
+                    | Instruction::ImageSampleProjDrefExplicitLod {
                         sampled_image,
-                        ref image_operands,
+                        image_operands,
                         ..
                     }
-                    | &Instruction::ImageSparseSampleDrefExplicitLod {
+                    | Instruction::ImageSparseSampleDrefExplicitLod {
                         sampled_image,
-                        ref image_operands,
+                        image_operands,
                         ..
                     }
-                    | &Instruction::ImageSparseSampleProjDrefExplicitLod {
+                    | Instruction::ImageSparseSampleProjDrefExplicitLod {
                         sampled_image,
-                        ref image_operands,
+                        image_operands,
                         ..
                     } => {
                         if let Some((variable, Some(index))) = instruction_chain(
@@ -593,14 +592,14 @@ fn inspect_entry_point(
                         }
                     }
 
-                    &Instruction::ImageSampleExplicitLod {
+                    Instruction::ImageSampleExplicitLod {
                         sampled_image,
-                        ref image_operands,
+                        image_operands,
                         ..
                     }
-                    | &Instruction::ImageSparseSampleExplicitLod {
+                    | Instruction::ImageSparseSampleExplicitLod {
                         sampled_image,
-                        ref image_operands,
+                        image_operands,
                         ..
                     } => {
                         if let Some((variable, Some(index))) = instruction_chain(
@@ -628,11 +627,11 @@ fn inspect_entry_point(
                         }
                     }
 
-                    &Instruction::ImageTexelPointer { image, .. } => {
+                    Instruction::ImageTexelPointer { image, .. } => {
                         instruction_chain(result, global, spirv, [], image);
                     }
 
-                    &Instruction::ImageRead { image, .. } => {
+                    Instruction::ImageRead { image, .. } => {
                         if let Some((variable, Some(index))) =
                             instruction_chain(result, global, spirv, [inst_load], image)
                         {
@@ -640,7 +639,7 @@ fn inspect_entry_point(
                         }
                     }
 
-                    &Instruction::ImageWrite { image, .. } => {
+                    Instruction::ImageWrite { image, .. } => {
                         if let Some((variable, Some(index))) =
                             instruction_chain(result, global, spirv, [inst_load], image)
                         {
@@ -648,11 +647,11 @@ fn inspect_entry_point(
                         }
                     }
 
-                    &Instruction::Load { pointer, .. } => {
+                    Instruction::Load { pointer, .. } => {
                         instruction_chain(result, global, spirv, [], pointer);
                     }
 
-                    &Instruction::SampledImage { image, sampler, .. } => {
+                    Instruction::SampledImage { image, sampler, .. } => {
                         let identifier =
                             match instruction_chain(result, global, spirv, [inst_load], image) {
                                 Some((variable, Some(index))) => DescriptorIdentifier {
@@ -675,7 +674,7 @@ fn inspect_entry_point(
                         }
                     }
 
-                    &Instruction::Store { pointer, .. } => {
+                    Instruction::Store { pointer, .. } => {
                         if let Some((variable, Some(index))) =
                             instruction_chain(result, global, spirv, [], pointer)
                         {
@@ -698,6 +697,7 @@ fn inspect_entry_point(
         spirv,
         entry_point,
     );
+
     result
         .into_iter()
         .map(|(_, variable)| ((variable.set, variable.binding), variable.reqs))
@@ -716,15 +716,15 @@ fn descriptor_requirements_of(spirv: &Spirv, variable_id: Id) -> DescriptorVaria
     };
 
     let (mut next_type_id, is_storage_buffer) = {
-        let variable_type_id = match variable_id_info.instruction() {
-            Instruction::Variable { result_type_id, .. } => *result_type_id,
+        let variable_type_id = match *variable_id_info.instruction() {
+            Instruction::Variable { result_type_id, .. } => result_type_id,
             _ => panic!("Id {} is not a variable", variable_id),
         };
 
-        match spirv.id(variable_type_id).instruction() {
+        match *spirv.id(variable_type_id).instruction() {
             Instruction::TypePointer {
                 ty, storage_class, ..
-            } => (Some(*ty), *storage_class == StorageClass::StorageBuffer),
+            } => (Some(ty), storage_class == StorageClass::StorageBuffer),
             _ => panic!(
                 "Variable {} result_type_id does not refer to a TypePointer instruction",
                 variable_id
@@ -735,7 +735,7 @@ fn descriptor_requirements_of(spirv: &Spirv, variable_id: Id) -> DescriptorVaria
     while let Some(id) = next_type_id {
         let id_info = spirv.id(id);
 
-        next_type_id = match id_info.instruction() {
+        next_type_id = match *id_info.instruction() {
             Instruction::TypeStruct { .. } => {
                 let decoration_block = id_info.iter_decoration().any(|instruction| {
                     matches!(
@@ -759,7 +759,8 @@ fn descriptor_requirements_of(spirv: &Spirv, variable_id: Id) -> DescriptorVaria
 
                 assert!(
                     decoration_block ^ decoration_buffer_block,
-                    "Structs in shader interface are expected to be decorated with one of Block or BufferBlock"
+                    "Structs in shader interface are expected to be decorated with one of Block or \
+                    BufferBlock",
                 );
 
                 if decoration_buffer_block || decoration_block && is_storage_buffer {
@@ -777,16 +778,20 @@ fn descriptor_requirements_of(spirv: &Spirv, variable_id: Id) -> DescriptorVaria
                 None
             }
 
-            &Instruction::TypeImage {
+            Instruction::TypeImage {
                 sampled_type,
-                ref dim,
+                dim,
                 arrayed,
                 ms,
                 sampled,
-                ref image_format,
+                image_format,
                 ..
             } => {
-                assert!(sampled != 0, "Vulkan requires that variables of type OpTypeImage have a Sampled operand of 1 or 2");
+                assert!(
+                    sampled != 0,
+                    "Vulkan requires that variables of type OpTypeImage have a Sampled operand of \
+                    1 or 2",
+                );
                 reqs.image_format = image_format.clone().into();
                 reqs.image_multisampled = ms != 0;
                 reqs.image_scalar_type = Some(match *spirv.id(sampled_type).instruction() {
@@ -811,7 +816,7 @@ fn descriptor_requirements_of(spirv: &Spirv, variable_id: Id) -> DescriptorVaria
                     Dim::SubpassData => {
                         assert!(
                             reqs.image_format.is_none(),
-                            "If Dim is SubpassData, Image Format must be Unknown"
+                            "If Dim is SubpassData, Image Format must be Unknown",
                         );
                         assert!(sampled == 2, "If Dim is SubpassData, Sampled must be 2");
                         assert!(arrayed == 0, "If Dim is SubpassData, Arrayed must be 0");
@@ -856,23 +861,25 @@ fn descriptor_requirements_of(spirv: &Spirv, variable_id: Id) -> DescriptorVaria
                 None
             }
 
-            &Instruction::TypeSampler { .. } => {
+            Instruction::TypeSampler { .. } => {
                 reqs.descriptor_types = vec![DescriptorType::Sampler];
+
                 None
             }
 
-            &Instruction::TypeSampledImage { image_type, .. } => {
+            Instruction::TypeSampledImage { image_type, .. } => {
                 reqs.descriptor_types = vec![DescriptorType::CombinedImageSampler];
+
                 Some(image_type)
             }
 
-            &Instruction::TypeArray {
+            Instruction::TypeArray {
                 element_type,
                 length,
                 ..
             } => {
                 let len = match spirv.id(length).instruction() {
-                    &Instruction::Constant { ref value, .. } => {
+                    Instruction::Constant { value, .. } => {
                         value.iter().rev().fold(0, |a, &b| (a << 32) | b as u64)
                     }
                     _ => panic!("failed to find array length"),
@@ -885,23 +892,28 @@ fn descriptor_requirements_of(spirv: &Spirv, variable_id: Id) -> DescriptorVaria
                 Some(element_type)
             }
 
-            &Instruction::TypeRuntimeArray { element_type, .. } => {
+            Instruction::TypeRuntimeArray { element_type, .. } => {
                 reqs.descriptor_count = None;
+
                 Some(element_type)
             }
 
-            &Instruction::TypeAccelerationStructureKHR { .. } => None, // FIXME temporary workaround
+            Instruction::TypeAccelerationStructureKHR { .. } => None, // FIXME temporary workaround
 
             _ => {
                 let name = variable_id_info
                     .iter_name()
-                    .find_map(|instruction| match instruction {
-                        Instruction::Name { name, .. } => Some(name.as_str()),
+                    .find_map(|instruction| match *instruction {
+                        Instruction::Name { ref name, .. } => Some(name.as_str()),
                         _ => None,
                     })
                     .unwrap_or("__unnamed");
 
-                panic!("Couldn't find relevant type for global variable `{}` (id {}, maybe unimplemented)", name, variable_id);
+                panic!(
+                    "Couldn't find relevant type for global variable `{}` (id {}, maybe \
+                    unimplemented)",
+                    name, variable_id,
+                );
             }
         };
     }
@@ -909,21 +921,21 @@ fn descriptor_requirements_of(spirv: &Spirv, variable_id: Id) -> DescriptorVaria
     DescriptorVariable {
         set: variable_id_info
             .iter_decoration()
-            .find_map(|instruction| match instruction {
+            .find_map(|instruction| match *instruction {
                 Instruction::Decorate {
                     decoration: Decoration::DescriptorSet { descriptor_set },
                     ..
-                } => Some(*descriptor_set),
+                } => Some(descriptor_set),
                 _ => None,
             })
             .unwrap(),
         binding: variable_id_info
             .iter_decoration()
-            .find_map(|instruction| match instruction {
+            .find_map(|instruction| match *instruction {
                 Instruction::Decorate {
                     decoration: Decoration::Binding { binding_point },
                     ..
-                } => Some(*binding_point),
+                } => Some(binding_point),
                 _ => None,
             })
             .unwrap(),
@@ -935,8 +947,8 @@ fn descriptor_requirements_of(spirv: &Spirv, variable_id: Id) -> DescriptorVaria
 fn push_constant_requirements(spirv: &Spirv, stage: ShaderStage) -> Option<PushConstantRange> {
     spirv
         .iter_global()
-        .find_map(|instruction| match instruction {
-            &Instruction::TypePointer {
+        .find_map(|instruction| match *instruction {
+            Instruction::TypePointer {
                 ty,
                 storage_class: StorageClass::PushConstant,
                 ..
@@ -949,6 +961,7 @@ fn push_constant_requirements(spirv: &Spirv, stage: ShaderStage) -> Option<PushC
                 let start = offset_of_struct(spirv, ty);
                 let end =
                     size_of_type(spirv, ty).expect("Found runtime-sized push constants") as u32;
+
                 Some(PushConstantRange {
                     stages: stage.into(),
                     offset: start,
@@ -966,39 +979,39 @@ fn specialization_constant_requirements(
     spirv
         .iter_global()
         .filter_map(|instruction| {
-            match instruction {
-                &Instruction::SpecConstantTrue {
+            match *instruction {
+                Instruction::SpecConstantTrue {
                     result_type_id,
                     result_id,
                 }
-                | &Instruction::SpecConstantFalse {
+                | Instruction::SpecConstantFalse {
                     result_type_id,
                     result_id,
                 }
-                | &Instruction::SpecConstant {
+                | Instruction::SpecConstant {
                     result_type_id,
                     result_id,
                     ..
                 }
-                | &Instruction::SpecConstantComposite {
+                | Instruction::SpecConstantComposite {
                     result_type_id,
                     result_id,
                     ..
                 } => spirv
                     .id(result_id)
                     .iter_decoration()
-                    .find_map(|instruction| match instruction {
+                    .find_map(|instruction| match *instruction {
                         Instruction::Decorate {
                             decoration:
                                 Decoration::SpecId {
                                     specialization_constant_id,
                                 },
                             ..
-                        } => Some(*specialization_constant_id),
+                        } => Some(specialization_constant_id),
                         _ => None,
                     })
                     .map(|constant_id| {
-                        let size = match spirv.id(result_type_id).instruction() {
+                        let size = match *spirv.id(result_type_id).instruction() {
                             Instruction::TypeBool { .. } => {
                                 // Translate bool to Bool32
                                 std::mem::size_of::<ash::vk::Bool32>() as DeviceSize
@@ -1024,13 +1037,13 @@ fn shader_interface(
     let elements: Vec<_> = interface
         .iter()
         .filter_map(|&id| {
-            let (result_type_id, result_id) = match spirv.id(id).instruction() {
-                &Instruction::Variable {
+            let (result_type_id, result_id) = match *spirv.id(id).instruction() {
+                Instruction::Variable {
                     result_type_id,
                     result_id,
-                    ref storage_class,
+                    storage_class,
                     ..
-                } if storage_class == &filter_storage_class => (result_type_id, result_id),
+                } if storage_class == filter_storage_class => (result_type_id, result_id),
                 _ => return None,
             };
 
@@ -1042,18 +1055,18 @@ fn shader_interface(
 
             let name = id_info
                 .iter_name()
-                .find_map(|instruction| match instruction {
-                    Instruction::Name { name, .. } => Some(Cow::Owned(name.to_owned())),
+                .find_map(|instruction| match *instruction {
+                    Instruction::Name { ref name, .. } => Some(Cow::Owned(name.clone())),
                     _ => None,
                 });
 
             let location = id_info
                 .iter_decoration()
-                .find_map(|instruction| match instruction {
+                .find_map(|instruction| match *instruction {
                     Instruction::Decorate {
                         decoration: Decoration::Location { location },
                         ..
-                    } => Some(*location),
+                    } => Some(location),
                     _ => None,
                 })
                 .unwrap_or_else(|| {
@@ -1064,17 +1077,18 @@ fn shader_interface(
                 });
             let component = id_info
                 .iter_decoration()
-                .find_map(|instruction| match instruction {
+                .find_map(|instruction| match *instruction {
                     Instruction::Decorate {
                         decoration: Decoration::Component { component },
                         ..
-                    } => Some(*component),
+                    } => Some(component),
                     _ => None,
                 })
                 .unwrap_or(0);
 
             let ty = shader_interface_type_of(spirv, result_type_id, ignore_first_array);
             assert!(ty.num_elements >= 1);
+
             Some(ShaderInterfaceEntry {
                 location,
                 component,
@@ -1113,21 +1127,21 @@ fn shader_interface(
 fn size_of_type(spirv: &Spirv, id: Id) -> Option<DeviceSize> {
     let id_info = spirv.id(id);
 
-    match id_info.instruction() {
+    match *id_info.instruction() {
         Instruction::TypeBool { .. } => {
             panic!("Can't put booleans in structs")
         }
         Instruction::TypeInt { width, .. } | Instruction::TypeFloat { width, .. } => {
             assert!(width % 8 == 0);
-            Some(*width as DeviceSize / 8)
+            Some(width as DeviceSize / 8)
         }
-        &Instruction::TypeVector {
+        Instruction::TypeVector {
             component_type,
             component_count,
             ..
         } => size_of_type(spirv, component_type)
             .map(|component_size| component_size * component_count as DeviceSize),
-        &Instruction::TypeMatrix {
+        Instruction::TypeMatrix {
             column_type,
             column_count,
             ..
@@ -1136,19 +1150,19 @@ fn size_of_type(spirv: &Spirv, id: Id) -> Option<DeviceSize> {
             size_of_type(spirv, column_type)
                 .map(|column_size| column_size * column_count as DeviceSize)
         }
-        &Instruction::TypeArray { length, .. } => {
+        Instruction::TypeArray { length, .. } => {
             let stride = id_info
                 .iter_decoration()
-                .find_map(|instruction| match instruction {
+                .find_map(|instruction| match *instruction {
                     Instruction::Decorate {
                         decoration: Decoration::ArrayStride { array_stride },
                         ..
-                    } => Some(*array_stride),
+                    } => Some(array_stride),
                     _ => None,
                 })
                 .unwrap();
             let length = match spirv.id(length).instruction() {
-                &Instruction::Constant { ref value, .. } => Some(
+                Instruction::Constant { value, .. } => Some(
                     value
                         .iter()
                         .rev()
@@ -1161,7 +1175,9 @@ fn size_of_type(spirv: &Spirv, id: Id) -> Option<DeviceSize> {
             Some(stride as DeviceSize * length)
         }
         Instruction::TypeRuntimeArray { .. } => None,
-        Instruction::TypeStruct { member_types, .. } => {
+        Instruction::TypeStruct {
+            ref member_types, ..
+        } => {
             let mut end_of_struct = 0;
 
             for (&member, member_info) in member_types.iter().zip(id_info.iter_members()) {
@@ -1183,11 +1199,11 @@ fn size_of_type(spirv: &Spirv, id: Id) -> Option<DeviceSize> {
                 let offset =
                     member_info
                         .iter_decoration()
-                        .find_map(|instruction| match instruction {
+                        .find_map(|instruction| match *instruction {
                             Instruction::MemberDecorate {
                                 decoration: Decoration::Offset { byte_offset },
                                 ..
-                            } => Some(*byte_offset),
+                            } => Some(byte_offset),
                             _ => None,
                         })?;
                 let size = size_of_type(spirv, member)?;
@@ -1208,11 +1224,11 @@ fn offset_of_struct(spirv: &Spirv, id: Id) -> u32 {
         .filter_map(|member_info| {
             member_info
                 .iter_decoration()
-                .find_map(|instruction| match instruction {
+                .find_map(|instruction| match *instruction {
                     Instruction::MemberDecorate {
                         decoration: Decoration::Offset { byte_offset },
                         ..
-                    } => Some(*byte_offset),
+                    } => Some(byte_offset),
                     _ => None,
                 })
         })
@@ -1295,15 +1311,14 @@ fn shader_interface_type_of(
                 let num_elements = spirv
                     .instructions()
                     .iter()
-                    .filter_map(|e| match e {
-                        &Instruction::Constant {
+                    .find_map(|instruction| match *instruction {
+                        Instruction::Constant {
                             result_id,
                             ref value,
                             ..
                         } if result_id == length => Some(value.clone()),
                         _ => None,
                     })
-                    .next()
                     .expect("failed to find array length")
                     .iter()
                     .rev()
@@ -1353,25 +1368,19 @@ fn is_builtin(spirv: &Spirv, id: Id) -> bool {
     }
 
     match id_info.instruction() {
-        Instruction::Variable { result_type_id, .. } => {
-            return is_builtin(spirv, *result_type_id);
+        Instruction::Variable {
+            result_type_id: ty, ..
         }
-        Instruction::TypeArray { element_type, .. } => {
-            return is_builtin(spirv, *element_type);
+        | Instruction::TypeArray {
+            element_type: ty, ..
         }
-        Instruction::TypeRuntimeArray { element_type, .. } => {
-            return is_builtin(spirv, *element_type);
+        | Instruction::TypeRuntimeArray {
+            element_type: ty, ..
         }
+        | Instruction::TypePointer { ty, .. } => is_builtin(spirv, *ty),
         Instruction::TypeStruct { member_types, .. } => {
-            if member_types.iter().any(|ty| is_builtin(spirv, *ty)) {
-                return true;
-            }
+            member_types.iter().any(|ty| is_builtin(spirv, *ty))
         }
-        Instruction::TypePointer { ty, .. } => {
-            return is_builtin(spirv, *ty);
-        }
-        _ => (),
+        _ => false,
     }
-
-    false
 }

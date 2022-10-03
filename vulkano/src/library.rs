@@ -53,6 +53,7 @@ impl VulkanLibrary {
         #[allow(non_snake_case)]
         fn def_loader_impl() -> Result<Box<dyn Loader>, LoadingError> {
             let loader = crate::statically_linked_vulkan_loader!();
+
             Ok(Box::new(loader))
         }
 
@@ -183,6 +184,7 @@ impl VulkanLibrary {
     }
 
     /// Returns the highest Vulkan version that is supported for instances.
+    #[inline]
     pub fn api_version(&self) -> Version {
         self.api_version
     }
@@ -211,7 +213,7 @@ impl VulkanLibrary {
     /// > here is no longer available when you create the `Instance`. This will lead to an error
     /// > when calling `Instance::new`.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```no_run
     /// use vulkano::VulkanLibrary;
@@ -321,7 +323,6 @@ where
     T: SafeDeref + Send + Sync,
     T::Target: Loader,
 {
-    #[inline]
     unsafe fn get_instance_proc_addr(
         &self,
         instance: ash::vk::Instance,
@@ -332,7 +333,6 @@ where
 }
 
 impl Debug for dyn Loader {
-    #[inline]
     fn fmt(&self, _f: &mut Formatter<'_>) -> Result<(), FmtError> {
         Ok(())
     }
@@ -425,23 +425,21 @@ pub enum LoadingError {
 }
 
 impl Error for LoadingError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            //Self::LibraryLoadFailure(ref err) => Some(err),
-            Self::OomError(ref err) => Some(err),
+        match self {
+            //Self::LibraryLoadFailure(err) => Some(err),
+            Self::OomError(err) => Some(err),
             _ => None,
         }
     }
 }
 
 impl Display for LoadingError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
             "{}",
-            match *self {
+            match self {
                 Self::LibraryLoadFailure(_) => "failed to load the Vulkan shared library",
                 Self::OomError(_) => "not enough memory available",
             }
@@ -450,7 +448,6 @@ impl Display for LoadingError {
 }
 
 impl From<VulkanError> for LoadingError {
-    #[inline]
     fn from(err: VulkanError) -> Self {
         match err {
             err @ VulkanError::OutOfHostMemory => Self::OomError(OomError::from(err)),

@@ -48,7 +48,6 @@ impl UnsafeDescriptorSet {
     /// - Updating a descriptor set obeys synchronization rules that aren't checked here. Once a
     ///   command buffer contains a pointer/reference to a descriptor set, it is illegal to write
     ///   to it.
-    ///
     pub unsafe fn write<'a>(
         &mut self,
         layout: &DescriptorSetLayout,

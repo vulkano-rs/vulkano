@@ -27,7 +27,6 @@ pub struct FeatureRestrictionError {
 impl Error for FeatureRestrictionError {}
 
 impl Display for FeatureRestrictionError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
@@ -50,7 +49,6 @@ pub enum FeatureRestriction {
 }
 
 impl Display for FeatureRestriction {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match *self {
             FeatureRestriction::NotSupported => {

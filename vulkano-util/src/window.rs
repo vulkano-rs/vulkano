@@ -19,22 +19,25 @@ use vulkano::swapchain::{PresentMode, SwapchainCreateInfo};
 use winit::dpi::LogicalSize;
 use winit::window::{CursorGrabMode, WindowId};
 
-/// A struct organizing windows and their corresponding renderers. This makes it easy to handle multiple windows.
+/// A struct organizing windows and their corresponding renderers. This makes it easy to handle
+/// multiple windows.
 ///
-/// ## Example
-///```
+/// ## Examples
+///
+/// ```
 /// use vulkano_util::context::{VulkanoConfig, VulkanoContext};
 /// use winit::event_loop::EventLoop;
 /// use vulkano_util::window::VulkanoWindows;
 ///
 /// #[test]
 /// fn test() {
-///    let context = VulkanoContext::new(VulkanoConfig::default());
-///    let event_loop = EventLoop::new();
-///    let mut vulkano_windows = VulkanoWindows::default();
-///    let _id1 = vulkano_windows.create_window(&event_loop, &context, &Default::default(), |_| {});
-///    let _id2 = vulkano_windows.create_window(&event_loop, &context, &Default::default(), |_| {});
-/// // You should now have two windows
+///     let context = VulkanoContext::new(VulkanoConfig::default());
+///     let event_loop = EventLoop::new();
+///     let mut vulkano_windows = VulkanoWindows::default();
+///     let _id1 = vulkano_windows.create_window(&event_loop, &context, &Default::default(), |_| {});
+///     let _id2 = vulkano_windows.create_window(&event_loop, &context, &Default::default(), |_| {});
+///
+///     // You should now have two windows.
 /// }
 /// ```
 #[derive(Default)]
@@ -44,8 +47,8 @@ pub struct VulkanoWindows {
 }
 
 impl VulkanoWindows {
-    /// Creates a winit window with [`VulkanoWindowRenderer`] based on the given [`WindowDescriptor`]
-    /// input and swapchain creation modifications
+    /// Creates a winit window with [`VulkanoWindowRenderer`] based on the given
+    /// [`WindowDescriptor`] input and swapchain creation modifications.
     pub fn create_window(
         &mut self,
         event_loop: &winit::event_loop::EventLoopWindowTarget<()>,
@@ -170,7 +173,8 @@ impl VulkanoWindows {
         id
     }
 
-    /// Get a mutable reference to the primary window's renderer
+    /// Get a mutable reference to the primary window's renderer.
+    #[inline]
     pub fn get_primary_renderer_mut(&mut self) -> Option<&mut VulkanoWindowRenderer> {
         if self.primary.is_some() {
             self.get_renderer_mut(self.primary.unwrap())
@@ -179,7 +183,8 @@ impl VulkanoWindows {
         }
     }
 
-    /// Get a reference to the primary window's renderer
+    /// Get a reference to the primary window's renderer.
+    #[inline]
     pub fn get_primary_renderer(&self) -> Option<&VulkanoWindowRenderer> {
         if self.primary.is_some() {
             self.get_renderer(self.primary.unwrap())
@@ -188,7 +193,8 @@ impl VulkanoWindows {
         }
     }
 
-    /// Get a reference to the primary winit window
+    /// Get a reference to the primary winit window.
+    #[inline]
     pub fn get_primary_window(&self) -> Option<&winit::window::Window> {
         if self.primary.is_some() {
             self.get_window(self.primary.unwrap())
@@ -197,7 +203,8 @@ impl VulkanoWindows {
         }
     }
 
-    /// Get a mutable reference to the renderer by winit window id
+    /// Get a mutable reference to the renderer by winit window id.
+    #[inline]
     pub fn get_renderer_mut(
         &mut self,
         id: winit::window::WindowId,
@@ -205,22 +212,26 @@ impl VulkanoWindows {
         self.windows.get_mut(&id)
     }
 
-    /// Get a reference to the renderer by winit window id
+    /// Get a reference to the renderer by winit window id.
+    #[inline]
     pub fn get_renderer(&self, id: winit::window::WindowId) -> Option<&VulkanoWindowRenderer> {
         self.windows.get(&id)
     }
 
-    /// Get a reference to the winit window by winit window id
+    /// Get a reference to the winit window by winit window id.
+    #[inline]
     pub fn get_window(&self, id: winit::window::WindowId) -> Option<&winit::window::Window> {
         self.windows.get(&id).map(|v_window| v_window.window())
     }
 
-    /// Return primary window id
+    /// Return primary window id.
+    #[inline]
     pub fn primary_window_id(&self) -> Option<winit::window::WindowId> {
         self.primary
     }
 
-    /// Remove renderer by window id
+    /// Remove renderer by window id.
+    #[inline]
     pub fn remove_renderer(&mut self, id: winit::window::WindowId) {
         self.windows.remove(&id);
         if let Some(primary) = self.primary {
@@ -230,12 +241,14 @@ impl VulkanoWindows {
         }
     }
 
-    /// Return iterator over window renderers
+    /// Return iterator over window renderers.
+    #[inline]
     pub fn iter(&self) -> Iter<'_, WindowId, VulkanoWindowRenderer> {
         self.windows.iter()
     }
 
-    /// Return iterator over mutable window renderers
+    /// Return iterator over mutable window renderers.
+    #[inline]
     pub fn iter_mut(&mut self) -> IterMut<'_, WindowId, VulkanoWindowRenderer> {
         self.windows.iter_mut()
     }
@@ -300,7 +313,8 @@ pub enum WindowMode {
     BorderlessFullscreen,
     /// Creates a fullscreen window that will render at desktop resolution.
     ///
-    /// The app will use the closest supported size from the given size and scale it to fit the screen.
+    /// The app will use the closest supported size from the given size and scale it to fit the
+    /// screen.
     SizedFullscreen,
     /// Creates a fullscreen window that uses the maximum supported size.
     Fullscreen,
@@ -327,7 +341,8 @@ pub struct WindowDescriptor {
     ///
     /// If there are some scaling problems on X11 try to set this option to `Some(1.0)`.
     pub scale_factor_override: Option<f64>,
-    /// Sets the title that displays on the window top bar, on the system task bar and other OS specific places.
+    /// Sets the title that displays on the window top bar, on the system task bar and other OS
+    /// specific places.
     pub title: String,
     /// The window's [`PresentMode`].
     ///
@@ -348,6 +363,7 @@ pub struct WindowDescriptor {
 }
 
 impl Default for WindowDescriptor {
+    #[inline]
     fn default() -> Self {
         WindowDescriptor {
             title: "Vulkano App".to_string(),
@@ -383,6 +399,7 @@ pub struct WindowResizeConstraints {
 }
 
 impl Default for WindowResizeConstraints {
+    #[inline]
     fn default() -> Self {
         Self {
             min_width: 180.,

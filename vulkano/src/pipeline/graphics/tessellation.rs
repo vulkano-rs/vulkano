@@ -40,6 +40,7 @@ impl TessellationState {
     }
 
     /// Sets the number of patch control points to dynamic.
+    #[inline]
     pub fn patch_control_points_dynamic(mut self) -> Self {
         self.patch_control_points = StateMode::Dynamic;
         self

@@ -46,6 +46,7 @@ pub struct VulkanoConfig {
 }
 
 impl Default for VulkanoConfig {
+    #[inline]
     fn default() -> Self {
         let device_extensions = DeviceExtensions {
             khr_swapchain: true,
@@ -88,7 +89,7 @@ impl Default for VulkanoConfig {
 /// in the creation of [`VulkanoWindowRenderer`](crate::renderer::VulkanoWindowRenderer) through
 /// [`VulkanoWindows`](crate::window::VulkanoWindows).
 ///
-/// ## Example
+/// ## Examples
 ///
 /// ```no_run
 /// use vulkano_util::context::{VulkanoConfig, VulkanoContext};
@@ -107,6 +108,7 @@ pub struct VulkanoContext {
 }
 
 impl Default for VulkanoContext {
+    #[inline]
     fn default() -> Self {
         VulkanoContext::new(VulkanoConfig::default())
     }
@@ -245,16 +247,19 @@ impl VulkanoContext {
     }
 
     /// Returns the name of the device.
+    #[inline]
     pub fn device_name(&self) -> &str {
         &self.device.physical_device().properties().device_name
     }
 
     /// Returns the type of the device.
+    #[inline]
     pub fn device_type(&self) -> PhysicalDeviceType {
         self.device.physical_device().properties().device_type
     }
 
     /// Returns the maximum memory allocation of the device.
+    #[inline]
     pub fn max_memory(&self) -> u32 {
         self.device
             .physical_device()
@@ -263,16 +268,19 @@ impl VulkanoContext {
     }
 
     /// Returns the instance.
+    #[inline]
     pub fn instance(&self) -> &Arc<Instance> {
         &self.instance
     }
 
     /// Returns the device.
+    #[inline]
     pub fn device(&self) -> &Arc<Device> {
         &self.device
     }
 
     /// Returns the graphics queue.
+    #[inline]
     pub fn graphics_queue(&self) -> &Arc<Queue> {
         &self.graphics_queue
     }
@@ -280,6 +288,7 @@ impl VulkanoContext {
     /// Returns the compute queue.
     ///
     /// Depending on your device, this might be the same as graphics queue.
+    #[inline]
     pub fn compute_queue(&self) -> &Arc<Queue> {
         &self.compute_queue
     }

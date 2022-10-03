@@ -83,14 +83,12 @@ pub(super) enum RenderPassStateType {
 }
 
 impl From<BeginRenderPassState> for RenderPassStateType {
-    #[inline]
     fn from(val: BeginRenderPassState) -> Self {
         Self::BeginRenderPass(val)
     }
 }
 
 impl From<BeginRenderingState> for RenderPassStateType {
-    #[inline]
     fn from(val: BeginRenderingState) -> Self {
         Self::BeginRendering(val)
     }
@@ -532,21 +530,18 @@ pub enum CommandBufferBeginError {
 }
 
 impl Error for CommandBufferBeginError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            Self::OomError(ref err) => Some(err),
+        match self {
+            Self::OomError(err) => Some(err),
             _ => None,
         }
     }
 }
 
 impl Display for CommandBufferBeginError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::OomError(_) => write!(f, "not enough memory available"),
-
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -555,7 +550,6 @@ impl Display for CommandBufferBeginError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
-
             Self::ColorAttachmentFormatUsageNotSupported { attachment_index } => write!(
                 f,
                 "color attachment {} has a format that does not support that usage",
@@ -570,10 +564,10 @@ impl Display for CommandBufferBeginError {
                 "the depth and stencil attachments have different formats",
             ),
             Self::FramebufferNotCompatible => {
-                write!(f, "the framebuffer is not compatible with the render pass",)
+                write!(f, "the framebuffer is not compatible with the render pass")
             }
             Self::MaxMultiviewViewCountExceeded { .. } => {
-                write!(f, "the `max_multiview_view_count` limit has been exceeded",)
+                write!(f, "the `max_multiview_view_count` limit has been exceeded")
             }
             Self::StencilAttachmentFormatUsageNotSupported => write!(
                 f,
@@ -584,14 +578,12 @@ impl Display for CommandBufferBeginError {
 }
 
 impl From<OomError> for CommandBufferBeginError {
-    #[inline]
     fn from(err: OomError) -> Self {
         Self::OomError(err)
     }
 }
 
 impl From<RequirementNotMet> for CommandBufferBeginError {
-    #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
             required_for: err.required_for,
@@ -605,7 +597,6 @@ where
     P: CommandPoolBuilderAlloc,
 {
     /// Builds the command buffer.
-    #[inline]
     pub fn build(self) -> Result<PrimaryAutoCommandBuffer<P::Alloc>, BuildError> {
         if self.render_pass_state.is_some() {
             return Err(BuildError::RenderPassActive);
@@ -638,7 +629,6 @@ where
     P: CommandPoolBuilderAlloc,
 {
     /// Builds the command buffer.
-    #[inline]
     pub fn build(self) -> Result<SecondaryAutoCommandBuffer<P::Alloc>, BuildError> {
         if !self.query_state.is_empty() {
             return Err(BuildError::QueryActive);
@@ -676,7 +666,6 @@ pub enum BuildError {
 }
 
 impl Error for BuildError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::OomError(err) => Some(err),
@@ -698,27 +687,23 @@ impl Display for BuildError {
 }
 
 impl From<OomError> for BuildError {
-    #[inline]
     fn from(err: OomError) -> Self {
         Self::OomError(err)
     }
 }
 
 impl<L, P> AutoCommandBufferBuilder<L, P> {
-    #[inline]
     pub(super) fn queue_family_properties(&self) -> &QueueFamilyProperties {
         &self.device().physical_device().queue_family_properties()[self.queue_family_index as usize]
     }
 
     /// Returns the binding/setting state.
-    #[inline]
     pub fn state(&self) -> CommandBufferState<'_> {
         self.inner.state()
     }
 }
 
 unsafe impl<L, P> DeviceOwned for AutoCommandBufferBuilder<L, P> {
-    #[inline]
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
     }
@@ -733,7 +718,6 @@ pub struct PrimaryAutoCommandBuffer<P = StandardCommandPoolAlloc> {
 }
 
 unsafe impl<P> DeviceOwned for PrimaryAutoCommandBuffer<P> {
-    #[inline]
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
     }
@@ -743,12 +727,10 @@ unsafe impl<P> PrimaryCommandBuffer for PrimaryAutoCommandBuffer<P>
 where
     P: CommandPoolAlloc,
 {
-    #[inline]
     fn inner(&self) -> &UnsafeCommandBuffer {
         self.inner.as_ref()
     }
 
-    #[inline]
     fn lock_submit(
         &self,
         future: &dyn GpuFuture,
@@ -793,7 +775,6 @@ where
         Err(err)
     }
 
-    #[inline]
     unsafe fn unlock(&self) {
         // Because of panic safety, we unlock the inner command buffer first.
         self.inner.unlock();
@@ -812,7 +793,6 @@ where
         };
     }
 
-    #[inline]
     fn check_buffer_access(
         &self,
         buffer: &UnsafeBuffer,
@@ -824,7 +804,6 @@ where
             .check_buffer_access(buffer, range, exclusive, queue)
     }
 
-    #[inline]
     fn check_image_access(
         &self,
         image: &UnsafeImage,
@@ -848,7 +827,6 @@ pub struct SecondaryAutoCommandBuffer<P = StandardCommandPoolAlloc> {
 }
 
 unsafe impl<P> DeviceOwned for SecondaryAutoCommandBuffer<P> {
-    #[inline]
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
     }
@@ -858,12 +836,10 @@ unsafe impl<P> SecondaryCommandBuffer for SecondaryAutoCommandBuffer<P>
 where
     P: CommandPoolAlloc,
 {
-    #[inline]
     fn inner(&self) -> &UnsafeCommandBuffer {
         self.inner.as_ref()
     }
 
-    #[inline]
     fn lock_record(&self) -> Result<(), CommandBufferExecError> {
         match self.submit_state {
             SubmitState::OneTime {
@@ -886,7 +862,6 @@ where
         Ok(())
     }
 
-    #[inline]
     unsafe fn unlock(&self) {
         match self.submit_state {
             SubmitState::OneTime {
@@ -902,17 +877,14 @@ where
         };
     }
 
-    #[inline]
     fn inheritance_info(&self) -> &CommandBufferInheritanceInfo {
         &self.inheritance_info
     }
 
-    #[inline]
     fn num_buffers(&self) -> usize {
         self.inner.num_buffers()
     }
 
-    #[inline]
     fn buffer(
         &self,
         index: usize,
@@ -924,12 +896,10 @@ where
         self.inner.buffer(index)
     }
 
-    #[inline]
     fn num_images(&self) -> usize {
         self.inner.num_images()
     }
 
-    #[inline]
     fn image(
         &self,
         index: usize,

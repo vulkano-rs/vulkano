@@ -44,7 +44,7 @@ use std::{
 
 /// Represents one of the available physical devices on this machine.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```no_run
 /// # use vulkano::{
@@ -468,6 +468,7 @@ impl PhysicalDevice {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
     pub unsafe fn directfb_presentation_support_unchecked<D>(
         &self,
         queue_family_index: u32,
@@ -484,12 +485,13 @@ impl PhysicalDevice {
 
     /// Retrieves the external memory properties supported for buffers with a given configuration.
     ///
-    /// Instance API version must be at least 1.1, or the
-    /// [`khr_external_memory_capabilities`](crate::instance::InstanceExtensions::khr_external_memory_capabilities)
+    /// Instance API version must be at least 1.1, or the [`khr_external_memory_capabilities`]
     /// extension must be enabled on the instance.
     ///
     /// The results of this function are cached, so that future calls with the same arguments
     /// do not need to make a call to the Vulkan API again.
+    ///
+    /// [`khr_external_memory_capabilities`]: crate::instance::InstanceExtensions::khr_external_memory_capabilities
     #[inline]
     pub fn external_buffer_properties(
         &self,
@@ -540,6 +542,7 @@ impl PhysicalDevice {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
     pub unsafe fn external_buffer_properties_unchecked(
         &self,
         info: ExternalBufferInfo,
@@ -596,12 +599,13 @@ impl PhysicalDevice {
     /// Retrieves the external handle properties supported for fences with a given
     /// configuration.
     ///
-    /// The instance API version must be at least 1.1, or the
-    /// [`khr_external_fence_capabilities`](crate::instance::InstanceExtensions::khr_external_fence_capabilities)
+    /// The instance API version must be at least 1.1, or the [`khr_external_fence_capabilities`]
     /// extension must be enabled on the instance.
     ///
     /// The results of this function are cached, so that future calls with the same arguments
     /// do not need to make a call to the Vulkan API again.
+    ///
+    /// [`khr_external_fence_capabilities`]: crate::instance::InstanceExtensions::khr_external_fence_capabilities
     #[inline]
     pub fn external_fence_properties(
         &self,
@@ -644,6 +648,7 @@ impl PhysicalDevice {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
     pub unsafe fn external_fence_properties_unchecked(
         &self,
         info: ExternalFenceInfo,
@@ -704,11 +709,12 @@ impl PhysicalDevice {
     /// configuration.
     ///
     /// The instance API version must be at least 1.1, or the
-    /// [`khr_external_semaphore_capabilities`](crate::instance::InstanceExtensions::khr_external_semaphore_capabilities)
-    /// extension must be enabled on the instance.
+    /// [`khr_external_semaphore_capabilities`] extension must be enabled on the instance.
     ///
     /// The results of this function are cached, so that future calls with the same arguments
     /// do not need to make a call to the Vulkan API again.
+    ///
+    /// [`khr_external_semaphore_capabilities`]: crate::instance::InstanceExtensions::khr_external_semaphore_capabilities
     #[inline]
     pub fn external_semaphore_properties(
         &self,
@@ -751,6 +757,7 @@ impl PhysicalDevice {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
     pub unsafe fn external_semaphore_properties_unchecked(
         &self,
         info: ExternalSemaphoreInfo,
@@ -831,6 +838,7 @@ impl PhysicalDevice {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
     pub unsafe fn format_properties_unchecked(&self, format: Format) -> FormatProperties {
         get_cached(&self.format_properties, format, |&format| {
             let mut format_properties2 = ash::vk::FormatProperties2::default();
@@ -918,6 +926,7 @@ impl PhysicalDevice {
         unsafe { Ok(self.image_format_properties_unchecked(image_format_info)?) }
     }
 
+    // FIXME: Shouldn't this be private?
     pub fn validate_image_format_properties(
         &self,
         image_format_info: &ImageFormatInfo,
@@ -1024,6 +1033,7 @@ impl PhysicalDevice {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
     pub unsafe fn image_format_properties_unchecked(
         &self,
         mut image_format_info: ImageFormatInfo,
@@ -1208,7 +1218,6 @@ impl PhysicalDevice {
     /// # Safety
     ///
     /// - `window` must be a valid QNX Screen `_screen_window` handle.
-    #[inline]
     pub unsafe fn qnx_screen_presentation_support<W>(
         &self,
         queue_family_index: u32,
@@ -1321,6 +1330,7 @@ impl PhysicalDevice {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
     pub unsafe fn sparse_image_format_properties_unchecked(
         &self,
         format_info: SparseImageFormatInfo,
@@ -1481,10 +1491,9 @@ impl PhysicalDevice {
     /// The results of this function are cached, so that future calls with the same arguments
     /// do not need to make a call to the Vulkan API again.
     ///
-    /// # Panic
+    /// # Panics
     ///
     /// - Panics if the physical device and the surface don't belong to the same instance.
-    #[inline]
     pub fn surface_capabilities<W>(
         &self,
         surface: &Surface<W>,
@@ -1717,10 +1726,9 @@ impl PhysicalDevice {
     /// The results of this function are cached, so that future calls with the same arguments
     /// do not need to make a call to the Vulkan API again.
     ///
-    /// # Panic
+    /// # Panics
     ///
     /// - Panics if the physical device and the surface don't belong to the same instance.
-    #[inline]
     pub fn surface_formats<W>(
         &self,
         surface: &Surface<W>,
@@ -1946,10 +1954,9 @@ impl PhysicalDevice {
     /// The results of this function are cached, so that future calls with the same arguments
     /// do not need to make a call to the Vulkan API again.
     ///
-    /// # Panic
+    /// # Panics
     ///
     /// - Panics if the physical device and the surface don't belong to the same instance.
-    #[inline]
     pub fn surface_present_modes<W>(
         &self,
         surface: &Surface<W>,
@@ -2134,6 +2141,7 @@ impl PhysicalDevice {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
     pub unsafe fn tool_properties_unchecked(&self) -> Result<Vec<ToolProperties>, VulkanError> {
         let fns = self.instance.fns();
 
@@ -2208,13 +2216,12 @@ impl PhysicalDevice {
         }
     }
 
-    /// Queries whether the physical device supports presenting to Wayland surfaces from queues of the
-    /// given queue family.
+    /// Queries whether the physical device supports presenting to Wayland surfaces from queues of
+    /// the given queue family.
     ///
     /// # Safety
     ///
     /// - `display` must be a valid Wayland `wl_display` handle.
-    #[inline]
     pub unsafe fn wayland_presentation_support<D>(
         &self,
         queue_family_index: u32,
@@ -2307,6 +2314,7 @@ impl PhysicalDevice {
     }
 
     #[cfg_attr(not(feature = "document_unchecked"), doc(hidden))]
+    #[inline]
     pub unsafe fn win32_presentation_support_unchecked(&self, queue_family_index: u32) -> bool {
         let fns = self.instance.fns();
         (fns.khr_win32_surface
@@ -2321,7 +2329,6 @@ impl PhysicalDevice {
     /// # Safety
     ///
     /// - `connection` must be a valid X11 `xcb_connection_t` handle.
-    #[inline]
     pub unsafe fn xcb_presentation_support<C>(
         &self,
         queue_family_index: u32,
@@ -2386,7 +2393,6 @@ impl PhysicalDevice {
     /// # Safety
     ///
     /// - `display` must be a valid Xlib `Display` handle.
-    #[inline]
     pub unsafe fn xlib_presentation_support<D>(
         &self,
         queue_family_index: u32,
@@ -2465,7 +2471,6 @@ impl PartialEq for PhysicalDevice {
 impl Eq for PhysicalDevice {}
 
 impl Hash for PhysicalDevice {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
         self.instance.hash(state);
@@ -2498,6 +2503,7 @@ where
         Entry::Vacant(entry) => {
             let result = func(entry.key())?;
             entry.insert(result.clone());
+
             Ok(result)
         }
     }
@@ -2553,14 +2559,15 @@ impl From<ash::vk::ConformanceVersion> for ConformanceVersion {
 }
 
 impl Debug for ConformanceVersion {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> Result<(), FmtError> {
-        write!(formatter, "{}.{}.{}", self.major, self.minor, self.patch)
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        write!(f, "{}.{}.{}", self.major, self.minor, self.patch)
     }
 }
 
 impl Display for ConformanceVersion {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> Result<(), FmtError> {
-        Debug::fmt(self, formatter)
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        Debug::fmt(self, f)
     }
 }
 
@@ -2765,24 +2772,18 @@ pub enum PhysicalDeviceError {
 }
 
 impl Error for PhysicalDeviceError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            Self::VulkanError(ref err) => Some(err),
+        match self {
+            Self::VulkanError(err) => Some(err),
             _ => None,
         }
     }
 }
 
 impl Display for PhysicalDeviceError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
-            Self::VulkanError(_) => write!(
-                f,
-                "a runtime error occurred",
-            ),
-
+            Self::VulkanError(_) => write!(f, "a runtime error occurred"),
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -2791,17 +2792,18 @@ impl Display for PhysicalDeviceError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
-
             Self::NotSupported => write!(
                 f,
-                "the given `SurfaceInfo` values are not supported for the surface by the physical device",
+                "the given `SurfaceInfo` values are not supported for the surface by the physical \
+                device",
             ),
             Self::QueueFamilyIndexOutOfRange {
                 queue_family_index,
                 queue_family_count,
             } => write!(
                 f,
-                "the provided `queue_family_index` ({}) was not less than the number of queue families in the physical device ({})",
+                "the provided `queue_family_index` ({}) was not less than the number of queue \
+                families in the physical device ({})",
                 queue_family_index, queue_family_count,
             ),
             Self::SurfaceNotSupported => write!(
@@ -2813,14 +2815,12 @@ impl Display for PhysicalDeviceError {
 }
 
 impl From<VulkanError> for PhysicalDeviceError {
-    #[inline]
     fn from(err: VulkanError) -> Self {
         Self::VulkanError(err)
     }
 }
 
 impl From<RequirementNotMet> for PhysicalDeviceError {
-    #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
             required_for: err.required_for,

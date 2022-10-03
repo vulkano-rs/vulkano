@@ -1577,21 +1577,18 @@ pub enum RenderPassCreationError {
 }
 
 impl Error for RenderPassCreationError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            RenderPassCreationError::OomError(ref err) => Some(err),
+        match self {
+            RenderPassCreationError::OomError(err) => Some(err),
             _ => None,
         }
     }
 }
 
 impl Display for RenderPassCreationError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match *self {
-            Self::OomError(_) => write!(f, "not enough memory available",),
-
+        match self {
+            Self::OomError(_) => write!(f, "not enough memory available"),
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -1600,63 +1597,88 @@ impl Display for RenderPassCreationError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
-
-            Self::AttachmentFirstUseLoadOpInvalid { attachment, first_use_subpass } => write!(
+            Self::AttachmentFirstUseLoadOpInvalid {
+                attachment,
+                first_use_subpass,
+            } => write!(
                 f,
-                "attachment {} is first used in the render pass in subpass {} with a read-only layout or as an input attachment, but its `load_op` or `stencil_load_op` is `LoadOp::Clear`",
+                "attachment {} is first used in the render pass in subpass {} with a read-only \
+                layout or as an input attachment, but its `load_op` or `stencil_load_op` is \
+                `LoadOp::Clear`",
                 attachment, first_use_subpass,
             ),
             Self::AttachmentLayoutInvalid { attachment } => write!(
                 f,
-                "attachment {} has an `initial_layout` or `final_layout` value that is invalid for the provided `format`",
+                "attachment {} has an `initial_layout` or `final_layout` value that is invalid for \
+                the provided `format`",
                 attachment,
             ),
             Self::CorrelatedViewMasksMultiviewNotEnabled => write!(
                 f,
-                "correlated view masks were included, but multiview is not enabled on the render pass",
+                "correlated view masks were included, but multiview is not enabled on the render \
+                pass",
             ),
             Self::CorrelatedViewMasksOverlapping => write!(
                 f,
-                "the provided correlated view masks contain a bit that is set in more than one element",
+                "the provided correlated view masks contain a bit that is set in more than one \
+                element",
             ),
             Self::DependencyAccessNotSupportedByStages { dependency } => write!(
                 f,
-                "subpass dependency {} specified an access type that was not supported by the given stages",
+                "subpass dependency {} specified an access type that was not supported by the \
+                given stages",
                 dependency,
             ),
-            Self::DependencySelfDependencyFramebufferStagesWithoutByRegion { dependency } => write!(
-                f,
-                "subpass dependency {} specifies a subpass self-dependency and includes framebuffer stages in both `source_stages` and `destination_stages`, but the `by_region` dependency was not enabled",
-                dependency,
-            ),
-            Self::DependencySelfDependencySourceStageAfterDestinationStage { dependency } => write!(
-                f,
-                "subpass dependency {} specifies a subpass self-dependency and includes non-framebuffer stages, but the latest stage in `source_stages` is after the earliest stage in `destination_stages`",
-                dependency,
-            ),
+            Self::DependencySelfDependencyFramebufferStagesWithoutByRegion { dependency } => {
+                write!(
+                    f,
+                    "subpass dependency {} specifies a subpass self-dependency and includes \
+                    framebuffer stages in both `source_stages` and `destination_stages`, but the \
+                    `by_region` dependency was not enabled",
+                    dependency,
+                )
+            }
+            Self::DependencySelfDependencySourceStageAfterDestinationStage { dependency } => {
+                write!(
+                    f,
+                    "subpass dependency {} specifies a subpass self-dependency and includes \
+                    non-framebuffer stages, but the latest stage in `source_stages` is after the \
+                    earliest stage in `destination_stages`",
+                    dependency,
+                )
+            }
             Self::DependencySelfDependencyViewLocalNonzeroOffset { dependency } => write!(
                 f,
-                "subpass dependency {} specifies a subpass self-dependency and has the `view_local` dependency enabled, but the inner offset value was not 0",
+                "subpass dependency {} specifies a subpass self-dependency and has the \
+                `view_local` dependency enabled, but the inner offset value was not 0",
                 dependency,
             ),
-            Self::DependencySelfDependencyViewMaskMultiple { dependency, subpass } => write!(
+            Self::DependencySelfDependencyViewMaskMultiple {
+                dependency,
+                subpass,
+            } => write!(
                 f,
-                "subpass dependency {} specifies a subpass self-dependency without the `view_local` dependency, but the referenced subpass {} has more than one bit set in its `view_mask`",
+                "subpass dependency {} specifies a subpass self-dependency without the \
+                `view_local` dependency, but the referenced subpass {} has more than one bit set \
+                in its `view_mask`",
                 dependency, subpass,
             ),
             Self::DependencySourceSubpassAfterDestinationSubpass { dependency } => write!(
                 f,
-                "subpass dependency {} has a `source_subpass` that is later than the `destination_subpass`",
+                "subpass dependency {} has a `source_subpass` that is later than the \
+                `destination_subpass`",
                 dependency,
             ),
             Self::DependencyStageNotSupported { dependency } => write!(
                 f,
-                "subpass dependency {} has a bit set in the `source_stages` or `destination_stages` that is not supported for graphics pipelines",
+                "subpass dependency {} has a bit set in the `source_stages` or \
+                `destination_stages` that is not supported for graphics pipelines",
                 dependency,
             ),
             Self::DependencyBothSubpassesExternal { dependency } => write!(
                 f,
-                "subpass dependency {} has both `source_subpass` and `destination_subpass` set to `None`",
+                "subpass dependency {} has both `source_subpass` and `destination_subpass` set to \
+                `None`",
                 dependency,
             ),
             Self::DependencySubpassOutOfRange {
@@ -1664,25 +1686,35 @@ impl Display for RenderPassCreationError {
                 subpass,
             } => write!(
                 f,
-                "the subpass index {} in subpass dependency {} is not less than the number of subpasses in the render pass",
+                "the subpass index {} in subpass dependency {} is not less than the number of \
+                subpasses in the render pass",
                 subpass, dependency,
             ),
             Self::DependencyViewLocalExternalDependency { dependency } => write!(
                 f,
-                "subpass dependency {} has the `view_local` dependency enabled, but `source_subpass` or `destination_subpass` were set to `None`",
+                "subpass dependency {} has the `view_local` dependency enabled, but \
+                `source_subpass` or `destination_subpass` were set to `None`",
                 dependency,
             ),
             Self::DependencyViewLocalMultiviewNotEnabled { dependency } => write!(
                 f,
-                "subpass dependency {} has the `view_local` dependency enabled, but multiview is not enabled on the render pass",
+                "subpass dependency {} has the `view_local` dependency enabled, but multiview is \
+                not enabled on the render pass",
                 dependency,
             ),
-            Self::SubpassAttachmentAspectsNotEmpty { subpass, attachment } => write!(
+            Self::SubpassAttachmentAspectsNotEmpty {
+                subpass,
+                attachment,
+            } => write!(
                 f,
-                "a reference to attachment {} used other than as an input attachment in subpass {} has one or more aspects selected",
+                "a reference to attachment {} used other than as an input attachment in subpass {} \
+                has one or more aspects selected",
                 attachment, subpass,
             ),
-            Self::SubpassAttachmentLayoutMismatch { subpass, attachment } => write!(
+            Self::SubpassAttachmentLayoutMismatch {
+                subpass,
+                attachment,
+            } => write!(
                 f,
                 "the layouts of all uses of attachment {} in subpass {} do not match.",
                 attachment, subpass,
@@ -1693,27 +1725,45 @@ impl Display for RenderPassCreationError {
                 usage,
             } => write!(
                 f,
-                "attachment {} used as {} attachment in subpass {} has a layout that is not supported for that usage",
+                "attachment {} used as {} attachment in subpass {} has a layout that is not \
+                supported for that usage",
                 attachment, usage, subpass,
             ),
-            Self::SubpassAttachmentOutOfRange { subpass, attachment } => write!(
+            Self::SubpassAttachmentOutOfRange {
+                subpass,
+                attachment,
+            } => write!(
                 f,
-                "the attachment index {} in subpass {} is not less than the number of attachments in the render pass",
+                "the attachment index {} in subpass {} is not less than the number of attachments \
+                in the render pass",
                 attachment, subpass,
             ),
-            Self::SubpassAttachmentUsageColorDepthStencil { subpass, attachment } => write!(
+            Self::SubpassAttachmentUsageColorDepthStencil {
+                subpass,
+                attachment,
+            } => write!(
                 f,
-                "attachment {} is used as both a color attachment and a depth/stencil attachment in subpass {}",
+                "attachment {} is used as both a color attachment and a depth/stencil attachment \
+                in subpass {}",
                 attachment, subpass,
             ),
-            Self::SubpassAttachmentFormatUsageNotSupported { subpass, attachment, usage, } => write!(
+            Self::SubpassAttachmentFormatUsageNotSupported {
+                subpass,
+                attachment,
+                usage,
+            } => write!(
                 f,
-                "attachment {} used as {} attachment in subpass {} has a format that does not support that usage",
+                "attachment {} used as {} attachment in subpass {} has a format that does not \
+                support that usage",
                 attachment, usage, subpass,
             ),
-            Self::SubpassColorAttachmentWithResolveNotMultisampled { subpass, attachment } => write!(
+            Self::SubpassColorAttachmentWithResolveNotMultisampled {
+                subpass,
+                attachment,
+            } => write!(
                 f,
-                "attachment {} used as a color attachment in subpass {} with resolve attachments has a `samples` value of `SampleCount::Sample1`",
+                "attachment {} used as a color attachment in subpass {} with resolve attachments \
+                has a `samples` value of `SampleCount::Sample1`",
                 attachment, subpass,
             ),
             Self::SubpassColorDepthStencilAttachmentSamplesMismatch {
@@ -1723,37 +1773,49 @@ impl Display for RenderPassCreationError {
                 first_samples,
             } => write!(
                 f,
-                "attachment {} used as a color or depth/stencil attachment in subpass {} has a `samples` value {:?} that is different from the first color attachment ({:?})",
+                "attachment {} used as a color or depth/stencil attachment in subpass {} has a \
+                `samples` value {:?} that is different from the first color attachment ({:?})",
                 attachment, subpass, samples, first_samples,
             ),
-            Self::SubpassInputAttachmentAspectsNotCompatible { subpass, attachment } => write!(
+            Self::SubpassInputAttachmentAspectsNotCompatible {
+                subpass,
+                attachment,
+            } => write!(
                 f,
-                "a reference to attachment {} used as an input attachment in subpass {} selects aspects that are not present in the format of the attachment",
+                "a reference to attachment {} used as an input attachment in subpass {} selects \
+                aspects that are not present in the format of the attachment",
                 attachment, subpass,
             ),
             Self::SubpassMaxColorAttachmentsExceeded { .. } => {
-                write!(f, "the `max_color_attachments` limit has been exceeded",)
+                write!(f, "the `max_color_attachments` limit has been exceeded")
             }
-            Self::SubpassMaxMultiviewViewCountExceeded { .. } => {
-                write!(f, "the `max_multiview_view_count` limit has been exceeded for a subpass",)
-            },
+            Self::SubpassMaxMultiviewViewCountExceeded { .. } => write!(
+                f,
+                "the `max_multiview_view_count` limit has been exceeded for a subpass",
+            ),
             Self::SubpassMultiviewMismatch {
                 subpass,
                 multiview,
                 first_subpass_multiview,
             } => write!(
                 f,
-                "the multiview state (whether `view_mask` is nonzero) of subpass {} is {}, which is different from the first subpass ({})",
+                "the multiview state (whether `view_mask` is nonzero) of subpass {} is {}, which \
+                is different from the first subpass ({})",
                 subpass, multiview, first_subpass_multiview,
             ),
-            Self::SubpassPreserveAttachmentUsedElsewhere { subpass, attachment } => write!(
+            Self::SubpassPreserveAttachmentUsedElsewhere {
+                subpass,
+                attachment,
+            } => write!(
                 f,
-                "attachment {} marked as a preserve attachment in subpass {} is also used as an attachment in that subpass",
+                "attachment {} marked as a preserve attachment in subpass {} is also used as an \
+                attachment in that subpass",
                 attachment, subpass,
             ),
             Self::SubpassResolveAttachmentsColorAttachmentsLenMismatch { subpass } => write!(
                 f,
-                "the `resolve_attachments` field of subpass {} was not empty, but its length did not match the length of `color_attachments`",
+                "the `resolve_attachments` field of subpass {} was not empty, but its length did \
+                not match the length of `color_attachments`",
                 subpass,
             ),
             Self::SubpassResolveAttachmentFormatMismatch {
@@ -1762,17 +1824,23 @@ impl Display for RenderPassCreationError {
                 color_attachment,
             } => write!(
                 f,
-                "attachment {} used as a resolve attachment in subpass {} has a `format` value different from the corresponding color attachment {}",
+                "attachment {} used as a resolve attachment in subpass {} has a `format` value \
+                different from the corresponding color attachment {}",
                 subpass, resolve_attachment, color_attachment,
             ),
-            Self::SubpassResolveAttachmentMultisampled { subpass, attachment } => write!(
+            Self::SubpassResolveAttachmentMultisampled {
+                subpass,
+                attachment,
+            } => write!(
                 f,
-                "attachment {} used as a resolve attachment in subpass {} has a `samples` value other than `SampleCount::Sample1`",
+                "attachment {} used as a resolve attachment in subpass {} has a `samples` value \
+                other than `SampleCount::Sample1`",
                 attachment, subpass,
             ),
             Self::SubpassResolveAttachmentWithoutColorAttachment { subpass } => write!(
                 f,
-                "a resolve attachment in subpass {} is `Some`, but the corresponding color attachment is `None`",
+                "a resolve attachment in subpass {} is `Some`, but the corresponding color \
+                attachment is `None`",
                 subpass,
             ),
         }
@@ -1780,14 +1848,12 @@ impl Display for RenderPassCreationError {
 }
 
 impl From<OomError> for RenderPassCreationError {
-    #[inline]
     fn from(err: OomError) -> RenderPassCreationError {
         RenderPassCreationError::OomError(err)
     }
 }
 
 impl From<VulkanError> for RenderPassCreationError {
-    #[inline]
     fn from(err: VulkanError) -> RenderPassCreationError {
         match err {
             err @ VulkanError::OutOfHostMemory => {
@@ -1802,7 +1868,6 @@ impl From<VulkanError> for RenderPassCreationError {
 }
 
 impl From<RequirementNotMet> for RenderPassCreationError {
-    #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
             required_for: err.required_for,

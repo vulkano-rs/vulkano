@@ -38,7 +38,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// The query will be active until [`end_query`](Self::end_query) is called for the same query.
     ///
     /// # Safety
-    /// The query must be unavailable, ensured by calling [`reset_query_pool`](Self::reset_query_pool).
+    ///
+    /// The query must be unavailable, ensured by calling
+    /// [`reset_query_pool`](Self::reset_query_pool).
     pub unsafe fn begin_query(
         &mut self,
         query_pool: Arc<QueryPool>,
@@ -211,7 +213,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// Writes a timestamp to a timestamp query.
     ///
     /// # Safety
-    /// The query must be unavailable, ensured by calling [`reset_query_pool`](Self::reset_query_pool).
+    ///
+    /// The query must be unavailable, ensured by calling
+    /// [`reset_query_pool`](Self::reset_query_pool).
     pub unsafe fn write_timestamp(
         &mut self,
         query_pool: Arc<QueryPool>,
@@ -704,7 +708,6 @@ impl UnsafeCommandBufferBuilder {
     }
 
     /// Calls `vkCmdCopyQueryPoolResults` on the builder.
-    #[inline]
     pub unsafe fn copy_query_pool_results<D, T>(
         &mut self,
         queries: QueriesRange<'_>,
@@ -805,14 +808,9 @@ pub enum QueryError {
 impl Error for QueryError {}
 
 impl Display for QueryError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match *self {
-            Self::SyncCommandBufferBuilderError(_) => write!(
-                f,
-                "a SyncCommandBufferBuilderError",
-            ),
-
+        match self {
+            Self::SyncCommandBufferBuilderError(_) => write!(f, "a SyncCommandBufferBuilderError"),
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -821,7 +819,6 @@ impl Display for QueryError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
-
             Self::BufferTooSmall { .. } => {
                 write!(f, "the buffer is too small for the copy operation")
             }
@@ -846,7 +843,8 @@ impl Display for QueryError {
             Self::OutOfRange => write!(f, "the provided query index is not valid for this pool"),
             Self::OutOfRangeMultiview => write!(
                 f,
-                "the provided query index plus the number of views in the current render subpass is greater than the number of queries in the pool",
+                "the provided query index plus the number of views in the current render subpass \
+                is greater than the number of queries in the pool",
             ),
             Self::QueryIsActive => write!(
                 f,
@@ -861,14 +859,12 @@ impl Display for QueryError {
 }
 
 impl From<SyncCommandBufferBuilderError> for QueryError {
-    #[inline]
     fn from(err: SyncCommandBufferBuilderError) -> Self {
         Self::SyncCommandBufferBuilderError(err)
     }
 }
 
 impl From<RequirementNotMet> for QueryError {
-    #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
             required_for: err.required_for,

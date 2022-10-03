@@ -22,7 +22,7 @@
 //! that are often used together in the same set so that you can keep the same set binding through
 //! multiple draws.
 //!
-//! # Example
+//! # Examples
 //!
 //! > **Note**: This section describes the simple way to bind resources. There are more optimized
 //! > ways.
@@ -141,7 +141,6 @@ impl PartialEq for dyn DescriptorSet {
 impl Eq for dyn DescriptorSet {}
 
 impl Hash for dyn DescriptorSet {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().internal_object().hash(state);
         self.device().hash(state);
@@ -162,14 +161,16 @@ impl DescriptorSetInner {
     ) -> Result<Self, DescriptorSetUpdateError> {
         assert!(
             !layout.push_descriptor(),
-            "the provided descriptor set layout is for push descriptors, and cannot be used to build a descriptor set object"
+            "the provided descriptor set layout is for push descriptors, and cannot be used to \
+            build a descriptor set object",
         );
 
         let max_count = layout.variable_descriptor_count();
 
         assert!(
             variable_descriptor_count <= max_count,
-            "the provided variable_descriptor_count ({}) is greater than the maximum number of variable count descriptors in the layout ({})",
+            "the provided variable_descriptor_count ({}) is greater than the maximum number of \
+            variable count descriptors in the layout ({})",
             variable_descriptor_count,
             max_count,
         );
@@ -245,6 +246,7 @@ pub struct DescriptorSetResources {
 impl DescriptorSetResources {
     /// Creates a new `DescriptorSetResources` matching the provided descriptor set layout, and
     /// all descriptors set to `None`.
+    #[inline]
     pub fn new(layout: &DescriptorSetLayout, variable_descriptor_count: u32) -> Self {
         assert!(variable_descriptor_count <= layout.variable_descriptor_count());
 
@@ -307,6 +309,7 @@ impl DescriptorSetResources {
     ///
     /// - Panics if the binding number of a write does not exist in the resources.
     /// - See also [`DescriptorBindingResources::update`].
+    #[inline]
     pub fn update(&mut self, write: &WriteDescriptorSet) {
         self.binding_resources
             .get_mut(&write.binding())
@@ -342,6 +345,7 @@ impl DescriptorBindingResources {
     ///
     /// - Panics if the resource types do not match.
     /// - Panics if the write goes out of bounds.
+    #[inline]
     pub fn update(&mut self, write: &WriteDescriptorSet) {
         fn write_resources<T: Clone>(first: usize, resources: &mut [Option<T>], elements: &[T]) {
             resources
@@ -404,7 +408,6 @@ pub struct DescriptorSetWithOffsets {
 }
 
 impl DescriptorSetWithOffsets {
-    #[inline]
     pub fn new<O>(descriptor_set: Arc<dyn DescriptorSet>, dynamic_offsets: O) -> Self
     where
         O: IntoIterator<Item = u32>,
@@ -426,9 +429,10 @@ impl DescriptorSetWithOffsets {
                     if dynamic_offsets.len() > dynamic_offset_index {
                         assert!(
                             dynamic_offsets[dynamic_offset_index] % min_storage_off_align == 0,
-                            "Dynamic storage buffer offset must be a multiple of min_storage_buffer_offset_alignment: got {}, expected a multiple of {}",
+                            "Dynamic storage buffer offset must be a multiple of \
+                            min_storage_buffer_offset_alignment: got {}, expected a multiple of {}",
                             dynamic_offsets[dynamic_offset_index],
-                            min_storage_off_align
+                            min_storage_off_align,
                         );
                     }
                     dynamic_offset_index += 1;
@@ -438,9 +442,10 @@ impl DescriptorSetWithOffsets {
                     if dynamic_offsets.len() > dynamic_offset_index {
                         assert!(
                             dynamic_offsets[dynamic_offset_index] % min_uniform_off_align == 0,
-                            "Dynamic uniform buffer offset must be a multiple of min_uniform_buffer_offset_alignment: got {}, expected a multiple of {}",
+                            "Dynamic uniform buffer offset must be a multiple of \
+                            min_uniform_buffer_offset_alignment: got {}, expected a multiple of {}",
                             dynamic_offsets[dynamic_offset_index],
-                            min_uniform_off_align
+                            min_uniform_off_align,
                         );
                     }
                     dynamic_offset_index += 1;
@@ -453,13 +458,13 @@ impl DescriptorSetWithOffsets {
             dynamic_offsets.len() >= dynamic_offset_index,
             "Too few dynamic offsets: got {}, expected {}",
             dynamic_offsets.len(),
-            dynamic_offset_index
+            dynamic_offset_index,
         );
         assert!(
             dynamic_offsets.len() <= dynamic_offset_index,
             "Too many dynamic offsets: got {}, expected {}",
             dynamic_offsets.len(),
-            dynamic_offset_index
+            dynamic_offset_index,
         );
 
         DescriptorSetWithOffsets {
@@ -483,7 +488,6 @@ impl<S> From<Arc<S>> for DescriptorSetWithOffsets
 where
     S: DescriptorSet + 'static,
 {
-    #[inline]
     fn from(descriptor_set: Arc<S>) -> Self {
         DescriptorSetWithOffsets::new(descriptor_set, std::iter::empty())
     }
@@ -496,7 +500,6 @@ pub enum DescriptorSetCreationError {
 }
 
 impl Error for DescriptorSetCreationError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::DescriptorSetUpdateError(err) => Some(err),
@@ -506,7 +509,6 @@ impl Error for DescriptorSetCreationError {
 }
 
 impl Display for DescriptorSetCreationError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::DescriptorSetUpdateError(_) => {
@@ -518,14 +520,12 @@ impl Display for DescriptorSetCreationError {
 }
 
 impl From<DescriptorSetUpdateError> for DescriptorSetCreationError {
-    #[inline]
     fn from(err: DescriptorSetUpdateError) -> Self {
         Self::DescriptorSetUpdateError(err)
     }
 }
 
 impl From<OomError> for DescriptorSetCreationError {
-    #[inline]
     fn from(err: OomError) -> Self {
         Self::OomError(err)
     }

@@ -143,7 +143,6 @@ impl VertexInputState {
     }
 
     /// Sets all bindings.
-    #[inline]
     pub fn bindings(
         mut self,
         bindings: impl IntoIterator<Item = (u32, VertexInputBindingDescription)>,
@@ -164,7 +163,6 @@ impl VertexInputState {
     }
 
     /// Sets all attributes.
-    #[inline]
     pub fn attributes(
         mut self,
         attributes: impl IntoIterator<Item = (u32, VertexInputAttributeDescription)>,
@@ -208,14 +206,14 @@ pub enum VertexInputRate {
     /// Each element of the source corresponds to an instance.
     ///
     /// `divisor` indicates how many consecutive instances will use the same instance buffer data.
-    /// This value must be 1, unless the
-    /// [`vertex_attribute_instance_rate_divisor`](crate::device::Features::vertex_attribute_instance_rate_divisor)
-    /// feature has been enabled on the device.
+    /// This value must be 1, unless the [`vertex_attribute_instance_rate_divisor`] feature has
+    /// been enabled on the device.
     ///
-    /// `divisor` can be 0 if the
-    /// [`vertex_attribute_instance_rate_zero_divisor`](crate::device::Features::vertex_attribute_instance_rate_zero_divisor)
-    /// feature is also enabled. This means that every vertex will use the same vertex and instance
-    /// data.
+    /// `divisor` can be 0 if the [`vertex_attribute_instance_rate_zero_divisor`] feature is also
+    /// enabled. This means that every vertex will use the same vertex and instance data.
+    ///
+    /// [`vertex_attribute_instance_rate_divisor`]: crate::device::Features::vertex_attribute_instance_rate_divisor
+    /// [`vertex_attribute_instance_rate_zero_divisor`]: crate::device::Features::vertex_attribute_instance_rate_zero_divisor
     Instance { divisor: u32 },
 }
 

@@ -48,12 +48,13 @@ mod sys;
 /// free the command buffer, reset the command buffer, or add it to a pool so that it gets reused.
 /// If the implementation frees or resets the command buffer, it must not forget that this
 /// operation must lock the pool.
-///
 pub unsafe trait CommandPool: DeviceOwned {
     /// See `alloc()`.
     type Iter: Iterator<Item = Self::Builder>;
+
     /// Represents a command buffer that has been allocated and that is currently being built.
     type Builder: CommandPoolBuilderAlloc<Alloc = Self::Alloc>;
+
     /// Represents a command buffer that has been allocated and that is pending execution or is
     /// being executed.
     type Alloc: CommandPoolAlloc;
@@ -76,7 +77,6 @@ pub unsafe trait CommandPool: DeviceOwned {
 /// # Safety
 ///
 /// See `CommandPool` for information about safety.
-///
 pub unsafe trait CommandPoolBuilderAlloc: DeviceOwned {
     /// Return type of `into_alloc`.
     type Alloc: CommandPoolAlloc;
@@ -96,7 +96,6 @@ pub unsafe trait CommandPoolBuilderAlloc: DeviceOwned {
 /// # Safety
 ///
 /// See `CommandPool` for information about safety.
-///
 pub unsafe trait CommandPoolAlloc: DeviceOwned + Send + Sync {
     /// Returns the internal object that contains the command buffer.
     fn inner(&self) -> &UnsafeCommandPoolAlloc;

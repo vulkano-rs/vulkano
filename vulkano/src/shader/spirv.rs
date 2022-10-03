@@ -571,6 +571,7 @@ impl From<Id> for u32 {
 }
 
 impl Display for Id {
+    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(f, "%{}", self.0)
     }
@@ -588,7 +589,6 @@ impl<'a> InstructionReader<'a> {
     /// Constructs a new reader from a slice of words for a single instruction, including the opcode
     /// word. `instruction` is the number of the instruction currently being read, and is used for
     /// error reporting.
-    #[inline]
     fn new(words: &'a [u32], instruction: usize) -> Self {
         debug_assert!(!words.is_empty());
         Self {
@@ -599,13 +599,11 @@ impl<'a> InstructionReader<'a> {
     }
 
     /// Returns whether the reader has reached the end of the current instruction.
-    #[inline]
     fn is_empty(&self) -> bool {
         self.next_word >= self.words.len()
     }
 
     /// Converts the `ParseErrors` enum to the `ParseError` struct, adding contextual information.
-    #[inline]
     fn map_err(&self, error: ParseErrors) -> ParseError {
         ParseError {
             instruction: self.instruction,
@@ -616,7 +614,6 @@ impl<'a> InstructionReader<'a> {
     }
 
     /// Returns the next word in the sequence.
-    #[inline]
     fn next_u32(&mut self) -> Result<u32, ParseError> {
         let word = *self.words.get(self.next_word).ok_or(ParseError {
             instruction: self.instruction,
@@ -625,6 +622,7 @@ impl<'a> InstructionReader<'a> {
             words: self.words.to_owned(),
         })?;
         self.next_word += 1;
+
         Ok(word)
     }
 
@@ -653,7 +651,6 @@ impl<'a> InstructionReader<'a> {
     }
 
     /// Reads all remaining words.
-    #[inline]
     fn remainder(&mut self) -> Vec<u32> {
         let vec = self.words[self.next_word..].to_owned();
         self.next_word = self.words.len();
@@ -686,13 +683,12 @@ pub enum SpirvError {
 }
 
 impl Display for SpirvError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::BadLayout { index } => write!(
                 f,
                 "the instruction at index {} does not follow the logical layout of a module",
-                index
+                index,
             ),
             Self::DuplicateId {
                 id,
@@ -701,10 +697,19 @@ impl Display for SpirvError {
             } => write!(
                 f,
                 "id {} is assigned more than once, by instructions {} and {}",
-                id, first_index, second_index
+                id, first_index, second_index,
             ),
-            Self::GroupDecorateNotGroup { index } => write!(f, "a GroupDecorate or GroupMemberDecorate instruction at index {} referred to an Id that was not a DecorationGroup", index),
-            Self::IdOutOfBounds { id, bound, index, } => write!(f, "id {}, assigned at instruction {}, is not below the maximum bound {}", id, index, bound),
+            Self::GroupDecorateNotGroup { index } => write!(
+                f,
+                "a GroupDecorate or GroupMemberDecorate instruction at index {} referred to an Id \
+                that was not a DecorationGroup",
+                index,
+            ),
+            Self::IdOutOfBounds { id, bound, index } => write!(
+                f,
+                "id {}, assigned at instruction {}, is not below the maximum bound {}",
+                id, index, bound,
+            ),
             Self::InvalidHeader => write!(f, "the SPIR-V module header is invalid"),
             Self::MemoryModelInvalid => {
                 write!(f, "the MemoryModel instruction is not present exactly once")
@@ -715,7 +720,6 @@ impl Display for SpirvError {
 }
 
 impl Error for SpirvError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::ParseError(err) => Some(err),
@@ -725,7 +729,6 @@ impl Error for SpirvError {
 }
 
 impl From<ParseError> for SpirvError {
-    #[inline]
     fn from(err: ParseError) -> Self {
         Self::ParseError(err)
     }
@@ -745,12 +748,11 @@ pub struct ParseError {
 }
 
 impl Display for ParseError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
             "at instruction {}, word {}: {}",
-            self.instruction, self.word, self.error
+            self.instruction, self.word, self.error,
         )
     }
 }
@@ -770,16 +772,23 @@ pub enum ParseErrors {
 }
 
 impl Display for ParseErrors {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match self {
             Self::FromUtf8Error(_) => write!(f, "invalid UTF-8 in string literal"),
             Self::LeftoverOperands => write!(f, "unparsed operands remaining"),
-            Self::MissingOperands => write!(f, "the instruction and its operands require more words than are present in the instruction"),
+            Self::MissingOperands => write!(
+                f,
+                "the instruction and its operands require more words than are present in the \
+                instruction",
+            ),
             Self::UnexpectedEOF => write!(f, "encountered unexpected end of file"),
-            Self::UnknownEnumerant(ty, enumerant) => write!(f, "invalid enumerant {} for enum {}", enumerant, ty),
+            Self::UnknownEnumerant(ty, enumerant) => {
+                write!(f, "invalid enumerant {} for enum {}", enumerant, ty)
+            }
             Self::UnknownOpcode(opcode) => write!(f, "invalid instruction opcode {}", opcode),
-            Self::UnknownSpecConstantOpcode(opcode) => write!(f, "invalid spec constant instruction opcode {}", opcode),
+            Self::UnknownSpecConstantOpcode(opcode) => {
+                write!(f, "invalid spec constant instruction opcode {}", opcode)
+            }
         }
     }
 }

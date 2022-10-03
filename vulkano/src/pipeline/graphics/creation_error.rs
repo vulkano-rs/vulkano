@@ -197,23 +197,21 @@ pub enum GraphicsPipelineCreationError {
 }
 
 impl Error for GraphicsPipelineCreationError {
-    #[inline]
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match *self {
-            Self::OomError(ref err) => Some(err),
-            Self::PipelineLayoutCreationError(ref err) => Some(err),
-            Self::IncompatiblePipelineLayout(ref err) => Some(err),
-            Self::ShaderStagesMismatch(ref err) => Some(err),
-            Self::IncompatibleVertexDefinition(ref err) => Some(err),
+        match self {
+            Self::OomError(err) => Some(err),
+            Self::PipelineLayoutCreationError(err) => Some(err),
+            Self::IncompatiblePipelineLayout(err) => Some(err),
+            Self::ShaderStagesMismatch(err) => Some(err),
+            Self::IncompatibleVertexDefinition(err) => Some(err),
             _ => None,
         }
     }
 }
 
 impl Display for GraphicsPipelineCreationError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        match *self {
+        match self {
             Self::RequirementNotMet {
                 required_for,
                 requires_one_of,
@@ -222,7 +220,6 @@ impl Display for GraphicsPipelineCreationError {
                 "a requirement was not met for: {}; requires one of: {}",
                 required_for, requires_one_of,
             ),
-
             Self::ColorAttachmentFormatBlendNotSupported { attachment_index } => write!(
                 f,
                 "color attachment {} has a format that does not support blending",
@@ -243,7 +240,8 @@ impl Display for GraphicsPipelineCreationError {
             ),
             Self::FragmentShaderRenderPassIncompatible => write!(
                 f,
-                "the output of the fragment shader is not compatible with what the render pass subpass expects",
+                "the output of the fragment shader is not compatible with what the render pass \
+                subpass expects",
             ),
             Self::IncompatiblePipelineLayout(_) => write!(
                 f,
@@ -251,7 +249,8 @@ impl Display for GraphicsPipelineCreationError {
             ),
             Self::IncompatibleSpecializationConstants => write!(
                 f,
-                "the provided specialization constants are not compatible with what the shader expects",
+                "the provided specialization constants are not compatible with what the shader \
+                expects",
             ),
             Self::IncompatibleVertexDefinition(_) => write!(
                 f,
@@ -259,19 +258,21 @@ impl Display for GraphicsPipelineCreationError {
             ),
             Self::InvalidPrimitiveTopology => write!(
                 f,
-                "trying to use a patch list without a tessellation shader, or a non-patch-list with a tessellation shader",
+                "trying to use a patch list without a tessellation shader, or a non-patch-list \
+                with a tessellation shader",
             ),
             Self::InvalidNumPatchControlPoints => write!(
                 f,
-                "patch_control_points was not greater than 0 and less than or equal to the max_tessellation_patch_size limit",
+                "patch_control_points was not greater than 0 and less than or equal to the \
+                max_tessellation_patch_size limit",
             ),
             Self::MaxDiscardRectanglesExceeded { .. } => write!(
                 f,
                 "the maximum number of discard rectangles has been exceeded",
             ),
             Self::MaxMultiviewViewCountExceeded { .. } => {
-                write!(f, "the `max_multiview_view_count` limit has been exceeded",)
-            },
+                write!(f, "the `max_multiview_view_count` limit has been exceeded")
+            }
             Self::MaxVertexAttribDivisorExceeded { .. } => write!(
                 f,
                 "the maximum value for the instance rate divisor has been exceeded",
@@ -284,29 +285,29 @@ impl Display for GraphicsPipelineCreationError {
                 f,
                 "the maximum offset for a vertex attribute has been exceeded",
             ),
-            Self::MaxVertexInputBindingsExceeded { .. } => write!(
-                f,
-                "the maximum number of vertex sources has been exceeded",
-            ),
+            Self::MaxVertexInputBindingsExceeded { .. } => {
+                write!(f, "the maximum number of vertex sources has been exceeded")
+            }
             Self::MaxVertexInputBindingStrideExceeded { .. } => write!(
                 f,
-                "the maximum stride value for vertex input (ie. the distance between two vertex elements) has been exceeded",
+                "the maximum stride value for vertex input (ie. the distance between two vertex \
+                elements) has been exceeded",
             ),
-            Self::MaxViewportsExceeded { .. } => write!(
-                f,
-                "the maximum number of viewports has been exceeded",
-            ),
-            Self::MaxViewportDimensionsExceeded => write!(
-                f,
-                "the maximum dimensions of viewports has been exceeded",
-            ),
+            Self::MaxViewportsExceeded { .. } => {
+                write!(f, "the maximum number of viewports has been exceeded")
+            }
+            Self::MaxViewportDimensionsExceeded => {
+                write!(f, "the maximum dimensions of viewports has been exceeded")
+            }
             Self::MismatchBlendingAttachmentsCount => write!(
                 f,
-                "the number of attachments specified in the blending does not match the number of attachments in the subpass",
+                "the number of attachments specified in the blending does not match the number of \
+                attachments in the subpass",
             ),
             Self::MultisampleRasterizationSamplesMismatch => write!(
                 f,
-                "the provided `rasterization_samples` does not match the number of samples of the render subpass",
+                "the provided `rasterization_samples` does not match the number of samples of the \
+                render subpass",
             ),
             Self::NoDepthAttachment => write!(
                 f,
@@ -316,30 +317,25 @@ impl Display for GraphicsPipelineCreationError {
                 f,
                 "the stencil attachment of the render pass does not match the stencil test",
             ),
-            Self::OomError(_) => write!(
-                f,
-                "not enough memory available",
-            ),
-            Self::DescriptorSetLayoutCreationError(_) => write!(
-                f,
-                "error while creating a descriptor set layout object",
-            ),
-            Self::PipelineLayoutCreationError(_) => write!(
-                f,
-                "error while creating the pipeline layout object",
-            ),
+            Self::OomError(_) => write!(f, "not enough memory available"),
+            Self::DescriptorSetLayoutCreationError(_) => {
+                write!(f, "error while creating a descriptor set layout object")
+            }
+            Self::PipelineLayoutCreationError(_) => {
+                write!(f, "error while creating the pipeline layout object")
+            }
             Self::ShaderStagesMismatch(_) => write!(
                 f,
-                "the output interface of one shader and the input interface of the next shader do not match",
+                "the output interface of one shader and the input interface of the next shader do \
+                not match",
             ),
             Self::StencilAttachmentFormatUsageNotSupported => write!(
                 f,
                 "the stencil attachment has a format that does not support that usage",
             ),
-            Self::StrictLinesNotSupported => write!(
-                f,
-                "the strict_lines device property was false",
-            ),
+            Self::StrictLinesNotSupported => {
+                write!(f, "the strict_lines device property was false")
+            }
             Self::TopologyNotMatchingGeometryShader => write!(
                 f,
                 "the primitives topology does not match what the geometry shader expects",
@@ -350,77 +346,69 @@ impl Display for GraphicsPipelineCreationError {
                 attribute_type,
             } => write!(
                 f,
-                "the type of the shader input variable at location {} ({:?}) is not compatible with the format of the corresponding vertex input attribute ({:?})",
+                "the type of the shader input variable at location {} ({:?}) is not compatible \
+                with the format of the corresponding vertex input attribute ({:?})",
                 location, shader_type, attribute_type,
             ),
             Self::VertexInputAttributeInvalidBinding { location, binding } => write!(
                 f,
-                "the binding number {} specified by vertex input attribute location {} does not exist in the provided list of binding descriptions",
+                "the binding number {} specified by vertex input attribute location {} does not \
+                exist in the provided list of binding descriptions",
                 binding, location,
             ),
             Self::VertexInputAttributeMissing { location } => write!(
                 f,
-                "the vertex shader expects an input variable at location {}, but no vertex input attribute exists for that location",
+                "the vertex shader expects an input variable at location {}, but no vertex input \
+                attribute exists for that location",
                 location,
             ),
             Self::VertexInputAttributeUnsupportedFormat { location, format } => write!(
                 f,
-                "the format {:?} specified by vertex input attribute location {} is not supported for vertex buffers",
+                "the format {:?} specified by vertex input attribute location {} is not supported \
+                for vertex buffers",
                 format, location,
             ),
             Self::ViewportBoundsExceeded => write!(
                 f,
                 "the minimum or maximum bounds of viewports have been exceeded",
             ),
-            Self::WrongShaderType => write!(
-                f,
-                "the wrong type of shader has been passed",
-            ),
-            Self::WrongStencilState => write!(
-                f,
-                "the requested stencil test is invalid",
-            ),
+            Self::WrongShaderType => write!(f, "the wrong type of shader has been passed"),
+            Self::WrongStencilState => write!(f, "the requested stencil test is invalid"),
         }
     }
 }
 
 impl From<OomError> for GraphicsPipelineCreationError {
-    #[inline]
     fn from(err: OomError) -> GraphicsPipelineCreationError {
         Self::OomError(err)
     }
 }
 
 impl From<DescriptorSetLayoutCreationError> for GraphicsPipelineCreationError {
-    #[inline]
     fn from(err: DescriptorSetLayoutCreationError) -> Self {
         Self::DescriptorSetLayoutCreationError(err)
     }
 }
 
 impl From<PipelineLayoutCreationError> for GraphicsPipelineCreationError {
-    #[inline]
     fn from(err: PipelineLayoutCreationError) -> Self {
         Self::PipelineLayoutCreationError(err)
     }
 }
 
 impl From<PipelineLayoutSupersetError> for GraphicsPipelineCreationError {
-    #[inline]
     fn from(err: PipelineLayoutSupersetError) -> Self {
         Self::IncompatiblePipelineLayout(err)
     }
 }
 
 impl From<IncompatibleVertexDefinitionError> for GraphicsPipelineCreationError {
-    #[inline]
     fn from(err: IncompatibleVertexDefinitionError) -> Self {
         Self::IncompatibleVertexDefinition(err)
     }
 }
 
 impl From<VulkanError> for GraphicsPipelineCreationError {
-    #[inline]
     fn from(err: VulkanError) -> Self {
         match err {
             err @ VulkanError::OutOfHostMemory => Self::OomError(OomError::from(err)),
@@ -431,7 +419,6 @@ impl From<VulkanError> for GraphicsPipelineCreationError {
 }
 
 impl From<RequirementNotMet> for GraphicsPipelineCreationError {
-    #[inline]
     fn from(err: RequirementNotMet) -> Self {
         Self::RequirementNotMet {
             required_for: err.required_for,

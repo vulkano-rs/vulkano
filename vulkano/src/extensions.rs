@@ -50,7 +50,6 @@ pub struct ExtensionRestrictionError {
 impl Error for ExtensionRestrictionError {}
 
 impl Display for ExtensionRestrictionError {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         write!(
             f,
@@ -73,7 +72,6 @@ pub enum ExtensionRestriction {
 }
 
 impl Display for ExtensionRestriction {
-    #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         match *self {
             ExtensionRestriction::NotSupported => {

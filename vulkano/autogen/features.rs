@@ -290,20 +290,20 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
         /// Note that the `robust_buffer_access` is guaranteed to be supported by all Vulkan
         /// implementations.
         ///
-        /// # Example
+        /// # Examples
         ///
         /// ```
         /// use vulkano::device::Features;
         /// # let physical_device: vulkano::device::physical::PhysicalDevice = return;
         /// let minimal_features = Features {
         ///     geometry_shader: true,
-        ///     .. Features::empty()
+        ///     ..Features::empty()
         /// };
         ///
         /// let optimal_features = vulkano::device::Features {
         ///     geometry_shader: true,
         ///     tessellation_shader: true,
-        ///     .. Features::empty()
+        ///     ..Features::empty()
         /// };
         ///
         /// if !physical_device.supported_features().is_superset_of(&minimal_features) {
@@ -313,7 +313,6 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
         /// assert!(optimal_features.is_superset_of(&minimal_features));
         /// let features_to_request = optimal_features.intersection(physical_device.supported_features());
         /// ```
-        ///
         #[derive(Copy, Clone, PartialEq, Eq, Hash)]
         pub struct Features {
             #(#struct_items)*
@@ -328,7 +327,8 @@ fn features_output(members: &[FeaturesMember]) -> TokenStream {
         }
 
         impl Features {
-            /// Checks enabled features against the device version, device extensions and each other.
+            /// Checks enabled features against the device version, device extensions and each
+            /// other.
             pub(super) fn check_requirements(
                 &self,
                 supported: &Features,

@@ -198,6 +198,7 @@ impl RenderPass {
     ///
     /// - `handle` must be a valid Vulkan object handle created from `device`.
     /// - `create_info` must match the info used to create the object.
+    #[inline]
     pub unsafe fn from_handle(
         device: Arc<Device>,
         handle: ash::vk::RenderPass,
@@ -399,21 +400,21 @@ impl RenderPass {
         if !(subpasses1.iter())
             .zip(subpasses2.iter())
             .all(|(subpass1, subpass2)| {
-                let &SubpassDescription {
+                let SubpassDescription {
                     view_mask: view_mask1,
-                    input_attachments: ref input_attachments1,
-                    color_attachments: ref color_attachments1,
-                    resolve_attachments: ref resolve_attachments1,
-                    depth_stencil_attachment: ref depth_stencil_attachment1,
+                    input_attachments: input_attachments1,
+                    color_attachments: color_attachments1,
+                    resolve_attachments: resolve_attachments1,
+                    depth_stencil_attachment: depth_stencil_attachment1,
                     preserve_attachments: _,
                     _ne: _,
                 } = subpass1;
-                let &SubpassDescription {
+                let SubpassDescription {
                     view_mask: view_mask2,
-                    input_attachments: ref input_attachments2,
-                    color_attachments: ref color_attachments2,
-                    resolve_attachments: ref resolve_attachments2,
-                    depth_stencil_attachment: ref depth_stencil_attachment2,
+                    input_attachments: input_attachments2,
+                    color_attachments: color_attachments2,
+                    resolve_attachments: resolve_attachments2,
+                    depth_stencil_attachment: depth_stencil_attachment2,
                     preserve_attachments: _,
                     _ne: _,
                 } = subpass2;
@@ -546,7 +547,6 @@ impl PartialEq for RenderPass {
 impl Eq for RenderPass {}
 
 impl Hash for RenderPass {
-    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.handle.hash(state);
         self.device.hash(state);
@@ -727,6 +727,7 @@ impl Subpass {
 
     /// Returns `true` if this subpass is compatible with the fragment output definition.
     // TODO: return proper error
+    #[inline]
     pub fn is_compatible_with(&self, shader_interface: &ShaderInterface) -> bool {
         self.render_pass
             .is_compatible_with_shader(self.subpass_id, shader_interface)
