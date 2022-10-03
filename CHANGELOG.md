@@ -32,10 +32,13 @@ Changes to `GpuFuture`:
 - Some methods of `PhysicalDevice` now cache their results, so that another call with the same arguments will retrieve them faster.
 - Fence methods are now validated and synchronized, so they take `&self`.
 - When calling `Fence::is_signaled` or `Fence::wait`, if the fence is associated with a queue, any resources of the associated queue operation will be released.
+- `VulkanLibrary::extension_properties`, to mirror the equivalent function on `PhysicalDevice`.
+- `VulkanLibrary` methods `layer_extension_properties`, `supported_layer_extensions` and `supported_extensions_with_layers`, to query the extensions supported by layers.
 
 ### Bugs fixed
 - Incorrect check for descriptor set validity when the shader declares a runtime-sized array.
 - [#2004](https://github.com/vulkano-rs/vulkano/issues/2004): A swapchain image could be presented without being acquired.
+- [#1871](https://github.com/vulkano-rs/vulkano/issues/1871): Layer extensions are not included when validating extensions to enable on an instance.
 
 # Version 0.31.0 (2022-09-18)
 
