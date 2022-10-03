@@ -2059,6 +2059,9 @@ pub struct SurfaceCapabilities {
     /// the `color_attachment` usage is guaranteed to be supported.
     pub supported_usage_flags: ImageUsage,
 
+    /// Whether creating a protected swapchain is supported.
+    pub supports_protected: bool,
+
     /// Whether full-screen exclusivity is supported.
     pub full_screen_exclusive_supported: bool,
 }
