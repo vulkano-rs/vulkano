@@ -120,12 +120,13 @@ pub use crate::{
     extensions::{ExtensionRestriction, ExtensionRestrictionError},
     fns::DeviceFunctions,
 };
+use ahash::HashMap;
 use ash::vk::Handle;
 use parking_lot::Mutex;
 use smallvec::SmallVec;
 use std::{
     cell::RefCell,
-    collections::{hash_map::Entry, HashMap},
+    collections::hash_map::Entry,
     error::Error,
     ffi::CString,
     fmt::{Display, Error as FmtError, Formatter},

@@ -89,9 +89,9 @@ use crate::{
     sampler::Sampler,
     OomError, VulkanObject,
 };
+use ahash::HashMap;
 use smallvec::{smallvec, SmallVec};
 use std::{
-    collections::HashMap,
     error::Error,
     fmt::{Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},

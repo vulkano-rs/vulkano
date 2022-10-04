@@ -7,23 +7,21 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::entry_point;
-use crate::read_file_to_string;
-use crate::structs;
-use crate::RegisteredType;
-use crate::TypesMeta;
+use crate::{entry_point, read_file_to_string, structs, RegisteredType, TypesMeta};
+use ahash::HashMap;
 use proc_macro2::TokenStream;
 pub use shaderc::{CompilationArtifact, IncludeType, ResolvedInclude, ShaderKind};
 use shaderc::{CompileOptions, Compiler, EnvVersion, SpirvVersion, TargetEnv};
-use std::collections::HashMap;
-use std::iter::Iterator;
-use std::path::Path;
 use std::{
     cell::{RefCell, RefMut},
     io::Error as IoError,
+    iter::Iterator,
+    path::Path,
 };
-use vulkano::shader::reflect;
-use vulkano::shader::spirv::{Spirv, SpirvError};
+use vulkano::shader::{
+    reflect,
+    spirv::{Spirv, SpirvError},
+};
 
 pub(super) fn path_to_str(path: &Path) -> &str {
     path.to_str().expect(
@@ -378,7 +376,7 @@ mod tests {
         .unwrap();
         let spirv = Spirv::new(comp.as_binary()).unwrap();
         let res = std::panic::catch_unwind(|| {
-            structs::write_structs("", &spirv, &TypesMeta::default(), &mut HashMap::new())
+            structs::write_structs("", &spirv, &TypesMeta::default(), &mut HashMap::default())
         });
         assert!(res.is_err());
     }
@@ -407,7 +405,7 @@ mod tests {
         )
         .unwrap();
         let spirv = Spirv::new(comp.as_binary()).unwrap();
-        structs::write_structs("", &spirv, &TypesMeta::default(), &mut HashMap::new());
+        structs::write_structs("", &spirv, &TypesMeta::default(), &mut HashMap::default());
     }
     #[test]
     fn test_wrap_alignment() {
@@ -439,7 +437,7 @@ mod tests {
         )
         .unwrap();
         let spirv = Spirv::new(comp.as_binary()).unwrap();
-        structs::write_structs("", &spirv, &TypesMeta::default(), &mut HashMap::new());
+        structs::write_structs("", &spirv, &TypesMeta::default(), &mut HashMap::default());
     }
 
     #[test]

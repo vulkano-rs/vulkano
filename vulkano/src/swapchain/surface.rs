@@ -9,6 +9,7 @@
 
 use super::{FullScreenExclusive, Win32Monitor};
 use crate::{
+    cache::OnceCache,
     format::Format,
     image::ImageUsage,
     instance::Instance,
@@ -23,9 +24,7 @@ use crate::{
 #[cfg(target_os = "ios")]
 use objc::{class, msg_send, runtime::Object, sel, sel_impl};
 
-use parking_lot::RwLock;
 use std::{
-    collections::HashMap,
     error::Error,
     fmt::{Debug, Display, Error as FmtError, Formatter},
     hash::{Hash, Hasher},
@@ -52,11 +51,11 @@ pub struct Surface<W> {
     // This is stored here rather than on `PhysicalDevice` to ensure that it's freed when the
     // `Surface` is destroyed.
     pub(crate) surface_capabilities:
-        RwLock<HashMap<(ash::vk::PhysicalDevice, SurfaceInfo), SurfaceCapabilities>>,
+        OnceCache<(ash::vk::PhysicalDevice, SurfaceInfo), SurfaceCapabilities>,
     pub(crate) surface_formats:
-        RwLock<HashMap<(ash::vk::PhysicalDevice, SurfaceInfo), Vec<(Format, ColorSpace)>>>,
-    pub(crate) surface_present_modes: RwLock<HashMap<ash::vk::PhysicalDevice, Vec<PresentMode>>>,
-    pub(crate) surface_support: RwLock<HashMap<(ash::vk::PhysicalDevice, u32), bool>>,
+        OnceCache<(ash::vk::PhysicalDevice, SurfaceInfo), Vec<(Format, ColorSpace)>>,
+    pub(crate) surface_present_modes: OnceCache<ash::vk::PhysicalDevice, Vec<PresentMode>>,
+    pub(crate) surface_support: OnceCache<(ash::vk::PhysicalDevice, u32), bool>,
 }
 
 impl<W> Surface<W> {
@@ -85,10 +84,10 @@ impl<W> Surface<W> {
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
 
-            surface_capabilities: RwLock::new(HashMap::new()),
-            surface_formats: RwLock::new(HashMap::new()),
-            surface_present_modes: RwLock::new(HashMap::new()),
-            surface_support: RwLock::new(HashMap::new()),
+            surface_capabilities: OnceCache::new(),
+            surface_formats: OnceCache::new(),
+            surface_present_modes: OnceCache::new(),
+            surface_support: OnceCache::new(),
         }
     }
 
@@ -151,10 +150,10 @@ impl<W> Surface<W> {
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
 
-            surface_capabilities: RwLock::new(HashMap::new()),
-            surface_formats: RwLock::new(HashMap::new()),
-            surface_present_modes: RwLock::new(HashMap::new()),
-            surface_support: RwLock::new(HashMap::new()),
+            surface_capabilities: OnceCache::new(),
+            surface_formats: OnceCache::new(),
+            surface_present_modes: OnceCache::new(),
+            surface_support: OnceCache::new(),
         }))
     }
 
@@ -250,10 +249,10 @@ impl<W> Surface<W> {
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
 
-            surface_capabilities: RwLock::new(HashMap::new()),
-            surface_formats: RwLock::new(HashMap::new()),
-            surface_present_modes: RwLock::new(HashMap::new()),
-            surface_support: RwLock::new(HashMap::new()),
+            surface_capabilities: OnceCache::new(),
+            surface_formats: OnceCache::new(),
+            surface_present_modes: OnceCache::new(),
+            surface_support: OnceCache::new(),
         }))
     }
 
@@ -331,10 +330,10 @@ impl<W> Surface<W> {
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
 
-            surface_capabilities: RwLock::new(HashMap::new()),
-            surface_formats: RwLock::new(HashMap::new()),
-            surface_present_modes: RwLock::new(HashMap::new()),
-            surface_support: RwLock::new(HashMap::new()),
+            surface_capabilities: OnceCache::new(),
+            surface_formats: OnceCache::new(),
+            surface_present_modes: OnceCache::new(),
+            surface_support: OnceCache::new(),
         }))
     }
 
@@ -420,10 +419,10 @@ impl<W> Surface<W> {
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
 
-            surface_capabilities: RwLock::new(HashMap::new()),
-            surface_formats: RwLock::new(HashMap::new()),
-            surface_present_modes: RwLock::new(HashMap::new()),
-            surface_support: RwLock::new(HashMap::new()),
+            surface_capabilities: OnceCache::new(),
+            surface_formats: OnceCache::new(),
+            surface_present_modes: OnceCache::new(),
+            surface_support: OnceCache::new(),
         }))
     }
 
@@ -506,10 +505,10 @@ impl<W> Surface<W> {
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
 
-            surface_capabilities: RwLock::new(HashMap::new()),
-            surface_formats: RwLock::new(HashMap::new()),
-            surface_present_modes: RwLock::new(HashMap::new()),
-            surface_support: RwLock::new(HashMap::new()),
+            surface_capabilities: OnceCache::new(),
+            surface_formats: OnceCache::new(),
+            surface_present_modes: OnceCache::new(),
+            surface_support: OnceCache::new(),
         }))
     }
 
@@ -592,10 +591,10 @@ impl<W> Surface<W> {
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
 
-            surface_capabilities: RwLock::new(HashMap::new()),
-            surface_formats: RwLock::new(HashMap::new()),
-            surface_present_modes: RwLock::new(HashMap::new()),
-            surface_support: RwLock::new(HashMap::new()),
+            surface_capabilities: OnceCache::new(),
+            surface_formats: OnceCache::new(),
+            surface_present_modes: OnceCache::new(),
+            surface_support: OnceCache::new(),
         }))
     }
 
@@ -679,10 +678,10 @@ impl<W> Surface<W> {
             has_swapchain: AtomicBool::new(false),
             metal_layer,
 
-            surface_capabilities: RwLock::new(HashMap::new()),
-            surface_formats: RwLock::new(HashMap::new()),
-            surface_present_modes: RwLock::new(HashMap::new()),
-            surface_support: RwLock::new(HashMap::new()),
+            surface_capabilities: OnceCache::new(),
+            surface_formats: OnceCache::new(),
+            surface_present_modes: OnceCache::new(),
+            surface_support: OnceCache::new(),
         }))
     }
 
@@ -767,10 +766,10 @@ impl<W> Surface<W> {
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
 
-            surface_capabilities: RwLock::new(HashMap::new()),
-            surface_formats: RwLock::new(HashMap::new()),
-            surface_present_modes: RwLock::new(HashMap::new()),
-            surface_support: RwLock::new(HashMap::new()),
+            surface_capabilities: OnceCache::new(),
+            surface_formats: OnceCache::new(),
+            surface_present_modes: OnceCache::new(),
+            surface_support: OnceCache::new(),
         }))
     }
 
@@ -845,10 +844,10 @@ impl<W> Surface<W> {
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
 
-            surface_capabilities: RwLock::new(HashMap::new()),
-            surface_formats: RwLock::new(HashMap::new()),
-            surface_present_modes: RwLock::new(HashMap::new()),
-            surface_support: RwLock::new(HashMap::new()),
+            surface_capabilities: OnceCache::new(),
+            surface_formats: OnceCache::new(),
+            surface_present_modes: OnceCache::new(),
+            surface_support: OnceCache::new(),
         }))
     }
 
@@ -936,10 +935,10 @@ impl<W> Surface<W> {
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
 
-            surface_capabilities: RwLock::new(HashMap::new()),
-            surface_formats: RwLock::new(HashMap::new()),
-            surface_present_modes: RwLock::new(HashMap::new()),
-            surface_support: RwLock::new(HashMap::new()),
+            surface_capabilities: OnceCache::new(),
+            surface_formats: OnceCache::new(),
+            surface_present_modes: OnceCache::new(),
+            surface_support: OnceCache::new(),
         }))
     }
 
@@ -1017,10 +1016,10 @@ impl<W> Surface<W> {
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
 
-            surface_capabilities: RwLock::new(HashMap::new()),
-            surface_formats: RwLock::new(HashMap::new()),
-            surface_present_modes: RwLock::new(HashMap::new()),
-            surface_support: RwLock::new(HashMap::new()),
+            surface_capabilities: OnceCache::new(),
+            surface_formats: OnceCache::new(),
+            surface_present_modes: OnceCache::new(),
+            surface_support: OnceCache::new(),
         }))
     }
 
@@ -1110,10 +1109,10 @@ impl<W> Surface<W> {
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
 
-            surface_capabilities: RwLock::new(HashMap::new()),
-            surface_formats: RwLock::new(HashMap::new()),
-            surface_present_modes: RwLock::new(HashMap::new()),
-            surface_support: RwLock::new(HashMap::new()),
+            surface_capabilities: OnceCache::new(),
+            surface_formats: OnceCache::new(),
+            surface_present_modes: OnceCache::new(),
+            surface_support: OnceCache::new(),
         }))
     }
 
@@ -1201,10 +1200,10 @@ impl<W> Surface<W> {
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
 
-            surface_capabilities: RwLock::new(HashMap::new()),
-            surface_formats: RwLock::new(HashMap::new()),
-            surface_present_modes: RwLock::new(HashMap::new()),
-            surface_support: RwLock::new(HashMap::new()),
+            surface_capabilities: OnceCache::new(),
+            surface_formats: OnceCache::new(),
+            surface_present_modes: OnceCache::new(),
+            surface_support: OnceCache::new(),
         }))
     }
 
@@ -1292,10 +1291,10 @@ impl<W> Surface<W> {
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
 
-            surface_capabilities: RwLock::new(HashMap::new()),
-            surface_formats: RwLock::new(HashMap::new()),
-            surface_present_modes: RwLock::new(HashMap::new()),
-            surface_support: RwLock::new(HashMap::new()),
+            surface_capabilities: OnceCache::new(),
+            surface_formats: OnceCache::new(),
+            surface_present_modes: OnceCache::new(),
+            surface_support: OnceCache::new(),
         }))
     }
 
@@ -1383,10 +1382,10 @@ impl<W> Surface<W> {
             #[cfg(target_os = "ios")]
             metal_layer: IOSMetalLayer::new(std::ptr::null_mut(), std::ptr::null_mut()),
 
-            surface_capabilities: RwLock::new(HashMap::new()),
-            surface_formats: RwLock::new(HashMap::new()),
-            surface_present_modes: RwLock::new(HashMap::new()),
-            surface_support: RwLock::new(HashMap::new()),
+            surface_capabilities: OnceCache::new(),
+            surface_formats: OnceCache::new(),
+            surface_present_modes: OnceCache::new(),
+            surface_support: OnceCache::new(),
         }))
     }
 

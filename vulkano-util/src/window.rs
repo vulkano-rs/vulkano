@@ -11,13 +11,14 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::context::VulkanoContext;
-use crate::renderer::VulkanoWindowRenderer;
+use crate::{context::VulkanoContext, renderer::VulkanoWindowRenderer};
+use ahash::HashMap;
 use std::collections::hash_map::{Iter, IterMut};
-use std::collections::HashMap;
 use vulkano::swapchain::{PresentMode, SwapchainCreateInfo};
-use winit::dpi::LogicalSize;
-use winit::window::{CursorGrabMode, WindowId};
+use winit::{
+    dpi::LogicalSize,
+    window::{CursorGrabMode, WindowId},
+};
 
 /// A struct organizing windows and their corresponding renderers. This makes it easy to handle multiple windows.
 ///

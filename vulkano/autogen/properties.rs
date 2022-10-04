@@ -7,16 +7,13 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{write_file, VkRegistryData};
+use super::{write_file, IndexMap, VkRegistryData};
+use ahash::HashMap;
 use heck::ToSnakeCase;
-use indexmap::IndexMap;
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
 use regex::Regex;
-use std::{
-    collections::{hash_map::Entry, HashMap},
-    fmt::Write as _,
-};
+use std::{collections::hash_map::Entry, fmt::Write as _};
 use vk_parse::{Extension, Type, TypeMember, TypeMemberMarkup, TypeSpec};
 
 pub fn write(vk_data: &VkRegistryData) {
@@ -142,7 +139,7 @@ fn properties_output(members: &[PropertiesMember]) -> TokenStream {
 }
 
 fn properties_members(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<PropertiesMember> {
-    let mut properties = HashMap::new();
+    let mut properties = HashMap::default();
 
     [
         &types["VkPhysicalDeviceProperties"],
@@ -306,7 +303,7 @@ fn properties_ffi_members<'a>(
     types: &'a HashMap<&str, (&Type, Vec<&str>)>,
     extensions: &IndexMap<&'a str, &Extension>,
 ) -> Vec<PropertiesFfiMember> {
-    let mut property_included_in: HashMap<&str, Vec<&str>> = HashMap::new();
+    let mut property_included_in: HashMap<&str, Vec<&str>> = HashMap::default();
     sorted_structs(types)
         .into_iter()
         .map(|(ty, provided_by)| {

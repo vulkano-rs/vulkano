@@ -28,9 +28,9 @@ use crate::{
     sync::PipelineStages,
     DeviceSize, OomError, Version, VulkanError, VulkanObject,
 };
+use ahash::{HashMap, HashSet};
 use std::{
     borrow::Cow,
-    collections::{HashMap, HashSet},
     error::Error,
     ffi::{CStr, CString},
     fmt::{Display, Error as FmtError, Formatter},
